@@ -109,6 +109,7 @@ const PaymentBottomSheet: React.FC = () => {
           <View style={styles.sheet}>
             <ScrollView
               style={styles.container}
+              contentContainerStyle={styles.containerContent}
               keyboardShouldPersistTaps="handled"
             >
               {/* Header */}
@@ -186,17 +187,20 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
-    height: "90%",
+    height: "100%",
     backgroundColor: colors.screen,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
   },
   container: {
     flex: 1,
     backgroundColor: colors.panel,
   },
+  containerContent: {
+    flexGrow: 1,
+  },
   content: {
     flex: 1,
+    paddingHorizontal: 8,
+    paddingBottom: 12,
   },
 });
 

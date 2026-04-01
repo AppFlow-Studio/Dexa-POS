@@ -102,8 +102,8 @@ const CardPaymentView = () => {
 
   const {
     showTipSelection,
-    setScreenState,
     setBaseAmount,
+    updateTip,
     tipResponse,
     clearTipResponse,
     showProcessing,
@@ -165,23 +165,23 @@ const CardPaymentView = () => {
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = totalToPay + tipAmount;
 
-  // Let CFD stay on ordering screen while cashier enters tip on POS (no pre-charge tip selection on CFD)
   useEffect(() => {
-    if (status === "ready") {
-      setScreenState(null); // CFD shows order totals
-      clearTipResponse();
-    }
+    clearTipResponse();
+    updateTip(0, null);
 
-    // Cleanup: Reset CFD state when leaving the card payment view
     return () => {
-      setScreenState(null);
+      updateTip(0, null);
       setBaseAmount(null);
       if (tipAdjustTimeoutRef.current) {
         clearTimeout(tipAdjustTimeoutRef.current);
         tipAdjustTimeoutRef.current = null;
       }
     };
-  }, [status === "ready"]); // Only trigger when entering ready state
+  }, [clearTipResponse, setBaseAmount, updateTip]); // Only run once on mount
+
+  useEffect(() => {
+    updateTip(tipAmount, selectedTipPreset);
+  }, [tipAmount, selectedTipPreset, updateTip]);
 
   // Post-capture: Handle CFD tip response for tip adjust
   useEffect(() => {
@@ -191,6 +191,10 @@ const CardPaymentView = () => {
     const customerTipCents = tipResponse.tipAmount; // cents from CFD
     const customerTip = customerTipCents / 100; // dollars
     const posTip = captured.tipAmount; // dollars (what was charged)
+
+    updateTip(customerTip, tipResponse.tipPercentage);
+    showProcessing("card");
+    clearTipResponse();
 
     // Clear the auto-timeout
     if (tipAdjustTimeoutRef.current) {
@@ -287,7 +291,7 @@ const CardPaymentView = () => {
     };
 
     performTipAdjust();
-  }, [tipResponse, status]);
+  }, [clearTipResponse, showProcessing, status, tipResponse, updateTip]);
 
   // Logic: Process terminal payment (Castles or Dejavoo)
   useEffect(() => {
@@ -635,8 +639,9 @@ const CardPaymentView = () => {
   };
 
   const handleChargeCard = () => {
+    updateTip(tipAmount, selectedTipPreset);
     setStatus("processing");
-    showProcessing();
+    showProcessing("card");
   };
 
   return (

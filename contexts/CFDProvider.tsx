@@ -19,6 +19,7 @@ import { useLoyaltyStore } from "@/stores/useLoyaltyStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 import type {
@@ -70,8 +71,8 @@ interface CFDContextType {
   setBaseAmount: (amount: number | null) => void;
   setScreenState: (state: CFDScreenState | null) => void;
   clearTipResponse: () => void;
-  showPayment: () => void;
-  showProcessing: () => void;
+  showPayment: (paymentMethod?: "cash" | "card" | "manual") => void;
+  showProcessing: (paymentMethod?: "cash" | "card" | "manual") => void;
   showApproved: () => void;
   showDeclined: () => void;
   showIdle: () => void;
@@ -99,8 +100,8 @@ const noopCFDValue: CFDContextType = {
   setBaseAmount: () => {},
   setScreenState: () => {},
   clearTipResponse: () => {},
-  showPayment: () => {},
-  showProcessing: () => {},
+  showPayment: (_paymentMethod?: "cash" | "card" | "manual") => {},
+  showProcessing: (_paymentMethod?: "cash" | "card" | "manual") => {},
   showApproved: () => {},
   showDeclined: () => {},
   showIdle: () => {},
@@ -142,11 +143,20 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   }>({ amount: 0, percentage: null });
   const [activeScreenState, setActiveScreenState] =
     useState<CFDScreenState | null>(null);
+  const [activePaymentMethod, setActivePaymentMethod] = useState<"cash" | "card" | "manual" | null>(null);
   const [baseAmountOverride, setBaseAmountOverride] = useState<number | null>(
     null,
   );
   const tipConfigRef = useRef<CFDPayload["tipConfig"] | null>(null);
   const lastPayloadHashRef = useRef("");
+  const lastShowPaymentAtRef = useRef<number>(0);
+  // Frozen totals snapshot taken at showProcessing — held until result screen clears
+  const frozenTotalsRef = useRef<{
+    total: number; totalCash: number; totalCard: number;
+    tipAmount: number; savingsAmount: number;
+    outstandingTotal: number; amountPaid: number;
+    paymentMethod: "cash" | "card" | "manual" | null;
+  } | null>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loyaltyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -594,9 +604,19 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     const cashSubtotal = Math.round((orderTotals?.cashSubtotal ?? currentBase) * 100);
     const cardTax = Math.round(activeOrderTax * 100);
     const cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100);
-    const cardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
-    const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
-    const savingsAmount = Math.max(0, cardTotal - cashTotal);
+    const liveCardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
+    const liveCashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
+    const frozen = frozenTotalsRef.current;
+    const cardTotal = frozen ? frozen.totalCard : liveCardTotal;
+    const cashTotal = frozen ? frozen.totalCash : liveCashTotal;
+    const savingsAmount = frozen ? frozen.savingsAmount : Math.max(0, liveCardTotal - liveCashTotal);
+    const displayTipAmount = frozen ? frozen.tipAmount : Math.round(currentTip.amount * 100);
+    const displayOutstandingTotal = frozen
+      ? frozen.outstandingTotal
+      : Math.round((activeOrderOutstandingTotal + currentTip.amount) * 100);
+    const displayAmountPaid = frozen
+      ? frozen.amountPaid
+      : Math.round((activeOrder?.amount_paid ?? 0) * 100);
 
     // For dine-in orders, get table ID
     const tableName = activeOrder?.order_type?.toLowerCase().includes("dine") ? (activeOrder?.service_location_id ?? null) : null;
@@ -618,16 +638,15 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       taxAmount: cardTax,
       taxCash: cashTax,
       taxCard: cardTax,
-      tipAmount: Math.round(currentTip.amount * 100),
+      tipAmount: displayTipAmount,
       tipPercentage: currentTip.percentage,
       total: cardTotal,
       totalCash: cashTotal,
       totalCard: cardTotal,
       savingsAmount,
-      outstandingTotal: Math.round(
-        (activeOrderOutstandingTotal + currentTip.amount) * 100,
-      ),
-      amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+      outstandingTotal: displayOutstandingTotal,
+      amountPaid: displayAmountPaid,
+      paymentMethod: frozen ? frozen.paymentMethod : activePaymentMethod,
       layout: {
         showOrderingRightPanel: showCFDOrderingRightPanel,
         orderingRightPanelMode: cfdOrderingRightPanelMode,
@@ -717,6 +736,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   // Sync order data to built-in display via useCFDBuiltinStore
   useEffect(() => {
     if (!hasBuiltinCfd) return;
+    // Frozen totals are active — showProcessing/showApproved/showDeclined own the display directly
+    if (frozenTotalsRef.current) return;
 
     const isSalesScreen = pathname.includes("order-processing") || pathname.includes("tables") || pathname.includes("floor-plan");
     const shouldShowOrderData =
@@ -728,6 +749,30 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         builtinIdleTimerRef.current = setTimeout(() => {
           useCFDBuiltinStore.getState().update({
             screenState: "idle",
+            serverName: null,
+            customerName: null,
+            orderNumber: null,
+            orderType: null,
+            tableName: null,
+            guestCount: null,
+            items: [],
+            subtotal: 0,
+            subtotalCash: 0,
+            subtotalCard: 0,
+            discountAmount: 0,
+            taxAmount: 0,
+            taxCash: 0,
+            taxCard: 0,
+            tipAmount: 0,
+            tipPercentage: null,
+            total: 0,
+            totalCash: 0,
+            totalCard: 0,
+            savingsAmount: 0,
+            outstandingTotal: 0,
+            amountPaid: 0,
+            tipConfig: null,
+            paymentMethod: null,
             branding: {
               restaurantName: selectedStore?.name ?? "",
               locationCode: selectedStore?.code ?? null,
@@ -762,9 +807,15 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     const cashSubtotal = Math.round((orderTotals?.cashSubtotal ?? currentBase) * 100);
     const cardTax = Math.round(activeOrderTax * 100);
     const cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100);
-    const cardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
-    const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
-    const savingsAmount = Math.max(0, cardTotal - cashTotal);
+    const liveCardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
+    const liveCashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
+
+    // Use frozen totals once set (from showProcessing) — prevents zeroing when order clears mid-payment
+    const frozen = frozenTotalsRef.current;
+    const cardTotal = frozen ? frozen.totalCard : liveCardTotal;
+    const cashTotal = frozen ? frozen.totalCash : liveCashTotal;
+    const savingsAmount = frozen ? frozen.savingsAmount : Math.max(0, liveCardTotal - liveCashTotal);
+    const displayTipAmount = frozen ? frozen.tipAmount : Math.round(currentTip.amount * 100);
 
     // For dine-in orders, get table ID
     const builtinTableName = activeOrder?.order_type?.toLowerCase().includes("dine") ? (activeOrder?.service_location_id ?? null) : null;
@@ -785,7 +836,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       taxAmount: cardTax,
       taxCash: cashTax,
       taxCard: cardTax,
-      tipAmount: Math.round(currentTip.amount * 100),
+      tipAmount: displayTipAmount,
       tipPercentage: currentTip.percentage,
       total: cardTotal,
       totalCash: cashTotal,
@@ -807,6 +858,10 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         logoUrl: organizationLogoUrl,
         primaryColor: "#10b981",
       },
+      paymentMethod:
+        frozen
+          ? frozen.paymentMethod
+          : (paymentView === "cash" ? "cash" : paymentView === "card" || paymentView === "manual" ? "card" : null),
     });
   }, [
     hasBuiltinCfd,
@@ -820,6 +875,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     orderTotals,
     currentTip,
     activeScreenState,
+    activePaymentMethod,
+    paymentView,
     baseAmountOverride,
     pathname,
     selectedStore?.name,
@@ -828,6 +885,39 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
   ]);
+
+  // ==================== PAYMENT STORE → CFD SYNC ====================
+  // Drive CFD payment screen directly from payment store view state,
+  // so there are no race conditions between mounting/unmounting view components.
+  const paymentIsOpen = usePaymentStore((s) => s.isOpen);
+  const paymentView = usePaymentStore((s) => s.view);
+
+  useEffect(() => {
+    if (!paymentIsOpen) {
+      setActiveScreenState(null);
+      setActivePaymentMethod(null);
+      controllerRef.current?.showIdle();
+      return;
+    }
+
+    if (paymentView === "card" || paymentView === "manual") {
+      lastShowPaymentAtRef.current = Date.now();
+      setActiveScreenState("payment");
+      const cfdPaymentMethod = paymentView === "manual" ? "manual" : "card";
+      setActivePaymentMethod(cfdPaymentMethod);
+      controllerRef.current?.showPayment(cfdPaymentMethod);
+    } else if (
+      paymentView === "cash" ||
+      paymentView === "success" ||
+      paymentView === "split-payment-success"
+    ) {
+      // Cash: tip selection / payment / processing owned by CashPaymentView callbacks
+      // Success: owned by showApproved/showDeclined
+    } else {
+      setActiveScreenState(null);
+      setActivePaymentMethod(null);
+    }
+  }, [paymentIsOpen, paymentView]);
 
   // ==================== EXPOSED METHODS ====================
 
@@ -853,6 +943,21 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
 
   const updateTip = useCallback((amount: number, percentage: number | null) => {
     setCurrentTip({ amount, percentage });
+
+    const frozen = frozenTotalsRef.current;
+    if (frozen) {
+      const nextTipAmount = Math.round(amount * 100);
+      const baseCardTotal = Math.max(0, frozen.totalCard - frozen.tipAmount);
+      const baseCashTotal = Math.max(0, frozen.totalCash - frozen.tipAmount);
+
+      frozenTotalsRef.current = {
+        ...frozen,
+        tipAmount: nextTipAmount,
+        total: baseCardTotal + nextTipAmount,
+        totalCard: baseCardTotal + nextTipAmount,
+        totalCash: baseCashTotal + nextTipAmount,
+      };
+    }
   }, []);
 
   const setBaseAmount = useCallback((amount: number | null) => {
@@ -861,34 +966,99 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
 
   const setScreenState = useCallback((state: CFDScreenState | null) => {
     setActiveScreenState(state);
+    if (state === null) setActivePaymentMethod(null);
   }, []);
 
   const clearTipResponse = useCallback(() => {
     setTipResponse(null);
   }, []);
 
-  const showPayment = useCallback(() => {
+  const showPayment = useCallback((paymentMethod?: "cash" | "card" | "manual") => {
+    lastShowPaymentAtRef.current = Date.now();
     setActiveScreenState("payment");
-    controllerRef.current?.showPayment();
+    setActivePaymentMethod(paymentMethod ?? null);
+    controllerRef.current?.showPayment(paymentMethod);
   }, []);
 
-  const showProcessing = useCallback(() => {
+  const showProcessing = useCallback((paymentMethod?: "cash" | "card" | "manual") => {
+    const cardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
+    const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
+    const tipAmt = Math.round(currentTip.amount * 100);
+    const savings = Math.max(0, cardTotal - cashTotal);
+    const frozen = {
+      total: cardTotal,
+      totalCard: cardTotal,
+      totalCash: cashTotal,
+      tipAmount: tipAmt,
+      savingsAmount: savings,
+      outstandingTotal: Math.round(
+        (activeOrderOutstandingTotal + currentTip.amount) * 100,
+      ),
+      amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+      paymentMethod: paymentMethod ?? null,
+    };
+    frozenTotalsRef.current = frozen;
+
+    // Write directly to builtin store immediately — don't wait for React re-render
+    if (hasBuiltinCfd) {
+      useCFDBuiltinStore.getState().update({
+        screenState: "processing",
+        total: cardTotal,
+        totalCard: cardTotal,
+        totalCash: cashTotal,
+        tipAmount: tipAmt,
+        savingsAmount: savings,
+        outstandingTotal: frozen.outstandingTotal,
+        amountPaid: frozen.amountPaid,
+        paymentMethod: paymentMethod ?? null,
+      });
+    }
+
     setActiveScreenState("processing");
-    controllerRef.current?.showProcessing();
-  }, []);
+    setActivePaymentMethod(paymentMethod ?? null);
+    controllerRef.current?.showProcessing(paymentMethod);
+  }, [activeOrderTotal, currentTip, orderTotals, hasBuiltinCfd]);
 
   const showApproved = useCallback(() => {
+    const frozen = frozenTotalsRef.current;
+    if (hasBuiltinCfd && frozen) {
+      useCFDBuiltinStore.getState().update({
+        screenState: "approved",
+        total: frozen.total,
+        totalCard: frozen.totalCard,
+        totalCash: frozen.totalCash,
+        tipAmount: frozen.tipAmount,
+        savingsAmount: frozen.savingsAmount,
+        paymentMethod: frozen.paymentMethod,
+      });
+    }
     setActiveScreenState("approved");
     controllerRef.current?.showApproved();
-  }, []);
+  }, [hasBuiltinCfd]);
 
   const showDeclined = useCallback(() => {
+    const frozen = frozenTotalsRef.current;
+    if (hasBuiltinCfd && frozen) {
+      useCFDBuiltinStore.getState().update({
+        screenState: "declined",
+        total: frozen.total,
+        totalCard: frozen.totalCard,
+        totalCash: frozen.totalCash,
+        tipAmount: frozen.tipAmount,
+        savingsAmount: frozen.savingsAmount,
+        paymentMethod: frozen.paymentMethod,
+      });
+    }
     setActiveScreenState("declined");
     controllerRef.current?.showDeclined();
-  }, []);
+  }, [hasBuiltinCfd]);
 
   const showIdle = useCallback(() => {
+    // If a showPayment was called very recently (e.g. next view mounting), don't clobber it
+    if (Date.now() - lastShowPaymentAtRef.current < 150) return;
+    frozenTotalsRef.current = null;
     setActiveScreenState(null);
+    setActivePaymentMethod(null);
     setBaseAmountOverride(null);
     setCurrentTip({ amount: 0, percentage: null });
     controllerRef.current?.showIdle();

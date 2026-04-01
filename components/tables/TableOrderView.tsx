@@ -3,33 +3,40 @@ import ItemProgressTracker from '@/components/bill/ItemProgressTracker'
 import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
 import TableBillSection from '@/components/bill/TableBillSection'
 import MenuSection from '@/components/menu/MenuSection'
+import SeatSelector from '@/components/tables/SeatSelector'
 import ServerSelectSheet from '@/components/tables/ServerSelectSheet'
 import TableAlertDialogs from '@/components/tables/TableAlertDialogs'
 import TableDetailSkeleton from '@/components/tables/TableDetailSkeleton'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { OrderService } from '@/services/orderService'
 import { useTableCoursing } from '@/hooks/useTableCoursing'
-import { useTableSeating } from '@/hooks/useTableSeating'
-import SeatSelector from '@/components/tables/SeatSelector'
 import { useTableDuration } from '@/hooks/useTableDuration'
 import { useTablePaymentSync } from '@/hooks/useTablePaymentSync'
+import { useTableSeating } from '@/hooks/useTableSeating'
 import { useTableSession } from '@/hooks/useTableSession'
-import { isItemReadyOrServed, getKitchenSentStatus } from '@/lib/kitchenStatusUtils'
+import {
+  getKitchenSentStatus,
+  isItemReadyOrServed
+} from '@/lib/kitchenStatusUtils'
 import { isActiveSession } from '@/lib/tableStateMachine'
 import { colors } from '@/lib/theme'
+import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
-import { useActiveOrderTotals, useOrderPreAuth, useHasActivePreAuth } from '@/stores/selectors/orderSelectors'
+import {
+  useActiveOrderTotals,
+  useHasActivePreAuth,
+  useOrderPreAuth
+} from '@/stores/selectors/orderSelectors'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { ArrowLeft, CreditCard, TrendingUp } from 'lucide-react-native'
+import { ArrowLeft, CreditCard } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
@@ -44,7 +51,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
   const supabase = useSupabaseClient()
-  const defaultSittingTimeMinutes = useLocationConfigStore(s => s.config.dining.defaultSittingTimeMinutes)
+  const defaultSittingTimeMinutes = useLocationConfigStore(
+    s => s.config.dining.defaultSittingTimeMinutes
+  )
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const autoPrintKitchenTickets = useLocationConfigStore(
     s => s.config.printing.autoPrintKitchenTickets
@@ -76,10 +85,18 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const table = useFloorPlanStore(s => s.tablesById[currentTableId])
   const session = useTableSessionStore(s => s.sessions[currentTableId])
 
-  const enablePerSeatOrdering = useLocationConfigStore(s => s.config.dining.enablePerSeatOrdering)
-  const enableCoursing = useLocationConfigStore(s => s.config.dining.enableCoursing)
+  const enablePerSeatOrdering = useLocationConfigStore(
+    s => s.config.dining.enablePerSeatOrdering
+  )
+  const enableCoursing = useLocationConfigStore(
+    s => s.config.dining.enableCoursing
+  )
   const partySize = session?.party_size ?? 2
-  const seatingHook = useTableSeating(activeOrder, partySize, enablePerSeatOrdering)
+  const seatingHook = useTableSeating(
+    activeOrder,
+    partySize,
+    enablePerSeatOrdering
+  )
 
   const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
   const dispatchAction = useTableSessionStore(s => s.dispatchAction)
@@ -188,24 +205,17 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   // --- Action handlers ---
 
   const handlePay = useCallback(() => {
-    if (activeOrder) {
-      const preparingItems = activeOrder.items.filter(
-        i => !isItemReadyOrServed(i)
-      )
+    const order = useOrderStore.getState().ordersById[useOrderStore.getState().activeOrderId ?? '']
+    if (order) {
+      const preparingItems = order.items.filter(i => !isItemReadyOrServed(i))
       if (preparingItems.length > 0) {
-        setNotReadyItems(
-          preparingItems.map(i => ({
-            id: i.id,
-            name: i.name,
-            quantity: i.quantity
-          }))
-        )
+        setNotReadyItems(preparingItems.map(i => ({ id: i.id, name: i.name, quantity: i.quantity })))
         setNotReadyConfirmOpen(true)
         return
       }
     }
     openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-  }, [activeOrder, openPaymentSheet, currentTableId])
+  }, [openPaymentSheet, currentTableId])
 
   const handleClearTable = async () => {
     if (!activeOrderId || !activeOrder) return
@@ -229,8 +239,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     await doClearTable()
   }
 
-  const doClearTable = async () => {
-    if (!activeOrderId || !activeOrder) return
+  const doClearTable = useCallback(async () => {
+    const orderState = useOrderStore.getState()
+    const currentActiveOrderId = orderState.activeOrderId
+    const currentActiveOrder = currentActiveOrderId ? orderState.ordersById[currentActiveOrderId] : null
+    if (!currentActiveOrderId || !currentActiveOrder) return
     showLoading('Clearing table...')
     markNavigatingAway()
 
@@ -242,7 +255,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       sess.status !== 'paid' &&
       sess.status !== 'closing' &&
       sess.status !== 'cleaning' &&
-      activeOrder.paid_status === 'Paid'
+      currentActiveOrder.paid_status === 'Paid'
     ) {
       await dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
     }
@@ -250,7 +263,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const result = await dispatchAction({
       type: 'CLEAR_TABLE',
       tableId: currentTableId,
-      orderId: activeOrder.id
+      orderId: currentActiveOrder.id
     })
 
     hideLoading()
@@ -269,7 +282,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         type: 'error'
       })
     }
-  }
+  }, [showLoading, markNavigatingAway, currentTableId, dispatchAction, hideLoading, onClose, show])
 
   const confirmVoid = async () => {
     if (!activeOrder) return
@@ -453,16 +466,19 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const handleSendCourseToKitchen = async (
     course: number,
-    forceResend = false
+    forceResend = false,
+    silent = false
   ) => {
     if (!activeOrder) return
 
     if (!forceResend && coursingHook.isCourseSent(activeOrder.id, course)) {
-      show({
-        title: 'Already Sent',
-        message: `Course ${course} has already been sent to the kitchen.`,
-        type: 'warning'
-      })
+      if (!silent) {
+        show({
+          title: 'Already Sent',
+          message: `Course ${course} has already been sent to the kitchen.`,
+          type: 'warning'
+        })
+      }
       return
     }
 
@@ -471,12 +487,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
     )
     if (itemsInCourse.length === 0) {
-      show({
-        title: 'Empty Course',
-        message: `There are no items in Course ${course} to send.`,
-        type: 'warning'
-      })
-      return
+      if (!silent) {
+        show({
+          title: 'Empty Course',
+          message: `There are no items in Course ${course} to send.`,
+          type: 'warning'
+        })
+      }
+      return false
     }
 
     if (!activeOrder.opened_at) {
@@ -497,9 +515,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
     // Optimistically mark items as sent/queued (single batched set() call)
     batchUpdateItemKitchenStatus(
-      itemsInCourse.map((i) => i.id),
-      getKitchenSentStatus(),
-    );
+      itemsInCourse.map(i => i.id),
+      getKitchenSentStatus()
+    )
 
     // Mark course as sent IMMEDIATELY (drives CourseGroup UI via isSent prop)
     coursingHook.markCourseSent(activeOrder.id, course)
@@ -533,13 +551,16 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         )
       }
 
-      show({
-        title: forceResend ? 'Course Resent' : 'Course Sent',
-        message: `Course ${course} has been ${
-          forceResend ? 'resent' : 'sent'
-        } for preparation.`,
-        type: 'success'
-      })
+      if (!silent) {
+        show({
+          title: forceResend ? 'Course Resent' : 'Course Sent',
+          message: `Course ${course} has been ${
+            forceResend ? 'resent' : 'sent'
+          } for preparation.`,
+          type: 'success'
+        })
+      }
+      return true
     } else {
       // Revert course sent state
       coursingHook.unmarkCourseSent(activeOrder.id, course)
@@ -565,17 +586,69 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         message: result.error || 'Failed to send course to kitchen.',
         type: 'error'
       })
+      return false
     }
   }
 
-  const handleDoubleTapCourse = (course: number) => {
+  const handleSendAllToKitchen = useCallback(async () => {
+    const orderState = useOrderStore.getState()
+    const activeOrder = orderState.activeOrderId ? orderState.ordersById[orderState.activeOrderId] : null
     if (!activeOrder) return
-    if (coursingHook.isCourseSent(activeOrder.id, course)) {
+
+    const state = coursingHook.getForOrder(activeOrder.id)
+    const pendingCourses = Array.from(
+      new Set(
+        activeOrder.items
+          .map(i => i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1)
+          .filter(
+            courseNumber =>
+              !coursingHook.isCourseSent(activeOrder.id, courseNumber)
+          )
+      )
+    ).sort((a, b) => a - b)
+
+    if (pendingCourses.length === 0) {
+      show({
+        title: 'Nothing to Send',
+        message: 'All current courses have already been sent.',
+        type: 'warning'
+      })
+      return
+    }
+
+    let sentCount = 0
+    for (const course of pendingCourses) {
+      const success = await handleSendCourseToKitchen(course, false, true)
+      if (success) sentCount += 1
+    }
+
+    if (sentCount === pendingCourses.length) {
+      show({
+        title: 'Sent to Kitchen',
+        message: `${sentCount} course${
+          sentCount > 1 ? 's' : ''
+        } sent successfully.`,
+        type: 'success'
+      })
+      return
+    }
+
+    show({
+      title: 'Partial Send Complete',
+      message: `Sent ${sentCount} of ${pendingCourses.length} courses.`,
+      type: sentCount > 0 ? 'warning' : 'error'
+    })
+  }, [coursingHook, handleSendCourseToKitchen, show])
+
+  const handleDoubleTapCourse = useCallback((course: number) => {
+    const orderId = useOrderStore.getState().activeOrderId
+    if (!orderId) return
+    if (coursingHook.isCourseSent(orderId, course)) {
       setCourseToResend(course)
     } else {
       handleSendCourseToKitchen(course, false)
     }
-  }
+  }, [coursingHook, handleSendCourseToKitchen])
 
   const handleConfirmResend = () => {
     if (courseToResend !== null) {
@@ -584,61 +657,94 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     }
   }
 
-  const handleRushCourse = useCallback(async (course: number) => {
-    if (!activeOrder) return
-    const state = coursingHook.getForOrder(activeOrder.id)
-    const itemsInCourse = activeOrder.items.filter(
-      i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
-    )
-    const dbItemIds = itemsInCourse
-      .map(i => i.db_order_item_id)
-      .filter((id): id is string => !!id)
-    if (dbItemIds.length === 0) return
+  const handleRushCourse = useCallback(
+    async (course: number) => {
+      if (!activeOrder) return
+      const state = coursingHook.getForOrder(activeOrder.id)
+      const itemsInCourse = activeOrder.items.filter(
+        i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
+      )
+      const dbItemIds = itemsInCourse
+        .map(i => i.db_order_item_id)
+        .filter((id): id is string => !!id)
+      if (dbItemIds.length === 0) return
 
-    const { error } = await OrderService.toggleRushOnItems(supabase, dbItemIds, true)
-    if (error) {
-      show({ title: 'Rush Failed', message: 'Could not rush this course.', type: 'error' })
-    } else {
-      show({ title: 'Course Rushed', message: `Course ${course} marked as rush.`, type: 'success' })
-    }
-  }, [activeOrder, coursingHook, supabase, show])
+      const { error } = await OrderService.toggleRushOnItems(
+        supabase,
+        dbItemIds,
+        true
+      )
+      if (error) {
+        show({
+          title: 'Rush Failed',
+          message: 'Could not rush this course.',
+          type: 'error'
+        })
+      } else {
+        show({
+          title: 'Course Rushed',
+          message: `Course ${course} marked as rush.`,
+          type: 'success'
+        })
+      }
+    },
+    [activeOrder, coursingHook, supabase, show]
+  )
 
-  const handlePrioritizeCourse = useCallback(async (course: number) => {
-    if (!activeOrder) return
-    const state = coursingHook.getForOrder(activeOrder.id)
-    const itemsInCourse = activeOrder.items.filter(
-      i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
-    )
-    const dbItemIds = itemsInCourse
-      .map(i => i.db_order_item_id)
-      .filter((id): id is string => !!id)
-    if (dbItemIds.length === 0) return
+  const handlePrioritizeCourse = useCallback(
+    async (course: number) => {
+      if (!activeOrder) return
+      const state = coursingHook.getForOrder(activeOrder.id)
+      const itemsInCourse = activeOrder.items.filter(
+        i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
+      )
+      const dbItemIds = itemsInCourse
+        .map(i => i.db_order_item_id)
+        .filter((id): id is string => !!id)
+      if (dbItemIds.length === 0) return
 
-    const { error } = await OrderService.togglePriorityOnItems(supabase, dbItemIds, true)
-    if (error) {
-      show({ title: 'Prioritize Failed', message: 'Could not prioritize this course.', type: 'error' })
-    } else {
-      show({ title: 'Course Prioritized', message: `Course ${course} marked as priority.`, type: 'success' })
-    }
-  }, [activeOrder, coursingHook, supabase, show])
+      const { error } = await OrderService.togglePriorityOnItems(
+        supabase,
+        dbItemIds,
+        true
+      )
+      if (error) {
+        show({
+          title: 'Prioritize Failed',
+          message: 'Could not prioritize this course.',
+          type: 'error'
+        })
+      } else {
+        show({
+          title: 'Course Prioritized',
+          message: `Course ${course} marked as priority.`,
+          type: 'success'
+        })
+      }
+    },
+    [activeOrder, coursingHook, supabase, show]
+  )
 
-  const handleResendCourse = (course: number) => {
+  const handleResendCourse = useCallback((course: number) => {
     handleSendCourseToKitchen(course, true)
-  }
+  }, [handleSendCourseToKitchen])
 
   const checkOrderClosedAndWarn = useCallback(() => {
-    if (isFullyPaid || activeOrder?.check_status === 'Closed') {
+    const orderState = useOrderStore.getState()
+    const order = orderState.activeOrderId ? orderState.ordersById[orderState.activeOrderId] : null
+    if (order?.paid_status === 'Paid' || order?.check_status === 'Closed') {
       setOrderClosedWarningOpen(true)
       return true
     }
     return false
-  }, [isFullyPaid, activeOrder?.check_status])
+  }, [])
 
   const handleAddSeat = useCallback(() => {
     const newCount = seatingHook.addSeat()
     updateActiveOrderDetails({ guest_count: newCount })
     useTableSessionStore.getState().dispatch(currentTableId, {
-      type: 'PATCH', updates: { party_size: newCount }
+      type: 'PATCH',
+      updates: { party_size: newCount }
     })
   }, [seatingHook.addSeat, updateActiveOrderDetails, currentTableId])
 
@@ -648,7 +754,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const newCount = removedSeat - 1
     updateActiveOrderDetails({ guest_count: newCount })
     useTableSessionStore.getState().dispatch(currentTableId, {
-      type: 'PATCH', updates: { party_size: newCount }
+      type: 'PATCH',
+      updates: { party_size: newCount }
     })
     if (reassignedItemCount > 0) {
       show({
@@ -692,6 +799,47 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     () => pricingSheetRef.current?.close(),
     []
   )
+
+  const handleOpenServerSheet = useCallback(() => setServerSheetOpen(true), [])
+  const handleCloseServerSheet = useCallback(() => setServerSheetOpen(false), [])
+  const handleSelectServer = useCallback((name: string) => {
+    updateActiveOrderDetails({ server_name: name })
+    setServerSheetOpen(false)
+  }, [updateActiveOrderDetails])
+
+  const handleCloseDiscountSheet = useCallback(
+    () => discountSheetRef.current?.close(),
+    []
+  )
+
+  const handleVoidSuccess = useCallback(() => {
+    markNavigatingAway()
+    show({ title: 'Check Voided', message: 'The order has been successfully voided. Table is now available.', type: 'success' })
+    onClose()
+  }, [markNavigatingAway, show, onClose])
+
+  const handleOpenPreAuthCapture = useCallback(() => {
+    setPreAuthMode('capture')
+    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+  }, [setPreAuthMode, openPaymentSheet, currentTableId])
+
+  const handleOpenPreAuthIncrement = useCallback(() => {
+    setPreAuthMode('increment')
+    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+  }, [setPreAuthMode, openPaymentSheet, currentTableId])
+
+  const handlePayAnyway = useCallback(() => {
+    setNotReadyConfirmOpen(false)
+    pricingSheetRef.current?.close()
+    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+  }, [openPaymentSheet, currentTableId])
+
+  const handleClearAnyway = useCallback(async () => {
+    setClearNotReadyConfirmOpen(false)
+    await doClearTable()
+  }, [doClearTable])
+
+  const handleCloseReopenModal = useCallback(() => setReopenModalOpen(false), [])
 
   const handleProceedToPayment = useCallback(() => {
     pricingSheetRef.current?.close()
@@ -763,7 +911,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             />
           </View>
         )}
-
       </View>
 
       {isOvertime && (
@@ -792,40 +939,57 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
                 borderRadius: 8,
                 borderWidth: 1,
                 borderColor: colors.teal + '40',
-                gap: 8,
+                gap: 8
               }}
             >
               <CreditCard size={14} color={colors.teal} />
-              <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: colors.teal }}>
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.teal
+                }}
+              >
                 Tab Open: ${preAuth.preAuthAmount?.toFixed(2)}
               </Text>
               <TouchableOpacity
-                onPress={() => {
-                  setPreAuthMode('capture')
-                  openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-                }}
+                onPress={handleOpenPreAuthCapture}
                 style={{
                   paddingHorizontal: 8,
                   paddingVertical: 3,
                   backgroundColor: colors.teal + '30',
-                  borderRadius: 6,
+                  borderRadius: 6
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.teal }}>Close Tab</Text>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: colors.teal
+                  }}
+                >
+                  Close Tab
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => {
-                  setPreAuthMode('increment')
-                  openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-                }}
+                onPress={handleOpenPreAuthIncrement}
                 style={{
                   paddingHorizontal: 8,
                   paddingVertical: 3,
                   backgroundColor: colors.warning + '30',
-                  borderRadius: 6,
+                  borderRadius: 6
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>Increase</Text>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: colors.warning
+                  }}
+                >
+                  Increase
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -840,7 +1004,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               setCurrentCourse={handleSetCurrentCourse}
               onDoubleTapCourse={handleDoubleTapCourse}
               activeOrder={activeOrder}
-              onOpenServerSheet={() => setServerSheetOpen(true)}
+              onOpenServerSheet={handleOpenServerSheet}
               onPressMore={handlePressMore}
               onPressTotal={handlePressTotal}
               onPressReopenCheck={handleReopenCheck}
@@ -863,6 +1027,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               onRushCourse={handleRushCourse}
               onPrioritizeCourse={handlePrioritizeCourse}
               onResendCourse={handleResendCourse}
+              onPressSendAllToKitchen={handleSendAllToKitchen}
             />
             <View className='flex-1 p-4 px-3 pt-0'>
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}
@@ -915,17 +1080,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
           <MoreOptionsBottomSheet
             ref={moreOptionsSheetRef}
-            onVoidSuccess={() => {
-              markNavigatingAway()
-              // Session already cleared locally by voidOrderEffect; RPC closed backend session
-              show({
-                title: 'Check Voided',
-                message:
-                  'The order has been successfully voided. Table is now available.',
-                type: 'success'
-              })
-              onClose()
-            }}
+            onVoidSuccess={handleVoidSuccess}
             discountSheetRef={
               discountSheetRef as React.RefObject<BottomSheetMethods>
             }
@@ -934,37 +1089,23 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
           <DiscountBottomSheet
             ref={discountSheetRef}
-            onClose={() => discountSheetRef.current?.close()}
+            onClose={handleCloseDiscountSheet}
           />
 
           <ServerSelectSheet
             isOpen={serverSheetOpen}
-            onClose={() => setServerSheetOpen(false)}
-            onSelect={(name) => {
-              updateActiveOrderDetails({ server_name: name });
-              setServerSheetOpen(false);
-            }}
+            onClose={handleCloseServerSheet}
+            onSelect={handleSelectServer}
             currentServer={activeOrder?.server_name}
           />
 
           <TableAlertDialogs
             isNotReadyConfirmOpen={isNotReadyConfirmOpen}
             onNotReadyConfirmChange={setNotReadyConfirmOpen}
-            onPayAnyway={() => {
-              setNotReadyConfirmOpen(false)
-              pricingSheetRef.current?.close()
-              openPaymentSheet(
-                'Card',
-                currentTableId,
-                'payment-method-selection'
-              )
-            }}
+            onPayAnyway={handlePayAnyway}
             isClearNotReadyConfirmOpen={isClearNotReadyConfirmOpen}
             onClearNotReadyConfirmChange={setClearNotReadyConfirmOpen}
-            onClearAnyway={async () => {
-              setClearNotReadyConfirmOpen(false)
-              await doClearTable()
-            }}
+            onClearAnyway={handleClearAnyway}
             notReadyItems={notReadyItems}
             isVoidConfirmOpen={isVoidConfirmOpen}
             onVoidConfirmChange={setVoidConfirmOpen}
@@ -975,7 +1116,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             onCourseResendChange={setCourseToResend}
             onConfirmResend={handleConfirmResend}
             isReopenModalOpen={isReopenModalOpen}
-            onReopenModalClose={() => setReopenModalOpen(false)}
+            onReopenModalClose={handleCloseReopenModal}
             onConfirmReopen={handleConfirmReopen}
           />
         </>

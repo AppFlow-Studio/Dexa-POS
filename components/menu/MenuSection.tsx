@@ -582,6 +582,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   }}
                   removeClippedSubviews={true}
                   maxToRenderPerBatch={8}
+                  updateCellsBatchingPeriod={50}
                   windowSize={4}
                   initialNumToRender={8}
                   ListEmptyComponent={

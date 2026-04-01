@@ -1,5 +1,6 @@
 // components/cfd-client/LoyaltyPromptScreen.tsx
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
+import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -85,6 +86,10 @@ export function LoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
         <Pressable onPress={onSkip} style={styles.skipBtn}>
           <Text style={styles.skipBtnText}>Skip</Text>
         </Pressable>
+      </View>
+
+      <View style={styles.poweredFooter}>
+        <Text style={styles.poweredFooterText}>Powered by DEXA</Text>
       </View>
     </View>
   );
@@ -205,6 +210,19 @@ const styles = StyleSheet.create({
   skipBtnText: {
     fontSize: 18,
     color: "#525252",
+    fontWeight: "500",
+  },
+  poweredFooter: {
+    marginTop: 6,
+    paddingTop: 4,
+    paddingBottom: 6,
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  poweredFooterText: {
+    fontSize: 9,
+    color: colors.label,
     fontWeight: "500",
   },
 });

@@ -8,6 +8,7 @@ import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useOrderByAnyId } from '@/stores/selectors/orderSelectors'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
@@ -106,7 +107,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   disableLongPress = false
 }) => {
   const DRAG_HOLD_MS = 220
-  const tablesById = useFloorPlanStore(s => s.tablesById)
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
   const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
   const defaultSittingTimeMinutes = useLocationConfigStore(s => s.config.dining.defaultSittingTimeMinutes)
@@ -203,24 +203,21 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return preAuth?.preAuthAmount ?? null
   }, [effectiveOrder?.payments])
 
-  const displayName = useMemo(() => {
-    if (
-      liveSession &&
-      liveSession.merged_tables &&
-      liveSession.merged_tables.length > 0
-    ) {
-      const otherTableNames = liveSession.merged_tables
-        .filter(id => id !== table.id)
-        .map(id => tablesById[id]?.name)
-        .filter(Boolean)
-        .join(', ')
+  // Subscribe only to the specific merged table names needed, not the entire tablesById map
+  const mergedTableIds = liveSession?.merged_tables ?? []
+  const mergedTableNames = useFloorPlanStore(useShallow(s =>
+    mergedTableIds
+      .filter(id => id !== table.id)
+      .map(id => s.tablesById[id]?.name ?? null)
+  ))
 
-      if (otherTableNames) {
-        return `${table.name} (Merged: ${otherTableNames})`
-      }
+  const displayName = useMemo(() => {
+    if (mergedTableIds.length > 0) {
+      const otherTableNames = mergedTableNames.filter(Boolean).join(', ')
+      if (otherTableNames) return `${table.name} (Merged: ${otherTableNames})`
     }
     return table.name
-  }, [table, tablesById])
+  }, [table.name, mergedTableNames, mergedTableIds.length])
 
   // --- ANIMATED VALUES ---
   const translateX = useSharedValue(table.x)
