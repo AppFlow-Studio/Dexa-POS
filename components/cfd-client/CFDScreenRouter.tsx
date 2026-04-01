@@ -1,7 +1,7 @@
 // components/cfd-client/CFDScreenRouter.tsx
 // Shared screen-state router used by both external CFD tablets and built-in secondary displays.
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
-import React from "react";
+
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import { IdleScreen } from "./IdleScreen";
@@ -51,9 +51,7 @@ export function CFDScreenRouter({ onTipSelected, onPhoneSubmitted, onLoyaltySkip
       case "ordering":
         return <OrderingScreen />;
       case "tip_selection":
-        return (
-          <TipSelectionScreen onTipSelected={onTipSelected ?? (() => {})} />
-        );
+        return <TipSelectionScreen onTipSelected={onTipSelected ?? (() => {})} />;
       case "payment":
         return <PaymentScreen />;
       case "processing":
@@ -79,8 +77,8 @@ export function CFDScreenRouter({ onTipSelected, onPhoneSubmitted, onLoyaltySkip
   return (
     <Animated.View
       key={transitionKey}
-      entering={FadeIn.duration(300)}
-      exiting={FadeOut.duration(200)}
+      entering={FadeIn.duration(260)}
+      exiting={FadeOut.duration(180)}
       style={{ flex: 1 }}
     >
       {renderScreen()}

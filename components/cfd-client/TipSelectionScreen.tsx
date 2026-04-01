@@ -3,6 +3,13 @@ import { colors } from "@/lib/theme";
 import { Delete, UtensilsCrossed } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  FadeInDown,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
 interface Props {
   onTipSelected: (tipAmount: number, tipPercentage: number | null) => void;
@@ -85,9 +92,24 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
     });
   };
 
+  // Animate selected tip amount change
+  const amountScale = useSharedValue(1);
+  const prevTipRef = React.useRef(selectedTipAmount);
+  useEffect(() => {
+    if (selectedTipAmount !== prevTipRef.current) {
+      prevTipRef.current = selectedTipAmount;
+      amountScale.value = withSpring(1.12, { damping: 8, stiffness: 300 }, () => {
+        amountScale.value = withSpring(1, { damping: 12, stiffness: 200 });
+      });
+    }
+  }, [selectedTipAmount]);
+  const amountStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: amountScale.value }],
+  }));
+
   return (
     <View style={styles.outer}>
-      <View style={styles.header}>
+      <Animated.View entering={FadeIn.duration(250)} style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.iconBox}>
             <UtensilsCrossed size={20} color={colors.teal} />
@@ -95,39 +117,45 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
           <Text style={styles.restaurantName}>Add a tip</Text>
         </View>
         <Text style={styles.headerSubtitle}>Order total: {formatCurrency(subtotal)}</Text>
-      </View>
+      </Animated.View>
 
       <View style={styles.body}>
         <View style={styles.contentColumn}>
-          <View style={styles.heroCard}>
+          <Animated.View entering={FadeInDown.duration(300).delay(60)} style={styles.heroCard}>
             <View style={styles.selectionSummary}>
               <Text style={styles.selectionLabel}>Selected Tip</Text>
-              <Text style={styles.selectionAmount}>{formatCurrency(selectedTipAmount)}</Text>
+              <Animated.Text style={[styles.selectionAmount, amountStyle]}>
+                {formatCurrency(selectedTipAmount)}
+              </Animated.Text>
             </View>
-          </View>
+          </Animated.View>
 
           <View style={styles.presetGrid}>
-            {presets.map((pct) => {
+            {presets.map((pct, index) => {
               const tipAmt = Math.round(subtotal * (pct / 100));
               const isSelected = selectedPercentage === pct && !showCustom;
               return (
-                <Pressable
+                <Animated.View
                   key={pct}
-                  onPress={() => handlePresetSelect(pct)}
-                  style={[styles.presetCard, isSelected && styles.presetCardSelected]}
+                  entering={FadeInDown.duration(300).delay(120 + index * 60)}
                 >
-                  <Text style={[styles.presetPct, isSelected && styles.presetPctSelected]}>
-                    {pct}%
-                  </Text>
-                  <Text style={[styles.presetAmt, isSelected && styles.presetAmtSelected]}>
-                    {formatCurrency(tipAmt)}
-                  </Text>
-                </Pressable>
+                  <Pressable
+                    onPress={() => handlePresetSelect(pct)}
+                    style={[styles.presetCard, isSelected && styles.presetCardSelected]}
+                  >
+                    <Text style={[styles.presetPct, isSelected && styles.presetPctSelected]}>
+                      {pct}%
+                    </Text>
+                    <Text style={[styles.presetAmt, isSelected && styles.presetAmtSelected]}>
+                      {formatCurrency(tipAmt)}
+                    </Text>
+                  </Pressable>
+                </Animated.View>
               );
             })}
           </View>
 
-          <View style={styles.actionsSection}>
+          <Animated.View entering={FadeInDown.duration(300).delay(300)} style={styles.actionsSection}>
             {tipConfig?.allowCustom !== false && (
               <Pressable
                 onPress={() => {
@@ -161,13 +189,8 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
             <Pressable onPress={handleNoTip} style={styles.noTipBtn}>
               <Text style={styles.noTipText}>No Tip</Text>
             </Pressable>
-          </View>
+          </Animated.View>
         </View>
-      </View>
-
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Powered by DEXA</Text>
       </View>
 
       {/* Custom Amount Modal */}

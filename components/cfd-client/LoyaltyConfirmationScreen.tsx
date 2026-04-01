@@ -1,9 +1,15 @@
 // components/cfd-client/LoyaltyConfirmationScreen.tsx
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
-import { colors } from "@/lib/theme";
 import { Check } from "lucide-react-native";
-import React from "react";
+import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 
 export function LoyaltyConfirmationScreen() {
   const { loyaltyResult } = useCFDDisplayData();
@@ -11,37 +17,57 @@ export function LoyaltyConfirmationScreen() {
   const customerName = loyaltyResult?.customerName;
   const hasUnlockedReward = programs.some((p) => p.rewardUnlocked);
 
+  const iconScale = useSharedValue(0.7);
+  const iconOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    iconOpacity.value = withTiming(1, { duration: 150 });
+    iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 });
+  }, []);
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconScale.value }],
+    opacity: iconOpacity.value,
+  }));
+
   return (
     <View style={styles.container}>
-      <View style={styles.iconContainer}>
+      <Animated.View style={[styles.iconContainer, iconStyle]}>
         <Check size={64} color="#ffffff" strokeWidth={3} />
-      </View>
+      </Animated.View>
 
-      <Text style={styles.title}>Thank you!</Text>
+      <Animated.Text entering={FadeInUp.duration(280).delay(80)} style={styles.title}>
+        Thank you!
+      </Animated.Text>
 
       {customerName ? (
-        <Text style={styles.welcomeText}>Welcome back, {customerName}!</Text>
+        <Animated.Text entering={FadeInUp.duration(280).delay(140)} style={styles.welcomeText}>
+          Welcome back, {customerName}!
+        </Animated.Text>
       ) : null}
 
       {programs.length > 0 ? (
         <View style={styles.programsContainer}>
           {programs.map((program, idx) => (
-            <View key={idx} style={styles.programRow}>
+            <Animated.View
+              key={idx}
+              entering={FadeInUp.duration(280).delay(180 + idx * 60)}
+              style={styles.programRow}
+            >
               <ProgramSummary program={program} />
-            </View>
+            </Animated.View>
           ))}
         </View>
       ) : null}
 
       {hasUnlockedReward ? (
-        <View style={styles.rewardBanner}>
+        <Animated.View
+          entering={FadeInUp.duration(280).delay(260)}
+          style={styles.rewardBanner}
+        >
           <Text style={styles.rewardBannerText}>🎉 You earned a reward!</Text>
-        </View>
+        </Animated.View>
       ) : null}
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Powered by DEXA</Text>
-      </View>
     </View>
   );
 }
@@ -156,22 +182,5 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     color: "#eab308",
-  },
-  footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    marginTop: 6,
-    paddingTop: 4,
-    paddingBottom: 6,
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  footerText: {
-    fontSize: 9,
-    color: colors.label,
-    fontWeight: "500",
   },
 });
