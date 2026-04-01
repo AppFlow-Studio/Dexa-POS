@@ -90,9 +90,11 @@ export function CFDScreenRouter ({
       style={styles.container}
     >
       <View style={styles.screenContent}>{renderScreen()}</View>
-      <View pointerEvents='none' style={styles.dexaFooterWrap}>
-        <Text style={styles.dexaFooterText}>Powered by DEXA</Text>
-      </View>
+      {resolvedState !== 'idle' ? (
+        <View pointerEvents='none' style={styles.dexaFooterWrap}>
+          <Text style={styles.dexaFooterText}>Powered by DEXA</Text>
+        </View>
+      ) : null}
     </Animated.View>
   )
 }
