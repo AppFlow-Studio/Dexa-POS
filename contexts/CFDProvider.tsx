@@ -63,7 +63,11 @@ interface CFDContextType {
   serverInfo: { ip: string; port: number } | null
   tipResponse: CFDTipResponse | null
 
-  showTipSelection: (baseAmount?: number, presetPercentages?: number[]) => void
+  showTipSelection: (
+    baseAmount?: number,
+    presetPercentages?: number[],
+    paymentMethod?: 'cash' | 'card' | 'manual'
+  ) => void
   updateTip: (amount: number, percentage: number | null) => void
   setBaseAmount: (amount: number | null) => void
   setScreenState: (state: CFDScreenState | null) => void
@@ -98,7 +102,11 @@ const noopCFDValue: CFDContextType = {
   pairingData: null,
   serverInfo: null,
   tipResponse: null,
-  showTipSelection: () => {},
+  showTipSelection: (
+    _baseAmount?: number,
+    _presetPercentages?: number[],
+    _paymentMethod?: 'cash' | 'card' | 'manual'
+  ) => {},
   updateTip: () => {},
   setBaseAmount: () => {},
   setScreenState: () => {},
@@ -1126,10 +1134,15 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // ==================== EXPOSED METHODS ====================
 
   const showTipSelection = useCallback(
-    (baseAmount?: number, presetPercentages?: number[]) => {
+    (
+      baseAmount?: number,
+      presetPercentages?: number[],
+      paymentMethod?: 'cash' | 'card' | 'manual'
+    ) => {
       const currentBase = baseAmount ?? activeOrderSubtotal
       setBaseAmountOverride(baseAmount ?? null)
       setActiveScreenState('tip_selection')
+      setActivePaymentMethod(paymentMethod ?? null)
 
       const config = {
         subtotalForTip: Math.round(currentBase * 100), // CONVERT TO CENTS

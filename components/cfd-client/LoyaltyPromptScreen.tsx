@@ -9,33 +9,45 @@ interface Props {
   onSkip: () => void
 }
 
-function formatPhone (digits: string): string {
-  if (digits.length === 0) return ''
-  if (digits.length <= 3) return `(${digits}`
-  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+const MIN_PHONE_DIGITS = 7
+const MAX_PHONE_DIGITS = 15
+
+function getDigits (value: string): string {
+  return value.replace(/\D/g, '')
+}
+
+function formatPhone (input: string): string {
+  if (input.length === 0) return ''
+  const hasPlus = input.startsWith('+')
+  const digits = getDigits(input)
+  const grouped = digits.replace(/(\d{3})(?=\d)/g, '$1 ').trim()
+  return hasPlus ? `+${grouped}` : grouped
 }
 
 export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
-  const [digits, setDigits] = useState('')
+  const [phoneInput, setPhoneInput] = useState('')
+  const digitCount = getDigits(phoneInput).length
+  const canSubmit = digitCount >= MIN_PHONE_DIGITS
 
   const handleKey = (key: string) => {
     if (key === 'backspace') {
-      setDigits(d => d.slice(0, -1))
+      setPhoneInput(p => p.slice(0, -1))
     } else if (key === 'clear') {
-      setDigits('')
-    } else if (digits.length < 10) {
-      setDigits(d => d + key)
+      setPhoneInput('')
+    } else if (key === '+') {
+      setPhoneInput(p => (p.length === 0 ? '+' : p))
+    } else if (digitCount < MAX_PHONE_DIGITS) {
+      setPhoneInput(p => p + key)
     }
   }
 
   const handleSubmit = () => {
-    if (digits.length === 10) {
-      onPhoneSubmitted(digits)
+    if (canSubmit) {
+      onPhoneSubmitted(phoneInput)
     }
   }
 
-  const displayText = digits.length === 0 ? '' : formatPhone(digits)
+  const displayText = phoneInput.length === 0 ? '' : formatPhone(phoneInput)
 
   return (
     <View style={styles.container}>
@@ -44,16 +56,22 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
       </View>
 
       <Text style={styles.headline}>Enter your phone number</Text>
-      <Text style={styles.subtitle}>Earn points on every purchase</Text>
+      <Text style={styles.subtitle}>
+        Use country code for non-US numbers (example: +44)
+      </Text>
 
-      <View style={styles.phoneBox}>
+      <View style={styles.phoneCard}>
+        <Text style={styles.phoneLabel}>Phone Number</Text>
         <Text
           style={[
             styles.phoneText,
-            digits.length === 0 && styles.phoneTextPlaceholder
+            phoneInput.length === 0 && styles.phoneTextPlaceholder
           ]}
         >
-          {displayText || '(___) ___-____'}
+          {displayText || '+000 000 000'}
+        </Text>
+        <Text style={styles.phoneMeta}>
+          {digitCount}/{MAX_PHONE_DIGITS} digits (min {MIN_PHONE_DIGITS})
         </Text>
       </View>
 
@@ -79,10 +97,10 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
         <View style={styles.numpadRow}>
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => handleKey('clear')}
+            onPress={() => handleKey('+')}
             style={styles.numKey}
           >
-            <Text style={styles.numKeySmall}>Clear</Text>
+            <Text style={styles.numKeySmall}>+</Text>
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.7}
@@ -112,19 +130,20 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={handleSubmit}
-          disabled={digits.length !== 10}
-          style={[
-            styles.continueBtn,
-            digits.length !== 10 && styles.continueBtnDisabled
-          ]}
+          disabled={!canSubmit}
+          style={[styles.continueBtn, !canSubmit && styles.continueBtnDisabled]}
         >
           <Text style={styles.continueBtnText}>Continue</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.poweredFooter}>
-        <Text style={styles.poweredFooterText}>Powered by DEXA</Text>
-      </View>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => handleKey('clear')}
+        style={styles.clearInputBtn}
+      >
+        <Text style={styles.clearInputBtnText}>Clear Input</Text>
+      </TouchableOpacity>
     </View>
   )
 }
@@ -161,21 +180,37 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: -8
   },
-  phoneBox: {
+  phoneCard: {
     width: 320,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.border
+    gap: 4
+  },
+  phoneLabel: {
+    fontSize: 11,
+    color: colors.label,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase'
   },
   phoneText: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: '600',
     color: colors.heading,
-    letterSpacing: 2
+    letterSpacing: 1.5
   },
   phoneTextPlaceholder: {
     color: colors.muted
+  },
+  phoneMeta: {
+    fontSize: 12,
+    color: colors.label,
+    fontWeight: '500'
   },
   keypad: {
     width: 320,
@@ -245,11 +280,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.onSolid
   },
-  poweredFooter: {
-    marginTop: 20
+  clearInputBtn: {
+    marginTop: -8,
+    paddingVertical: 8,
+    paddingHorizontal: 12
   },
-  poweredFooterText: {
-    fontSize: 12,
-    color: colors.label
+  clearInputBtnText: {
+    fontSize: 13,
+    color: colors.label,
+    fontWeight: '500'
   }
 })

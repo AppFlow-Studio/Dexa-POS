@@ -1,6 +1,12 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
 import { colors } from '@/lib/theme'
-import { Delete, UtensilsCrossed } from 'lucide-react-native'
+import {
+  Banknote,
+  CreditCard,
+  Delete,
+  Keyboard,
+  UtensilsCrossed
+} from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import {
   Modal,
@@ -26,7 +32,8 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const {
     tipConfig,
     tipAmount: externalTipAmount,
-    tipPercentage: externalTipPercentage
+    tipPercentage: externalTipPercentage,
+    paymentMethod
   } = useCFDDisplayData()
 
   const [selectedPercentage, setSelectedPercentage] = useState<number | null>(
@@ -53,6 +60,21 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const subtotal = tipConfig?.subtotalForTip ?? 0
   const presets = tipConfig?.presetPercentages ?? [15, 20, 25]
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
+  const paymentMethodLabel =
+    paymentMethod === 'cash'
+      ? 'Cash'
+      : paymentMethod === 'manual'
+      ? 'Manual'
+      : paymentMethod === 'card'
+      ? 'Card'
+      : 'Not set'
+
+  const PaymentMethodIcon =
+    paymentMethod === 'cash'
+      ? Banknote
+      : paymentMethod === 'manual'
+      ? Keyboard
+      : CreditCard
 
   const customAmountCents = Math.round((parseFloat(customAmount) || 0) * 100)
   const selectedTipAmount = showCustom
@@ -135,6 +157,17 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
         <Text style={styles.headerSubtitle}>
           Order total: {formatCurrency(subtotal)}
         </Text>
+      </Animated.View>
+
+      <Animated.View
+        entering={FadeInDown.duration(220).delay(40)}
+        style={styles.paymentMethodBar}
+      >
+        <View style={styles.paymentMethodLeft}>
+          <PaymentMethodIcon size={16} color={colors.teal} />
+          <Text style={styles.paymentMethodLabel}>Payment Method</Text>
+        </View>
+        <Text style={styles.paymentMethodValue}>{paymentMethodLabel}</Text>
       </Animated.View>
 
       <View style={styles.body}>
@@ -372,6 +405,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 24
+  },
+  paymentMethodBar: {
+    marginTop: 10,
+    marginHorizontal: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${colors.teal}40`,
+    backgroundColor: `${colors.teal}12`,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  paymentMethodLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  paymentMethodLabel: {
+    fontSize: 11,
+    color: colors.label,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8
+  },
+  paymentMethodValue: {
+    fontSize: 14,
+    color: colors.teal,
+    fontWeight: '700'
   },
   contentColumn: {
     width: '100%',
