@@ -58,7 +58,11 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
       </View>
 
       <View style={styles.keypad}>
-        {[['1','2','3'],['4','5','6'],['7','8','9']].map((row, ri) => (
+        {[
+          ['1', '2', '3'],
+          ['4', '5', '6'],
+          ['7', '8', '9']
+        ].map((row, ri) => (
           <View key={ri} style={styles.numpadRow}>
             {row.map(key => (
               <TouchableOpacity
@@ -109,7 +113,10 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
           activeOpacity={0.8}
           onPress={handleSubmit}
           disabled={digits.length !== 10}
-          style={[styles.continueBtn, digits.length !== 10 && styles.continueBtnDisabled]}
+          style={[
+            styles.continueBtn,
+            digits.length !== 10 && styles.continueBtnDisabled
+          ]}
         >
           <Text style={styles.continueBtnText}>Continue</Text>
         </TouchableOpacity>
@@ -155,24 +162,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 2,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.border
   },
   phoneText: {
     fontSize: 34,
     fontWeight: '600',
     color: colors.heading,
-    letterSpacing: 2,
+    letterSpacing: 2
   },
   phoneTextPlaceholder: {
     color: colors.muted
   },
   keypad: {
     width: 320,
-    gap: 10,
+    gap: 10
   },
   numpadRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 8
   },
   numKey: {
     flex: 1,
@@ -182,20 +189,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   numKeyAction: {
-    backgroundColor: colors.screen,
+    backgroundColor: colors.screen
   },
   numKeyText: {
     fontSize: 22,
     fontWeight: '700',
-    color: colors.heading,
+    color: colors.heading
   },
   numKeySmall: {
     fontSize: 15,
     fontWeight: '500',
-    color: colors.label,
+    color: colors.label
   },
   footer: {
     flexDirection: 'row',
@@ -233,5 +240,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.onSolid
-  },
+  }
 })
