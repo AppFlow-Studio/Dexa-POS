@@ -520,7 +520,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     if (serverStatus === 'ready' || serverStatus === 'connected') {
       controllerRef.current?.updateBranding({
         restaurantName: selectedStore?.name ?? '',
-        locationCode: selectedStore?.code,
+        locationCode: selectedStore?.code ?? null,
         logoUrl: organizationLogoUrl,
         primaryColor: '#10b981'
       })
@@ -794,6 +794,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     cfdOrderingRightPanelMode
   ])
 
+  // ==================== PAYMENT STORE → CFD SYNC ====================
+  // Drive CFD payment screen directly from payment store view state,
+  // so there are no race conditions between mounting/unmounting view components.
+  const paymentIsOpen = usePaymentStore(s => s.isOpen)
+  const paymentView = usePaymentStore(s => s.view)
+
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
 
   // Check for built-in CFD once on mount (async with cache-first, native-fallback)
@@ -943,16 +949,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       ((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100
     )
 
-    // Use frozen totals once set (from showProcessing) — prevents zeroing when order clears mid-payment
-    const frozen = frozenTotalsRef.current
-    const cardTotal = frozen ? frozen.totalCard : liveCardTotal
-    const cashTotal = frozen ? frozen.totalCash : liveCashTotal
-    const savingsAmount = frozen
-      ? frozen.savingsAmount
-      : Math.max(0, liveCardTotal - liveCashTotal)
-    const displayTipAmount = frozen
-      ? frozen.tipAmount
-      : Math.round(currentTip.amount * 100)
+    const cardTotal = liveCardTotal
+    const cashTotal = liveCashTotal
+    const savingsAmount = Math.max(0, liveCardTotal - liveCashTotal)
+    const displayTipAmount = Math.round(currentTip.amount * 100)
 
     // For dine-in orders, get table ID
     const builtinTableName = activeOrder?.order_type
@@ -1000,19 +1000,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         logoUrl: organizationLogoUrl,
         primaryColor: '#10b981'
       },
-      paymentMethod: frozen
-        ? frozen.paymentMethod
-        : paymentView === 'cash'
+      paymentMethod: paymentView === 'cash'
         ? 'cash'
         : paymentView === 'card' || paymentView === 'manual'
         ? 'card'
         : null,
-      // Preserve loyaltyResult — don't clear it if already set by the loyalty flow
-      loyaltyResult:
-        screenState === 'loyalty_confirmation' ||
-        screenState === 'loyalty_prompt'
-          ? useCFDBuiltinStore.getState().loyaltyResult
-          : null
+      loyaltyResult: null
     })
   }, [
     hasBuiltinCfd,
@@ -1036,12 +1029,6 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode
   ])
-
-  // ==================== PAYMENT STORE → CFD SYNC ====================
-  // Drive CFD payment screen directly from payment store view state,
-  // so there are no race conditions between mounting/unmounting view components.
-  const paymentIsOpen = usePaymentStore(s => s.isOpen)
-  const paymentView = usePaymentStore(s => s.view)
 
   useEffect(() => {
     if (!paymentIsOpen) {

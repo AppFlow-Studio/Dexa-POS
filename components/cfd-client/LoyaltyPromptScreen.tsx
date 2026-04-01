@@ -121,6 +121,10 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
           <Text style={styles.continueBtnText}>Continue</Text>
         </TouchableOpacity>
       </View>
+
+      <View style={styles.poweredFooter}>
+        <Text style={styles.poweredFooterText}>Powered by DEXA</Text>
+      </View>
     </View>
   )
 }
@@ -240,5 +244,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.onSolid
+  },
+  poweredFooter: {
+    marginTop: 20
+  },
+  poweredFooterText: {
+    fontSize: 12,
+    color: colors.label
   }
 })

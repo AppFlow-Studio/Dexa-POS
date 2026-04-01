@@ -228,21 +228,24 @@ export class CFDController {
     const screenState =
       params.screenState || (params.items.length > 0 ? 'ordering' : 'idle')
     const loyaltyResult =
-      params.loyaltyResult ??
-      (screenState === 'loyalty_confirmation'
-        ? this.lastPayload.loyaltyResult ?? null
-        : null)
+      params.loyaltyResult === undefined
+        ? screenState === 'loyalty_confirmation'
+          ? this.lastPayload.loyaltyResult
+          : undefined
+        : params.loyaltyResult
 
+    const { loyaltyResult: _, ...paramsWithoutLoyalty } = params
     const payload: CFDPayload = {
       stationId: this.stationId,
       stationName: this.stationName,
       locationId: this.locationId,
       screenState,
-      ...params,
+      ...paramsWithoutLoyalty,
       paymentMethod:
         params.paymentMethod ?? this.lastPayload.paymentMethod ?? null,
       branding: this.branding,
-      loyaltyResult,
+      ...(loyaltyResult !== undefined &&
+        loyaltyResult !== null && { loyaltyResult }),
       timestamp: Date.now()
     }
 
@@ -377,7 +380,7 @@ export class CFDController {
       branding: this.branding,
       layout: this.lastPayload.layout,
       orderingPanelImages: this.lastPayload.orderingPanelImages,
-      tipConfig: null,
+      tipConfig: undefined,
       carouselImages: this.lastPayload.carouselImages,
       loyaltyPrompt: undefined,
       loyaltyResult: undefined,
