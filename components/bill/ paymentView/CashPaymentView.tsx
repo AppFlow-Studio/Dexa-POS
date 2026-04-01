@@ -143,7 +143,6 @@ const CashPaymentView = () => {
     clearTipResponse();
     updateTip(0, null);
     return () => {
-      updateTip(0, null);
       setBaseAmount(null);
     };
   }, [clearTipResponse, setBaseAmount, showTipSelection, TIP_PRESETS, total, updateTip]);

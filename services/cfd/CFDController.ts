@@ -273,11 +273,12 @@ export class CFDController {
   /**
    * Show processing spinner
    */
-  showProcessing(paymentMethod?: "cash" | "card" | "manual"): void {
+  showProcessing(paymentMethod?: "cash" | "card" | "manual", totals?: { total: number; totalCard: number; totalCash: number; tipAmount: number; savingsAmount: number; outstandingTotal: number; amountPaid: number }): void {
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       screenState: "processing",
       paymentMethod: paymentMethod ?? null,
+      ...(totals ?? {}),
       timestamp: Date.now(),
     });
   }
@@ -285,10 +286,11 @@ export class CFDController {
   /**
    * Show approved result
    */
-  showApproved(): void {
+  showApproved(totals?: { total: number; totalCard: number; totalCash: number; tipAmount: number; savingsAmount: number; paymentMethod?: "cash" | "card" | "manual" | null }): void {
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       screenState: "approved",
+      ...(totals ?? {}),
       timestamp: Date.now(),
     });
   }
@@ -296,10 +298,11 @@ export class CFDController {
   /**
    * Show declined result
    */
-  showDeclined(): void {
+  showDeclined(totals?: { total: number; totalCard: number; totalCash: number; tipAmount: number; savingsAmount: number; paymentMethod?: "cash" | "card" | "manual" | null }): void {
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       screenState: "declined",
+      ...(totals ?? {}),
       timestamp: Date.now(),
     });
   }

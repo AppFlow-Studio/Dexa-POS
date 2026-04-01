@@ -143,6 +143,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   }>({ amount: 0, percentage: null });
   const [activeScreenState, setActiveScreenState] =
     useState<CFDScreenState | null>(null);
+  const activeScreenStateRef = useRef<CFDScreenState | null>(null);
   const [activePaymentMethod, setActivePaymentMethod] = useState<"cash" | "card" | "manual" | null>(null);
   const [baseAmountOverride, setBaseAmountOverride] = useState<number | null>(
     null,
@@ -201,6 +202,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const activeOrderIdRef = useRef(activeOrderId);
   useEffect(() => { activeOrderRef.current = activeOrder; }, [activeOrder]);
   useEffect(() => { activeOrderIdRef.current = activeOrderId; }, [activeOrderId]);
+  useEffect(() => { activeScreenStateRef.current = activeScreenState; }, [activeScreenState]);
   const activeOrderSubtotal = useOrderStore((s) => s.activeOrderSubtotal);
   const activeOrderTax = useOrderStore((s) => s.activeOrderTax);
   const activeOrderTotal = useOrderStore((s) => s.activeOrderTotal);
@@ -894,6 +896,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!paymentIsOpen) {
+      // Don't clobber processing/approved/declined — showApproved/showDeclined own their lifecycle
+      const current = activeScreenStateRef.current;
+      if (current === "processing" || current === "approved" || current === "declined") return;
       setActiveScreenState(null);
       setActivePaymentMethod(null);
       controllerRef.current?.showIdle();
@@ -1017,7 +1022,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
 
     setActiveScreenState("processing");
     setActivePaymentMethod(paymentMethod ?? null);
-    controllerRef.current?.showProcessing(paymentMethod);
+    controllerRef.current?.showProcessing(paymentMethod, frozen);
   }, [activeOrderTotal, currentTip, orderTotals, hasBuiltinCfd]);
 
   const showApproved = useCallback(() => {
@@ -1034,7 +1039,14 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       });
     }
     setActiveScreenState("approved");
-    controllerRef.current?.showApproved();
+    controllerRef.current?.showApproved(frozen ? {
+      total: frozen.total,
+      totalCard: frozen.totalCard,
+      totalCash: frozen.totalCash,
+      tipAmount: frozen.tipAmount,
+      savingsAmount: frozen.savingsAmount,
+      paymentMethod: frozen.paymentMethod,
+    } : undefined);
   }, [hasBuiltinCfd]);
 
   const showDeclined = useCallback(() => {
@@ -1051,7 +1063,14 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       });
     }
     setActiveScreenState("declined");
-    controllerRef.current?.showDeclined();
+    controllerRef.current?.showDeclined(frozen ? {
+      total: frozen.total,
+      totalCard: frozen.totalCard,
+      totalCash: frozen.totalCash,
+      tipAmount: frozen.tipAmount,
+      savingsAmount: frozen.savingsAmount,
+      paymentMethod: frozen.paymentMethod,
+    } : undefined);
   }, [hasBuiltinCfd]);
 
   const showIdle = useCallback(() => {
