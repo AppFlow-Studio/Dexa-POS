@@ -5,6 +5,7 @@ import { PrinterConfig, PrinterRoutingConfig } from "@/types/printer";
 
 /**
  * Finds the default receipt printer for a location/station.
+ * Prefers connected printers. Returns null if no default receipt printer is set.
  */
 export function getReceiptPrinter(
   locationId: string,
@@ -19,20 +20,26 @@ export function getReceiptPrinter(
       (p.printerRole === "receipt" || p.isDefaultReceipt),
   );
 
-  // Prefer station-specific printer
+  console.log(
+    `[PrintRouter] getReceiptPrinter: locationId=${locationId}, candidates=${activePrinters.length}`,
+  );
+
+  // Station-specific default (prefer connected)
   if (stationId) {
-    const stationPrinter = activePrinters.find(
-      (p) => p.stationId === stationId && p.isDefaultReceipt,
-    );
+    const stationPrinter =
+      activePrinters.find((p) => p.stationId === stationId && p.isDefaultReceipt && p.isConnected) ??
+      activePrinters.find((p) => p.stationId === stationId && p.isDefaultReceipt);
     if (stationPrinter) return stationPrinter;
   }
 
-  // Fall back to location default
-  const defaultPrinter = activePrinters.find((p) => p.isDefaultReceipt);
+  // Location default (prefer connected)
+  const defaultPrinter =
+    activePrinters.find((p) => p.isDefaultReceipt && p.isConnected) ??
+    activePrinters.find((p) => p.isDefaultReceipt);
   if (defaultPrinter) return defaultPrinter;
 
-  // Fall back to any active receipt printer
-  return activePrinters[0] ?? null;
+  // No default receipt printer set → return null (triggers "set default" modal)
+  return null;
 }
 
 /**
@@ -41,20 +48,12 @@ export function getReceiptPrinter(
 export function getKitchenPrinters(locationId: string): PrinterConfig[] {
   const { printers } = usePrinterStore.getState();
 
-  const result = printers.filter(
+  return printers.filter(
     (p) =>
       p.isActive &&
       p.locationId === locationId &&
       (p.printerRole === "kitchen" || p.printerRole === "bar" || p.isDefaultKitchen),
   );
-
-  for (const p of result) {
-    console.log(
-      `[PrintRouter] Kitchen printer: ${p.printerName} (${p.networkAddress}) id=${p.id.slice(0, 8)} active=${p.isActive} defaultKitchen=${p.isDefaultKitchen}`,
-    );
-  }
-
-  return result;
 }
 
 /**
@@ -78,10 +77,6 @@ export function routeKitchenItems(
   const { routingConfigs } = usePrinterStore.getState();
   const kitchenPrinters = getKitchenPrinters(locationId);
   const result = new Map<string, CartItem[]>();
-
-  console.log(
-    `[PrintRouter] routeKitchenItems: locationId=${locationId}, kitchenPrinters=${kitchenPrinters.length}, items=${items.length}`,
-  );
 
   if (kitchenPrinters.length === 0) {
     console.warn("[PrintRouter] No kitchen printers found for location", locationId);

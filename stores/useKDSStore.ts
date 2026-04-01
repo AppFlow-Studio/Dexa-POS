@@ -58,6 +58,8 @@ interface KDSState {
 
   // Internal ticket lookup for reference-stable merging
   _ticketsById: Record<string, KDSTicket>
+  // O(1) order-level lookups: db_order_id → Set<ticket_id>
+  _ticketIdsByOrderId: Record<string, Set<string>>
 
   // Last fetched location (for error recovery refetches)
   _lastLocationId: string | null
@@ -101,6 +103,10 @@ interface KDSState {
   // Done tickets
   recallDoneTicket: (ticketId: string) => void
   clearDoneTickets: () => void
+
+  // Focused ticket (ephemeral UI state, not persisted)
+  focusedTicketId: string | null
+  setFocusedTicketId: (id: string | null) => void
 
   // Bulk actions
   toggleBulkMode: () => void
@@ -211,6 +217,9 @@ const PENDING_ACTION_TTL = 30_000
 
 /** Track ticket IDs that have been recalled — survives server refetches */
 const _recalledTicketIds = new Set<string>()
+
+/** Track new order IDs filtered out by routing rules — sound fires when server refetch adds them */
+const _pendingNewOrderSounds = new Set<string>()
 
 /** Overlay pending optimistic states onto server/broadcast tickets */
 function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
@@ -350,6 +359,19 @@ function itemMatchesRules (
     }
   }
   return false
+}
+
+/** Build O(1) order-id → ticket-id index from ticketsById map */
+function buildOrderIdIndex (
+  ticketsById: Record<string, KDSTicket>
+): Record<string, Set<string>> {
+  const index: Record<string, Set<string>> = {}
+  for (const ticket of Object.values(ticketsById)) {
+    const oid = ticket.db_order_id
+    if (!index[oid]) index[oid] = new Set()
+    index[oid].add(ticket.ticket_id)
+  }
+  return index
 }
 
 /** Build KDS tickets from a broadcast order's items */
@@ -617,12 +639,15 @@ export const useKDSStore = create<KDSState>()(
       isFetching: false,
       _hasHydrated: false,
       timerTick: 0,
+      focusedTicketId: null,
+      setFocusedTicketId: (id) => set({ focusedTicketId: id }),
       bulkMode: false,
       selectedTicketIds: new Set<string>(),
       prioritizedTicketIds: new Set<string>(),
       newOrderPosition: 'right' as const,
 
       _ticketsById: {},
+      _ticketIdsByOrderId: {},
 
       // Display awareness state
       kdsDisplayId: null,
@@ -861,6 +886,7 @@ export const useKDSStore = create<KDSState>()(
           set({
             tickets: reconciled,
             _ticketsById: mergedById,
+            _ticketIdsByOrderId: buildOrderIdIndex(mergedById),
             prioritizedTicketIds: nextPrioritized,
             ...bucketed,
             _hasHydrated: true,
@@ -978,11 +1004,28 @@ export const useKDSStore = create<KDSState>()(
           set({
             tickets: reconciled,
             _ticketsById: mergedById,
+            _ticketIdsByOrderId: buildOrderIdIndex(mergedById),
             prioritizedTicketIds: nextPrioritized,
             ...bucketed,
             _hasHydrated: true,
             isFetching: false
           })
+
+          // Fire sound for orders that were filtered out by broadcast but arrived via server refetch
+          if (_pendingNewOrderSounds.size > 0) {
+            const prevOrderIds = new Set(currentTickets.map(t => t.db_order_id))
+            for (const t of merged) {
+              if (
+                _pendingNewOrderSounds.has(t.db_order_id) &&
+                !prevOrderIds.has(t.db_order_id)
+              ) {
+                const cb = get()._onNewOrderCallback
+                if (cb) cb(t.order_source ?? null)
+                _pendingNewOrderSounds.delete(t.db_order_id)
+                break // one sound per cycle; cooldown handles rapid arrivals
+              }
+            }
+          }
         } catch (err) {
           if (mySeq !== _fetchSeq) return
           console.error('[KDSStore] _backgroundFetchTickets exception:', err)
@@ -1137,19 +1180,35 @@ export const useKDSStore = create<KDSState>()(
         // Skip if no items (payment-only broadcast)
         if (!order.order_items || order.order_items.length === 0) return
 
-        const { tickets, kdsDisplayId, routingMode, cachedRules } = get()
+        const {
+          tickets,
+          kdsDisplayId,
+          routingMode,
+          cachedRules,
+          _ticketIdsByOrderId,
+          _ticketsById
+        } = get()
+
+        // O(1) lookup for tickets belonging to this order
+        const orderTids = _ticketIdsByOrderId[order.id]
+        const hadExistingTickets = !!orderTids?.size
 
         // Terminal statuses: remove all tickets for this order (unless protected by recall/pending)
         if (TERMINAL_ORDER_STATUSES.has(order.status)) {
-          const hasProtected = tickets.some(
-            t =>
-              t.db_order_id === order.id &&
-              (_pendingActions.has(t.ticket_id) ||
-                _recalledTicketIds.has(t.ticket_id))
-          )
+          let hasProtected = false
+          if (orderTids) {
+            for (const tid of orderTids) {
+              if (_pendingActions.has(tid) || _recalledTicketIds.has(tid)) {
+                hasProtected = true
+                break
+              }
+            }
+          }
           if (!hasProtected) {
-            const filtered = tickets.filter(t => t.db_order_id !== order.id)
-            if (filtered.length !== tickets.length) {
+            if (hadExistingTickets) {
+              const filtered = tickets.filter(
+                t => !orderTids!.has(t.ticket_id)
+              )
               const bucketed = smartBucketTickets(
                 filtered,
                 get().ticketsByStatus,
@@ -1172,28 +1231,19 @@ export const useKDSStore = create<KDSState>()(
           get().scheduleRefetch(locationId)
         }
 
-        // Client-side display filtering for broadcast items
+        // Client-side display filtering — always filter when display has routing rules
         let filteredOrder = order
         if (shouldUseDisplayFilter(kdsDisplayId, routingMode, cachedRules)) {
-          const hasExistingTickets = tickets.some(
-            t => t.db_order_id === order.id
+          const filteredItems = order.order_items.filter(item =>
+            itemMatchesRules(item, cachedRules!, order.order_type)
           )
-
-          if (!hasExistingTickets) {
-            // New order: apply client-side filtering (server refetch will correct if needed)
-            const filteredItems = order.order_items.filter(item =>
-              itemMatchesRules(item, cachedRules!, order.order_type)
-            )
-            if (filteredItems.length === 0) {
-              return // Skip optimistic update — refetch already scheduled above
-            }
-            filteredOrder = { ...order, order_items: filteredItems }
+          if (filteredItems.length === 0) {
+            // Track for sound: if this is a new order, the server refetch may add it
+            if (!hadExistingTickets) _pendingNewOrderSounds.add(order.id)
+            return
           }
-          // Existing tickets: trust server routing, process full broadcast
+          filteredOrder = { ...order, order_items: filteredItems }
         }
-
-        // Detect if this is a NEW order (no existing tickets for this db_order_id)
-        const hadExistingTickets = tickets.some(t => t.db_order_id === order.id)
 
         // Build new tickets from broadcast
         const newTickets = buildTicketsFromBroadcast(filteredOrder)
@@ -1202,7 +1252,11 @@ export const useKDSStore = create<KDSState>()(
         // (a) mergeTickets reuses the same reference (no FlatList re-mount animation)
         // (b) prioritizedTicketIds still matches the old ticket_id → priority preserved
         // (c) sort order is unchanged → position preserved
-        const existingForOrder = tickets.filter(t => t.db_order_id === order.id)
+        const existingForOrder = orderTids
+          ? Array.from(orderTids)
+              .map(tid => _ticketsById[tid])
+              .filter(Boolean)
+          : []
         let stabilizedNewTickets = newTickets
         if (existingForOrder.length > 0) {
           const existingByCourse = new Map<number, KDSTicket>()
@@ -1224,20 +1278,30 @@ export const useKDSStore = create<KDSState>()(
         }
 
         // Remove old tickets for this order, add stabilized new ones
-        const otherTickets = tickets.filter(t => t.db_order_id !== order.id)
+        const otherTickets = orderTids
+          ? tickets.filter(t => !orderTids.has(t.ticket_id))
+          : tickets
         const rawMerged = [...otherTickets, ...stabilizedNewTickets]
 
-        // Sort by start_time ascending (match SQL ordering)
-        rawMerged.sort((a, b) => a.start_time_epoch - b.start_time_epoch)
+        // Sort by start_time ascending only when ticket set changed (new order or ticket count changed)
+        if (
+          stabilizedNewTickets.length !== existingForOrder.length ||
+          !hadExistingTickets
+        ) {
+          rawMerged.sort((a, b) => a.start_time_epoch - b.start_time_epoch)
+        }
 
         // Overlay pending optimistic states to prevent broadcast clobber
         const overlaid = overlayPendingActions(rawMerged)
 
         // Merge with existing tickets to reuse unchanged references
-        const { merged, mergedById } = mergeTickets(
+        const { merged, mergedById, changed } = mergeTickets(
           overlaid,
-          get()._ticketsById
+          _ticketsById
         )
+
+        // Skip store update when nothing changed (e.g. payment-only broadcasts)
+        if (!changed) return
 
         const reconciled = reconcilePriorityFlags(
           merged,
@@ -1249,7 +1313,12 @@ export const useKDSStore = create<KDSState>()(
           get().prioritizedTicketIds,
           get().newOrderPosition
         )
-        set({ tickets: reconciled, _ticketsById: mergedById, ...bucketed })
+        set({
+          tickets: reconciled,
+          _ticketsById: mergedById,
+          _ticketIdsByOrderId: buildOrderIdIndex(mergedById),
+          ...bucketed
+        })
 
         // Fire new-order callback (for sound notifications)
         if (!hadExistingTickets && newTickets.length > 0) {
@@ -1797,6 +1866,7 @@ export const useKDSStore = create<KDSState>()(
       _cleanup: () => {
         cancelAllRetries()
         _pendingActions.clear()
+        _pendingNewOrderSounds.clear()
         if (_refetchTimeout) {
           clearTimeout(_refetchTimeout)
           _refetchTimeout = null
@@ -1809,12 +1879,12 @@ export const useKDSStore = create<KDSState>()(
       storage: createJSONStorage(() => mmkvStorage),
       partialize: state => ({
         // Persist only ticket data for offline durability
+        // _ticketsById and _ticketIdsByOrderId are derived — rebuilt on rehydrate
         tickets: state.tickets,
         ticketsByStatus: state.ticketsByStatus,
         counts: state.counts,
         doneTickets: state.doneTickets,
         doneCount: state.doneCount,
-        _ticketsById: state._ticketsById,
         // Persist display config so KDS knows its routing rules offline
         kdsDisplayId: state.kdsDisplayId,
         routingMode: state.routingMode,
@@ -1828,6 +1898,11 @@ export const useKDSStore = create<KDSState>()(
           // Mark as hydrated so UI knows data is available
           state._hasHydrated = true
           state.isInitialLoading = false
+          // Rebuild derived indexes from persisted tickets
+          const byId: Record<string, KDSTicket> = {}
+          for (const t of state.tickets) byId[t.ticket_id] = t
+          state._ticketsById = byId
+          state._ticketIdsByOrderId = buildOrderIdIndex(byId)
           // Convert Set fields back from serialized form
           if (!(state.selectedTicketIds instanceof Set)) {
             state.selectedTicketIds = new Set<string>()

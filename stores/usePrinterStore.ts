@@ -39,6 +39,24 @@ interface PrinterStoreState {
       isDefaultReceipt?: boolean;
       isDefaultKitchen?: boolean;
       isActive?: boolean;
+      printerName?: string;
+      networkAddress?: string | null;
+      networkPort?: number | null;
+      paperWidth?: number;
+      maxCharsPerLine?: number;
+      printDensity?: number;
+      copies?: number;
+      printLogo?: boolean;
+      autoPrintReceipt?: boolean;
+      printOrderTickets?: boolean;
+      receiptHeader?: string | null;
+      receiptFooter?: string | null;
+      supportsAutoCut?: boolean;
+      supportsCashDrawerKick?: boolean;
+      supportsBarcode?: boolean;
+      supportsQrCode?: boolean;
+      supportsLogo?: boolean;
+      graphicsOnly?: boolean;
     },
   ) => Promise<void>;
 
@@ -187,10 +205,31 @@ export const usePrinterStore = create<PrinterStoreState>()(
 
           // Map camelCase to snake_case DB columns
           const dbUpdates: Record<string, unknown> = {};
-          if (updates.printerRole !== undefined) dbUpdates.printer_role = updates.printerRole;
-          if (updates.isDefaultReceipt !== undefined) dbUpdates.is_default_receipt = updates.isDefaultReceipt;
-          if (updates.isDefaultKitchen !== undefined) dbUpdates.is_default_kitchen = updates.isDefaultKitchen;
-          if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+          if (updates.printerRole !== undefined)           dbUpdates.printer_role = updates.printerRole;
+          if (updates.isDefaultReceipt !== undefined)      dbUpdates.is_default_receipt = updates.isDefaultReceipt;
+          if (updates.isDefaultKitchen !== undefined)      dbUpdates.is_default_kitchen = updates.isDefaultKitchen;
+          if (updates.isActive !== undefined)              dbUpdates.is_active = updates.isActive;
+          if (updates.printerName !== undefined)           dbUpdates.printer_name = updates.printerName;
+          if (updates.networkAddress !== undefined)        dbUpdates.network_address = updates.networkAddress;
+          if (updates.networkPort !== undefined)           dbUpdates.network_port = updates.networkPort;
+          if (updates.paperWidth !== undefined)            dbUpdates.paper_width = updates.paperWidth;
+          if (updates.maxCharsPerLine !== undefined)       dbUpdates.max_chars_per_line = updates.maxCharsPerLine;
+          if (updates.printDensity !== undefined)          dbUpdates.print_density = updates.printDensity;
+          if (updates.copies !== undefined)                dbUpdates.copies = updates.copies;
+          if (updates.printLogo !== undefined)             dbUpdates.print_logo = updates.printLogo;
+          if (updates.autoPrintReceipt !== undefined)      dbUpdates.auto_print_receipt = updates.autoPrintReceipt;
+          if (updates.printOrderTickets !== undefined)     dbUpdates.print_order_tickets = updates.printOrderTickets;
+          if (updates.receiptHeader !== undefined)         dbUpdates.receipt_header = updates.receiptHeader;
+          if (updates.receiptFooter !== undefined)         dbUpdates.receipt_footer = updates.receiptFooter;
+          if (updates.supportsAutoCut !== undefined)       dbUpdates.supports_auto_cut = updates.supportsAutoCut;
+          if (updates.supportsCashDrawerKick !== undefined) dbUpdates.supports_cash_drawer_kick = updates.supportsCashDrawerKick;
+          if (updates.supportsBarcode !== undefined)       dbUpdates.supports_barcode = updates.supportsBarcode;
+          if (updates.supportsQrCode !== undefined)        dbUpdates.supports_qr_code = updates.supportsQrCode;
+          if (updates.supportsLogo !== undefined)          dbUpdates.supports_logo = updates.supportsLogo;
+          if (updates.graphicsOnly !== undefined) {
+            const existingMeta = get().printers.find((p) => p.id === printerId)?.metadata ?? {};
+            dbUpdates.metadata = { ...existingMeta, graphicsOnly: updates.graphicsOnly };
+          }
 
           await supabase
             .from("printers")
@@ -217,6 +256,24 @@ export const usePrinterStore = create<PrinterStoreState>()(
                 ...(updates.isDefaultReceipt !== undefined && { isDefaultReceipt: updates.isDefaultReceipt }),
                 ...(updates.isDefaultKitchen !== undefined && { isDefaultKitchen: updates.isDefaultKitchen }),
                 ...(updates.isActive !== undefined && { isActive: updates.isActive }),
+                ...(updates.printerName !== undefined && { printerName: updates.printerName }),
+                ...(updates.networkAddress !== undefined && { networkAddress: updates.networkAddress }),
+                ...(updates.networkPort !== undefined && { networkPort: updates.networkPort }),
+                ...(updates.paperWidth !== undefined && { paperWidth: updates.paperWidth }),
+                ...(updates.maxCharsPerLine !== undefined && { maxCharsPerLine: updates.maxCharsPerLine }),
+                ...(updates.printDensity !== undefined && { printDensity: updates.printDensity }),
+                ...(updates.copies !== undefined && { copies: updates.copies }),
+                ...(updates.printLogo !== undefined && { printLogo: updates.printLogo }),
+                ...(updates.autoPrintReceipt !== undefined && { autoPrintReceipt: updates.autoPrintReceipt }),
+                ...(updates.printOrderTickets !== undefined && { printOrderTickets: updates.printOrderTickets }),
+                ...(updates.receiptHeader !== undefined && { receiptHeader: updates.receiptHeader }),
+                ...(updates.receiptFooter !== undefined && { receiptFooter: updates.receiptFooter }),
+                ...(updates.supportsAutoCut !== undefined && { supportsAutoCut: updates.supportsAutoCut }),
+                ...(updates.supportsCashDrawerKick !== undefined && { supportsCashDrawerKick: updates.supportsCashDrawerKick }),
+                ...(updates.supportsBarcode !== undefined && { supportsBarcode: updates.supportsBarcode }),
+                ...(updates.supportsQrCode !== undefined && { supportsQrCode: updates.supportsQrCode }),
+                ...(updates.supportsLogo !== undefined && { supportsLogo: updates.supportsLogo }),
+                ...(updates.graphicsOnly !== undefined && { graphicsOnly: updates.graphicsOnly }),
               };
             }),
           }));

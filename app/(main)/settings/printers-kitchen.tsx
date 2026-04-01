@@ -47,6 +47,7 @@ import {
   probeStarPrinterByIp,
   type DiscoveredStarPrinter,
 } from "@/services/printing/discovery/StarPrinterDiscovery";
+import { toastService } from "@/lib/toastService";
 import { formatDistanceToNow } from "date-fns";
 import React, { useEffect, useState } from "react";
 import {
@@ -343,6 +344,27 @@ const PrintersKitchenScreen = () => {
     isActive?: boolean;
   }>({});
 
+  // Advanced settings draft state
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showCapabilities, setShowCapabilities] = useState(false);
+  const [draftMaxChars, setDraftMaxChars] = useState('');
+  const [draftPaperWidth, setDraftPaperWidth] = useState('');
+  const [draftDensity, setDraftDensity] = useState('');
+  const [draftCopies, setDraftCopies] = useState('');
+  const [draftNetworkAddress, setDraftNetworkAddress] = useState('');
+  const [draftNetworkPort, setDraftNetworkPort] = useState('');
+  const [draftPrintLogo, setDraftPrintLogo] = useState(false);
+  const [draftAutoPrintReceipt, setDraftAutoPrintReceipt] = useState(false);
+  const [draftPrintOrderTickets, setDraftPrintOrderTickets] = useState(false);
+  const [draftReceiptHeader, setDraftReceiptHeader] = useState('');
+  const [draftReceiptFooter, setDraftReceiptFooter] = useState('');
+  const [draftGraphicsOnly, setDraftGraphicsOnly] = useState(false);
+  const [draftSupportsAutoCut, setDraftSupportsAutoCut] = useState(false);
+  const [draftSupportsCashDrawer, setDraftSupportsCashDrawer] = useState(false);
+  const [draftSupportsBarcode, setDraftSupportsBarcode] = useState(false);
+  const [draftSupportsQrCode, setDraftSupportsQrCode] = useState(false);
+  const [draftSupportsLogo, setDraftSupportsLogo] = useState(false);
+
   // Printer scope toggle
   const [printerScope, setPrinterScope] = useState<"station" | "location">("station");
 
@@ -391,6 +413,32 @@ const PrintersKitchenScreen = () => {
       stopDiscovery();
     };
   }, []);
+
+  // Initialize advanced drafts when configure panel opens
+  useEffect(() => {
+    if (!editingPrinterId) return;
+    const p = storedPrinters.find((pr) => pr.id === editingPrinterId);
+    if (!p) return;
+    setShowAdvanced(false);
+    setShowCapabilities(false);
+    setDraftMaxChars(String(p.maxCharsPerLine ?? ''));
+    setDraftPaperWidth(String(p.paperWidth ?? ''));
+    setDraftDensity(String(p.printDensity ?? ''));
+    setDraftCopies(String(p.copies ?? ''));
+    setDraftNetworkAddress(p.networkAddress ?? '');
+    setDraftNetworkPort(String(p.networkPort ?? ''));
+    setDraftPrintLogo(p.printLogo ?? false);
+    setDraftAutoPrintReceipt(p.autoPrintReceipt ?? false);
+    setDraftPrintOrderTickets(p.printOrderTickets ?? false);
+    setDraftReceiptHeader(p.receiptHeader ?? '');
+    setDraftReceiptFooter(p.receiptFooter ?? '');
+    setDraftGraphicsOnly(p.graphicsOnly ?? false);
+    setDraftSupportsAutoCut(p.supportsAutoCut ?? false);
+    setDraftSupportsCashDrawer(p.supportsCashDrawerKick ?? false);
+    setDraftSupportsBarcode(p.supportsBarcode ?? false);
+    setDraftSupportsQrCode(p.supportsQrCode ?? false);
+    setDraftSupportsLogo(p.supportsLogo ?? false);
+  }, [editingPrinterId]);
 
   // Retry connection state
   const [retryingPrinterId, setRetryingPrinterId] = useState<string | null>(null);
@@ -666,14 +714,29 @@ const PrintersKitchenScreen = () => {
   };
 
   const handleSavePrinterEdits = async (printerId: string) => {
-    if (Object.keys(draftPrinterEdits).length === 0) {
-      setEditingPrinterId(null);
-      setDraftPrinterEdits({});
-      return;
-    }
+    const printer = storedPrinters.find((p) => p.id === printerId);
     setIsSavingPrinter(true);
     try {
-      await updatePrinterConfig(printerId, draftPrinterEdits);
+      await updatePrinterConfig(printerId, {
+        ...draftPrinterEdits,
+        maxCharsPerLine: parseInt(draftMaxChars) || printer?.maxCharsPerLine,
+        paperWidth: parseInt(draftPaperWidth) || printer?.paperWidth,
+        printDensity: parseInt(draftDensity) || printer?.printDensity,
+        copies: parseInt(draftCopies) || printer?.copies,
+        networkAddress: draftNetworkAddress || printer?.networkAddress,
+        networkPort: parseInt(draftNetworkPort) || printer?.networkPort,
+        printLogo: draftPrintLogo,
+        autoPrintReceipt: draftAutoPrintReceipt,
+        printOrderTickets: draftPrintOrderTickets,
+        graphicsOnly: draftGraphicsOnly,
+        receiptHeader: draftReceiptHeader || null,
+        receiptFooter: draftReceiptFooter || null,
+        supportsAutoCut: draftSupportsAutoCut,
+        supportsCashDrawerKick: draftSupportsCashDrawer,
+        supportsBarcode: draftSupportsBarcode,
+        supportsQrCode: draftSupportsQrCode,
+        supportsLogo: draftSupportsLogo,
+      });
       if (selectedStore?.id) {
         await fetchPrinters(selectedStore.id);
       }
@@ -689,6 +752,8 @@ const PrintersKitchenScreen = () => {
   const handleCancelPrinterEdits = () => {
     setEditingPrinterId(null);
     setDraftPrinterEdits({});
+    setShowAdvanced(false);
+    setShowCapabilities(false);
   };
 
   const handleStartAdding = (role: "receipt" | "kitchen") => {
@@ -1162,7 +1227,7 @@ const PrintersKitchenScreen = () => {
           const draftDefaultReceipt = draftPrinterEdits.isDefaultReceipt ?? printer.isDefaultReceipt;
           const draftDefaultKitchen = draftPrinterEdits.isDefaultKitchen ?? printer.isDefaultKitchen;
           const draftActive = draftPrinterEdits.isActive ?? printer.isActive;
-          const hasPendingChanges = Object.keys(draftPrinterEdits).length > 0;
+          const hasPendingChanges = true; // always allow save (advanced fields always included)
 
           return (
           <View style={{
@@ -1264,6 +1329,261 @@ const PrintersKitchenScreen = () => {
                   <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Edit →</Text>
                 </TouchableOpacity>
               </>
+            )}
+
+            {/* ── Advanced Settings Collapsible ── */}
+            <TouchableOpacity
+              onPress={() => setShowAdvanced((v) => !v)}
+              style={{
+                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                paddingHorizontal: 12, paddingVertical: 10,
+                backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+                marginBottom: showAdvanced ? 0 : 8,
+              }}
+            >
+              <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Advanced Settings</Text>
+              <Text style={{ fontSize: 14, color: colors.teal }}>{showAdvanced ? "▲" : "▼"}</Text>
+            </TouchableOpacity>
+
+            {showAdvanced && (
+              <View style={{
+                backgroundColor: colors.panel, borderRadius: 8,
+                borderWidth: 1, borderColor: colors.border,
+                padding: 12, marginBottom: 8,
+              }}>
+
+                {/* Group A — Print Settings */}
+                <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
+                  Print Settings
+                </Text>
+
+                {/* Max Chars Per Line */}
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Max Chars Per Line</Text>
+                  <TextInput
+                    value={draftMaxChars}
+                    onChangeText={setDraftMaxChars}
+                    keyboardType="numeric"
+                    placeholder={String(printer.maxCharsPerLine)}
+                    placeholderTextColor={colors.muted}
+                    style={{
+                      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+                      fontSize: 13, color: colors.heading, marginBottom: 6,
+                    }}
+                  />
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    {[32, 40, 42, 48].map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        onPress={() => setDraftMaxChars(String(v))}
+                        style={{
+                          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+                          backgroundColor: draftMaxChars === String(v) ? colors.teal + "25" : colors.card,
+                          borderWidth: 1,
+                          borderColor: draftMaxChars === String(v) ? colors.teal + "60" : colors.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, color: draftMaxChars === String(v) ? colors.teal : colors.label }}>{v}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Paper Width */}
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Paper Width (mm)</Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {[58, 80].map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        onPress={() => setDraftPaperWidth(String(v))}
+                        style={{
+                          flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center",
+                          backgroundColor: draftPaperWidth === String(v) ? colors.teal + "20" : colors.card,
+                          borderWidth: 1,
+                          borderColor: draftPaperWidth === String(v) ? colors.teal + "60" : colors.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: draftPaperWidth === String(v) ? colors.teal : colors.label }}>{v}mm</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Density + Copies */}
+                <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Print Density (1–10)</Text>
+                    <TextInput
+                      value={draftDensity}
+                      onChangeText={setDraftDensity}
+                      keyboardType="numeric"
+                      placeholder={String(printer.printDensity)}
+                      placeholderTextColor={colors.muted}
+                      style={{
+                        backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                        borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+                        fontSize: 13, color: colors.heading,
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Copies (1–5)</Text>
+                    <TextInput
+                      value={draftCopies}
+                      onChangeText={setDraftCopies}
+                      keyboardType="numeric"
+                      placeholder={String(printer.copies)}
+                      placeholderTextColor={colors.muted}
+                      style={{
+                        backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                        borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+                        fontSize: 13, color: colors.heading,
+                      }}
+                    />
+                  </View>
+                </View>
+
+                {/* Group B — Content Flags */}
+                <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8, marginTop: 4 }}>
+                  Content Flags
+                </Text>
+                {[
+                  { label: "Print Logo", value: draftPrintLogo, set: setDraftPrintLogo },
+                  { label: "Auto-Print Receipt", value: draftAutoPrintReceipt, set: setDraftAutoPrintReceipt },
+                  { label: "Print Order Tickets", value: draftPrintOrderTickets, set: setDraftPrintOrderTickets },
+                  { label: "Graphics-Only Mode", value: draftGraphicsOnly, set: setDraftGraphicsOnly },
+                ].map(({ label, value, set }) => (
+                  <View key={label} style={{
+                    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                    paddingHorizontal: 10, paddingVertical: 8,
+                    backgroundColor: colors.card, borderRadius: 7, borderWidth: 1, borderColor: colors.border,
+                    marginBottom: 4,
+                  }}>
+                    <Text style={{ fontSize: 12, color: colors.heading }}>{label}</Text>
+                    <Switch checked={value} onCheckedChange={set} />
+                  </View>
+                ))}
+
+                {/* Group C — Receipt Customization */}
+                <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8, marginTop: 8 }}>
+                  Receipt Customization
+                </Text>
+                <View style={{ marginBottom: 8 }}>
+                  <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Receipt Header</Text>
+                  <TextInput
+                    value={draftReceiptHeader}
+                    onChangeText={setDraftReceiptHeader}
+                    placeholder="Optional header text"
+                    placeholderTextColor={colors.muted}
+                    multiline
+                    style={{
+                      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+                      fontSize: 13, color: colors.heading, minHeight: 50,
+                    }}
+                  />
+                </View>
+                <View style={{ marginBottom: 8 }}>
+                  <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Receipt Footer</Text>
+                  <TextInput
+                    value={draftReceiptFooter}
+                    onChangeText={setDraftReceiptFooter}
+                    placeholder="Optional footer text"
+                    placeholderTextColor={colors.muted}
+                    multiline
+                    style={{
+                      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+                      fontSize: 13, color: colors.heading, minHeight: 50,
+                    }}
+                  />
+                </View>
+
+                {/* Group D — Connection (network printers only) */}
+                {printer.networkAddress && (
+                  <>
+                    <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8, marginTop: 4 }}>
+                      Connection
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 10, marginBottom: 8 }}>
+                      <View style={{ flex: 2 }}>
+                        <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>IP Address</Text>
+                        <TextInput
+                          value={draftNetworkAddress}
+                          onChangeText={setDraftNetworkAddress}
+                          placeholder={printer.networkAddress}
+                          placeholderTextColor={colors.muted}
+                          keyboardType="numeric"
+                          style={{
+                            backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                            borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+                            fontSize: 13, color: colors.heading,
+                          }}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Port</Text>
+                        <TextInput
+                          value={draftNetworkPort}
+                          onChangeText={setDraftNetworkPort}
+                          placeholder={String(printer.networkPort ?? 9100)}
+                          placeholderTextColor={colors.muted}
+                          keyboardType="numeric"
+                          style={{
+                            backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                            borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+                            fontSize: 13, color: colors.heading,
+                          }}
+                        />
+                      </View>
+                    </View>
+                  </>
+                )}
+
+                {/* Group E — Hardware Capabilities (collapsible sub-section) */}
+                <TouchableOpacity
+                  onPress={() => setShowCapabilities((v) => !v)}
+                  style={{
+                    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                    paddingHorizontal: 10, paddingVertical: 8,
+                    backgroundColor: colors.card, borderRadius: 7, borderWidth: 1, borderColor: colors.border,
+                    marginTop: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "500" }}>Hardware Capabilities</Text>
+                  <Text style={{ fontSize: 13, color: colors.muted }}>{showCapabilities ? "▲" : "▼"}</Text>
+                </TouchableOpacity>
+
+                {showCapabilities && (
+                  <View style={{ marginTop: 4 }}>
+                    <View style={{
+                      backgroundColor: colors.warning + "12", borderWidth: 1, borderColor: colors.warning + "30",
+                      borderRadius: 7, padding: 8, marginBottom: 6,
+                    }}>
+                      <Text style={{ fontSize: 11, color: colors.warning }}>Override printer hardware capabilities — use with caution.</Text>
+                    </View>
+                    {[
+                      { label: "Supports Auto-Cut", value: draftSupportsAutoCut, set: setDraftSupportsAutoCut },
+                      { label: "Supports Cash Drawer", value: draftSupportsCashDrawer, set: setDraftSupportsCashDrawer },
+                      { label: "Supports Barcode", value: draftSupportsBarcode, set: setDraftSupportsBarcode },
+                      { label: "Supports QR Code", value: draftSupportsQrCode, set: setDraftSupportsQrCode },
+                      { label: "Supports Logo", value: draftSupportsLogo, set: setDraftSupportsLogo },
+                    ].map(({ label, value, set }) => (
+                      <View key={label} style={{
+                        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                        paddingHorizontal: 10, paddingVertical: 8,
+                        backgroundColor: colors.card, borderRadius: 7, borderWidth: 1, borderColor: colors.border,
+                        marginBottom: 4,
+                      }}>
+                        <Text style={{ fontSize: 12, color: colors.heading }}>{label}</Text>
+                        <Switch checked={value} onCheckedChange={set} />
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
             )}
 
             {/* Active toggle */}
@@ -1472,9 +1792,6 @@ const PrintersKitchenScreen = () => {
             {/* Print Queue Banner */}
             {(queuedJobCount > 0 || failedJobCount > 0) && (
               <View style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
                 backgroundColor: failedJobCount > 0 ? colors.danger + "12" : colors.teal + "10",
                 borderWidth: 1,
                 borderColor: failedJobCount > 0 ? colors.danger + "35" : colors.teal + "35",
@@ -1483,17 +1800,65 @@ const PrintersKitchenScreen = () => {
                 paddingVertical: 10,
                 marginBottom: 12,
               }}>
-                <Zap size={14} color={failedJobCount > 0 ? colors.danger : colors.teal} />
-                <Text style={{ fontSize: 12, fontWeight: "600", color: failedJobCount > 0 ? colors.danger : colors.teal }}>
-                  Print Queue
-                </Text>
-                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  {queuedJobCount > 0 && (
-                    <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>{queuedJobCount} queued</Text>
-                  )}
-                  {failedJobCount > 0 && (
-                    <Text style={{ fontSize: 12, color: colors.danger, fontWeight: "600" }}>{failedJobCount} failed</Text>
-                  )}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Zap size={14} color={failedJobCount > 0 ? colors.danger : colors.teal} />
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: failedJobCount > 0 ? colors.danger : colors.teal }}>
+                    Print Queue
+                  </Text>
+                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    {queuedJobCount > 0 && (
+                      <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>{queuedJobCount} queued</Text>
+                    )}
+                    {failedJobCount > 0 && (
+                      <Text style={{ fontSize: 12, color: colors.danger, fontWeight: "600" }}>{failedJobCount} failed</Text>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {failedJobCount > 0 && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          const count = usePrintQueueStore.getState().retryAllFailed();
+                          if (count > 0) {
+                            toastService.show({ title: "Retrying", message: `${count} failed jobs re-queued`, type: "info", duration: 3000 });
+                          }
+                        }}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          backgroundColor: colors.teal + "20",
+                          borderRadius: 6,
+                          borderWidth: 1,
+                          borderColor: colors.teal + "40",
+                        }}
+                      >
+                        <RefreshCw size={12} color={colors.teal} />
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Retry All</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => {
+                        usePrintQueueStore.getState().clearAll();
+                        toastService.show({ title: "Queue Cleared", message: "All print jobs removed", type: "info", duration: 3000 });
+                      }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        backgroundColor: colors.danger + "20",
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: colors.danger + "40",
+                      }}
+                    >
+                      <Trash2 size={12} color={colors.danger} />
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.danger }}>Clear Queue</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             )}

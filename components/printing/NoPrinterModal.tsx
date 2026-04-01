@@ -7,9 +7,9 @@ import { useRouter } from "expo-router";
 
 const MESSAGES = {
   receipt: {
-    title: "No Receipt Printer",
+    title: "No Default Receipt Printer",
     message:
-      "There is no receipt printer configured for this station. Please connect a printer in Settings to print receipts.",
+      "Please set a default receipt printer in Settings.",
   },
   kitchen: {
     title: "No Kitchen Printer",

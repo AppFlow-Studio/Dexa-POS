@@ -5,19 +5,13 @@
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-  <!-- WiFi state for CFD server IP detection and NSD -->
-  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-  <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-  <!-- Required by connectedDevice foreground service type -->
-  <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-  <!-- Foreground service -->
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-  <!-- Android 13+ NSD/WiFi peer discovery without location permission -->
-  <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
-      android:usesPermissionFlags="neverForLocation" />
-  <!-- Android 17+ will require this for all LAN TCP connections — add now as non-breaking -->
-  <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+  <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+  <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+  <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
+  <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK"/>
   <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
   <queries>
     <intent>
@@ -43,9 +37,6 @@
         <data android:scheme="exp+dexa-pos"/>
       </intent-filter>
     </activity>
-    <service
-        android:name=".tcpserver.CfdForegroundService"
-        android:foregroundServiceType="connectedDevice"
-        android:exported="false" />
+    <service android:name=".tcpserver.CfdForegroundService" android:foregroundServiceType="connectedDevice" android:exported="false"/>
   </application>
 </manifest>

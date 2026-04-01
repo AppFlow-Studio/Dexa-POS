@@ -7,7 +7,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
-import { Monitor, MonitorPlay, RefreshCw, User, Wifi, WifiOff } from "lucide-react-native";
+import { ChevronLeft, Monitor, MonitorPlay, RefreshCw, User, Wifi, WifiOff } from "lucide-react-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -304,6 +304,24 @@ const StationSelectScreen = () => {
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Retry</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.replace("/store-select")}
+          style={{
+            marginTop: 6,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            paddingHorizontal: 14,
+            paddingVertical: 6,
+          }}
+        >
+          <ChevronLeft size={14} color={colors.muted} />
+          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -342,6 +360,24 @@ const StationSelectScreen = () => {
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Refresh</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.replace("/store-select")}
+          style={{
+            marginTop: 6,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            paddingHorizontal: 14,
+            paddingVertical: 6,
+          }}
+        >
+          <ChevronLeft size={14} color={colors.muted} />
+          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>Back</Text>
         </TouchableOpacity>
       </View>
     );

@@ -341,6 +341,88 @@ function RotatingImagePanel({
   );
 }
 
+function OrderingPanelMedia({
+  mode,
+  primaryImages,
+  secondaryImages,
+}: {
+  mode: "single" | "stacked";
+  primaryImages: string[];
+  secondaryImages: string[];
+}) {
+  if (mode === "stacked") {
+    return (
+      <View style={styles.rightPanelStack}>
+        <RotatingImagePanel images={primaryImages} style={styles.rightPanelStackItem} />
+        <RotatingImagePanel images={secondaryImages} style={styles.rightPanelStackItem} />
+      </View>
+    );
+  }
+
+  return <RotatingImagePanel images={primaryImages} style={styles.rightPanelSingle} />;
+}
+
+function RotatingImagePanel({
+  images,
+  style,
+}: {
+  images: string[];
+  style?: any;
+}) {
+  const [currentIndex, setCurrentIndex] = React.useState(0);
+  const [nextIndex, setNextIndex] = React.useState(0);
+  const fadeOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setNextIndex(0);
+    fadeOpacity.value = 0;
+  }, [images, fadeOpacity]);
+
+  useEffect(() => {
+    if (!images || images.length <= 1) return;
+
+    const interval = setInterval(() => {
+      const next = (currentIndex + 1) % images.length;
+      setNextIndex(next);
+      fadeOpacity.value = withTiming(1, { duration: 900 }, (finished) => {
+        if (finished) {
+          runOnJS(setCurrentIndex)(next);
+          fadeOpacity.value = 0;
+        }
+      });
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [currentIndex, images, fadeOpacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: fadeOpacity.value,
+  }));
+
+  if (!images || images.length === 0) {
+    return (
+      <View style={[styles.mediaFallback, style]}>
+        <Text style={styles.mediaFallbackText}>No image</Text>
+      </View>
+    );
+  }
+
+  const currentImage = images[currentIndex] ?? images[0];
+  const nextImage = images[nextIndex] ?? images[0];
+
+  return (
+    <View style={[styles.mediaFrame, style]}>
+      <Image source={{ uri: currentImage }} style={styles.mediaImage} resizeMode="cover" />
+      {images.length > 1 && (
+        <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
+          <Image source={{ uri: nextImage }} style={styles.mediaImage} resizeMode="cover" />
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
 function CartItemRow({
   item,
   index,

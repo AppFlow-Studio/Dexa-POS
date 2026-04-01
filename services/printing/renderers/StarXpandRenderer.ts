@@ -54,15 +54,15 @@ export async function renderDocumentToStarCommands(
   const w = options.maxCharsPerLine;
   const printerBuilder = new StarXpandCommand.PrinterBuilder();
 
-  // International character type only matters for text-mode printers.
-  // For graphics-only printers (TSP100III), all text is rendered as PNG via Skia,
-  // so this setting is irrelevant. Skipping also avoids triggering the SDK's
-  // broken convertPrinterInternationalCharacterType converter (circular dep).
-  if (!options.graphicsOnly) {
-    printerBuilder.styleInternationalCharacter(
-      StarXpandCommand.Printer.InternationalCharacterType.Usa,
-    );
-  }
+  // styleInternationalCharacter is intentionally skipped for all printers.
+  //
+  // Root cause: the call queues an async action. When getCommands() later executes
+  // that action, it calls StarXpandCommandParameterConverter.convertPrinterInternationalCharacterType()
+  // which accesses StarXpandCommand.Printer via a stale circular-dep reference that is
+  // undefined at runtime. This crashes with "Cannot read property 'Printer' of undefined".
+  //
+  // Skipping is safe — all Star printers default to USA character set.
+  // (TSP100III/IIU+ are graphics-only anyway and never reach this path.)
   printerBuilder.styleCharacterSpace(0);
 
   if (options.graphicsOnly) {
@@ -336,32 +336,24 @@ async function renderNode(
     }
 
     case "divider": {
-      try {
-        const paperWidthMm = lineWidth >= 42 ? 72 : 48;
-        const param = new sdk.Printer.RuledLineParameter(paperWidthMm);
-        param.setThickness(0.5);
-        if (node.style === "double") {
-          param.setLineStyle(sdk.Printer.LineStyle.Double);
-        }
-        pb.actionPrintRuledLine(param);
-        pb.actionFeedLine(1);
-      } catch {
-        // Fallback to text dashes if RuledLine API not available
-        const w = node.lineWidth;
-        let line: string;
-        switch (node.style) {
-          case "solid":
-            line = "-".repeat(w);
-            break;
-          case "dotted":
-            line = "- ".repeat(Math.floor(w / 2)).substring(0, w);
-            break;
-          case "double":
-            line = "=".repeat(w);
-            break;
-        }
-        pb.actionPrintText(line + "\n");
+      // actionPrintRuledLine is intentionally skipped.
+      // Its deferred action calls convertLineStyle() which accesses StarXpandCommand.Printer.LineStyle
+      // via the stale circular-dep reference — same crash as convertPrinterInternationalCharacterType.
+      // Text dashes are equivalent output for a US POS.
+      const w = node.lineWidth;
+      let line: string;
+      switch (node.style) {
+        case "solid":
+          line = "-".repeat(w);
+          break;
+        case "dotted":
+          line = "- ".repeat(Math.floor(w / 2)).substring(0, w);
+          break;
+        case "double":
+          line = "=".repeat(w);
+          break;
       }
+      pb.actionPrintText(line + "\n");
       break;
     }
 
