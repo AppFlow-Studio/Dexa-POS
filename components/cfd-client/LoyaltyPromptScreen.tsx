@@ -1,228 +1,237 @@
 // components/cfd-client/LoyaltyPromptScreen.tsx
-import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
-import { colors } from "@/lib/theme";
-import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { colors } from '@/lib/theme'
+import { Delete, Gift } from 'lucide-react-native'
+import { useState } from 'react'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 interface Props {
-  onPhoneSubmitted: (phone: string) => void;
-  onSkip: () => void;
+  onPhoneSubmitted: (phone: string) => void
+  onSkip: () => void
 }
 
-const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
-
-function formatPhone(digits: string): string {
-  if (digits.length === 0) return "";
-  if (digits.length <= 3) return `(${digits}`;
-  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+function formatPhone (digits: string): string {
+  if (digits.length === 0) return ''
+  if (digits.length <= 3) return `(${digits}`
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
 }
 
-export function LoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
-  const { branding, loyaltyPrompt } = useCFDDisplayData();
-  const [digits, setDigits] = useState("");
+export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
+  const [digits, setDigits] = useState('')
 
   const handleKey = (key: string) => {
-    if (key === "⌫") {
-      setDigits((d) => d.slice(0, -1));
-    } else if (key === "") {
-      // no-op placeholder
+    if (key === 'backspace') {
+      setDigits(d => d.slice(0, -1))
+    } else if (key === 'clear') {
+      setDigits('')
     } else if (digits.length < 10) {
-      setDigits((d) => d + key);
+      setDigits(d => d + key)
     }
-  };
+  }
 
   const handleSubmit = () => {
     if (digits.length === 10) {
-      onPhoneSubmitted(digits);
+      onPhoneSubmitted(digits)
     }
-  };
+  }
 
-  const merchantName = loyaltyPrompt?.merchantName ?? branding?.restaurantName ?? "";
+  const displayText = digits.length === 0 ? '' : formatPhone(digits)
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.brandName}>{merchantName}</Text>
-        <Text style={styles.headline}>Earn rewards with every visit!</Text>
-        <Text style={styles.subtitle}>Enter your phone number</Text>
+      <View style={styles.iconCircle}>
+        <Gift size={30} color={colors.teal} strokeWidth={2.2} />
       </View>
 
-      <View style={styles.displayContainer}>
-        <Text style={[styles.phoneDisplay, digits.length === 0 && styles.phoneDisplayPlaceholder]}>
-          {digits.length === 0 ? "(___) ___-____" : formatPhone(digits)}
+      <Text style={styles.headline}>Enter your phone number</Text>
+      <Text style={styles.subtitle}>Earn points on every purchase</Text>
+
+      <View style={styles.phoneBox}>
+        <Text
+          style={[
+            styles.phoneText,
+            digits.length === 0 && styles.phoneTextPlaceholder
+          ]}
+        >
+          {displayText || '(___) ___-____'}
         </Text>
-        <View style={styles.phoneDivider} />
       </View>
 
       <View style={styles.keypad}>
-        {KEYS.map((key, idx) => (
-          <Pressable
-            key={idx}
-            onPress={() => handleKey(key)}
-            style={({ pressed }) => [
-              styles.key,
-              key === "" && styles.keyInvisible,
-              pressed && key !== "" && styles.keyPressed,
-            ]}
-            disabled={key === ""}
-          >
-            <Text style={[styles.keyText, key === "⌫" && styles.keyBackspace]}>
-              {key}
-            </Text>
-          </Pressable>
+        {[['1','2','3'],['4','5','6'],['7','8','9']].map((row, ri) => (
+          <View key={ri} style={styles.numpadRow}>
+            {row.map(key => (
+              <TouchableOpacity
+                key={key}
+                activeOpacity={0.7}
+                onPress={() => handleKey(key)}
+                style={styles.numKey}
+              >
+                <Text style={styles.numKeyText}>{key}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         ))}
+        <View style={styles.numpadRow}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => handleKey('clear')}
+            style={styles.numKey}
+          >
+            <Text style={styles.numKeySmall}>Clear</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => handleKey('0')}
+            style={styles.numKey}
+          >
+            <Text style={styles.numKeyText}>0</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => handleKey('backspace')}
+            style={[styles.numKey, styles.numKeyAction]}
+          >
+            <Delete size={18} color={colors.label} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.footer}>
-        <Pressable
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={onSkip}
+          style={styles.skipBtn}
+        >
+          <Text style={styles.skipBtnText}>Skip</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.8}
           onPress={handleSubmit}
           disabled={digits.length !== 10}
-          style={[styles.submitBtn, digits.length !== 10 && styles.submitBtnDisabled]}
+          style={[styles.continueBtn, digits.length !== 10 && styles.continueBtnDisabled]}
         >
-          <Text style={styles.submitBtnText}>Collect Points</Text>
-        </Pressable>
-
-        <Pressable onPress={onSkip} style={styles.skipBtn}>
-          <Text style={styles.skipBtnText}>Skip</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.poweredFooter}>
-        <Text style={styles.poweredFooterText}>Powered by DEXA</Text>
+          <Text style={styles.continueBtnText}>Continue</Text>
+        </TouchableOpacity>
       </View>
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
-    padding: 40,
-    justifyContent: "space-between",
-    alignItems: "center",
+    backgroundColor: colors.screen,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    paddingHorizontal: 48,
+    paddingVertical: 40
   },
-  header: {
-    alignItems: "center",
-    marginTop: 20,
-    gap: 8,
-  },
-  brandName: {
-    fontSize: 18,
-    color: "#737373",
-    fontWeight: "500",
-    letterSpacing: 1,
-    textTransform: "uppercase",
+  iconCircle: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: colors.tealMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4
   },
   headline: {
-    fontSize: 38,
-    fontWeight: "800",
-    color: "#ffffff",
-    textAlign: "center",
-    letterSpacing: -0.5,
-    marginTop: 4,
+    fontSize: 36,
+    fontWeight: '700',
+    color: colors.heading,
+    textAlign: 'center',
+    letterSpacing: -0.5
   },
   subtitle: {
-    fontSize: 20,
-    color: "#737373",
+    fontSize: 18,
+    color: colors.label,
+    textAlign: 'center',
+    marginTop: -8
   },
-  displayContainer: {
-    alignItems: "center",
-    width: "80%",
+  phoneBox: {
+    width: 320,
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.border,
   },
-  phoneDisplay: {
-    fontSize: 44,
-    fontWeight: "700",
-    color: "#ffffff",
+  phoneText: {
+    fontSize: 34,
+    fontWeight: '600',
+    color: colors.heading,
     letterSpacing: 2,
-    textAlign: "center",
   },
-  phoneDisplayPlaceholder: {
-    color: "#404040",
-  },
-  phoneDivider: {
-    height: 2,
-    width: "100%",
-    backgroundColor: "#262626",
-    marginTop: 12,
-    borderRadius: 1,
+  phoneTextPlaceholder: {
+    color: colors.muted
   },
   keypad: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    width: 340,
-    gap: 12,
+    width: 320,
+    gap: 10,
   },
-  key: {
-    width: 100,
-    height: 80,
-    backgroundColor: "#171717",
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
+  numpadRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  numKey: {
+    flex: 1,
+    height: 56,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "#262626",
+    borderColor: colors.border,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  keyInvisible: {
-    backgroundColor: "transparent",
-    borderColor: "transparent",
+  numKeyAction: {
+    backgroundColor: colors.screen,
   },
-  keyPressed: {
-    backgroundColor: "#262626",
+  numKeyText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.heading,
   },
-  keyText: {
-    fontSize: 32,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  keyBackspace: {
-    fontSize: 26,
-    color: "#a3a3a3",
+  numKeySmall: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.label,
   },
   footer: {
-    alignItems: "center",
-    gap: 16,
-    marginBottom: 20,
-    width: "80%",
-  },
-  submitBtn: {
-    backgroundColor: "#10b981",
-    paddingHorizontal: 48,
-    paddingVertical: 18,
-    borderRadius: 20,
-    width: "100%",
-    alignItems: "center",
-  },
-  submitBtnDisabled: {
-    backgroundColor: "#171717",
-  },
-  submitBtnText: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#ffffff",
+    flexDirection: 'row',
+    gap: 18,
+    width: 320,
+    marginTop: 8
   },
   skipBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    flex: 1,
+    paddingVertical: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent'
   },
   skipBtnText: {
     fontSize: 18,
-    color: "#525252",
-    fontWeight: "500",
+    fontWeight: '600',
+    color: colors.label
   },
-  poweredFooter: {
-    marginTop: 6,
-    paddingTop: 4,
-    paddingBottom: 6,
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+  continueBtn: {
+    flex: 1,
+    paddingVertical: 18,
+    borderRadius: 14,
+    backgroundColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  poweredFooterText: {
-    fontSize: 9,
-    color: colors.label,
-    fontWeight: "500",
+  continueBtnDisabled: {
+    opacity: 0.42
   },
-});
+  continueBtnText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.onSolid
+  },
+})

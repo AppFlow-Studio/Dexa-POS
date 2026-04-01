@@ -160,8 +160,8 @@ export function CFDBuiltinDisplayProvider({
     orderingPanelImages: store.orderingPanelImages,
     tipConfig: store.tipConfig,
     carouselImages: store.carouselImages,
-    loyaltyPrompt: null,
-    loyaltyResult: null,
+    loyaltyPrompt: store.loyaltyPrompt ?? null,
+    loyaltyResult: store.loyaltyResult ?? null,
     paymentMethod: store.paymentMethod ?? null,
   };
 

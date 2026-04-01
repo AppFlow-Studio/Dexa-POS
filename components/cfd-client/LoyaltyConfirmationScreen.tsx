@@ -16,6 +16,7 @@ export function LoyaltyConfirmationScreen() {
   const programs = loyaltyResult?.programs ?? [];
   const customerName = loyaltyResult?.customerName;
   const hasUnlockedReward = programs.some((p) => p.rewardUnlocked);
+  console.log("[LoyaltyConfirmation] loyaltyResult:", JSON.stringify(loyaltyResult), new Error().stack?.split('\n')[1]);
 
   const iconScale = useSharedValue(0.7);
   const iconOpacity = useSharedValue(0);

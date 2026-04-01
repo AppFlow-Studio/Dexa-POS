@@ -42,6 +42,8 @@ interface CFDBuiltinState {
   tipConfig: CFDPayload["tipConfig"] | null;
   carouselImages: string[];
   paymentMethod: "cash" | "card" | "manual" | null;
+  loyaltyPrompt: CFDPayload["loyaltyPrompt"] | null;
+  loyaltyResult: CFDPayload["loyaltyResult"] | null;
 
   // Actions
   update: (data: Partial<Omit<CFDBuiltinState, "update" | "reset">>) => void;
@@ -78,10 +80,17 @@ const initialState: Omit<CFDBuiltinState, "update" | "reset"> = {
   tipConfig: null,
   carouselImages: [],
   paymentMethod: null,
+  loyaltyPrompt: null,
+  loyaltyResult: null,
 };
 
 export const useCFDBuiltinStore = create<CFDBuiltinState>()((set) => ({
   ...initialState,
-  update: (data) => set(data),
+  update: (data) => {
+    if ('loyaltyResult' in data && data.loyaltyResult === null) {
+      console.warn("[CFDBuiltinStore] loyaltyResult being set to null", new Error().stack);
+    }
+    set(data);
+  },
   reset: () => set(initialState),
 }));

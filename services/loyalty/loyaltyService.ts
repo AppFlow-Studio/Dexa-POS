@@ -78,5 +78,9 @@ export async function earnLoyaltyForOrder(
     p_order_id: dbOrderId,
   });
   if (error) throw error;
+  if (!Array.isArray(data)) {
+    console.warn("[Loyalty] loyalty_earn_on_order returned non-array:", data);
+    return [];
+  }
   return (data as LoyaltyEarnResult[]) ?? [];
 }
