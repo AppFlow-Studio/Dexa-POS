@@ -192,7 +192,7 @@ const ManualCardEntryView = () => {
     if (!cardNumber || !expiryMonth || !expiryYear || !cvv) return;
     setStatus("processing");
     updateTip(tipAmount, selectedTipPreset);
-    showProcessing("manual");
+    showProcessing("manual", tipAmount);
     const success = await processManualCardPayment({
       cardBrand: cardInfo.cardType || "unknown",
       last4: cardNumber.slice(-4),

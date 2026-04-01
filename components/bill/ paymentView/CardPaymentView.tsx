@@ -193,7 +193,7 @@ const CardPaymentView = () => {
     const posTip = captured.tipAmount; // dollars (what was charged)
 
     updateTip(customerTip, tipResponse.tipPercentage);
-    showProcessing("card");
+    showProcessing("card", customerTip);
     clearTipResponse();
 
     // Clear the auto-timeout
@@ -641,7 +641,7 @@ const CardPaymentView = () => {
   const handleChargeCard = () => {
     updateTip(tipAmount, selectedTipPreset);
     setStatus("processing");
-    showProcessing("card");
+    showProcessing("card", tipAmount);
   };
 
   return (

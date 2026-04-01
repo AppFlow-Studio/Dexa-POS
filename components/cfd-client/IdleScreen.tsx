@@ -1,5 +1,4 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
-import { colors } from "@/lib/theme";
 import React, { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import Animated, {
@@ -144,9 +143,6 @@ export function IdleScreen() {
         </View>
       ) : null}
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Powered by DEXA</Text>
-      </View>
     </View>
   );
 }
@@ -196,22 +192,5 @@ const styles = StyleSheet.create({
   debugText: {
     fontSize: 12,
     color: "rgba(255,255,255,0.5)",
-  },
-  footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    marginTop: 6,
-    paddingTop: 4,
-    paddingBottom: 6,
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  footerText: {
-    fontSize: 9,
-    color: colors.label,
-    fontWeight: "500",
   },
 });

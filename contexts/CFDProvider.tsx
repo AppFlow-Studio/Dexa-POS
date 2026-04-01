@@ -72,7 +72,7 @@ interface CFDContextType {
   setScreenState: (state: CFDScreenState | null) => void;
   clearTipResponse: () => void;
   showPayment: (paymentMethod?: "cash" | "card" | "manual") => void;
-  showProcessing: (paymentMethod?: "cash" | "card" | "manual") => void;
+  showProcessing: (paymentMethod?: "cash" | "card" | "manual", tipAmountOverride?: number) => void;
   showApproved: () => void;
   showDeclined: () => void;
   showIdle: () => void;
@@ -101,7 +101,7 @@ const noopCFDValue: CFDContextType = {
   setScreenState: () => {},
   clearTipResponse: () => {},
   showPayment: (_paymentMethod?: "cash" | "card" | "manual") => {},
-  showProcessing: (_paymentMethod?: "cash" | "card" | "manual") => {},
+  showProcessing: (_paymentMethod?: "cash" | "card" | "manual", _tipAmountOverride?: number) => {},
   showApproved: () => {},
   showDeclined: () => {},
   showIdle: () => {},
@@ -980,10 +980,11 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     controllerRef.current?.showPayment(paymentMethod);
   }, []);
 
-  const showProcessing = useCallback((paymentMethod?: "cash" | "card" | "manual") => {
-    const cardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
-    const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
-    const tipAmt = Math.round(currentTip.amount * 100);
+  const showProcessing = useCallback((paymentMethod?: "cash" | "card" | "manual", tipAmountOverride?: number) => {
+    const tipDollars = tipAmountOverride !== undefined ? tipAmountOverride : currentTip.amount;
+    const cardTotal = Math.round((activeOrderTotal + tipDollars) * 100);
+    const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + tipDollars) * 100);
+    const tipAmt = Math.round(tipDollars * 100);
     const savings = Math.max(0, cardTotal - cashTotal);
     const frozen = {
       total: cardTotal,
@@ -992,7 +993,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       tipAmount: tipAmt,
       savingsAmount: savings,
       outstandingTotal: Math.round(
-        (activeOrderOutstandingTotal + currentTip.amount) * 100,
+        (activeOrderOutstandingTotal + tipDollars) * 100,
       ),
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
       paymentMethod: paymentMethod ?? null,

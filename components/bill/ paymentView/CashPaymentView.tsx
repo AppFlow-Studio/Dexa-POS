@@ -170,7 +170,7 @@ const CashPaymentView = () => {
     setIsProcessing(true);
     updateTip(tipAmount, selectedTipPreset);
     showPayment("cash");
-    showProcessing("cash");
+    showProcessing("cash", tipAmount);
     try {
       const tipAmt = parseFloat(tipInput) || 0;
       const amountTenderedNum = parseFloat(amountTendered) || 0;
