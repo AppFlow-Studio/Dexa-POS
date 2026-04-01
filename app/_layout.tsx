@@ -21,7 +21,7 @@ import { colors } from "@/lib/theme";
 import { initImmer } from "@/lib/initImmer";
 import { initLogCollector } from "@/lib/logCollector";
 import { useColorScheme } from "@/lib/useColorScheme";
-import { flushAllPendingWrites } from "@/lib/storage";
+import { flushAllPendingWrites, secureStorage } from "@/lib/storage";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -40,7 +40,6 @@ import {
 } from "@react-navigation/native";
 import { Stack, useNavigationContainerRef } from "expo-router";
 import { setRootNavigationRef } from "@/lib/rootNavigation";
-import * as SecureStore from "expo-secure-store";
 import * as NavigationBar from "expo-navigation-bar";
 import { SystemBars } from "react-native-edge-to-edge";
 import { StatusBar } from "expo-status-bar";
@@ -67,20 +66,30 @@ initImmer();
 export const tokenCache: TokenCache = {
   async getToken(key: string) {
     try {
-      return await SecureStore.getItemAsync(key);
+      const result = secureStorage.getString(key) ?? null;
+      if (__DEV__) console.log(`[TokenCache] getToken key="${key}" hit=${!!result}`);
+      return result;
     } catch (error) {
-      console.error("[TokenCache] Error:", error);
+      console.error("[TokenCache] getToken error:", error);
       return null;
     }
   },
   async saveToken(key: string, value: string) {
     try {
-      await SecureStore.setItemAsync(key, value);
+      secureStorage.set(key, value);
+      if (__DEV__) console.log(`[TokenCache] saveToken key="${key}"`);
     } catch (error) {
-      console.error("[TokenCache] Error:", error);
+      console.error("[TokenCache] saveToken error:", error);
     }
   },
 };
+
+const mmkvResourceCache = () => ({
+  get: async (key: string) => secureStorage.getString(key) ?? null,
+  set: async (key: string, value: string) => {
+    secureStorage.set(key, value);
+  },
+});
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -192,7 +201,11 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+    <ClerkProvider
+      publishableKey={publishableKey}
+      tokenCache={tokenCache}
+      __experimental_resourceCache={mmkvResourceCache}
+    >
       <ClerkLoaded>
         {/* <ClerkSessionDebugger /> */}
         <TanstackProvider>

@@ -151,6 +151,7 @@ const MAX_RETRY_ATTEMPTS = 5;
 const DEBOUNCE_MS = 3000;
 const MAX_QUEUE_SIZE = 500;
 const OPERATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const OPERATION_TIMEOUT_MS = 30_000;
 
 const PAYMENT_TYPES: OperationType[] = [
   "process_payment",
@@ -232,6 +233,8 @@ let syncInProgress = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribeNetInfo: (() => void) | null = null;
 let periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
+let netInfoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let netInfoPollTimer: ReturnType<typeof setInterval> | null = null;
 
 // Indexes for O(1) lookups instead of linear scans
 const entityKeyIndex = new Map<string, Set<string>>(); // entityKey -> Set<operationId>
@@ -303,11 +306,24 @@ export async function initOfflineSyncService(config: {
   onOperationFailed = config.onOperationFailed ?? null;
   executeOperation = config.executeOperation;
 
+  // Configure NetInfo to actively probe reachability (required on Android for
+  // isInternetReachable to resolve to true/false instead of staying null).
+  NetInfo.configure({
+    reachabilityUrl: "https://clients3.google.com/generate_204",
+    reachabilityTest: async (response: any) => response.status === 204,
+    reachabilityLongTimeout: 60 * 1000,    // 60s — periodic re-probe
+    reachabilityShortTimeout: 5 * 1000,    // 5s  — fast initial probe
+    reachabilityRequestTimeout: 15 * 1000, // 15s — per-request timeout
+    reachabilityShouldRun: () => true,
+    shouldFetchWiFiSSID: false,
+  });
+
   // Load persisted queue
   await loadQueueFromStorage();
 
   // Start network listener
   startNetworkListener();
+  startNetInfoPolling();
 
   isInitialized = true;
 
@@ -340,6 +356,14 @@ export function destroyOfflineSyncService(): void {
   if (periodicSyncTimer) {
     clearInterval(periodicSyncTimer);
     periodicSyncTimer = null;
+  }
+  if (netInfoRefreshTimer) {
+    clearTimeout(netInfoRefreshTimer);
+    netInfoRefreshTimer = null;
+  }
+  if (netInfoPollTimer) {
+    clearInterval(netInfoPollTimer);
+    netInfoPollTimer = null;
   }
   // Clear all auto-retry timers
   for (const timer of autoRetryTimers.values()) {
@@ -433,23 +457,44 @@ function startNetworkListener(): void {
   unsubscribeNetInfo = NetInfo.addEventListener(handleNetworkChange);
 }
 
+const NETINFO_POLL_INTERVAL_MS = 10_000;
+
+function startNetInfoPolling(): void {
+  if (netInfoPollTimer) clearInterval(netInfoPollTimer);
+  netInfoPollTimer = setInterval(() => {
+    if (!isInitialized) return;
+    NetInfo.fetch().then(handleNetworkChange).catch(() => {});
+  }, NETINFO_POLL_INTERVAL_MS);
+}
+
 function handleNetworkChange(state: NetInfoState): void {
   const wasOnline = isOnline;
-  isOnline = state.isConnected === true && state.isInternetReachable !== false;
+
+  if (state.isConnected === false) {
+    isOnline = false;
+  } else if (state.isConnected === true && state.isInternetReachable === true) {
+    isOnline = true;
+    if (netInfoRefreshTimer) { clearTimeout(netInfoRefreshTimer); netInfoRefreshTimer = null; }
+  } else if (state.isConnected === true && state.isInternetReachable === false) {
+    isOnline = false;
+  } else {
+    // isConnected=true but isInternetReachable=null (ambiguous — common on Android emulator).
+    // Treat as offline immediately (pessimistic). NetInfo will fire again when
+    // reachability resolves to true after its probe (configured above).
+    isOnline = false;
+    if (netInfoRefreshTimer) { clearTimeout(netInfoRefreshTimer); netInfoRefreshTimer = null; }
+  }
+
   if (wasOnline !== isOnline) {
-    console.log(
-      "[OfflineSync] Network status changed:",
-      isOnline ? "ONLINE" : "OFFLINE"
-    );
+    console.log("[OfflineSync] Network status changed:", isOnline ? "ONLINE" : "OFFLINE");
     onStatusChange?.(isOnline);
 
-    // If came back online, debounce and sync
-    if (isOnline && pendingOperations.length > 0) {
-      // Schedule immediate sync for operations that haven't failed yet
+    if (!isOnline) {
+      // Cancel auto-retry timers — they'll reschedule when online returns
+      for (const t of autoRetryTimers.values()) clearTimeout(t);
+      autoRetryTimers.clear();
+    } else if (pendingOperations.length > 0) {
       scheduleSync();
-
-      // Also schedule auto-retries for operations that have failed before
-      // This uses exponential backoff based on their retry count
       scheduleAllAutoRetries();
     }
   }
@@ -923,6 +968,22 @@ export async function syncNow(): Promise<void> {
   }
 }
 
+/** Reset stuck "processing" ops + force-clear syncInProgress lock, then trigger sync. */
+export async function forceRetryAllPending(): Promise<void> {
+  let changed = false;
+  for (const op of pendingOperations) {
+    if (op.status === "processing") { op.status = "pending"; changed = true; }
+  }
+  syncInProgress = false;
+  if (changed) await saveQueueToStorage();
+  if (isOnline) scheduleSync();
+}
+
+/** Expose all non-discarded ops for UI inspection (blocked/processing counts). */
+export function getPendingOperations(): OfflineOperation[] {
+  return pendingOperations.filter((op) => op.status !== "discarded");
+}
+
 /**
  * Get a detailed status of the queue for debugging.
  */
@@ -1358,6 +1419,18 @@ async function handleOperationFailure(
 /**
  * Process all pending operations in priority order with dependency tracking.
  */
+async function executeWithTimeout(op: OfflineOperation): Promise<boolean> {
+  return Promise.race([
+    executeOperation!(op),
+    new Promise<boolean>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Operation timeout after ${OPERATION_TIMEOUT_MS}ms`)),
+        OPERATION_TIMEOUT_MS
+      )
+    ),
+  ]);
+}
+
 async function processQueue(): Promise<void> {
   if (syncInProgress) {
     console.log("[OfflineSync] Sync already in progress, skipping");
@@ -1440,7 +1513,7 @@ async function processQueue(): Promise<void> {
       console.log(`[OfflineSync]   Order: ${operation.localOrderId || 'N/A'}`);
       console.log(`[OfflineSync]   Item: ${operation.localItemId || 'N/A'}`);
 
-      const success = await executeOperation(operation);
+      const success = await executeWithTimeout(operation);
 
       if (success) {
         console.log(`[OfflineSync] ✓ SUCCESS: ${operation.type} (${operation.id})`);

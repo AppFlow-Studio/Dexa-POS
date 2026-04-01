@@ -12,6 +12,8 @@ import {
   getDeadLetterCount,
   retryDeadLetterOperation,
   getDeadLetterOperations,
+  forceRetryAllPending,
+  getPendingOperations,
 } from "@/services/offlineSyncService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -75,6 +77,22 @@ export function NetworkStatusBadge(): React.ReactElement {
     const checkDeadLetter = () => setDeadLetterCount(getDeadLetterCount());
     checkDeadLetter();
     const interval = setInterval(checkDeadLetter, 15_000); // every 15s
+    return () => clearInterval(interval);
+  }, []);
+
+  const [stuckCount, setStuckCount] = useState(0);
+  const [blockedCount, setBlockedCount] = useState(0);
+  const [isForceRetrying, setIsForceRetrying] = useState(false);
+
+  // Poll for stuck/blocked operations
+  useEffect(() => {
+    const check = () => {
+      const ops = getPendingOperations();
+      setStuckCount(ops.filter((op) => op.status === "processing").length);
+      setBlockedCount(ops.filter((op) => op.status === "blocked").length);
+    };
+    check();
+    const interval = setInterval(check, 10_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -285,6 +303,49 @@ export function NetworkStatusBadge(): React.ReactElement {
               {failedPayments.length} payment{failedPayments.length > 1 ? "s" : ""} failed
             </Text>
             <RefreshCw size={10} color={colors.danger} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* Stuck / Blocked Operations Badge */}
+      {(stuckCount > 0 || (isOnline && blockedCount > 0)) && (
+        <Animated.View
+          entering={SlideInRight.duration(200)}
+          exiting={SlideOutRight.duration(200)}
+        >
+          <TouchableOpacity
+            onPress={async () => {
+              if (isForceRetrying) return;
+              setIsForceRetrying(true);
+              try {
+                await forceRetryAllPending();
+                const ops = getPendingOperations();
+                setStuckCount(ops.filter((op) => op.status === "processing").length);
+                setBlockedCount(ops.filter((op) => op.status === "blocked").length);
+                toastService.show({
+                  title: "Force Retry",
+                  message: "Stuck operations reset and queued for retry",
+                  type: "info",
+                });
+              } finally {
+                setIsForceRetrying(false);
+              }
+            }}
+            disabled={isForceRetrying}
+            activeOpacity={0.7}
+            className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-900/30 border border-orange-600/50"
+          >
+            {isForceRetrying ? (
+              <ActivityIndicator size="small" color="#f97316" />
+            ) : (
+              <AlertTriangle size={12} color="#f97316" />
+            )}
+            <Text className="text-xs font-medium text-orange-400">
+              {stuckCount > 0
+                ? `${stuckCount} stuck — force retry`
+                : `${blockedCount} blocked — retry`}
+            </Text>
+            <RefreshCw size={10} color="#f97316" />
           </TouchableOpacity>
         </Animated.View>
       )}

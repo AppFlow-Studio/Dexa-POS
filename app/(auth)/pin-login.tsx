@@ -2,10 +2,12 @@ import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLoading } from "@/contexts/LoadingContext";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
 import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
+import { v4 as uuidv4 } from "uuid";
 import { getDeviceName } from "@/lib/deviceName";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { MerchantRole } from "@/lib/types";
@@ -90,7 +92,8 @@ const PinLoginScreen = () => {
   const setStationSessionId = useStoreSettingsStore(
     (state) => state.setStationSessionId,
   );
-  const { getSession, clockIn: timeclockClockIn } = useTimeclockStore();
+  const { getSession, clockIn: timeclockClockIn, queueAction } = useTimeclockStore();
+  const { isOnline } = useNetworkStatus();
 
   const timeClock = useTimeClock();
 
@@ -360,6 +363,42 @@ const PinLoginScreen = () => {
       );
       return;
     }
+
+    // ── OFFLINE PATH ─────────────────────────────────────────────────────────
+    if (!isOnline) {
+      const employee = findEmployeeByPin(pin);
+      if (!employee) {
+        triggerShakeAnimation();
+        showDialog("Sign In Failed", "Incorrect PIN. Please try again.", "error");
+        setPin("");
+        return;
+      }
+
+      showLoading("Signing in offline...");
+
+      const existingSession = getSession(employee.id);
+      if (!existingSession) {
+        employeeClockIn(employee.id);
+        timeclockClockIn(employee.id);
+      }
+      setActiveSession(employee);
+
+      queueAction({
+        id: uuidv4(),
+        type: "sign_in",
+        pinCode: pin,
+        locationId: selectedStore.id,
+        timestamp: new Date().toISOString(),
+        deviceId,
+      });
+
+      hideLoading();
+      setPin("");
+      const isKDS = selectedStation?.station_type === "kds";
+      replaceRoute("(main)", isKDS ? "kds" : "home");
+      return;
+    }
+    // ── END OFFLINE PATH ──────────────────────────────────────────────────────
 
     showLoading("Signing in...");
 
