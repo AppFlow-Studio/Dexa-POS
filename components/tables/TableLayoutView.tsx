@@ -530,4 +530,33 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   )
 }
 
-export default React.memo(TableLayoutView)
+export default React.memo(TableLayoutView, (prev, next) => {
+  // Skip re-render if only session data changed (DraggableTable reads sessions directly)
+  if (prev.tables.length !== next.tables.length) return false
+  if (prev.layoutId !== next.layoutId) return false
+  if (prev.isEditMode !== next.isEditMode) return false
+  if (prev.interactionMode !== next.interactionMode) return false
+  if (prev.disableLongPress !== next.disableLongPress) return false
+  if (prev.showConnections !== next.showConnections) return false
+  if (prev.sectionsById !== next.sectionsById) return false
+  if (prev.onTableSelect !== next.onTableSelect) return false
+  if (prev.onTableLongPress !== next.onTableLongPress) return false
+  // Only check geometry (x, y, width, height, rotation, shape_id) — not session fields
+  for (let i = 0; i < prev.tables.length; i++) {
+    const p = prev.tables[i]
+    const n = next.tables[i]
+    if (
+      p.id !== n.id ||
+      p.x !== n.x ||
+      p.y !== n.y ||
+      p.width !== n.width ||
+      p.height !== n.height ||
+      p.rotation !== n.rotation ||
+      p.shape_id !== n.shape_id ||
+      p.section_id !== n.section_id ||
+      p.name !== n.name ||
+      p.z_index !== n.z_index
+    ) return false
+  }
+  return true
+})

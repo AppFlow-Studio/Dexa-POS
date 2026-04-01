@@ -164,6 +164,7 @@ export class CFDController {
       savingsAmount: this.lastPayload.savingsAmount ?? 0,
       outstandingTotal: this.lastPayload.outstandingTotal ?? 0,
       amountPaid: this.lastPayload.amountPaid ?? 0,
+      paymentMethod: this.lastPayload.paymentMethod ?? null,
       branding: this.branding,
       layout: this.lastPayload.layout,
       orderingPanelImages: this.lastPayload.orderingPanelImages,
@@ -216,6 +217,7 @@ export class CFDController {
     savingsAmount: number;
     outstandingTotal: number;
     amountPaid: number;
+    paymentMethod?: "cash" | "card" | "manual" | null;
     layout?: CFDPayload["layout"];
     orderingPanelImages?: CFDPayload["orderingPanelImages"];
     tipConfig?: CFDPayload["tipConfig"];
@@ -229,6 +231,7 @@ export class CFDController {
       locationId: this.locationId,
       screenState,
       ...params,
+      paymentMethod: params.paymentMethod ?? this.lastPayload.paymentMethod ?? null,
       branding: this.branding,
       timestamp: Date.now(),
     };
@@ -258,10 +261,11 @@ export class CFDController {
   /**
    * Show "Present Card" screen
    */
-  showPayment(): void {
+  showPayment(paymentMethod?: "cash" | "card" | "manual"): void {
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       screenState: "payment",
+      paymentMethod: paymentMethod ?? null,
       timestamp: Date.now(),
     });
   }
@@ -269,10 +273,11 @@ export class CFDController {
   /**
    * Show processing spinner
    */
-  showProcessing(): void {
+  showProcessing(paymentMethod?: "cash" | "card" | "manual"): void {
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       screenState: "processing",
+      paymentMethod: paymentMethod ?? null,
       timestamp: Date.now(),
     });
   }
@@ -307,9 +312,12 @@ export class CFDController {
       stationId: this.stationId,
       stationName: this.stationName,
       locationId: this.locationId,
+      serverName: null,
+      customerName: null,
       screenState: "idle",
       orderNumber: null,
       orderType: null,
+      tableName: null,
       guestCount: null,
       items: [],
       subtotal: 0,
@@ -327,10 +335,14 @@ export class CFDController {
       savingsAmount: 0,
       outstandingTotal: 0,
       amountPaid: 0,
+      paymentMethod: null,
       branding: this.branding,
       layout: this.lastPayload.layout,
       orderingPanelImages: this.lastPayload.orderingPanelImages,
+      tipConfig: null,
       carouselImages: this.lastPayload.carouselImages,
+      loyaltyPrompt: undefined,
+      loyaltyResult: undefined,
       timestamp: Date.now(),
     });
   }

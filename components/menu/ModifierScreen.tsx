@@ -1187,9 +1187,9 @@ const ModifierScreen = () => {
 
   if (!isOpen || !currentItem) return null;
 
-  const currentCategory = menuItemForModifiers?.modifiers?.find(
-    (cat) => cat.id === state.activeCategory,
-  );
+  const currentCategory = state.activeCategory
+    ? modifierCategoriesById.get(state.activeCategory) ?? null
+    : null;
 
   const hasModifiers = !!(
     menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0

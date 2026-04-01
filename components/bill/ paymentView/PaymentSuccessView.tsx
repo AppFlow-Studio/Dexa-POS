@@ -16,6 +16,7 @@ import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 const PaymentSuccessView = () => {
   const close = usePaymentStore((s) => s.close);
   const paymentMethod = usePaymentStore((s) => s.paymentMethod);
+  const completedPaymentInfo = usePaymentStore((s) => s.completedPaymentInfo);
   const activeTableId = usePaymentStore((s) => s.activeTableId);
   const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
   const { show } = useToast();
@@ -150,12 +151,12 @@ const PaymentSuccessView = () => {
   return (
     <View className="flex-1 justify-between" style={{ backgroundColor: colors.screen }}>
       {/* Main Content - Centered vertically if possible */}
-      <View className="flex-1 justify-center items-center px-6">
+      <View className="flex-1 justify-center items-center px-6" style={{ paddingTop: 28, paddingBottom: 28 }}>
         {/* Success Icon */}
         <Animated.View
           entering={FadeIn.delay(100)}
           className="items-center mb-6"
-          style={{ marginTop: 20 }}
+          style={{ marginTop: 8 }}
         >
           <View style={{ width: 80, height: 80, backgroundColor: colors.success + "15", borderRadius: 40, alignItems: "center", justifyContent: "center", marginBottom: 20, borderWidth: 2, borderColor: colors.success + "40" }}>
             <Check color={colors.success} size={44} strokeWidth={3.5} />
@@ -164,20 +165,18 @@ const PaymentSuccessView = () => {
             Payment Successful
           </Text>
           <Text style={{ fontSize: 14, color: colors.label, fontWeight: "600" }}>
-            {paymentMethod || "Card"} Payment
+            {(completedPaymentInfo?.paymentMethod || paymentMethod || "Card")} Payment
           </Text>
         </Animated.View>
 
         {/* Compact Receipt Card */}
         <Animated.View
           entering={FadeInUp.delay(200)}
-          style={{ width: "100%", maxWidth: 400, backgroundColor: colors.panel, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 24, alignItems: "center" }}
+          style={{ width: "100%", maxWidth: 400, backgroundColor: colors.panel, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 22, alignItems: "center" }}
         >
           {/* Use captured payment info from store to prevent real-time sync overwrites */}
           {(() => {
             // Read from completedPaymentInfo snapshot instead of live payments
-            const { completedPaymentInfo } = usePaymentStore.getState();
-
             // Fall back to calculating from payments if completedPaymentInfo is not set
             // (shouldn't happen, but provides safety)
             let totalPaid = completedPaymentInfo?.totalPaid ?? 0;
@@ -265,8 +264,8 @@ const PaymentSuccessView = () => {
       </View>
 
       {/* Footer Actions - Fixed at Bottom */}
-      <View style={{ width: "100%", backgroundColor: colors.panel, paddingTop: 8, paddingBottom: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <View style={{ paddingHorizontal: 16, gap: 8 }}>
+      <View style={{ width: "100%", backgroundColor: colors.panel, paddingTop: 12, paddingBottom: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View style={{ paddingHorizontal: 20, gap: 10 }}>
           {/* Secondary Actions Row */}
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
