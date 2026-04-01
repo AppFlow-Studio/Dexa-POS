@@ -407,7 +407,23 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
                   type: r.program_type,
                   earned: r.earned,
                   newBalance: r.new_balance,
-                  rewardUnlocked: r.reward_unlocked
+                  rewardUnlocked: r.reward_unlocked,
+                  progressPercent:
+                    (r as any).progress_percent ??
+                    (r as any).progressPercent ??
+                    null,
+                  remainingToReward:
+                    (r as any).remaining_to_reward ??
+                    (r as any).remainingToReward ??
+                    null,
+                  rewardThreshold:
+                    (r as any).reward_threshold ??
+                    (r as any).rewardThreshold ??
+                    null,
+                  rewardLabel:
+                    (r as any).reward_label ?? (r as any).rewardLabel ?? null,
+                  canRedeemNow:
+                    (r as any).can_redeem_now ?? (r as any).canRedeemNow ?? null
                 }))
               }
               // Set store BEFORE triggering screen state so component mounts with data

@@ -109,10 +109,26 @@ interface Program {
   earned: number
   newBalance: number
   rewardUnlocked: boolean
+  progressPercent?: number | null
+  remainingToReward?: number | null
+  rewardThreshold?: number | null
+  rewardLabel?: string | null
+  canRedeemNow?: boolean | null
 }
 
 function ProgramSummary ({ program }: { program: Program }) {
-  const { type, earned, newBalance, name } = program
+  const {
+    type,
+    earned,
+    newBalance,
+    name,
+    rewardUnlocked,
+    progressPercent,
+    remainingToReward,
+    rewardThreshold,
+    rewardLabel,
+    canRedeemNow
+  } = program
 
   let earnedText = ''
   let balanceText = ''
@@ -131,6 +147,20 @@ function ProgramSummary ({ program }: { program: Program }) {
     balanceText = `${newBalance} total`
   }
 
+  const hasProgress =
+    typeof progressPercent === 'number' ||
+    typeof remainingToReward === 'number' ||
+    typeof rewardThreshold === 'number'
+  const safeProgress =
+    typeof progressPercent === 'number'
+      ? Math.max(0, Math.min(100, progressPercent))
+      : null
+  const rewardReady = Boolean(canRedeemNow ?? rewardUnlocked)
+  const showProgressRow = hasProgress || rewardReady
+  const statusText = rewardReady
+    ? 'Ready to redeem'
+    : rewardLabel ?? 'Reward status'
+
   return (
     <View style={styles.programCard}>
       <View style={styles.programCardTopRow}>
@@ -139,6 +169,34 @@ function ProgramSummary ({ program }: { program: Program }) {
       </View>
       <Text style={styles.programEarned}>{earnedText}</Text>
       <Text style={styles.programBalance}>{balanceText}</Text>
+      {showProgressRow ? (
+        <>
+          <View style={styles.rewardStatusRow}>
+            <Text style={styles.rewardStatusLabel}>{statusText}</Text>
+            <Text
+              style={[
+                styles.rewardStatusValue,
+                rewardReady && styles.rewardStatusValueReady
+              ]}
+            >
+              {rewardReady
+                ? 'Redeem now'
+                : typeof remainingToReward === 'number' && remainingToReward > 0
+                ? `${remainingToReward} more to go`
+                : hasProgress && rewardThreshold
+                ? `${newBalance}/${rewardThreshold}`
+                : 'Available after next visit'}
+            </Text>
+          </View>
+          {hasProgress && safeProgress !== null ? (
+            <View style={styles.progressTrack}>
+              <View
+                style={[styles.progressFill, { width: `${safeProgress}%` }]}
+              />
+            </View>
+          ) : null}
+        </>
+      ) : null}
     </View>
   )
 }
@@ -276,6 +334,40 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.teal,
     fontWeight: '600'
+  },
+  rewardStatusRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2
+  },
+  rewardStatusLabel: {
+    fontSize: 12,
+    color: colors.label,
+    fontWeight: '600'
+  },
+  rewardStatusValue: {
+    fontSize: 12,
+    color: colors.muted,
+    fontWeight: '700'
+  },
+  rewardStatusValueReady: {
+    color: colors.success
+  },
+  progressTrack: {
+    width: '100%',
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: colors.screen,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.teal
   },
   rewardBanner: {
     marginTop: 14,

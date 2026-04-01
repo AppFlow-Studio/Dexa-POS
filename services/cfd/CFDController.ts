@@ -405,18 +405,28 @@ export class CFDController {
     result: LoyaltyEarnResult[],
     customerName?: string
   ): void {
+    const loyaltyPrograms = result.map(r => ({
+      name: r.program_name,
+      type: r.program_type,
+      earned: r.earned,
+      newBalance: r.new_balance,
+      rewardUnlocked: r.reward_unlocked,
+      progressPercent:
+        (r as any).progress_percent ?? (r as any).progressPercent ?? null,
+      remainingToReward:
+        (r as any).remaining_to_reward ?? (r as any).remainingToReward ?? null,
+      rewardThreshold:
+        (r as any).reward_threshold ?? (r as any).rewardThreshold ?? null,
+      rewardLabel: (r as any).reward_label ?? (r as any).rewardLabel ?? null,
+      canRedeemNow: (r as any).can_redeem_now ?? (r as any).canRedeemNow ?? null
+    }))
+
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       screenState: 'loyalty_confirmation',
       loyaltyResult: {
         customerName,
-        programs: result.map(r => ({
-          name: r.program_name,
-          type: r.program_type,
-          earned: r.earned,
-          newBalance: r.new_balance,
-          rewardUnlocked: r.reward_unlocked
-        }))
+        programs: loyaltyPrograms
       },
       timestamp: Date.now()
     })
