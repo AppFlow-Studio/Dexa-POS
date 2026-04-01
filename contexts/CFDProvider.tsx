@@ -161,6 +161,13 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const lastShowPaymentAtRef = useRef<number>(0)
   // Frozen totals snapshot taken at showProcessing — held until result screen clears
   const frozenTotalsRef = useRef<{
+    subtotal: number
+    subtotalCash: number
+    subtotalCard: number
+    discountAmount: number
+    taxAmount: number
+    taxCash: number
+    taxCard: number
     total: number
     totalCash: number
     totalCard: number
@@ -169,6 +176,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     outstandingTotal: number
     amountPaid: number
     paymentMethod: 'cash' | 'card' | 'manual' | null
+    customerName: string | null
+    orderNumber: string | null
+    orderType: string | null
+    tableName: string | null
+    guestCount: number | null
+    items: CFDCartItem[]
   } | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -379,6 +392,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
               console.warn(
                 '[CFD Loyalty] No active order with db_order_id, skipping loyalty'
               )
+              frozenTotalsRef.current = null
               setActiveScreenState(null)
               setBaseAmountOverride(null)
               setCurrentTip({ amount: 0, percentage: null })
@@ -396,10 +410,27 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
                 .from('orders')
                 .update({ customer_id: customerId })
                 .eq('id', order.db_order_id)
-              const results = await earnLoyaltyForOrder(
-                order.db_order_id,
-                supabase
-              )
+              let results: LoyaltyEarnResult[] = []
+              for (let attempt = 0; attempt < 3; attempt += 1) {
+                results = await earnLoyaltyForOrder(order.db_order_id, supabase)
+                if (results.length > 0) break
+                if (attempt < 2) {
+                  await new Promise(resolve => setTimeout(resolve, 800))
+                }
+              }
+
+              if (results.length === 0) {
+                console.warn(
+                  '[CFD Loyalty] No loyalty program data returned after phone submit'
+                )
+                frozenTotalsRef.current = null
+                setActiveScreenState(null)
+                setBaseAmountOverride(null)
+                setCurrentTip({ amount: 0, percentage: null })
+                ctrl.showIdle()
+                return
+              }
+
               const loyaltyResult = {
                 customerName: name ?? undefined,
                 programs: results.map(r => ({
@@ -435,6 +466,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
               ctrl.showLoyaltyConfirmation(results, name ?? undefined)
               setTimeout(() => {
                 if (controllerRef.current !== ctrl) return
+                frozenTotalsRef.current = null
                 setActiveScreenState(null)
                 setBaseAmountOverride(null)
                 setCurrentTip({ amount: 0, percentage: null })
@@ -446,6 +478,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             } catch (err) {
               console.error('[CFD Loyalty] Error processing loyalty:', err)
               // Fail-safe: always return to idle, never block the display
+              frozenTotalsRef.current = null
               setActiveScreenState(null)
               setBaseAmountOverride(null)
               setCurrentTip({ amount: 0, percentage: null })
@@ -456,6 +489,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             if (controllerRef.current !== ctrl) return
             clearTimeout(loyaltyTimerRef.current!)
             loyaltyTimerRef.current = null
+            frozenTotalsRef.current = null
             setActiveScreenState(null)
             setBaseAmountOverride(null)
             setCurrentTip({ amount: 0, percentage: null })
@@ -647,7 +681,28 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     const shouldShowOrderData =
       !!activeScreenState || (isSalesScreen && !!activeOrder)
 
-    const currentBase = baseAmountOverride ?? activeOrderSubtotal
+    const frozen = frozenTotalsRef.current
+    const displayItems = frozen?.items ?? cfdItems
+    const displayCustomerName =
+      frozen?.customerName ?? activeOrder?.customer_name ?? null
+    const displayOrderNumber =
+      frozen?.orderNumber ??
+      activeOrder?.display_number ??
+      activeOrder?.order_number ??
+      null
+    const displayOrderType =
+      frozen?.orderType ?? activeOrder?.order_type ?? null
+    const liveTableName = activeOrder?.order_type
+      ?.toLowerCase()
+      .includes('dine')
+      ? activeOrder?.service_location_id ?? null
+      : null
+    const displayTableName = frozen?.tableName ?? liveTableName
+    const displayGuestCount =
+      frozen?.guestCount ?? activeOrder?.guest_count ?? null
+    const currentBase = frozen
+      ? frozen.subtotalCard / 100
+      : baseAmountOverride ?? activeOrderSubtotal
 
     if (DEBUG) {
       console.log(
@@ -661,6 +716,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       // Debounce idle transition to prevent flicker during screen navigation
       if (!idleTimerRef.current) {
         idleTimerRef.current = setTimeout(() => {
+          frozenTotalsRef.current = null
           controller.showIdle()
           idleTimerRef.current = null
         }, 500)
@@ -681,19 +737,20 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     }
 
     // items should always be synced if we're showing order data
-    const cardSubtotal = Math.round(currentBase * 100)
-    const cashSubtotal = Math.round(
-      (orderTotals?.cashSubtotal ?? currentBase) * 100
-    )
-    const cardTax = Math.round(activeOrderTax * 100)
-    const cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
+    const cardSubtotal = frozen?.subtotalCard ?? Math.round(currentBase * 100)
+    const cashSubtotal =
+      frozen?.subtotalCash ??
+      Math.round((orderTotals?.cashSubtotal ?? currentBase) * 100)
+    const cardTax = frozen?.taxCard ?? Math.round(activeOrderTax * 100)
+    const cashTax =
+      frozen?.taxCash ??
+      Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
     const liveCardTotal = Math.round(
       (activeOrderTotal + currentTip.amount) * 100
     )
     const liveCashTotal = Math.round(
       ((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100
     )
-    const frozen = frozenTotalsRef.current
     const cardTotal = frozen ? frozen.totalCard : liveCardTotal
     const cashTotal = frozen ? frozen.totalCash : liveCashTotal
     const savingsAmount = frozen
@@ -708,26 +765,22 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     const displayAmountPaid = frozen
       ? frozen.amountPaid
       : Math.round((activeOrder?.amount_paid ?? 0) * 100)
-
-    // For dine-in orders, get table ID
-    const tableName = activeOrder?.order_type?.toLowerCase().includes('dine')
-      ? activeOrder?.service_location_id ?? null
-      : null
+    const displayDiscountAmount =
+      frozen?.discountAmount ?? Math.round(activeOrderDiscount * 100)
 
     const params = {
       screenState: activeScreenState || undefined,
       serverName: null,
-      customerName: activeOrder?.customer_name ?? null,
-      orderNumber:
-        activeOrder?.display_number ?? activeOrder?.order_number ?? null,
-      orderType: activeOrder?.order_type ?? null,
-      tableName,
-      guestCount: activeOrder?.guest_count ?? null,
-      items: cfdItems,
+      customerName: displayCustomerName,
+      orderNumber: displayOrderNumber,
+      orderType: displayOrderType,
+      tableName: displayTableName,
+      guestCount: displayGuestCount,
+      items: displayItems,
       subtotal: cardSubtotal,
       subtotalCash: cashSubtotal,
       subtotalCard: cardSubtotal,
-      discountAmount: Math.round(activeOrderDiscount * 100),
+      discountAmount: displayDiscountAmount,
       taxAmount: cardTax,
       taxCash: cashTax,
       taxCard: cardTax,
@@ -1000,11 +1053,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         logoUrl: organizationLogoUrl,
         primaryColor: '#10b981'
       },
-      paymentMethod: paymentView === 'cash'
-        ? 'cash'
-        : paymentView === 'card' || paymentView === 'manual'
-        ? 'card'
-        : null,
+      paymentMethod:
+        paymentView === 'cash'
+          ? 'cash'
+          : paymentView === 'card' || paymentView === 'manual'
+          ? 'card'
+          : null,
       loyaltyResult: null
     })
   }, [
@@ -1042,6 +1096,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         current === 'loyalty_confirmation'
       )
         return
+      frozenTotalsRef.current = null
       setActiveScreenState(null)
       setActivePaymentMethod(null)
       controllerRef.current?.showIdle()
@@ -1062,6 +1117,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       // Cash: tip selection / payment / processing owned by CashPaymentView callbacks
       // Success: owned by showApproved/showDeclined
     } else {
+      frozenTotalsRef.current = null
       setActiveScreenState(null)
       setActivePaymentMethod(null)
     }
@@ -1114,7 +1170,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
   const setScreenState = useCallback((state: CFDScreenState | null) => {
     setActiveScreenState(state)
-    if (state === null) setActivePaymentMethod(null)
+    if (state === null) {
+      frozenTotalsRef.current = null
+      setActivePaymentMethod(null)
+    }
   }, [])
 
   const clearTipResponse = useCallback(() => {
@@ -1145,6 +1204,19 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       const tipAmt = Math.round(tipDollars * 100)
       const savings = Math.max(0, cardTotal - cashTotal)
       const frozen = {
+        subtotal: Math.round((baseAmountOverride ?? activeOrderSubtotal) * 100),
+        subtotalCard: Math.round(
+          (baseAmountOverride ?? activeOrderSubtotal) * 100
+        ),
+        subtotalCash: Math.round(
+          (orderTotals?.cashSubtotal ??
+            baseAmountOverride ??
+            activeOrderSubtotal) * 100
+        ),
+        discountAmount: Math.round(activeOrderDiscount * 100),
+        taxAmount: Math.round(activeOrderTax * 100),
+        taxCash: Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100),
+        taxCard: Math.round(activeOrderTax * 100),
         total: cardTotal,
         totalCard: cardTotal,
         totalCash: cashTotal,
@@ -1154,7 +1226,16 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           (activeOrderOutstandingTotal + tipDollars) * 100
         ),
         amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
-        paymentMethod: paymentMethod ?? null
+        paymentMethod: paymentMethod ?? null,
+        customerName: activeOrder?.customer_name ?? null,
+        orderNumber:
+          activeOrder?.display_number ?? activeOrder?.order_number ?? null,
+        orderType: activeOrder?.order_type ?? null,
+        tableName: activeOrder?.order_type?.toLowerCase().includes('dine')
+          ? activeOrder?.service_location_id ?? null
+          : null,
+        guestCount: activeOrder?.guest_count ?? null,
+        items: cfdItems
       }
       frozenTotalsRef.current = frozen
 
@@ -1250,20 +1331,162 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const showLoyaltyPrompt = useCallback(() => {
     const currentStoreState = useCFDBuiltinStore.getState().screenState
     if (currentStoreState === 'loyalty_confirmation') return
-    setActiveScreenState('loyalty_prompt')
-    controllerRef.current?.showLoyaltyPrompt(selectedStore?.name ?? '')
-    useCFDBuiltinStore
-      .getState()
-      .update({ screenState: 'loyalty_prompt', loyaltyResult: null })
-    if (loyaltyTimerRef.current) clearTimeout(loyaltyTimerRef.current)
-    loyaltyTimerRef.current = setTimeout(() => {
-      setActiveScreenState(null)
-      setBaseAmountOverride(null)
-      setCurrentTip({ amount: 0, percentage: null })
-      controllerRef.current?.showIdle()
-      loyaltyTimerRef.current = null
-    }, 20_000)
-  }, [selectedStore?.name])
+
+    const order = activeOrderRef.current
+    const dbOrderId = order?.db_order_id
+    const merchantId = selectedStore?.merchant_id
+    const showPhonePrompt = () => {
+      setActiveScreenState('loyalty_prompt')
+      controllerRef.current?.showLoyaltyPrompt(selectedStore?.name ?? '')
+      useCFDBuiltinStore
+        .getState()
+        .update({ screenState: 'loyalty_prompt', loyaltyResult: null })
+      if (loyaltyTimerRef.current) clearTimeout(loyaltyTimerRef.current)
+      loyaltyTimerRef.current = setTimeout(() => {
+        frozenTotalsRef.current = null
+        setActiveScreenState(null)
+        setBaseAmountOverride(null)
+        setCurrentTip({ amount: 0, percentage: null })
+        controllerRef.current?.showIdle()
+        loyaltyTimerRef.current = null
+      }, 20_000)
+    }
+
+    void (async () => {
+      try {
+        if (!dbOrderId) {
+          showPhonePrompt()
+          return
+        }
+
+        let effectiveCustomerId = order?.customer_id ?? null
+        let effectiveCustomerName = order?.customer_name ?? undefined
+        let effectivePhone = order?.customer_phone?.replace(/\D/g, '') ?? ''
+
+        const needsBackendLookup = !effectiveCustomerId && !effectivePhone
+        if (needsBackendLookup) {
+          const { data: backendOrder, error: backendOrderError } =
+            await supabase
+              .from('orders')
+              .select('customer_id, customer_name, customer_phone')
+              .eq('id', dbOrderId)
+              .maybeSingle()
+
+          if (backendOrderError) {
+            console.warn(
+              '[CFD Loyalty] Failed to fetch latest order customer fields:',
+              backendOrderError
+            )
+          } else if (backendOrder) {
+            effectiveCustomerId = backendOrder.customer_id ?? null
+            effectiveCustomerName =
+              backendOrder.customer_name ?? effectiveCustomerName
+            effectivePhone =
+              backendOrder.customer_phone?.replace(/\D/g, '') ?? ''
+          }
+        }
+
+        if (!effectiveCustomerId && !(merchantId && effectivePhone)) {
+          showPhonePrompt()
+          return
+        }
+
+        if (!effectiveCustomerId && merchantId && effectivePhone) {
+          const { id: customerId, name } = await findOrCreateCustomerByPhone(
+            effectivePhone,
+            merchantId,
+            supabase
+          )
+          effectiveCustomerId = customerId
+          effectiveCustomerName = name ?? effectiveCustomerName
+          await supabase
+            .from('orders')
+            .update({ customer_id: customerId })
+            .eq('id', dbOrderId)
+        }
+
+        if (effectiveCustomerId) {
+          const { error: ensureCustomerError } = await supabase
+            .from('orders')
+            .update({ customer_id: effectiveCustomerId })
+            .eq('id', dbOrderId)
+
+          if (ensureCustomerError) {
+            console.warn(
+              '[CFD Loyalty] Failed to persist order customer_id before loyalty earn:',
+              ensureCustomerError
+            )
+          }
+        }
+
+        let results: LoyaltyEarnResult[] = []
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          results = await earnLoyaltyForOrder(dbOrderId, supabase)
+          if (results.length > 0) break
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 800))
+          }
+        }
+
+        if (results.length === 0) {
+          console.warn(
+            '[CFD Loyalty] Auto loyalty returned no program data, showing prompt'
+          )
+          showPhonePrompt()
+          return
+        }
+
+        const loyaltyResult = {
+          customerName: effectiveCustomerName,
+          programs: results.map(r => ({
+            name: r.program_name,
+            type: r.program_type,
+            earned: r.earned,
+            newBalance: r.new_balance,
+            rewardUnlocked: r.reward_unlocked,
+            progressPercent:
+              (r as any).progress_percent ?? (r as any).progressPercent ?? null,
+            remainingToReward:
+              (r as any).remaining_to_reward ??
+              (r as any).remainingToReward ??
+              null,
+            rewardThreshold:
+              (r as any).reward_threshold ?? (r as any).rewardThreshold ?? null,
+            rewardLabel:
+              (r as any).reward_label ?? (r as any).rewardLabel ?? null,
+            canRedeemNow:
+              (r as any).can_redeem_now ?? (r as any).canRedeemNow ?? null
+          }))
+        }
+
+        useCFDBuiltinStore.getState().update({
+          screenState: 'loyalty_confirmation',
+          loyaltyResult
+        })
+        setActiveScreenState('loyalty_confirmation')
+        controllerRef.current?.showLoyaltyConfirmation(
+          results,
+          effectiveCustomerName
+        )
+
+        if (loyaltyTimerRef.current) clearTimeout(loyaltyTimerRef.current)
+        loyaltyTimerRef.current = setTimeout(() => {
+          frozenTotalsRef.current = null
+          setActiveScreenState(null)
+          setBaseAmountOverride(null)
+          setCurrentTip({ amount: 0, percentage: null })
+          controllerRef.current?.showIdle()
+          useCFDBuiltinStore
+            .getState()
+            .update({ screenState: 'idle', loyaltyResult: null })
+          loyaltyTimerRef.current = null
+        }, 6000)
+      } catch (err) {
+        console.error('[CFD Loyalty] Auto loyalty failed, showing prompt:', err)
+        showPhonePrompt()
+      }
+    })()
+  }, [selectedStore?.merchant_id, selectedStore?.name, supabase])
 
   const showLoyaltyConfirmation = useCallback(
     (result: LoyaltyEarnResult[], customerName?: string) => {
