@@ -106,7 +106,11 @@ export function OrderingScreen () {
     setDisplayTaxCard(nextTaxCard)
     setDisplayTotalCash(nextTotalCash)
     setDisplayTotalCard(nextTotalCard)
-    setDisplaySavingsAmount(nextSavings)
+    // Don't flash 0 savings during transient recompute — keep previous value
+    // until a non-zero savings or a full-zero reset lands.
+    setDisplaySavingsAmount((prev) =>
+      nextSavings === 0 && prev > 0 ? prev : nextSavings
+    )
   }, [
     items.length,
     subtotal,
