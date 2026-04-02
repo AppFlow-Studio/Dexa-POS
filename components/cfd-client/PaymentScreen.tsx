@@ -1,8 +1,20 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
 import { colors } from "@/lib/theme";
 import { Banknote, CreditCard, UtensilsCrossed } from "lucide-react-native";
-import React from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import React, { useEffect } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withSpring,
+  Easing,
+  cancelAnimation,
+} from "react-native-reanimated";
 
 export function PaymentScreen({ processing }: { processing?: boolean }) {
   const {
@@ -10,8 +22,6 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
     orderType,
     tableName,
     serverName,
-    orderNumber,
-    customerName,
     total,
     totalCash,
     totalCard,
@@ -34,10 +44,51 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
 
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+  // Icon scale-in
+  const iconScale = useSharedValue(0.6);
+  const iconOpacity = useSharedValue(0);
+  useEffect(() => {
+    iconOpacity.value = withTiming(1, { duration: 200 });
+    iconScale.value = withSpring(1, { damping: 14, stiffness: 160 });
+  }, []);
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconScale.value }],
+    opacity: iconOpacity.value,
+  }));
+
+  // Processing: spin + pulse
+  const spinAngle = useSharedValue(0);
+  const pulseOpacity = useSharedValue(1);
+  useEffect(() => {
+    if (processing && !isCash && !isManual) {
+      spinAngle.value = withRepeat(
+        withTiming(360, { duration: 900, easing: Easing.linear }),
+        -1,
+        false,
+      );
+      pulseOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0.4, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+        false,
+      );
+    }
+    return () => {
+      cancelAnimation(spinAngle);
+      cancelAnimation(pulseOpacity);
+    };
+  }, [processing]);
+  const spinStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spinAngle.value}deg` }],
+  }));
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulseOpacity.value }));
+
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <Animated.View entering={FadeIn.duration(250)} style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.iconBox}>
             <UtensilsCrossed size={20} color={colors.teal} />
@@ -68,40 +119,65 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
                 : "Present card to terminal"}
           </Text>
         </View>
-      </View>
+      </Animated.View>
 
       {/* Body */}
       <View style={styles.body}>
         {/* Payment method icon */}
-        <View style={styles.iconCircle}>
-          {processing && !isCash && !isManual ? (
-            <ActivityIndicator size="large" color={colors.teal} />
-          ) : isCash ? (
-            <Banknote size={40} color={colors.teal} />
-          ) : (
-            <CreditCard size={40} color={colors.teal} />
-          )}
-        </View>
+        <Animated.View style={[styles.iconCircle, pulseStyle]}>
+          <Animated.View style={iconStyle}>
+            {processing && !isCash && !isManual ? (
+              <Animated.View
+                style={[{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  borderWidth: 3,
+                  borderColor: colors.teal,
+                  borderTopColor: "transparent",
+                }, spinStyle]}
+              />
+            ) : isCash ? (
+              <Banknote size={40} color={colors.teal} />
+            ) : (
+              <CreditCard size={40} color={colors.teal} />
+            )}
+          </Animated.View>
+        </Animated.View>
 
         {/* Amount */}
-        <Text style={styles.amount}>{formatCurrency(amountDue)}</Text>
+        <Animated.Text
+          entering={FadeInUp.duration(300).delay(80)}
+          style={styles.amount}
+        >
+          {formatCurrency(amountDue)}
+        </Animated.Text>
 
         {/* Tip line */}
         {tipAmount > 0 && (
-          <Text style={styles.tipLine}>
+          <Animated.Text
+            entering={FadeInUp.duration(300).delay(140)}
+            style={styles.tipLine}
+          >
             Including {formatCurrency(tipAmount)} tip
-          </Text>
+          </Animated.Text>
         )}
 
         {/* Savings line */}
         {isCash && savingsAmount > 0 && (
-          <Text style={styles.savingsLine}>
+          <Animated.Text
+            entering={FadeInUp.duration(300).delay(160)}
+            style={styles.savingsLine}
+          >
             You saved {formatCurrency(savingsAmount)}
-          </Text>
+          </Animated.Text>
         )}
 
         {/* Instruction */}
-        <Text style={styles.instruction}>
+        <Animated.Text
+          entering={FadeInUp.duration(300).delay(200)}
+          style={styles.instruction}
+        >
           {processing && !isCash && !isManual
             ? "Processing payment..."
             : isCash
@@ -111,12 +187,7 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
               : processing
                 ? "Processing payment..."
                 : "Tap, insert, or swipe your card"}
-        </Text>
-      </View>
-
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Powered by DEXA</Text>
+        </Animated.Text>
       </View>
     </View>
   );
@@ -213,18 +284,5 @@ const styles = StyleSheet.create({
     color: colors.heading,
     textAlign: "center",
     marginTop: 8,
-  },
-  footer: {
-    marginTop: 6,
-    paddingTop: 4,
-    paddingBottom: 6,
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  footerText: {
-    fontSize: 9,
-    color: colors.label,
-    fontWeight: "500",
   },
 });

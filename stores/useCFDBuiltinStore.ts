@@ -3,53 +3,55 @@
 // POS writes via .getState().update(), secondary display reads reactively.
 // No persistence — ephemeral, reset on app restart.
 import type {
-  CFDCartItem,
   CFDBranding,
+  CFDCartItem,
   CFDPayload,
-  CFDScreenState,
-} from "@/types/cfd.types";
-import { create } from "zustand";
+  CFDScreenState
+} from '@/types/cfd.types'
+import { create } from 'zustand'
 
 interface CFDBuiltinState {
-  screenState: CFDScreenState;
-  serverName: string | null;
-  customerName: string | null;
-  orderNumber: string | null;
-  orderType: string | null;
-  tableName: string | null;
-  guestCount: number | null;
-  items: CFDCartItem[];
+  screenState: CFDScreenState
+  serverName: string | null
+  customerName: string | null
+  orderNumber: string | null
+  orderType: string | null
+  tableName: string | null
+  guestCount: number | null
+  items: CFDCartItem[]
 
-  subtotal: number;
-  subtotalCash: number;
-  subtotalCard: number;
-  discountAmount: number;
-  taxAmount: number;
-  taxCash: number;
-  taxCard: number;
-  tipAmount: number;
-  tipPercentage: number | null;
-  total: number;
-  totalCash: number;
-  totalCard: number;
-  savingsAmount: number;
-  outstandingTotal: number;
-  amountPaid: number;
+  subtotal: number
+  subtotalCash: number
+  subtotalCard: number
+  discountAmount: number
+  taxAmount: number
+  taxCash: number
+  taxCard: number
+  tipAmount: number
+  tipPercentage: number | null
+  total: number
+  totalCash: number
+  totalCard: number
+  savingsAmount: number
+  outstandingTotal: number
+  amountPaid: number
 
-  branding: CFDBranding | null;
-  layout: CFDPayload["layout"] | null;
-  orderingPanelImages: NonNullable<CFDPayload["orderingPanelImages"]>;
-  tipConfig: CFDPayload["tipConfig"] | null;
-  carouselImages: string[];
-  paymentMethod: "cash" | "card" | "manual" | null;
+  branding: CFDBranding | null
+  layout: CFDPayload['layout'] | null
+  orderingPanelImages: NonNullable<CFDPayload['orderingPanelImages']>
+  tipConfig: CFDPayload['tipConfig'] | null
+  carouselImages: string[]
+  paymentMethod: 'cash' | 'card' | 'manual' | null
+  loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
+  loyaltyResult: CFDPayload['loyaltyResult'] | null
 
   // Actions
-  update: (data: Partial<Omit<CFDBuiltinState, "update" | "reset">>) => void;
-  reset: () => void;
+  update: (data: Partial<Omit<CFDBuiltinState, 'update' | 'reset'>>) => void
+  reset: () => void
 }
 
-const initialState: Omit<CFDBuiltinState, "update" | "reset"> = {
-  screenState: "idle",
+const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
+  screenState: 'idle',
   serverName: null,
   customerName: null,
   orderNumber: null,
@@ -78,10 +80,17 @@ const initialState: Omit<CFDBuiltinState, "update" | "reset"> = {
   tipConfig: null,
   carouselImages: [],
   paymentMethod: null,
-};
+  loyaltyPrompt: null,
+  loyaltyResult: null
+}
 
-export const useCFDBuiltinStore = create<CFDBuiltinState>()((set) => ({
+export const useCFDBuiltinStore = create<CFDBuiltinState>()(set => ({
   ...initialState,
-  update: (data) => set(data),
-  reset: () => set(initialState),
-}));
+  update: data => {
+    if ('loyaltyResult' in data && data.loyaltyResult === null) {
+      console.warn('[CFDBuiltinStore] loyaltyResult being set to null')
+    }
+    set(data)
+  },
+  reset: () => set(initialState)
+}))

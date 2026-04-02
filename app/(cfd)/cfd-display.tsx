@@ -68,19 +68,10 @@ export default function CFDDisplayScreen () {
   if (connectionStatus === 'disconnected') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.screen }}>
-        {/* Connection indicator */}
+        {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            width: 10,
-            height: 10,
-            borderRadius: 5,
-            backgroundColor: colors.danger,
-            zIndex: 100
-          }}
+          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
         />
 
         {/* Error content */}
@@ -171,19 +162,10 @@ export default function CFDDisplayScreen () {
   if (connectionStatus === 'connecting') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.screen }}>
-        {/* Connection indicator */}
+        {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            width: 10,
-            height: 10,
-            borderRadius: 5,
-            backgroundColor: colors.warning,
-            zIndex: 100
-          }}
+          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
         />
 
         {/* Connecting content */}
@@ -240,19 +222,10 @@ export default function CFDDisplayScreen () {
   return (
     <CFDExternalDisplayProvider>
       <View style={{ flex: 1, backgroundColor: colors.screen }}>
-        {/* Connection indicator */}
+        {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            width: 10,
-            height: 10,
-            borderRadius: 5,
-            backgroundColor: colors.success,
-            zIndex: 100
-          }}
+          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
         />
 
         {/* Screen content */}
