@@ -1,13 +1,7 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
 import { colors } from '@/lib/theme'
-import {
-  Banknote,
-  CreditCard,
-  Delete,
-  Keyboard,
-  UtensilsCrossed
-} from 'lucide-react-native'
-import React, { useEffect, useState } from 'react'
+import { Delete, UtensilsCrossed } from 'lucide-react-native'
+import { useEffect, useState } from 'react'
 import {
   Modal,
   Pressable,
@@ -18,10 +12,7 @@ import {
 } from 'react-native'
 import Animated, {
   FadeIn,
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring
+  FadeInDown
 } from 'react-native-reanimated'
 
 interface Props {
@@ -32,8 +23,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const {
     tipConfig,
     tipAmount: externalTipAmount,
-    tipPercentage: externalTipPercentage,
-    paymentMethod
+    tipPercentage: externalTipPercentage
   } = useCFDDisplayData()
 
   const [selectedPercentage, setSelectedPercentage] = useState<number | null>(
@@ -60,21 +50,6 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const subtotal = tipConfig?.subtotalForTip ?? 0
   const presets = tipConfig?.presetPercentages ?? [15, 20, 25]
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
-  const paymentMethodLabel =
-    paymentMethod === 'cash'
-      ? 'Cash'
-      : paymentMethod === 'manual'
-      ? 'Manual'
-      : paymentMethod === 'card'
-      ? 'Card'
-      : 'Not set'
-
-  const PaymentMethodIcon =
-    paymentMethod === 'cash'
-      ? Banknote
-      : paymentMethod === 'manual'
-      ? Keyboard
-      : CreditCard
 
   const customAmountCents = Math.round((parseFloat(customAmount) || 0) * 100)
   const selectedTipAmount = showCustom
@@ -84,13 +59,14 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
     : 0
   const hasSelection =
     hasMadeSelection && (!showCustom || customAmount.trim().length > 0)
-  const isConfirmDisabled = !hasSelection || showModal
   const isModalConfirmDisabled = !hasSelection
 
   const handlePresetSelect = (percentage: number) => {
+    const tipAmount = Math.round(subtotal * (percentage / 100))
     setSelectedPercentage(percentage)
     setShowCustom(false)
     setHasMadeSelection(true)
+    onTipSelected(tipAmount, percentage)
   }
 
   const handleNoTip = () => {
@@ -126,155 +102,80 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
     })
   }
 
-  // Animate selected tip amount change
-  const amountScale = useSharedValue(1)
-  const prevTipRef = React.useRef(selectedTipAmount)
-  useEffect(() => {
-    if (selectedTipAmount !== prevTipRef.current) {
-      prevTipRef.current = selectedTipAmount
-      amountScale.value = withSpring(
-        1.12,
-        { damping: 8, stiffness: 300 },
-        () => {
-          amountScale.value = withSpring(1, { damping: 12, stiffness: 200 })
-        }
-      )
-    }
-  }, [selectedTipAmount])
-  const amountStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: amountScale.value }]
-  }))
 
   return (
     <View style={styles.outer}>
-      <Animated.View entering={FadeIn.duration(250)} style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.iconBox}>
-            <UtensilsCrossed size={20} color={colors.teal} />
-          </View>
-          <Text style={styles.restaurantName}>Add a tip</Text>
-        </View>
-        <Text style={styles.headerSubtitle}>
-          Order total: {formatCurrency(subtotal)}
-        </Text>
-      </Animated.View>
-
-      <Animated.View
-        entering={FadeInDown.duration(220).delay(40)}
-        style={styles.paymentMethodBar}
-      >
-        <View style={styles.paymentMethodLeft}>
-          <PaymentMethodIcon size={16} color={colors.teal} />
-          <Text style={styles.paymentMethodLabel}>Payment Method</Text>
-        </View>
-        <Text style={styles.paymentMethodValue}>{paymentMethodLabel}</Text>
-      </Animated.View>
-
       <View style={styles.body}>
-        <View style={styles.contentColumn}>
-          <Animated.View
-            entering={FadeInDown.duration(300).delay(60)}
-            style={styles.heroCard}
-          >
-            <View style={styles.selectionSummary}>
-              <Text style={styles.selectionLabel}>Selected Tip</Text>
-              <Animated.Text style={[styles.selectionAmount, amountStyle]}>
-                {formatCurrency(selectedTipAmount)}
-              </Animated.Text>
-            </View>
-          </Animated.View>
+        <Animated.View entering={FadeIn.duration(250)} style={styles.titleSection}>
+          <Text style={styles.title}>Add a tip</Text>
+          <Text style={styles.subtitle}>Order total: {formatCurrency(subtotal)}</Text>
+        </Animated.View>
 
-          <View style={styles.presetGrid}>
-            {presets.map((pct, index) => {
-              const tipAmt = Math.round(subtotal * (pct / 100))
-              const isSelected = selectedPercentage === pct && !showCustom
-              return (
-                <Animated.View
-                  key={pct}
-                  entering={FadeInDown.duration(300).delay(120 + index * 60)}
-                >
-                  <Pressable
-                    onPress={() => handlePresetSelect(pct)}
-                    style={[
-                      styles.presetCard,
-                      isSelected && styles.presetCardSelected
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.presetPct,
-                        isSelected && styles.presetPctSelected
-                      ]}
-                    >
-                      {pct}%
-                    </Text>
-                    <Text
-                      style={[
-                        styles.presetAmt,
-                        isSelected && styles.presetAmtSelected
-                      ]}
-                    >
-                      {formatCurrency(tipAmt)}
-                    </Text>
-                  </Pressable>
-                </Animated.View>
-              )
-            })}
-          </View>
-
-          <Animated.View
-            entering={FadeInDown.duration(300).delay(300)}
-            style={styles.actionsSection}
-          >
-            {tipConfig?.allowCustom !== false && (
-              <Pressable
-                onPress={() => {
-                  setShowCustom(true)
-                  setSelectedPercentage(null)
-                  setHasMadeSelection(true)
-                  setShowModal(true)
-                }}
-                style={[styles.customBtn, showCustom && styles.customBtnActive]}
+        <View style={styles.presetGrid}>
+          {presets.map((pct, index) => {
+            const tipAmt = Math.round(subtotal * (pct / 100))
+            const isSelected = selectedPercentage === pct && !showCustom
+            return (
+              <Animated.View
+                key={pct}
+                entering={FadeInDown.duration(300).delay(80 + index * 60)}
+                style={styles.presetCardWrapper}
               >
-                <Text
+                <Pressable
+                  onPress={() => handlePresetSelect(pct)}
                   style={[
-                    styles.customBtnText,
-                    showCustom && styles.customBtnTextActive
+                    styles.presetCard,
+                    isSelected && styles.presetCardSelected
                   ]}
                 >
-                  {showCustom && customAmount
-                    ? `Custom Tip: $${customAmount}`
-                    : 'Enter Custom Tip'}
-                </Text>
-              </Pressable>
-            )}
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={handleConfirmTip}
-              disabled={isConfirmDisabled}
-              style={[
-                styles.confirmBtn,
-                isConfirmDisabled && styles.confirmBtnDisabled
-              ]}
-            >
-              <Text
-                style={[
-                  styles.confirmBtnText,
-                  isConfirmDisabled && styles.confirmBtnTextDisabled
-                ]}
-              >
-                {selectedTipAmount > 0
-                  ? `Confirm ${formatCurrency(selectedTipAmount)} Tip`
-                  : 'Confirm Tip'}
-              </Text>
-            </TouchableOpacity>
-
-            <Pressable onPress={handleNoTip} style={styles.noTipBtn}>
-              <Text style={styles.noTipText}>No Tip</Text>
-            </Pressable>
-          </Animated.View>
+                  <Text
+                    style={[
+                      styles.presetPct,
+                      isSelected && styles.presetPctSelected
+                    ]}
+                  >
+                    {pct}%
+                  </Text>
+                  <Text
+                    style={[
+                      styles.presetAmt,
+                      isSelected && styles.presetAmtSelected
+                    ]}
+                  >
+                    {formatCurrency(tipAmt)}
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            )
+          })}
         </View>
+
+        <Animated.View
+          entering={FadeInDown.duration(300).delay(300)}
+          style={styles.actionsSection}
+        >
+          {tipConfig?.allowCustom !== false && (
+            <Pressable
+              onPress={() => {
+                setShowCustom(true)
+                setSelectedPercentage(null)
+                setHasMadeSelection(true)
+                setShowModal(true)
+              }}
+              style={[styles.customBtn, showCustom && styles.customBtnActive]}
+            >
+              <Text style={styles.customBtnText}>
+                {showCustom && customAmount
+                  ? `Custom Tip: $${customAmount}`
+                  : 'Custom Amount'}
+              </Text>
+            </Pressable>
+          )}
+
+          <Pressable onPress={handleNoTip} style={styles.noTipBtn}>
+            <Text style={styles.noTipText}>No Tip</Text>
+          </Pressable>
+        </Animated.View>
       </View>
 
       {/* Custom Amount Modal */}
@@ -361,194 +262,96 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.screen
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.panel
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12
-  },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  restaurantName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.heading
-  },
-  headerSubtitle: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: colors.label
-  },
-  container: {
-    flexDirection: 'row'
-  },
   body: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 24
+    paddingVertical: 24,
+    gap: 20
   },
-  paymentMethodBar: {
-    marginTop: 10,
-    marginHorizontal: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: `${colors.teal}40`,
-    backgroundColor: `${colors.teal}12`,
-    flexDirection: 'row',
+  titleSection: {
     alignItems: 'center',
-    justifyContent: 'space-between'
+    gap: 4
   },
-  paymentMethodLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.heading
   },
-  paymentMethodLabel: {
-    fontSize: 11,
-    color: colors.label,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8
-  },
-  paymentMethodValue: {
-    fontSize: 14,
-    color: colors.teal,
-    fontWeight: '700'
-  },
-  contentColumn: {
-    width: '100%',
-    maxWidth: 520,
-    gap: 16
-  },
-  heroCard: {
-    width: '100%'
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: colors.label
   },
   presetGrid: {
     flexDirection: 'row',
     gap: 12,
-    alignSelf: 'center',
-    justifyContent: 'center'
+    width: '100%',
+    maxWidth: 680
+  },
+  presetCardWrapper: {
+    flex: 1
   },
   presetCard: {
-    width: 170,
-    minHeight: 112,
-    paddingVertical: 18,
-    borderRadius: 16,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    width: '100%',
+    paddingVertical: 24,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: colors.panel,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4
+    gap: 6
   },
   presetCardSelected: {
-    backgroundColor: `${colors.teal}12`,
-    borderColor: colors.teal
+    borderWidth: 2,
+    borderColor: colors.teal,
+    backgroundColor: `${colors.teal}15`
   },
   presetPct: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: colors.heading
   },
   presetPctSelected: {
-    color: colors.teal
+    color: colors.heading
   },
   presetAmt: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: colors.label
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.teal
   },
   presetAmtSelected: {
     color: colors.teal
   },
-  selectionSummary: {
-    backgroundColor: colors.screen,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    gap: 2
-  },
-  selectionLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.label,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8
-  },
-  selectionAmount: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.teal
-  },
   actionsSection: {
     width: '100%',
-    gap: 12,
+    maxWidth: 680,
+    gap: 14,
     alignItems: 'center'
   },
   customBtn: {
     width: '100%',
     paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panel,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.teal,
+    backgroundColor: `${colors.teal}08`,
     alignItems: 'center'
   },
   customBtnActive: {
-    borderColor: colors.teal,
-    backgroundColor: `${colors.teal}10`
+    backgroundColor: `${colors.teal}18`
   },
   customBtnText: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.teal
   },
-  customBtnTextActive: {
-    color: colors.teal
-  },
   noTipBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 16
+    paddingVertical: 6,
+    paddingHorizontal: 12
   },
   noTipText: {
-    fontSize: 14,
-    color: colors.label,
-    fontWeight: '500'
-  },
-  footer: {
-    marginTop: 6,
-    paddingTop: 4,
-    paddingBottom: 6,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: colors.border
-  },
-  footerText: {
-    fontSize: 9,
+    fontSize: 13,
     color: colors.label,
     fontWeight: '500'
   },

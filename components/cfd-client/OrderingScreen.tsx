@@ -2,7 +2,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
 import { colors } from '@/lib/theme'
 import type { CFDCartItem } from '@/types/cfd.types'
 import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import {
   FlatList,
   Image,
@@ -13,7 +13,6 @@ import {
 } from 'react-native'
 import Animated, {
   FadeInDown,
-  FadeOutUp,
   LinearTransition,
   runOnJS,
   useAnimatedStyle,
@@ -68,10 +67,13 @@ export function OrderingScreen () {
     prevCount.current = items.length
   }, [items.length])
 
-  const savingsAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: savingsOpacity.value,
-    pointerEvents: savingsOpacity.value > 0 ? 'auto' : 'none'
-  }), [savingsOpacity])
+  const savingsAnimatedStyle = useAnimatedStyle(
+    () => ({
+      opacity: savingsOpacity.value,
+      pointerEvents: savingsOpacity.value > 0 ? 'auto' : 'none'
+    }),
+    [savingsOpacity]
+  )
 
   // Debounced update to ignore temporary zero values during item additions
   useEffect(() => {
@@ -82,7 +84,9 @@ export function OrderingScreen () {
     savingsDebounceRef.current = setTimeout(() => {
       if (lastSavingsAmount.current !== savingsAmount) {
         lastSavingsAmount.current = savingsAmount
-        savingsOpacity.value = withTiming(savingsAmount > 0 ? 1 : 0, { duration: 300 })
+        savingsOpacity.value = withTiming(savingsAmount > 0 ? 1 : 0, {
+          duration: 300
+        })
       }
     }, 100)
 
@@ -352,7 +356,7 @@ export function OrderingScreen () {
               }}
             />
 
-            {/* Total (card) */}
+            {/* Total (cash) */}
             <View
               style={{
                 flexDirection: 'row',
@@ -362,7 +366,28 @@ export function OrderingScreen () {
               }}
             >
               <Text
-                style={{ color: colors.label, fontSize: 11, fontWeight: '500' }}
+                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+              >
+                Total (cash)
+              </Text>
+              <Text
+                style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
+              >
+                {formatCurrency(totalCash)}
+              </Text>
+            </View>
+
+            {/* Total (card) */}
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 4
+              }}
+            >
+              <Text
+                style={{ color: colors.label, fontSize: 14, fontWeight: '600' }}
               >
                 Total (card)
               </Text>
@@ -377,34 +402,8 @@ export function OrderingScreen () {
               </Text>
             </View>
 
-            {/* Total (cash) */}
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 4
-              }}
-            >
-              <Text
-                style={{ color: colors.teal, fontSize: 11, fontWeight: '500' }}
-              >
-                Total (cash)
-              </Text>
-              <Text
-                style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
-              >
-                {formatCurrency(totalCash)}
-              </Text>
-            </View>
-
             {/* Cash Savings - Reserved Space - Always Rendered */}
-            <Animated.View
-              style={[
-                { marginBottom: 4 },
-                savingsAnimatedStyle
-              ]}
-            >
+            <Animated.View style={[{ marginBottom: 4 }, savingsAnimatedStyle]}>
               <Text
                 style={{
                   color: colors.teal,
