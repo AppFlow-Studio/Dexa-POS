@@ -1036,10 +1036,10 @@ export const useKDSStore = create<KDSState>()(
       },
 
       advanceTicketStatus: (ticketId, itemIds, newStatus) => {
-        const { tickets } = get()
+        const { tickets, _ticketsById } = get()
 
-        // Find the ticket to get the order ID
-        const ticket = tickets.find(t => t.ticket_id === ticketId)
+        // O(1) lookup via map
+        const ticket = _ticketsById[ticketId]
         const orderId = ticket?.db_order_id
 
         // Map newStatus to KDS ticket status for optimistic update
@@ -1064,35 +1064,38 @@ export const useKDSStore = create<KDSState>()(
         })
 
         let updatedTickets: KDSTicket[]
+        let updatedById: Record<string, KDSTicket>
         if (ticketStatus === null) {
           // Served → remove from active, add to done; clear recalled state
           _recalledTicketIds.delete(ticketId)
-          const servedTicket = tickets.find(t => t.ticket_id === ticketId)
           updatedTickets = tickets.filter(t => t.ticket_id !== ticketId)
+          updatedById = { ..._ticketsById }
+          delete updatedById[ticketId]
 
-          if (servedTicket) {
+          if (ticket) {
             const updatedDone = [
-              { ...servedTicket, status: 'done' as KDSTicket['status'] },
+              { ...ticket, status: 'done' as KDSTicket['status'] },
               ...get().doneTickets
             ].slice(0, 50)
             set({ doneTickets: updatedDone, doneCount: updatedDone.length })
           }
         } else {
           const itemIdSet = new Set(itemIds)
-          updatedTickets = tickets.map(t => {
-            if (t.ticket_id !== ticketId) return t
-            const resetEpoch = ticketStatus === 'ready' && _recalledTicketIds.has(ticketId)
-            return {
-              ...t,
-              status: ticketStatus as KDSTicket['status'],
-              items: t.items.map(item =>
-                itemIdSet.has(item.id)
-                  ? { ...item, kitchen_status: newStatus }
-                  : item
-              ),
-              ...(resetEpoch ? { start_time_epoch: Date.now() } : {})
-            }
-          })
+          const resetEpoch = ticketStatus === 'ready' && _recalledTicketIds.has(ticketId)
+          const updatedTicket: KDSTicket = {
+            ...ticket!,
+            status: ticketStatus as KDSTicket['status'],
+            items: ticket!.items.map(item =>
+              itemIdSet.has(item.id)
+                ? { ...item, kitchen_status: newStatus }
+                : item
+            ),
+            ...(resetEpoch ? { start_time_epoch: Date.now() } : {})
+          }
+          updatedTickets = tickets.map(t =>
+            t.ticket_id === ticketId ? updatedTicket : t
+          )
+          updatedById = { ..._ticketsById, [ticketId]: updatedTicket }
         }
 
         const bucketed = smartBucketTickets(
@@ -1101,7 +1104,7 @@ export const useKDSStore = create<KDSState>()(
           get().prioritizedTicketIds,
           get().newOrderPosition
         )
-        set({ tickets: updatedTickets, ...bucketed })
+        set({ tickets: updatedTickets, _ticketsById: updatedById, ...bucketed })
 
         // Backend sync with cancellable retry (action-specific key to avoid cross-action cancellation)
         const retryKey = `advance_${ticketId}_${newStatus}`
@@ -1130,24 +1133,13 @@ export const useKDSStore = create<KDSState>()(
           if (newStatus === 'served' && orderId) {
             const orderStore = useOrderStore.getState()
             const order = orderStore.getOrder(orderId)
-            console.log(
-              '[KDSStore.advanceTicketStatus] Checking for table session update:',
-              { orderId, session_id: order?.session_id }
-            )
             if (order && order.session_id) {
               const sessionStore = useTableSessionStore.getState()
               const tableIds = sessionStore.sessionTableIndex[order.session_id]
               if (tableIds && tableIds.length > 0) {
                 const primaryTableId = tableIds[0]
                 const session = sessionStore.sessions[primaryTableId]
-                console.log('[KDSStore.advanceTicketStatus] Found session:', {
-                  sessionId: session?.id,
-                  currentStatus: session?.status
-                })
                 if (session && session.id === order.session_id) {
-                  console.log(
-                    '[KDSStore.advanceTicketStatus] Calling updateSessionStatus with served'
-                  )
                   sessionStore
                     .updateSessionStatus(session.id, 'served')
                     .catch(err => {
@@ -1223,12 +1215,16 @@ export const useKDSStore = create<KDSState>()(
           // overlayPendingActions will preserve the recalled ticket's optimistic state
         }
 
-        // Always schedule a background refetch for authoritative server state.
-        // This is critical for display-filtered KDS stations where client-side
-        // filtering may miss items that server-side routing (kds_item_status) includes.
+        // Schedule a background refetch for authoritative server state.
+        // Skip when all tickets for this order have pending actions — the broadcast
+        // is our own echo and the optimistic state is already correct.
         const locationId = order.location_id
         if (locationId) {
-          get().scheduleRefetch(locationId)
+          const allProtected = orderTids && orderTids.size > 0 &&
+            Array.from(orderTids).every(tid => _pendingActions.has(tid))
+          if (!allProtected) {
+            get().scheduleRefetch(locationId)
+          }
         }
 
         // Client-side display filtering — always filter when display has routing rules
@@ -1313,10 +1309,15 @@ export const useKDSStore = create<KDSState>()(
           get().prioritizedTicketIds,
           get().newOrderPosition
         )
+        // Incremental order-id index update: only touch the one order this broadcast is for
+        const prevOrderIndex = get()._ticketIdsByOrderId
+        const newTidSet = new Set(stabilizedNewTickets.map(t => t.ticket_id))
+        const updatedOrderIndex = { ...prevOrderIndex, [order.id]: newTidSet }
+
         set({
           tickets: reconciled,
           _ticketsById: mergedById,
-          _ticketIdsByOrderId: buildOrderIdIndex(mergedById),
+          _ticketIdsByOrderId: updatedOrderIndex,
           ...bucketed
         })
 
@@ -1335,14 +1336,14 @@ export const useKDSStore = create<KDSState>()(
         if (_refetchTimeout) clearTimeout(_refetchTimeout)
         _refetchTimeout = setTimeout(() => {
           get()._backgroundFetchTickets(locationId)
-        }, 5000)
+        }, 1500)
       },
 
       // ─── Long-Press Actions ─────────────────────────────────────────
 
       recallTicket: (ticketId: string) => {
-        const { tickets } = get()
-        const ticket = tickets.find(t => t.ticket_id === ticketId)
+        const { tickets, _ticketsById } = get()
+        const ticket = _ticketsById[ticketId]
         if (!ticket || ticket.status !== 'ready') return
 
         const itemIds = ticket.items.map(i => i.id)
@@ -1407,8 +1408,8 @@ export const useKDSStore = create<KDSState>()(
       isTicketRecalled: (ticketId: string) => _recalledTicketIds.has(ticketId),
 
       prioritizeTicket: (ticketId: string) => {
-        const { tickets, prioritizedTicketIds } = get()
-        const ticket = tickets.find(t => t.ticket_id === ticketId)
+        const { tickets, _ticketsById, prioritizedTicketIds } = get()
+        const ticket = _ticketsById[ticketId]
         if (!ticket) return
         const nextPriorityState = !prioritizedTicketIds.has(ticketId)
 
@@ -1484,8 +1485,8 @@ export const useKDSStore = create<KDSState>()(
       },
 
       toggleRush: (ticketId: string) => {
-        const { tickets } = get()
-        const ticket = tickets.find(t => t.ticket_id === ticketId)
+        const { tickets, _ticketsById } = get()
+        const ticket = _ticketsById[ticketId]
         if (!ticket) return
 
         const currentRush = ticket.items.some(i => i.rush)
@@ -1542,8 +1543,8 @@ export const useKDSStore = create<KDSState>()(
       },
 
       markItemDone: (ticketId: string, itemId: string) => {
-        const { tickets } = get()
-        const ticket = tickets.find(t => t.ticket_id === ticketId)
+        const { tickets, _ticketsById } = get()
+        const ticket = _ticketsById[ticketId]
         if (!ticket) return
 
         const item = ticket.items.find(i => i.id === itemId)

@@ -51,7 +51,7 @@ import Animated, {
   Easing,
   FadeIn,
   FadeOut,
-  SequencedTransition,
+  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -84,9 +84,11 @@ const MODIFIER_ADD_COLOR = '#0B5E56'
 const MANAGER_ROLES = ['merchant.manager', 'merchant.admin', 'merchant.owner']
 
 // ─── Memoized animation configs (avoid re-allocation per render) ─
-const LAYOUT_ANIM = SequencedTransition.duration(300)
+const LAYOUT_ANIM = LinearTransition.duration(200)
 const CARD_ENTER_ANIM = FadeIn.duration(200)
 const CARD_EXIT_ANIM = FadeOut.duration(150)
+const KDS_DOUBLE_TAP_MS = 420
+const KDS_AUTOMATION_CHECK_MS = 30_000
 
 // ─── Pulsing Dot (for connection status) ─────────────────────────
 const PulsingDot = () => {
@@ -338,27 +340,19 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     displaySettings,
     urgencyThresholds
   }) => {
-    // Subscribe to own focus state via Zustand selector — only focused/unfocused card re-renders
     const isFocused = useKDSStore(
       useCallback(
         s => s.focusedTicketId === ticket.ticket_id,
         [ticket.ticket_id]
       )
     )
-    const setFocusedTicketId = useKDSStore(s => s.setFocusedTicketId)
-
-    // Subscribe to bulkMode via Zustand selector — avoids parent re-render propagation
     const bulkMode = useKDSStore(s => s.bulkMode)
-
-    // Subscribe to own selection state via Zustand selector — only the toggled card re-renders
     const isSelected = useKDSStore(
       useCallback(
         s => s.selectedTicketIds.has(ticket.ticket_id),
         [ticket.ticket_id]
       )
     )
-
-    // Subscribe to timerTick via Zustand selector — only re-renders when bucketed string changes
     const timeElapsed = useKDSStore(
       useCallback(
         s => {
@@ -368,8 +362,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         [ticket.start_time_epoch]
       )
     )
-
-    // Urgency level — derived from timerTick, only changes at minute boundaries
     const urgencyLevel = useKDSStore(
       useCallback(
         s => {
@@ -379,6 +371,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         [ticket.start_time_epoch, urgencyThresholds]
       )
     )
+    const setFocusedTicketId = useKDSStore(s => s.setFocusedTicketId)
 
     // Card ref for position measurement
     const cardRef = useRef<View>(null)
@@ -389,8 +382,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const firstTapStatusRef = useRef<KDSTicket['status'] | null>(null)
     // Pre-measured card position (cached on first tap for instant double-tap)
     const cachedPosRef = useRef<CardPosition | undefined>(undefined)
-    // Delayed focus toggle to detect double-tap
-    const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // Animation (Reanimated — runs entirely on UI thread)
     const scaleValue = useSharedValue(1)
@@ -406,12 +397,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       }
 
       const now = Date.now()
-      const isDoubleTap = now - lastTapRef.current < 300
+      const isDoubleTap = now - lastTapRef.current < KDS_DOUBLE_TAP_MS
 
       if (!isDoubleTap) {
         // First tap — gentle pulse to signal acknowledgment
         lastTapRef.current = now
-        firstTapStatusRef.current = ticket.status  // lock in status at gesture start
+        firstTapStatusRef.current = ticket.status // lock in status at gesture start
 
         scaleValue.value = withSequence(
           withTiming(0.97, { duration: 80, easing: Easing.out(Easing.cubic) }),
@@ -426,27 +417,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           })
         }
 
-        // Schedule focus toggle for single tap (cancel if double-tap comes)
-        if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
-        focusTimeoutRef.current = setTimeout(() => {
-          // Only toggle focus if it's truly a single tap (no double-tap happened)
-          firstTapStatusRef.current = null  // clear on single tap
-          setFocusedTicketId(isFocused ? null : ticket.ticket_id)
-          focusTimeoutRef.current = null
-        }, 300)
+        // Immediate focus toggle to keep taps responsive under heavy load.
+        setFocusedTicketId(isFocused ? null : ticket.ticket_id)
         return
       }
 
-      // Double tap detected — cancel pending focus toggle and advance instead
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current)
-        focusTimeoutRef.current = null
-      }
+      // Double tap detected — advance immediately.
       lastTapRef.current = 0
 
       // Determine next status — use captured status from first tap (immune to in-flight re-renders)
       const capturedStatus = firstTapStatusRef.current
-      firstTapStatusRef.current = null  // clear for next gesture
+      firstTapStatusRef.current = null // clear for next gesture
 
       const itemIds = ticket.items.map(i => i.id)
       let newStatus: 'preparing' | 'ready' | 'served' | undefined
@@ -486,54 +467,72 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const hasRush = ticket.items.some(item => item.rush)
     const hasRefire = ticket.items.some(item => item.recalled)
 
-    // Filter/track done items + apply display settings
-    const doneItemCount = ticket.items.filter(
-      i => i.kitchen_status === 'ready'
-    ).length
-    let processedItems = hideDoneItems
-      ? ticket.items.filter(i => i.kitchen_status !== 'ready')
-      : [...ticket.items]
+    // Memoize expensive item filtering/aggregation/sorting for large ticket volumes.
+    const { doneItemCount, visibleItems } = useMemo(() => {
+      const doneCount = ticket.items.filter(
+        i => i.kitchen_status === 'ready'
+      ).length
 
-    // Aggregate identical items (same name + modifiers + notes)
-    if (displaySettings.aggregateIdenticalItems) {
-      const aggregated: (KDSTicketItem & { _aggregatedIds?: string[] })[] = []
-      const keyMap = new Map<string, number>()
-      for (const item of processedItems) {
-        const modKey = item.modifiers
-          .map(m => m.modifier_name)
-          .sort()
-          .join('|')
-        const key = `${item.name}__${modKey}__${
-          item.special_instructions ?? ''
-        }`
-        const idx = keyMap.get(key)
-        if (idx !== undefined) {
-          const existing = aggregated[idx]
-          aggregated[idx] = {
-            ...existing,
-            quantity: existing.quantity + item.quantity
+      let processed: KDSTicketItem[] = hideDoneItems
+        ? ticket.items.filter(i => i.kitchen_status !== 'ready')
+        : [...ticket.items]
+
+      if (displaySettings.aggregateIdenticalItems) {
+        const aggregated: KDSTicketItem[] = []
+        const keyMap = new Map<string, number>()
+        for (const item of processed) {
+          const modKey = item.modifiers
+            .map(m => m.modifier_name)
+            .sort()
+            .join('|')
+          const key = `${item.name}__${modKey}__${
+            item.special_instructions ?? ''
+          }`
+          const idx = keyMap.get(key)
+          if (idx !== undefined) {
+            const existing = aggregated[idx]
+            aggregated[idx] = {
+              ...existing,
+              quantity: existing.quantity + item.quantity
+            }
+          } else {
+            keyMap.set(key, aggregated.length)
+            aggregated.push({ ...item })
           }
-        } else {
-          keyMap.set(key, aggregated.length)
-          aggregated.push({ ...item })
         }
+        processed = aggregated
       }
-      processedItems = aggregated
-    }
 
-    // Stable sort: alphabetical by name (then id tiebreaker), or just by id
-    if (displaySettings.alphabeticalSort) {
-      processedItems = [...processedItems].sort((a, b) => {
-        const cmp = a.name.localeCompare(b.name)
-        return cmp !== 0 ? cmp : a.id.localeCompare(b.id)
+      processed = [...processed].sort((a, b) => {
+        if (displaySettings.alphabeticalSort) {
+          const cmp = a.name.localeCompare(b.name)
+          return cmp !== 0 ? cmp : a.id.localeCompare(b.id)
+        }
+        return a.id.localeCompare(b.id)
       })
-    } else {
-      processedItems = [...processedItems].sort((a, b) =>
-        a.id.localeCompare(b.id)
-      )
-    }
 
-    const visibleItems = processedItems
+      // Pre-sort modifiers per item so render doesn't sort on every pass
+      const withSortedMods = processed.map(item => {
+        if (item.modifiers.length === 0) return { item, sortedModifiers: item.modifiers }
+        const sorted = displaySettings.exclusionsAtTop
+          ? [...item.modifiers].sort((a, b) => {
+              const aR = a.is_no || a.modifier_group_name?.toLowerCase().includes('remove') || a.modifier_name?.toLowerCase().startsWith('no ') ? 0 : 1
+              const bR = b.is_no || b.modifier_group_name?.toLowerCase().includes('remove') || b.modifier_name?.toLowerCase().startsWith('no ') ? 0 : 1
+              return aR - bR
+            })
+          : item.modifiers
+        return { item, sortedModifiers: sorted }
+      })
+
+      return { doneItemCount: doneCount, visibleItems: withSortedMods }
+    }, [
+      ticket.items,
+      hideDoneItems,
+      displaySettings.aggregateIdenticalItems,
+      displaySettings.alphabeticalSort,
+      displaySettings.exclusionsAtTop
+    ])
+
     const hasHiddenDoneItems = hideDoneItems && doneItemCount > 0
 
     return (
@@ -746,7 +745,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
             {/* Items list */}
             <View style={{ padding: 10, backgroundColor: '#FFFFFF' }}>
-              {visibleItems.map((item: KDSTicketItem, index: number) => {
+              {visibleItems.map(({ item, sortedModifiers }, index) => {
                 const isItemDone = item.kitchen_status === 'ready'
                 return (
                   <Pressable
@@ -823,32 +822,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       </Text>
                     </View>
                     {/* Modifiers */}
-                    {item.modifiers.length > 0 &&
-                      (() => {
-                        let mods = [...item.modifiers]
-                        // Exclusions at top
-                        if (displaySettings.exclusionsAtTop) {
-                          mods.sort((a, b) => {
-                            const aRemoval =
-                              a.is_no ||
-                              a.modifier_group_name
-                                ?.toLowerCase()
-                                .includes('remove') ||
-                              a.modifier_name?.toLowerCase().startsWith('no ')
-                                ? 0
-                                : 1
-                            const bRemoval =
-                              b.is_no ||
-                              b.modifier_group_name
-                                ?.toLowerCase()
-                                .includes('remove') ||
-                              b.modifier_name?.toLowerCase().startsWith('no ')
-                                ? 0
-                                : 1
-                            return aRemoval - bRemoval
-                          })
-                        }
-                        return mods.map((mod, mi) => {
+                    {sortedModifiers.length > 0 &&
+                      sortedModifiers.map((mod, mi) => {
                           const isRemoval =
                             mod.is_no ||
                             mod.modifier_group_name
@@ -924,8 +899,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                               )}
                             </View>
                           )
-                        })
-                      })()}
+                      })}
                     {/* Special instructions */}
                     {item.special_instructions && (
                       <Text
@@ -987,26 +961,47 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     )
   },
   (prev, next) => {
-    // Check if ticket reference is the same AND items haven't changed
-    if (prev.ticket !== next.ticket) return false
-    // Check if item count or rush status changed
-    if (prev.ticket.items.length !== next.ticket.items.length) return false
+    // Skip re-render if callbacks and config are unchanged
     if (
-      prev.ticket.items.some(
-        (item, i) => item.rush !== next.ticket.items[i]?.rush
-      )
-    )
-      return false
+      prev.onAdvance !== next.onAdvance ||
+      prev.onToggleSelect !== next.onToggleSelect ||
+      prev.onLongPress !== next.onLongPress ||
+      prev.onItemPress !== next.onItemPress ||
+      prev.hideDoneItems !== next.hideDoneItems ||
+      prev.displaySettings !== next.displaySettings ||
+      prev.urgencyThresholds !== next.urgencyThresholds
+    ) return false
 
-    return (
-      prev.onAdvance === next.onAdvance &&
-      prev.onToggleSelect === next.onToggleSelect &&
-      prev.onLongPress === next.onLongPress &&
-      prev.onItemPress === next.onItemPress &&
-      prev.hideDoneItems === next.hideDoneItems &&
-      prev.displaySettings === next.displaySettings &&
-      prev.urgencyThresholds === next.urgencyThresholds
-    )
+    // Same reference — nothing changed
+    if (prev.ticket === next.ticket) return true
+
+    // Ticket reference changed — check if anything the card displays actually changed
+    const pt = prev.ticket, nt = next.ticket
+    if (
+      pt.status !== nt.status ||
+      pt.prioritized !== nt.prioritized ||
+      pt.item_count !== nt.item_count ||
+      pt.display_number !== nt.display_number ||
+      pt.order_number !== nt.order_number ||
+      pt.table_name !== nt.table_name ||
+      pt.customer_name !== nt.customer_name ||
+      pt.order_type !== nt.order_type ||
+      pt.start_time_epoch !== nt.start_time_epoch ||
+      pt.items.length !== nt.items.length
+    ) return false
+
+    for (let i = 0; i < pt.items.length; i++) {
+      const pi = pt.items[i], ni = nt.items[i]
+      if (
+        pi.id !== ni.id ||
+        pi.kitchen_status !== ni.kitchen_status ||
+        pi.quantity !== ni.quantity ||
+        pi.rush !== ni.rush ||
+        pi.recalled !== ni.recalled
+      ) return false
+    }
+
+    return true
   }
 )
 
@@ -1217,8 +1212,9 @@ const KitchenDisplayScreen = () => {
   const kdsNewOrderPosition = kdsConfig.newOrderPosition ?? 'right'
   const setNewOrderPosition = useKDSStore(s => s.setNewOrderPosition)
 
-  const tickets = useKDSStore(s => s.tickets)
-  const counts = useKDSStore(s => s.counts)
+  const countPending = useKDSStore(s => s.counts.pending)
+  const countCooking = useKDSStore(s => s.counts.cooking)
+  const countReady = useKDSStore(s => s.counts.ready)
   const isInitialLoading = useKDSStore(s => s.isInitialLoading)
   const hasHydrated = useKDSStore(s => s._hasHydrated)
   const isFetching = useKDSStore(s => s.isFetching)
@@ -1232,7 +1228,7 @@ const KitchenDisplayScreen = () => {
   const displayName = useKDSStore(s => s.kdsDisplayConfig?.displayName)
   // Bulk mode state from store
   const bulkMode = useKDSStore(s => s.bulkMode)
-  const selectedTicketIds = useKDSStore(s => s.selectedTicketIds)
+  const selectionCount = useKDSStore(s => s.selectedTicketIds.size)
   const toggleBulkMode = useKDSStore(s => s.toggleBulkMode)
   const toggleTicketSelection = useKDSStore(s => s.toggleTicketSelection)
   const selectAllVisible = useKDSStore(s => s.selectAllVisible)
@@ -1369,6 +1365,12 @@ const KitchenDisplayScreen = () => {
   // Focused ticket state (from store — each card subscribes individually for O(1) re-renders)
   const focusedTicketId = useKDSStore(s => s.focusedTicketId)
   const setFocusedTicketId = useKDSStore(s => s.setFocusedTicketId)
+  const focusedTicket = useKDSStore(
+    useCallback(
+      s => (focusedTicketId ? s._ticketsById[focusedTicketId] ?? null : null),
+      [focusedTicketId]
+    )
+  )
 
   // KDS logout handler
   const handleKDSLogout = useCallback(async () => {
@@ -1506,7 +1508,6 @@ const KitchenDisplayScreen = () => {
 
   // Auto-fire: pending → cooking after configured delay
   useEffect(() => {
-    
     if (!kdsAutoFireEnabled || !isReady) return
 
     const intervalId = setInterval(() => {
@@ -1522,7 +1523,7 @@ const KitchenDisplayScreen = () => {
           toast.show({
             title: `#${displayNum} auto-fired`,
             message: `Started preparing after ${kdsAutoFireDelayMinutes}m`,
-            type: 'info',
+            type: 'success',
             duration: 3000
           })
           advanceTicketStatus(
@@ -1532,7 +1533,7 @@ const KitchenDisplayScreen = () => {
           )
         }
       })
-    }, 15_000)
+    }, KDS_AUTOMATION_CHECK_MS)
 
     return () => clearInterval(intervalId)
   }, [
@@ -1568,7 +1569,7 @@ const KitchenDisplayScreen = () => {
           toast.show({
             title: `#${displayNum} auto-bumped`,
             message: `Ticket served after ${autoBumpMinutes}m`,
-            type: 'info',
+            type: 'success',
             duration: 3000
           })
           advanceTicketStatus(
@@ -1578,10 +1579,17 @@ const KitchenDisplayScreen = () => {
           )
         }
       })
-    }, 15_000)
+    }, KDS_AUTOMATION_CHECK_MS)
 
     return () => clearInterval(intervalId)
-  }, [autoBumpMinutes, readyTickets, isReady, advanceTicketStatus, isTicketRecalled, toast])
+  }, [
+    autoBumpMinutes,
+    readyTickets,
+    isReady,
+    advanceTicketStatus,
+    isTicketRecalled,
+    toast
+  ])
 
   // ─── Sound notifications on new orders ────────────────────────
   const soundServiceRef = useRef<KDSSoundService | null>(null)
@@ -1734,7 +1742,7 @@ const KitchenDisplayScreen = () => {
       const ticketIdsToAdvance =
         pendingBulkAction === 'all'
           ? activeFilteredTickets.map(t => t.ticket_id)
-          : Array.from(selectedTicketIds)
+          : Array.from(useKDSStore.getState().selectedTicketIds as Set<string>)
 
       if (ticketIdsToAdvance.length === 0) {
         toast.show({
@@ -1759,7 +1767,6 @@ const KitchenDisplayScreen = () => {
       findEmployeeByPin,
       pendingBulkAction,
       activeFilteredTickets,
-      selectedTicketIds,
       bulkAdvanceTickets,
       locationId,
       toast
@@ -1994,8 +2001,6 @@ const KitchenDisplayScreen = () => {
     </View>
   )
 
-  const selectionCount = selectedTicketIds.size
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* ─── Header ─── */}
@@ -2075,7 +2080,7 @@ const KitchenDisplayScreen = () => {
                           opacity: isFetching ? 0.7 : 1
                         }}
                       >
-                        {tab.key === 'done' ? doneCount : counts[tab.key]}
+                        {tab.key === 'done' ? doneCount : tab.key === 'pending' ? countPending : tab.key === 'cooking' ? countCooking : countReady}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -2221,7 +2226,13 @@ const KitchenDisplayScreen = () => {
             {/* Auto-fire badge */}
             {kdsAutoFireEnabled && kdsAutoFireDelayMinutes ? (
               <>
-                <View style={{ width: 1, height: 20, backgroundColor: colors.border }} />
+                <View
+                  style={{
+                    width: 1,
+                    height: 20,
+                    backgroundColor: colors.border
+                  }}
+                />
                 <View
                   style={{
                     flexDirection: 'row',
@@ -2236,7 +2247,13 @@ const KitchenDisplayScreen = () => {
                   }}
                 >
                   <Flame size={11} color={colors.info} />
-                  <Text style={{ color: colors.info, fontSize: 11, fontWeight: '600' }}>
+                  <Text
+                    style={{
+                      color: colors.info,
+                      fontSize: 11,
+                      fontWeight: '600'
+                    }}
+                  >
                     Fire {kdsAutoFireDelayMinutes}m
                   </Text>
                 </View>
@@ -2247,7 +2264,11 @@ const KitchenDisplayScreen = () => {
             {autoBumpMinutes ? (
               <>
                 <View
-                  style={{ width: 1, height: 20, backgroundColor: colors.border }}
+                  style={{
+                    width: 1,
+                    height: 20,
+                    backgroundColor: colors.border
+                  }}
                 />
                 <View
                   style={{
@@ -2557,45 +2578,43 @@ const KitchenDisplayScreen = () => {
           }}
         >
           {/* RECALL button — only show if ticket is ready */}
-          {focusedTicketId &&
-            tickets.find(t => t.ticket_id === focusedTicketId)?.status ===
-              'ready' && (
-              <TouchableOpacity
-                onPress={() => {
-                  if (focusedTicketId) {
-                    recallTicket(focusedTicketId)
-                    setFocusedTicketId(null)
-                  }
-                }}
+          {focusedTicketId && focusedTicket?.status === 'ready' && (
+            <TouchableOpacity
+              onPress={() => {
+                if (focusedTicketId) {
+                  recallTicket(focusedTicketId)
+                  setFocusedTicketId(null)
+                }
+              }}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              <RotateCcw size={14} color={colors.label} />
+              <Text
                 style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  backgroundColor: 'transparent',
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 10,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6
+                  color: colors.label,
+                  fontSize: 12,
+                  fontWeight: '600'
                 }}
               >
-                <RotateCcw size={14} color={colors.label} />
-                <Text
-                  style={{
-                    color: colors.label,
-                    fontSize: 12,
-                    fontWeight: '600'
-                  }}
-                >
-                  RECALL
-                </Text>
-              </TouchableOpacity>
-            )}
+                RECALL
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* BUMP ORDER button (center, teal) */}
           <TouchableOpacity
             onPress={() => {
-              const ticket = tickets.find(t => t.ticket_id === focusedTicketId)
+              const ticket = focusedTicket
               if (ticket) {
                 const itemIds = ticket.items.map(i => i.id)
                 let newStatus: 'preparing' | 'ready' | 'served' | undefined
