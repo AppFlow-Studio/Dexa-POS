@@ -10,6 +10,7 @@
  * - Dependency-aware operation execution
  */
 
+import { getDeviceId } from "@/lib/deviceId";
 import {
     initIdRegistry,
     isLocalId,
@@ -26,6 +27,7 @@ import {
     initOfflineSyncService,
     OfflineOperation,
     OPERATION_PRIORITY,
+    processQueueNow,
     queueDependentOperation,
     queueOperation,
 } from "@/services/offlineSyncService";
@@ -39,8 +41,12 @@ import {
     calculatePaidStatusFromPayments,
     useOrderStore,
 } from "@/stores/useOrderStore";
+// NOTE: usePaymentStore is NOT imported at top level to avoid circular dependency:
+// useOrderStore → offlineSyncInit → usePaymentStore → useOrderStore
+// Instead, use lazy require() at call site.
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
+import { queryClient } from "@/contexts/TanstackProvider";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
 
 let _supabaseClient: any = null;
@@ -80,6 +86,97 @@ export function getFailedPaymentOperations(): OfflineOperation[] {
 }
 
 /**
+ * Reconciliation sweep: find orders in unsyncedOrderIds that have no db_order_id
+ * and no pending create_order in the queue, then re-queue create_order for them.
+ *
+ * This is a safety net for when create_order ops are lost (MMKV corruption,
+ * dead-lettered, app restart edge cases).
+ */
+async function reconcileLostOrderCreations(): Promise<number> {
+  const store = useOrderStore.getState();
+  const { unsyncedOrderIds, ordersById } = store;
+  const selectedStore = useStoreSettingsStore.getState().selectedStore;
+
+  if (!selectedStore) {
+    console.log("[OfflineSync:reconcile] No store selected, skipping sweep");
+    return 0;
+  }
+
+  if (unsyncedOrderIds.length === 0) {
+    return 0;
+  }
+
+  console.log(
+    `[OfflineSync:reconcile] Scanning ${unsyncedOrderIds.length} unsynced orders for lost create_order ops...`,
+  );
+
+  let requeuedCount = 0;
+
+  for (const orderId of unsyncedOrderIds) {
+    const order = ordersById[orderId];
+
+    // Guard: order must exist in store
+    if (!order) continue;
+
+    // Guard: already has db_order_id (shouldn't be in unsyncedOrderIds, but be safe)
+    if (order.db_order_id) continue;
+
+    // Guard: already has a pending create_order in queue
+    if (hasPendingOrderCreation(orderId)) continue;
+
+    // Guard: skip voided/cancelled orders — no point syncing them
+    if (order.order_status === "void" || order.order_status === "cancelled")
+      continue;
+
+    console.log(
+      `[OfflineSync:reconcile] Order ${orderId} has no db_order_id and no pending create_order — re-queuing`,
+    );
+
+    // Build createOrderParams mirroring ensureOrderCreated (useOrderStore.ts:609-622)
+    await queueOperation({
+      type: "create_order",
+      params: {
+        localOrderId: orderId,
+        createOrderParams: {
+          p_merchant_id: selectedStore.merchant_id,
+          p_location_id: selectedStore.id,
+          p_order_type: order.order_type || "dine_in",
+          p_table_number: order.service_location_id || null,
+          p_customer_name: order.customer_name || null,
+          p_customer_phone: order.customer_phone || null,
+          p_special_instructions: null,
+          p_device_id: getDeviceId(),
+          p_created_by_staff_id:
+            useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+          p_station_id:
+            useStoreSettingsStore.getState().selectedStation?.id || null,
+        },
+      },
+      localOrderId: orderId,
+      contextSnapshot: {
+        order_type: order.order_type,
+        service_location_id: order.service_location_id,
+        storeId: selectedStore.id,
+        merchantId: selectedStore.merchant_id,
+        reconciliation_sweep: true,
+      },
+    });
+
+    requeuedCount++;
+  }
+
+  if (requeuedCount > 0) {
+    console.log(
+      `[OfflineSync:reconcile] Re-queued ${requeuedCount} lost create_order operations`,
+    );
+  } else {
+    console.log("[OfflineSync:reconcile] No lost create_order ops found");
+  }
+
+  return requeuedCount;
+}
+
+/**
  * Initialize the offline sync system.
  * Call this once at app startup.
  */
@@ -96,10 +193,23 @@ export async function initializeOfflineSync(): Promise<void> {
       // When we come back online, reconcile orders with failed syncs
       if (isOnline) {
         console.log(
-          "[OfflineSync] Network restored, checking for orders with failed syncs...",
+          "[OfflineSync] Network restored, flushing queue before reconciliation...",
         );
 
-        // Get fresh state after status update
+        // Flush the queue FIRST so create_order ops complete before anything
+        // tries to work with orders that don't have db_order_id yet
+        await processQueueNow();
+
+        // Reconciliation sweep: re-queue lost create_order ops
+        const requeuedCount = await reconcileLostOrderCreations();
+        if (requeuedCount > 0) {
+          console.log(
+            `[OfflineSync] Re-queued ${requeuedCount} lost create_order ops, flushing again...`,
+          );
+          await processQueueNow();
+        }
+
+        // Get fresh state after queue flush
         const currentStore = useOrderStore.getState();
         const failedOrders = currentStore.getOrdersWithFailedSyncs();
 
@@ -125,7 +235,7 @@ export async function initializeOfflineSync(): Promise<void> {
           console.log("[OfflineSync] No orders with failed syncs found");
         }
 
-        // NEW: Run reconciliation to fix any broken order-session relationships
+        // Run reconciliation to fix any broken order-session relationships
         // This handles out-of-order syncing where orders and sessions sync separately
         console.log("[OfflineSync] Running relationship reconciliation...");
         await reconcileRelationships();
@@ -133,6 +243,10 @@ export async function initializeOfflineSync(): Promise<void> {
     },
     onQueueChange: (count) => {
       store.setPendingSyncCount(count);
+      // Refresh payment store so "X payments queued" badge updates after sync
+      // Lazy require to avoid circular dep: useOrderStore → offlineSyncInit → usePaymentStore → useOrderStore
+      const { usePaymentStore } = require("@/stores/usePaymentStore");
+      usePaymentStore.getState().refreshOfflinePaymentStatus();
     },
     onOperationFailed: (op) => {
       console.log(
@@ -1061,6 +1175,14 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             console.log(
               `[OfflineSync:create_order] Order number: ${orderData.order_number || orderData.display_number}`,
             );
+
+            // Invalidate orders query so hydrateWorkspace picks up the server version
+            const locationId = createOrderParams.p_location_id;
+            if (locationId) {
+              queryClient.invalidateQueries({
+                queryKey: ["orders", "active", locationId],
+              });
+            }
           } else {
             console.error(
               "[OfflineSync:create_order] FAILED - No backend ID in response:",

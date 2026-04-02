@@ -70,6 +70,13 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
       { id: "delivery", label: "Delivery Management", icon: Truck, route: "/settings/delivery" },
     ],
   },
+  {
+    id: "staff",
+    title: "Staff Management",
+    items: [
+      { id: "staff-pins", label: "Staff PINs", icon: Users, route: "/settings/staff-pins" },
+    ],
+  },
 ];
 
 const SidebarNavigation = () => {

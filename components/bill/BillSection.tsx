@@ -5,6 +5,7 @@ import {
   getAutoRetryCount,
   isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
@@ -99,9 +100,8 @@ const BillSectionContent = ({
   const getSyncStatus = useOrderStore((state) => state.getSyncStatus);
   const retryFailedSyncs = useOrderStore((state) => state.retryFailedSyncs);
 
-  // Offline sync state
-  const isOnline = useOrderStore((state) => state.isOnline);
-  const pendingSyncCount = useOrderStore((state) => state.pendingSyncCount);
+  // Offline sync state — subscribe directly to offlineSyncService for reliable updates
+  const { isOnline, pendingSyncCount } = useNetworkStatus();
 
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { activeEmployeeId } = useEmployeeStore();
@@ -384,7 +384,7 @@ const BillSectionContent = ({
 
       {/* Offline / Sync Status Banner */}
       {(!isOnline || hasFailedSyncs || pendingSyncCount > 0) && (
-        <View className="px-3 py-1.5 gap-y-1" style={{ backgroundColor: colors.panel }}>
+        <View className="px-3 py-1.5 gap-y-1" style={{ backgroundColor: colors.background }}>
           {!isOnline && (
             <View className="flex-row items-center justify-center bg-amber-600 px-2.5 py-1.5 rounded-md">
               <WifiOff size={12} color="#FFFFFF" />

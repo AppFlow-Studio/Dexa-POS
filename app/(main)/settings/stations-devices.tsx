@@ -4,19 +4,22 @@ import { Switch } from '@/components/ui/switch'
 import { useCFD } from '@/contexts/CFDProvider'
 import { createSupabaseClient } from '@/lib/supabase'
 import { colors } from '@/lib/theme'
+import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { Station } from '@/types/station'
+import { Station, StationViewScope } from '@/types/station'
 import { useAuth } from '@clerk/clerk-expo'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import * as ImagePicker from 'expo-image-picker'
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Cpu,
   CreditCard,
+  Eye,
   Image as ImageIcon,
   Monitor,
   Plus,
@@ -241,6 +244,61 @@ const StationsDevicesScreen = () => {
       : 'half'
 
   const extractIp = (clientId: string) => clientId.substring(0, clientId.lastIndexOf(':'))
+
+  const selectedStation = useStoreSettingsStore(state => state.selectedStation)
+  const setSelectedStation = useStoreSettingsStore(state => state.setSelectedStation)
+  const [viewScopeUpdating, setViewScopeUpdating] = useState(false)
+
+  const handleViewScopeChange = async (newScope: StationViewScope) => {
+    if (!selectedStation || selectedStation.view_scope === newScope) return
+    setViewScopeUpdating(true)
+    try {
+      // 1. Update Supabase
+      const { error: updateError } = await supabase
+        .from('stations')
+        .update({ view_scope: newScope })
+        .eq('id', selectedStation.id)
+      if (updateError) {
+        Alert.alert('Error', 'Failed to update view scope')
+        return
+      }
+
+      // 2. Update local selectedStation (persists via MMKV)
+      const updatedStation = { ...selectedStation, view_scope: newScope }
+      setSelectedStation(updatedStation)
+
+      // 3. Update currentStation in order store
+      // The subscriber only fires on ID change, so we manually update
+      const stationForOrderStore: Station = {
+        id: updatedStation.id,
+        station_name: updatedStation.station_name,
+        station_type: updatedStation.station_type as Station['station_type'],
+        station_number: updatedStation.station_number,
+        is_active: true,
+        is_available: true,
+        current_session: null,
+        view_scope: newScope,
+        can_create_orders: updatedStation.can_create_orders,
+        can_process_payments: updatedStation.can_process_payments,
+        can_void_orders: updatedStation.can_void_orders,
+        can_apply_discounts: updatedStation.can_apply_discounts,
+        can_update_kitchen_status: updatedStation.can_update_kitchen_status,
+      }
+      useOrderStore.getState().setCurrentStation(stationForOrderStore)
+
+      // 4. If scope widened, fetch visible orders
+      if (newScope === 'location') {
+        await useOrderStore.getState().fetchVisibleOrders()
+      }
+
+      // Refresh stations list to reflect the change
+      refetch()
+    } catch {
+      Alert.alert('Error', 'Failed to update view scope')
+    } finally {
+      setViewScopeUpdating(false)
+    }
+  }
 
   const [expandedSections, setExpandedSections] = useState({
     stations: true,
@@ -1701,6 +1759,125 @@ const StationsDevicesScreen = () => {
           <CFDPairingQR onClose={() => setShowPairing(false)} />
         </View>
       </Modal>
+
+      {/* This Station — View Scope */}
+      {selectedStation && (
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 10
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginBottom: 10
+            }}
+          >
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                backgroundColor: colors.teal + '15',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 8
+              }}
+            >
+              <Eye size={16} color={colors.teal} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+              >
+                This Station
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                {selectedStation.station_name} — Order visibility
+              </Text>
+            </View>
+            {viewScopeUpdating && (
+              <ActivityIndicator size="small" color={colors.teal} />
+            )}
+          </View>
+
+          <View style={{ gap: 8 }}>
+            {([
+              {
+                value: 'own' as StationViewScope,
+                label: 'This Station Only',
+                description: 'Only show orders created by this station'
+              },
+              {
+                value: 'location' as StationViewScope,
+                label: 'All Location Orders',
+                description: 'Show all orders from this location'
+              }
+            ]).map((option) => {
+              const isSelected = (selectedStation.view_scope ?? 'own') === option.value
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => handleViewScopeChange(option.value)}
+                  disabled={viewScopeUpdating}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: isSelected ? colors.teal + '12' : colors.screen,
+                    borderWidth: 1,
+                    borderColor: isSelected ? colors.teal + '50' : colors.border,
+                    borderRadius: 10,
+                    padding: 10,
+                    opacity: viewScopeUpdating ? 0.6 : 1
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      borderWidth: 2,
+                      borderColor: isSelected ? colors.teal : colors.border,
+                      backgroundColor: isSelected ? colors.teal : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 10
+                    }}
+                  >
+                    {isSelected && <Check size={13} color="#fff" strokeWidth={3} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: isSelected ? colors.teal : colors.heading
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        color: colors.muted,
+                        marginTop: 1
+                      }}
+                    >
+                      {option.description}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        </View>
+      )}
 
       {/* Stations Section */}
       {stations && stations.length > 0 && (

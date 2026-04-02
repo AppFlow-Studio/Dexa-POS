@@ -23,6 +23,7 @@ import { v4 as uuidv4 } from "uuid";
 import NetInfo from "@react-native-community/netinfo";
 // @ts-ignore
 import type { NetInfoState } from "@react-native-community/netinfo";
+import { AppState } from "react-native";
 
 // ============================================================================
 // TYPES
@@ -226,6 +227,7 @@ let autoRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 // ============================================================================
 
 let isOnline = true;
+let forceOfflineOverride = false; // DEV-only: force offline mode for testing
 let isInitialized = false;
 let pendingOperations: OfflineOperation[] = [];
 let deadLetterQueue: OfflineOperation[] = [];
@@ -235,6 +237,7 @@ let unsubscribeNetInfo: (() => void) | null = null;
 let periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
 let netInfoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let netInfoPollTimer: ReturnType<typeof setInterval> | null = null;
+let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
 
 // Indexes for O(1) lookups instead of linear scans
 const entityKeyIndex = new Map<string, Set<string>>(); // entityKey -> Set<operationId>
@@ -324,6 +327,7 @@ export async function initOfflineSyncService(config: {
   // Start network listener
   startNetworkListener();
   startNetInfoPolling();
+  startAppStateListener();
 
   isInitialized = true;
 
@@ -364,6 +368,10 @@ export function destroyOfflineSyncService(): void {
   if (netInfoPollTimer) {
     clearInterval(netInfoPollTimer);
     netInfoPollTimer = null;
+  }
+  if (appStateSubscription) {
+    appStateSubscription.remove();
+    appStateSubscription = null;
   }
   // Clear all auto-retry timers
   for (const timer of autoRetryTimers.values()) {
@@ -467,7 +475,31 @@ function startNetInfoPolling(): void {
   }, NETINFO_POLL_INTERVAL_MS);
 }
 
+function startAppStateListener(): void {
+  appStateSubscription?.remove();
+  appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+    if (nextAppState === 'active' && isInitialized) {
+      NetInfo.fetch().then(handleNetworkChange).catch(() => {});
+    }
+  });
+}
+
 function handleNetworkChange(state: NetInfoState): void {
+  // DEV override: force offline regardless of NetInfo state
+  if (__DEV__ && forceOfflineOverride) {
+    if (isOnline) {
+      isOnline = false;
+      console.log("[OfflineSync] FORCED OFFLINE (dev override)");
+      if (onStatusChange) {
+        Promise.resolve(onStatusChange(false)).catch((err) => {
+          console.error("[OfflineSync] onStatusChange error:", err);
+        });
+      }
+      notifyOnlineStatusListeners();
+    }
+    return;
+  }
+
   const wasOnline = isOnline;
 
   if (state.isConnected === false) {
@@ -487,7 +519,26 @@ function handleNetworkChange(state: NetInfoState): void {
 
   if (wasOnline !== isOnline) {
     console.log("[OfflineSync] Network status changed:", isOnline ? "ONLINE" : "OFFLINE");
-    onStatusChange?.(isOnline);
+
+    // Fire the callback (async, fire-and-forget with error catching)
+    if (onStatusChange) {
+      Promise.resolve(onStatusChange(isOnline)).catch((err) => {
+        console.error("[OfflineSync] onStatusChange error:", err);
+      });
+    } else if (isOnline) {
+      // Fallback: callback not registered yet (init timing) — flush queue directly
+      console.warn("[OfflineSync] onStatusChange not registered — flushing queue directly");
+      processQueueNow().catch((err) => {
+        console.error("[OfflineSync] Direct queue flush error:", err);
+      });
+    }
+
+    // Protect against listener errors killing the rest of the function
+    try {
+      notifyOnlineStatusListeners();
+    } catch (err) {
+      console.error("[OfflineSync] Online status listener error:", err);
+    }
 
     if (!isOnline) {
       // Cancel auto-retry timers — they'll reschedule when online returns
@@ -938,11 +989,52 @@ export async function updateOperationParams(
   }
 }
 
+// Online status subscribers (for useSyncExternalStore in hooks)
+const onlineStatusListeners = new Set<() => void>();
+
+export function subscribeOnlineStatus(listener: () => void): () => void {
+  onlineStatusListeners.add(listener);
+  return () => { onlineStatusListeners.delete(listener); };
+}
+
+function notifyOnlineStatusListeners(): void {
+  for (const listener of onlineStatusListeners) listener();
+}
+
 /**
  * Get current online status.
  */
 export function getIsOnline(): boolean {
   return isOnline;
+}
+
+/**
+ * DEV-only: Force the app into offline mode for testing.
+ * When enabled, NetInfo polling/listeners are suppressed and the app stays offline.
+ */
+export function setForceOffline(force: boolean): void {
+  if (!__DEV__) return;
+  forceOfflineOverride = force;
+  if (force) {
+    isOnline = false;
+    console.log("[OfflineSync] FORCED OFFLINE (dev override)");
+    if (onStatusChange) {
+      Promise.resolve(onStatusChange(false)).catch((err) => {
+        console.error("[OfflineSync] onStatusChange error:", err);
+      });
+    }
+    notifyOnlineStatusListeners();
+  } else {
+    console.log("[OfflineSync] Force offline CLEARED — re-checking network");
+    NetInfo.fetch().then(handleNetworkChange).catch(() => {});
+  }
+}
+
+/**
+ * DEV-only: Check if force-offline override is active.
+ */
+export function getForceOffline(): boolean {
+  return __DEV__ ? forceOfflineOverride : false;
 }
 
 /**
@@ -963,6 +1055,20 @@ export function getAutoRetryCount(): number {
  * Force sync now (for manual retry button).
  */
 export async function syncNow(): Promise<void> {
+  if (isOnline) {
+    await processQueue();
+  }
+}
+
+/**
+ * Immediately flush the queue, cancelling any pending debounce timer.
+ * Used by onStatusChange to ensure create_order ops complete before reconciliation.
+ */
+export async function processQueueNow(): Promise<void> {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
   if (isOnline) {
     await processQueue();
   }

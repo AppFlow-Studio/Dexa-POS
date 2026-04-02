@@ -6,7 +6,7 @@
  * Click the badge again to collapse.
  */
 
-import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useNetworkStatus, useForceOfflineToggle } from "@/hooks/useNetworkStatus";
 import { toastService } from "@/lib/toastService";
 import {
   getDeadLetterCount,
@@ -49,6 +49,7 @@ interface BadgeConfig {
 
 export function NetworkStatusBadge(): React.ReactElement {
   const { isOnline, pendingSyncCount, syncNow } = useNetworkStatus();
+  const { forceOffline, toggleForceOffline } = useForceOfflineToggle();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSyncingOrder, setIsSyncingOrder] = useState(false);
@@ -120,6 +121,18 @@ export function NetworkStatusBadge(): React.ReactElement {
       setIsSyncing(true);
       try {
         await syncNow();
+        refreshOfflinePaymentStatus();
+        toastService.show({
+          title: "Sync Complete",
+          message: "Pending operations have been processed",
+          type: "success",
+        });
+      } catch {
+        toastService.show({
+          title: "Sync Failed",
+          message: "Some operations could not be synced",
+          type: "error",
+        });
       } finally {
         setTimeout(() => setIsSyncing(false), 500);
       }
@@ -195,8 +208,8 @@ export function NetworkStatusBadge(): React.ReactElement {
           icon: <WifiOff size={11} color={colors.danger} />,
           label:
             pendingSyncCount > 0
-              ? `Offline - ${pendingSyncCount} pending`
-              : "Offline",
+              ? `Offline${forceOffline ? " (forced)" : ""} - ${pendingSyncCount} pending`
+              : `Offline${forceOffline ? " (forced)" : ""}`,
         };
     }
   };
@@ -211,7 +224,9 @@ export function NetworkStatusBadge(): React.ReactElement {
       <Animated.View entering={FadeIn} exiting={FadeOut}>
         <TouchableOpacity
           onPress={handleBadgePress}
-          disabled={!canExpand && !isSyncing}
+          onLongPress={__DEV__ ? toggleForceOffline : undefined}
+          delayLongPress={800}
+          disabled={!canExpand && !isSyncing && !__DEV__}
           activeOpacity={0.7}
           className={`flex-row items-center gap-1.5 px-2.5 py-1 rounded-full ${config.bgColor}`}
         >
