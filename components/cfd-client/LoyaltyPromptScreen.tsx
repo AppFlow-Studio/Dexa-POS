@@ -102,7 +102,7 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
             onPress={() => handleKey('backspace')}
             style={[styles.numKey, styles.numKeyAction]}
           >
-            <Delete size={16} color={colors.label} />
+            <Delete size={16} color={colors.heading} />
           </TouchableOpacity>
         </View>
       </View>
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   },
   phoneCard: {
     width: 300,
-    backgroundColor: colors.card,
+    backgroundColor: colors.screen,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5
   },
   phoneTextPlaceholder: {
-    color: colors.muted
+    color: colors.heading
   },
   keypad: {
     width: 300,
@@ -185,15 +185,14 @@ const styles = StyleSheet.create({
   numKey: {
     flex: 1,
     height: 50,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center'
   },
   numKeyAction: {
-    backgroundColor: colors.screen
+    backgroundColor: 'transparent'
   },
   numKeyText: {
     fontSize: 20,

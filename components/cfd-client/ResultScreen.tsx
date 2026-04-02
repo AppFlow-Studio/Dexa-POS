@@ -1,6 +1,6 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
 import { colors } from '@/lib/theme'
-import { Check, CircleAlert, UtensilsCrossed } from 'lucide-react-native'
+import { Check, CircleAlert, Gift, UtensilsCrossed } from 'lucide-react-native'
 import { useEffect } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
@@ -128,6 +128,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
               onPress={onJoinLoyalty}
               style={styles.loyaltyCta}
             >
+              <Gift size={18} color={colors.teal} strokeWidth={2.2} />
               <Text style={styles.loyaltyCtaText}>{loyaltyCtaLabel}</Text>
             </TouchableOpacity>
           </Animated.View>
@@ -241,17 +242,21 @@ const styles = StyleSheet.create({
     maxWidth: 420
   },
   loyaltyCta: {
-    marginTop: 22,
-    backgroundColor: colors.teal,
+    marginTop: 30,
+    backgroundColor: colors.screen,
     borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.teal,
     paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingVertical: 13,
+    flexDirection: 'row',
+    gap: 8,
     alignItems: 'center',
     justifyContent: 'center'
   },
   loyaltyCtaText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000'
+    color: colors.teal
   }
 })
