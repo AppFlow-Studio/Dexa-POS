@@ -88,7 +88,7 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
             onPress={() => handleKey('clear')}
             style={[styles.numKey, styles.numKeyAction]}
           >
-            <Text style={styles.numKeySmall}>CLR</Text>
+            <Text style={styles.numKeySmall}>clear</Text>
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.7}
