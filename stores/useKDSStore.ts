@@ -492,6 +492,31 @@ function ticketDeepEqual (a: KDSTicket, b: KDSTicket): boolean {
   return true
 }
 
+/** Preserve locally-completed items when the backend omits them from a refetch.
+ *  This keeps individually-tapped items visible and struck through instead of
+ *  collapsing the ticket back to only the remaining active items. */
+function preserveCompletedItems (
+  previous: KDSTicket,
+  incoming: KDSTicket
+): KDSTicket {
+  const incomingIds = new Set(incoming.items.map(item => item.id))
+  const preservedItems = previous.items.filter(
+    item => item.kitchen_status === 'ready' && !incomingIds.has(item.id)
+  )
+
+  if (preservedItems.length === 0) return incoming
+
+  const mergedItems = [...incoming.items, ...preservedItems].sort((a, b) =>
+    a.id.localeCompare(b.id)
+  )
+
+  return {
+    ...incoming,
+    items: mergedItems,
+    item_count: Math.max(previous.item_count, incoming.item_count)
+  }
+}
+
 /** Merge incoming tickets with existing, reusing unchanged object references */
 function mergeTickets (
   incoming: KDSTicket[],
@@ -515,12 +540,13 @@ function mergeTickets (
             table_name: ticket.table_name ?? prev.table_name
           }
         : ticket
-    if (prev && ticketDeepEqual(prev, enriched)) {
+    const stabilized = prev ? preserveCompletedItems(prev, enriched) : enriched
+    if (prev && ticketDeepEqual(prev, stabilized)) {
       mergedById[ticket.ticket_id] = prev
       merged.push(prev)
     } else {
-      mergedById[ticket.ticket_id] = enriched
-      merged.push(enriched)
+      mergedById[ticket.ticket_id] = stabilized
+      merged.push(stabilized)
       changed = true
     }
   }
@@ -640,7 +666,7 @@ export const useKDSStore = create<KDSState>()(
       _hasHydrated: false,
       timerTick: 0,
       focusedTicketId: null,
-      setFocusedTicketId: (id) => set({ focusedTicketId: id }),
+      setFocusedTicketId: id => set({ focusedTicketId: id }),
       bulkMode: false,
       selectedTicketIds: new Set<string>(),
       prioritizedTicketIds: new Set<string>(),
@@ -1077,14 +1103,22 @@ export const useKDSStore = create<KDSState>()(
 
           if (ticket) {
             const updatedDone = [
-              { ...ticket, status: 'done' as KDSTicket['status'] },
+              {
+                ...ticket,
+                status: 'done' as KDSTicket['status'],
+                done_time_epoch: Date.now()
+              },
               ...get().doneTickets
             ].slice(0, 50)
-            extraState = { doneTickets: updatedDone, doneCount: updatedDone.length }
+            extraState = {
+              doneTickets: updatedDone,
+              doneCount: updatedDone.length
+            }
           }
         } else {
           const itemIdSet = new Set(itemIds)
-          const resetEpoch = ticketStatus === 'ready' && _recalledTicketIds.has(ticketId)
+          const resetEpoch =
+            ticketStatus === 'ready' && _recalledTicketIds.has(ticketId)
           const updatedTicket: KDSTicket = {
             ...ticket!,
             status: ticketStatus as KDSTicket['status'],
@@ -1113,7 +1147,12 @@ export const useKDSStore = create<KDSState>()(
           get().newOrderPosition
         )
         // Single set() call — one render cycle
-        set({ tickets: updatedTickets, _ticketsById: updatedById, ...bucketed, ...extraState })
+        set({
+          tickets: updatedTickets,
+          _ticketsById: updatedById,
+          ...bucketed,
+          ...extraState
+        })
 
         // Backend sync with cancellable retry (action-specific key to avoid cross-action cancellation)
         const retryKey = `advance_${ticketId}_${newStatus}`
@@ -1194,6 +1233,16 @@ export const useKDSStore = create<KDSState>()(
         const orderTids = _ticketIdsByOrderId[order.id]
         const hadExistingTickets = !!orderTids?.size
 
+        // If every ticket for this order has a pending action, this broadcast is our own echo —
+        // optimistic state is already correct, skip the entire processing pipeline.
+        if (
+          orderTids &&
+          orderTids.size > 0 &&
+          Array.from(orderTids).every(tid => _pendingActions.has(tid))
+        ) {
+          return
+        }
+
         // Terminal statuses: remove all tickets for this order (unless protected by recall/pending)
         if (TERMINAL_ORDER_STATUSES.has(order.status)) {
           let hasProtected = false
@@ -1207,9 +1256,7 @@ export const useKDSStore = create<KDSState>()(
           }
           if (!hasProtected) {
             if (hadExistingTickets) {
-              const filtered = tickets.filter(
-                t => !orderTids!.has(t.ticket_id)
-              )
+              const filtered = tickets.filter(t => !orderTids!.has(t.ticket_id))
               const bucketed = smartBucketTickets(
                 filtered,
                 get().ticketsByStatus,
@@ -1229,7 +1276,9 @@ export const useKDSStore = create<KDSState>()(
         // is our own echo and the optimistic state is already correct.
         const locationId = order.location_id
         if (locationId) {
-          const allProtected = orderTids && orderTids.size > 0 &&
+          const allProtected =
+            orderTids &&
+            orderTids.size > 0 &&
             Array.from(orderTids).every(tid => _pendingActions.has(tid))
           if (!allProtected) {
             get().scheduleRefetch(locationId)
@@ -1253,10 +1302,10 @@ export const useKDSStore = create<KDSState>()(
         // Build new tickets from broadcast
         const newTickets = buildTicketsFromBroadcast(filteredOrder)
 
-        // Stabilize ticket_id and start_time_epoch for existing orders so that:
+        // Stabilize ticket_id and start_time_epoch for existing tickets so that:
         // (a) mergeTickets reuses the same reference (no FlatList re-mount animation)
         // (b) prioritizedTicketIds still matches the old ticket_id → priority preserved
-        // (c) sort order is unchanged → position preserved
+        // (c) separate fire rounds for the same order stay as separate tickets
         const existingForOrder = orderTids
           ? Array.from(orderTids)
               .map(tid => _ticketsById[tid])
@@ -1264,14 +1313,12 @@ export const useKDSStore = create<KDSState>()(
           : []
         let stabilizedNewTickets = newTickets
         if (existingForOrder.length > 0) {
-          const existingByCourse = new Map<number, KDSTicket>()
+          const existingByTicketId = new Map<string, KDSTicket>()
           for (const t of existingForOrder) {
-            if (!existingByCourse.has(t.course_number)) {
-              existingByCourse.set(t.course_number, t)
-            }
+            existingByTicketId.set(t.ticket_id, t)
           }
           stabilizedNewTickets = newTickets.map(newT => {
-            const existing = existingByCourse.get(newT.course_number)
+            const existing = existingByTicketId.get(newT.ticket_id)
             if (!existing) return newT // New course — keep computed ID
             return {
               ...newT,
@@ -1597,13 +1644,25 @@ export const useKDSStore = create<KDSState>()(
           }
         })
 
+        const updatedById = {
+          ..._ticketsById,
+          [ticketId]: {
+            ...ticket,
+            status: newTicketStatus,
+            items: updatedItems,
+            ...(allReady && _recalledTicketIds.has(ticketId)
+              ? { start_time_epoch: Date.now() }
+              : {})
+          }
+        }
+
         const bucketed = smartBucketTickets(
           updatedTickets,
           get().ticketsByStatus,
           get().prioritizedTicketIds,
           get().newOrderPosition
         )
-        set({ tickets: updatedTickets, ...bucketed })
+        set({ tickets: updatedTickets, _ticketsById: updatedById, ...bucketed })
 
         // Backend: mark item ready with action-specific retry key to avoid cancelling ticket-level retries
         const retryKey = `item_${ticketId}_${itemId}`
@@ -1888,11 +1947,9 @@ export const useKDSStore = create<KDSState>()(
       name: 'kds-ticket-storage',
       storage: createJSONStorage(() => mmkvStorage),
       partialize: state => ({
-        // Persist only ticket data for offline durability
-        // _ticketsById and _ticketIdsByOrderId are derived — rebuilt on rehydrate
-        tickets: state.tickets,
-        ticketsByStatus: state.ticketsByStatus,
-        counts: state.counts,
+        // Only persist _ticketsById — ticketsByStatus/tickets/counts are derived on rehydrate.
+        // This avoids serializing 3 copies of the same ticket data on every bump.
+        _ticketsById: state._ticketsById,
         doneTickets: state.doneTickets,
         doneCount: state.doneCount,
         // Persist display config so KDS knows its routing rules offline
@@ -1905,22 +1962,26 @@ export const useKDSStore = create<KDSState>()(
       }),
       onRehydrateStorage: () => state => {
         if (state) {
-          // Mark as hydrated so UI knows data is available
           state._hasHydrated = true
           state.isInitialLoading = false
-          // Rebuild derived indexes from persisted tickets
-          const byId: Record<string, KDSTicket> = {}
-          for (const t of state.tickets) byId[t.ticket_id] = t
-          state._ticketsById = byId
+          // Rebuild tickets array + indexes + buckets from persisted _ticketsById
+          const byId = state._ticketsById ?? {}
+          const tickets = Object.values(byId)
+          state.tickets = tickets
           state._ticketIdsByOrderId = buildOrderIdIndex(byId)
-          // Convert Set fields back from serialized form
+          const bucketed = smartBucketTickets(tickets, {
+            pending: [],
+            cooking: [],
+            ready: []
+          })
+          state.ticketsByStatus = bucketed.ticketsByStatus
+          state.counts = bucketed.counts
           if (!(state.selectedTicketIds instanceof Set)) {
             state.selectedTicketIds = new Set<string>()
           }
           if (!(state.prioritizedTicketIds instanceof Set)) {
-            // Derive from hydrated ticket data to avoid priority flash on first render
             const derived = new Set<string>()
-            for (const t of state.tickets) {
+            for (const t of tickets) {
               if (t.prioritized) derived.add(t.ticket_id)
             }
             state.prioritizedTicketIds = derived
