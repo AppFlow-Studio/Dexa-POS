@@ -390,6 +390,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       transform: [{ scale: scaleValue.value }]
     }))
 
+    // Pending single-tap timer — fires if second tap doesn't arrive in time
+    const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    useEffect(() => () => { if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current) }, [])
+
     const handlePress = () => {
       if (bulkMode) {
         onToggleSelect(ticket.ticket_id)
@@ -397,49 +401,61 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       }
 
       const now = Date.now()
-      const isDoubleTap = now - lastTapRef.current < KDS_DOUBLE_TAP_MS
+      const isDoubleTap = lastTapRef.current > 0 && now - lastTapRef.current < KDS_DOUBLE_TAP_MS
 
-      if (!isDoubleTap) {
-        // First tap — gentle pulse to signal acknowledgment
-        lastTapRef.current = now
-        firstTapStatusRef.current = ticket.status // lock in status at gesture start
+      if (isDoubleTap) {
+        // Cancel the pending single-tap action
+        if (singleTapTimerRef.current) {
+          clearTimeout(singleTapTimerRef.current)
+          singleTapTimerRef.current = null
+        }
+        lastTapRef.current = 0
 
+        const capturedStatus = firstTapStatusRef.current
+        firstTapStatusRef.current = null
+
+        const itemIds = ticket.items.map(i => i.id)
+        let newStatus: 'preparing' | 'ready' | 'served' | undefined
+        if (capturedStatus === 'pending') newStatus = 'preparing'
+        else if (capturedStatus === 'cooking') newStatus = 'ready'
+        else if (capturedStatus === 'ready') newStatus = 'served'
+
+        if (!newStatus) return
+
+        // Scale burst on double-tap confirmation
+        scaleValue.value = withSequence(
+          withTiming(0.94, { duration: 60, easing: Easing.out(Easing.cubic) }),
+          withTiming(1, { duration: 100, easing: Easing.out(Easing.cubic) })
+        )
+
+        onAdvance(ticket.ticket_id, itemIds, newStatus, cachedPosRef.current)
+        cachedPosRef.current = undefined
+        return
+      }
+
+      // First tap — record time and status, defer all state changes
+      lastTapRef.current = now
+      firstTapStatusRef.current = ticket.status
+
+      // Pre-measure card position immediately (async, doesn't block)
+      if (cardRef.current) {
+        cardRef.current.measureInWindow((x, y, width, height) => {
+          if (x === 0 && y === 0 && width === 0 && height === 0) return
+          cachedPosRef.current = { x, y, width, height }
+        })
+      }
+
+      // Defer focus toggle + pulse until we're sure it's a single tap
+      singleTapTimerRef.current = setTimeout(() => {
+        singleTapTimerRef.current = null
+        lastTapRef.current = 0
+        firstTapStatusRef.current = null
         scaleValue.value = withSequence(
           withTiming(0.97, { duration: 80, easing: Easing.out(Easing.cubic) }),
           withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) })
         )
-
-        // Pre-measure card position so double-tap fires instantly
-        if (cardRef.current) {
-          cardRef.current.measureInWindow((x, y, width, height) => {
-            if (x === 0 && y === 0 && width === 0 && height === 0) return
-            cachedPosRef.current = { x, y, width, height }
-          })
-        }
-
-        // Immediate focus toggle to keep taps responsive under heavy load.
         setFocusedTicketId(isFocused ? null : ticket.ticket_id)
-        return
-      }
-
-      // Double tap detected — advance immediately.
-      lastTapRef.current = 0
-
-      // Determine next status — use captured status from first tap (immune to in-flight re-renders)
-      const capturedStatus = firstTapStatusRef.current
-      firstTapStatusRef.current = null // clear for next gesture
-
-      const itemIds = ticket.items.map(i => i.id)
-      let newStatus: 'preparing' | 'ready' | 'served' | undefined
-      if (capturedStatus === 'pending') newStatus = 'preparing'
-      else if (capturedStatus === 'cooking') newStatus = 'ready'
-      else if (capturedStatus === 'ready') newStatus = 'served'
-
-      if (!newStatus) return
-
-      // Fire advance synchronously with pre-measured position — no frame delay
-      onAdvance(ticket.ticket_id, itemIds, newStatus, cachedPosRef.current)
-      cachedPosRef.current = undefined
+      }, KDS_DOUBLE_TAP_MS)
     }
 
     const handleLongPress = (e: GestureResponderEvent) => {
@@ -1667,6 +1683,25 @@ const KitchenDisplayScreen = () => {
     [filteredPending, filteredCooking, filteredReady, filteredDone]
   )
 
+  // Deferred data for inactive FlatLists — active tab updates instantly,
+  // inactive tabs update after the frame so they don't block the active render.
+  const [deferredByStatus, setDeferredByStatus] = useState(filteredByStatus)
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setDeferredByStatus(filteredByStatus))
+    return () => cancelAnimationFrame(id)
+  }, [filteredByStatus])
+
+  // Active tab always uses live data; inactive tabs use deferred
+  const listDataByStatus = useMemo<Record<StatusFilter, KDSTicket[]>>(
+    () => ({
+      pending: activeStatus === 'pending' ? filteredByStatus.pending : deferredByStatus.pending,
+      cooking: activeStatus === 'cooking' ? filteredByStatus.cooking : deferredByStatus.cooking,
+      ready: activeStatus === 'ready' ? filteredByStatus.ready : deferredByStatus.ready,
+      done: activeStatus === 'done' ? filteredByStatus.done : deferredByStatus.done,
+    }),
+    [activeStatus, filteredByStatus, deferredByStatus]
+  )
+
   // Active tab's filtered data — for bulk actions / select-all
   const activeFilteredTickets = filteredByStatus[activeStatus]
 
@@ -2489,7 +2524,7 @@ const KitchenDisplayScreen = () => {
               >
                 <Animated.FlatList
                   key={columnCount}
-                  data={filteredByStatus[status]}
+                  data={listDataByStatus[status]}
                   keyExtractor={keyExtractor}
                   renderItem={renderItem}
                   numColumns={columnCount}
@@ -2533,7 +2568,7 @@ const KitchenDisplayScreen = () => {
           >
             <Animated.FlatList
               key={columnCount}
-              data={filteredDone}
+              data={listDataByStatus.done}
               keyExtractor={keyExtractor}
               renderItem={renderDoneItem}
               numColumns={columnCount}

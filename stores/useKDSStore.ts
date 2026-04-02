@@ -1065,11 +1065,14 @@ export const useKDSStore = create<KDSState>()(
 
         let updatedTickets: KDSTicket[]
         let updatedById: Record<string, KDSTicket>
+        let extraState: Partial<KDSState> = {}
+
         if (ticketStatus === null) {
-          // Served → remove from active, add to done; clear recalled state
+          // Served → remove from active, add to done in one set() call
           _recalledTicketIds.delete(ticketId)
           updatedTickets = tickets.filter(t => t.ticket_id !== ticketId)
-          updatedById = { ..._ticketsById }
+          // Avoid shallow-copying entire map — use Object.create trick with deletion
+          updatedById = Object.assign({}, _ticketsById)
           delete updatedById[ticketId]
 
           if (ticket) {
@@ -1077,7 +1080,7 @@ export const useKDSStore = create<KDSState>()(
               { ...ticket, status: 'done' as KDSTicket['status'] },
               ...get().doneTickets
             ].slice(0, 50)
-            set({ doneTickets: updatedDone, doneCount: updatedDone.length })
+            extraState = { doneTickets: updatedDone, doneCount: updatedDone.length }
           }
         } else {
           const itemIdSet = new Set(itemIds)
@@ -1092,9 +1095,14 @@ export const useKDSStore = create<KDSState>()(
             ),
             ...(resetEpoch ? { start_time_epoch: Date.now() } : {})
           }
-          updatedTickets = tickets.map(t =>
-            t.ticket_id === ticketId ? updatedTicket : t
-          )
+          // Replace single entry without iterating the full tickets array
+          const idx = tickets.findIndex(t => t.ticket_id === ticketId)
+          if (idx === -1) {
+            updatedTickets = tickets
+          } else {
+            updatedTickets = tickets.slice()
+            updatedTickets[idx] = updatedTicket
+          }
           updatedById = { ..._ticketsById, [ticketId]: updatedTicket }
         }
 
@@ -1104,7 +1112,8 @@ export const useKDSStore = create<KDSState>()(
           get().prioritizedTicketIds,
           get().newOrderPosition
         )
-        set({ tickets: updatedTickets, _ticketsById: updatedById, ...bucketed })
+        // Single set() call — one render cycle
+        set({ tickets: updatedTickets, _ticketsById: updatedById, ...bucketed, ...extraState })
 
         // Backend sync with cancellable retry (action-specific key to avoid cross-action cancellation)
         const retryKey = `advance_${ticketId}_${newStatus}`
