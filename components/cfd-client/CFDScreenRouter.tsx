@@ -1,6 +1,11 @@
 // components/cfd-client/CFDScreenRouter.tsx
 // Shared screen-state router used by both external CFD tablets and built-in secondary displays.
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import {
+  triggerCFDLoyaltyJoin,
+  triggerCFDLoyaltySkip,
+  triggerCFDPhoneSubmit
+} from '@/contexts/CFDProvider'
 import { colors } from '@/lib/theme'
 import { StyleSheet, Text, View } from 'react-native'
 
@@ -18,14 +23,25 @@ interface Props {
   onTipSelected?: (tipAmount: number, tipPercentage: number | null) => void
   onPhoneSubmitted?: (phone: string) => void
   onLoyaltySkip?: () => void
+  onLoyaltyJoin?: () => void
 }
 
 export function CFDScreenRouter ({
   onTipSelected,
   onPhoneSubmitted,
-  onLoyaltySkip
+  onLoyaltySkip,
+  onLoyaltyJoin
 }: Props) {
   const { screenState, items } = useCFDDisplayData()
+
+  const handleLoyaltyJoin = () => {
+    if (onLoyaltyJoin) {
+      onLoyaltyJoin()
+      return
+    }
+    // Built-in fallback: use the provider's real loyalty flow (auto-earn when possible).
+    triggerCFDLoyaltyJoin()
+  }
 
   const resolvedState = (() => {
     switch (screenState) {
@@ -65,14 +81,14 @@ export function CFDScreenRouter ({
       case 'processing':
         return <PaymentScreen processing />
       case 'approved':
-        return <ResultScreen success />
+        return <ResultScreen success onJoinLoyalty={handleLoyaltyJoin} />
       case 'declined':
         return <ResultScreen success={false} />
       case 'loyalty_prompt':
         return (
           <LoyaltyPromptScreen
-            onPhoneSubmitted={onPhoneSubmitted ?? (() => {})}
-            onSkip={onLoyaltySkip ?? (() => {})}
+            onPhoneSubmitted={onPhoneSubmitted ?? triggerCFDPhoneSubmit}
+            onSkip={onLoyaltySkip ?? triggerCFDLoyaltySkip}
           />
         )
       case 'loyalty_confirmation':
@@ -107,14 +123,18 @@ const styles = StyleSheet.create({
     flex: 1
   },
   dexaFooterWrap: {
+    minHeight: 20,
     alignItems: 'center',
-    paddingTop: 4,
-    paddingBottom: 8
+    justifyContent: 'center',
+    paddingTop: 2,
+    paddingBottom: 6
   },
   dexaFooterText: {
     fontSize: 10,
+    lineHeight: 14,
     fontWeight: '500',
     color: colors.label,
-    opacity: 0.85
+    letterSpacing: 0.25,
+    opacity: 0.82
   }
 })

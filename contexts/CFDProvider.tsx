@@ -40,6 +40,21 @@ import React, {
 } from 'react'
 
 const DEBUG = __DEV__
+let loyaltyJoinTrigger: (() => void) | null = null
+let loyaltyPhoneSubmitTrigger: ((phone: string) => void) | null = null
+let loyaltySkipTrigger: (() => void) | null = null
+
+export function triggerCFDLoyaltyJoin () {
+  loyaltyJoinTrigger?.()
+}
+
+export function triggerCFDPhoneSubmit (phone: string) {
+  loyaltyPhoneSubmitTrigger?.(phone)
+}
+
+export function triggerCFDLoyaltySkip () {
+  loyaltySkipTrigger?.()
+}
 
 function Log (msg: string) {
   if (DEBUG) console.log(msg)
@@ -502,6 +517,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             setBaseAmountOverride(null)
             setCurrentTip({ amount: 0, percentage: null })
             ctrl.showIdle()
+          },
+          onLoyaltyJoin: () => {
+            if (controllerRef.current !== ctrl) return
+            showLoyaltyPrompt()
           }
         })
 
@@ -780,6 +799,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       screenState: activeScreenState || undefined,
       serverName: null,
       customerName: displayCustomerName,
+      customerPhone: activeOrder?.customer_phone ?? null,
       orderNumber: displayOrderNumber,
       orderType: displayOrderType,
       tableName: displayTableName,
@@ -1365,10 +1385,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       }, 20_000)
     }
 
+    // Show loyalty screen immediately, then resolve auto-earn in the background.
+    showPhonePrompt()
+
     void (async () => {
       try {
         if (!dbOrderId) {
-          showPhonePrompt()
           return
         }
 
@@ -1400,7 +1422,6 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         }
 
         if (!effectiveCustomerId && !(merchantId && effectivePhone)) {
-          showPhonePrompt()
           return
         }
 
@@ -1445,7 +1466,6 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           console.warn(
             '[CFD Loyalty] Auto loyalty returned no program data, showing prompt'
           )
-          showPhonePrompt()
           return
         }
 
@@ -1496,10 +1516,145 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         }, 6000)
       } catch (err) {
         console.error('[CFD Loyalty] Auto loyalty failed, showing prompt:', err)
-        showPhonePrompt()
       }
     })()
   }, [selectedStore?.merchant_id, selectedStore?.name, supabase])
+
+  const handleBuiltinPhoneSubmit = useCallback(
+    async (phone: string) => {
+      const ctrl = controllerRef.current
+      if (!ctrl || !selectedStore?.id) return
+
+      clearTimeout(loyaltyTimerRef.current!)
+      loyaltyTimerRef.current = null
+
+      const orderId = activeOrderIdRef.current
+      const order = activeOrderRef.current
+      if (!order || !orderId || !order.db_order_id) {
+        console.warn(
+          '[CFD Loyalty] No active order with db_order_id, skipping loyalty'
+        )
+        frozenTotalsRef.current = null
+        setActiveScreenState(null)
+        setBaseAmountOverride(null)
+        setCurrentTip({ amount: 0, percentage: null })
+        ctrl.showIdle()
+        return
+      }
+
+      const merchantId = selectedStore.merchant_id
+
+      try {
+        const { id: customerId, name } = await findOrCreateCustomerByPhone(
+          phone,
+          merchantId,
+          supabase
+        )
+        await supabase
+          .from('orders')
+          .update({ customer_id: customerId })
+          .eq('id', order.db_order_id)
+
+        let results: LoyaltyEarnResult[] = []
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          results = await earnLoyaltyForOrder(order.db_order_id, supabase)
+          if (results.length > 0) break
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 800))
+          }
+        }
+
+        if (results.length === 0) {
+          console.warn(
+            '[CFD Loyalty] No loyalty program data returned after phone submit'
+          )
+          frozenTotalsRef.current = null
+          setActiveScreenState(null)
+          setBaseAmountOverride(null)
+          setCurrentTip({ amount: 0, percentage: null })
+          ctrl.showIdle()
+          return
+        }
+
+        const loyaltyResult = {
+          customerName: name ?? undefined,
+          programs: results.map(r => ({
+            name: r.program_name,
+            type: r.program_type,
+            earned: r.earned,
+            newBalance: r.new_balance,
+            rewardUnlocked: r.reward_unlocked,
+            progressPercent:
+              (r as any).progress_percent ?? (r as any).progressPercent ?? null,
+            remainingToReward:
+              (r as any).remaining_to_reward ??
+              (r as any).remainingToReward ??
+              null,
+            rewardThreshold:
+              (r as any).reward_threshold ?? (r as any).rewardThreshold ?? null,
+            rewardLabel:
+              (r as any).reward_label ?? (r as any).rewardLabel ?? null,
+            canRedeemNow:
+              (r as any).can_redeem_now ?? (r as any).canRedeemNow ?? null
+          }))
+        }
+
+        useCFDBuiltinStore.getState().update({
+          screenState: 'loyalty_confirmation',
+          loyaltyResult
+        })
+        setActiveScreenState('loyalty_confirmation')
+        ctrl.showLoyaltyConfirmation(results, name ?? undefined)
+
+        setTimeout(() => {
+          if (controllerRef.current !== ctrl) return
+          frozenTotalsRef.current = null
+          setActiveScreenState(null)
+          setBaseAmountOverride(null)
+          setCurrentTip({ amount: 0, percentage: null })
+          ctrl.showIdle()
+          useCFDBuiltinStore
+            .getState()
+            .update({ screenState: 'idle', loyaltyResult: null })
+        }, 6000)
+      } catch (err) {
+        console.error('[CFD Loyalty] Error processing loyalty:', err)
+        frozenTotalsRef.current = null
+        setActiveScreenState(null)
+        setBaseAmountOverride(null)
+        setCurrentTip({ amount: 0, percentage: null })
+        ctrl.showIdle()
+      }
+    },
+    [selectedStore?.id, selectedStore?.merchant_id, supabase]
+  )
+
+  const handleBuiltinLoyaltySkip = useCallback(() => {
+    const ctrl = controllerRef.current
+    if (!ctrl) return
+    clearTimeout(loyaltyTimerRef.current!)
+    loyaltyTimerRef.current = null
+    frozenTotalsRef.current = null
+    setActiveScreenState(null)
+    setBaseAmountOverride(null)
+    setCurrentTip({ amount: 0, percentage: null })
+    ctrl.showIdle()
+  }, [])
+
+  useEffect(() => {
+    loyaltyJoinTrigger = showLoyaltyPrompt
+    loyaltyPhoneSubmitTrigger = phone => {
+      void handleBuiltinPhoneSubmit(phone)
+    }
+    loyaltySkipTrigger = handleBuiltinLoyaltySkip
+    return () => {
+      if (loyaltyJoinTrigger === showLoyaltyPrompt) {
+        loyaltyJoinTrigger = null
+      }
+      loyaltyPhoneSubmitTrigger = null
+      loyaltySkipTrigger = null
+    }
+  }, [showLoyaltyPrompt, handleBuiltinPhoneSubmit, handleBuiltinLoyaltySkip])
 
   const showLoyaltyConfirmation = useCallback(
     (result: LoyaltyEarnResult[], customerName?: string) => {

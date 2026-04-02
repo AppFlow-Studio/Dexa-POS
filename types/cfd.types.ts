@@ -54,6 +54,7 @@ export interface CFDPayload {
   locationId: string
   serverName?: string | null // e.g., "Michael J."
   customerName?: string | null // e.g., "John Doe"
+  customerPhone?: string | null
 
   // Current screen
   screenState: CFDScreenState
@@ -133,7 +134,7 @@ export interface CFDPayload {
   paymentMethod?: 'cash' | 'card' | 'manual' | null
 
   // Payment method (when screenState is 'payment' or 'processing')
-  paymentMethod?: "cash" | "card" | "manual" | null;
+  paymentMethod?: 'cash' | 'card' | 'manual' | null
 
   // Timestamp
   timestamp: number
@@ -159,6 +160,7 @@ export interface CFDMessage {
     | 'tip_selected'
     | 'phone_submitted'
     | 'loyalty_skip'
+    | 'loyalty_join'
     | 'unpair'
     | 'exit_cfd_mode'
   payload?: CFDPayload | CFDTipResponse | CFDPhoneResponse
