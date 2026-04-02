@@ -21,6 +21,9 @@ import { useStoreSettingsStore } from "../useStoreSettingsStore";
  * Shallow-compare two arrays of order IDs (string[]).
  * Returns true if the arrays are referentially or value-equal.
  */
+// Stable empty references for disabled selectors (avoids useSyncExternalStore infinite loop)
+const EMPTY_TAX_RATES_MAP: Record<string, any> = {};
+
 function orderIdsEqual(a: string[], b: string[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -103,12 +106,12 @@ export interface ActiveOrderTotals {
  * Hybrid authority: uses frontend calculator before first payment for real-time
  * accuracy, switches to backend amount_due after payments for authoritative values.
  */
-export function useActiveOrderTotals(): ActiveOrderTotals | null {
-  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
+  const activeOrderId = useOrderStore((s) => enabled ? s.activeOrderId : null);
   const activeOrder = useOrderStore((s) =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    enabled && s.activeOrderId ? s.ordersById[s.activeOrderId] : null
   );
-  const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
+  const taxRatesMap = useStoreSettingsStore((s) => enabled ? s.taxRatesMap : EMPTY_TAX_RATES_MAP);
 
   return useMemo(() => {
     if (!activeOrderId || !activeOrder) return null;

@@ -703,15 +703,6 @@ export interface PaymentTerminal {
   batteryLevel: number; // e.g., 85
 }
 
-export interface OfflineOrder {
-  serialNo: string;
-  orderDate: string;
-  orderTime: string;
-  orderId: string;
-  server: string;
-  total: number;
-}
-
 export interface TrackedOrderItem {
   name: string;
   quantity: number;

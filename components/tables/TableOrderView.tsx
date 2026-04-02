@@ -40,6 +40,9 @@ import { ArrowLeft, CreditCard } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
+// Stable empty array to avoid new reference on every render
+const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] = []
+
 interface TableOrderViewProps {
   tableId: string
   onClose: () => void
@@ -70,7 +73,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     markPaymentSyncDone
   } = useTableSession(currentTableId, undefined, onClose)
 
-  const coursingHook = useTableCoursing(activeOrder)
+  const enableCoursing = useLocationConfigStore(
+    s => s.config.dining.enableCoursing
+  )
+  // Short-circuits all 11 coursing subscriptions + 3 effects when coursing is disabled
+  const coursingHook = useTableCoursing(activeOrder, enableCoursing)
 
   useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
 
@@ -81,15 +88,13 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   )
 
   // --- Store selectors (only what's still needed at this level) ---
-  const isModifierSidebarOpen = useModifierSidebarStore(s => s.isOpen)
+  // Deferred: modifier sidebar only needed after stage 2 (when MenuSection mounts)
+  const isModifierSidebarOpen = useModifierSidebarStore(s => renderStage >= 2 && s.isOpen)
   const table = useFloorPlanStore(s => s.tablesById[currentTableId])
   const session = useTableSessionStore(s => s.sessions[currentTableId])
 
   const enablePerSeatOrdering = useLocationConfigStore(
     s => s.config.dining.enablePerSeatOrdering
-  )
-  const enableCoursing = useLocationConfigStore(
-    s => s.config.dining.enableCoursing
   )
   const partySize = session?.party_size ?? 2
   const seatingHook = useTableSeating(
@@ -112,9 +117,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const setPreAuthMode = usePaymentStore(s => s.setPreAuthMode)
-  const totals = useActiveOrderTotals()
-  const preAuth = useOrderPreAuth(activeOrder?.id)
-  const hasPreAuth = useHasActivePreAuth(activeOrder?.id)
+  // Deferred: payment selectors not needed until stage 2 (user taps Pay)
+  const paymentReady = renderStage >= 2
+  const totals = useActiveOrderTotals(paymentReady)
+  const preAuth = useOrderPreAuth(paymentReady ? activeOrder?.id : undefined)
+  const hasPreAuth = useHasActivePreAuth(paymentReady ? activeOrder?.id : undefined)
   const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0
   const storeActiveOrderTotal = totals?.total ?? 0
 
@@ -123,21 +130,24 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
 
-  // --- Alert dialog state ---
-  const [isNotReadyConfirmOpen, setNotReadyConfirmOpen] = useState(false)
-  const [isClearNotReadyConfirmOpen, setClearNotReadyConfirmOpen] =
-    useState(false)
-  const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false)
-  const [isOrderClosedWarningOpen, setOrderClosedWarningOpen] = useState(false)
-  const [courseToResend, setCourseToResend] = useState<number | null>(null)
-  const [isReopenModalOpen, setReopenModalOpen] = useState(false)
+  // --- Alert dialog state (consolidated: one useState instead of 8) ---
+  type NotReadyItem = { id: string; name: string; quantity: number }
+  type ActiveDialog =
+    | { type: 'none' }
+    | { type: 'not_ready_confirm'; items: NotReadyItem[] }
+    | { type: 'clear_not_ready_confirm'; items: NotReadyItem[] }
+    | { type: 'void_confirm' }
+    | { type: 'order_closed_warning' }
+    | { type: 'course_resend'; course: number }
+    | { type: 'reopen_modal' }
+  const [activeDialog, setActiveDialog] = useState<ActiveDialog>({ type: 'none' })
+  const closeDialog = useCallback(() => setActiveDialog({ type: 'none' }), [])
+
+  // These are independent of dialogs (can coexist)
   const [serverSheetOpen, setServerSheetOpen] = useState(false)
   const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
     number | null
   >(null)
-  const [notReadyItems, setNotReadyItems] = useState<
-    { id: string; name: string; quantity: number }[]
-  >([])
 
   // --- Deferred rendering ---
   // Skip skeleton (stage 0) when order data is already in the store (e.g. navigating from tables screen)
@@ -158,10 +168,18 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   useEffect(() => {
     let cancelled = false
     if (renderStage >= 2) return
-    // Stage 0: show skeleton one frame, then render everything
+    // Triple-RAF: spread mount work across frames (matches order-processing pattern)
+    // Stage 0 → skeleton | Stage 1 → BillSection + header | Stage 2 → MenuSection + sheets
     const raf = requestAnimationFrame(() => {
       if (cancelled) return
-      setRenderStage(2)
+      requestAnimationFrame(() => {
+        if (cancelled) return
+        setRenderStage(1)
+        requestAnimationFrame(() => {
+          if (cancelled) return
+          setRenderStage(2)
+        })
+      })
     })
     return () => {
       cancelled = true
@@ -209,8 +227,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     if (order) {
       const preparingItems = order.items.filter(i => !isItemReadyOrServed(i))
       if (preparingItems.length > 0) {
-        setNotReadyItems(preparingItems.map(i => ({ id: i.id, name: i.name, quantity: i.quantity })))
-        setNotReadyConfirmOpen(true)
+        setActiveDialog({ type: 'not_ready_confirm', items: preparingItems.map(i => ({ id: i.id, name: i.name, quantity: i.quantity })) })
         return
       }
     }
@@ -225,14 +242,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     )
 
     if (preparingItems.length > 0) {
-      setNotReadyItems(
-        preparingItems.map(i => ({
-          id: i.id,
-          name: i.name,
-          quantity: i.quantity
-        }))
-      )
-      setClearNotReadyConfirmOpen(true)
+      setActiveDialog({ type: 'clear_not_ready_confirm', items: preparingItems.map(i => ({ id: i.id, name: i.name, quantity: i.quantity })) })
       return
     }
 
@@ -288,7 +298,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     if (!activeOrder) return
 
     if (activeOrder.order_status === 'void') {
-      setVoidConfirmOpen(false)
+      closeDialog()
       show({
         title: 'Already Voided',
         message: 'This order has already been voided.',
@@ -310,7 +320,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     })
 
     if (result.success) {
-      setVoidConfirmOpen(false)
+      closeDialog()
       show({
         title: 'Check Voided',
         message:
@@ -386,11 +396,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const handleReopenCheck = () => {
     if (!activeOrderId || !activeOrder?.db_order_id) return
-    setReopenModalOpen(true)
+    setActiveDialog({ type: 'reopen_modal' })
   }
 
   const handleConfirmReopen = async () => {
-    setReopenModalOpen(false)
+    closeDialog()
     if (!activeOrderId || !activeOrder?.db_order_id) return
 
     try {
@@ -644,16 +654,16 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const orderId = useOrderStore.getState().activeOrderId
     if (!orderId) return
     if (coursingHook.isCourseSent(orderId, course)) {
-      setCourseToResend(course)
+      setActiveDialog({ type: 'course_resend', course })
     } else {
       handleSendCourseToKitchen(course, false)
     }
   }, [coursingHook, handleSendCourseToKitchen])
 
   const handleConfirmResend = () => {
-    if (courseToResend !== null) {
-      handleSendCourseToKitchen(courseToResend, true)
-      setCourseToResend(null)
+    if (activeDialog.type === 'course_resend') {
+      handleSendCourseToKitchen(activeDialog.course, true)
+      closeDialog()
     }
   }
 
@@ -733,7 +743,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const orderState = useOrderStore.getState()
     const order = orderState.activeOrderId ? orderState.ordersById[orderState.activeOrderId] : null
     if (order?.paid_status === 'Paid' || order?.check_status === 'Closed') {
-      setOrderClosedWarningOpen(true)
+      setActiveDialog({ type: 'order_closed_warning' })
       return true
     }
     return false
@@ -829,17 +839,25 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   }, [setPreAuthMode, openPaymentSheet, currentTableId])
 
   const handlePayAnyway = useCallback(() => {
-    setNotReadyConfirmOpen(false)
+    closeDialog()
     pricingSheetRef.current?.close()
     openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-  }, [openPaymentSheet, currentTableId])
+  }, [openPaymentSheet, currentTableId, closeDialog])
 
   const handleClearAnyway = useCallback(async () => {
-    setClearNotReadyConfirmOpen(false)
+    closeDialog()
     await doClearTable()
-  }, [doClearTable])
+  }, [doClearTable, closeDialog])
 
-  const handleCloseReopenModal = useCallback(() => setReopenModalOpen(false), [])
+  const handleCloseReopenModal = useCallback(() => closeDialog(), [closeDialog])
+
+  // Stable callbacks for dialog change props (avoids new arrow fn per render)
+  const handleDialogBoolChange = useCallback((open: boolean) => {
+    if (!open) closeDialog()
+  }, [closeDialog])
+  const handleCourseResendChange = useCallback((course: number | null) => {
+    if (course === null) closeDialog()
+  }, [closeDialog])
 
   const handleProceedToPayment = useCallback(() => {
     pricingSheetRef.current?.close()
@@ -1100,22 +1118,22 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
           />
 
           <TableAlertDialogs
-            isNotReadyConfirmOpen={isNotReadyConfirmOpen}
-            onNotReadyConfirmChange={setNotReadyConfirmOpen}
+            isNotReadyConfirmOpen={activeDialog.type === 'not_ready_confirm'}
+            onNotReadyConfirmChange={handleDialogBoolChange}
             onPayAnyway={handlePayAnyway}
-            isClearNotReadyConfirmOpen={isClearNotReadyConfirmOpen}
-            onClearNotReadyConfirmChange={setClearNotReadyConfirmOpen}
+            isClearNotReadyConfirmOpen={activeDialog.type === 'clear_not_ready_confirm'}
+            onClearNotReadyConfirmChange={handleDialogBoolChange}
             onClearAnyway={handleClearAnyway}
-            notReadyItems={notReadyItems}
-            isVoidConfirmOpen={isVoidConfirmOpen}
-            onVoidConfirmChange={setVoidConfirmOpen}
+            notReadyItems={activeDialog.type === 'not_ready_confirm' || activeDialog.type === 'clear_not_ready_confirm' ? activeDialog.items : EMPTY_NOT_READY_ITEMS}
+            isVoidConfirmOpen={activeDialog.type === 'void_confirm'}
+            onVoidConfirmChange={handleDialogBoolChange}
             onConfirmVoid={confirmVoid}
-            isOrderClosedWarningOpen={isOrderClosedWarningOpen}
-            onOrderClosedWarningChange={setOrderClosedWarningOpen}
-            courseToResend={courseToResend}
-            onCourseResendChange={setCourseToResend}
+            isOrderClosedWarningOpen={activeDialog.type === 'order_closed_warning'}
+            onOrderClosedWarningChange={handleDialogBoolChange}
+            courseToResend={activeDialog.type === 'course_resend' ? activeDialog.course : null}
+            onCourseResendChange={handleCourseResendChange}
             onConfirmResend={handleConfirmResend}
-            isReopenModalOpen={isReopenModalOpen}
+            isReopenModalOpen={activeDialog.type === 'reopen_modal'}
             onReopenModalClose={handleCloseReopenModal}
             onConfirmReopen={handleConfirmReopen}
           />

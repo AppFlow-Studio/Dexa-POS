@@ -150,6 +150,12 @@ export function buildCastlesTerminalResponse(raw: CastlesRawResponse, dbTerminal
   const cardBrand = raw.txnCardBrand ?? raw.txnCardType ?? '';
   const entryMode = raw.txnEntryMode ?? raw.txnCardEntryMode ?? '';
   const rrn = raw.txnRrn ?? raw.txnRRN ?? '';
+  const rrnExpectedTypes = ['sale', 'refund', 'return'];
+  if (!rrn && rrnExpectedTypes.includes(raw.txnType?.toLowerCase())) {
+    console.warn('[CastlesMapper] RRN is empty — tip adjust and void will fail without it. Raw fields:', {
+      txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnType: raw.txnType,
+    });
+  }
   const stan = raw.txnStan ?? '';
   const amountTotal = raw.txnAmtTrans ?? raw.txnAmtTotal ?? '';
   const batchNo = raw.txnBatchNo ?? raw.txnBatchNum ?? '';

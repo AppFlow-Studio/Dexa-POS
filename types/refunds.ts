@@ -103,6 +103,7 @@ export interface PaymentRefundContext {
   paymentId: string;
   referenceId: string;
   rrn: string;
+  stan: string;
   authCode: string;
   amount: number;
   tipAmount: number;

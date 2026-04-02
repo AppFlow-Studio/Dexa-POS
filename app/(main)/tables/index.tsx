@@ -25,6 +25,7 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
+import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
 import { Href, useRouter, useFocusEffect } from 'expo-router'
 import {
   GitMerge,
@@ -113,6 +114,15 @@ const TablesScreen = () => {
       }
     }, [])
   )
+
+  // Pause background timer ticks when table order modal is open
+  useEffect(() => {
+    if (overlayTableId) {
+      pauseTimerTick()
+    } else {
+      resumeTimerTick()
+    }
+  }, [overlayTableId])
 
   // Debounce search input
   useEffect(() => {

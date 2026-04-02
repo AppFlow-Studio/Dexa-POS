@@ -16,7 +16,6 @@ import {
   MenuItemType,
   ModifierCategory,
   Notification,
-  OfflineOrder,
   OnlineOrder,
   Order,
   PaymentTerminal,
@@ -3629,15 +3628,6 @@ export const MOCK_FOUND_TERMINALS = [
   { id: "Canon-TR4520", name: "Canon PIXMA TR4520" },
   { id: "Brother-HL", name: "Brother HL-L2390DW" },
 ];
-
-export const MOCK_OFFLINE_ORDERS: OfflineOrder[] = Array(8).fill({
-  serialNo: "001",
-  orderDate: "Oct 16, 2024",
-  orderTime: "09:31 AM",
-  orderId: "#2010E10",
-  server: "Jake Carter",
-  total: 34.5,
-});
 
 export const salesData = [
   { hour: 6, today: 180, yesterday: 320 },

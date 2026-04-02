@@ -447,6 +447,11 @@ export class CastlesService {
             : raw.txnStatusMessage ||
               parseCastlesReturnCode(raw.txnReturnCode).message;
 
+          console.log('[CastlesService] processSale response:', {
+            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          });
+
           await this._tryReturn2Idle();
           return {
             success: isApproved,
@@ -493,6 +498,11 @@ export class CastlesService {
             request as unknown as Record<string, unknown>,
             timeout,
           );
+
+          console.log('[CastlesService] tipAdjust response:', {
+            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          });
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
@@ -547,6 +557,11 @@ export class CastlesService {
             request as unknown as Record<string, unknown>,
             timeout,
           );
+
+          console.log('[CastlesService] processVoid response:', {
+            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          });
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved

@@ -229,6 +229,7 @@ let autoRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 let isOnline = true;
 let forceOfflineOverride = false; // DEV-only: force offline mode for testing
 let isInitialized = false;
+let isInitializing = false;
 let pendingOperations: OfflineOperation[] = [];
 let deadLetterQueue: OfflineOperation[] = [];
 let syncInProgress = false;
@@ -304,6 +305,13 @@ export async function initOfflineSyncService(config: {
   onOperationFailed?: (op: OfflineOperation) => void;
   executeOperation: (op: OfflineOperation) => Promise<boolean>;
 }): Promise<void> {
+  // Self-guard: prevent double-init from concurrent calls or re-renders.
+  // isInitializing is set synchronously so a second call within the same tick is blocked.
+  if (isInitialized || isInitializing) {
+    return;
+  }
+  isInitializing = true;
+
   onStatusChange = config.onStatusChange;
   onQueueChange = config.onQueueChange;
   onOperationFailed = config.onOperationFailed ?? null;
@@ -329,6 +337,7 @@ export async function initOfflineSyncService(config: {
   startNetInfoPolling();
   startAppStateListener();
 
+  isInitializing = false;
   isInitialized = true;
 
   // Check initial state
@@ -337,6 +346,15 @@ export async function initOfflineSyncService(config: {
 
   // Start periodic sync fallback (every 60s) to guard against missed NetInfo events
   startPeriodicSync();
+
+  // Catch missed transitions: if we're online and have pending ops that
+  // weren't triggered by handleNetworkChange (e.g. network came online
+  // before init completed), schedule a sync now.
+  const pendingCount = getActivePendingCount();
+  if (isOnline && pendingCount > 0) {
+    console.log(`[OfflineSync] Init complete: online with ${pendingCount} pending ops, scheduling sync`);
+    scheduleSync();
+  }
 
   console.log(
     "[OfflineSync] Initialized with",
@@ -378,7 +396,13 @@ export function destroyOfflineSyncService(): void {
     clearTimeout(timer);
   }
   autoRetryTimers.clear();
+  isInitializing = false;
   isInitialized = false;
+}
+
+/** Check if the service has been initialized or is currently initializing. */
+export function isServiceInitialized(): boolean {
+  return isInitialized || isInitializing;
 }
 
 /**
@@ -442,19 +466,32 @@ function scheduleAutoRetry(operation: OfflineOperation): void {
 
 /**
  * Schedule auto-retry for all pending operations after coming back online.
+ * Uses a single coalesced timer instead of per-op timers to avoid event loop thrash
+ * when many operations are queued (e.g. 100 ops would previously create 100 timers,
+ * 99 of which just hit the syncInProgress guard).
  */
 function scheduleAllAutoRetries(): void {
   const pendingOps = pendingOperations.filter(
     op => op.status === "pending" && op.retryCount > 0
   );
 
-  for (const op of pendingOps) {
-    scheduleAutoRetry(op);
-  }
+  if (pendingOps.length === 0) return;
 
-  if (pendingOps.length > 0) {
-    console.log(`[OfflineSync] Scheduled auto-retry for ${pendingOps.length} operations`);
-  }
+  // Clear all existing auto-retry timers
+  for (const t of autoRetryTimers.values()) clearTimeout(t);
+  autoRetryTimers.clear();
+
+  // Single timer at the shortest needed delay
+  const minDelay = Math.min(
+    ...pendingOps.map(op => calculateBackoffDelay(op.retryCount))
+  );
+  const timer = setTimeout(() => {
+    autoRetryTimers.clear();
+    if (isOnline) processQueue();
+  }, minDelay);
+  autoRetryTimers.set("coalesced", timer);
+
+  console.log(`[OfflineSync] Scheduled coalesced auto-retry for ${pendingOps.length} operations (delay: ${minDelay}ms)`);
 }
 
 // ============================================================================
@@ -1057,6 +1094,8 @@ export function getAutoRetryCount(): number {
 export async function syncNow(): Promise<void> {
   if (isOnline) {
     await processQueue();
+  } else {
+    console.warn("[OfflineSync] syncNow — skipped: isOnline=false");
   }
 }
 
@@ -1064,13 +1103,41 @@ export async function syncNow(): Promise<void> {
  * Immediately flush the queue, cancelling any pending debounce timer.
  * Used by onStatusChange to ensure create_order ops complete before reconciliation.
  */
-export async function processQueueNow(): Promise<void> {
+export async function processQueueNow(options?: { force?: boolean }): Promise<void> {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
+
+  if (options?.force) {
+    // User-initiated: clear force-offline override if set
+    if (forceOfflineOverride) {
+      console.warn("[OfflineSync] processQueueNow(force) — clearing forceOfflineOverride");
+      forceOfflineOverride = false;
+    }
+    // Refresh network state before processing
+    try {
+      const netState = await NetInfo.fetch();
+      handleNetworkChange(netState);
+    } catch {}
+    // Reset stuck processing state
+    if (syncInProgress) {
+      console.warn("[OfflineSync] processQueueNow(force) — clearing stuck syncInProgress lock");
+      syncInProgress = false;
+    }
+    for (const op of pendingOperations) {
+      if (op.status === "processing") { op.status = "pending"; }
+    }
+  }
+
+  if (options?.force && !executeOperation) {
+    console.warn("[OfflineSync] processQueueNow(force) — executeOperation not registered. Service may need re-initialization.");
+  }
+
   if (isOnline) {
     await processQueue();
+  } else {
+    console.warn("[OfflineSync] processQueueNow — skipped: isOnline=false");
   }
 }
 
@@ -1079,6 +1146,9 @@ export async function forceRetryAllPending(): Promise<void> {
   let changed = false;
   for (const op of pendingOperations) {
     if (op.status === "processing") { op.status = "pending"; changed = true; }
+  }
+  if (syncInProgress) {
+    console.warn("[OfflineSync] forceRetryAllPending: force-clearing syncInProgress lock (was stuck)");
   }
   syncInProgress = false;
   if (changed) await saveQueueToStorage();
@@ -1351,6 +1421,7 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
     "void_preauth",
     "update_order_status",
     "fire_course",
+    "send_to_kitchen",
   ];
 
   if (typesRequiringOrder.includes(op.type) && op.localOrderId) {
@@ -1549,115 +1620,127 @@ async function processQueue(): Promise<void> {
   }
 
   if (!executeOperation) {
-    console.warn("[OfflineSync] executeOperation handler not registered yet, deferring");
-    return;
-  }
-
-  // ========================================================================
-  // COMPREHENSIVE QUEUE STATUS LOGGING
-  // ========================================================================
-  const allOps = pendingOperations.filter(
-    (op) => op.status !== "discarded" && op.status !== "failed"
-  );
-  const byType: Record<string, number> = {};
-  const byOrder: Record<string, string[]> = {};
-
-  for (const op of allOps) {
-    byType[op.type] = (byType[op.type] || 0) + 1;
-    if (!byOrder[op.localOrderId]) {
-      byOrder[op.localOrderId] = [];
-    }
-    byOrder[op.localOrderId].push(`${op.type}(${op.status})`);
-  }
-
-  console.log("[OfflineSync] ====== QUEUE STATUS ======");
-  console.log("[OfflineSync] Total operations:", allOps.length);
-  console.log("[OfflineSync] By type:", JSON.stringify(byType));
-  console.log("[OfflineSync] By order:", JSON.stringify(byOrder));
-
-  // Update blocked status before processing
-  await updateBlockedOperations();
-
-  const readyOps = getReadyOperations();
-  const blocked = pendingOperations.filter((op) => op.status === "blocked");
-  const pending = pendingOperations.filter((op) => op.status === "pending");
-
-  console.log("[OfflineSync] Ready:", readyOps.length, "| Blocked:", blocked.length, "| Pending:", pending.length);
-
-  if (readyOps.length === 0) {
-    if (blocked.length > 0) {
-      console.log("[OfflineSync] Blocked operations:");
-      for (const op of blocked.slice(0, 5)) {
-        console.log(`  - ${op.type} (${op.id}) for order ${op.localOrderId}`);
+    console.warn("[OfflineSync] executeOperation handler not registered yet, scheduling deferred retry");
+    setTimeout(() => {
+      if (executeOperation && isOnline) {
+        console.log("[OfflineSync] executeOperation now available, retrying queue");
+        processQueue();
       }
-    } else {
-      console.log("[OfflineSync] No pending operations");
-    }
+    }, 2000);
     return;
   }
 
+  // Acquire lock immediately after guard checks — before any async work —
+  // to prevent the race window where two callers both pass the guard.
   syncInProgress = true;
-  console.log("[OfflineSync] ====== PROCESSING ======");
-  console.log("[OfflineSync] Processing", readyOps.length, "operations (by priority)");
 
-  let successCount = 0;
-  let failCount = 0;
+  try {
+    // ========================================================================
+    // COMPREHENSIVE QUEUE STATUS LOGGING
+    // ========================================================================
+    const allOps = pendingOperations.filter(
+      (op) => op.status !== "discarded" && op.status !== "failed"
+    );
+    const byType: Record<string, number> = {};
+    const byOrder: Record<string, string[]> = {};
 
-  for (const operation of readyOps) {
-    // Check if still online before each operation
-    if (!isOnline) {
-      console.log("[OfflineSync] Went offline during sync, stopping");
-      break;
+    for (const op of allOps) {
+      byType[op.type] = (byType[op.type] || 0) + 1;
+      if (!byOrder[op.localOrderId]) {
+        byOrder[op.localOrderId] = [];
+      }
+      byOrder[op.localOrderId].push(`${op.type}(${op.status})`);
     }
 
-    // Mark as processing
-    operation.status = "processing";
-    await saveQueueToStorage();
+    console.log("[OfflineSync] ====== QUEUE STATUS ======");
+    console.log("[OfflineSync] Total operations:", allOps.length);
+    console.log("[OfflineSync] By type:", JSON.stringify(byType));
+    console.log("[OfflineSync] By order:", JSON.stringify(byOrder));
 
-    try {
-      console.log(`[OfflineSync] Executing: ${operation.type} (${operation.id})`);
-      console.log(`[OfflineSync]   Order: ${operation.localOrderId || 'N/A'}`);
-      console.log(`[OfflineSync]   Item: ${operation.localItemId || 'N/A'}`);
+    // Update blocked status before processing
+    await updateBlockedOperations();
 
-      const success = await executeWithTimeout(operation);
+    const readyOps = getReadyOperations();
+    const blocked = pendingOperations.filter((op) => op.status === "blocked");
+    const pending = pendingOperations.filter((op) => op.status === "pending");
 
-      if (success) {
-        console.log(`[OfflineSync] ✓ SUCCESS: ${operation.type} (${operation.id})`);
-        await removeOperation(operation.id);
-        successCount++;
+    console.log("[OfflineSync] Ready:", readyOps.length, "| Blocked:", blocked.length, "| Pending:", pending.length);
 
-        // After completing an operation, unblock dependent operations
-        await updateBlockedOperations();
+    if (readyOps.length === 0) {
+      if (blocked.length > 0) {
+        console.log("[OfflineSync] Blocked operations:");
+        for (const op of blocked.slice(0, 5)) {
+          console.log(`  - ${op.type} (${op.id}) for order ${op.localOrderId}`);
+        }
       } else {
+        console.log("[OfflineSync] No pending operations");
+      }
+      return; // finally will release lock
+    }
+
+    console.log("[OfflineSync] ====== PROCESSING ======");
+    console.log("[OfflineSync] Processing", readyOps.length, "operations (by priority)");
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const operation of readyOps) {
+      // Check if still online before each operation
+      if (!isOnline) {
+        console.log("[OfflineSync] Went offline during sync, stopping");
+        break;
+      }
+
+      // Mark as processing
+      operation.status = "processing";
+      await saveQueueToStorage();
+
+      try {
+        console.log(`[OfflineSync] Executing: ${operation.type} (${operation.id})`);
+        console.log(`[OfflineSync]   Order: ${operation.localOrderId || 'N/A'}`);
+        console.log(`[OfflineSync]   Item: ${operation.localItemId || 'N/A'}`);
+
+        const success = await executeWithTimeout(operation);
+
+        if (success) {
+          console.log(`[OfflineSync] ✓ SUCCESS: ${operation.type} (${operation.id})`);
+          await removeOperation(operation.id);
+          successCount++;
+
+          // After completing an operation, unblock dependent operations
+          await updateBlockedOperations();
+        } else {
+          operation.retryCount++;
+          failCount++;
+          handleOperationFailure(operation, null);
+        }
+      } catch (error) {
+        console.error(
+          "[OfflineSync] Error executing operation:",
+          operation.id,
+          error
+        );
         operation.retryCount++;
         failCount++;
-        handleOperationFailure(operation, null);
+        handleOperationFailure(operation, error);
       }
-    } catch (error) {
-      console.error(
-        "[OfflineSync] Error executing operation:",
-        operation.id,
-        error
-      );
-      operation.retryCount++;
-      failCount++;
-      handleOperationFailure(operation, error);
     }
-  }
 
-  syncInProgress = false;
-  onQueueChange?.(getActivePendingCount());
-  console.log(
-    `[OfflineSync] Sync complete: ${successCount} succeeded, ${failCount} failed`
-  );
-
-  // If we had failures but there are still ready operations, try again
-  const stillReady = getReadyOperations();
-  if (stillReady.length > 0 && isOnline) {
     console.log(
-      "[OfflineSync] Still have ready operations, scheduling retry..."
+      `[OfflineSync] Sync complete: ${successCount} succeeded, ${failCount} failed`
     );
-    scheduleSync();
+
+    // If we had failures but there are still ready operations, try again
+    const stillReady = getReadyOperations();
+    if (stillReady.length > 0 && isOnline) {
+      console.log(
+        "[OfflineSync] Still have ready operations, scheduling retry..."
+      );
+      scheduleSync();
+    }
+  } finally {
+    syncInProgress = false;
+    onQueueChange?.(getActivePendingCount());
   }
 }
 

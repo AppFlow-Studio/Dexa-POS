@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { getDeadLetterCount, getPendingCount } from "@/services/offlineSyncService";
 import { usePathname, useRouter } from "expo-router";
 import {
   Banknote,
@@ -82,6 +83,19 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
 const SidebarNavigation = () => {
   const router = useRouter();
   const pathname = usePathname();
+
+  // Track dead-letter + pending queue counts for badge on General Settings
+  const [deadLetterCount, setDeadLetterCount] = useState(0);
+  const [pendingQueueCount, setPendingQueueCount] = useState(0);
+  useEffect(() => {
+    const check = () => {
+      setDeadLetterCount(getDeadLetterCount());
+      setPendingQueueCount(getPendingCount());
+    };
+    check();
+    const interval = setInterval(check, 10_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
     const activeSection = SETTINGS_SECTIONS.find((section) =>
@@ -199,6 +213,23 @@ const SidebarNavigation = () => {
                           }}>
                             {item.label}
                           </Text>
+
+                          {/* Sync badge on General Settings: red for dead-letter, amber for pending queue */}
+                          {item.id === "general" && (deadLetterCount + pendingQueueCount) > 0 && (
+                            <View style={{
+                              backgroundColor: deadLetterCount > 0 ? "#dc2626" : "#d97706",
+                              borderRadius: 8,
+                              minWidth: 16,
+                              height: 16,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              paddingHorizontal: 4,
+                            }}>
+                              <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>
+                                {deadLetterCount + pendingQueueCount}
+                              </Text>
+                            </View>
+                          )}
                         </TouchableOpacity>
                       );
                     })}

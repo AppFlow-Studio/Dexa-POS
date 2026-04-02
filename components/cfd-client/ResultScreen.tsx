@@ -1,8 +1,15 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
 import { colors } from "@/lib/theme";
 import { Check, CircleAlert, UtensilsCrossed } from "lucide-react-native";
-import React from "react";
+import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 
 interface Props {
   success: boolean;
@@ -14,6 +21,19 @@ export function ResultScreen({ success }: Props) {
   const isCash = paymentMethod === "cash";
   const displayTotal = isCash ? (totalCash || total) : (totalCard || total);
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+  const iconScale = useSharedValue(0.7);
+  const iconOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    iconOpacity.value = withTiming(1, { duration: 150 });
+    iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 });
+  }, []);
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconScale.value }],
+    opacity: iconOpacity.value,
+  }));
 
   return (
     <View style={styles.container}>
@@ -34,41 +54,39 @@ export function ResultScreen({ success }: Props) {
 
       {/* Body */}
       <View style={styles.body}>
-        {/* Icon circle */}
-        <View style={[styles.iconCircle, success ? styles.successCircle : styles.failCircle]}>
+        <Animated.View style={[styles.iconCircle, success ? styles.successCircle : styles.failCircle, iconStyle]}>
           {success ? (
             <Check size={48} color={colors.screen} strokeWidth={3} />
           ) : (
             <CircleAlert size={34} color="#fb7185" strokeWidth={2.4} />
           )}
-        </View>
+        </Animated.View>
 
-        {/* Title */}
-        <Text style={[styles.title, success ? styles.successText : styles.failText]}>
+        <Animated.Text
+          entering={FadeInUp.duration(280).delay(80)}
+          style={[styles.title, success ? styles.successText : styles.failText]}
+        >
           {success ? "Approved" : "Declined"}
-        </Text>
+        </Animated.Text>
 
-        {/* Amount */}
         {success && displayTotal > 0 && (
-          <Text style={styles.amount}>{formatCurrency(displayTotal)}</Text>
+          <Animated.Text entering={FadeInUp.duration(280).delay(140)} style={styles.amount}>
+            {formatCurrency(displayTotal)}
+          </Animated.Text>
         )}
 
-        {/* Tip line */}
         {success && tipAmount > 0 && (
-          <Text style={styles.tipLine}>Including {formatCurrency(tipAmount)} tip</Text>
+          <Animated.Text entering={FadeInUp.duration(280).delay(180)} style={styles.tipLine}>
+            Including {formatCurrency(tipAmount)} tip
+          </Animated.Text>
         )}
 
-        {/* Subtitle */}
-        <Text style={styles.subtitle}>
-          {success
-            ? "Thank you for your payment!"
-            : "Please try a different payment method"}
-        </Text>
-      </View>
-
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Powered by DEXA</Text>
+        <Animated.Text
+          entering={FadeInUp.duration(280).delay(220)}
+          style={styles.subtitle}
+        >
+          {success ? "Thank you for your payment!" : "Please try a different payment method"}
+        </Animated.Text>
       </View>
     </View>
   );
@@ -137,7 +155,7 @@ const styles = StyleSheet.create({
     borderRadius: 42,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 22,
+    marginBottom: 24,
   },
   successCircle: {
     backgroundColor: colors.teal,
@@ -176,18 +194,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 10,
     maxWidth: 420,
-  },
-  footer: {
-    marginTop: 6,
-    paddingTop: 4,
-    paddingBottom: 6,
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  footerText: {
-    fontSize: 9,
-    color: colors.label,
-    fontWeight: "500",
   },
 });

@@ -3,6 +3,7 @@ import PinNumpad from '@/components/auth/PinNumpad'
 import SessionLogoutModal from '@/components/auth/SessionLogoutModal'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { FailedSyncsPanel } from '@/components/settings/sync-status/FailedSyncsPanel'
+import { SyncQueuePanel } from '@/components/settings/sync-status/SyncQueuePanel'
 import { Switch } from '@/components/ui/switch'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getDeviceId } from '@/lib/deviceId'
@@ -643,6 +644,11 @@ const GeneralSettingsScreen = () => {
       />
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Sync Queue */}
+        <View style={{ marginBottom: 12 }}>
+          <SyncQueuePanel />
+        </View>
+
         {/* Failed Sync Operations */}
         <View style={{ marginBottom: 12 }}>
           <FailedSyncsPanel />

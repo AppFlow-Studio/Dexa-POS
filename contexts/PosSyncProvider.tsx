@@ -9,6 +9,7 @@ import { MerchantRole } from "@/lib/types";
 import { FloorPlanService } from "@/services/floorPlanService";
 import {
   initializeOfflineSync,
+  isServiceInitialized,
   setOfflineSyncSupabaseClient,
 } from "@/services/offlineSyncInit";
 import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
@@ -68,8 +69,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
-  const offlineSyncInitialized = useRef(false);
-
   // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS)
   useOrdersQuery({
     locationId: selectedStore?.id ?? null,
@@ -92,12 +91,15 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
       setKDSSupabaseClient(supabase);
-      // Initialize offline sync service (only once)
-      if (!offlineSyncInitialized.current) {
-        offlineSyncInitialized.current = true;
-        initializeOfflineSync().then(() => {
-          console.log("Offline sync service initialized");
-        });
+      // Initialize offline sync service (re-inits after Fast Refresh since module-level state resets)
+      if (!isServiceInitialized()) {
+        initializeOfflineSync()
+          .then(() => {
+            console.log("Offline sync service initialized");
+          })
+          .catch((err) => {
+            console.error("Failed to initialize offline sync:", err);
+          });
       }
 
       console.log(

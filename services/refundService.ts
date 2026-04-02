@@ -89,6 +89,7 @@ export class RefundService {
           "transaction_id",
           "terminal_id",
           "is_settled",
+          "processor_response",
         ].join(","),
       )
       .eq("order_id", request.orderId)
@@ -99,10 +100,14 @@ export class RefundService {
         const amount = Number(p.amount || 0);
         const refundedAmount = Number(p.refunded_amount || 0);
         const availableForRefund = Math.max(0, amount - refundedAmount);
+        // Extract STAN from processor_response JSONB (stored by Castles integration)
+        const castlesTxn = p.processor_response?.castles_transaction;
+        const stan = castlesTxn?.stan || p.processor_response?.raw_castles_response?.txnStan || "";
         return {
           paymentId: p.id,
           referenceId: p.reference_number || p.transaction_id || "",
           rrn: p.rrn || "",
+          stan,
           authCode: p.auth_code || "",
           amount,
           tipAmount: Number(p.tip_amount || 0),
@@ -673,10 +678,12 @@ export class RefundService {
       const referenceId = await counter.next();
 
       if (useVoid) {
-        const result = await castles.processVoid({
-          rrn: payment.rrn || undefined,
-          referenceId,
-        });
+        const rrn = payment.rrn || undefined;
+        const stan = payment.stan || undefined;
+        if (!rrn && !stan) {
+          return { success: false, error: "Cannot void: no RRN or STAN from original transaction." };
+        }
+        const result = await castles.processVoid({ rrn, stan, referenceId });
         return {
           success: result.success,
           terminalResponse: result.terminalResponse,

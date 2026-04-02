@@ -3,6 +3,7 @@ import { CartItem } from "@/lib/types";
 import { colors } from "@/lib/theme";
 import {
   getAutoRetryCount,
+  getDeadLetterCount,
   isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -135,6 +136,9 @@ const BillSectionContent = ({
   const hasPendingSyncs = syncStatus.pending > 0;
   const hasFailedSyncs = syncStatus.failed > 0;
 
+  // Track dead-letter count for banner warning
+  const [deadLetterCount, setDeadLetterCount] = useState(0);
+
   // Track auto-retry state for UI indicator
   const [autoRetryState, setAutoRetryState] = useState({
     isRetrying: false,
@@ -168,6 +172,14 @@ const BillSectionContent = ({
 
     return () => clearInterval(interval);
   }, [hasFailedSyncs, hasPendingSyncs]);
+
+  // Poll dead-letter count (low frequency — informational only)
+  useEffect(() => {
+    const check = () => setDeadLetterCount(getDeadLetterCount());
+    check();
+    const interval = setInterval(check, 10_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Calculate the amount to display on the Pay button
   // Phase 7: Now uses derived selector which already prioritizes backend values
@@ -383,8 +395,17 @@ const BillSectionContent = ({
       {showOrderDetails && <OrderDetails />}
 
       {/* Offline / Sync Status Banner */}
-      {(!isOnline || hasFailedSyncs || pendingSyncCount > 0) && (
+      {(!isOnline || hasFailedSyncs || pendingSyncCount > 0 || deadLetterCount > 0) && (
         <View className="px-3 py-1.5 gap-y-1" style={{ backgroundColor: colors.background }}>
+          {deadLetterCount > 0 && (
+            <View className="flex-row items-center justify-center bg-orange-700/80 px-2.5 py-1.5 rounded-md">
+              <AlertTriangle size={12} color="#FFFFFF" />
+              <Text className="text-white font-medium ml-1.5" style={{ fontSize: 11 }}>
+                {deadLetterCount} operation{deadLetterCount > 1 ? "s" : ""} need attention — go to Settings
+              </Text>
+            </View>
+          )}
+
           {!isOnline && (
             <View className="flex-row items-center justify-center bg-amber-600 px-2.5 py-1.5 rounded-md">
               <WifiOff size={12} color="#FFFFFF" />

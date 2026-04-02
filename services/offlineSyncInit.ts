@@ -25,6 +25,7 @@ import {
     getPendingPaymentsCount,
     hasPendingOrderCreation,
     initOfflineSyncService,
+    isServiceInitialized,
     OfflineOperation,
     OPERATION_PRIORITY,
     processQueueNow,
@@ -37,13 +38,19 @@ import { forceSetLocalSequence, parseSequenceFromDisplayNumber } from "@/lib/loc
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import {
-    calculatePaidStatusFromPayments,
-    useOrderStore,
-} from "@/stores/useOrderStore";
+// NOTE: useOrderStore is NOT imported at top level to avoid circular dependency:
+// offlineSyncInit ↔ useOrderStore (useOrderStore imports queueFailedOperation from this file).
+// Same pattern as usePaymentStore below. Use lazy require() via _getOrderStore() at call site.
 // NOTE: usePaymentStore is NOT imported at top level to avoid circular dependency:
 // useOrderStore → offlineSyncInit → usePaymentStore → useOrderStore
 // Instead, use lazy require() at call site.
+
+function _getOrderStore() {
+  return require("@/stores/useOrderStore").useOrderStore;
+}
+function _getCalculatePaidStatus() {
+  return require("@/stores/useOrderStore").calculatePaidStatusFromPayments;
+}
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
 import { queryClient } from "@/contexts/TanstackProvider";
@@ -78,6 +85,10 @@ export function getPendingPayments(): number {
   return getPendingPaymentsCount();
 }
 
+// Re-export so consumers can check init state without importing offlineSyncService directly
+// (avoids circular dependency issues with module load order)
+export { isServiceInitialized };
+
 /**
  * Get all failed payment operations.
  */
@@ -93,7 +104,7 @@ export function getFailedPaymentOperations(): OfflineOperation[] {
  * dead-lettered, app restart edge cases).
  */
 async function reconcileLostOrderCreations(): Promise<number> {
-  const store = useOrderStore.getState();
+  const store = _getOrderStore().getState();
   const { unsyncedOrderIds, ordersById } = store;
   const selectedStore = useStoreSettingsStore.getState().selectedStore;
 
@@ -123,6 +134,15 @@ async function reconcileLostOrderCreations(): Promise<number> {
 
     // Guard: already has a pending create_order in queue
     if (hasPendingOrderCreation(orderId)) continue;
+
+    // Guard: order was already synced (registry has mapping from create_order success)
+    const backendId = resolveToBackendId(orderId);
+    if (backendId) {
+      console.log(
+        `[OfflineSync:reconcile] Order ${orderId} already synced (registry: ${backendId}), skipping`,
+      );
+      continue;
+    }
 
     // Guard: skip voided/cancelled orders — no point syncing them
     if (order.order_status === "void" || order.order_status === "cancelled")
@@ -181,14 +201,15 @@ async function reconcileLostOrderCreations(): Promise<number> {
  * Call this once at app startup.
  */
 export async function initializeOfflineSync(): Promise<void> {
-  const store = useOrderStore.getState();
-
   // Initialize the ID registry first
   await initIdRegistry();
 
   await initOfflineSyncService({
     onStatusChange: async (isOnline) => {
-      store.setOnlineStatus(isOnline);
+      // Lazy access: useOrderStore may be undefined at init time due to circular deps
+      // (useOrderStore → offlineSyncInit → useOrderStore). By the time callbacks fire,
+      // all modules are fully loaded.
+      _getOrderStore().getState().setOnlineStatus(isOnline);
 
       // When we come back online, reconcile orders with failed syncs
       if (isOnline) {
@@ -210,7 +231,7 @@ export async function initializeOfflineSync(): Promise<void> {
         }
 
         // Get fresh state after queue flush
-        const currentStore = useOrderStore.getState();
+        const currentStore = _getOrderStore().getState();
         const failedOrders = currentStore.getOrdersWithFailedSyncs();
 
         if (failedOrders.length > 0) {
@@ -242,7 +263,8 @@ export async function initializeOfflineSync(): Promise<void> {
       }
     },
     onQueueChange: (count) => {
-      store.setPendingSyncCount(count);
+      // Lazy access to avoid circular dep (same as onStatusChange above)
+      _getOrderStore().getState().setPendingSyncCount(count);
       // Refresh payment store so "X payments queued" badge updates after sync
       // Lazy require to avoid circular dep: useOrderStore → offlineSyncInit → usePaymentStore → useOrderStore
       const { usePaymentStore } = require("@/stores/usePaymentStore");
@@ -298,13 +320,23 @@ function resolveOrderId(localOrderId: string): string | null {
   }
 
   // Fall back to store lookup (order might have db_order_id set)
-  const store = useOrderStore.getState();
+  const store = _getOrderStore().getState();
   const order = store.ordersById[localOrderId];
   if (order?.db_order_id) {
     console.log(
       `[resolveOrderId] Resolved ${localOrderId} from store: ${order.db_order_id}`,
     );
     return order.db_order_id;
+  }
+
+  // Check persistent localIdToDbOrderId mapping (survives rekey + pendingOrderCreations cleanup)
+  const { getKnownDbOrderId } = require("@/stores/useOrderStore");
+  const knownDbId = getKnownDbOrderId(localOrderId);
+  if (knownDbId) {
+    console.log(
+      `[resolveOrderId] Resolved ${localOrderId} from localIdToDbOrderId: ${knownDbId}`,
+    );
+    return knownDbId;
   }
 
   // Order hasn't been synced yet
@@ -333,7 +365,7 @@ function resolveItemId(
   if (fromRegistry) return fromRegistry;
 
   // Fall back to store lookup
-  const store = useOrderStore.getState();
+  const store = _getOrderStore().getState();
   const order = store.ordersById[localOrderId];
   const item = order?.items.find((i) => i.id === localItemId);
   return item?.db_order_item_id || null;
@@ -458,7 +490,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
       case "apply_discount": {
         const { localOrderId, discount } = op.params;
-        const store = useOrderStore.getState();
+        const store = _getOrderStore().getState();
         const order = store.ordersById[localOrderId];
         const resolvedOrderId =
           order?.db_order_id || resolveOrderId(localOrderId);
@@ -502,7 +534,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (result.success && result.order_discount_id) {
           // Mark local discount as synced with backend order_discount_id
-          useOrderStore.setState((state) => {
+          _getOrderStore().setState((state) => {
             const existingOrder = state.ordersById[localOrderId];
             if (!existingOrder?.applied_discounts) return state;
             return {
@@ -543,7 +575,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
       case "void_discount": {
         const { localOrderId, order_discount_id, void_reason } = op.params;
-        const store = useOrderStore.getState();
+        const store = _getOrderStore().getState();
         const order = store.ordersById[localOrderId];
         const resolvedOrderId =
           order?.db_order_id || resolveOrderId(localOrderId);
@@ -758,7 +790,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             // this payment will never succeed - discard it
             const hasCreateOrderOp = hasPendingOrderCreation(localOrderId);
             const orderInStore =
-              useOrderStore.getState().ordersById[localOrderId];
+              _getOrderStore().getState().ordersById[localOrderId];
 
             if (!hasCreateOrderOp && !orderInStore) {
               console.log(
@@ -854,8 +886,6 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           ...(finalTerminalResponse && {
             p_terminal_response: finalTerminalResponse,
           }),
-          // Pass idempotency key to prevent double-processing on retries
-          ...(op.idempotencyKey && { p_idempotency_key: op.idempotencyKey }),
         };
 
         console.log(
@@ -887,7 +917,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         // Sync order state from backend response if available
         if (localOrderId && data) {
-          const store = useOrderStore.getState();
+          const store = _getOrderStore().getState();
           const order = store.ordersById[localOrderId];
           const responseData = data as any;
 
@@ -922,7 +952,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               item_status: "Preparing" as const,
             }));
 
-            useOrderStore.setState((state) => {
+            _getOrderStore().setState((state) => {
               const currentOrder = state.ordersById[localOrderId];
               if (!currentOrder) return state;
 
@@ -946,66 +976,64 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             );
           }
 
-          // Mark the specific payment as synced with backend payment_id and items covered
-          // Uses localPaymentId or paymentTimestamp to find the correct payment (fixes split payment collapse)
-          if (order && responseData.payment_id) {
-            useOrderStore.setState((state) => {
+          // Mark the specific payment as synced with backend payment_id, items covered,
+          // and update order amounts — all in a single setState to avoid losing fields
+          // (the previous 2-block approach would lose cash_amount_due from block 2 when block 3 re-spread).
+          if (order && (responseData.payment_id || responseData.order_amount_paid !== undefined || responseData.order_amount_due !== undefined)) {
+            _getOrderStore().setState((state) => {
               const currentOrder = state.ordersById[localOrderId];
-              if (
-                !currentOrder?.payments ||
-                currentOrder.payments.length === 0
-              ) {
-                return state;
+              if (!currentOrder) return state;
+
+              const payments = [...(currentOrder.payments || [])];
+
+              if (payments.length > 0) {
+                // Find payment by localPaymentId or timestamp instead of using array index
+                const paymentIndex = payments.findIndex(
+                  (p: any) =>
+                    (localPaymentId && p.localId === localPaymentId) ||
+                    (paymentTimestamp && p.timestamp === paymentTimestamp),
+                );
+
+                // Fallback to last payment only if no match found (legacy operations)
+                const targetIdx =
+                  paymentIndex !== -1 ? paymentIndex : payments.length - 1;
+
+                console.log(
+                  `[OfflineSync:payment] Updating payment at index ${targetIdx} (found by ${paymentIndex !== -1 ? "ID match" : "fallback"})`,
+                );
+
+                payments[targetIdx] = {
+                  ...payments[targetIdx],
+                  // Assign backend payment_id if available
+                  ...(responseData.payment_id && { id: responseData.payment_id }),
+                  // Prefer local itemsCovered (built from paidQuantity deltas at payment time),
+                  // then items_paid (per-payment quantities from backend JSON),
+                  // then items_covered (flat UUID array) as last resort
+                  itemsCovered:
+                    (payments[targetIdx].itemsCovered && payments[targetIdx].itemsCovered.length > 0)
+                      ? payments[targetIdx].itemsCovered
+                      : (responseData.items_paid && Array.isArray(responseData.items_paid) && responseData.items_paid.length > 0)
+                        ? responseData.items_paid.map((ip: any) => ({
+                            itemId: ip.order_item_id ?? "",
+                            itemName: ip.item_name || "Unknown Item",
+                            quantity: ip.quantity_paid ?? 0,
+                            unitPrice: ip.unit_price ?? 0,
+                            subtotal: ip.subtotal ?? 0,
+                          }))
+                        : (responseData.items_covered || []),
+                  timestamp:
+                    payments[targetIdx].timestamp || new Date().toISOString(),
+                  sync_status: "synced" as const,
+                  sync_error: undefined,
+                };
               }
-
-              const payments = [...currentOrder.payments];
-
-              // Find payment by localPaymentId or timestamp instead of using array index
-              const paymentIndex = payments.findIndex(
-                (p: any) =>
-                  (localPaymentId && p.localId === localPaymentId) ||
-                  (paymentTimestamp && p.timestamp === paymentTimestamp),
-              );
-
-              // Fallback to last payment only if no match found (legacy operations)
-              const targetIdx =
-                paymentIndex !== -1 ? paymentIndex : payments.length - 1;
-
-              console.log(
-                `[OfflineSync:payment] Updating payment at index ${targetIdx} (found by ${paymentIndex !== -1 ? "ID match" : "fallback"})`,
-              );
-
-              payments[targetIdx] = {
-                ...payments[targetIdx],
-                id: responseData.payment_id,
-                // Prefer local itemsCovered (built from paidQuantity deltas at payment time),
-                // then items_paid (per-payment quantities from backend JSON),
-                // then items_covered (flat UUID array) as last resort
-                itemsCovered:
-                  (payments[targetIdx].itemsCovered && payments[targetIdx].itemsCovered.length > 0)
-                    ? payments[targetIdx].itemsCovered
-                    : (responseData.items_paid && Array.isArray(responseData.items_paid) && responseData.items_paid.length > 0)
-                      ? responseData.items_paid.map((ip: any) => ({
-                          itemId: ip.order_item_id,
-                          itemName: ip.item_name || "Unknown Item",
-                          quantity: ip.quantity_paid,
-                          unitPrice: ip.unit_price,
-                          subtotal: ip.subtotal,
-                        }))
-                      : (responseData.items_covered || []),
-                timestamp:
-                  payments[targetIdx].timestamp || new Date().toISOString(),
-                sync_status: "synced" as const,
-                sync_error: undefined,
-              };
 
               // Calculate paid_status from LOCAL payments, not backend
               // This prevents flicker caused by stale/racing backend values
-              const localPaidStatus = calculatePaidStatusFromPayments(
+              const localPaidStatus = _getCalculatePaidStatus()(
                 payments,
                 currentOrder.total_amount || 0,
               );
-              const isPaid = localPaidStatus === "Paid";
 
               return {
                 ordersById: {
@@ -1029,69 +1057,13 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             });
           }
 
-          // Also update payment amounts from backend
-          if (
-            responseData.order_amount_paid !== undefined ||
-            responseData.order_amount_due !== undefined
-          ) {
-            useOrderStore.setState((state) => {
-              const currentOrder = state.ordersById[localOrderId];
-              if (!currentOrder) return state;
-
-              // Mark the specific payment as synced (find by localPaymentId or timestamp)
-              const payments = [...(currentOrder.payments || [])];
-              if (payments.length > 0) {
-                // Find payment by localPaymentId or timestamp instead of using array index
-                const paymentIndex = payments.findIndex(
-                  (p: any) =>
-                    (localPaymentId && p.localId === localPaymentId) ||
-                    (paymentTimestamp && p.timestamp === paymentTimestamp),
-                );
-
-                // Fallback to last payment only if no match found (legacy operations)
-                const targetIdx =
-                  paymentIndex !== -1 ? paymentIndex : payments.length - 1;
-
-                payments[targetIdx] = {
-                  ...payments[targetIdx],
-                  sync_status: "synced" as const,
-                  sync_error: undefined,
-                };
-              }
-
-              // Calculate paid_status from LOCAL payments, not backend
-              const localPaidStatus = calculatePaidStatusFromPayments(
-                payments,
-                currentOrder.total_amount || 0,
-              );
-              const isPaid = localPaidStatus === "Paid";
-
-              return {
-                ordersById: {
-                  ...state.ordersById,
-                  [localOrderId]: {
-                    ...currentOrder,
-                    payments,
-                    amount_paid:
-                      responseData.order_amount_paid ??
-                      currentOrder.amount_paid,
-                    amount_due:
-                      responseData.order_amount_due ?? currentOrder.amount_due,
-                    paid_status: localPaidStatus,
-                    check_status: currentOrder.check_status ?? "Opened",
-                  },
-                },
-              };
-            });
-          }
-
           // Trigger payment status sync from backend for fresh data
           // This ensures UI shows confirmed status after offline payment syncs
           console.log(
             `[OfflineSync:payment] Triggering payment status sync for order ${localOrderId}`,
           );
           setTimeout(() => {
-            useOrderStore.getState().syncPaymentStatus(localOrderId);
+            _getOrderStore().getState().syncPaymentStatus(localOrderId);
           }, 300);
         }
 
@@ -1102,7 +1074,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
       case "create_order": {
         const { localOrderId, createOrderParams } = op.params;
-        const store = useOrderStore.getState();
+        const store = _getOrderStore().getState();
         const selectedStore = useStoreSettingsStore.getState().selectedStore;
 
         console.log(`[OfflineSync:create_order] ====== CREATING ORDER ======`);
@@ -1119,9 +1091,23 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           return false;
         }
 
+        // Dedup guard: check if order was already created by a concurrent path
+        const existingDbId = resolveOrderId(localOrderId);
+        if (existingDbId) {
+          console.log(
+            `[OfflineSync:create_order] Order already exists: ${localOrderId} → ${existingDbId}, skipping RPC`,
+          );
+          // Ensure local store is consistent
+          if (!store.ordersById[existingDbId]?.db_order_id) {
+            store.updateOrderDbId(localOrderId, existingDbId);
+          }
+          await mapLocalToBackend(localOrderId, existingDbId);
+          return true;
+        }
+
         const { data, error } = await OrderService.createOrder(
           _supabaseClient,
-          { ...createOrderParams, ...(op.idempotencyKey && { p_idempotency_key: op.idempotencyKey }) },
+          createOrderParams,
         );
 
         if (error) {
@@ -1131,6 +1117,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (data) {
           const orderData = Array.isArray(data) ? data[0] : data;
+          if (!orderData) {
+            console.error("[OfflineSync:create_order] FAILED - Response data is empty/undefined");
+            return false;
+          }
           const backendId = orderData.order_id || orderData.id;
 
           if (backendId) {
@@ -1203,7 +1193,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           addItemParams,
           itemData,
         } = op.params;
-        const store = useOrderStore.getState();
+        const store = _getOrderStore().getState();
 
         console.log(`[OfflineSync:add_item] ====== ADDING ITEM ======`);
         console.log(`[OfflineSync:add_item] Local Order ID: ${localOrderId}`);
@@ -1212,44 +1202,24 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           `[OfflineSync:add_item] Item: ${itemData?.name || addItemParams?.p_item_name || "unknown"}`,
         );
 
-        // Check if order exists and get its db_order_id
-        const order = store.ordersById[localOrderId];
-        if (!order) {
-          console.error(
-            `[OfflineSync:add_item] FAILED - Order ${localOrderId} not found in store`,
-          );
-          console.log(
-            `[OfflineSync:add_item] Available orders:`,
-            Object.keys(store.ordersById),
-          );
-          return false;
-        }
-
-        console.log(
-          `[OfflineSync:add_item] Order in store: db_order_id=${order.db_order_id || "NONE"}`,
-        );
-
-        // Resolve the order ID - check registry, then store
-        let actualDbOrderId = dbOrderId || order.db_order_id;
+        // Resolve backend order ID first — may have been rekeyed after create_order synced
+        let actualDbOrderId = dbOrderId;
         if (!actualDbOrderId) {
           actualDbOrderId = resolveOrderId(localOrderId);
-          console.log(
-            `[OfflineSync:add_item] Resolved from registry: ${actualDbOrderId || "NOT_FOUND"}`,
-          );
         }
 
         if (!actualDbOrderId) {
           console.log(
-            `[OfflineSync:add_item] BLOCKED - Waiting for order sync`,
-          );
-          console.log(
-            `[OfflineSync:add_item] Order ${localOrderId} has no db_order_id yet`,
+            `[OfflineSync:add_item] BLOCKED - Waiting for order sync (${localOrderId})`,
           );
           return false; // Will be retried after order sync
         }
 
+        // Determine the correct store key — after rekey it's the backend UUID
+        const storeKey = store.ordersById[localOrderId] ? localOrderId : actualDbOrderId;
+
         console.log(
-          `[OfflineSync:add_item] Using db_order_id: ${actualDbOrderId}`,
+          `[OfflineSync:add_item] Using db_order_id: ${actualDbOrderId}, store key: ${storeKey}`,
         );
 
         const isOpenItem =
@@ -1297,8 +1267,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   modifier_item_id: opt.id,
                   modifier_group_name: mod.categoryName,
                   modifier_name: opt.name,
-                  price_modifier: opt.price,
+                  price_modifier: opt.isNo ? 0 : opt.price,
                   quantity: 1,
+                  is_no: opt.isNo || false,
                 })),
             );
 
@@ -1330,6 +1301,12 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   : undefined,
               p_course_number:
                 useCoursingStore.getState().getWorkingCourse(localOrderId) || 1,
+              p_seat_number: itemData.seatNumber ?? undefined,
+              p_menu_id: itemData.addedFromMenuId || undefined,
+              p_menu_name: itemData.addedFromMenuId
+                ? require("@/stores/useMenuStore").useMenuStore.getState().getMenuById(itemData.addedFromMenuId)?.name
+                : undefined,
+              p_category_id: itemData.addedFromCategoryId || undefined,
             } as AddOrderItemParams;
           } else {
             console.error(
@@ -1363,7 +1340,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (data?.order_item_id && localItemId) {
           // Update local item with backend ID
-          store.updateItemDbId(localOrderId, localItemId, data.order_item_id);
+          store.updateItemDbId(storeKey, localItemId, data.order_item_id);
 
           // Register in ID registry
           await mapLocalToBackend(localItemId, data.order_item_id);
@@ -1380,7 +1357,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             responseData.order_cash_total ||
             responseData.order_total
           ) {
-            store.updateOrderFromSync(localOrderId, {
+            store.updateOrderFromSync(storeKey, {
               total_amount:
                 responseData.order_card_total || responseData.order_total,
               total_tax: responseData.order_card_tax || responseData.order_tax,
@@ -1396,8 +1373,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           }
 
           // Retroactively send to kitchen if item was fired during offline sync
-          const latestStore = useOrderStore.getState();
-          const latestOrder = latestStore.ordersById[localOrderId];
+          const latestStore = _getOrderStore().getState();
+          const latestOrder = latestStore.ordersById[storeKey];
           const latestItem = latestOrder?.items.find(
             (i) => i.id === localItemId,
           );
@@ -1446,7 +1423,14 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           localSessionId,
         } = op.params;
 
-        if (!_supabaseClient || !tableIds?.length) return true;
+        if (!_supabaseClient) {
+          console.warn("[OfflineSync:seat_guests] Supabase client not ready, will retry");
+          return false; // Transient — client not initialized yet
+        }
+        if (!tableIds?.length) {
+          console.error("[OfflineSync:seat_guests] Missing tableIds — invalid operation, discarding");
+          return true; // Invalid op — discard
+        }
 
         const primaryTableId = tableIds[0];
         const additionalTableIds = tableIds.slice(1);
@@ -1483,7 +1467,6 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             p_create_order: createOrder ?? true,
             p_device_id: deviceId,
             p_station_id: stationId,
-            ...(op.idempotencyKey && { p_idempotency_key: op.idempotencyKey }),
           },
         );
 
@@ -1520,7 +1503,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
           // Hydrate order from RPC response
           if (data.order_id) {
-            const orderStore = useOrderStore.getState();
+            const orderStore = _getOrderStore().getState();
             orderStore.hydrateOrderFromSeat({
               localOrderId: op.localOrderId,
               dbOrderId: data.order_id,
@@ -1571,7 +1554,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
       case "merge_table": {
         const { sessionId, tableId } = op.params;
-        if (!sessionId || !tableId) return true;
+        if (!sessionId || !tableId) {
+          console.error("[OfflineSync:merge_table] Missing sessionId or tableId — invalid operation, discarding");
+          return true;
+        }
 
         const resolvedMergeSessionId = resolveSessionId(sessionId) ?? sessionId;
         if (!isValidUUID(resolvedMergeSessionId)) {
@@ -1602,7 +1588,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const { sessionId, status, staffId } = op.params;
 
         if (!sessionId || !status) {
-          console.warn("[OfflineSync] update_session_status: missing params");
+          console.error("[OfflineSync:update_session_status] Missing sessionId or status — invalid operation, discarding");
           return true;
         }
 
@@ -1669,7 +1655,6 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             {
               p_order_id: resolvedOrderId,
               p_session_id: resolvedSessionId,
-              ...(op.idempotencyKey && { p_idempotency_key: op.idempotencyKey }),
             },
           );
 
@@ -1757,7 +1742,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           // which violates valid_status_transitions if the order is still in 'draft'.
           // So we must transition the order out of 'draft' before updating items.
           const currentOrder = Object.values(
-            useOrderStore.getState().ordersById,
+            _getOrderStore().getState().ordersById,
           ).find((o) => o.db_order_id === resolvedOrderId);
           const currentStatus = currentOrder?.order_status;
           const targetOrderStatus = getOrderSentStatus();
@@ -1774,13 +1759,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           );
 
           if (statusError) {
-            // P0001 or "already in" means the order is already in the target status - not an error
-            if (
-              statusError.code === "P0001" ||
-              statusError.message?.includes("already in")
-            ) {
+            // P0001 = raise exception from PL/pgSQL — typically "already in target status"
+            if (statusError.code === "P0001") {
               console.log(
-                `[OfflineSync:send_to_kitchen] Order already in target status, treating as success`,
+                `[OfflineSync:send_to_kitchen] Order already in target status (P0001), treating as success`,
               );
             } else {
               console.error(
@@ -1863,6 +1845,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           const { error } = await _supabaseClient.rpc("fire_course", {
             p_order_id: resolvedOrderId,
             p_course_number: courseNumber,
+            p_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId ?? null,
           });
 
           if (error) {
@@ -1946,11 +1929,29 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           return false;
         }
 
+        // Resolve order_id from local to backend UUID if needed
+        let resolvedOrderId = order_id;
+        if (order_id && !isValidUUID(order_id)) {
+          resolvedOrderId = resolveOrderId(order_id);
+          if (!resolvedOrderId) {
+            console.log(`[OfflineSync] record_cash_drawer_operation: order ${order_id} not synced yet, will retry`);
+            return false;
+          }
+        }
+
+        // Resolve payment_id from local to backend UUID if needed
+        let resolvedPaymentId = payment_id;
+        if (payment_id && !isValidUUID(payment_id)) {
+          resolvedPaymentId = resolveToBackendId(payment_id) || payment_id;
+        }
+
         const { error } = await _supabaseClient
           .from("cash_drawer_operations")
           .insert({
             id, cash_drawer_id, session_id, operation_type, amount,
-            performed_by, performed_at, order_id, payment_id,
+            performed_by, performed_at,
+            order_id: resolvedOrderId,
+            payment_id: resolvedPaymentId,
             balance_after, reason, approved_by,
           });
 
@@ -1980,7 +1981,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         // Resolve order ID
         let dbOrderId: string | undefined;
         if (localOrderId) {
-          const order = useOrderStore.getState().ordersById[localOrderId];
+          const order = _getOrderStore().getState().ordersById[localOrderId];
           dbOrderId = order?.db_order_id;
           if (!dbOrderId) {
             const resolved = resolveOrderId(localOrderId);
@@ -2013,7 +2014,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         // Update local payment with backend payment ID
         const preauthResult = preauthData as { success: boolean; payment_id?: string } | null;
         if (preauthResult?.success && preauthResult.payment_id && localOrderId) {
-          useOrderStore.setState((state) => {
+          _getOrderStore().setState((state) => {
             const order = state.ordersById[localOrderId];
             if (!order?.payments) return state;
             const payments = order.payments.map((p) =>
@@ -2137,7 +2138,7 @@ export async function reconcileRelationships(): Promise<void> {
     // ================================================================
     // PASS 1: Find orders missing session_id
     // ================================================================
-    const { ordersById } = useOrderStore.getState();
+    const { ordersById } = _getOrderStore().getState();
     const orphanedOrders = Object.values(ordersById).filter(
       (order) => order.local_session_id && !order.session_id,
     );
@@ -2179,7 +2180,7 @@ export async function reconcileRelationships(): Promise<void> {
             );
 
             // Update local state
-            useOrderStore.setState((state) => ({
+            _getOrderStore().setState((state) => ({
               ordersById: {
                 ...state.ordersById,
                 [order.id]: {

@@ -14,23 +14,25 @@ import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { BrushCleaning } from 'lucide-react-native'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
+  interpolateColor,
   runOnJS,
   SharedValue,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming
 } from 'react-native-reanimated'
 
 /**
- * Isolated pulsing border overlay — uses setInterval so it can't be killed by parent re-renders.
- * Renders as an absolute overlay on top of the table.
+ * Isolated pulsing border overlay — runs entirely on UI thread via Reanimated.
+ * No JS-thread setInterval/setState, eliminating ~20 JS calls/sec per attention table.
  */
 const PulsingBorder = React.memo(
   ({
@@ -42,38 +44,44 @@ const PulsingBorder = React.memo(
     width: number
     height: number
   }) => {
-    const [opacity, setOpacity] = useState(1)
+    const progress = useSharedValue(1)
 
     useEffect(() => {
-      if (!active) return
-      let rising = false
-      const interval = setInterval(() => {
-        setOpacity(prev => {
-          if (prev <= 0.3) rising = true
-          if (prev >= 1) rising = false
-          return rising ? prev + 0.07 : prev - 0.07
-        })
-      }, 50)
-      return () => clearInterval(interval)
+      if (!active) {
+        progress.value = 1
+        return
+      }
+      // Animate 1 → 0.3 → 1 endlessly on the UI thread
+      progress.value = withRepeat(
+        withSequence(
+          withTiming(0.3, { duration: 500 }),
+          withTiming(1, { duration: 500 })
+        ),
+        -1 // infinite
+      )
     }, [active])
+
+    const animatedBorderStyle = useAnimatedStyle(() => {
+      const borderColor = interpolateColor(
+        progress.value,
+        [0.3, 1],
+        ['rgba(248,113,113,0.3)', 'rgba(248,113,113,1)']
+      )
+      return {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        width,
+        height,
+        borderRadius: 16,
+        borderWidth: 2.5,
+        borderColor,
+      }
+    })
 
     if (!active) return null
 
-    return (
-      <View
-        pointerEvents='none'
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width,
-          height,
-          borderRadius: 16,
-          borderWidth: 2.5,
-          borderColor: `rgba(248,113,113,${opacity})`
-        }}
-      />
-    )
+    return <Animated.View pointerEvents='none' style={animatedBorderStyle} />
   }
 )
 

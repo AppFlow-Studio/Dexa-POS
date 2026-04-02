@@ -7,11 +7,15 @@ import { useEffect, useState } from "react";
  *
  * Singleton: the first component to mount starts the interval,
  * the last to unmount stops it.
+ *
+ * Supports pause/resume: when the table order modal is open,
+ * callers can pause the tick to avoid background re-renders.
  */
 
 let subscriberCount = 0;
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let currentTick = 0;
+let paused = false;
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
@@ -19,6 +23,7 @@ function subscribe(listener: () => void) {
   subscriberCount++;
   if (subscriberCount === 1 && intervalId === null) {
     intervalId = setInterval(() => {
+      if (paused) return; // Skip firing listeners when paused
       currentTick++;
       for (const l of listeners) l();
     }, 60_000);
@@ -31,6 +36,16 @@ function subscribe(listener: () => void) {
       intervalId = null;
     }
   };
+}
+
+/** Pause tick dispatching (background tables stop re-rendering) */
+export function pauseTimerTick() {
+  paused = true;
+}
+
+/** Resume tick dispatching */
+export function resumeTimerTick() {
+  paused = false;
 }
 
 /**

@@ -3779,7 +3779,11 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         const isVoided = payment.isVoided || false
         const collected = isVoided ? 0 : orderAmount + tipAmount
         const txDetails = payment.transactionDetails?.dejavooTransaction
-        const castlesTx = payment.transactionDetails?.castlesTransaction as
+        const castlesRaw = payment.transactionDetails?.castlesTransaction as
+          | Record<string, any>
+          | undefined
+        // Handle both shapes: full buildCastlesTerminalResponse (same-session) vs inner castles_transaction (reloaded)
+        const castlesTx = (castlesRaw?.castles_transaction ?? castlesRaw) as
           | Record<string, string>
           | undefined
         const cardBrand = payment.cardBrand || txDetails?.cardType
@@ -3803,6 +3807,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   ? String(txDetails.rrn)
                   : castlesTx?.rrn
                   ? String(castlesTx.rrn)
+                  : payment.transactionDetails?.rrn
+                  ? String(payment.transactionDetails.rrn)
                   : undefined,
                 transactionNumber: txDetails?.transactionNumber
                   ? String(txDetails.transactionNumber)

@@ -208,12 +208,15 @@ export function useTableSession (
 
     const handleAutoCreateSession = async () => {
       try {
+        // Batch getState() reads: single snapshot per synchronous block
+        let orderSnap = useOrderStore.getState()
+        let sessionSnap = useTableSessionStore.getState()
+
         // Skip if already ready with a valid order for this table
         if (getPhase(phaseRef) === 'ready') {
-          const orderState = useOrderStore.getState()
-          const currentOid = orderState.activeOrderId
+          const currentOid = orderSnap.activeOrderId
           if (currentOid) {
-            const currentOrd = orderState.ordersById[currentOid]
+            const currentOrd = orderSnap.ordersById[currentOid]
             if (currentOrd?.service_location_id === tableId) {
               return // Already have the right order — don't re-enter loading states
             }
@@ -221,17 +224,15 @@ export function useTableSession (
         }
 
         // Check session store for existing session
-        const currentSession = useTableSessionStore
-          .getState()
-          .getSession(tableId)
+        const currentSession = sessionSnap.getSession(tableId)
         const hasExistingSession =
           currentSession?.status && currentSession.status !== 'available'
 
         if (!hasExistingSession) {
           // Check if caller already created an order for this table (seatGuests in-flight)
-          const activeOid = useOrderStore.getState().activeOrderId
+          const activeOid = orderSnap.activeOrderId
           const activeOrd = activeOid
-            ? useOrderStore.getState().ordersById[activeOid]
+            ? orderSnap.ordersById[activeOid]
             : undefined
           if (activeOrd && activeOrd.service_location_id === tableId) {
             hasAutoCreatedRef.current = true
@@ -241,18 +242,14 @@ export function useTableSession (
 
           // Only fetch from DB when there's truly no local session at all (cold open / stale cache).
           // Skip when navigating from the floor plan — session is already in the store.
-          const freshSession = useTableSessionStore
-            .getState()
-            .getSession(tableId)
-          if (!freshSession) {
+          if (!currentSession) {
             await useFloorPlanStore.getState().loadFloorPlanStatusIfStale(1000)
           }
         }
 
-        // Re-fetch after potential status update
-        const updatedSession = useTableSessionStore
-          .getState()
-          .getSession(tableId)
+        // Re-snapshot after potential async work
+        sessionSnap = useTableSessionStore.getState()
+        const updatedSession = sessionSnap.getSession(tableId)
         const updatedTableStatus = updatedSession?.status || 'available'
 
         console.log('[useTableSession] Auto-session check:', {
@@ -271,16 +268,18 @@ export function useTableSession (
           // Skip if already matched by db_order_id
           if (activeOrder?.db_order_id === sOrderId) return
 
+          // Re-snapshot order state for Case 1 checks
+          orderSnap = useOrderStore.getState()
+
           // Skip if getOrder resolves to the already-active order
           // (handles local ID → DB UUID transition where the underlying order is the same)
-          const orderState = useOrderStore.getState()
-          const resolved = orderState.getOrder(sOrderId)
-          if (resolved && resolved.id === orderState.activeOrderId) return
+          const resolved = orderSnap.getOrder(sOrderId)
+          if (resolved && resolved.id === orderSnap.activeOrderId) return
 
           // Lookup active order from fresh state for subsequent guards
-          const activeOid = orderState.activeOrderId
+          const activeOid = orderSnap.activeOrderId
           const activeOrd = activeOid
-            ? orderState.ordersById[activeOid]
+            ? orderSnap.ordersById[activeOid]
             : undefined
 
           // Check if active order's db_order_id already matches session's order_id
@@ -370,9 +369,11 @@ export function useTableSession (
 
           if (getPhase(phaseRef) === 'navigating_away') return
 
+          // Re-snapshot for Case 2
+          orderSnap = useOrderStore.getState()
+
           // Check if seatGuests is already in-flight from the caller (e.g. handleGuestCountSubmit)
-          const orderState3 = useOrderStore.getState()
-          const activeOid3 = orderState3.activeOrderId
+          const activeOid3 = orderSnap.activeOrderId
           if (activeOid3 && hasPendingOrderCreation(activeOid3)) {
             updatePhase('ready')
             return
@@ -383,10 +384,9 @@ export function useTableSession (
 
           try {
             // O(1): Check if the active order is already for this table
-            const orderState2 = useOrderStore.getState()
-            const activeOid2 = orderState2.activeOrderId
+            const activeOid2 = orderSnap.activeOrderId
             const activeOrd2 = activeOid2
-              ? orderState2.ordersById[activeOid2]
+              ? orderSnap.ordersById[activeOid2]
               : undefined
             const existingLocalOrder =
               activeOrd2?.service_location_id === tableId

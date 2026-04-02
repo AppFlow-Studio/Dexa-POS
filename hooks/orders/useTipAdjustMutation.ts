@@ -71,6 +71,7 @@ export function useTipAdjustMutation() {
       }
 
       const terminal = selectedStation.payment_terminal;
+      const processedDbIds = new Set<string>();
 
       if (terminal.terminal_type === "castles") {
         // ──── CASTLES BRANCH ────
@@ -107,6 +108,8 @@ export function useTipAdjustMutation() {
           if (!result.success) {
             throw new Error(result.error || "Castles tip adjust failed.");
           }
+
+          if (payment.dbPaymentId) processedDbIds.add(payment.dbPaymentId);
         }
       } else {
         // ──── DEJAVOO BRANCH ────
@@ -139,7 +142,14 @@ export function useTipAdjustMutation() {
           if (!result.success) {
             throw new Error(result.error || "Tip adjust failed on terminal.");
           }
+
+          if (payment.dbPaymentId) processedDbIds.add(payment.dbPaymentId);
         }
+      }
+
+      // If no payments were actually processed on the terminal, fail early
+      if (processedDbIds.size === 0) {
+        throw new Error("No payments could be adjusted — missing terminal reference data.");
       }
 
       // Persist tip adjustments to database
@@ -148,6 +158,7 @@ export function useTipAdjustMutation() {
         .filter(
           (payment) =>
             payment.dbPaymentId &&
+            processedDbIds.has(payment.dbPaymentId) &&
             Math.abs(payment.newTip - payment.currentTip) > 0.001
         )
         .map((payment) => ({

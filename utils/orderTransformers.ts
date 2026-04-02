@@ -443,7 +443,7 @@ function transformBroadcastPaymentToProfile(
       changeGiven: payment.change_given > 0 ? payment.change_given : undefined,
       isCashPriced: payment.is_cash_priced || undefined,
       isCash: payment.payment_method === "cash",
-      rrn: payment.rrn ?? undefined,
+      rrn: payment.rrn ?? castlesTxn?.rrn ?? undefined,
       batchNumber: payment.batch_number ?? payment.dejavoo_batch_number ?? undefined,
       invoiceNumber: payment.dejavoo_invoice_number ?? undefined,
       entryMode: payment.entry_mode ?? undefined,
@@ -460,6 +460,7 @@ function transformBroadcastPaymentToProfile(
         rrn: payment.rrn ?? undefined,
         resultCode: payment.result_code ?? undefined,
       } as any : undefined,
+      castlesTransaction: terminalVendor === 'castles' && castlesTxn ? castlesTxn : undefined,
     },
     sync_status: "synced",
   };
@@ -963,13 +964,19 @@ function normalizeFetchedPayment(
     reference_id: payment.reference_number ?? null,
     authorization_code: payment.authorization_code ?? null,
     auth_code: payment.auth_code ?? null,
-    rrn: payment.rrn ?? (payment.processor_response as any)?.dejavoo_transaction?.rrn ?? null,
+    rrn: payment.rrn
+      ?? (payment.processor_response as any)?.dejavoo_transaction?.rrn
+      ?? (payment as any).terminal_response?.castles_transaction?.rrn
+      ?? null,
     batch_number: payment.batch_number ?? null,
     dejavoo_batch_number: payment.dejavoo_batch_number ?? null,
     dejavoo_invoice_number: payment.dejavoo_invoice_number ?? null,
     entry_mode: (payment.processor_response as any)?.dejavoo_transaction?.entryMode ?? null,
     result_code: payment.result_code ?? null,
-    terminal_response: (payment as any).terminal_response ?? null,
+    terminal_response: (payment as any).terminal_response
+      ?? ((payment.processor_response as any)?.terminal_vendor === 'castles'
+          ? payment.processor_response
+          : null),
     // Settlement tracking
     is_settled: payment.is_settled ?? false,
     settled_at: payment.settled_at ?? null,
