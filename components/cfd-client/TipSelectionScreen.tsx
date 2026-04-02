@@ -1,6 +1,6 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
 import { colors } from '@/lib/theme'
-import { Delete, UtensilsCrossed } from 'lucide-react-native'
+import { Delete } from 'lucide-react-native'
 import { useEffect, useState } from 'react'
 import {
   Modal,
@@ -10,10 +10,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import Animated, {
-  FadeIn,
-  FadeInDown
-} from 'react-native-reanimated'
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 
 interface Props {
   onTipSelected: (tipAmount: number, tipPercentage: number | null) => void
@@ -102,13 +99,17 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
     })
   }
 
-
   return (
     <View style={styles.outer}>
       <View style={styles.body}>
-        <Animated.View entering={FadeIn.duration(250)} style={styles.titleSection}>
+        <Animated.View
+          entering={FadeIn.duration(250)}
+          style={styles.titleSection}
+        >
           <Text style={styles.title}>Add a tip</Text>
-          <Text style={styles.subtitle}>Order total: {formatCurrency(subtotal)}</Text>
+          <Text style={styles.subtitle}>
+            Order total: {formatCurrency(subtotal)}
+          </Text>
         </Animated.View>
 
         <View style={styles.presetGrid}>
