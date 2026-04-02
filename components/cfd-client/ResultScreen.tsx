@@ -24,12 +24,16 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
     totalCard,
     paymentMethod,
     tipAmount,
+    customerName,
     customerPhone
   } = useCFDDisplayData()
 
   const isCash = paymentMethod === 'cash'
   const displayTotal = isCash ? totalCash || total : totalCard || total
-  const loyaltyCtaLabel = customerPhone ? 'Earn Rewards' : 'Join Loyalty'
+  const hasKnownCustomer = Boolean(
+    customerPhone?.trim() || customerName?.trim()
+  )
+  const loyaltyCtaLabel = hasKnownCustomer ? 'Earn Rewards' : 'Join Loyalty'
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
   const iconScale = useSharedValue(0.7)

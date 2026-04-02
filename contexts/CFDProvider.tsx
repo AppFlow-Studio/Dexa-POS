@@ -1,4 +1,5 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { isValidUUID } from '@/lib/offlineIdRegistry'
 import { detectNativeHardware } from '@/native/HardwareDetection'
 import {
   dismissSecondaryDisplay,
@@ -205,6 +206,21 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     tableName: string | null
     guestCount: number | null
     items: CFDCartItem[]
+  } | null>(null)
+  const lastStableLiveTotalsRef = useRef<{
+    subtotal: number
+    subtotalCash: number
+    subtotalCard: number
+    discountAmount: number
+    taxAmount: number
+    taxCash: number
+    taxCard: number
+    total: number
+    totalCash: number
+    totalCard: number
+    savingsAmount: number
+    outstandingTotal: number
+    amountPaid: number
   } | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -764,12 +780,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     }
 
     // items should always be synced if we're showing order data
-    const cardSubtotal = frozen?.subtotalCard ?? Math.round(currentBase * 100)
-    const cashSubtotal =
+    let cardSubtotal = frozen?.subtotalCard ?? Math.round(currentBase * 100)
+    let cashSubtotal =
       frozen?.subtotalCash ??
       Math.round((orderTotals?.cashSubtotal ?? currentBase) * 100)
-    const cardTax = frozen?.taxCard ?? Math.round(activeOrderTax * 100)
-    const cashTax =
+    let cardTax = frozen?.taxCard ?? Math.round(activeOrderTax * 100)
+    let cashTax =
       frozen?.taxCash ??
       Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
     const liveCardTotal = Math.round(
@@ -778,22 +794,64 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     const liveCashTotal = Math.round(
       ((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100
     )
-    const cardTotal = frozen ? frozen.totalCard : liveCardTotal
-    const cashTotal = frozen ? frozen.totalCash : liveCashTotal
-    const savingsAmount = frozen
+    let cardTotal = frozen ? frozen.totalCard : liveCardTotal
+    let cashTotal = frozen ? frozen.totalCash : liveCashTotal
+    let savingsAmount = frozen
       ? frozen.savingsAmount
       : Math.max(0, liveCardTotal - liveCashTotal)
     const displayTipAmount = frozen
       ? frozen.tipAmount
       : Math.round(currentTip.amount * 100)
-    const displayOutstandingTotal = frozen
+    let displayOutstandingTotal = frozen
       ? frozen.outstandingTotal
       : Math.round((activeOrderOutstandingTotal + currentTip.amount) * 100)
-    const displayAmountPaid = frozen
+    let displayAmountPaid = frozen
       ? frozen.amountPaid
       : Math.round((activeOrder?.amount_paid ?? 0) * 100)
-    const displayDiscountAmount =
+    let displayDiscountAmount =
       frozen?.discountAmount ?? Math.round(activeOrderDiscount * 100)
+
+    const hasItemsForStabilization = displayItems.length > 0
+    const totalsCollapsedToZero =
+      !frozen &&
+      hasItemsForStabilization &&
+      cardSubtotal === 0 &&
+      cashSubtotal === 0 &&
+      cardTotal === 0 &&
+      cashTotal === 0
+
+    if (totalsCollapsedToZero && lastStableLiveTotalsRef.current) {
+      const stable = lastStableLiveTotalsRef.current
+      cardSubtotal = stable.subtotalCard
+      cashSubtotal = stable.subtotalCash
+      cardTax = stable.taxCard
+      cashTax = stable.taxCash
+      cardTotal = stable.totalCard
+      cashTotal = stable.totalCash
+      savingsAmount = stable.savingsAmount
+      displayOutstandingTotal = stable.outstandingTotal
+      displayAmountPaid = stable.amountPaid
+      displayDiscountAmount = stable.discountAmount
+    } else if (
+      !frozen &&
+      (cardSubtotal > 0 || cashSubtotal > 0 || cardTotal > 0 || cashTotal > 0)
+    ) {
+      lastStableLiveTotalsRef.current = {
+        subtotal: cardSubtotal,
+        subtotalCash: cashSubtotal,
+        subtotalCard: cardSubtotal,
+        discountAmount: displayDiscountAmount,
+        taxAmount: cardTax,
+        taxCash: cashTax,
+        taxCard: cardTax,
+        total: cardTotal,
+        totalCash: cashTotal,
+        totalCard: cardTotal,
+        savingsAmount,
+        outstandingTotal: displayOutstandingTotal,
+        amountPaid: displayAmountPaid
+      }
+    }
 
     const params = {
       screenState: activeScreenState || undefined,
@@ -963,6 +1021,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             screenState: 'idle',
             serverName: null,
             customerName: null,
+            customerPhone: null,
             orderNumber: null,
             orderType: null,
             tableName: null,
@@ -1017,12 +1076,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
     const screenState = activeScreenState || 'ordering'
     const currentBase = baseAmountOverride ?? activeOrderSubtotal
-    const cardSubtotal = Math.round(currentBase * 100)
-    const cashSubtotal = Math.round(
+    let cardSubtotal = Math.round(currentBase * 100)
+    let cashSubtotal = Math.round(
       (orderTotals?.cashSubtotal ?? currentBase) * 100
     )
-    const cardTax = Math.round(activeOrderTax * 100)
-    const cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
+    let cardTax = Math.round(activeOrderTax * 100)
+    let cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
     const liveCardTotal = Math.round(
       (activeOrderTotal + currentTip.amount) * 100
     )
@@ -1030,10 +1089,37 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       ((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100
     )
 
-    const cardTotal = liveCardTotal
-    const cashTotal = liveCashTotal
-    const savingsAmount = Math.max(0, liveCardTotal - liveCashTotal)
+    let cardTotal = liveCardTotal
+    let cashTotal = liveCashTotal
+    let savingsAmount = Math.max(0, liveCardTotal - liveCashTotal)
     const displayTipAmount = Math.round(currentTip.amount * 100)
+    let displayOutstandingTotal = Math.round(
+      (activeOrderOutstandingTotal + currentTip.amount) * 100
+    )
+    let displayAmountPaid = Math.round((activeOrder?.amount_paid ?? 0) * 100)
+    let displayDiscountAmount = Math.round(activeOrderDiscount * 100)
+
+    const hasItemsForStabilization = cfdItems.length > 0
+    const totalsCollapsedToZero =
+      cardSubtotal === 0 &&
+      cashSubtotal === 0 &&
+      cardTotal === 0 &&
+      cashTotal === 0 &&
+      hasItemsForStabilization
+
+    if (totalsCollapsedToZero && lastStableLiveTotalsRef.current) {
+      const stable = lastStableLiveTotalsRef.current
+      cardSubtotal = stable.subtotalCard
+      cashSubtotal = stable.subtotalCash
+      cardTax = stable.taxCard
+      cashTax = stable.taxCash
+      cardTotal = stable.totalCard
+      cashTotal = stable.totalCash
+      savingsAmount = stable.savingsAmount
+      displayOutstandingTotal = stable.outstandingTotal
+      displayAmountPaid = stable.amountPaid
+      displayDiscountAmount = stable.discountAmount
+    }
 
     // For dine-in orders, get table ID
     const builtinTableName = activeOrder?.order_type
@@ -1046,6 +1132,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       screenState,
       serverName: null,
       customerName: activeOrder?.customer_name ?? null,
+      customerPhone: activeOrder?.customer_phone ?? null,
       orderNumber:
         activeOrder?.display_number ?? activeOrder?.order_number ?? null,
       orderType: activeOrder?.order_type ?? null,
@@ -1055,7 +1142,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       subtotal: cardSubtotal,
       subtotalCash: cashSubtotal,
       subtotalCard: cardSubtotal,
-      discountAmount: Math.round(activeOrderDiscount * 100),
+      discountAmount: displayDiscountAmount,
       taxAmount: cardTax,
       taxCash: cashTax,
       taxCard: cardTax,
@@ -1065,10 +1152,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       totalCash: cashTotal,
       totalCard: cardTotal,
       savingsAmount,
-      outstandingTotal: Math.round(
-        (activeOrderOutstandingTotal + currentTip.amount) * 100
-      ),
-      amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+      outstandingTotal: displayOutstandingTotal,
+      amountPaid: displayAmountPaid,
       layout: {
         showOrderingRightPanel: showCFDOrderingRightPanel,
         orderingRightPanelMode: cfdOrderingRightPanelMode
@@ -1362,8 +1447,13 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   }, [])
 
   const showLoyaltyPrompt = useCallback(() => {
-    const currentStoreState = useCFDBuiltinStore.getState().screenState
-    if (currentStoreState === 'loyalty_confirmation') return
+    const currentScreenState = activeScreenStateRef.current
+    if (
+      currentScreenState === 'loyalty_prompt' ||
+      currentScreenState === 'loyalty_confirmation'
+    ) {
+      return
+    }
 
     const order = activeOrderRef.current
     const dbOrderId = order?.db_order_id
@@ -1385,20 +1475,24 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       }, 20_000)
     }
 
-    // Show loyalty screen immediately, then resolve auto-earn in the background.
-    showPhonePrompt()
-
     void (async () => {
+      let hasKnownCustomerContext = false
       try {
+        // No order means no way to auto-earn; fall back to manual phone prompt.
         if (!dbOrderId) {
+          showPhonePrompt()
           return
         }
 
-        let effectiveCustomerId = order?.customer_id ?? null
+        const orderCustomerId = order?.customer_id ?? ''
+        let effectiveCustomerId =
+          orderCustomerId && isValidUUID(orderCustomerId)
+            ? orderCustomerId
+            : null
         let effectiveCustomerName = order?.customer_name ?? undefined
         let effectivePhone = order?.customer_phone?.replace(/\D/g, '') ?? ''
 
-        const needsBackendLookup = !effectiveCustomerId && !effectivePhone
+        const needsBackendLookup = !effectiveCustomerId || !effectivePhone
         if (needsBackendLookup) {
           const { data: backendOrder, error: backendOrderError } =
             await supabase
@@ -1413,15 +1507,43 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
               backendOrderError
             )
           } else if (backendOrder) {
-            effectiveCustomerId = backendOrder.customer_id ?? null
+            const backendCustomerId = backendOrder.customer_id ?? ''
+            effectiveCustomerId =
+              backendCustomerId && isValidUUID(backendCustomerId)
+                ? backendCustomerId
+                : effectiveCustomerId
             effectiveCustomerName =
               backendOrder.customer_name ?? effectiveCustomerName
-            effectivePhone =
+            const backendPhone =
               backendOrder.customer_phone?.replace(/\D/g, '') ?? ''
+            effectivePhone = backendPhone || effectivePhone
           }
         }
 
+        // If we have a valid customer_id but no phone yet, hydrate phone from customers.
+        if (effectiveCustomerId && !effectivePhone) {
+          const { data: customerRow, error: customerRowError } = await supabase
+            .from('customers')
+            .select('phone, name')
+            .eq('id', effectiveCustomerId)
+            .maybeSingle()
+
+          if (customerRowError) {
+            console.warn(
+              '[CFD Loyalty] Failed to fetch customer phone from customers table:',
+              customerRowError
+            )
+          } else if (customerRow) {
+            const customerPhone = customerRow.phone?.replace(/\D/g, '') ?? ''
+            effectivePhone = customerPhone || effectivePhone
+            effectiveCustomerName = customerRow.name ?? effectiveCustomerName
+          }
+        }
+
+        hasKnownCustomerContext = Boolean(effectiveCustomerId || effectivePhone)
+
         if (!effectiveCustomerId && !(merchantId && effectivePhone)) {
+          showPhonePrompt()
           return
         }
 
@@ -1463,9 +1585,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         }
 
         if (results.length === 0) {
-          console.warn(
-            '[CFD Loyalty] Auto loyalty returned no program data, showing prompt'
-          )
+          console.warn('[CFD Loyalty] Auto loyalty returned no program data')
+          if (hasKnownCustomerContext) {
+            frozenTotalsRef.current = null
+            setActiveScreenState(null)
+            setBaseAmountOverride(null)
+            setCurrentTip({ amount: 0, percentage: null })
+            controllerRef.current?.showIdle()
+            return
+          }
+
+          showPhonePrompt()
           return
         }
 
@@ -1516,6 +1646,16 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         }, 6000)
       } catch (err) {
         console.error('[CFD Loyalty] Auto loyalty failed, showing prompt:', err)
+        if (hasKnownCustomerContext) {
+          frozenTotalsRef.current = null
+          setActiveScreenState(null)
+          setBaseAmountOverride(null)
+          setCurrentTip({ amount: 0, percentage: null })
+          controllerRef.current?.showIdle()
+          return
+        }
+
+        showPhonePrompt()
       }
     })()
   }, [selectedStore?.merchant_id, selectedStore?.name, supabase])

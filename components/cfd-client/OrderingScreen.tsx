@@ -2,7 +2,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
 import { colors } from '@/lib/theme'
 import type { CFDCartItem } from '@/types/cfd.types'
 import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   FlatList,
   Image,
@@ -55,10 +55,22 @@ export function OrderingScreen () {
   const rightPanelMode = layout?.orderingRightPanelMode ?? 'single'
   const isWide = width > 850 && showRightPanel
 
-  // Animated opacity for savings amount
-  const savingsOpacity = useSharedValue(savingsAmount > 0 ? 1 : 0)
-  const lastSavingsAmount = useRef(savingsAmount)
-  const savingsDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  // Keep displayed totals stable while the POS recalculates in-flight item updates.
+  const [displaySubtotalCard, setDisplaySubtotalCard] = useState(
+    Math.max(0, subtotalCard || subtotal)
+  )
+  const [displayTaxCard, setDisplayTaxCard] = useState(
+    Math.max(0, taxCard || taxAmount)
+  )
+  const [displayTotalCash, setDisplayTotalCash] = useState(
+    Math.max(0, totalCash)
+  )
+  const [displayTotalCard, setDisplayTotalCard] = useState(
+    Math.max(0, totalCard || total)
+  )
+  const [displaySavingsAmount, setDisplaySavingsAmount] = useState(
+    Math.max(0, savingsAmount)
+  )
 
   useEffect(() => {
     if (items.length > prevCount.current) {
@@ -67,35 +79,45 @@ export function OrderingScreen () {
     prevCount.current = items.length
   }, [items.length])
 
-  const savingsAnimatedStyle = useAnimatedStyle(
-    () => ({
-      opacity: savingsOpacity.value,
-      pointerEvents: savingsOpacity.value > 0 ? 'auto' : 'none'
-    }),
-    [savingsOpacity]
-  )
-
-  // Debounced update to ignore temporary zero values during item additions
+  // Ignore transient zero snapshots during add-item recomputation.
   useEffect(() => {
-    if (savingsDebounceRef.current) {
-      clearTimeout(savingsDebounceRef.current)
+    const nextSubtotalCard = Math.max(0, subtotalCard || subtotal)
+    const nextTaxCard = Math.max(0, taxCard || taxAmount)
+    const nextTotalCash = Math.max(0, totalCash)
+    const nextTotalCard = Math.max(0, totalCard || total)
+    const nextSavings = Math.max(0, savingsAmount)
+
+    if (items.length === 0) {
+      setDisplaySubtotalCard(nextSubtotalCard)
+      setDisplayTaxCard(nextTaxCard)
+      setDisplayTotalCash(nextTotalCash)
+      setDisplayTotalCard(nextTotalCard)
+      setDisplaySavingsAmount(nextSavings)
+      return
     }
 
-    savingsDebounceRef.current = setTimeout(() => {
-      if (lastSavingsAmount.current !== savingsAmount) {
-        lastSavingsAmount.current = savingsAmount
-        savingsOpacity.value = withTiming(savingsAmount > 0 ? 1 : 0, {
-          duration: 300
-        })
-      }
-    }, 100)
-
-    return () => {
-      if (savingsDebounceRef.current) {
-        clearTimeout(savingsDebounceRef.current)
-      }
+    const totalsTemporarilyZero = nextTotalCash === 0 && nextTotalCard === 0
+    if (totalsTemporarilyZero) {
+      // Keep previous values visible until non-zero recompute lands.
+      return
     }
-  }, [savingsAmount, savingsOpacity])
+
+    setDisplaySubtotalCard(nextSubtotalCard)
+    setDisplayTaxCard(nextTaxCard)
+    setDisplayTotalCash(nextTotalCash)
+    setDisplayTotalCard(nextTotalCard)
+    setDisplaySavingsAmount(nextSavings)
+  }, [
+    items.length,
+    subtotal,
+    subtotalCard,
+    taxAmount,
+    taxCard,
+    total,
+    totalCash,
+    totalCard,
+    savingsAmount
+  ])
 
   // Debug log
 
@@ -257,7 +279,7 @@ export function OrderingScreen () {
                     fontWeight: '500'
                   }}
                 >
-                  {formatCurrency(subtotalCard || subtotal)}
+                  {formatCurrency(displaySubtotalCard)}
                 </Text>
               </View>
 
@@ -313,7 +335,7 @@ export function OrderingScreen () {
                     fontWeight: '500'
                   }}
                 >
-                  {formatCurrency(taxCard || taxAmount)}
+                  {formatCurrency(displayTaxCard)}
                 </Text>
               </View>
 
@@ -373,7 +395,7 @@ export function OrderingScreen () {
               <Text
                 style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
               >
-                {formatCurrency(totalCash)}
+                {formatCurrency(displayTotalCash)}
               </Text>
             </View>
 
@@ -398,23 +420,23 @@ export function OrderingScreen () {
                   fontWeight: '700'
                 }}
               >
-                {formatCurrency(totalCard || total)}
+                {formatCurrency(displayTotalCard)}
               </Text>
             </View>
 
-            {/* Cash Savings - Reserved Space - Always Rendered */}
-            <Animated.View style={[{ marginBottom: 4 }, savingsAnimatedStyle]}>
+            {/* Cash Savings - Always visible to avoid layout flicker */}
+            <View style={{ marginBottom: 4 }}>
               <Text
                 style={{
-                  color: colors.teal,
+                  color: displaySavingsAmount > 0 ? colors.teal : colors.label,
                   fontWeight: '600',
                   fontSize: 11,
                   textAlign: 'center'
                 }}
               >
-                Save {formatCurrency(savingsAmount)} with cash
+                Save {formatCurrency(displaySavingsAmount)} with cash
               </Text>
-            </Animated.View>
+            </View>
 
             {/* Divider before Amount Due */}
             {amountPaid > 0 && (
