@@ -2,7 +2,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
 import { colors } from '@/lib/theme'
 import type { CFDCartItem } from '@/types/cfd.types'
 import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   FlatList,
   Image,
@@ -13,6 +13,7 @@ import {
 } from 'react-native'
 import Animated, {
   FadeInDown,
+  FadeOutUp,
   LinearTransition,
   runOnJS,
   useAnimatedStyle,
@@ -55,6 +56,11 @@ export function OrderingScreen () {
   const rightPanelMode = layout?.orderingRightPanelMode ?? 'single'
   const isWide = width > 850 && showRightPanel
 
+  // Animated opacity for savings amount
+  const savingsOpacity = useSharedValue(savingsAmount > 0 ? 1 : 0)
+  const lastSavingsAmount = useRef(savingsAmount)
+  const savingsDebounceRef = useRef<NodeJS.Timeout | null>(null)
+
   useEffect(() => {
     if (items.length > prevCount.current) {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
@@ -62,20 +68,32 @@ export function OrderingScreen () {
     prevCount.current = items.length
   }, [items.length])
 
-  // Debug log
-  React.useEffect(() => {
-    console.log('[CFD OrderingScreen]', { orderType, tableName, serverName })
-    if (items.length > 0) {
-      console.log(
-        '[CFD Items]',
-        items.map(i => ({
-          name: i.name,
-          seatNumber: i.seatNumber,
-          courseNumber: i.courseNumber
-        }))
-      )
+  const savingsAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: savingsOpacity.value,
+    pointerEvents: savingsOpacity.value > 0 ? 'auto' : 'none'
+  }), [savingsOpacity])
+
+  // Debounced update to ignore temporary zero values during item additions
+  useEffect(() => {
+    if (savingsDebounceRef.current) {
+      clearTimeout(savingsDebounceRef.current)
     }
-  }, [orderType, tableName, serverName, items])
+
+    savingsDebounceRef.current = setTimeout(() => {
+      if (lastSavingsAmount.current !== savingsAmount) {
+        lastSavingsAmount.current = savingsAmount
+        savingsOpacity.value = withTiming(savingsAmount > 0 ? 1 : 0, { duration: 300 })
+      }
+    }, 100)
+
+    return () => {
+      if (savingsDebounceRef.current) {
+        clearTimeout(savingsDebounceRef.current)
+      }
+    }
+  }, [savingsAmount, savingsOpacity])
+
+  // Debug log
 
   const formatCurrency = (cents: number) => {
     return `$${(cents / 100).toFixed(2)}`
@@ -380,24 +398,24 @@ export function OrderingScreen () {
               </Text>
             </View>
 
-            {/* Cash Savings */}
-            {savingsAmount > 0 && (
-              <Animated.View
-                entering={FadeInDown.delay(300)}
-                style={{ marginBottom: 4 }}
+            {/* Cash Savings - Reserved Space - Always Rendered */}
+            <Animated.View
+              style={[
+                { marginBottom: 4 },
+                savingsAnimatedStyle
+              ]}
+            >
+              <Text
+                style={{
+                  color: colors.teal,
+                  fontWeight: '600',
+                  fontSize: 11,
+                  textAlign: 'center'
+                }}
               >
-                <Text
-                  style={{
-                    color: colors.teal,
-                    fontWeight: '600',
-                    fontSize: 11,
-                    textAlign: 'center'
-                  }}
-                >
-                  Save {formatCurrency(savingsAmount)} with cash
-                </Text>
-              </Animated.View>
-            )}
+                Save {formatCurrency(savingsAmount)} with cash
+              </Text>
+            </Animated.View>
 
             {/* Divider before Amount Due */}
             {amountPaid > 0 && (
