@@ -123,6 +123,17 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
     return result;
   }, [seatGroups, seatCount, activeSeat]);
 
+  // Precompute aggregate statuses once per seatGroups change instead of inline per render
+  const aggregateStatusMap = useMemo(() => {
+    const map: Record<string, AggregateKitchenStatus> = {};
+    Object.entries(seatGroups).forEach(([seatKey, courses]) => {
+      Object.entries(courses).forEach(([course, group]) => {
+        map[`${seatKey}:${course}`] = deriveAggregateStatus(group.items);
+      });
+    });
+    return map;
+  }, [seatGroups]);
+
   // Auto-expand when items added
   useEffect(() => {
     const currentItemCount = activeOrder?.items?.length ?? 0;
@@ -262,7 +273,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                       const courseItemCount = courseGroup.itemCount;
                       const isSent = !!sentCourses?.[course];
                       const isCurrentCourse = currentCourse === course;
-                      const aggregateStatus = deriveAggregateStatus(items);
+                      const aggregateStatus = aggregateStatusMap[`${seatKey}:${course}`] ?? null;
                       const canLongPress = isSent && aggregateStatus && aggregateStatus !== 'served';
 
                       return (

@@ -391,13 +391,16 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     }
   }, [currentCourse]);
 
+  const onSelectCourseRef = useRef(onSelectCourse);
+  onSelectCourseRef.current = onSelectCourse;
+
   const handleToggleCourse = useCallback((courseId: number) => {
-    // Toggle: if already expanded, collapse; otherwise expand this one (collapsing others)
-    setExpandedCourseId((prev) => (prev === courseId ? null : courseId));
-    if (onSelectCourse) {
-      onSelectCourse(expandedCourseId === courseId ? null : courseId);
-    }
-  }, [onSelectCourse, expandedCourseId]);
+    setExpandedCourseId((prev) => {
+      const next = prev === courseId ? null : courseId;
+      onSelectCourseRef.current?.(next);
+      return next;
+    });
+  }, []);
 
   if (!activeOrder) {
     return (
