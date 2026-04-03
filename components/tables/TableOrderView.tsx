@@ -1051,7 +1051,26 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         <TableDetailSkeleton />
       )}
 
-      {/* Stage 2: Defer heavy bottom sheets and dialogs */}
+      {/* Stage 2: Bottom sheets — outside Teleport so re-renders of the portal don't reset gesture state */}
+      {renderStage >= 2 && (
+        <>
+          <MoreOptionsBottomSheet
+            ref={moreOptionsSheetRef}
+            onVoidSuccess={handleVoidSuccess}
+            discountSheetRef={
+              discountSheetRef as React.RefObject<BottomSheetMethods>
+            }
+            onCloseCheck={handleCloseCheck}
+          />
+
+          <DiscountBottomSheet
+            ref={discountSheetRef}
+            onClose={handleCloseDiscountSheet}
+          />
+        </>
+      )}
+
+      {/* Stage 2: Teleport items that need root-level rendering */}
       {renderStage >= 2 && (
         <Teleport hostName="root">
           {selectedCourseIdForTracker !== null && (
@@ -1066,20 +1085,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               )}
             />
           )}
-
-          <MoreOptionsBottomSheet
-            ref={moreOptionsSheetRef}
-            onVoidSuccess={handleVoidSuccess}
-            discountSheetRef={
-              discountSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            onCloseCheck={handleCloseCheck}
-          />
-
-          <DiscountBottomSheet
-            ref={discountSheetRef}
-            onClose={handleCloseDiscountSheet}
-          />
 
           <ServerSelectSheet
             isOpen={serverSheetOpen}

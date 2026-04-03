@@ -5,7 +5,6 @@ import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { Send, X } from 'lucide-react-native'
 import React, { useRef } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
-import { Portal as Teleport } from 'react-native-teleport'
 import BottomActionBar from './BottomActionBar'
 import CourseAccordion from './CourseAccordion'
 import DiscountBottomSheet from './DiscountBottomSheet'
@@ -230,19 +229,17 @@ const TableBillSection = ({
           paymentCount={activeOrder?.payments?.length ?? 0}
         />
 
-        <Teleport hostName="root">
-          <PricingBreakdownSheet
-            ref={pricingSheetRef}
-            onClose={onClosePricingSheet}
-            onPressProceedToPayment={onPressProceedToPayment}
-            totalDisplayAmount={totalDisplayAmount}
-            hasPayments={(activeOrder?.payments?.length ?? 0) > 0}
-          />
-          <DiscountBottomSheet
-            ref={discountSheetRef}
-            onClose={() => discountSheetRef.current?.close()}
-          />
-        </Teleport>
+        <PricingBreakdownSheet
+          ref={pricingSheetRef}
+          onClose={onClosePricingSheet}
+          onPressProceedToPayment={onPressProceedToPayment}
+          totalDisplayAmount={totalDisplayAmount}
+          hasPayments={(activeOrder?.payments?.length ?? 0) > 0}
+        />
+        <DiscountBottomSheet
+          ref={discountSheetRef}
+          onClose={() => discountSheetRef.current?.close()}
+        />
       </View>
     </>
   )
