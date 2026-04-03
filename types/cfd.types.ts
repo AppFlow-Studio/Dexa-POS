@@ -55,7 +55,6 @@ export interface CFDPayload {
   serverName?: string | null // e.g., "Michael J."
   customerName?: string | null // e.g., "John Doe"
   customerPhone?: string | null
-
   // Current screen
   screenState: CFDScreenState
 
@@ -129,10 +128,6 @@ export interface CFDPayload {
       canRedeemNow?: boolean | null
     }>
   }
-
-  // Payment method (when screenState is 'payment' or 'processing')
-  paymentMethod?: 'cash' | 'card' | 'manual' | null
-
   // Payment method (when screenState is 'payment' or 'processing')
   paymentMethod?: 'cash' | 'card' | 'manual' | null
 

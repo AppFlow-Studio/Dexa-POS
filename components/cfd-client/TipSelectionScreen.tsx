@@ -47,7 +47,6 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const subtotal = tipConfig?.subtotalForTip ?? 0
   const presets = tipConfig?.presetPercentages ?? [15, 20, 25]
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
-
   const customAmountCents = Math.round((parseFloat(customAmount) || 0) * 100)
   const selectedTipAmount = showCustom
     ? customAmountCents
