@@ -1,47 +1,47 @@
-import { Database } from "@/database.types";
+import { Database } from '@/database.types'
 
 // ============================================================================
 // DATABASE ROW TYPE
 // ============================================================================
 
 export type ReceiptTemplateRow =
-  Database["public"]["Tables"]["receipt_templates"]["Row"];
+  Database['public']['Tables']['receipt_templates']['Row']
 
 // ============================================================================
 // MODIFIER STYLE
 // ============================================================================
 
-export type ModifierStyle = "inverted" | "red" | "bold";
+export type ModifierStyle = 'inverted' | 'red' | 'bold'
 
 // ============================================================================
 // RECEIPT TEMPLATE CONFIG (mapped from DB row)
 // ============================================================================
 
 export interface ReceiptTemplateConfig {
-  id: string;
-  merchantId: string;
-  locationId: string | null;
-  templateName: string;
-  templateType: string;
-  isActive: boolean;
-  headerText: string | null;
-  footerText: string | null;
-  logoUrl: string | null;
-  showLogo: boolean;
-  showBarcode: boolean;
-  showQrCode: boolean;
-  showOrderType: boolean;
-  showServerName: boolean;
-  showTaxBreakdown: boolean;
-  showTipLine: boolean;
-  showItemModifiers: boolean;
-  showAllergyAlert: boolean;
-  showReadyByTime: boolean;
-  showModsLarge: boolean;
-  largeItemText: boolean;
-  groupByStation: boolean;
-  groupBySeat: boolean;
-  modifierStyle: ModifierStyle;
+  id: string
+  merchantId: string
+  locationId: string | null
+  templateName: string
+  templateType: string
+  isActive: boolean
+  headerText: string | null
+  footerText: string | null
+  logoUrl: string | null
+  showLogo: boolean
+  showBarcode: boolean
+  showQrCode: boolean
+  showOrderType: boolean
+  showServerName: boolean
+  showTaxBreakdown: boolean
+  showTipLine: boolean
+  showItemModifiers: boolean
+  showAllergyAlert: boolean
+  showReadyByTime: boolean
+  showModsLarge: boolean
+  largeItemText: boolean
+  groupByStation: boolean
+  groupBySeat: boolean
+  modifierStyle: ModifierStyle
 }
 
 // ============================================================================
@@ -49,11 +49,11 @@ export interface ReceiptTemplateConfig {
 // ============================================================================
 
 export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplateConfig = {
-  id: "default",
-  merchantId: "",
+  id: 'default',
+  merchantId: '',
   locationId: null,
-  templateName: "Default",
-  templateType: "receipt",
+  templateName: 'Default',
+  templateType: 'receipt',
   isActive: true,
   headerText: null,
   footerText: null,
@@ -72,22 +72,22 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplateConfig = {
   largeItemText: true,
   groupByStation: true,
   groupBySeat: false,
-  modifierStyle: "inverted",
-};
+  modifierStyle: 'inverted'
+}
 
 // ============================================================================
 // MAPPER
 // ============================================================================
 
 export type ReceiptTemplateInsert =
-  Database["public"]["Tables"]["receipt_templates"]["Insert"];
+  Database['public']['Tables']['receipt_templates']['Insert']
 
 /**
  * Convert camelCase config back to snake_case DB row for upsert.
  * Omits `id` when it equals "default" (new template — let DB generate UUID).
  */
-export function receiptTemplateConfigToRow(
-  config: ReceiptTemplateConfig,
+export function receiptTemplateConfigToRow (
+  config: ReceiptTemplateConfig
 ): ReceiptTemplateInsert {
   const row: ReceiptTemplateInsert & { group_by_seat?: boolean | null } = {
     merchant_id: config.merchantId,
@@ -112,19 +112,19 @@ export function receiptTemplateConfigToRow(
     large_item_text: config.largeItemText,
     group_by_station: config.groupByStation,
     group_by_seat: config.groupBySeat,
-    modifier_style: config.modifierStyle,
-  };
-
-  // Only include id if it's a real UUID (not "default")
-  if (config.id !== "default") {
-    row.id = config.id;
+    modifier_style: config.modifierStyle
   }
 
-  return row;
+  // Only include id if it's a real UUID (not "default")
+  if (config.id !== 'default') {
+    row.id = config.id
+  }
+
+  return row
 }
 
-export function receiptTemplateRowToConfig(
-  row: ReceiptTemplateRow,
+export function receiptTemplateRowToConfig (
+  row: ReceiptTemplateRow
 ): ReceiptTemplateConfig {
   return {
     id: row.id,
@@ -150,6 +150,6 @@ export function receiptTemplateRowToConfig(
     largeItemText: row.large_item_text ?? true,
     groupByStation: row.group_by_station ?? true,
     groupBySeat: (row as any).group_by_seat ?? false,
-    modifierStyle: (row.modifier_style as ModifierStyle) ?? "inverted",
-  };
+    modifierStyle: (row.modifier_style as ModifierStyle) ?? 'inverted'
+  }
 }
