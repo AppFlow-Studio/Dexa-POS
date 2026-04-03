@@ -2213,22 +2213,29 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             }
 
             // 3. Record refund items if item-level refund
+            // Filter items to only those belonging to this payment's paymentIndex
             if (selectedItems && selectedItems.length > 0) {
-              const refundItems = selectedItems.map((item: any) => ({
-                order_item_id: item.itemId,
-                quantity_refunded: item.quantity,
-                unit_price_refunded: 0,
-                subtotal_refunded: 0,
-                tax_refunded: 0,
-                total_refunded: 0,
-                refund_reason: reason,
-              }));
-
-              await OrderService.recordRefundItems(
-                _supabaseClient,
-                reversal.id,
-                refundItems,
+              const itemsForThisPayment = selectedItems.filter(
+                (item: any) => item.paymentIndex === undefined || item.paymentIndex === detail.paymentIndex
               );
+
+              if (itemsForThisPayment.length > 0) {
+                const refundItems = itemsForThisPayment.map((item: any) => ({
+                  order_item_id: item.itemId,
+                  quantity_refunded: item.quantity,
+                  unit_price_refunded: 0,
+                  subtotal_refunded: 0,
+                  tax_refunded: 0,
+                  total_refunded: 0,
+                  refund_reason: reason,
+                }));
+
+                await OrderService.recordRefundItems(
+                  _supabaseClient,
+                  reversal.id,
+                  refundItems,
+                );
+              }
             }
           }
 
