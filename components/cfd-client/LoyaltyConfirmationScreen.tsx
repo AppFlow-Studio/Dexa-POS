@@ -18,10 +18,6 @@ export function LoyaltyConfirmationScreen () {
   const { loyaltyResult, branding } = useCFDDisplayData()
   const programs = loyaltyResult?.programs ?? []
   const customerName = loyaltyResult?.customerName
-  const redeemablePrograms = programs.filter(
-    p => p.canRedeemNow === true || p.rewardUnlocked
-  )
-  const hasRedeemableReward = redeemablePrograms.length > 0
   const hasUnlockedReward = programs.some(p => p.rewardUnlocked)
 
   const iconScale = useSharedValue(0.7)
@@ -77,20 +73,6 @@ export function LoyaltyConfirmationScreen () {
           >
             Welcome back, {customerName}
           </Animated.Text>
-        ) : null}
-
-        {hasRedeemableReward ? (
-          <Animated.View
-            entering={FadeInDown.duration(260).delay(220)}
-            style={styles.redeemCard}
-          >
-            <Text style={styles.redeemTitle}>Reward available</Text>
-            <Text style={styles.redeemProgramsText}>
-              {redeemablePrograms.length === 1
-                ? redeemablePrograms[0].name
-                : `${redeemablePrograms.length} rewards ready`}
-            </Text>
-          </Animated.View>
         ) : null}
 
         {hasUnlockedReward ? (
