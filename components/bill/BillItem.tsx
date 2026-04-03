@@ -1,52 +1,52 @@
-import { CartItem } from "@/lib/types";
-import { colors } from "@/lib/theme";
-import {
-  useModifierSidebarStore,
-} from "@/stores/useModifierSidebarStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { colors } from '@/lib/theme'
+import { CartItem } from '@/lib/types'
+import { useMenuStore } from '@/stores/useMenuStore'
+import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import { useOrderStore } from '@/stores/useOrderStore'
 import {
   useItemSyncError,
-  useItemSyncStatus,
-} from "@/stores/useSyncStatusStore";
-import { AlertCircle, Banknote, Trash2 } from "lucide-react-native";
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+  useItemSyncStatus
+} from '@/stores/useSyncStatusStore'
+import { AlertCircle, Banknote, Trash2 } from 'lucide-react-native'
+import React, { useEffect, useMemo, useState } from 'react'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
-import VoidItemDialog from "./VoidItemDialog";
+  withTiming
+} from 'react-native-reanimated'
+import VoidItemDialog from './VoidItemDialog'
 
 interface BillItemProps {
-  item: CartItem;
-  isEditable?: boolean;
-  isActive?: boolean; // Highlight when being edited in modifier panel
-  showPaidBadge?: boolean; // Hide per-item paid badges when order-level badge already shows paid
+  item: CartItem
+  isEditable?: boolean
+  isActive?: boolean // Highlight when being edited in modifier panel
+  showPaidBadge?: boolean // Hide per-item paid badges when order-level badge already shows paid
 }
 
-const DELETE_BUTTON_WIDTH = 90;
+const DELETE_BUTTON_WIDTH = 90
 
-function getKitchenBorderColor(kitchenStatus?: string): string | undefined {
+function getKitchenBorderColor (kitchenStatus?: string): string | undefined {
   switch (kitchenStatus) {
-    case "sent":      return colors.orderPreparing;
-    case "preparing": return colors.paymentPartialRefund;
-    case "ready":     return colors.orderReady;
-    case "served":    return colors.success;
-    default:          return colors.teal;
+    case 'sent':
+      return colors.orderPreparing
+    case 'preparing':
+      return colors.paymentPartialRefund
+    case 'ready':
+      return colors.orderReady
+    case 'served':
+      return colors.success
+    default:
+      return colors.teal
   }
 }
 
 // Type for modifier structure
 interface ModifierDisplay {
-  categoryId: string;
-  categoryName?: string;
-  options: Array<{ id: string; name: string; price: number; isNo?: boolean }>;
+  categoryId: string
+  categoryName?: string
+  options: Array<{ id: string; name: string; price: number; isNo?: boolean }>
 }
 
 /**
@@ -56,186 +56,220 @@ interface ModifierDisplay {
 const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
   ({ modifiers }) => (
     <View>
-      {modifiers.map((modifier, index) => (
-        modifier.options.length > 0 && (
-          <View key={`mod-${index}`} className="flex-row flex-wrap items-center gap-x-1 mb-0.5">
-            {/* {modifier.categoryName && (
+      {modifiers.map(
+        (modifier, index) =>
+          modifier.options.length > 0 && (
+            <View
+              key={`mod-${index}`}
+              className='flex-row flex-wrap items-center gap-x-1 mb-0.5'
+            >
+              {/* {modifier.categoryName && (
               <Text style={{ fontSize: 10 }} className="text-gray-500">
                 {modifier.categoryName}:
               </Text>
             )} */}
-            {modifier.options.map((option, optionIndex) => (
-              <View key={`opt-${optionIndex}`} className="flex-row items-center gap-0.5">
-                <Text style={{ fontSize: 10, color: option.isNo ? colors.danger : '#E0E0E0' }} >
-                  {option.isNo ? `NO ${option.name}` : option.name}{optionIndex < modifier.options.length - 1 ? "," : ""}
-                </Text>
-                {!option.isNo && option.price > 0 && (
-                  <Text style={{ fontSize: 10 }} className="text-teal-500">
-                    +${option.price.toFixed(2)}
+              {modifier.options.map((option, optionIndex) => (
+                <View
+                  key={`opt-${optionIndex}`}
+                  className='flex-row items-center gap-0.5'
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      color: option.isNo ? colors.danger : '#E0E0E0'
+                    }}
+                  >
+                    {option.isNo ? `NO ${option.name}` : option.name}
+                    {optionIndex < modifier.options.length - 1 ? ',' : ''}
                   </Text>
-                )}
-              </View>
-            ))}
-          </View>
-        )
-      ))}
+                  {!option.isNo && option.price > 0 && (
+                    <Text style={{ fontSize: 10 }} className='text-teal-500'>
+                      +${option.price.toFixed(2)}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          )
+      )}
     </View>
   ),
   (prev, next) => {
     // Deep comparison for modifiers array - compare actual option content
-    if (prev.modifiers.length !== next.modifiers.length) return false;
+    if (prev.modifiers.length !== next.modifiers.length) return false
 
     for (let i = 0; i < prev.modifiers.length; i++) {
-      const prevMod = prev.modifiers[i];
-      const nextMod = next.modifiers[i];
+      const prevMod = prev.modifiers[i]
+      const nextMod = next.modifiers[i]
 
-      if (prevMod.categoryId !== nextMod.categoryId) return false;
-      if (prevMod.options.length !== nextMod.options.length) return false;
+      if (prevMod.categoryId !== nextMod.categoryId) return false
+      if (prevMod.options.length !== nextMod.options.length) return false
 
       // Compare actual option IDs, names and isNo to detect changes
       for (let j = 0; j < prevMod.options.length; j++) {
-        if (prevMod.options[j].id !== nextMod.options[j].id) return false;
-        if (prevMod.options[j].name !== nextMod.options[j].name) return false;
-        if (prevMod.options[j].isNo !== nextMod.options[j].isNo) return false;
+        if (prevMod.options[j].id !== nextMod.options[j].id) return false
+        if (prevMod.options[j].name !== nextMod.options[j].name) return false
+        if (prevMod.options[j].isNo !== nextMod.options[j].isNo) return false
       }
     }
 
-    return true;
-  },
-);
+    return true
+  }
+)
 
 const BillItemComponent: React.FC<BillItemProps> = ({
   item,
   isEditable = false,
   isActive = false,
-  showPaidBadge = true,
+  showPaidBadge = true
 }) => {
   // FIXED: Use selectors instead of destructuring to avoid subscribing to entire store
-  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const activeOrderId = useOrderStore(s => s.activeOrderId)
   const removeItemFromActiveOrder = useOrderStore(
-    (s) => s.removeItemFromActiveOrder,
-  );
-  const openToView = useModifierSidebarStore((s) => s.openToView);
-  const openToEdit = useModifierSidebarStore((s) => s.openToEdit);
+    s => s.removeItemFromActiveOrder
+  )
+  const openToView = useModifierSidebarStore(s => s.openToView)
+  const openToEdit = useModifierSidebarStore(s => s.openToEdit)
   const isModifierActive = useModifierSidebarStore(
-    (s) => s.activeEditingItemId === item.id,
-  );
+    s => s.activeEditingItemId === item.id
+  )
 
   // Phase 7D: Sync status from dedicated store (not from item)
   // This prevents re-renders of other components when sync status changes
-  const syncStatus = useItemSyncStatus(item.id);
-  const syncError = useItemSyncError(item.id);
-  const orderHasPayments = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return !!order?.payments?.some((p: any) => !p.isVoided);
-  });
+  const syncStatus = useItemSyncStatus(item.id)
+  const syncError = useItemSyncError(item.id)
+  const orderHasPayments = useOrderStore(s => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    return !!order?.payments?.some((p: any) => !p.isVoided)
+  })
 
   // PERF: Only subscribe to payments when the order actually has payments.
   // During normal table ordering this avoids per-row subscriptions doing extra
   // payment/refund coverage work on every order mutation.
-  const payments = useOrderStore((s) => {
-    if (!orderHasPayments) return null;
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.payments ?? null;
-  });
+  const payments = useOrderStore(s => {
+    if (!orderHasPayments) return null
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    return order?.payments ?? null
+  })
 
-  const translateX = useSharedValue(0);
-  const [showVoidDialog, setShowVoidDialog] = useState(false);
+  const translateX = useSharedValue(0)
+  const [showVoidDialog, setShowVoidDialog] = useState(false)
 
   // Reset animation when item becomes voided
   useEffect(() => {
     if (item.is_voided) {
-      translateX.value = withTiming(0);
+      translateX.value = withTiming(0)
     }
-  }, [item.is_voided]);
+  }, [item.is_voided])
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+    transform: [{ translateX: translateX.value }]
+  }))
 
   // Delete button opacity - only visible when swiping
   const deleteButtonStyle = useAnimatedStyle(() => ({
     opacity:
       translateX.value < -10
         ? withTiming(1, { duration: 100 })
-        : withTiming(0, { duration: 100 }),
-  }));
+        : withTiming(0, { duration: 100 })
+  }))
 
   // Pan gesture to reveal delete
   // OPTIMIZED: Memoize gesture to prevent recreation on each render
-  const MAX_LEFT = -DELETE_BUTTON_WIDTH;
+  const MAX_LEFT = -DELETE_BUTTON_WIDTH
   const pan = useMemo(
     () =>
       Gesture.Pan()
-        .onUpdate((e) => {
-          const next = Math.max(MAX_LEFT, Math.min(0, e.translationX));
-          translateX.value = next;
+        .onUpdate(e => {
+          const next = Math.max(MAX_LEFT, Math.min(0, e.translationX))
+          translateX.value = next
         })
         .onEnd(() => {
-          const shouldOpen = translateX.value < MAX_LEFT / 2;
-          translateX.value = withTiming(shouldOpen ? MAX_LEFT : 0);
+          const shouldOpen = translateX.value < MAX_LEFT / 2
+          translateX.value = withTiming(shouldOpen ? MAX_LEFT : 0)
         })
         .activeOffsetX([-20, 20]) // Only activate if horizontal movement exceeds 20px
         .failOffsetY([-20, 20]), // Fail if vertical movement exceeds 20px
-    [translateX],
-  );
+    [translateX]
+  )
 
   // Check if item is in draft/new state (simple delete) or in kitchen (needs void reason)
   const isKitchenItem =
-    item.kitchen_status === "sent" ||
-    item.kitchen_status === "preparing" ||
-    item.kitchen_status === "ready" ||
-    item.kitchen_status === "served";
+    item.kitchen_status === 'sent' ||
+    item.kitchen_status === 'preparing' ||
+    item.kitchen_status === 'ready' ||
+    item.kitchen_status === 'served'
 
   const handleDelete = () => {
-    if (!activeOrderId) return;
+    if (!activeOrderId) return
 
     if (item.isDraft || !isKitchenItem) {
       // Draft or new item - animate back then remove
-      translateX.value = withTiming(0);
+      translateX.value = withTiming(0)
       // Delay removal to allow animation to complete
       setTimeout(() => {
-        removeItemFromActiveOrder(item.id);
-      }, 50);
+        removeItemFromActiveOrder(item.id)
+      }, 50)
     } else {
       // Kitchen item - show void reason dialog
-      setShowVoidDialog(true);
+      setShowVoidDialog(true)
     }
-  };
+  }
 
   const handleConfirmVoid = (reason: string) => {
     // Reset animation first, before any state changes
-    translateX.value = withTiming(0);
-    setShowVoidDialog(false);
+    translateX.value = withTiming(0)
+    setShowVoidDialog(false)
 
     // Delay the void operation to allow animation to complete
     if (activeOrderId) {
       setTimeout(() => {
-        removeItemFromActiveOrder(item.id, reason);
-      }, 50);
+        removeItemFromActiveOrder(item.id, reason)
+      }, 50)
     }
-  };
+  }
 
   const handleCancelVoid = () => {
-    setShowVoidDialog(false);
+    setShowVoidDialog(false)
     // Reset slide position
-    translateX.value = withTiming(0);
-  };
+    translateX.value = withTiming(0)
+  }
+
+  // Warm cache ahead of time so table-item modifier opens are instant on tap.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      const menuItemId = item.menuItemId
+      if (!menuItemId) return
+      const menuItem = useMenuStore.getState().getMenuItemById(menuItemId)
+      if (!menuItem || !menuItem.modifierGroupIds?.length) return
+      useModifierSidebarStore
+        .getState()
+        .preWarm(
+          menuItem,
+          item.addedFromCategoryId ?? undefined,
+          item.addedFromMenuId ?? undefined
+        )
+    }, 0)
+
+    return () => clearTimeout(handle)
+  }, [item.menuItemId, item.addedFromCategoryId, item.addedFromMenuId])
 
   const handleNotesPress = (e: any) => {
-    e.stopPropagation();
+    e.stopPropagation()
 
     if (isEditable && !isKitchenItem) {
-      openToEdit(item, activeOrderId);
+      openToEdit(item, activeOrderId)
     } else {
-      openToView(item, activeOrderId);
+      openToView(item, activeOrderId)
     }
-  };
+  }
 
   // Check if item is voided (moved before paymentCoverage useMemo)
-  const isVoided = item.is_voided === true;
-  const kitchenBorderColor = isVoided ? undefined : getKitchenBorderColor(item.kitchen_status);
-//  console.log(kitchenBorderColor)
+  const isVoided = item.is_voided === true
+  const kitchenBorderColor = isVoided
+    ? undefined
+    : getKitchenBorderColor(item.kitchen_status)
+  //  console.log(kitchenBorderColor)
   // PERF: Single memoized computation for all payment coverage data
   // Replaces two inline IIFEs that ran O(n*m) on every render
   const paymentCoverage = useMemo(() => {
@@ -247,55 +281,58 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         isPartiallyRefunded: false,
         netCoveredQty: 0,
         refundedQty: 0,
-        methodLabel: "",
-        primaryMethod: "",
+        methodLabel: '',
+        primaryMethod: '',
         isSplitMethod: false,
         hasRefundHistory: false,
         hasRepaid: false,
-        repaidMethodLabel: "",
-      };
+        repaidMethodLabel: ''
+      }
     }
 
-    let coveredQty = 0;
-    const methodQtyMap: Record<string, number> = {};
+    let coveredQty = 0
+    const methodQtyMap: Record<string, number> = {}
 
     for (const payment of payments) {
-      if (payment.isVoided) continue;
+      if (payment.isVoided) continue
       for (const covered of payment.itemsCovered ?? []) {
-        if (covered.itemId === item.id || covered.itemId === item.db_order_item_id) {
-          coveredQty += covered.quantity;
-          const m = payment.method ?? "Unknown";
-          methodQtyMap[m] = (methodQtyMap[m] ?? 0) + covered.quantity;
+        if (
+          covered.itemId === item.id ||
+          covered.itemId === item.db_order_item_id
+        ) {
+          coveredQty += covered.quantity
+          const m = payment.method ?? 'Unknown'
+          methodQtyMap[m] = (methodQtyMap[m] ?? 0) + covered.quantity
         }
       }
     }
 
-    const refundedQty = item.refundedQuantity ?? 0;
-    const netCoveredQty = coveredQty - refundedQty;
-    const hasRefundHistory = refundedQty > 0;
+    const refundedQty = item.refundedQuantity ?? 0
+    const netCoveredQty = coveredQty - refundedQty
+    const hasRefundHistory = refundedQty > 0
 
-    let primaryMethod = "";
-    let maxQty = 0;
-    let methodCount = 0;
+    let primaryMethod = ''
+    let maxQty = 0
+    let methodCount = 0
     for (const [method, qty] of Object.entries(methodQtyMap)) {
-      methodCount++;
+      methodCount++
       if (qty > maxQty) {
-        maxQty = qty;
-        primaryMethod = method;
+        maxQty = qty
+        primaryMethod = method
       }
     }
-    const isSplitMethod = methodCount > 1;
-    const methodLabel = isSplitMethod ? "SPLIT" : primaryMethod.toUpperCase();
+    const isSplitMethod = methodCount > 1
+    const methodLabel = isSplitMethod ? 'SPLIT' : primaryMethod.toUpperCase()
 
-    const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0;
-    const isPartiallyRefunded = hasRefundHistory && netCoveredQty > 0;
-    const isFullyPaid = netCoveredQty >= item.quantity;
-    const isPartiallyPaid = netCoveredQty > 0 && netCoveredQty < item.quantity;
+    const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0
+    const isPartiallyRefunded = hasRefundHistory && netCoveredQty > 0
+    const isFullyPaid = netCoveredQty >= item.quantity
+    const isPartiallyPaid = netCoveredQty > 0 && netCoveredQty < item.quantity
 
     // Repaid after refund data
-    const methods = Object.keys(methodQtyMap);
-    const repaidMethodLabel = methods.length > 1 ? "Split" : (methods[0] ?? "");
-    const hasRepaid = hasRefundHistory && isFullyPaid;
+    const methods = Object.keys(methodQtyMap)
+    const repaidMethodLabel = methods.length > 1 ? 'Split' : methods[0] ?? ''
+    const hasRepaid = hasRefundHistory && isFullyPaid
 
     return {
       isFullyPaid,
@@ -309,26 +346,34 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       isSplitMethod,
       hasRefundHistory,
       hasRepaid,
-      repaidMethodLabel,
-    };
-  }, [payments, item.id, item.db_order_item_id, item.quantity, item.refundedQuantity, isVoided]);
+      repaidMethodLabel
+    }
+  }, [
+    payments,
+    item.id,
+    item.db_order_item_id,
+    item.quantity,
+    item.refundedQuantity,
+    isVoided
+  ])
 
   // Check if item has any modifiers to show
   const hasModifiers =
     (item.customizations.modifiers &&
       item.customizations.modifiers.length > 0) ||
-    item.customizations.notes;
+    item.customizations.notes
 
-  const effectiveIsActive = isActive || isModifierActive || item.isDraft === true;
+  const effectiveIsActive =
+    isActive || isModifierActive || item.isDraft === true
 
   return (
     <View
       className={`rounded-xl overflow-hidden ${
         effectiveIsActive
-          ? "border-2 border-blue-400 bg-blue-500/5"
+          ? 'border-2 border-blue-400 bg-blue-500/5'
           : isVoided
-            ? "border bg-[#2a2020] border-red-900/50 opacity-60"
-            : ""
+          ? 'border bg-[#2a2020] border-red-900/50 opacity-60'
+          : ''
       }`}
       style={[
         !effectiveIsActive && !isVoided
@@ -340,11 +385,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               borderBottomColor: colors.border,
               borderLeftWidth: 3,
               borderLeftColor: kitchenBorderColor ?? colors.border,
-              shadowColor: "#000",
+              shadowColor: '#000',
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.2,
               shadowRadius: 2,
-              elevation: 2,
+              elevation: 2
             }
           : undefined,
         isActive
@@ -353,29 +398,32 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               shadowOffset: { width: 0, height: 0 },
               shadowOpacity: 0.5,
               shadowRadius: 8,
-              elevation: 8,
+              elevation: 8
             }
-          : undefined,
+          : undefined
       ]}
     >
       {isEditable && !isVoided && (
         <Animated.View
           style={deleteButtonStyle}
-          className="absolute top-0 right-1 h-full justify-center items-end self-center z-10"
+          className='absolute top-0 right-1 h-full justify-center items-end self-center z-10'
         >
           <TouchableOpacity
             onPress={handleDelete}
-            className="w-20 h-[85%] bg-red-500 items-center rounded-lg justify-center"
+            className='w-20 h-[85%] bg-red-500 items-center rounded-lg justify-center'
           >
-            <Trash2 color="white" size={20} />
+            <Trash2 color='white' size={20} />
           </TouchableOpacity>
         </Animated.View>
       )}
 
       <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
         <Animated.View
-          style={[animatedStyle, !isVoided ? { backgroundColor: colors.card } : undefined]}
-          className={isVoided ? "bg-[#2a2020]" : "z-20"}
+          style={[
+            animatedStyle,
+            !isVoided ? { backgroundColor: colors.card } : undefined
+          ]}
+          className={isVoided ? 'bg-[#2a2020]' : 'z-20'}
         >
           <TouchableOpacity
             onPress={isVoided ? undefined : handleNotesPress}
@@ -383,73 +431,137 @@ const BillItemComponent: React.FC<BillItemProps> = ({
             disabled={isVoided}
           >
             {/* Main row */}
-            <View className="flex-row items-center py-2 px-3 gap-2.5">
+            <View className='flex-row items-center py-2 px-3 gap-2.5'>
               {/* Quantity pill */}
               <View
-                style={{ width: 20, height: 20, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: isVoided ? colors.border : colors.card }}
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 5,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isVoided ? colors.border : colors.card
+                }}
               >
-                <Text style={{ fontSize: 10, fontWeight: "700", color: isVoided ? colors.muted : colors.label }}>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: isVoided ? colors.muted : colors.label
+                  }}
+                >
                   {item.quantity}
                 </Text>
               </View>
 
               {/* Name + badges */}
-              <View className="flex-1">
-                <View className="flex-row items-center gap-1.5">
+              <View className='flex-1'>
+                <View className='flex-row items-center gap-1.5'>
                   <Text
-                    style={{ fontSize: 12, fontWeight: '600', flexShrink: 1, color: isVoided ? colors.muted : colors.heading, textDecorationLine: isVoided ? 'line-through' : 'none' }}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      flexShrink: 1,
+                      color: isVoided ? colors.muted : colors.heading,
+                      textDecorationLine: isVoided ? 'line-through' : 'none'
+                    }}
                     numberOfLines={1}
                   >
                     {item.name}
                   </Text>
-                  {syncStatus === "pending" || syncStatus === "syncing" ? (
+                  {syncStatus === 'pending' || syncStatus === 'syncing' ? (
                     <ActivityIndicator size={10} color={colors.info} />
-                  ) : syncStatus === "failed" ? (
+                  ) : syncStatus === 'failed' ? (
                     <AlertCircle size={13} color={colors.danger} />
                   ) : null}
                 </View>
 
                 {/* Status badges row */}
-                {(isVoided || paymentCoverage.isFullyRefunded || paymentCoverage.isPartiallyRefunded || paymentCoverage.isFullyPaid || paymentCoverage.isPartiallyPaid) && (
-                  <View className="flex-row flex-wrap gap-1 mt-0.5">
+                {(isVoided ||
+                  paymentCoverage.isFullyRefunded ||
+                  paymentCoverage.isPartiallyRefunded ||
+                  paymentCoverage.isFullyPaid ||
+                  paymentCoverage.isPartiallyPaid) && (
+                  <View className='flex-row flex-wrap gap-1 mt-0.5'>
                     {isVoided && (
-                      <View className="bg-red-900/60 px-1.5 py-px rounded">
-                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-red-400">VOID</Text>
+                      <View className='bg-red-900/60 px-1.5 py-px rounded'>
+                        <Text
+                          style={{ fontSize: 9, fontWeight: '700' }}
+                          className='text-red-400'
+                        >
+                          VOID
+                        </Text>
                       </View>
                     )}
                     {!isVoided && paymentCoverage.isFullyRefunded && (
-                      <View className="bg-red-900/40 px-1.5 py-px rounded">
-                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-red-400">REFUNDED</Text>
+                      <View className='bg-red-900/40 px-1.5 py-px rounded'>
+                        <Text
+                          style={{ fontSize: 9, fontWeight: '700' }}
+                          className='text-red-400'
+                        >
+                          REFUNDED
+                        </Text>
                       </View>
                     )}
-                    {!isVoided && paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid && (
-                      <View className="bg-orange-900/40 px-1.5 py-px rounded">
-                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-orange-400">{paymentCoverage.refundedQty} REFUNDED</Text>
-                      </View>
-                    )}
-                    {showPaidBadge && !isVoided && !paymentCoverage.isFullyRefunded && !(paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid) && paymentCoverage.isFullyPaid && (
-                      <View className="flex-row items-center bg-green-900/40 px-1.5 py-px rounded gap-1">
-                        {paymentCoverage.primaryMethod === "Cash" && !paymentCoverage.isSplitMethod && (
-                          <Banknote size={9} color={colors.success} />
-                        )}
-                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-green-400">PAID {paymentCoverage.methodLabel}</Text>
-                      </View>
-                    )}
+                    {!isVoided &&
+                      paymentCoverage.isPartiallyRefunded &&
+                      paymentCoverage.isFullyPaid && (
+                        <View className='bg-orange-900/40 px-1.5 py-px rounded'>
+                          <Text
+                            style={{ fontSize: 9, fontWeight: '700' }}
+                            className='text-orange-400'
+                          >
+                            {paymentCoverage.refundedQty} REFUNDED
+                          </Text>
+                        </View>
+                      )}
+                    {showPaidBadge &&
+                      !isVoided &&
+                      !paymentCoverage.isFullyRefunded &&
+                      !(
+                        paymentCoverage.isPartiallyRefunded &&
+                        paymentCoverage.isFullyPaid
+                      ) &&
+                      paymentCoverage.isFullyPaid && (
+                        <View className='flex-row items-center bg-green-900/40 px-1.5 py-px rounded gap-1'>
+                          {paymentCoverage.primaryMethod === 'Cash' &&
+                            !paymentCoverage.isSplitMethod && (
+                              <Banknote size={9} color={colors.success} />
+                            )}
+                          <Text
+                            style={{ fontSize: 9, fontWeight: '700' }}
+                            className='text-green-400'
+                          >
+                            PAID {paymentCoverage.methodLabel}
+                          </Text>
+                        </View>
+                      )}
                     {!isVoided && paymentCoverage.isPartiallyPaid && (
-                      <View className="bg-yellow-900/40 px-1.5 py-px rounded">
-                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-yellow-400">{paymentCoverage.netCoveredQty}/{item.quantity} PAID</Text>
+                      <View className='bg-yellow-900/40 px-1.5 py-px rounded'>
+                        <Text
+                          style={{ fontSize: 9, fontWeight: '700' }}
+                          className='text-yellow-400'
+                        >
+                          {paymentCoverage.netCoveredQty}/{item.quantity} PAID
+                        </Text>
                       </View>
                     )}
                   </View>
                 )}
 
                 {isVoided && item.void_reason && (
-                  <Text style={{ fontSize: 10 }} className="text-red-400/60 mt-0.5 italic">
+                  <Text
+                    style={{ fontSize: 10 }}
+                    className='text-red-400/60 mt-0.5 italic'
+                  >
                     {item.void_reason}
                   </Text>
                 )}
                 {paymentCoverage.hasRepaid && (
-                  <Text style={{ fontSize: 9 }} className="text-gray-500 italic mt-0.5">
+                  <Text
+                    style={{ fontSize: 9 }}
+                    className='text-gray-500 italic mt-0.5'
+                  >
                     Refunded → Re-paid {paymentCoverage.repaidMethodLabel}
                   </Text>
                 )}
@@ -457,7 +569,12 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
               {/* Price */}
               <Text
-                style={{ fontSize: 11, fontWeight: "600", color: isVoided ? colors.muted : colors.teal, textDecorationLine: isVoided ? 'line-through' : 'none' }}
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: isVoided ? colors.muted : colors.teal,
+                  textDecorationLine: isVoided ? 'line-through' : 'none'
+                }}
               >
                 ${(item.price * item.quantity).toFixed(2)}
               </Text>
@@ -465,19 +582,26 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
             {/* Modifiers / Notes */}
             {hasModifiers && (
-              <Animated.View className="overflow-hidden">
+              <Animated.View className='overflow-hidden'>
                 <View
-                  className="mx-3 mb-2 px-2 py-1.5 rounded-md"
-                  style={{ backgroundColor: "#12162A" }}
+                  className='mx-3 mb-2 px-2 py-1.5 rounded-md'
+                  style={{ backgroundColor: '#12162A' }}
                 >
                   {item.customizations.modifiers &&
                     item.customizations.modifiers.length > 0 && (
-                      <ModifiersList modifiers={item.customizations.modifiers} />
+                      <ModifiersList
+                        modifiers={item.customizations.modifiers}
+                      />
                     )}
                   {item.customizations.notes && (
-                    <View className="flex-row items-start gap-1 mt-0.5">
-                      <Text style={{ fontSize: 10 }} className="text-gray-500">Note:</Text>
-                      <Text style={{ fontSize: 10 }} className="text-gray-300 italic flex-1">
+                    <View className='flex-row items-start gap-1 mt-0.5'>
+                      <Text style={{ fontSize: 10 }} className='text-gray-500'>
+                        Note:
+                      </Text>
+                      <Text
+                        style={{ fontSize: 10 }}
+                        className='text-gray-300 italic flex-1'
+                      >
                         {item.customizations.notes}
                       </Text>
                     </View>
@@ -497,8 +621,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         onCancel={handleCancelVoid}
       />
     </View>
-  );
-};
+  )
+}
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
 // Phase 7D: sync_status is now in useSyncStatusStore, not on item
@@ -523,29 +647,29 @@ const BillItem = React.memo(BillItemComponent, (prev, next) => {
     prev.isActive !== next.isActive ||
     prev.showPaidBadge !== next.showPaidBadge
   ) {
-    return false;
+    return false
   }
 
   // Deep compare modifiers - check actual option IDs, not just length
-  const prevModifiers = prev.item.customizations?.modifiers || [];
-  const nextModifiers = next.item.customizations?.modifiers || [];
+  const prevModifiers = prev.item.customizations?.modifiers || []
+  const nextModifiers = next.item.customizations?.modifiers || []
 
-  if (prevModifiers.length !== nextModifiers.length) return false;
+  if (prevModifiers.length !== nextModifiers.length) return false
 
   for (let i = 0; i < prevModifiers.length; i++) {
-    const prevMod = prevModifiers[i];
-    const nextMod = nextModifiers[i];
+    const prevMod = prevModifiers[i]
+    const nextMod = nextModifiers[i]
 
-    if (prevMod.categoryId !== nextMod.categoryId) return false;
-    if (prevMod.options.length !== nextMod.options.length) return false;
+    if (prevMod.categoryId !== nextMod.categoryId) return false
+    if (prevMod.options.length !== nextMod.options.length) return false
 
     // Compare actual option IDs to detect when options change
     for (let j = 0; j < prevMod.options.length; j++) {
-      if (prevMod.options[j].id !== nextMod.options[j].id) return false;
+      if (prevMod.options[j].id !== nextMod.options[j].id) return false
     }
   }
 
-  return true;
-});
+  return true
+})
 
-export default BillItem;
+export default BillItem

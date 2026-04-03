@@ -10,6 +10,7 @@ import { useLoading } from '@/contexts/LoadingContext'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
 import { getDeviceId } from '@/lib/deviceId'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -24,8 +25,7 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
-import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
-import { Href, useRouter, useFocusEffect } from 'expo-router'
+import { Href, useFocusEffect, useRouter } from 'expo-router'
 import {
   GitMerge,
   HelpCircle,
@@ -35,16 +35,9 @@ import {
   UtensilsCrossed,
   X
 } from 'lucide-react-native'
-import { useShallow } from 'zustand/react/shallow'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  InteractionManager,
-  Modal,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native'
+import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { useShallow } from 'zustand/react/shallow'
 
 const TablesScreen = () => {
   const router = useRouter()
@@ -105,11 +98,7 @@ const TablesScreen = () => {
     useCallback(() => {
       const pendingId = usePendingTableOverlay.getState().consume()
       if (pendingId) {
-        // Wait for navigation animation to complete before opening modal
-        const handle = InteractionManager.runAfterInteractions(() => {
-          router.push(('/tables/' + pendingId) as Href)
-        })
-        return () => handle.cancel()
+        router.push(('/tables/' + pendingId) as Href)
       }
     }, [])
   )
@@ -127,15 +116,6 @@ const TablesScreen = () => {
     const timer = setTimeout(() => setSearchText(searchInput), 200)
     return () => clearTimeout(timer)
   }, [searchInput])
-
-  // DEFERRED RENDERING: Wait for navigation transition to complete
-  const [isReady, setIsReady] = useState(false)
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setIsReady(true)
-    })
-    return () => handle.cancel()
-  }, [])
 
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore()
   const { loggedInEmployee } = useEmployeeStore()
@@ -520,22 +500,44 @@ const TablesScreen = () => {
 
         {/* Right Side: Floor Plan */}
         <View style={{ flex: 1, padding: 12, gap: 8 }}>
-
           {/* Top Bar */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-
             {/* Layout Tabs */}
-            <View style={{ flexDirection: 'row', backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 3 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                padding: 3
+              }}
+            >
               {floorPlans.map(layout => (
                 <TouchableOpacity
                   key={layout.id}
                   onPress={() => setActiveFloorPlan(layout.id)}
                   style={[
-                    { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
-                    activeFloorPlanId === layout.id && { backgroundColor: colors.screen }
+                    {
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 6
+                    },
+                    activeFloorPlanId === layout.id && {
+                      backgroundColor: colors.screen
+                    }
                   ]}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: activeFloorPlanId === layout.id ? colors.teal : colors.label }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      color:
+                        activeFloorPlanId === layout.id
+                          ? colors.teal
+                          : colors.label
+                    }}
+                  >
                     {layout.name}
                   </Text>
                 </TouchableOpacity>
@@ -543,14 +545,33 @@ const TablesScreen = () => {
             </View>
 
             {/* Search Bar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, width: 200 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 8,
+                paddingVertical: 5,
+                width: 200
+              }}
+            >
               <Search color={colors.muted} size={13} />
               <TextInput
                 placeholder='Search tables...'
                 placeholderTextColor={colors.muted}
                 value={searchInput}
                 onChangeText={setSearchInput}
-                style={{ marginLeft: 6, fontSize: 12, flex: 1, color: colors.heading, includeFontPadding: false, padding: 4 }}
+                style={{
+                  marginLeft: 6,
+                  fontSize: 12,
+                  flex: 1,
+                  color: colors.heading,
+                  includeFontPadding: false,
+                  padding: 4
+                }}
               />
             </View>
 
@@ -559,11 +580,40 @@ const TablesScreen = () => {
 
             {/* Merge Tables Toggle */}
             <TouchableOpacity
-              onPress={() => { if (isMergeMode) { handleCancelMerge() } else { clearSelection(); setMergeMode(true) } }}
-              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, backgroundColor: isMergeMode ? colors.border + '30' : colors.warning + '15', borderColor: isMergeMode ? colors.border : colors.warning + '50' }}
+              onPress={() => {
+                if (isMergeMode) {
+                  handleCancelMerge()
+                } else {
+                  clearSelection()
+                  setMergeMode(true)
+                }
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 8,
+                borderWidth: 1,
+                backgroundColor: isMergeMode
+                  ? colors.border + '30'
+                  : colors.warning + '15',
+                borderColor: isMergeMode ? colors.border : colors.warning + '50'
+              }}
             >
-              {isMergeMode ? <X color={colors.label} size={13} /> : <GitMerge color={colors.warning} size={13} />}
-              <Text style={{ fontSize: 12, fontWeight: '600', marginLeft: 5, color: isMergeMode ? colors.label : colors.warning }}>
+              {isMergeMode ? (
+                <X color={colors.label} size={13} />
+              ) : (
+                <GitMerge color={colors.warning} size={13} />
+              )}
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  marginLeft: 5,
+                  color: isMergeMode ? colors.label : colors.warning
+                }}
+              >
                 {isMergeMode ? 'Cancel' : 'Merge Tables'}
               </Text>
             </TouchableOpacity>
@@ -572,29 +622,83 @@ const TablesScreen = () => {
             {sections.length > 0 && (
               <TouchableOpacity
                 onPress={() => setSectionManagerOpen(true)}
-                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, backgroundColor: colors.teal + '15', borderColor: colors.teal + '40' }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  backgroundColor: colors.teal + '15',
+                  borderColor: colors.teal + '40'
+                }}
               >
                 <Users color={colors.teal} size={13} />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal, marginLeft: 5 }}>Servers</Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: colors.teal,
+                    marginLeft: 5
+                  }}
+                >
+                  Servers
+                </Text>
               </TouchableOpacity>
             )}
 
             {/* Host Station */}
             <TouchableOpacity
               onPress={() => setHostStationOpen(true)}
-              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, backgroundColor: colors.info + '15', borderColor: colors.info + '40' }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 8,
+                borderWidth: 1,
+                backgroundColor: colors.info + '15',
+                borderColor: colors.info + '40'
+              }}
             >
               <UtensilsCrossed color={colors.info} size={13} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.info, marginLeft: 5 }}>Host Station</Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.info,
+                  marginLeft: 5
+                }}
+              >
+                Host Station
+              </Text>
             </TouchableOpacity>
 
             {/* Edit Layout */}
             <TouchableOpacity
               onPress={() => router.push(`/tables/floor-plan` as Href)}
-              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, backgroundColor: colors.panel, borderColor: colors.border }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 8,
+                borderWidth: 1,
+                backgroundColor: colors.panel,
+                borderColor: colors.border
+              }}
             >
               <Pencil color={colors.label} size={13} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label, marginLeft: 5 }}>Edit Layout</Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.label,
+                  marginLeft: 5
+                }}
+              >
+                Edit Layout
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -603,17 +707,57 @@ const TablesScreen = () => {
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
               <TouchableOpacity
                 onPress={() => setActiveSectionId(null)}
-                style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, borderWidth: 1, backgroundColor: !activeSectionId ? colors.teal : 'transparent', borderColor: !activeSectionId ? colors.teal : colors.border }}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 3,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  backgroundColor: !activeSectionId
+                    ? colors.teal
+                    : 'transparent',
+                  borderColor: !activeSectionId ? colors.teal : colors.border
+                }}
               >
-                <Text style={{ fontSize: 11, fontWeight: '600', color: !activeSectionId ? colors.onSolid : colors.label }}>All</Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '600',
+                    color: !activeSectionId ? colors.onSolid : colors.label
+                  }}
+                >
+                  All
+                </Text>
               </TouchableOpacity>
               {sections.map(section => (
                 <TouchableOpacity
                   key={section.id}
-                  onPress={() => setActiveSectionId(activeSectionId === section.id ? null : section.id)}
-                  style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, borderWidth: 1, borderColor: section.color, backgroundColor: activeSectionId === section.id ? section.color : 'transparent' }}
+                  onPress={() =>
+                    setActiveSectionId(
+                      activeSectionId === section.id ? null : section.id
+                    )
+                  }
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 3,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: section.color,
+                    backgroundColor:
+                      activeSectionId === section.id
+                        ? section.color
+                        : 'transparent'
+                  }}
                 >
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: activeSectionId === section.id ? colors.onSolid : section.color }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color:
+                        activeSectionId === section.id
+                          ? colors.onSolid
+                          : section.color
+                    }}
+                  >
                     {section.name}
                   </Text>
                 </TouchableOpacity>
@@ -636,8 +780,17 @@ const TablesScreen = () => {
           )}
 
           {/* Map Container */}
-          <View style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
-            {!isReady || (floorPlanLoading && tables.length === 0) ? (
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              overflow: 'hidden'
+            }}
+          >
+            {floorPlanLoading && tables.length === 0 ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
               <TableLayoutView
@@ -647,7 +800,9 @@ const TablesScreen = () => {
                 showConnections={true}
                 layoutId={activeFloorPlanId || ''}
                 sectionsById={sectionsById}
-                onTableLongPress={isMergeMode ? undefined : handleTableLongPress}
+                onTableLongPress={
+                  isMergeMode ? undefined : handleTableLongPress
+                }
                 disableLongPress={isMergeMode}
                 interactionMode={isMergeMode ? 'merge' : 'normal'}
               />
@@ -655,29 +810,85 @@ const TablesScreen = () => {
 
             {/* Legend toggle + panel */}
             {legendVisible && (
-              <View style={{ position: 'absolute', top: 48, right: 10, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: colors.panel + 'F8', borderWidth: 1, borderColor: colors.border }}>
-                {([
-                  ['available', 'Available'],
-                  ['seated', 'Seated'],
-                  ['ordered', 'Ordered'],
-                  ['served', 'Served'],
-                  ['check_presented', 'Check'],
-                  ['paid', 'Paid'],
-                  ['cleaning', 'Cleaning'],
-                  ['not_in_service', 'Blocked'],
-                ] as const).map(([status, label]) => (
-                  <View key={status} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: TABLE_STATUS_COLORS[status] }} />
-                    <Text style={{ fontSize: 11, fontWeight: '500', color: colors.label }}>{label}</Text>
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 48,
+                  right: 10,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 12,
+                  backgroundColor: colors.panel + 'F8',
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
+              >
+                {(
+                  [
+                    ['available', 'Available'],
+                    ['seated', 'Seated'],
+                    ['ordered', 'Ordered'],
+                    ['served', 'Served'],
+                    ['check_presented', 'Check'],
+                    ['paid', 'Paid'],
+                    ['cleaning', 'Cleaning'],
+                    ['not_in_service', 'Blocked']
+                  ] as const
+                ).map(([status, label]) => (
+                  <View
+                    key={status}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: TABLE_STATUS_COLORS[status]
+                      }}
+                    />
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '500',
+                        color: colors.label
+                      }}
+                    >
+                      {label}
+                    </Text>
                   </View>
                 ))}
               </View>
             )}
             <TouchableOpacity
               onPress={() => setLegendVisible(v => !v)}
-              style={{ position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: 16, backgroundColor: legendVisible ? colors.teal + '20' : colors.card, borderWidth: 1, borderColor: legendVisible ? colors.teal + '60' : colors.border, alignItems: 'center', justifyContent: 'center' }}
+              style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: legendVisible
+                  ? colors.teal + '20'
+                  : colors.card,
+                borderWidth: 1,
+                borderColor: legendVisible ? colors.teal + '60' : colors.border,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
             >
-              <HelpCircle size={16} color={legendVisible ? colors.teal : colors.muted} />
+              <HelpCircle
+                size={16}
+                color={legendVisible ? colors.teal : colors.muted}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -707,13 +918,41 @@ const TablesScreen = () => {
         transparent
         onRequestClose={() => setHostStationOpen(false)}
       >
-        <TouchableOpacity activeOpacity={1} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }} onPress={() => setHostStationOpen(false)}>
-          <TouchableOpacity activeOpacity={1} style={{ width: 480, height: '85%', backgroundColor: colors.screen, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+        <TouchableOpacity
+          activeOpacity={1}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}
+          onPress={() => setHostStationOpen(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={{
+              width: 480,
+              height: '85%',
+              backgroundColor: colors.screen,
+              borderRadius: 16,
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
+          >
             {location_id ? (
               <HostStationScreenEnhanced location_id={location_id} />
             ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Please select a location</Text>
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                  Please select a location
+                </Text>
               </View>
             )}
           </TouchableOpacity>

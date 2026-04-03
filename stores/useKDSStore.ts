@@ -309,6 +309,20 @@ function reconcilePriorityFlags (
   return changed ? result : tickets
 }
 
+function compareKdsTickets (a: KDSTicket, b: KDSTicket): number {
+  const timeDiff = a.start_time_epoch - b.start_time_epoch
+  if (timeDiff !== 0) return timeDiff
+
+  const courseDiff = a.course_number - b.course_number
+  if (courseDiff !== 0) return courseDiff
+
+  return a.ticket_id.localeCompare(b.ticket_id)
+}
+
+function sortKdsTicketsStable (tickets: KDSTicket[]): KDSTicket[] {
+  return [...tickets].sort(compareKdsTickets)
+}
+
 /** KDS-relevant kitchen statuses */
 const KDS_STATUSES = new Set(['sent', 'preparing', 'ready'])
 
@@ -882,8 +896,9 @@ export const useKDSStore = create<KDSState>()(
                     : t
                 )
               : processed
+          const sorted = sortKdsTicketsStable(remapped)
           const { merged, mergedById, changed } = mergeTickets(
-            remapped,
+            sorted,
             get()._ticketsById
           )
 
@@ -979,6 +994,7 @@ export const useKDSStore = create<KDSState>()(
                     : t
                 )
               : processed
+          const sorted = sortKdsTicketsStable(remapped)
 
           // Preserve recalled/pending tickets not returned by server.
           // For display-filtered stations, marking an item 'ready' sets
@@ -997,11 +1013,12 @@ export const useKDSStore = create<KDSState>()(
           )
           const withProtected =
             protectedMissing.length > 0
-              ? [...remapped, ...protectedMissing]
-              : remapped
+              ? [...sorted, ...protectedMissing]
+              : sorted
+          const sortedWithProtected = sortKdsTicketsStable(withProtected)
 
           const { merged, mergedById, changed } = mergeTickets(
-            withProtected,
+            sortedWithProtected,
             get()._ticketsById
           )
 
@@ -1333,15 +1350,10 @@ export const useKDSStore = create<KDSState>()(
         const otherTickets = orderTids
           ? tickets.filter(t => !orderTids.has(t.ticket_id))
           : tickets
-        const rawMerged = [...otherTickets, ...stabilizedNewTickets]
-
-        // Sort by start_time ascending only when ticket set changed (new order or ticket count changed)
-        if (
-          stabilizedNewTickets.length !== existingForOrder.length ||
-          !hadExistingTickets
-        ) {
-          rawMerged.sort((a, b) => a.start_time_epoch - b.start_time_epoch)
-        }
+        const rawMerged = sortKdsTicketsStable([
+          ...otherTickets,
+          ...stabilizedNewTickets
+        ])
 
         // Overlay pending optimistic states to prevent broadcast clobber
         const overlaid = overlayPendingActions(rawMerged)
