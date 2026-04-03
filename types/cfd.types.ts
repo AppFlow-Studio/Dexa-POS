@@ -55,7 +55,6 @@ export interface CFDPayload {
   serverName?: string | null // e.g., "Michael J."
   customerName?: string | null // e.g., "John Doe"
   customerPhone?: string | null
-
   // Current screen
   screenState: CFDScreenState
 

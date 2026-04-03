@@ -53,15 +53,8 @@ const CashPaymentView = () => {
     showPayment,
     showProcessing,
     showApproved,
-    showDeclined,
-    tipResponse,
-    clearTipResponse
+    showDeclined
   } = useCFD()
-
-  const tipPresetPercentages = useLocationConfigStore(
-    s => s.config.tips.presetPercentages
-  )
-  const TIP_PRESETS = tipPresetPercentages
 
   // Get the active order for backend cash_amount_due
   const activeOrder = useActiveOrder()
@@ -89,10 +82,9 @@ const CashPaymentView = () => {
   // console.log("total", total);
 
   const roundedTotal = round2(total)
-  // const tipAmount = round2(parseFloat(tipInput) || 0)
-  const grandTotal = round2(roundedTotal) // Total including tip
+  const grandTotal = roundedTotal
   const tendered = round2(parseFloat(amountTendered) || 0)
-  const changeDue = round2(tendered - grandTotal) // Change is after tip
+  const changeDue = round2(tendered - grandTotal)
   const isSufficient = tendered >= grandTotal
 
   // Freeze displayed values once processing starts to prevent flicker

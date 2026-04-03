@@ -76,7 +76,14 @@ export default function CFDDisplayScreen () {
         {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 60,
+            height: 60,
+            zIndex: 100
+          }}
         />
 
         {/* Error content */}
@@ -170,7 +177,14 @@ export default function CFDDisplayScreen () {
         {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 60,
+            height: 60,
+            zIndex: 100
+          }}
         />
 
         {/* Connecting content */}
@@ -230,7 +244,14 @@ export default function CFDDisplayScreen () {
         {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 60,
+            height: 60,
+            zIndex: 100
+          }}
         />
 
         {/* Screen content */}

@@ -42,18 +42,18 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
     iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 })
   }, [])
 
-  const iconScale = useSharedValue(0.7);
-  const iconOpacity = useSharedValue(0);
+  const iconScale = useSharedValue(0.7)
+  const iconOpacity = useSharedValue(0)
 
   useEffect(() => {
-    iconOpacity.value = withTiming(1, { duration: 150 });
-    iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 });
-  }, []);
+    iconOpacity.value = withTiming(1, { duration: 150 })
+    iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 })
+  }, [])
 
   const iconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: iconScale.value }],
-    opacity: iconOpacity.value,
-  }));
+    opacity: iconOpacity.value
+  }))
 
   return (
     <View style={styles.container}>
