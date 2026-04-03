@@ -89,7 +89,7 @@ export type ReceiptTemplateInsert =
 export function receiptTemplateConfigToRow(
   config: ReceiptTemplateConfig,
 ): ReceiptTemplateInsert {
-  const row: ReceiptTemplateInsert = {
+  const row: ReceiptTemplateInsert & { group_by_seat?: boolean | null } = {
     merchant_id: config.merchantId,
     location_id: config.locationId,
     template_name: config.templateName,
@@ -111,6 +111,7 @@ export function receiptTemplateConfigToRow(
     show_mods_large: config.showModsLarge,
     large_item_text: config.largeItemText,
     group_by_station: config.groupByStation,
+    group_by_seat: config.groupBySeat,
     modifier_style: config.modifierStyle,
   };
 

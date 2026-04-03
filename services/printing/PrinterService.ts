@@ -7,6 +7,7 @@ import { PrintDocument } from "@/types/print-document";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
+import { useSeatingStore } from "@/stores/useSeatingStore";
 import { DEFAULT_RECEIPT_TEMPLATE } from "@/types/receipt-template";
 import { SelectedLocation } from "@/stores/useStoreSettingsStore";
 import {
@@ -874,7 +875,12 @@ function buildKitchenTicketData(
       isVoided: item.is_voided,
       station: item.category_name,
       allergyAlert,
-      seatNumber: item.seatNumber ?? null,
+      seatNumber:
+        item.seatNumber ??
+        useSeatingStore
+          .getState()
+          .getItemSeat(order.id, item.id, item.db_order_item_id) ??
+        null,
     };
   });
 

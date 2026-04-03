@@ -94,7 +94,9 @@ export function buildKitchenTicketDocument(
   nodes.push({ type: "divider", style: "double", lineWidth: w });
 
   // ── Items ──
-  if (cfg?.groupByStation) {
+  if (cfg?.groupBySeat) {
+    pushItemsGroupedBySeat(nodes, data.items, w, cfg);
+  } else if (cfg?.groupByStation) {
     pushItemsGroupedByStation(nodes, data.items, w, cfg);
   } else {
     pushItemsFlat(nodes, data.items, w, cfg);
@@ -140,6 +142,42 @@ function pushItemsGroupedByStation(
     isFirst = false;
 
     for (const item of stationItems) {
+      pushSingleItem(nodes, item, w, cfg);
+    }
+  }
+}
+
+function pushItemsGroupedBySeat(
+  nodes: PrintNode[],
+  items: KitchenTicketItemData[],
+  w: number,
+  cfg: KitchenTicketData["templateConfig"],
+): void {
+  const groups = new Map<string, KitchenTicketItemData[]>();
+  for (const item of items) {
+    const seat = item.seatNumber != null ? `SEAT ${item.seatNumber}` : "SHARED";
+    if (!groups.has(seat)) {
+      groups.set(seat, []);
+    }
+    groups.get(seat)!.push(item);
+  }
+
+  let isFirst = true;
+  for (const [seat, seatItems] of groups) {
+    if (!isFirst) {
+      nodes.push({ type: "empty_line" });
+    }
+    isFirst = false;
+
+    nodes.push({
+      type: "text_line",
+      content: `-- ${seat} --`,
+      align: "center",
+      format: { bold: true },
+    });
+    nodes.push({ type: "divider", style: "solid", lineWidth: w });
+
+    for (const item of seatItems) {
       pushSingleItem(nodes, item, w, cfg);
     }
   }
