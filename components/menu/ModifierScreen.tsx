@@ -553,6 +553,35 @@ const ModifierScreen = () => {
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
 
+  // When the store opens a new item session (different item or cart entry),
+  // reinitialize local reducer state without unmounting the component.
+  const sessionId = isOpen
+    ? `${precomputedForItemId ?? ""}_${cartItem?.id ?? ""}_${mode}`
+    : null;
+  const prevSessionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!sessionId || sessionId === prevSessionRef.current) return;
+    prevSessionRef.current = sessionId;
+    actionHandledRef.current = false;
+    draftItemIdRef.current = null;
+    lastDraftMenuItemIdRef.current = null;
+    const selections = storeInitialSelections ?? {};
+    dispatch({
+      type: "INITIALIZE",
+      payload: {
+        quantity: cartItem?.quantity ?? 1,
+        notes: cartItem?.customizations?.notes ?? "",
+        modifierSelections: selections,
+        activeCategory: precomputedActiveCategory ?? null,
+        isQuantityModalOpen: false,
+        quantityInput: "",
+        isSeatPickerOpen: false,
+      },
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
   const isReadOnly = mode === "view";
   const currentItem =
     mode === "edit" || (mode === "fullscreen" && cartItem)
