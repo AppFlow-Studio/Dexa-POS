@@ -133,7 +133,7 @@ interface ActionButtonProps {
   icon: React.ReactNode
   label: string
   onPress: () => void
-  variant?: 'default' | 'danger' | 'success' | 'primary' | 'warning'
+  variant?: 'default' | 'danger' | 'primary'
   disabled?: boolean
   flex?: boolean
 }
@@ -146,36 +146,21 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   disabled = false,
   flex = true
 }) => {
-  const getBg = () => {
-    if (disabled) return colors.screen
+  const getColors = () => {
+    if (disabled) {
+      return { bg: 'transparent', border: colors.border, text: colors.muted, icon: colors.muted }
+    }
     switch (variant) {
-      case 'danger': return colors.danger + '15'
-      case 'success': return colors.success + '15'
-      case 'primary': return colors.teal + '15'
-      case 'warning': return colors.warning + '15'
-      default: return colors.screen
+      case 'danger':
+        return { bg: colors.danger + '15', border: colors.danger + '30', text: colors.danger, icon: colors.danger }
+      case 'primary':
+        return { bg: colors.teal + '20', border: colors.teal + '50', text: colors.teal, icon: colors.teal }
+      default:
+        return { bg: 'transparent', border: colors.border, text: colors.label, icon: colors.label }
     }
   }
-  const getBorder = () => {
-    if (disabled) return colors.border
-    switch (variant) {
-      case 'danger': return colors.danger + '40'
-      case 'success': return colors.success + '40'
-      case 'primary': return colors.teal + '40'
-      case 'warning': return colors.warning + '40'
-      default: return colors.border
-    }
-  }
-  const getTextColor = () => {
-    if (disabled) return colors.muted
-    switch (variant) {
-      case 'danger': return colors.danger
-      case 'success': return colors.success
-      case 'primary': return colors.teal
-      case 'warning': return colors.warning
-      default: return colors.heading
-    }
-  }
+
+  const { bg, border, text, icon: iconColor } = getColors()
 
   return (
     <TouchableOpacity
@@ -184,20 +169,20 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       style={{
         flex: flex ? 1 : undefined,
         minWidth: 80,
-        paddingVertical: 10,
+        paddingVertical: 8,
         paddingHorizontal: 10,
-        borderRadius: 10,
-        borderWidth: 1.5,
+        borderRadius: 8,
+        borderWidth: 1,
         alignItems: 'center',
         justifyContent: 'center',
         gap: 5,
-        backgroundColor: getBg(),
-        borderColor: getBorder(),
-        opacity: disabled ? 0.5 : 1,
+        backgroundColor: bg,
+        borderColor: border,
+        opacity: disabled ? 0.6 : 1,
       }}
     >
-      {icon}
-      <Text style={{ fontSize: 11, fontWeight: '700', color: getTextColor(), textAlign: 'center' }} numberOfLines={1}>
+      {React.cloneElement(icon as React.ReactElement, { color: iconColor, size: 16 })}
+      <Text style={{ fontSize: 12, fontWeight: '600', color: text, textAlign: 'center' }} numberOfLines={1}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -220,27 +205,26 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   label,
   icon,
   isNegative = false,
-  accentColor = colors.teal
 }) => (
   <View
     style={{
       flex: 1,
-      backgroundColor: accentColor + '10',
+      backgroundColor: colors.teal + '10',
       borderRadius: 12,
       padding: 14,
-      borderWidth: 1.5,
-      borderColor: accentColor + '40',
+      borderWidth: 1,
+      borderColor: colors.teal + '30',
     }}
   >
-    <View style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '20', marginBottom: 10 }}>
-      {icon}
+    <View style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.teal + '15', marginBottom: 10 }}>
+      {React.cloneElement(icon as React.ReactElement, { color: colors.teal, size: 16 })}
     </View>
     <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading, marginBottom: 4 }} numberOfLines={1}>
       {isNegative && amount > 0 ? '−' : ''}${amount?.toFixed(2)}
     </Text>
     {cashAmount !== undefined && cashAmount > 0 && (
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-        <Banknote color={colors.teal} size={12} />
+        <Banknote color={colors.teal} size={14} />
         <Text style={{ fontSize: 11, color: colors.teal, marginLeft: 4, fontWeight: '600' }}>${cashAmount?.toFixed(2)} cash</Text>
       </View>
     )}
@@ -272,30 +256,11 @@ const formatCardBrand = (brand?: string) => {
 }
 
 const getCardBrandBadgeStyles = (brand?: string) => {
-  switch (normalizeCardBrand(brand)) {
-    case 'visa':
-      return {
-        container: 'bg-blue-500/10 border-blue-500/40',
-        text: 'text-blue-300'
-      }
-    case 'mastercard':
-      return {
-        container: 'bg-amber-500/10 border-amber-500/40',
-        text: 'text-amber-300'
-      }
-    case 'amex':
-    case 'american express':
-      return {
-        container: 'bg-cyan-500/10 border-cyan-500/40',
-        text: 'text-cyan-300'
-      }
-    case 'discover':
-      return {
-        container: 'bg-orange-500/10 border-orange-500/40',
-        text: 'text-orange-300'
-      }
-    default:
-      return { container: 'bg-gray-800 border-gray-700', text: 'text-gray-300' }
+  // All card brands use teal for consistency with design theme
+  return {
+    backgroundColor: colors.teal + '15',
+    borderColor: colors.teal + '30',
+    textColor: colors.teal
   }
 }
 
@@ -303,9 +268,11 @@ const CardBrandBadge: React.FC<{ brand?: string }> = ({ brand }) => {
   const label = formatCardBrand(brand)
   if (!label) return null
 
+  const styles = getCardBrandBadgeStyles(brand)
+
   return (
-    <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, backgroundColor: colors.card, borderColor: colors.border }}>
-      <Text style={{ fontSize: 10, fontWeight: '600', textTransform: 'uppercase', color: colors.label }}>
+    <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, backgroundColor: styles.backgroundColor, borderColor: styles.borderColor }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', textTransform: 'uppercase', color: styles.textColor }}>
         {label}
       </Text>
     </View>
@@ -523,18 +490,8 @@ const LeftPane: React.FC<LeftPaneProps> = ({
               netCoveredQty > 0 &&
               netCoveredQty < item.quantity
 
-            // Determine left border color based on kitchen status
-            const borderColor = isVoided
-              ? colors.danger
-              : item.kitchen_status === 'ready'
-              ? colors.success
-              : item.kitchen_status === 'preparing'
-              ? colors.warning
-              : item.kitchen_status === 'sent'
-              ? colors.warning
-              : item.kitchen_status === 'served'
-              ? colors.label
-              : colors.muted
+            // Item left border - always teal per design theme
+            const borderColor = colors.teal
 
             const isUnpaid =
               !isVoided && !isPaid && !isPartialPaid && !hasRefundHistory
@@ -564,28 +521,28 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                     <View style={{ flex: 1, paddingRight: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 2 }}>
                         {isVoided && (
-                          <View style={{ backgroundColor: colors.danger + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.danger }}>VOID</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>VOID</Text>
                           </View>
                         )}
                         {isFullyRefunded && !isVoided && (
-                          <View style={{ backgroundColor: colors.danger + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.danger }}>REFUNDED</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>REFUNDED</Text>
                           </View>
                         )}
                         {isPartiallyRefunded && !isVoided && (
-                          <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>{item.refundedQuantity} REFUND</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>{item.refundedQuantity} REFUND</Text>
                           </View>
                         )}
                         {isPaid && !isVoided && (
-                          <View style={{ backgroundColor: colors.success + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.success }}>PAID</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>PAID</Text>
                           </View>
                         )}
                         {isPartialPaid && !isVoided && !hasRefundHistory && (
-                          <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>{netCoveredQty}/{item.quantity}</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>{netCoveredQty}/{item.quantity}</Text>
                           </View>
                         )}
                         <Text
@@ -618,7 +575,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                           style={{
                             fontSize: 13,
                             fontWeight: '600',
-                            color: isVoided ? colors.muted : isFullyRefunded ? colors.danger : colors.heading,
+                            color: isVoided ? colors.muted : isFullyRefunded ? colors.teal : colors.heading,
                             textDecorationLine: (isVoided || isFullyRefunded) ? 'line-through' : 'none',
                           }}
                         >
@@ -630,27 +587,19 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                       </View>
                       {/* Status icon */}
                       {isPaid && !isVoided && (
-                        <Check size={14} color={colors.success} />
+                        <Check size={14} color={colors.teal} />
                       )}
                       {isFullyRefunded && !isVoided && (
-                        <RotateCcw size={14} color={colors.danger} />
+                        <RotateCcw size={14} color={colors.teal} />
                       )}
                       {isPartiallyRefunded && !isVoided && (
-                        <RotateCcw size={12} color={colors.warning} />
+                        <RotateCcw size={12} color={colors.teal} />
                       )}
                       {/* Expand/collapse chevron */}
                       {isExpanded ? (
-                        <ChevronUp
-                          size={14}
-                          color={colors.muted}
-                          style={{ marginLeft: 2 }}
-                        />
+                        <ChevronUp size={14} color={colors.label} style={{ marginLeft: 2 }} />
                       ) : (
-                        <ChevronDown
-                          size={14}
-                          color={colors.muted}
-                          style={{ marginLeft: 2 }}
-                        />
+                        <ChevronDown size={14} color={colors.label} style={{ marginLeft: 2 }} />
                       )}
                     </View>
                   </View>
@@ -659,7 +608,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                   {isExpanded && timeline.length > 0 && (
                     <View style={{ marginTop: 8, marginLeft: 8, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: colors.border }}>
                       {timeline.map((entry, tIdx) => {
-                        const dotColor = entry.type === 'paid' ? colors.success : (entry.type === 'refunded' || entry.type === 'voided') ? colors.danger : colors.info
+                        const dotColor = colors.teal
                         return (
                           <View key={tIdx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 }}>
                             <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dotColor, marginTop: 3, marginLeft: -16 }} />
@@ -829,8 +778,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               <SummaryCard
                 amount={paymentSummary.held!}
                 label='Auth Hold'
-                icon={<Lock size={14} color={colors.warning} />}
-                accentColor={colors.warning}
+                icon={<Lock size={14} />}
               />
             )}
           </View>
@@ -1135,7 +1083,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                   {payment.tip_adjusted_at && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 46, borderTopWidth: 1, borderTopColor: colors.border }}>
                       <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.info + '15', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                        <CircleDollarSign size={13} color={colors.info} />
+                        <CircleDollarSign size={13} color={colors.teal} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1165,56 +1113,60 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {!isOpen && (
             <ActionButton
-              icon={<RotateCcw size={16} color={colors.warning} />}
-              label='Re-Open'
+              icon={<RotateCcw size={16} />}
+              label='Reopen'
               onPress={onReopenOrder}
-              variant='warning'
+              variant='primary'
             />
           )}
           {isOpen && (
             <ActionButton
-              icon={<Check size={16} color={colors.success} />}
-              label='Close'
+              icon={<Check size={16} />}
+              label='Close Order'
               onPress={onCloseOrder}
-              variant='success'
+              variant='primary'
             />
           )}
           {isOpen && hasBalanceDue && (
             <ActionButton
-              icon={<DollarSign size={16} color={colors.info} />}
-              label='Continue'
+              icon={<DollarSign size={16} />}
+              label='Charge'
               onPress={onContinueCharging}
               variant='primary'
             />
           )}
-          <ActionButton
-            icon={<Printer size={16} color={colors.success} />}
-            label='Receipt'
-            onPress={onIssueReceipt}
-            variant='success'
-          />
-          <ActionButton
-            icon={<ChefHat size={16} color={colors.warning} />}
-            label='Kitchen'
-            onPress={onPrintKitchenTicket}
-            variant='warning'
-          />
-          <ActionButton
-            icon={<CircleDollarSign size={16} color={colors.info} />}
-            label={
-              terminalCanProcess ? 'Tip Adjust' : `Tip Adjust — ${terminalBlockReason ?? 'unavailable'}`
-            }
-            onPress={onTipAdjust}
-            variant='primary'
-            disabled={!hasCardPayments || !terminalCanProcess}
-          />
-          <ActionButton
-            icon={<RefreshCcw size={16} color={colors.danger} />}
-            label={terminalCanProcess ? 'Refund' : `Refund — ${terminalBlockReason ?? 'unavailable'}`}
-            onPress={onRefund}
-            variant='danger'
-            disabled={paymentSummary.collected <= 0 || !terminalCanProcess}
-          />
+          {paymentSummary.collected > 0 && (
+            <ActionButton
+              icon={<Printer size={16} />}
+              label='Print Receipt'
+              onPress={onIssueReceipt}
+              variant='primary'
+            />
+          )}
+          {order?.items && order.items.length > 0 && (
+            <ActionButton
+              icon={<ChefHat size={16} />}
+              label='Print Kitchen'
+              onPress={onPrintKitchenTicket}
+              variant='primary'
+            />
+          )}
+          {hasCardPayments && terminalCanProcess && (
+            <ActionButton
+              icon={<CircleDollarSign size={16} />}
+              label='Adjust Tip'
+              onPress={onTipAdjust}
+              variant='primary'
+            />
+          )}
+          {paymentSummary.collected > 0 && terminalCanProcess && (
+            <ActionButton
+              icon={<RefreshCcw size={16} />}
+              label='Process Refund'
+              onPress={onRefund}
+              variant='danger'
+            />
+          )}
         </View>
       </View>
     </View>
@@ -1730,7 +1682,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                       marginRight: 6
                     }}
                   >
-                    {hasTip && <Check size={14} color={colors.success} />}
+                    {hasTip && <Check size={14} color={colors.teal} />}
                   </View>
                   <View
                     style={{
@@ -2681,7 +2633,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     {payment.method === 'Card' ? (
                       <CreditCard size={16} color={colors.teal} />
                     ) : (
-                      <Banknote size={16} color={colors.success} />
+                      <Banknote size={16} color={colors.teal} />
                     )}
                   </View>
                   <View style={{ flex: 1 }}>
@@ -3212,7 +3164,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           {payment.method === 'Card' ? (
                             <CreditCard size={16} color={colors.teal} />
                           ) : (
-                            <Banknote size={16} color={colors.success} />
+                            <Banknote size={16} color={colors.teal} />
                           )}
                         </View>
                         <Text
@@ -4266,7 +4218,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   {/* Online Badge */}
                   {order.order_source === 'online' && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: colors.info + '20', borderWidth: 1, borderColor: colors.info + '50', gap: 5 }}>
-                      <Globe color={colors.info} size={11} />
+                      <Globe color={colors.teal} size={11} />
                       <Text style={{ fontSize: 11, fontWeight: '700', color: colors.info, textTransform: 'uppercase' }}>Online</Text>
                     </View>
                   )}
