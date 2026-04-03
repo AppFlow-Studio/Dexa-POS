@@ -14,6 +14,7 @@ interface CFDBuiltinState {
   screenState: CFDScreenState
   serverName: string | null
   customerName: string | null
+  customerPhone: string | null
   orderNumber: string | null
   orderType: string | null
   tableName: string | null
@@ -54,6 +55,7 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   screenState: 'idle',
   serverName: null,
   customerName: null,
+  customerPhone: null,
   orderNumber: null,
   orderType: null,
   tableName: null,

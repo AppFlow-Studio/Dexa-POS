@@ -15,8 +15,13 @@ const ADMIN_TAP_COUNT = 5
 const ADMIN_TAP_WINDOW_MS = 2000
 
 export default function CFDDisplayScreen () {
-  const { sendTipSelection, sendPhoneNumber, sendLoyaltySkip, reconnect } =
-    useCFDClient()
+  const {
+    sendTipSelection,
+    sendPhoneNumber,
+    sendLoyaltySkip,
+    sendLoyaltyJoin,
+    reconnect
+  } = useCFDClient()
   const { isPaired, connectionStatus } = useCFDClientStore()
 
   const tapCountRef = useRef(0)
@@ -71,7 +76,14 @@ export default function CFDDisplayScreen () {
         {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 60,
+            height: 60,
+            zIndex: 100
+          }}
         />
 
         {/* Error content */}
@@ -165,7 +177,14 @@ export default function CFDDisplayScreen () {
         {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 60,
+            height: 60,
+            zIndex: 100
+          }}
         />
 
         {/* Connecting content */}
@@ -225,7 +244,14 @@ export default function CFDDisplayScreen () {
         {/* Invisible admin tap target */}
         <Pressable
           onPress={handleAdminTap}
-          style={{ position: 'absolute', top: 0, right: 0, width: 60, height: 60, zIndex: 100 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 60,
+            height: 60,
+            zIndex: 100
+          }}
         />
 
         {/* Screen content */}
@@ -233,6 +259,7 @@ export default function CFDDisplayScreen () {
           onTipSelected={sendTipSelection}
           onPhoneSubmitted={sendPhoneNumber}
           onLoyaltySkip={sendLoyaltySkip}
+          onLoyaltyJoin={sendLoyaltyJoin}
         />
       </View>
     </CFDExternalDisplayProvider>

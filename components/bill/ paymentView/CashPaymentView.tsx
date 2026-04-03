@@ -38,10 +38,6 @@ const CashPaymentView = () => {
   }, [expandSheetToFull])
 
   const [amountTendered, setAmountTendered] = useState('')
-  const [tipInput, setTipInput] = useState('')
-  const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
-    null
-  )
   const [isProcessing, setIsProcessing] = useState(false)
 
   // Sync isTransactionProcessing with isProcessing
@@ -54,20 +50,11 @@ const CashPaymentView = () => {
 
   const {
     setBaseAmount,
-    updateTip,
-    showTipSelection,
     showPayment,
     showProcessing,
     showApproved,
-    showDeclined,
-    tipResponse,
-    clearTipResponse
+    showDeclined
   } = useCFD()
-
-  const tipPresetPercentages = useLocationConfigStore(
-    s => s.config.tips.presetPercentages
-  )
-  const TIP_PRESETS = tipPresetPercentages
 
   // Get the active order for backend cash_amount_due
   const activeOrder = useActiveOrder()
@@ -95,10 +82,9 @@ const CashPaymentView = () => {
   // console.log("total", total);
 
   const roundedTotal = round2(total)
-  const tipAmount = round2(parseFloat(tipInput) || 0)
-  const grandTotal = round2(roundedTotal + tipAmount) // Total including tip
+  const grandTotal = roundedTotal
   const tendered = round2(parseFloat(amountTendered) || 0)
-  const changeDue = round2(tendered - grandTotal) // Change is after tip
+  const changeDue = round2(tendered - grandTotal)
   const isSufficient = tendered >= grandTotal
 
   // Freeze displayed values once processing starts to prevent flicker
@@ -129,67 +115,24 @@ const CashPaymentView = () => {
     setAmountTendered(grandTotal.toFixed(2))
   }
 
-  const handleTipPreset = (percentage: number) => {
-    const calculatedTip = round2((percentage / 100) * roundedTotal)
-    setTipInput(calculatedTip.toFixed(2))
-    setSelectedTipPreset(percentage)
-  }
-
-  const handleTipInputChange = (value: string) => {
-    // Only allow valid currency format (numbers and one decimal point)
-    if (/^\d*\.?\d{0,2}$/.test(value) || value === '') {
-      setTipInput(value)
-      setSelectedTipPreset(null) // Clear preset when manually typing
-    }
-  }
-
-  // Show tip selection on CFD when cash payment opens
+  // Show cash payment on CFD when cash payment opens
   useEffect(() => {
-    showTipSelection(total, TIP_PRESETS, 'cash')
-    clearTipResponse()
-    updateTip(0, null)
+    showPayment('cash')
     return () => {
       setBaseAmount(null)
     }
-  }, [
-    clearTipResponse,
-    setBaseAmount,
-    showTipSelection,
-    TIP_PRESETS,
-    total,
-    updateTip
-  ])
-
-  // Sync tip selection from CFD back to POS tip input
-  useEffect(() => {
-    if (!tipResponse) return
-    if (tipResponse.tipAmount === 0) {
-      setTipInput('')
-      setSelectedTipPreset(null)
-    } else {
-      setTipInput((tipResponse.tipAmount / 100).toFixed(2))
-      setSelectedTipPreset(tipResponse.tipPercentage)
-    }
-    showPayment('cash')
-    clearTipResponse()
-  }, [clearTipResponse, showPayment, tipResponse])
-
-  useEffect(() => {
-    updateTip(tipAmount, selectedTipPreset)
-  }, [tipAmount, selectedTipPreset, updateTip])
+  }, [setBaseAmount, showPayment, total])
 
   const handleProcessCashPayment = async () => {
     setIsProcessing(true)
-    updateTip(tipAmount, selectedTipPreset)
     showPayment('cash')
-    showProcessing('cash', tipAmount)
+    showProcessing('cash', 0)
     try {
-      const tipAmt = parseFloat(tipInput) || 0
       const amountTenderedNum = parseFloat(amountTendered) || 0
 
       await handlePaymentCompletion({
         method: 'Cash',
-        tipAmount: tipAmt,
+        tipAmount: 0,
         transactionDetails: {
           amountTendered: amountTenderedNum,
           isCashPriced: true
@@ -311,40 +254,6 @@ const CashPaymentView = () => {
           </Text>
           <Text style={{ fontSize: 28, fontWeight: '700', color: colors.teal }}>
             ${displayGrandTotal.toFixed(2)}
-          </Text>
-        </View>
-
-        {/* Tip */}
-        <View
-          style={{
-            backgroundColor: tipAmount > 0 ? `${colors.teal}10` : colors.screen,
-            borderRadius: 10,
-            padding: 14,
-            borderWidth: 1,
-            borderColor: tipAmount > 0 ? `${colors.teal}35` : colors.border,
-            marginBottom: 10
-          }}
-        >
-          <Text
-            style={{
-              color: colors.muted,
-              fontSize: 10,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-              marginBottom: 4
-            }}
-          >
-            Tip
-          </Text>
-          <Text
-            style={{
-              fontSize: 22,
-              fontWeight: '700',
-              color: tipAmount > 0 ? colors.teal : colors.muted
-            }}
-          >
-            ${tipAmount.toFixed(2)}
           </Text>
         </View>
 

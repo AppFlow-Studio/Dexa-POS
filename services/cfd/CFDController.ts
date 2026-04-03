@@ -20,6 +20,7 @@ interface CFDCallbacks {
   onTipSelected?: (response: CFDTipResponse) => void
   onPhoneSubmitted?: (phone: string) => void
   onLoyaltySkip?: () => void
+  onLoyaltyJoin?: () => void
 }
 
 export class CFDController {
@@ -130,6 +131,10 @@ export class CFDController {
           this.callbacks.onLoyaltySkip?.()
           break
 
+        case 'loyalty_join':
+          this.callbacks.onLoyaltyJoin?.()
+          break
+
         default:
           console.log('[CFD] Unknown message type:', message.type)
       }
@@ -145,6 +150,7 @@ export class CFDController {
       locationId: this.locationId,
       serverName: this.lastPayload.serverName ?? null,
       customerName: this.lastPayload.customerName ?? null,
+      customerPhone: this.lastPayload.customerPhone ?? null,
       screenState: this.lastPayload.screenState ?? 'idle',
       orderNumber: this.lastPayload.orderNumber ?? null,
       orderType: this.lastPayload.orderType ?? null,
@@ -199,6 +205,7 @@ export class CFDController {
     screenState?: CFDScreenState
     serverName?: string | null
     customerName?: string | null
+    customerPhone?: string | null
     orderNumber: string | null
     orderType: string | null
     tableName?: string | null
