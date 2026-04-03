@@ -38,11 +38,12 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { ArrowLeft, CreditCard } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Text, TouchableOpacity, View, InteractionManager } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
 import { Portal as Teleport } from 'react-native-teleport'
 
 // Stable empty array to avoid new reference on every render
-const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] = []
+const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] =
+  []
 
 interface TableOrderViewProps {
   tableId: string
@@ -57,11 +58,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const session = useTableSessionStore.getState().sessions[currentTableId]
     if (session?.order_id) {
       const found = useOrderStore.getState().getOrder(session.order_id)
-      if (found) return 2 
+      if (found) return 2
     }
     const orderState = useOrderStore.getState()
     const oid = orderState.activeOrderId
-    const hasOrder = oid && orderState.ordersById[oid]?.service_location_id === currentTableId
+    const hasOrder =
+      oid && orderState.ordersById[oid]?.service_location_id === currentTableId
     return hasOrder ? 2 : 0
   })
 
@@ -87,10 +89,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     | { type: 'order_closed_warning' }
     | { type: 'course_resend'; course: number }
     | { type: 'reopen_modal' }
-  const [activeDialog, setActiveDialog] = useState<ActiveDialog>({ type: 'none' })
+  const [activeDialog, setActiveDialog] = useState<ActiveDialog>({
+    type: 'none'
+  })
   const closeDialog = useCallback(() => setActiveDialog({ type: 'none' }), [])
   const [serverSheetOpen, setServerSheetOpen] = useState(false)
-  const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<number | null>(null)
+  const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
+    number | null
+  >(null)
 
   // --- 4. Domain Hooks ---
   const {
@@ -103,12 +109,17 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     markPaymentSyncDone
   } = useTableSession(currentTableId, undefined, onClose)
 
-  const enableCoursing = useLocationConfigStore(s => s.config.dining.enableCoursing)
+  const enableCoursing = useLocationConfigStore(
+    s => s.config.dining.enableCoursing
+  )
   const coursingHook = useTableCoursing(activeOrder, enableCoursing)
   useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
 
   const isTableActive = isActiveSession(tableStatus) || tableStatus === 'paid'
-  const { duration, isOvertime } = useTableDuration(activeOrder?.opened_at, isTableActive)
+  const { duration, isOvertime } = useTableDuration(
+    activeOrder?.opened_at,
+    isTableActive
+  )
 
   // --- 5. Derived Selectors ---
   const modSidebarOpen = useModifierSidebarStore(s => s.isOpen)
@@ -116,15 +127,25 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const table = useFloorPlanStore(s => s.tablesById[currentTableId])
   const session = useTableSessionStore(s => s.sessions[currentTableId])
 
-  const enablePerSeatOrdering = useLocationConfigStore(s => s.config.dining.enablePerSeatOrdering)
+  const enablePerSeatOrdering = useLocationConfigStore(
+    s => s.config.dining.enablePerSeatOrdering
+  )
   const partySize = session?.party_size ?? 2
-  const seatingHook = useTableSeating(activeOrder, partySize, enablePerSeatOrdering)
+  const seatingHook = useTableSeating(
+    activeOrder,
+    partySize,
+    enablePerSeatOrdering
+  )
 
   const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
   const dispatchAction = useTableSessionStore(s => s.dispatchAction)
   const openPaymentSheet = usePaymentStore(s => s.open)
-  const updateActiveOrderDetails = useOrderStore(s => s.updateActiveOrderDetails)
-  const batchUpdateItemKitchenStatus = useOrderStore(s => s.batchUpdateItemKitchenStatus)
+  const updateActiveOrderDetails = useOrderStore(
+    s => s.updateActiveOrderDetails
+  )
+  const batchUpdateItemKitchenStatus = useOrderStore(
+    s => s.batchUpdateItemKitchenStatus
+  )
   const syncOrderStatus = useOrderStore(s => s.syncOrderStatus)
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const setPreAuthMode = usePaymentStore(s => s.setPreAuthMode)
@@ -132,7 +153,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const totalsEnabled = renderStage >= 1
   const totals = useActiveOrderTotals(totalsEnabled)
   const preAuth = useOrderPreAuth(totalsEnabled ? activeOrder?.id : undefined)
-  const hasPreAuth = useHasActivePreAuth(totalsEnabled ? activeOrder?.id : undefined)
+  const hasPreAuth = useHasActivePreAuth(
+    totalsEnabled ? activeOrder?.id : undefined
+  )
   const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0
   const storeActiveOrderTotal = totals?.total ?? 0
 
@@ -150,16 +173,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   useEffect(() => {
     let cancelled = false
     if (renderStage >= 2) return
-    const handle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return
+    if (renderStage === 0) {
       setRenderStage(1)
-      requestAnimationFrame(() => {
-        if (!cancelled) setRenderStage(2)
-      })
+    }
+    requestAnimationFrame(() => {
+      if (!cancelled) setRenderStage(2)
     })
     return () => {
       cancelled = true
-      handle.cancel()
     }
   }, [renderStage])
 
@@ -194,36 +215,56 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   // --- Action handlers ---
 
   const handlePay = useCallback(() => {
-    const order = useOrderStore.getState().ordersById[useOrderStore.getState().activeOrderId ?? '']
+    const order =
+      useOrderStore.getState().ordersById[
+        useOrderStore.getState().activeOrderId ?? ''
+      ]
     if (order) {
       const preparingItems = order.items.filter(i => !isItemReadyOrServed(i))
       if (preparingItems.length > 0) {
-        setActiveDialog({ type: 'not_ready_confirm', items: preparingItems.map(i => ({ id: i.id, name: i.name, quantity: i.quantity })) })
+        setActiveDialog({
+          type: 'not_ready_confirm',
+          items: preparingItems.map(i => ({
+            id: i.id,
+            name: i.name,
+            quantity: i.quantity
+          }))
+        })
         return
       }
     }
     openPaymentSheet('Card', currentTableId, 'payment-method-selection')
   }, [openPaymentSheet, currentTableId])
 
-  const handleClearTable = async () => {
-    if (!activeOrderId || !activeOrder) return
+  const handleClearTable = useCallback(async () => {
+    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+    const order = oid ? ordersById[oid] : null
+    if (!oid || !order) return
 
-    const preparingItems = activeOrder.items.filter(
+    const preparingItems = order.items.filter(
       item => !isItemReadyOrServed(item)
     )
-
     if (preparingItems.length > 0) {
-      setActiveDialog({ type: 'clear_not_ready_confirm', items: preparingItems.map(i => ({ id: i.id, name: i.name, quantity: i.quantity })) })
+      setActiveDialog({
+        type: 'clear_not_ready_confirm',
+        items: preparingItems.map(i => ({
+          id: i.id,
+          name: i.name,
+          quantity: i.quantity
+        }))
+      })
       return
     }
 
     await doClearTable()
-  }
+  }, [doClearTable])
 
   const doClearTable = useCallback(async () => {
     const orderState = useOrderStore.getState()
     const currentActiveOrderId = orderState.activeOrderId
-    const currentActiveOrder = currentActiveOrderId ? orderState.ordersById[currentActiveOrderId] : null
+    const currentActiveOrder = currentActiveOrderId
+      ? orderState.ordersById[currentActiveOrderId]
+      : null
     if (!currentActiveOrderId || !currentActiveOrder) return
     showLoading('Clearing table...')
     markNavigatingAway()
@@ -263,12 +304,22 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         type: 'error'
       })
     }
-  }, [showLoading, markNavigatingAway, currentTableId, dispatchAction, hideLoading, onClose, show])
+  }, [
+    showLoading,
+    markNavigatingAway,
+    currentTableId,
+    dispatchAction,
+    hideLoading,
+    onClose,
+    show
+  ])
 
-  const confirmVoid = async () => {
-    if (!activeOrder) return
+  const confirmVoid = useCallback(async () => {
+    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+    const order = oid ? ordersById[oid] : null
+    if (!order) return
 
-    if (activeOrder.order_status === 'void') {
+    if (order.order_status === 'void') {
       closeDialog()
       show({
         title: 'Already Voided',
@@ -286,8 +337,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const result = await dispatchAction({
       type: 'VOID_ORDER',
       tableId: currentTableId,
-      orderId: activeOrder.id,
-      dbOrderId: activeOrder.db_order_id
+      orderId: order.id,
+      dbOrderId: order.db_order_id
     })
 
     if (result.success) {
@@ -306,12 +357,22 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         type: 'error'
       })
     }
-  }
+  }, [
+    closeDialog,
+    show,
+    markNavigatingAway,
+    onClose,
+    dispatchAction,
+    currentTableId
+  ])
 
-  const handleCloseCheck = async () => {
-    if (!activeOrder || !currentTableId) return
+  const handleCloseCheck = useCallback(async () => {
+    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+    const order = oid ? ordersById[oid] : null
+    if (!order || !currentTableId) return
 
-    if (displayBalanceDue > 0.01) {
+    const totals = useOrderStore.getState().activeOrderOutstandingTotal ?? 0
+    if (totals > 0.01) {
       show({
         title: 'Cannot Close Check',
         message: 'Outstanding balance must be $0.00 to close check',
@@ -320,7 +381,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       return
     }
 
-    if (!activeOrder.db_order_id) {
+    if (!order.db_order_id) {
       show({
         title: 'Cannot Close Check',
         message: 'Order must be synced to close check',
@@ -334,14 +395,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       const result = await dispatchAction({
         type: 'CLOSE_CHECK',
         tableId: currentTableId,
-        orderId: activeOrder.id,
-        dbOrderId: activeOrder.db_order_id
+        orderId: order.id,
+        dbOrderId: order.db_order_id
       })
       if (!result.success)
         throw new Error(result.error || 'Failed to close check')
 
-      // Ensure session reaches "paid" — covers race where markPaymentSyncDone
-      // ran before realtime overwrote the status back to "check_presented"
       const sess = useTableSessionStore.getState().getSession(currentTableId)
       if (sess && sess.status !== 'paid' && sess.status !== 'cleaning') {
         await dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
@@ -363,24 +422,35 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     } finally {
       hideLoading()
     }
-  }
+  }, [
+    currentTableId,
+    show,
+    showLoading,
+    hideLoading,
+    dispatchAction,
+    updateActiveOrderDetails
+  ])
 
-  const handleReopenCheck = () => {
-    if (!activeOrderId || !activeOrder?.db_order_id) return
+  const handleReopenCheck = useCallback(() => {
+    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+    const order = oid ? ordersById[oid] : null
+    if (!oid || !order?.db_order_id) return
     setActiveDialog({ type: 'reopen_modal' })
-  }
+  }, [])
 
-  const handleConfirmReopen = async () => {
+  const handleConfirmReopen = useCallback(async () => {
     closeDialog()
-    if (!activeOrderId || !activeOrder?.db_order_id) return
+    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+    const order = oid ? ordersById[oid] : null
+    if (!oid || !order?.db_order_id) return
 
     try {
       showLoading('Reopening check...')
       const result = await dispatchAction({
         type: 'REOPEN_CHECK',
         tableId: currentTableId,
-        orderId: activeOrder.id,
-        dbOrderId: activeOrder.db_order_id,
+        orderId: order.id,
+        dbOrderId: order.db_order_id,
         reason: 'Adding more items'
       })
       if (!result.success)
@@ -390,7 +460,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         paid_status: 'Partial',
         check_status: 'Opened'
       })
-      syncOrderStatus(activeOrderId)
+      syncOrderStatus(oid)
 
       show({
         title: 'Check Reopened',
@@ -407,34 +477,53 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     } finally {
       hideLoading()
     }
-  }
+  }, [
+    closeDialog,
+    showLoading,
+    hideLoading,
+    dispatchAction,
+    currentTableId,
+    updateActiveOrderDetails,
+    syncOrderStatus,
+    show
+  ])
 
-  const handleMarkAllReadyForCourse = (itemIds: string[]) => {
-    batchUpdateItemKitchenStatus(itemIds, 'ready')
-    if (activeOrderId && selectedCourseIdForTracker !== null) {
-      coursingHook.markCourseServed(activeOrderId, selectedCourseIdForTracker)
-    }
-    show({
-      title: 'Items Marked Ready',
-      message: 'All items in the course have been marked as ready.',
-      type: 'success'
-    })
-  }
-
-  const finalizeCurrentCourse = () => {
-    if (!activeOrder || !enableCoursing) {
-      if (!enableCoursing) {
-        show({
-          title: 'Coursing Disabled',
-          message: 'Coursing is not enabled for this location.',
-          type: 'warning'
-        })
+  const handleMarkAllReadyForCourse = useCallback(
+    (itemIds: string[]) => {
+      batchUpdateItemKitchenStatus(itemIds, 'ready')
+      const oid = useOrderStore.getState().activeOrderId
+      if (oid && selectedCourseIdForTracker !== null) {
+        coursingHook.markCourseServed(oid, selectedCourseIdForTracker)
       }
+      show({
+        title: 'Items Marked Ready',
+        message: 'All items in the course have been marked as ready.',
+        type: 'success'
+      })
+    },
+    [
+      batchUpdateItemKitchenStatus,
+      selectedCourseIdForTracker,
+      coursingHook,
+      show
+    ]
+  )
+
+  const finalizeCurrentCourse = useCallback(() => {
+    if (!enableCoursing) {
+      show({
+        title: 'Coursing Disabled',
+        message: 'Coursing is not enabled for this location.',
+        type: 'warning'
+      })
       return
     }
+    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+    const order = oid ? ordersById[oid] : null
+    if (!order) return
     const nextCourse = coursingHook.finalizeCurrentCourse(
-      activeOrder.id,
-      activeOrder.items.map(i => i.id)
+      order.id,
+      order.items.map(i => i.id)
     )
     show({
       title: 'Course Finalized',
@@ -443,137 +532,132 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       } complete. New items added to Course ${nextCourse}.`,
       type: 'success'
     })
-  }
+  }, [enableCoursing, coursingHook, show])
 
-  const handleSendCourseToKitchen = async (
-    course: number,
-    forceResend = false,
-    silent = false
-  ) => {
-    if (!activeOrder) return
+  const handleSendCourseToKitchen = useCallback(
+    async (course: number, forceResend = false, silent = false) => {
+      const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+      const activeOrder = oid ? ordersById[oid] : null
+      if (!activeOrder) return
 
-    if (!forceResend && coursingHook.isCourseSent(activeOrder.id, course)) {
-      if (!silent) {
-        show({
-          title: 'Already Sent',
-          message: `Course ${course} has already been sent to the kitchen.`,
-          type: 'warning'
-        })
+      if (!forceResend && coursingHook.isCourseSent(activeOrder.id, course)) {
+        if (!silent)
+          show({
+            title: 'Already Sent',
+            message: `Course ${course} has already been sent to the kitchen.`,
+            type: 'warning'
+          })
+        return
       }
-      return
-    }
 
-    const state = coursingHook.getForOrder(activeOrder.id)
-    const itemsInCourse = activeOrder.items.filter(
-      i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
-    )
-    if (itemsInCourse.length === 0) {
-      if (!silent) {
-        show({
-          title: 'Empty Course',
-          message: `There are no items in Course ${course} to send.`,
-          type: 'warning'
-        })
+      const state = coursingHook.getForOrder(activeOrder.id)
+      const itemsInCourse = activeOrder.items.filter(
+        i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
+      )
+      if (itemsInCourse.length === 0) {
+        if (!silent)
+          show({
+            title: 'Empty Course',
+            message: `There are no items in Course ${course} to send.`,
+            type: 'warning'
+          })
+        return false
       }
-      return false
-    }
 
-    if (!activeOrder.opened_at) {
-      updateActiveOrderDetails({ opened_at: new Date().toISOString() })
-    }
-    if (!activeOrder.sent_to_kitchen_at) {
-      updateActiveOrderDetails({
-        sent_to_kitchen_at: new Date().toISOString()
+      if (!activeOrder.opened_at)
+        updateActiveOrderDetails({ opened_at: new Date().toISOString() })
+      if (!activeOrder.sent_to_kitchen_at)
+        updateActiveOrderDetails({
+          sent_to_kitchen_at: new Date().toISOString()
+        })
+
+      const originalStatuses = itemsInCourse.map(i => ({
+        id: i.id,
+        item_status: i.item_status,
+        kitchen_status: i.kitchen_status
+      }))
+
+      batchUpdateItemKitchenStatus(
+        itemsInCourse.map(i => i.id),
+        getKitchenSentStatus()
+      )
+      coursingHook.markCourseSent(activeOrder.id, course)
+
+      const dbItemIds = itemsInCourse
+        .map(i => i.db_order_item_id)
+        .filter((id): id is string => !!id)
+
+      const result = await dispatchAction({
+        type: 'SEND_TO_KITCHEN',
+        tableId: currentTableId,
+        courseNumber: course,
+        itemIds: itemsInCourse.map(i => i.id),
+        dbItemIds,
+        orderId: activeOrder.id,
+        dbOrderId: activeOrder.db_order_id,
+        forceResend
       })
-    }
 
-    // Save original statuses for rollback
-    const originalStatuses = itemsInCourse.map(i => ({
-      id: i.id,
-      item_status: i.item_status,
-      kitchen_status: i.kitchen_status
-    }))
-
-    // Optimistically mark items as sent/queued (single batched set() call)
-    batchUpdateItemKitchenStatus(
-      itemsInCourse.map(i => i.id),
-      getKitchenSentStatus()
-    )
-
-    // Mark course as sent IMMEDIATELY (drives CourseGroup UI via isSent prop)
-    coursingHook.markCourseSent(activeOrder.id, course)
-
-    // Collect db item IDs for the effect
-    const dbItemIds = itemsInCourse
-      .map(i => i.db_order_item_id)
-      .filter((id): id is string => !!id)
-
-    // Dispatch: transitions to "ordered" + fires backend sync effect
-    const result = await dispatchAction({
-      type: 'SEND_TO_KITCHEN',
-      tableId: currentTableId,
-      courseNumber: course,
-      itemIds: itemsInCourse.map(i => i.id),
-      dbItemIds,
-      orderId: activeOrder.id,
-      dbOrderId: activeOrder.db_order_id,
-      forceResend
-    })
-
-    if (result.success) {
-      // Auto-print kitchen tickets for the sent items
-      if (autoPrintKitchenTickets && selectedStore) {
-        PrinterService.printKitchenTickets(
-          activeOrder,
-          itemsInCourse,
-          selectedStore
-        ).catch(e =>
-          console.warn('[TableView] Auto-print kitchen tickets failed:', e)
-        )
-      }
-
-      if (!silent) {
-        show({
-          title: forceResend ? 'Course Resent' : 'Course Sent',
-          message: `Course ${course} has been ${
-            forceResend ? 'resent' : 'sent'
-          } for preparation.`,
-          type: 'success'
-        })
-      }
-      return true
-    } else {
-      // Revert course sent state
-      coursingHook.unmarkCourseSent(activeOrder.id, course)
-      // Revert item statuses on failure
-      const orderStore = useOrderStore.getState()
-      const oid = orderStore.activeOrderId
-      if (oid) {
-        useOrderStore.setState(state => {
-          const order = state.ordersById[oid]
-          if (!order) return
-          for (const orig of originalStatuses) {
-            const item = order.items.find(i => i.id === orig.id)
-            if (item) {
-              item.item_status = orig.item_status
-              item.kitchen_status = orig.kitchen_status
+      if (result.success) {
+        if (autoPrintKitchenTickets && selectedStore) {
+          PrinterService.printKitchenTickets(
+            activeOrder,
+            itemsInCourse,
+            selectedStore
+          ).catch(e =>
+            console.warn('[TableView] Auto-print kitchen tickets failed:', e)
+          )
+        }
+        if (!silent)
+          show({
+            title: forceResend ? 'Course Resent' : 'Course Sent',
+            message: `Course ${course} has been ${
+              forceResend ? 'resent' : 'sent'
+            } for preparation.`,
+            type: 'success'
+          })
+        return true
+      } else {
+        coursingHook.unmarkCourseSent(activeOrder.id, course)
+        const currentOid = useOrderStore.getState().activeOrderId
+        if (currentOid) {
+          useOrderStore.setState(state => {
+            const order = state.ordersById[currentOid]
+            if (!order) return
+            for (const orig of originalStatuses) {
+              const item = order.items.find(i => i.id === orig.id)
+              if (item) {
+                item.item_status = orig.item_status
+                item.kitchen_status = orig.kitchen_status
+              }
             }
-          }
+          })
+        }
+        show({
+          title: 'Send Failed',
+          message: result.error || 'Failed to send course to kitchen.',
+          type: 'error'
         })
+        return false
       }
-
-      show({
-        title: 'Send Failed',
-        message: result.error || 'Failed to send course to kitchen.',
-        type: 'error'
-      })
-      return false
-    }
-  }
+    },
+    [
+      coursingHook,
+      updateActiveOrderDetails,
+      batchUpdateItemKitchenStatus,
+      dispatchAction,
+      currentTableId,
+      autoPrintKitchenTickets,
+      selectedStore,
+      show
+    ]
+  )
 
   const handleSendAllToKitchen = useCallback(async () => {
     const orderState = useOrderStore.getState()
-    const activeOrder = orderState.activeOrderId ? orderState.ordersById[orderState.activeOrderId] : null
+    const activeOrder = orderState.activeOrderId
+      ? orderState.ordersById[orderState.activeOrderId]
+      : null
     if (!activeOrder) return
 
     const state = coursingHook.getForOrder(activeOrder.id)
@@ -621,22 +705,25 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     })
   }, [coursingHook, handleSendCourseToKitchen, show])
 
-  const handleDoubleTapCourse = useCallback((course: number) => {
-    const orderId = useOrderStore.getState().activeOrderId
-    if (!orderId) return
-    if (coursingHook.isCourseSent(orderId, course)) {
-      setActiveDialog({ type: 'course_resend', course })
-    } else {
-      handleSendCourseToKitchen(course, false)
-    }
-  }, [coursingHook, handleSendCourseToKitchen])
+  const handleDoubleTapCourse = useCallback(
+    (course: number) => {
+      const orderId = useOrderStore.getState().activeOrderId
+      if (!orderId) return
+      if (coursingHook.isCourseSent(orderId, course)) {
+        setActiveDialog({ type: 'course_resend', course })
+      } else {
+        handleSendCourseToKitchen(course, false)
+      }
+    },
+    [coursingHook, handleSendCourseToKitchen]
+  )
 
-  const handleConfirmResend = () => {
+  const handleConfirmResend = useCallback(() => {
     if (activeDialog.type === 'course_resend') {
       handleSendCourseToKitchen(activeDialog.course, true)
       closeDialog()
     }
-  }
+  }, [activeDialog, handleSendCourseToKitchen, closeDialog])
 
   const handleRushCourse = useCallback(
     async (course: number) => {
@@ -706,13 +793,18 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     [activeOrder, coursingHook, supabase, show]
   )
 
-  const handleResendCourse = useCallback((course: number) => {
-    handleSendCourseToKitchen(course, true)
-  }, [handleSendCourseToKitchen])
+  const handleResendCourse = useCallback(
+    (course: number) => {
+      handleSendCourseToKitchen(course, true)
+    },
+    [handleSendCourseToKitchen]
+  )
 
   const checkOrderClosedAndWarn = useCallback(() => {
     const orderState = useOrderStore.getState()
-    const order = orderState.activeOrderId ? orderState.ordersById[orderState.activeOrderId] : null
+    const order = orderState.activeOrderId
+      ? orderState.ordersById[orderState.activeOrderId]
+      : null
     if (order?.paid_status === 'Paid' || order?.check_status === 'Closed') {
       setActiveDialog({ type: 'order_closed_warning' })
       return true
@@ -782,11 +874,17 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   )
 
   const handleOpenServerSheet = useCallback(() => setServerSheetOpen(true), [])
-  const handleCloseServerSheet = useCallback(() => setServerSheetOpen(false), [])
-  const handleSelectServer = useCallback((name: string) => {
-    updateActiveOrderDetails({ server_name: name })
-    setServerSheetOpen(false)
-  }, [updateActiveOrderDetails])
+  const handleCloseServerSheet = useCallback(
+    () => setServerSheetOpen(false),
+    []
+  )
+  const handleSelectServer = useCallback(
+    (name: string) => {
+      updateActiveOrderDetails({ server_name: name })
+      setServerSheetOpen(false)
+    },
+    [updateActiveOrderDetails]
+  )
 
   const handleCloseDiscountSheet = useCallback(
     () => discountSheetRef.current?.close(),
@@ -795,7 +893,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const handleVoidSuccess = useCallback(() => {
     markNavigatingAway()
-    show({ title: 'Check Voided', message: 'The order has been successfully voided. Table is now available.', type: 'success' })
+    show({
+      title: 'Check Voided',
+      message:
+        'The order has been successfully voided. Table is now available.',
+      type: 'success'
+    })
     onClose()
   }, [markNavigatingAway, show, onClose])
 
@@ -823,12 +926,18 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const handleCloseReopenModal = useCallback(() => closeDialog(), [closeDialog])
 
   // Stable callbacks for dialog change props (avoids new arrow fn per render)
-  const handleDialogBoolChange = useCallback((open: boolean) => {
-    if (!open) closeDialog()
-  }, [closeDialog])
-  const handleCourseResendChange = useCallback((course: number | null) => {
-    if (course === null) closeDialog()
-  }, [closeDialog])
+  const handleDialogBoolChange = useCallback(
+    (open: boolean) => {
+      if (!open) closeDialog()
+    },
+    [closeDialog]
+  )
+  const handleCourseResendChange = useCallback(
+    (course: number | null) => {
+      if (course === null) closeDialog()
+    },
+    [closeDialog]
+  )
 
   const handleProceedToPayment = useCallback(() => {
     pricingSheetRef.current?.close()
@@ -1051,22 +1160,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         <TableDetailSkeleton />
       )}
 
-      {/* Stage 2: Defer heavy bottom sheets and dialogs */}
+      {/* Stage 2: Bottom sheets — outside Teleport so re-renders of the portal don't reset gesture state */}
       {renderStage >= 2 && (
-        <Teleport hostName="root">
-          {selectedCourseIdForTracker !== null && (
-            <ItemProgressTracker
-              selectedCourse={selectedCourseIdForTracker}
-              itemsInSelectedCourse={itemsInSelectedCourse}
-              isModifierSidebarOpen={isModifierSidebarOpen}
-              onMarkAllReady={handleMarkAllReadyForCourse}
-              isCourseSent={coursingHook.isCourseSent(
-                activeOrder?.id || '',
-                selectedCourseIdForTracker
-              )}
-            />
-          )}
-
+        <>
           <MoreOptionsBottomSheet
             ref={moreOptionsSheetRef}
             onVoidSuccess={handleVoidSuccess}
@@ -1080,6 +1176,24 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             ref={discountSheetRef}
             onClose={handleCloseDiscountSheet}
           />
+        </>
+      )}
+
+      {/* Stage 2: Teleport items that need root-level rendering */}
+      {renderStage >= 2 && (
+        <Teleport hostName='root'>
+          {selectedCourseIdForTracker !== null && (
+            <ItemProgressTracker
+              selectedCourse={selectedCourseIdForTracker}
+              itemsInSelectedCourse={itemsInSelectedCourse}
+              isModifierSidebarOpen={isModifierSidebarOpen}
+              onMarkAllReady={handleMarkAllReadyForCourse}
+              isCourseSent={coursingHook.isCourseSent(
+                activeOrder?.id || '',
+                selectedCourseIdForTracker
+              )}
+            />
+          )}
 
           <ServerSelectSheet
             isOpen={serverSheetOpen}
@@ -1092,16 +1206,27 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             isNotReadyConfirmOpen={activeDialog.type === 'not_ready_confirm'}
             onNotReadyConfirmChange={handleDialogBoolChange}
             onPayAnyway={handlePayAnyway}
-            isClearNotReadyConfirmOpen={activeDialog.type === 'clear_not_ready_confirm'}
+            isClearNotReadyConfirmOpen={
+              activeDialog.type === 'clear_not_ready_confirm'
+            }
             onClearNotReadyConfirmChange={handleDialogBoolChange}
             onClearAnyway={handleClearAnyway}
-            notReadyItems={activeDialog.type === 'not_ready_confirm' || activeDialog.type === 'clear_not_ready_confirm' ? activeDialog.items : EMPTY_NOT_READY_ITEMS}
+            notReadyItems={
+              activeDialog.type === 'not_ready_confirm' ||
+              activeDialog.type === 'clear_not_ready_confirm'
+                ? activeDialog.items
+                : EMPTY_NOT_READY_ITEMS
+            }
             isVoidConfirmOpen={activeDialog.type === 'void_confirm'}
             onVoidConfirmChange={handleDialogBoolChange}
             onConfirmVoid={confirmVoid}
-            isOrderClosedWarningOpen={activeDialog.type === 'order_closed_warning'}
+            isOrderClosedWarningOpen={
+              activeDialog.type === 'order_closed_warning'
+            }
             onOrderClosedWarningChange={handleDialogBoolChange}
-            courseToResend={activeDialog.type === 'course_resend' ? activeDialog.course : null}
+            courseToResend={
+              activeDialog.type === 'course_resend' ? activeDialog.course : null
+            }
             onCourseResendChange={handleCourseResendChange}
             onConfirmResend={handleConfirmResend}
             isReopenModalOpen={activeDialog.type === 'reopen_modal'}

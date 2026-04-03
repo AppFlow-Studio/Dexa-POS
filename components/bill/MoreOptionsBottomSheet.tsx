@@ -8,6 +8,7 @@ import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import BottomSheet, {
@@ -77,15 +78,10 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
   const { openSheet } = useCustomerSheetStore();
 
-  // FIX: Use individual selectors to prevent unnecessary re-renders
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const clearCart = useOrderStore((state) => state.clearCart);
   const voidOrder = useOrderStore((state) => state.voidOrder);
-
-  // FIX: Get the active order directly without using orders array
-  const activeOrder = useOrderStore(
-    (state) => state.ordersById[state?.activeOrderId || ""],
-  );
+  const activeOrder = useActiveOrder();
 
   // Kitchen items for Rush/Prioritize (items already sent to kitchen)
   const kitchenItems = useMemo(() => {

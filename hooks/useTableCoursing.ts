@@ -30,19 +30,11 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
   const prevItemIdsRef = useRef<string[]>([]);
   const syncedDbItemsRef = useRef<Set<string>>(new Set());
 
-  const itemIds = useMemo(
-    () => activeOrder?.items?.map((i) => i.id).join(",") ?? "",
-    [activeOrder?.items],
-  );
-
-  const dbItemIdsHash = useMemo(
-    () =>
-      activeOrder?.items
-        ?.map((i) => i.db_order_item_id)
-        .filter(Boolean)
-        .join(",") ?? "",
-    [activeOrder?.items],
-  );
+  // Derive stable strings directly — avoids re-running when items array reference
+  // changes due to immer mutations that don't affect IDs (e.g. kitchen_status updates)
+  const itemIds = activeOrder?.items?.map((i) => i.id).join(",") ?? "";
+  const dbItemIdsHash =
+    activeOrder?.items?.map((i) => i.db_order_item_id).filter(Boolean).join(",") ?? "";
 
   useEffect(() => {
     if (!enabled || !orderId) {
@@ -165,7 +157,12 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
         }
       });
     }
-  }, [orderId, itemIds, dbItemIdsHash, coursingInitialized, activeOrder?.items]);
+  // activeOrder?.items intentionally omitted — itemIds and dbItemIdsHash capture
+  // the only item properties this effect cares about (IDs). Including the full
+  // items array causes the effect to re-run on every kitchen_status / quantity
+  // mutation, which is wasteful and causes O(n²) behavior on large orders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, itemIds, dbItemIdsHash, coursingInitialized]);
 
   const currentCourse = orderCoursing?.workingCourse ?? 1;
 
