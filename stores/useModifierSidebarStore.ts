@@ -286,6 +286,9 @@ function _createDraftInOpen(
   const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
   if (!activeOrder) return null;
 
+  const { useSeatingStore } = require("./useSeatingStore");
+  const activeSeat = useSeatingStore.getState().getActiveSeat(activeOrderId);
+
   const stableDraftId = `draft_${sourceItem.id}`;
 
   // Check if draft already exists
@@ -319,6 +322,7 @@ function _createDraftInOpen(
     cashPrice: cashPrice,
     image: sourceItem.image,
     isDraft: true,
+    seatNumber: activeSeat ?? undefined,
     customizations: { modifiers: [], notes: "" },
     availableDiscount: sourceItem.availableDiscount,
     appliedDiscount: null,

@@ -13,7 +13,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "bridge": "./scripts/setup-emulator-bridge.sh",
-    "eas-build-pre-install": "npm config set legacy-peer-deps true"
+    "eas-build-pre-install": "npm config set legacy-peer-deps true",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@backpackapp-io/react-native-toast": "^0.15.1",
@@ -110,6 +111,7 @@
     "metro-transform-worker": "0.82.5",
     "moti": "^0.30.0",
     "nativewind": "4.1.23",
+    "patch-package": "^8.0.1",
     "prettier-plugin-tailwindcss": "^0.5.14",
     "react": "19.0.0",
     "react-dom": "19.0.0",
@@ -132,6 +134,7 @@
     "react-native-star-io10": "^1.10.3",
     "react-native-svg": "^15.11.2",
     "react-native-tcp-socket": "^6.4.1",
+    "react-native-teleport": "^1.1.0",
     "react-native-uuid": "^2.0.3",
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5",

@@ -1,5 +1,6 @@
 import "@/global.css";
 import { PortalHost } from "@rn-primitives/portal";
+import { PortalProvider } from "react-native-teleport";
 
 import ClockInWallModal from "@/components/auth/ClockInWallModal";
 import ManagerPinModal from "@/components/auth/ManagerPinModal";
@@ -201,80 +202,82 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider
-      publishableKey={publishableKey}
-      tokenCache={tokenCache}
-      __experimental_resourceCache={mmkvResourceCache}
-    >
-      <ClerkLoaded>
-        {/* <ClerkSessionDebugger /> */}
-        <TanstackProvider>
-          <PosSyncProvider>
-            <GestureHandlerRootView>
-              <SafeAreaProvider>
-                <ThemeProvider
-                  value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
-                >
-                  <BottomSheetModalProvider>
-                    <ToastProvider>
-                      <LoadingProvider>
-                        <SessionKickListenerProvider>
-                          <RemoteActionsProvider>
-                          <CFDProvider>
-                            <StatusBar style={"dark"} translucent hidden={Platform.OS === "android"} />
-                            {Platform.OS === "android" && <SystemBars hidden={{ navigationBar: true, statusBar: true }} />}
-                            <Stack screenOptions={{ headerShown: false }}>
-                              <Stack.Screen name="index" />
-                              <Stack.Screen name="(auth)" />
-                              <Stack.Screen name="(cfd)" />
-                              <Stack.Screen name="(main)" />
-                              <Stack.Screen name="(profiles-and-timeclock)" />
-                              <Stack.Screen name="(main)/tables/[tableId]" options={{ animation: 'none' }} />
-                              <Stack.Screen name="(main)/tables/waitlist" options={{ animation: 'none' }} />
-                            </Stack>
-                            <PortalHost />
-                            {isPOSMode && <SearchBottomSheet />}
-                            {isPOSMode && isCustomizationOpen && <ItemCustomizationDialog />}
-                            {isPOSMode && isClockInWallOpen && (
-                              <ClockInWallModal
-                                isOpen={isClockInWallOpen}
-                                onClose={hideClockInWall}
+    <PortalProvider>
+      <ClerkProvider
+        publishableKey={publishableKey}
+        tokenCache={tokenCache}
+        __experimental_resourceCache={mmkvResourceCache}
+      >
+        <ClerkLoaded>
+          {/* <ClerkSessionDebugger /> */}
+          <TanstackProvider>
+            <PosSyncProvider>
+              <GestureHandlerRootView>
+                <SafeAreaProvider>
+                  <ThemeProvider
+                    value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
+                  >
+                    <BottomSheetModalProvider>
+                      <ToastProvider>
+                        <LoadingProvider>
+                          <SessionKickListenerProvider>
+                            <RemoteActionsProvider>
+                            <CFDProvider>
+                              <StatusBar style={"dark"} translucent hidden={Platform.OS === "android"} />
+                              {Platform.OS === "android" && <SystemBars hidden={{ navigationBar: true, statusBar: true }} />}
+                              <Stack screenOptions={{ headerShown: false }}>
+                                <Stack.Screen name="index" />
+                                <Stack.Screen name="(auth)" />
+                                <Stack.Screen name="(cfd)" />
+                                <Stack.Screen name="(main)" />
+                                <Stack.Screen name="(profiles-and-timeclock)" />
+                                <Stack.Screen name="(main)/tables/[tableId]" options={{ presentation: 'transparentModal', animation: 'fade' }} />
+                                <Stack.Screen name="(main)/tables/waitlist" options={{ animation: 'none' }} />
+                              </Stack>
+                              <PortalHost />
+                              {isPOSMode && <SearchBottomSheet />}
+                              {isPOSMode && isCustomizationOpen && <ItemCustomizationDialog />}
+                              {isPOSMode && isClockInWallOpen && (
+                                <ClockInWallModal
+                                  isOpen={isClockInWallOpen}
+                                  onClose={hideClockInWall}
+                                />
+                              )}
+                              {isPOSMode && isPinModalOpen && <ManagerPinModal />}
+                              {isPOSMode && <CustomerSheet />}
+                              {isPOSMode && isNoPrinterModalVisible && <NoPrinterModal />}
+                              <Toasts
+                                defaultStyle={{
+                                  view: {
+                                    backgroundColor: colors.card,
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                    flex: 1,
+                                  },
+                                  text: {
+                                    color: colors.heading,
+                                    fontWeight: "bold",
+                                    fontSize: 24,
+                                  },
+                                  indicator: {
+                                    backgroundColor: colors.teal,
+                                  },
+                                }}
                               />
-                            )}
-                            {isPOSMode && isPinModalOpen && <ManagerPinModal />}
-                            {isPOSMode && <CustomerSheet />}
-                            {isPOSMode && isNoPrinterModalVisible && <NoPrinterModal />}
-                            <Toasts
-                              defaultStyle={{
-                                view: {
-                                  backgroundColor: colors.card,
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                  flex: 1,
-                                },
-                                text: {
-                                  color: colors.heading,
-                                  fontWeight: "bold",
-                                  fontSize: 24,
-                                },
-                                indicator: {
-                                  backgroundColor: colors.teal,
-                                },
-                              }}
-                            />
-                          </CFDProvider>
-                          </RemoteActionsProvider>
-                        </SessionKickListenerProvider>
-                      </LoadingProvider>
-                    </ToastProvider>
-                  </BottomSheetModalProvider>
-                </ThemeProvider>
-              </SafeAreaProvider>
-            </GestureHandlerRootView>
-          </PosSyncProvider>
-        </TanstackProvider>
-      </ClerkLoaded>
-    </ClerkProvider>
+                            </CFDProvider>
+                            </RemoteActionsProvider>
+                          </SessionKickListenerProvider>
+                        </LoadingProvider>
+                      </ToastProvider>
+                    </BottomSheetModalProvider>
+                  </ThemeProvider>
+                </SafeAreaProvider>
+              </GestureHandlerRootView>
+            </PosSyncProvider>
+          </TanstackProvider>
+        </ClerkLoaded>
+      </ClerkProvider>
+    </PortalProvider>
   );
 }
 

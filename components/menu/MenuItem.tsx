@@ -192,15 +192,15 @@ const MenuItem: React.FC<MenuItemProps> = ({
     const { activeOrderId, ordersById } = useOrderStore.getState();
     const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
-    if (!currentOrder?.order_type) {
-      setMenuBlockedSync(false);
-      show({
-        title: "Order Type Required",
-        message: "Please select an order type before adding items.",
-        type: "warning",
-      });
-      return;
-    }
+    // if (!currentOrder?.order_type) {
+    //   setMenuBlockedSync(false);
+    //   show({
+    //     title: "Order Type Required",
+    //     message: "Please select an order type before adding items.",
+    //     type: "warning",
+    //   });
+    //   return;
+    // }
 
     useModifierSidebarStore.getState().preWarm(item, categoryId, menuId);
   }, [item, categoryId, menuId, isClockedIn, onOrderClosedCheck, showClockInWall, show]);

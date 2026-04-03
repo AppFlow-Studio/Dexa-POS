@@ -56,7 +56,7 @@ import {
   scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
-import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
+import { getIsOnline, getPendingOperations, queueOperation, updateOperationParams } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 import {
@@ -2002,6 +2002,24 @@ const syncPaymentToBackend = async (
         }
       });
 
+      // Clean up persistableOrderIds if no more unsynced data remains
+      const postSyncOrder = useOrderStore.getState().ordersById[order.id];
+      if (postSyncOrder) {
+        const hasUnsyncedItems = postSyncOrder.items?.some(
+          (item) => !item.db_order_item_id && !item.isDraft,
+        );
+        const hasUnsyncedPayments = postSyncOrder.payments?.some(
+          (p) =>
+            p.sync_status === "pending" ||
+            (!p.db_payment_id && !p.isVoided),
+        );
+        if (!hasUnsyncedItems && !hasUnsyncedPayments) {
+          useOrderStore.setState((state) => {
+            delete state.persistableOrderIds[order.id];
+          });
+        }
+      }
+
       // Invalidate calculation cache after successful payment sync
       invalidateCalculationCache();
 
@@ -2713,6 +2731,11 @@ export const useOrderStore = create<OrderState>()(
           orderId: string,
           item: CartItem,
         ): number | null => {
+          // 1. Prefer explicit property on the item (highest reliability during addition)
+          if (item.seatNumber !== undefined) {
+            return item.seatNumber;
+          }
+
           try {
             const { useSeatingStore } =
               require("@/stores/useSeatingStore") as typeof import("@/stores/useSeatingStore");
@@ -5062,6 +5085,29 @@ export const useOrderStore = create<OrderState>()(
                       });
                     });
                 }
+              } else {
+                // Item not yet synced to backend — update the pending add_item op
+                // in the offline queue so it creates the item with the latest data
+                const pendingOps = getPendingOperations();
+                const addItemOp = pendingOps.find(
+                  (op) =>
+                    op.type === "add_item" &&
+                    op.localItemId === updatedItem.id &&
+                    op.status === "pending",
+                );
+                if (addItemOp) {
+                  const updatedItemData = {
+                    ...addItemOp.params.itemData,
+                    quantity: updatedItem.quantity,
+                    customizations: updatedItem.customizations,
+                    name: updatedItem.name,
+                    price: updatedItem.baseCardPrice ?? updatedItem.price,
+                    cashPrice: updatedItem.baseCashPrice ?? updatedItem.cashPrice,
+                  };
+                  updateOperationParams(addItemOp.id, {
+                    itemData: updatedItemData,
+                  });
+                }
               }
             }
           },
@@ -6833,9 +6879,10 @@ export const useOrderStore = create<OrderState>()(
               );
               // Per-item payment: Increment paidQuantity by the specified quantity (not full quantity)
               updatedItems = order.items.map((item) => {
+                // Match by db_order_item_id first, fall back to local item.id for offline items
                 const quantityToPay = allocationMap.get(
                   item.db_order_item_id || "",
-                );
+                ) ?? allocationMap.get(item.id);
                 if (quantityToPay !== undefined && quantityToPay > 0) {
                   const newPaidQty = Math.min(
                     (item.paidQuantity || 0) + quantityToPay,
@@ -6925,6 +6972,13 @@ export const useOrderStore = create<OrderState>()(
               ...(cardBrand && { cardBrand }),
               ...(last4 && { last4 }),
               ...(transactionDetails && { transactionDetails }),
+              // Extract cash-specific fields to top level for consistency with backend-synced payments
+              ...(transactionDetails?.amountTendered != null && {
+                amountTendered: transactionDetails.amountTendered,
+              }),
+              ...(transactionDetails?.changeGiven != null && {
+                changeGiven: transactionDetails.changeGiven,
+              }),
               // Cash pricing fields — mirrors backend is_cash_priced / original_amount mapping
               ...(isCashPayment && {
                 isCashPriced: true,
@@ -7042,6 +7096,9 @@ export const useOrderStore = create<OrderState>()(
                 state.activeOrderOutstandingCash =
                   totals.cash_outstanding_total;
               }
+
+              // Ensure order is persisted while it has unsynced payment data
+              state.persistableOrderIds[orderId] = true;
             });
 
             // Sync to backend - await result and return success/failure
@@ -7392,6 +7449,18 @@ export const useOrderStore = create<OrderState>()(
               if (
                 order.items.some(
                   (item) => !item.db_order_item_id && !item.isDraft,
+                )
+              ) {
+                keepSet.add(id);
+                continue;
+              }
+
+              // Keep if has pending (unsynced) payments
+              if (
+                order.payments?.some(
+                  (p) =>
+                    p.sync_status === "pending" ||
+                    (!p.db_payment_id && !p.isVoided),
                 )
               ) {
                 keepSet.add(id);
@@ -8902,6 +8971,15 @@ export const useOrderStore = create<OrderState>()(
                 state.persistableOrderIds[dbUuid] = true;
               }
             });
+
+            // Rekey satellite stores keyed by orderId
+            try {
+              const { useSeatingStore } = require('@/stores/useSeatingStore') as typeof import('@/stores/useSeatingStore');
+              useSeatingStore.getState().rekeyEntry(tempId, dbUuid);
+            } catch { /* seating store not loaded yet */ }
+
+            useCoursingStore.getState().rekeyEntry(tempId, dbUuid);
+
             console.log(`[rekeyOrder] Rekeyed order ${tempId} -> ${dbUuid}`);
           },
 
@@ -11144,6 +11222,16 @@ export const useOrderStore = create<OrderState>()(
             if (
               order.items?.some(
                 (item: any) => !item.db_order_item_id && !item.isDraft,
+              )
+            ) {
+              rebuiltPersistable[id] = true;
+            }
+            // Also persist orders with unsynced payments (pending offline payments)
+            if (
+              order.payments?.some(
+                (p: any) =>
+                  p.sync_status === "pending" ||
+                  (!p.db_payment_id && p.status !== "voided"),
               )
             ) {
               rebuiltPersistable[id] = true;

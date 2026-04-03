@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   FadeIn,
-  FadeOut,
   LinearTransition,
 } from "react-native-reanimated";
 import {
@@ -81,11 +80,11 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
   const [actionCourse, setActionCourse] = useState<number | null>(null);
   const prevItemCount = useRef<number>(0);
 
-  // Group items: seat -> course -> items
+  // Group items: seat -> course -> { items, itemCount }
   const seatGroups = useMemo(() => {
     const groups: Record<
       string,
-      Record<number, CartItem[]>
+      Record<number, { items: CartItem[]; itemCount: number }>
     > = {};
 
     activeOrder?.items?.forEach((item) => {
@@ -94,8 +93,9 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
       const seatKey = seat === null ? "shared" : String(seat);
 
       if (!groups[seatKey]) groups[seatKey] = {};
-      if (!groups[seatKey][course]) groups[seatKey][course] = [];
-      groups[seatKey][course].push(item);
+      if (!groups[seatKey][course]) groups[seatKey][course] = { items: [], itemCount: 0 };
+      groups[seatKey][course].items.push(item);
+      groups[seatKey][course].itemCount += item.quantity;
     });
 
     return groups;
@@ -186,7 +186,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Animated.View layout={LinearTransition.duration(250)}>
+        <Animated.View>
           {sortedSeatKeys.map((seatKey) => {
             const seatNumber =
               seatKey === "shared" ? null : (seatKey as number);
@@ -199,22 +199,20 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
               seatGroups[seatKey === "shared" ? "shared" : String(seatKey)] ||
               {};
             const totalItems = Object.values(courseGroups)
-              .flat()
-              .reduce((sum, i) => sum + i.quantity, 0);
+              .reduce((sum, g) => sum + g.itemCount, 0);
             const sortedCourses = Object.keys(courseGroups)
               .map(Number)
               .sort((a, b) => a - b);
 
             return (
-              <Animated.View
+              <View
                 key={`seat-${seatKey}`}
-                layout={LinearTransition.duration(200)}
                 className="mb-1"
               >
                 {/* Seat Header */}
                 <TouchableOpacity
                   onPress={() => handleToggleSeat(seatNumber)}
-                  className="flex-row items-center justify-between py-3 px-2"
+                  className="flex-row items-center justify-between py-2 px-2"
                   activeOpacity={0.7}
                 >
                   <View className="flex-row items-center flex-1">
@@ -246,28 +244,24 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                     </Text>
                   </View>
                   {isExpanded ? (
-                    <ChevronDown size={18} color={colors.label} />
+                    <ChevronDown size={16} color={colors.label} />
                   ) : (
-                    <ChevronRight size={18} color={colors.label} />
+                    <ChevronRight size={16} color={colors.label} />
                   )}
                 </TouchableOpacity>
 
                 {/* Expanded: course sub-groups */}
                 {isExpanded && (
                   <Animated.View
-                    entering={FadeIn.duration(200)}
-                    exiting={FadeOut.duration(150)}
-                    layout={LinearTransition.duration(200)}
+                    entering={FadeIn.duration(80)}
                     className="pl-3"
                   >
                     {sortedCourses.map((course) => {
-                      const items = courseGroups[course] || [];
+                      const courseGroup = courseGroups[course] || { items: [], itemCount: 0 };
+                      const items = courseGroup.items;
+                      const courseItemCount = courseGroup.itemCount;
                       const isSent = !!sentCourses?.[course];
                       const isCurrentCourse = currentCourse === course;
-                      const courseItemCount = items.reduce(
-                        (s, i) => s + i.quantity,
-                        0,
-                      );
                       const aggregateStatus = deriveAggregateStatus(items);
                       const canLongPress = isSent && aggregateStatus && aggregateStatus !== 'served';
 
@@ -275,7 +269,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                         <View key={`course-${course}`} className="mb-1">
                           {/* Course sub-header */}
                           <TouchableOpacity
-                            className="flex-row items-center justify-between py-2 px-2"
+                            className="flex-row items-center justify-between py-1.5 px-2"
                             activeOpacity={0.7}
                             onLongPress={canLongPress ? () => setActionCourse(course) : undefined}
                           >
@@ -311,7 +305,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                               )}
                               {aggregateStatus && (
                                 <View className={`ml-1 px-2 py-0.5 rounded ${BADGE_CONFIG[aggregateStatus].bg}`}>
-                                  <Text className={`text-xs font-bold ${BADGE_CONFIG[aggregateStatus].text}`}>
+                                  <Text className={`text-[10px] font-bold ${BADGE_CONFIG[aggregateStatus].text}`}>
                                     {BADGE_CONFIG[aggregateStatus].label}
                                   </Text>
                                 </View>
@@ -336,7 +330,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                                   alignItems: "center",
                                   gap: 4,
                                   paddingHorizontal: 8,
-                                  paddingVertical: 4,
+                                  paddingVertical: 3,
                                   borderRadius: 6,
                                   backgroundColor: colors.teal + "18",
                                   borderWidth: 1,
@@ -344,7 +338,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                                 }}
                                 activeOpacity={0.6}
                               >
-                                <Send size={10} color={colors.teal} />
+                                <Send size={9} color={colors.teal} />
                                 <Text
                                   style={{
                                     color: colors.teal,
@@ -360,20 +354,15 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
 
                           {/* Items */}
                           <View
-                            className="pl-3 gap-y-2"
+                            className="pl-3 gap-y-1"
                             style={isSent || aggregateStatus ? { opacity: 0.5 } : undefined}
                           >
                             {items.map((item) => (
-                              <Animated.View
+                              <BillItem
                                 key={item.id}
-                                layout={LinearTransition.duration(150)}
-                                className="overflow-hidden"
-                              >
-                                <BillItem
-                                  item={item}
-                                  isEditable={true}
-                                />
-                              </Animated.View>
+                                item={item}
+                                isEditable={true}
+                              />
                             ))}
                           </View>
                         </View>
@@ -381,7 +370,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                     })}
                   </Animated.View>
                 )}
-              </Animated.View>
+              </View>
             );
           })}
 

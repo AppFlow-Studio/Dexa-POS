@@ -6,7 +6,6 @@ import Sidebar from '@/components/tables/Sidebar'
 import TableContextSheet from '@/components/tables/TableContextSheet'
 import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
-import TableOrderModal from '@/components/tables/TableOrderModal'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
@@ -93,7 +92,7 @@ const TablesScreen = () => {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [isHostStationOpen, setHostStationOpen] = useState(false)
   const [isSectionManagerOpen, setSectionManagerOpen] = useState(false)
-  const [overlayTableId, setOverlayTableId] = useState<string | null>(null)
+  // overlayTableId removed in favor of router.push
 
   useEffect(() => {
     if (supabaseClient) {
@@ -108,21 +107,20 @@ const TablesScreen = () => {
       if (pendingId) {
         // Wait for navigation animation to complete before opening modal
         const handle = InteractionManager.runAfterInteractions(() => {
-          setOverlayTableId(pendingId)
+          router.push(('/tables/' + pendingId) as Href)
         })
         return () => handle.cancel()
       }
     }, [])
   )
 
-  // Pause background timer ticks when table order modal is open
-  useEffect(() => {
-    if (overlayTableId) {
-      pauseTimerTick()
-    } else {
+  // Pause background timer ticks when screen loses focus
+  useFocusEffect(
+    useCallback(() => {
       resumeTimerTick()
-    }
-  }, [overlayTableId])
+      return () => pauseTimerTick()
+    }, [])
+  )
 
   // Debounce search input
   useEffect(() => {
@@ -235,7 +233,7 @@ const TablesScreen = () => {
           setActiveOrder(existingOrder.id)
         }
       }
-      setOverlayTableId(tableId)
+      router.push(('/tables/' + tableId) as Href)
     },
     [tables, getOrder, setActiveOrder]
   )
@@ -258,7 +256,7 @@ const TablesScreen = () => {
           if (existing) setActiveOrder(existing.id)
 
           // Show overlay immediately — no routing latency
-          setOverlayTableId(table.id)
+          router.push(('/tables/' + table.id) as Href)
 
           // Background sync for fresh data (no-op if order already current)
           syncOrderFromDatabase(orderId)
@@ -267,7 +265,7 @@ const TablesScreen = () => {
             })
             .catch(() => {})
         } else {
-          setOverlayTableId(table.id)
+          router.push(('/tables/' + table.id) as Href)
         }
         return
       }
@@ -475,7 +473,7 @@ const TablesScreen = () => {
     setGuestModalOpen(false)
     clearSelection()
     setMergeMode(false)
-    setOverlayTableId(primaryTableId)
+    router.push(('/tables/' + primaryTableId) as Href)
 
     // 3. Register pending creation to prevent ensureOrderCreated from duplicating
     let resolveCreation: (dbOrderId: string | null) => void
@@ -694,11 +692,6 @@ const TablesScreen = () => {
         isOpen={isGuestModalOpen}
         onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
-      />
-
-      <TableOrderModal
-        tableId={overlayTableId}
-        onClose={() => setOverlayTableId(null)}
       />
 
       {/* Server Section Manager */}

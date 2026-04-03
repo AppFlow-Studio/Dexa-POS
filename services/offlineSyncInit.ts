@@ -1057,6 +1057,25 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             });
           }
 
+          // Clean up persistableOrderIds if no more unsynced data remains
+          const postSyncOrder =
+            _getOrderStore().getState().ordersById[localOrderId];
+          if (postSyncOrder) {
+            const hasUnsyncedItems = postSyncOrder.items?.some(
+              (item: any) => !item.db_order_item_id && !item.isDraft,
+            );
+            const hasUnsyncedPayments = postSyncOrder.payments?.some(
+              (p: any) =>
+                p.sync_status === "pending" ||
+                (!p.db_payment_id && !p.isVoided),
+            );
+            if (!hasUnsyncedItems && !hasUnsyncedPayments) {
+              _getOrderStore().setState((state: any) => {
+                delete state.persistableOrderIds[localOrderId];
+              });
+            }
+          }
+
           // Trigger payment status sync from backend for fresh data
           // This ensures UI shows confirmed status after offline payment syncs
           console.log(

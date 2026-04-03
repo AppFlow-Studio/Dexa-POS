@@ -97,14 +97,14 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
   const handleAddToCart = () => {
     if (isDisabled) return;
 
-    if (!activeOrder?.order_type) {
-      show({
-        title: "Order Type Required",
-        message: "Please select an order type before adding items.",
-        type: "warning",
-      });
-      return;
-    }
+    // if (!activeOrder?.order_type) {
+    //   show({
+    //     title: "Order Type Required",
+    //     message: "Please select an order type before adding items.",
+    //     type: "warning",
+    //   });
+    //   return;
+    // }
 
     openFullscreen(item, activeOrderId);
     closeSearchSheet();

@@ -291,7 +291,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               config: { private: true } // Use private channel with RLS
             })
             .subscribe((status, err) => {
-              console.log('[Realtime] Status:', status, err)
+              // console.log('[Realtime] Status:', status, err)
 
               switch (status) {
                 case 'SUBSCRIBED':
@@ -357,9 +357,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (data.session.is_active === false) {
             const sessionId = data.session.id
             set(state => {
-              const newTables = state.tables.map(t =>
-                t.session?.id === sessionId ? { ...t, session: undefined } : t
-              )
+              let changed = false
+              const newTables = state.tables.map(t => {
+                if (t.session?.id === sessionId) {
+                  changed = true
+                  return { ...t, session: undefined }
+                }
+                return t
+              })
+              if (!changed) return {}
               return {
                 tables: newTables,
                 tablesById: buildTablesById(newTables)
@@ -377,7 +383,23 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const sessionId = data.session.id
           const tableIds = data.tables?.map(t => t.table_id) || []
 
+          const newSessionData = {
+            id: sessionId,
+            status: data.session.status,
+            party_size: data.session.party_size,
+            guest_name: data.session.guest_name,
+            seated_at:
+              data.session.seated_at || new Date().toISOString(),
+            current_course: data.session.current_course,
+            needs_attention: data.session.needs_attention,
+            is_vip: data.session.is_vip,
+            order_id: data.session.order_id,
+            session_number: data.session.session_number,
+            merged_tables: tableIds.length > 1 ? tableIds : undefined
+          }
+
           set(state => {
+            let changed = false
             const newTables = state.tables.map(t => {
               // Check if this table is part of the updated session
               if (tableIds.includes(t.id)) {
@@ -387,36 +409,34 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                   t.session?.id === sessionId &&
                   isLocalOnlyStatus(t.session.status)
                 ) {
-                  console.warn(
-                    `[_handleSessionChange] Preserving local-only status "${t.session.status}" for table ${t.id}`
-                  )
                   return t
                 }
-                return {
-                  ...t,
-                  session: {
-                    id: sessionId,
-                    status: data.session.status,
-                    party_size: data.session.party_size,
-                    guest_name: data.session.guest_name,
-                    seated_at:
-                      data.session.seated_at || new Date().toISOString(),
-                    current_course: data.session.current_course,
-                    needs_attention: data.session.needs_attention,
-                    is_vip: data.session.is_vip,
-                    order_id: data.session.order_id,
-                    session_number: data.session.session_number,
-                    merged_tables: tableIds.length > 1 ? tableIds : undefined
-                  }
+                // Only create new object if data actually differs
+                const s = t.session
+                if (
+                  s?.id === sessionId &&
+                  s?.status === newSessionData.status &&
+                  s?.party_size === newSessionData.party_size &&
+                  s?.order_id === newSessionData.order_id &&
+                  s?.guest_name === newSessionData.guest_name &&
+                  s?.current_course === newSessionData.current_course &&
+                  s?.needs_attention === newSessionData.needs_attention &&
+                  s?.is_vip === newSessionData.is_vip
+                ) {
+                  return t // same reference — no change
                 }
+                changed = true
+                return { ...t, session: newSessionData }
               }
               // Clear session if table was previously in this session but isn't anymore
-              if (t.session?.id === sessionId && !tableIds.includes(t.id)) {
+              if (t.session?.id === sessionId) {
+                changed = true
                 return { ...t, session: undefined }
               }
               return t
             })
 
+            if (!changed) return {} // no state update
             return {
               tables: newTables,
               tablesById: buildTablesById(newTables)

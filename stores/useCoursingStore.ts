@@ -100,6 +100,7 @@ type CoursingState = {
 
   // Cleanup
   clearOrder: (orderId: string) => void;
+  rekeyEntry: (oldOrderId: string, newOrderId: string) => void;
 };
 
 // ============================================================================
@@ -790,6 +791,22 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     set((prev) => {
       const { [orderId]: _, ...remaining } = prev.byOrderId;
       return { byOrderId: remaining };
+    });
+  },
+
+  rekeyEntry: (oldOrderId: string, newOrderId: string) => {
+    const existing = get().byOrderId[oldOrderId];
+    if (!existing || oldOrderId === newOrderId) return;
+
+    set((prev) => {
+      const { [oldOrderId]: entry, ...remaining } = prev.byOrderId;
+      if (!entry) return prev;
+      return {
+        byOrderId: {
+          ...remaining,
+          [newOrderId]: { ...entry, dbOrderId: newOrderId },
+        },
+      };
     });
   },
 }));

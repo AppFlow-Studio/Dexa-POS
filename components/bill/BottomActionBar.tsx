@@ -92,18 +92,6 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       );
     }
 
-    if (isBalanceZero) {
-      const paymentsText = paymentCount
-        ? `${paymentCount} payment${paymentCount > 1 ? "s" : ""} made`
-        : "Partially Paid";
-      return (
-        <View style={{ ...mainBtn, backgroundColor: colors.success + '15', borderColor: colors.success + '40' }}>
-          <CheckCircle size={13} color={colors.success} />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.success }} numberOfLines={1}>{paymentsText}</Text>
-        </View>
-      );
-    }
-
     return (
       <TouchableOpacity
         onPress={onPressTotal}

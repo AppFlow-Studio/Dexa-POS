@@ -401,7 +401,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   return (
     <>
       <View
-        className={`mt-0 flex-1 bg-background ${isTableOrder ? "rounded-tl-3xl" : ""}`}
+        className={`mt-0 flex-1 bg-background relative overflow-hidden ${isTableOrder ? "rounded-tl-3xl" : ""}`}
       >
         {/* Row 1: Header (Order Line) + Toolbar */}
         <View
@@ -609,10 +609,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
         {/* Blocking overlay isolated — only re-renders when modifier opens */}
         <MenuBlockingOverlay />
-      </View>
 
-      {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}
-      <ModifierScreenOverlay />
+        {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}
+        <ModifierScreenOverlay />
+      </View>
 
       <OrderTypeDrawer
         isVisible={isOrderTypeDrawerOpen}

@@ -176,7 +176,7 @@ export function useRealtimeChannel<T>({
       // Refresh auth token before re-subscribing
       try {
         await supabaseClient.realtime.setAuth();
-        console.log('[Realtime] Auth token refreshed before reconnect');
+        // console.log('[Realtime] Auth token refreshed before reconnect');
       } catch (error) {
         console.error('[Realtime] Failed to refresh auth token on reconnect:', error);
       }
@@ -224,10 +224,10 @@ export function useRealtimeChannel<T>({
     if (!enabled || status.state !== 'SUBSCRIBED') return;
 
     const refreshInterval = setInterval(async () => {
-      console.log('[Realtime] Refreshing auth token...');
+      // console.log('[Realtime] Refreshing auth token...');
       try {
         await supabaseClient.realtime.setAuth();
-        console.log('[Realtime] Auth token refreshed successfully');
+        // console.log('[Realtime] Auth token refreshed successfully');
       } catch (error) {
         console.error('[Realtime] Failed to refresh auth token:', error);
       }

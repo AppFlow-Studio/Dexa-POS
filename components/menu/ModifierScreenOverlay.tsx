@@ -42,68 +42,34 @@ const ModifierScreenOverlay: React.FC = () => {
     !s.isOpen ? "closed" : `${s.cartItem?.id ?? ""}_${s.menuItem?.id ?? ""}_${s.mode}`
   );
 
-  const [animationComplete, setAnimationComplete] = useState(false);
-
-  // Track previous isFullscreen to detect item-switch while already open
-  const prevIsFullscreenRef = useRef(false);
-  const prevSessionKeyRef = useRef(sessionKey);
-
   // Reanimated shared values
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const opacity = useSharedValue(0);
 
-  const setAnimationCompleteIfOpen = useCallback(() => {
-    if (useModifierSidebarStore.getState().isOpen) {
-      setAnimationComplete(true);
-    }
-  }, []);
-
   useEffect(() => {
     if (isFullscreen) {
-      const wasAlreadyOpen = prevIsFullscreenRef.current;
-      const sessionChanged = prevSessionKeyRef.current !== sessionKey;
-
-      if (wasAlreadyOpen && sessionChanged) {
-        // Already open, switching items — skip animation, show content immediately
-        setAnimationComplete(true);
-      } else {
-        // Fresh open — show skeleton, animate, then mount content
-        setAnimationComplete(false);
-
-        // Cancel any in-flight close animation and reset to start position
-        cancelAnimation(translateY);
-        cancelAnimation(opacity);
-        translateY.value = SCREEN_HEIGHT;
-        opacity.value = 0;
-
-        const timingConfig = {
-          duration: 120,
-          easing: Easing.out(Easing.cubic),
-        };
-
-        translateY.value = withTiming(0, timingConfig);
-        opacity.value = withTiming(1, timingConfig, (finished) => {
-          if (finished) {
-            runOnJS(setAnimationCompleteIfOpen)();
-          }
-        });
-      }
-    } else {
-      // Close — reset animationComplete, animate out
-      setAnimationComplete(false);
+      // Open triggered
+      cancelAnimation(translateY);
+      cancelAnimation(opacity);
 
       const timingConfig = {
-        duration: 100,
+        duration: 150,
+        easing: Easing.out(Easing.cubic),
+      };
+
+      translateY.value = withTiming(0, timingConfig);
+      opacity.value = withTiming(1, timingConfig);
+    } else {
+      // Close triggered
+      const timingConfig = {
+        duration: 120,
         easing: Easing.in(Easing.cubic),
       };
 
       translateY.value = withTiming(SCREEN_HEIGHT, timingConfig);
       opacity.value = withTiming(0, timingConfig);
     }
-
-    prevIsFullscreenRef.current = isFullscreen;
-    prevSessionKeyRef.current = sessionKey;
-  }, [isFullscreen, sessionKey, translateY, opacity, setAnimationCompleteIfOpen]);
+  }, [isFullscreen, translateY, opacity]);
 
   // Safety reset: force to hidden state after close
   useEffect(() => {
@@ -111,7 +77,7 @@ const ModifierScreenOverlay: React.FC = () => {
       const timer = setTimeout(() => {
         translateY.value = SCREEN_HEIGHT;
         opacity.value = 0;
-      }, 150);
+      }, 200);
       return () => clearTimeout(timer);
     }
   }, [isOpen, translateY, opacity]);
@@ -121,13 +87,14 @@ const ModifierScreenOverlay: React.FC = () => {
     opacity: opacity.value,
   }));
 
+  if (!isOpen) return null;
+
   return (
     <Animated.View
       style={[styles.overlay, animatedStyle]}
       pointerEvents={isOpen ? "auto" : "none"}
     >
-      {isOpen && !animationComplete && <ModifierScreenSkeleton />}
-      {animationComplete && <ModifierScreen key={sessionKey} />}
+      <ModifierScreen key={sessionKey} />
     </Animated.View>
   );
 };
@@ -141,4 +108,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default React.memo(ModifierScreenOverlay);
+export default ModifierScreenOverlay;

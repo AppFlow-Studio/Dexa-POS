@@ -26,7 +26,7 @@ import {
   Plus,
   X
 } from "lucide-react-native";
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -196,6 +196,65 @@ const ModifierOption = memo(
       )}
     </TouchableOpacity>
   ),
+);
+
+/**
+ * Isolated Notes Input to prevent the main ModifierScreen from re-rendering
+ * on every keystroke. It syncs with the main state on blur or after a delay.
+ */
+const NotesInput = memo(
+  ({
+    initialValue,
+    isReadOnly,
+    onChange,
+  }: {
+    initialValue: string;
+    isReadOnly: boolean;
+    onChange: (text: string) => void;
+  }) => {
+    const [localValue, setLocalValue] = useState(initialValue);
+    
+    // Sync if initialValue changes from outside
+    useEffect(() => {
+      setLocalValue(initialValue);
+    }, [initialValue]);
+
+    return (
+      <View>
+        <View className="flex-row items-center justify-between pt-3 mb-2">
+          <Text
+            className="text-sm font-semibold"
+            style={{ color: colors.heading }}
+          >
+            Special Instructions
+          </Text>
+          <Text className="text-xs" style={{ color: colors.label }}>
+            {localValue.length}/80
+          </Text>
+        </View>
+        <View
+          className="rounded-lg overflow-hidden border"
+          style={{
+            borderColor: colors.border,
+            backgroundColor: colors.inset,
+          }}
+        >
+          <TextInput
+            editable={!isReadOnly}
+            value={localValue}
+            onChangeText={setLocalValue}
+            onBlur={() => onChange(localValue)}
+            placeholder="No onions, extra sauce..."
+            numberOfLines={1}
+            maxLength={80}
+            className="px-3 py-2 text-sm min-h-[52px]"
+            style={{ color: colors.heading }}
+            placeholderTextColor={colors.muted}
+          />
+        </View>
+      </View>
+    );
+  }
 );
 
 // ============================================================================
@@ -373,31 +432,15 @@ const immerReducer = (state: State, action: Action): void => {
 // ============================================================================
 
 const ModifierScreen = () => {
-  const { isOpen, mode } = useModifierSidebarStore(
-    useShallow((s) => ({ isOpen: s.isOpen, mode: s.mode })),
-  );
-
-  const { menuItem, cartItem, categoryId, menuId, precomputedForItemId } =
-    useModifierSidebarStore(
-      useShallow((s) => ({
-        menuItem: s.menuItem,
-        cartItem: s.cartItem,
-        categoryId: s.categoryId,
-        menuId: s.menuId,
-        precomputedForItemId: s.precomputedForItemId,
-      })),
-    );
-
-  const {
-    precomputedModifiers,
-    precomputedCategoriesById,
-    precomputedOptionsById,
-    storeInitialSelections,
-    precomputedItemPrice,
-    precomputedCashPrice,
-    precomputedActiveCategory,
-  } = useModifierSidebarStore(
+  const store = useModifierSidebarStore(
     useShallow((s) => ({
+      isOpen: s.isOpen,
+      mode: s.mode,
+      menuItem: s.menuItem,
+      cartItem: s.cartItem,
+      categoryId: s.categoryId,
+      menuId: s.menuId,
+      precomputedForItemId: s.precomputedForItemId,
       precomputedModifiers: s.precomputedModifiers,
       precomputedCategoriesById: s.precomputedCategoriesById,
       precomputedOptionsById: s.precomputedOptionsById,
@@ -405,14 +448,34 @@ const ModifierScreen = () => {
       precomputedItemPrice: s.itemPrice,
       precomputedCashPrice: s.itemCashPrice,
       precomputedActiveCategory: s.activeModifierCategory,
+      close: s.close,
+      seatOverride: s.seatOverride,
+      setSeatOverride: s.setSeatOverride,
     })),
   );
 
-  const close = useModifierSidebarStore(selectClose);
-  const seatOverride = useModifierSidebarStore(selectSeatOverride);
-  const setSeatOverride = useModifierSidebarStore(selectSetSeatOverride);
+  const {
+    isOpen,
+    mode,
+    menuItem,
+    cartItem,
+    categoryId,
+    menuId,
+    precomputedForItemId,
+    precomputedModifiers,
+    precomputedCategoriesById,
+    precomputedOptionsById,
+    storeInitialSelections,
+    precomputedItemPrice,
+    precomputedCashPrice,
+    precomputedActiveCategory,
+    close,
+    seatOverride,
+    setSeatOverride,
+  } = store;
 
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+
 
   // Per-seat ordering context
   const enablePerSeatOrdering = useLocationConfigStore(
@@ -680,6 +743,7 @@ const ModifierScreen = () => {
         cashPrice: cashPrice || itemPrice,
         image: currentItem.image,
         isDraft: true,
+        seatNumber: seatOverride ?? undefined,
         customizations: { modifiers: [], notes: "" },
         availableDiscount: currentItem.availableDiscount,
         appliedDiscount: null,
@@ -691,7 +755,7 @@ const ModifierScreen = () => {
       draftItemIdRef.current = draftItem.id;
       lastDraftMenuItemIdRef.current = currentItem.id;
     }
-  }, [isOpen, currentItem?.id, mode, cartItem]);
+  }, [isOpen, currentItem?.id, mode, cartItem, seatOverride]);
 
   const sessionKeyRef = useRef<string>("closed");
   sessionKeyRef.current = !isOpen
@@ -1020,13 +1084,15 @@ const ModifierScreen = () => {
           price: currentTotal / Math.max(1, currentState.quantity),
           customizations: finalCustomizations,
           isDraft: false,
+          seatNumber: shouldApplySeat && seatVal !== undefined ? seatVal : currentCartItem.seatNumber,
           subtotal: undefined,
           cashSubtotal: undefined,
           taxAmount: undefined,
           cashTaxAmount: undefined,
         };
         updateItemInActiveOrder(updatedItem);
-        // Apply seat override if per-seat ordering is active
+        
+        // Ensure manual sync matches the updated seat
         if (shouldApplySeat) {
           const ordId = useOrderStore.getState().activeOrderId;
           if (ordId) {
@@ -1039,6 +1105,9 @@ const ModifierScreen = () => {
                 currentCartItem.db_order_item_id,
                 true,
               );
+            
+            // Sync back to global active seat so subsequent items pick it up
+            useSeatingStore.getState().setActiveSeat(ordId, seatVal);
           }
         }
         showToast({
@@ -1066,6 +1135,7 @@ const ModifierScreen = () => {
           appliedDiscount: null,
           paidQuantity: 0,
           isDraft: false,
+          seatNumber: shouldApplySeat && seatVal !== undefined ? seatVal : undefined,
           addedFromCategoryId: catId || null,
           addedFromMenuId: mId || null,
           category_name: categoryName || undefined,
@@ -1080,6 +1150,9 @@ const ModifierScreen = () => {
             useSeatingStore
               .getState()
               .setItemSeat(ordId, newItem.id, seatVal, undefined, true);
+            
+            // Sync back to global active seat so subsequent items pick it up
+            useSeatingStore.getState().setActiveSeat(ordId, seatVal);
           }
         }
       }
@@ -1185,7 +1258,15 @@ const ModifierScreen = () => {
     );
   }
 
-  if (!isOpen || !currentItem) return null;
+  if (!isOpen) return null;
+
+  if (!currentItem) {
+    return (
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.screen }}>
+        <Text style={{ color: colors.label }}>Loading item...</Text>
+      </View>
+    );
+  }
 
   const currentCategory = state.activeCategory
     ? modifierCategoriesById.get(state.activeCategory) ?? null
@@ -1520,38 +1601,11 @@ const ModifierScreen = () => {
           className="px-4 pb-3 border-t"
           style={{ borderColor: colors.border }}
         >
-          <View className="flex-row items-center justify-between pt-3 mb-2">
-            <Text
-              className="text-sm font-semibold"
-              style={{ color: colors.heading }}
-            >
-              Special Instructions
-            </Text>
-            <Text className="text-xs" style={{ color: colors.label }}>
-              {state.notes.length}/80
-            </Text>
-          </View>
-          <View
-            className="rounded-lg overflow-hidden border"
-            style={{
-              borderColor: colors.border,
-              backgroundColor: colors.inset,
-            }}
-          >
-            <TextInput
-              editable={!isReadOnly}
-              value={state.notes}
-              onChangeText={(text) =>
-                dispatch({ type: "SET_NOTES", payload: text })
-              }
-              placeholder="No onions, extra sauce..."
-              numberOfLines={1}
-              maxLength={80}
-              className="px-3 py-2 text-sm min-h-[52px]"
-              style={{ color: colors.heading }}
-              placeholderTextColor={colors.muted}
-            />
-          </View>
+          <NotesInput
+            initialValue={state.notes}
+            isReadOnly={isReadOnly}
+            onChange={(text) => dispatch({ type: "SET_NOTES", payload: text })}
+          />
         </View>
 
         {/* ── Allergens ──────────────────────────────────────────────────── */}
@@ -1659,4 +1713,4 @@ const ModifierScreen = () => {
   );
 };
 
-export default memo(ModifierScreen);
+export default ModifierScreen;

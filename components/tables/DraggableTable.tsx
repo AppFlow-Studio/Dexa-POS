@@ -125,20 +125,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const sessionStoreSession = useTableSessionStore(s => s.sessions[table.id])
   const liveSession = sessionStoreSession ?? table.session
 
-  if (
-    liveSession?.status === 'served' ||
-    liveSession?.status === 'check_presented'
-  ) {
-    console.log('[DraggableTable] Table with served/check_presented status:', {
-      tableId: table.id,
-      tableStatus: liveSession?.status,
-      fromSessionStore: !!sessionStoreSession,
-      fromFloorPlan: !!table.session,
-      sessionStoreSession: sessionStoreSession?.status,
-      floorPlanSession: table.session?.status
-    })
-  }
-
   // --- COMPONENT LOOKUP ---
   const shapeDef =
     TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES] ||
@@ -399,19 +385,23 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     }
   })
 
-  const orderTotal =
+  const orderTotal = useMemo(() =>
     effectiveOrder?.items?.reduce(
       (acc: number, item: any) => acc + item.price * item.quantity,
       0
-    ) || 0
+    ) || 0,
+    [effectiveOrder?.items]
+  )
 
-  const isReservedSoon =
+  const isReservedSoon = useMemo(() =>
     !liveSession &&
     !!table.next_reservation &&
     (() => {
       const resTime = new Date(table.next_reservation!.time).getTime()
       return resTime > Date.now() && resTime - Date.now() <= 30 * 60 * 1000
-    })()
+    })(),
+    [liveSession, table.next_reservation]
+  )
 
   // Determine table color status from DB-synced session status only (skip local-only intermediates)
   const sessionStatus = liveSession?.status
@@ -427,20 +417,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     : isReservedSoon
     ? colors.info // blue for reserved soon
     : TABLE_STATUS_COLORS[tableStatus] || TABLE_STATUS_COLORS.available
-
-  if (
-    liveSession?.status === 'served' ||
-    liveSession?.status === 'check_presented'
-  ) {
-    console.log('[DraggableTable] Color determination for', table.name, {
-      sessionStatus,
-      isLocalOnly: sessionStatus ? isLocalOnlyStatus(sessionStatus) : 'N/A',
-      tableStatus,
-      tableColor,
-      fromCOLORSMap: TABLE_STATUS_COLORS[tableStatus],
-      allColors: TABLE_STATUS_COLORS
-    })
-  }
 
   return (
     <GestureDetector gesture={composedGesture}>
@@ -519,8 +495,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 tableStatus === 'paid') && (
                 <>
                   {!effectiveOrder && liveSession?.order_id ? (
-                    <Text style={{ color: tableColor + '99', fontSize: 8, fontWeight: '600' }}>
-                      ...
+                    <Text style={{ color: tableColor + 'CC', fontSize: 7, fontWeight: '600' }}>
+                      {duration}{liveSession?.party_size ? ` · ${liveSession.party_size} ${liveSession.party_size === 1 ? 'guest' : 'guests'}` : ''}
                     </Text>
                   ) : (
                     <>

@@ -38,7 +38,8 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { ArrowLeft, CreditCard } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { Text, TouchableOpacity, View, InteractionManager } from 'react-native'
+import { Portal as Teleport } from 'react-native-teleport'
 
 // Stable empty array to avoid new reference on every render
 const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] = []
@@ -51,6 +52,20 @@ interface TableOrderViewProps {
 const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const currentTableId = tableId
 
+  // --- 1. Base Deferred Rendering State (MUST BE FIRST) ---
+  const [renderStage, setRenderStage] = useState(() => {
+    const session = useTableSessionStore.getState().sessions[currentTableId]
+    if (session?.order_id) {
+      const found = useOrderStore.getState().getOrder(session.order_id)
+      if (found) return 2 
+    }
+    const orderState = useOrderStore.getState()
+    const oid = orderState.activeOrderId
+    const hasOrder = oid && orderState.ordersById[oid]?.service_location_id === currentTableId
+    return hasOrder ? 2 : 0
+  })
+
+  // --- 2. Standard Hooks & Context ---
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
   const supabase = useSupabaseClient()
@@ -62,75 +77,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     s => s.config.printing.autoPrintKitchenTickets
   )
 
-  // --- Extracted hooks ---
-  const {
-    phase,
-    activeOrder,
-    tableStatus,
-    isReady,
-    markNavigatingAway,
-    markPaymentSyncing,
-    markPaymentSyncDone
-  } = useTableSession(currentTableId, undefined, onClose)
-
-  const enableCoursing = useLocationConfigStore(
-    s => s.config.dining.enableCoursing
-  )
-  // Short-circuits all 11 coursing subscriptions + 3 effects when coursing is disabled
-  const coursingHook = useTableCoursing(activeOrder, enableCoursing)
-
-  useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
-
-  const isTableActive = isActiveSession(tableStatus) || tableStatus === 'paid'
-  const { duration, isOvertime } = useTableDuration(
-    activeOrder?.opened_at,
-    isTableActive
-  )
-
-  // --- Store selectors (only what's still needed at this level) ---
-  // Deferred: modifier sidebar only needed after stage 2 (when MenuSection mounts)
-  const isModifierSidebarOpen = useModifierSidebarStore(s => renderStage >= 2 && s.isOpen)
-  const table = useFloorPlanStore(s => s.tablesById[currentTableId])
-  const session = useTableSessionStore(s => s.sessions[currentTableId])
-
-  const enablePerSeatOrdering = useLocationConfigStore(
-    s => s.config.dining.enablePerSeatOrdering
-  )
-  const partySize = session?.party_size ?? 2
-  const seatingHook = useTableSeating(
-    activeOrder,
-    partySize,
-    enablePerSeatOrdering
-  )
-
-  const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
-  const dispatchAction = useTableSessionStore(s => s.dispatchAction)
-  const openPaymentSheet = usePaymentStore(s => s.open)
-
-  const updateActiveOrderDetails = useOrderStore(
-    s => s.updateActiveOrderDetails
-  )
-  const batchUpdateItemKitchenStatus = useOrderStore(
-    s => s.batchUpdateItemKitchenStatus
-  )
-  const syncOrderStatus = useOrderStore(s => s.syncOrderStatus)
-
-  const activeOrderId = useOrderStore(s => s.activeOrderId)
-  const setPreAuthMode = usePaymentStore(s => s.setPreAuthMode)
-  // Deferred: payment selectors not needed until stage 2 (user taps Pay)
-  const paymentReady = renderStage >= 2
-  const totals = useActiveOrderTotals(paymentReady)
-  const preAuth = useOrderPreAuth(paymentReady ? activeOrder?.id : undefined)
-  const hasPreAuth = useHasActivePreAuth(paymentReady ? activeOrder?.id : undefined)
-  const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0
-  const storeActiveOrderTotal = totals?.total ?? 0
-
-  // --- Bottom sheet refs ---
-  const pricingSheetRef = useRef<BottomSheetMethods>(null)
-  const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
-  const discountSheetRef = useRef<BottomSheetMethods>(null)
-
-  // --- Alert dialog state (consolidated: one useState instead of 8) ---
+  // --- 3. UI State ---
   type NotReadyItem = { id: string; name: string; quantity: number }
   type ActiveDialog =
     | { type: 'none' }
@@ -142,57 +89,81 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     | { type: 'reopen_modal' }
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>({ type: 'none' })
   const closeDialog = useCallback(() => setActiveDialog({ type: 'none' }), [])
-
-  // These are independent of dialogs (can coexist)
   const [serverSheetOpen, setServerSheetOpen] = useState(false)
-  const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
-    number | null
-  >(null)
+  const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<number | null>(null)
 
-  // --- Deferred rendering ---
-  // Skip skeleton (stage 0) when order data is already in the store (e.g. navigating from tables screen)
-  const [renderStage, setRenderStage] = useState(() => {
-    // Check session store for this table's order — works even before activeOrderId is set
-    const session = useTableSessionStore.getState().sessions[currentTableId]
-    if (session?.order_id) {
-      const found = useOrderStore.getState().getOrder(session.order_id)
-      if (found) return 2 // order already in store — render everything immediately
-    }
-    // Fallback: check activeOrderId (available table or freshly created order)
-    const orderState = useOrderStore.getState()
-    const oid = orderState.activeOrderId
-    const hasOrder =
-      oid && orderState.ordersById[oid]?.service_location_id === currentTableId
-    return hasOrder ? 2 : 0
-  })
-  useEffect(() => {
-    let cancelled = false
-    if (renderStage >= 2) return
-    // Triple-RAF: spread mount work across frames (matches order-processing pattern)
-    // Stage 0 → skeleton | Stage 1 → BillSection + header | Stage 2 → MenuSection + sheets
-    const raf = requestAnimationFrame(() => {
-      if (cancelled) return
-      requestAnimationFrame(() => {
-        if (cancelled) return
-        setRenderStage(1)
-        requestAnimationFrame(() => {
-          if (cancelled) return
-          setRenderStage(2)
-        })
-      })
-    })
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(raf)
-    }
-  }, [])
+  // --- 4. Domain Hooks ---
+  const {
+    phase,
+    activeOrder,
+    tableStatus,
+    isReady,
+    markNavigatingAway,
+    markPaymentSyncing,
+    markPaymentSyncDone
+  } = useTableSession(currentTableId, undefined, onClose)
 
-  // --- Derived values ---
+  const enableCoursing = useLocationConfigStore(s => s.config.dining.enableCoursing)
+  const coursingHook = useTableCoursing(activeOrder, enableCoursing)
+  useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
+
+  const isTableActive = isActiveSession(tableStatus) || tableStatus === 'paid'
+  const { duration, isOvertime } = useTableDuration(activeOrder?.opened_at, isTableActive)
+
+  // --- 5. Derived Selectors ---
+  const modSidebarOpen = useModifierSidebarStore(s => s.isOpen)
+  const isModifierSidebarOpen = renderStage >= 2 && modSidebarOpen
+  const table = useFloorPlanStore(s => s.tablesById[currentTableId])
+  const session = useTableSessionStore(s => s.sessions[currentTableId])
+
+  const enablePerSeatOrdering = useLocationConfigStore(s => s.config.dining.enablePerSeatOrdering)
+  const partySize = session?.party_size ?? 2
+  const seatingHook = useTableSeating(activeOrder, partySize, enablePerSeatOrdering)
+
+  const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
+  const dispatchAction = useTableSessionStore(s => s.dispatchAction)
+  const openPaymentSheet = usePaymentStore(s => s.open)
+  const updateActiveOrderDetails = useOrderStore(s => s.updateActiveOrderDetails)
+  const batchUpdateItemKitchenStatus = useOrderStore(s => s.batchUpdateItemKitchenStatus)
+  const syncOrderStatus = useOrderStore(s => s.syncOrderStatus)
+  const activeOrderId = useOrderStore(s => s.activeOrderId)
+  const setPreAuthMode = usePaymentStore(s => s.setPreAuthMode)
+
+  const totalsEnabled = renderStage >= 1
+  const totals = useActiveOrderTotals(totalsEnabled)
+  const preAuth = useOrderPreAuth(totalsEnabled ? activeOrder?.id : undefined)
+  const hasPreAuth = useHasActivePreAuth(totalsEnabled ? activeOrder?.id : undefined)
+  const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0
+  const storeActiveOrderTotal = totals?.total ?? 0
+
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0
   const displayBalanceDue = hasPayments
     ? storeActiveOrderOutstandingTotal
     : storeActiveOrderTotal
 
+  // --- 6. Bottom sheet refs ---
+  const pricingSheetRef = useRef<BottomSheetMethods>(null)
+  const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
+  const discountSheetRef = useRef<BottomSheetMethods>(null)
+
+  // --- 7. Effects ---
+  useEffect(() => {
+    let cancelled = false
+    if (renderStage >= 2) return
+    const handle = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return
+      setRenderStage(1)
+      requestAnimationFrame(() => {
+        if (!cancelled) setRenderStage(2)
+      })
+    })
+    return () => {
+      cancelled = true
+      handle.cancel()
+    }
+  }, [renderStage])
+
+  // --- 8. Final Derived UI State ---
   const isFullyPaid = useMemo(() => {
     if (activeOrder?.check_status === 'Opened') return false
     return (
@@ -1082,7 +1053,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
       {/* Stage 2: Defer heavy bottom sheets and dialogs */}
       {renderStage >= 2 && (
-        <>
+        <Teleport hostName="root">
           {selectedCourseIdForTracker !== null && (
             <ItemProgressTracker
               selectedCourse={selectedCourseIdForTracker}
@@ -1137,7 +1108,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             onReopenModalClose={handleCloseReopenModal}
             onConfirmReopen={handleConfirmReopen}
           />
-        </>
+        </Teleport>
       )}
     </View>
   )

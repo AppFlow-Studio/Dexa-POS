@@ -658,7 +658,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         splitSourceView === "pay-for-items";
       if (isPerItemPayment && currentSplit.items.length > 0) {
         itemAllocations = currentSplit.items
-          .filter((item) => !!item.db_order_item_id)
           .map((item) => {
             // Calculate per-item amount: unit price * quantity
             // Use cash price when paying with cash, otherwise card price
@@ -667,7 +666,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               : (item.price ?? item.unitPrice ?? 0);
             const amount = Math.round(unitPrice * item.quantity * 100) / 100;
             return {
-              itemId: item.db_order_item_id!,
+              // Use local item.id as fallback for offline items without db_order_item_id.
+              // The offline sync handler resolves local IDs to backend UUIDs via resolveItemId().
+              itemId: item.db_order_item_id || item.id,
               quantity: item.quantity, // Use the quantity from the split (may be partial)
               amount: amount,
             };
