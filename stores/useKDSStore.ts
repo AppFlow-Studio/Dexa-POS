@@ -1122,8 +1122,8 @@ export const useKDSStore = create<KDSState>()(
           const updatedTicket: KDSTicket = {
             ...ticket!,
             status: ticketStatus as KDSTicket['status'],
-            items: ticket!.items.map(item =>
-              itemIdSet.has(item.id)
+            items: ticket?.items.map(item =>
+              itemIdSet?.has(item.id)
                 ? { ...item, kitchen_status: newStatus }
                 : item
             ),

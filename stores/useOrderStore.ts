@@ -5869,8 +5869,23 @@ export const useOrderStore = create<OrderState>()(
 
             if (!isOnline) {
               console.log(
-                "[updateActiveOrderDetails] Offline - update will sync on reconnect via broadcast",
+                "[updateActiveOrderDetails] Offline - queuing update_order_details",
               );
+              if (order.db_order_id) {
+                queueFailedOperation(
+                  "update_order_details",
+                  {
+                    customer_name: details.customer_name,
+                    customer_id: details.customer_id,
+                    customer_phone: details.customer_phone,
+                    customer_email: details.customer_email,
+                    guest_count: details.guest_count,
+                    service_location_id: order.service_location_id,
+                    db_order_id: order.db_order_id,
+                  },
+                  activeOrderId,
+                );
+              }
               return;
             }
 

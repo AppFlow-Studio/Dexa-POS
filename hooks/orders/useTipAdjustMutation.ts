@@ -167,12 +167,26 @@ export function useTipAdjustMutation() {
         }));
 
       if (dbAdjustments.length > 0 && input.dbOrderId) {
-        await adjustTips(
-          supabase,
-          input.dbOrderId,
-          dbAdjustments,
-          loggedInEmployee?.profileId
-        );
+        try {
+          await adjustTips(
+            supabase,
+            input.dbOrderId,
+            dbAdjustments,
+            loggedInEmployee?.profileId
+          );
+        } catch (tipDbError) {
+          console.warn("[TipAdjust] adjustTips RPC failed, queuing for retry:", tipDbError);
+          const { queueFailedOperation } = require("@/services/offlineSyncInit");
+          await queueFailedOperation(
+            "tip_adjust_db",
+            {
+              dbOrderId: input.dbOrderId,
+              dbAdjustments,
+              staffId: loggedInEmployee?.profileId,
+            },
+            input.orderId || input.dbOrderId,
+          );
+        }
       }
 
       // Apply optimistic patch immediately

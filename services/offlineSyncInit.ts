@@ -260,6 +260,17 @@ export async function initializeOfflineSync(): Promise<void> {
         // This handles out-of-order syncing where orders and sessions sync separately
         console.log("[OfflineSync] Running relationship reconciliation...");
         await reconcileRelationships();
+
+        // Immediately refresh floor plan statuses to eliminate 5-15s polling gap
+        try {
+          const { useFloorPlanStore } = require("@/stores/useFloorPlanStore");
+          const floorPlanState = useFloorPlanStore.getState();
+          if (floorPlanState.selectedLocationId) {
+            floorPlanState.loadFloorPlanStatus();
+          }
+        } catch (fpErr) {
+          console.warn("[OfflineSync] Floor plan refresh on reconnect failed:", fpErr);
+        }
       }
     },
     onQueueChange: (count) => {
@@ -1756,6 +1767,34 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             }
           }
 
+          // 1b. Filter out items already sent to kitchen (another station may have sent them while we were offline)
+          if (resolvedItemIds.length > 0) {
+            const storeOrders = _getOrderStore().getState().ordersById;
+            const liveOrder = Object.values(storeOrders).find((o) => o.db_order_id === resolvedOrderId);
+            if (liveOrder?.items) {
+              const alreadySentIds = new Set(
+                liveOrder.items
+                  .filter((i: any) => i.kitchen_status && !['pending', 'new'].includes(i.kitchen_status))
+                  .map((i: any) => i.db_order_item_id)
+                  .filter(Boolean)
+              );
+              if (alreadySentIds.size > 0) {
+                const beforeCount = resolvedItemIds.length;
+                resolvedItemIds = resolvedItemIds.filter(id => !alreadySentIds.has(id));
+                if (beforeCount !== resolvedItemIds.length) {
+                  console.log(
+                    `[OfflineSync:send_to_kitchen] Filtered ${beforeCount - resolvedItemIds.length} already-sent items`
+                  );
+                }
+              }
+            }
+            // If all items already sent and no unresolved ones remain, we're done
+            if (resolvedItemIds.length === 0 && unresolvedLocalItemIds.length === 0) {
+              console.log(`[OfflineSync:send_to_kitchen] All items already sent — nothing to do`);
+              return true;
+            }
+          }
+
           // 2. Update order status
           // The bulk_update_order_item_status RPC sets sent_to_kitchen_at on the parent order,
           // which violates valid_status_transitions if the order is still in 'draft'.
@@ -2116,6 +2155,201 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         }
 
         return true;
+      }
+
+      // ================================================================
+      // PROCESS CASH REFUND (Phase 1: Offline cash refund support)
+      // ================================================================
+      case "process_cash_refund": {
+        const {
+          dbOrderId, orderId, totalAmount, reason, perPaymentDetails,
+          selectedItems, refundType, initiatedBy,
+        } = op.params;
+
+        console.log(`[OfflineSync:process_cash_refund] Processing offline cash refund for order ${dbOrderId}`);
+
+        // Resolve order ID
+        const resolvedRefundOrderId = resolveOrderId(orderId || dbOrderId);
+        if (!resolvedRefundOrderId) {
+          console.log(`[OfflineSync:process_cash_refund] BLOCKED - Order not synced yet`);
+          return false;
+        }
+
+        try {
+          const reversalType = refundType === "full" ? "refund" as const : "partial_refund" as const;
+
+          for (const detail of (perPaymentDetails || [])) {
+            if (!detail.dbPaymentId) continue;
+
+            // 1. Create reversal record
+            const { data: reversal, error: reversalError } =
+              await OrderService.createReversal(_supabaseClient, {
+                original_payment_id: detail.dbPaymentId,
+                original_psp_reference: null,
+                reversal_reference_id: null,
+                reversal_type: selectedItems ? "item_return" : reversalType,
+                amount: detail.totalRefund,
+                reason_code: reason,
+                reason_description: reason,
+                initiated_by: initiatedBy,
+                approved_by: null,
+              });
+
+            if (reversalError || !reversal) {
+              console.error("[OfflineSync:process_cash_refund] createReversal failed:", reversalError);
+              return false;
+            }
+
+            // 2. Apply refund to payment
+            const { error: paymentError } = await OrderService.applyRefundToPayment(
+              _supabaseClient,
+              detail.dbPaymentId,
+              detail.totalRefund,
+              selectedItems ? "item_return" : reversalType,
+            );
+
+            if (paymentError) {
+              console.error("[OfflineSync:process_cash_refund] applyRefundToPayment failed:", paymentError);
+            }
+
+            // 3. Record refund items if item-level refund
+            if (selectedItems && selectedItems.length > 0) {
+              const refundItems = selectedItems.map((item: any) => ({
+                order_item_id: item.itemId,
+                quantity_refunded: item.quantity,
+                unit_price_refunded: 0,
+                subtotal_refunded: 0,
+                tax_refunded: 0,
+                total_refunded: 0,
+                refund_reason: reason,
+              }));
+
+              await OrderService.recordRefundItems(
+                _supabaseClient,
+                reversal.id,
+                refundItems,
+              );
+            }
+          }
+
+          // 4. Update order payment status
+          const { error: statusError } = await OrderService.updateOrderPaymentStatusAfterRefund(
+            _supabaseClient,
+            resolvedRefundOrderId,
+          );
+
+          if (statusError) {
+            console.error("[OfflineSync:process_cash_refund] updateOrderPaymentStatus failed:", statusError);
+          }
+
+          // 5. Sync order from backend to reconcile temp IDs
+          try {
+            await _getOrderStore().getState().syncOrderFromBackendComplete(resolvedRefundOrderId);
+          } catch (syncErr) {
+            console.warn("[OfflineSync:process_cash_refund] Background sync failed:", syncErr);
+          }
+
+          console.log(`[OfflineSync:process_cash_refund] SUCCESS`);
+          return true;
+        } catch (err) {
+          console.error("[OfflineSync:process_cash_refund] Error:", err);
+          return false;
+        }
+      }
+
+      // ================================================================
+      // TIP ADJUST DB FALLBACK (Phase 2)
+      // ================================================================
+      case "tip_adjust_db": {
+        const { dbOrderId, dbAdjustments, staffId } = op.params;
+
+        console.log(`[OfflineSync:tip_adjust_db] Persisting tip adjustments for order ${dbOrderId}`);
+
+        if (!dbOrderId || !dbAdjustments?.length) {
+          console.error("[OfflineSync:tip_adjust_db] Missing dbOrderId or adjustments");
+          return false;
+        }
+
+        try {
+          const { adjustTips } = require("@/services/tipAdjustService");
+          await adjustTips(_supabaseClient, dbOrderId, dbAdjustments, staffId);
+
+          // Fire-and-forget sync to reconcile local state
+          _getOrderStore().getState().syncOrderFromBackendComplete(dbOrderId)
+            .catch((err: any) => console.warn("[OfflineSync:tip_adjust_db] Background sync failed:", err));
+
+          console.log(`[OfflineSync:tip_adjust_db] SUCCESS`);
+          return true;
+        } catch (err) {
+          console.error("[OfflineSync:tip_adjust_db] Error:", err);
+          return false;
+        }
+      }
+
+      // ================================================================
+      // UPDATE ORDER DETAILS (Phase 3: Customer assignment offline sync)
+      // ================================================================
+      case "update_order_details": {
+        const {
+          customer_name, customer_id, customer_phone, customer_email,
+          guest_count, service_location_id, db_order_id,
+        } = op.params;
+
+        // Resolve order ID (may have been local when queued)
+        const resolvedDetailsOrderId = db_order_id && isValidUUID(db_order_id)
+          ? db_order_id
+          : resolveOrderId(op.localOrderId);
+
+        if (!resolvedDetailsOrderId) {
+          console.log(`[OfflineSync:update_order_details] BLOCKED - Order not synced yet`);
+          return false;
+        }
+
+        console.log(`[OfflineSync:update_order_details] Syncing details for order ${resolvedDetailsOrderId}`);
+
+        try {
+          // Update customer details on orders table
+          if (customer_name !== undefined) {
+            const { error } = await _supabaseClient
+              .from("orders")
+              .update({
+                customer_name,
+                customer_id: customer_id ?? null,
+                customer_phone: customer_phone ?? null,
+                customer_email: customer_email ?? null,
+              })
+              .eq("id", resolvedDetailsOrderId);
+
+            if (error) {
+              console.error("[OfflineSync:update_order_details] Customer update failed:", error);
+              return false;
+            }
+          }
+
+          // Update guest count on table_sessions if applicable
+          if (guest_count !== undefined && service_location_id) {
+            const { useFloorPlanStore } = require("@/stores/useFloorPlanStore");
+            const table = useFloorPlanStore.getState().tablesById[service_location_id];
+            const sessionId = table?.session?.id;
+
+            if (sessionId) {
+              const { error } = await _supabaseClient
+                .from("table_sessions")
+                .update({ party_size: guest_count })
+                .eq("id", sessionId);
+
+              if (error) {
+                console.error("[OfflineSync:update_order_details] Guest count update failed:", error);
+              }
+            }
+          }
+
+          console.log(`[OfflineSync:update_order_details] SUCCESS`);
+          return true;
+        } catch (err) {
+          console.error("[OfflineSync:update_order_details] Error:", err);
+          return false;
+        }
       }
 
       default:

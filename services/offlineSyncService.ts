@@ -64,7 +64,13 @@ export type OperationType =
   | "increment_preauth"
   | "void_preauth"
   // Cash drawer operations
-  | "record_cash_drawer_operation";
+  | "record_cash_drawer_operation"
+  // Offline refund operations
+  | "process_cash_refund"        // Cash refund (no terminal needed)
+  // Tip adjust DB fallback
+  | "tip_adjust_db"              // Persist tip adjustment to DB after terminal success
+  // Order detail sync
+  | "update_order_details";      // Sync customer/order details to backend
 
 /**
  * Priority levels for operation processing.
@@ -111,6 +117,13 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
 
   // Cash drawer operations (same priority as payments)
   record_cash_drawer_operation: 5,
+
+  // Offline refund + tip adjust (after payments)
+  process_cash_refund: 5,
+  tip_adjust_db: 5,
+
+  // Order detail sync (after items, before payments)
+  update_order_details: 3,
 };
 
 export interface OfflineOperation {
@@ -624,6 +637,8 @@ function generateEntityKey(op: Partial<OfflineOperation>): string | undefined {
       return op.localItemId ? `item:${op.localItemId}` : undefined;
     case "update_order_status":
       return `order_status:${op.localOrderId}`;
+    case "update_order_details":
+      return `order_details:${op.localOrderId}`;
     case "process_cash_payment":
     case "process_card_payment":
       // Each payment is unique, don't collapse
@@ -647,6 +662,7 @@ function findCollapseTarget(
     "update_item_quantity",
     "replace_modifiers",
     "update_order_status",
+    "update_order_details",
   ];
 
   if (!collapsibleTypes.includes(newType)) {
