@@ -2,7 +2,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
 import { colors } from '@/lib/theme'
 import type { CFDCartItem } from '@/types/cfd.types'
 import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   FlatList,
   Image,
@@ -55,6 +55,23 @@ export function OrderingScreen () {
   const rightPanelMode = layout?.orderingRightPanelMode ?? 'single'
   const isWide = width > 850 && showRightPanel
 
+  // Keep displayed totals stable while the POS recalculates in-flight item updates.
+  const [displaySubtotalCard, setDisplaySubtotalCard] = useState(
+    Math.max(0, subtotalCard || subtotal)
+  )
+  const [displayTaxCard, setDisplayTaxCard] = useState(
+    Math.max(0, taxCard || taxAmount)
+  )
+  const [displayTotalCash, setDisplayTotalCash] = useState(
+    Math.max(0, totalCash)
+  )
+  const [displayTotalCard, setDisplayTotalCard] = useState(
+    Math.max(0, totalCard || total)
+  )
+  const [displaySavingsAmount, setDisplaySavingsAmount] = useState(
+    Math.max(0, savingsAmount)
+  )
+
   useEffect(() => {
     if (items.length > prevCount.current) {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
@@ -62,20 +79,51 @@ export function OrderingScreen () {
     prevCount.current = items.length
   }, [items.length])
 
-  // Debug log
-  React.useEffect(() => {
-    console.log('[CFD OrderingScreen]', { orderType, tableName, serverName })
-    if (items.length > 0) {
-      console.log(
-        '[CFD Items]',
-        items.map(i => ({
-          name: i.name,
-          seatNumber: i.seatNumber,
-          courseNumber: i.courseNumber
-        }))
-      )
+  // Ignore transient zero snapshots during add-item recomputation.
+  useEffect(() => {
+    const nextSubtotalCard = Math.max(0, subtotalCard || subtotal)
+    const nextTaxCard = Math.max(0, taxCard || taxAmount)
+    const nextTotalCash = Math.max(0, totalCash)
+    const nextTotalCard = Math.max(0, totalCard || total)
+    const nextSavings = Math.max(0, savingsAmount)
+
+    if (items.length === 0) {
+      setDisplaySubtotalCard(nextSubtotalCard)
+      setDisplayTaxCard(nextTaxCard)
+      setDisplayTotalCash(nextTotalCash)
+      setDisplayTotalCard(nextTotalCard)
+      setDisplaySavingsAmount(nextSavings)
+      return
     }
-  }, [orderType, tableName, serverName, items])
+
+    const totalsTemporarilyZero = nextTotalCash === 0 && nextTotalCard === 0
+    if (totalsTemporarilyZero) {
+      // Keep previous values visible until non-zero recompute lands.
+      return
+    }
+
+    setDisplaySubtotalCard(nextSubtotalCard)
+    setDisplayTaxCard(nextTaxCard)
+    setDisplayTotalCash(nextTotalCash)
+    setDisplayTotalCard(nextTotalCard)
+    // Don't flash 0 savings during transient recompute — keep previous value
+    // until a non-zero savings or a full-zero reset lands.
+    setDisplaySavingsAmount((prev) =>
+      nextSavings === 0 && prev > 0 ? prev : nextSavings
+    )
+  }, [
+    items.length,
+    subtotal,
+    subtotalCard,
+    taxAmount,
+    taxCard,
+    total,
+    totalCash,
+    totalCard,
+    savingsAmount
+  ])
+
+  // Debug log
 
   const formatCurrency = (cents: number) => {
     return `$${(cents / 100).toFixed(2)}`
@@ -235,7 +283,7 @@ export function OrderingScreen () {
                     fontWeight: '500'
                   }}
                 >
-                  {formatCurrency(subtotalCard || subtotal)}
+                  {formatCurrency(displaySubtotalCard)}
                 </Text>
               </View>
 
@@ -291,7 +339,7 @@ export function OrderingScreen () {
                     fontWeight: '500'
                   }}
                 >
-                  {formatCurrency(taxCard || taxAmount)}
+                  {formatCurrency(displayTaxCard)}
                 </Text>
               </View>
 
@@ -334,7 +382,7 @@ export function OrderingScreen () {
               }}
             />
 
-            {/* Total (card) */}
+            {/* Total (cash) */}
             <View
               style={{
                 flexDirection: 'row',
@@ -344,7 +392,28 @@ export function OrderingScreen () {
               }}
             >
               <Text
-                style={{ color: colors.label, fontSize: 11, fontWeight: '500' }}
+                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+              >
+                Total (cash)
+              </Text>
+              <Text
+                style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
+              >
+                {formatCurrency(displayTotalCash)}
+              </Text>
+            </View>
+
+            {/* Total (card) */}
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 4
+              }}
+            >
+              <Text
+                style={{ color: colors.label, fontSize: 14, fontWeight: '600' }}
               >
                 Total (card)
               </Text>
@@ -355,49 +424,23 @@ export function OrderingScreen () {
                   fontWeight: '700'
                 }}
               >
-                {formatCurrency(totalCard || total)}
+                {formatCurrency(displayTotalCard)}
               </Text>
             </View>
 
-            {/* Total (cash) */}
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 4
-              }}
-            >
+            {/* Cash Savings - Always visible to avoid layout flicker */}
+            <View style={{ marginBottom: 4 }}>
               <Text
-                style={{ color: colors.teal, fontSize: 11, fontWeight: '500' }}
+                style={{
+                  color: displaySavingsAmount > 0 ? colors.teal : colors.label,
+                  fontWeight: '600',
+                  fontSize: 11,
+                  textAlign: 'center'
+                }}
               >
-                Total (cash)
-              </Text>
-              <Text
-                style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
-              >
-                {formatCurrency(totalCash)}
+                Save {formatCurrency(displaySavingsAmount)} with cash
               </Text>
             </View>
-
-            {/* Cash Savings */}
-            {savingsAmount > 0 && (
-              <Animated.View
-                entering={FadeInDown.delay(300)}
-                style={{ marginBottom: 4 }}
-              >
-                <Text
-                  style={{
-                    color: colors.teal,
-                    fontWeight: '600',
-                    fontSize: 11,
-                    textAlign: 'center'
-                  }}
-                >
-                  Save {formatCurrency(savingsAmount)} with cash
-                </Text>
-              </Animated.View>
-            )}
 
             {/* Divider before Amount Due */}
             {amountPaid > 0 && (
@@ -604,96 +647,8 @@ function RotatingImagePanel ({
   )
 }
 
-// function OrderingPanelMedia({
-//   mode,
-//   primaryImages,
-//   secondaryImages,
-// }: {
-//   mode: "single" | "stacked";
-//   primaryImages: string[];
-//   secondaryImages: string[];
-// }) {
-//   if (mode === "stacked") {
-//     return (
-//       <View style={styles.rightPanelStack}>
-//         <RotatingImagePanel images={primaryImages} style={styles.rightPanelStackItem} />
-//         <RotatingImagePanel images={secondaryImages} style={styles.rightPanelStackItem} />
-//       </View>
-//     );
-//   }
-
-//   return <RotatingImagePanel images={primaryImages} style={styles.rightPanelSingle} />;
-// }
-
-// function RotatingImagePanel({
-//   images,
-//   style,
-// }: {
-//   images: string[];
-//   style?: any;
-// }) {
-//   const [currentIndex, setCurrentIndex] = React.useState(0);
-//   const [nextIndex, setNextIndex] = React.useState(0);
-//   const fadeOpacity = useSharedValue(0);
-
-//   useEffect(() => {
-//     setCurrentIndex(0);
-//     setNextIndex(0);
-//     fadeOpacity.value = 0;
-//   }, [images, fadeOpacity]);
-
-//   useEffect(() => {
-//     if (!images || images.length <= 1) return;
-
-//     const interval = setInterval(() => {
-//       const next = (currentIndex + 1) % images.length;
-//       setNextIndex(next);
-//       fadeOpacity.value = withTiming(1, { duration: 900 }, (finished) => {
-//         if (finished) {
-//           runOnJS(setCurrentIndex)(next);
-//           fadeOpacity.value = 0;
-//         }
-//       });
-//     }, 8000);
-
-//     return () => clearInterval(interval);
-//   }, [currentIndex, images, fadeOpacity]);
-
-//   const animatedStyle = useAnimatedStyle(() => ({
-//     opacity: fadeOpacity.value,
-//   }));
-
-//   if (!images || images.length === 0) {
-//     return (
-//       <View style={[styles.mediaFallback, style]}>
-//         <Text style={styles.mediaFallbackText}>No image</Text>
-//       </View>
-//     );
-//   }
-
-//   const currentImage = images[currentIndex] ?? images[0];
-//   const nextImage = images[nextIndex] ?? images[0];
-
-//   return (
-//     <View style={[styles.mediaFrame, style]}>
-//       <Image source={{ uri: currentImage }} style={styles.mediaImage} resizeMode="cover" />
-//       {images.length > 1 && (
-//         <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
-//           <Image source={{ uri: nextImage }} style={styles.mediaImage} resizeMode="cover" />
-//         </Animated.View>
-//       )}
-//     </View>
-//   );
-// }
-
-function CartItemRow({
-  item,
-  index,
-}: {
-  item: CFDCartItem;
-  index: number;
-}) {
-  const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
+  const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
   // Check if there are any modifiers to display
   const hasModifiers = item.modifiers && item.modifiers.length > 0

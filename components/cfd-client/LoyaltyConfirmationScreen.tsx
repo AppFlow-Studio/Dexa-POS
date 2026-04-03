@@ -18,6 +18,10 @@ export function LoyaltyConfirmationScreen () {
   const { loyaltyResult, branding } = useCFDDisplayData()
   const programs = loyaltyResult?.programs ?? []
   const customerName = loyaltyResult?.customerName
+  const redeemablePrograms = programs.filter(
+    p => p.canRedeemNow === true || p.rewardUnlocked
+  )
+  const hasRedeemableReward = redeemablePrograms.length > 0
   const hasUnlockedReward = programs.some(p => p.rewardUnlocked)
 
   const iconScale = useSharedValue(0.7)
@@ -75,18 +79,18 @@ export function LoyaltyConfirmationScreen () {
           </Animated.Text>
         ) : null}
 
-        {programs.length > 0 ? (
-          <View style={styles.programsContainer}>
-            {programs.map((program, idx) => (
-              <Animated.View
-                key={`${program.name}-${idx}`}
-                entering={FadeInDown.duration(260).delay(200 + idx * 60)}
-                style={styles.programRow}
-              >
-                <ProgramSummary program={program} />
-              </Animated.View>
-            ))}
-          </View>
+        {hasRedeemableReward ? (
+          <Animated.View
+            entering={FadeInDown.duration(260).delay(220)}
+            style={styles.redeemCard}
+          >
+            <Text style={styles.redeemTitle}>Reward available</Text>
+            <Text style={styles.redeemProgramsText}>
+              {redeemablePrograms.length === 1
+                ? redeemablePrograms[0].name
+                : `${redeemablePrograms.length} rewards ready`}
+            </Text>
+          </Animated.View>
         ) : null}
 
         {hasUnlockedReward ? (
@@ -94,109 +98,11 @@ export function LoyaltyConfirmationScreen () {
             entering={FadeInDown.duration(260).delay(300)}
             style={styles.rewardBanner}
           >
-            <Gift size={18} color={colors.warning} />
+            <Gift size={18} color={colors.teal} />
             <Text style={styles.rewardBannerText}>You earned a reward!</Text>
           </Animated.View>
         ) : null}
       </View>
-    </View>
-  )
-}
-
-interface Program {
-  name: string
-  type: string
-  earned: number
-  newBalance: number
-  rewardUnlocked: boolean
-  progressPercent?: number | null
-  remainingToReward?: number | null
-  rewardThreshold?: number | null
-  rewardLabel?: string | null
-  canRedeemNow?: boolean | null
-}
-
-function ProgramSummary ({ program }: { program: Program }) {
-  const {
-    type,
-    earned,
-    newBalance,
-    name,
-    rewardUnlocked,
-    progressPercent,
-    remainingToReward,
-    rewardThreshold,
-    rewardLabel,
-    canRedeemNow
-  } = program
-
-  let earnedText = ''
-  let balanceText = ''
-
-  if (type === 'points') {
-    earnedText = `You earned ${earned} pt${earned !== 1 ? 's' : ''}`
-    balanceText = `${newBalance} pts total`
-  } else if (type === 'visits') {
-    earnedText = `Visit counted!`
-    balanceText = `${newBalance} visit${newBalance !== 1 ? 's' : ''}`
-  } else if (type === 'punch_card') {
-    earnedText = `${earned} punch${earned !== 1 ? 'es' : ''} added!`
-    balanceText = `${newBalance} total`
-  } else {
-    earnedText = `${earned} earned`
-    balanceText = `${newBalance} total`
-  }
-
-  const hasProgress =
-    typeof progressPercent === 'number' ||
-    typeof remainingToReward === 'number' ||
-    typeof rewardThreshold === 'number'
-  const safeProgress =
-    typeof progressPercent === 'number'
-      ? Math.max(0, Math.min(100, progressPercent))
-      : null
-  const rewardReady = Boolean(canRedeemNow ?? rewardUnlocked)
-  const showProgressRow = hasProgress || rewardReady
-  const statusText = rewardReady
-    ? 'Ready to redeem'
-    : rewardLabel ?? 'Reward status'
-
-  return (
-    <View style={styles.programCard}>
-      <View style={styles.programCardTopRow}>
-        <Text style={styles.programName}>{name}</Text>
-        <Text style={styles.programTypePill}>{type.replace('_', ' ')}</Text>
-      </View>
-      <Text style={styles.programEarned}>{earnedText}</Text>
-      <Text style={styles.programBalance}>{balanceText}</Text>
-      {showProgressRow ? (
-        <>
-          <View style={styles.rewardStatusRow}>
-            <Text style={styles.rewardStatusLabel}>{statusText}</Text>
-            <Text
-              style={[
-                styles.rewardStatusValue,
-                rewardReady && styles.rewardStatusValueReady
-              ]}
-            >
-              {rewardReady
-                ? 'Redeem now'
-                : typeof remainingToReward === 'number' && remainingToReward > 0
-                ? `${remainingToReward} more to go`
-                : hasProgress && rewardThreshold
-                ? `${newBalance}/${rewardThreshold}`
-                : 'Available after next visit'}
-            </Text>
-          </View>
-          {hasProgress && safeProgress !== null ? (
-            <View style={styles.progressTrack}>
-              <View
-                style={[styles.progressFill, { width: `${safeProgress}%` }]}
-              />
-            </View>
-          ) : null}
-        </>
-      ) : null}
     </View>
   )
 }
@@ -281,109 +187,46 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 14
   },
-  programsContainer: {
-    gap: 10,
+  redeemCard: {
+    marginTop: 6,
     width: '100%',
-    maxWidth: 560
-  },
-  programRow: {
-    width: '100%'
-  },
-  programCard: {
+    maxWidth: 560,
     backgroundColor: colors.card,
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderWidth: 1,
     borderColor: colors.border,
-    gap: 6,
-    alignItems: 'flex-start'
-  },
-  programCardTopRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     alignItems: 'center'
   },
-  programName: {
-    fontSize: 12,
-    color: colors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    fontWeight: '600'
-  },
-  programTypePill: {
-    fontSize: 11,
+  redeemTitle: {
+    fontSize: 16,
     fontWeight: '700',
+    color: colors.heading,
+    textAlign: 'center'
+  },
+  redeemProgramsText: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.teal,
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-    backgroundColor: `${colors.teal}18`,
-    borderColor: `${colors.teal}2E`,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 3
-  },
-  programEarned: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.heading
-  },
-  programBalance: {
-    fontSize: 15,
-    color: colors.teal,
-    fontWeight: '600'
-  },
-  rewardStatusRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 2
-  },
-  rewardStatusLabel: {
-    fontSize: 12,
-    color: colors.label,
-    fontWeight: '600'
-  },
-  rewardStatusValue: {
-    fontSize: 12,
-    color: colors.muted,
-    fontWeight: '700'
-  },
-  rewardStatusValueReady: {
-    color: colors.success
-  },
-  progressTrack: {
-    width: '100%',
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: colors.screen,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: colors.teal
+    textAlign: 'center'
   },
   rewardBanner: {
-    marginTop: 14,
-    backgroundColor: `${colors.warning}16`,
-    borderWidth: 1,
-    borderColor: `${colors.warning}38`,
-    borderRadius: 14,
-    paddingHorizontal: 16,
+    marginTop: 22,
+    paddingHorizontal: 18,
     paddingVertical: 10,
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8
   },
   rewardBannerText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.warning
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.heading
   }
 })

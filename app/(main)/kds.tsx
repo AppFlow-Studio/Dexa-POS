@@ -1,6 +1,3 @@
-import KDSFlyingTicket, {
-  type FlyingTicketData
-} from '@/components/kds/KDSFlyingTicket'
 import PinInputModal from '@/components/timeclock/PinInputModal'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
@@ -13,7 +10,7 @@ import {
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getDeviceId } from '@/lib/deviceId'
 import { replaceRoute } from '@/lib/rootNavigation'
-import { colors, URGENCY_COLORS } from '@/lib/theme'
+import { colors } from '@/lib/theme'
 import { clearStationData } from '@/services/cacheService'
 import KDSSoundService, {
   DEFAULT_SOUND_CONFIG
@@ -39,6 +36,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Dimensions,
+  FlatList,
   GestureResponderEvent,
   InteractionManager,
   Pressable,
@@ -47,16 +45,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
-  SequencedTransition,
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming
-} from 'react-native-reanimated'
 
 // ─── Status Tab Config ────────────────────────────────────────────
 type StatusFilter = 'pending' | 'cooking' | 'ready' | 'done'
@@ -76,17 +64,15 @@ const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
   { key: 'dine_in', label: 'Dine-In' }
 ]
 
-// ─── Urgency border colors by level (from theme) ────────────────
-const URGENCY_BORDER_COLORS = URGENCY_COLORS
 const MODIFIER_ADD_COLOR = '#0B5E56'
 
 // ─── Manager roles for bulk operations ──────────────────────────
 const MANAGER_ROLES = ['merchant.manager', 'merchant.admin', 'merchant.owner']
 
 // ─── Memoized animation configs (avoid re-allocation per render) ─
-const LAYOUT_ANIM = SequencedTransition.duration(300)
-const CARD_ENTER_ANIM = FadeIn.duration(200)
-const CARD_EXIT_ANIM = FadeOut.duration(150)
+const KDS_DOUBLE_TAP_MS = 420
+const KDS_AUTOMATION_CHECK_MS = 30_000
+const DONE_TICKETS_TIME_WINDOW_MS = 60 * 60 * 1000
 
 // ─── Pulsing Dot (for connection status) ─────────────────────────
 const PulsingDot = () => {
@@ -300,20 +286,12 @@ interface KDSTicketDisplaySettings {
 }
 
 // ─── Ticket Card ──────────────────────────────────────────────────
-export interface CardPosition {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
 interface KDSTicketCardProps {
   ticket: KDSTicket
   onAdvance: (
     ticketId: string,
     itemIds: string[],
-    newStatus: 'preparing' | 'ready' | 'served',
-    cardPos?: CardPosition
+    newStatus: 'preparing' | 'ready' | 'served'
   ) => void
   onToggleSelect: (id: string) => void
   onLongPress?: (
@@ -338,27 +316,19 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     displaySettings,
     urgencyThresholds
   }) => {
-    // Subscribe to own focus state via Zustand selector — only focused/unfocused card re-renders
     const isFocused = useKDSStore(
       useCallback(
         s => s.focusedTicketId === ticket.ticket_id,
         [ticket.ticket_id]
       )
     )
-    const setFocusedTicketId = useKDSStore(s => s.setFocusedTicketId)
-
-    // Subscribe to bulkMode via Zustand selector — avoids parent re-render propagation
     const bulkMode = useKDSStore(s => s.bulkMode)
-
-    // Subscribe to own selection state via Zustand selector — only the toggled card re-renders
     const isSelected = useKDSStore(
       useCallback(
         s => s.selectedTicketIds.has(ticket.ticket_id),
         [ticket.ticket_id]
       )
     )
-
-    // Subscribe to timerTick via Zustand selector — only re-renders when bucketed string changes
     const timeElapsed = useKDSStore(
       useCallback(
         s => {
@@ -368,8 +338,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         [ticket.start_time_epoch]
       )
     )
-
-    // Urgency level — derived from timerTick, only changes at minute boundaries
     const urgencyLevel = useKDSStore(
       useCallback(
         s => {
@@ -379,25 +347,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         [ticket.start_time_epoch, urgencyThresholds]
       )
     )
-
-    // Card ref for position measurement
-    const cardRef = useRef<View>(null)
+    const setFocusedTicketId = useKDSStore(s => s.setFocusedTicketId)
 
     // Double-tap detection
     const lastTapRef = useRef(0)
     // Lock in ticket.status at first tap — immune to in-flight re-renders from auto-fire/broadcast
     const firstTapStatusRef = useRef<KDSTicket['status'] | null>(null)
-    // Pre-measured card position (cached on first tap for instant double-tap)
-    const cachedPosRef = useRef<CardPosition | undefined>(undefined)
-    // Delayed focus toggle to detect double-tap
-    const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-    // Animation (Reanimated — runs entirely on UI thread)
-    const scaleValue = useSharedValue(1)
-
-    const scaleStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: scaleValue.value }]
-    }))
 
     const handlePress = () => {
       if (bulkMode) {
@@ -406,47 +361,18 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       }
 
       const now = Date.now()
-      const isDoubleTap = now - lastTapRef.current < 300
+      const isDoubleTap = now - lastTapRef.current < KDS_DOUBLE_TAP_MS
 
       if (!isDoubleTap) {
-        // First tap — gentle pulse to signal acknowledgment
         lastTapRef.current = now
-        firstTapStatusRef.current = ticket.status  // lock in status at gesture start
-
-        scaleValue.value = withSequence(
-          withTiming(0.97, { duration: 80, easing: Easing.out(Easing.cubic) }),
-          withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) })
-        )
-
-        // Pre-measure card position so double-tap fires instantly
-        if (cardRef.current) {
-          cardRef.current.measureInWindow((x, y, width, height) => {
-            if (x === 0 && y === 0 && width === 0 && height === 0) return
-            cachedPosRef.current = { x, y, width, height }
-          })
-        }
-
-        // Schedule focus toggle for single tap (cancel if double-tap comes)
-        if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
-        focusTimeoutRef.current = setTimeout(() => {
-          // Only toggle focus if it's truly a single tap (no double-tap happened)
-          firstTapStatusRef.current = null  // clear on single tap
-          setFocusedTicketId(isFocused ? null : ticket.ticket_id)
-          focusTimeoutRef.current = null
-        }, 300)
+        firstTapStatusRef.current = ticket.status
+        setFocusedTicketId(isFocused ? null : ticket.ticket_id)
         return
       }
 
-      // Double tap detected — cancel pending focus toggle and advance instead
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current)
-        focusTimeoutRef.current = null
-      }
       lastTapRef.current = 0
-
-      // Determine next status — use captured status from first tap (immune to in-flight re-renders)
       const capturedStatus = firstTapStatusRef.current
-      firstTapStatusRef.current = null  // clear for next gesture
+      firstTapStatusRef.current = null
 
       const itemIds = ticket.items.map(i => i.id)
       let newStatus: 'preparing' | 'ready' | 'served' | undefined
@@ -455,10 +381,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       else if (capturedStatus === 'ready') newStatus = 'served'
 
       if (!newStatus) return
-
-      // Fire advance synchronously with pre-measured position — no frame delay
-      onAdvance(ticket.ticket_id, itemIds, newStatus, cachedPosRef.current)
-      cachedPosRef.current = undefined
+      onAdvance(ticket.ticket_id, itemIds, newStatus)
     }
 
     const handleLongPress = (e: GestureResponderEvent) => {
@@ -486,55 +409,94 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const hasRush = ticket.items.some(item => item.rush)
     const hasRefire = ticket.items.some(item => item.recalled)
 
-    // Filter/track done items + apply display settings
-    const doneItemCount = ticket.items.filter(
-      i => i.kitchen_status === 'ready'
-    ).length
-    let processedItems = hideDoneItems
-      ? ticket.items.filter(i => i.kitchen_status !== 'ready')
-      : [...ticket.items]
+    const shouldHideDoneItems = hideDoneItems && !onItemPress
 
-    // Aggregate identical items (same name + modifiers + notes)
-    if (displaySettings.aggregateIdenticalItems) {
-      const aggregated: (KDSTicketItem & { _aggregatedIds?: string[] })[] = []
-      const keyMap = new Map<string, number>()
-      for (const item of processedItems) {
-        const modKey = item.modifiers
-          .map(m => m.modifier_name)
-          .sort()
-          .join('|')
-        const key = `${item.name}__${modKey}__${
-          item.special_instructions ?? ''
-        }`
-        const idx = keyMap.get(key)
-        if (idx !== undefined) {
-          const existing = aggregated[idx]
-          aggregated[idx] = {
-            ...existing,
-            quantity: existing.quantity + item.quantity
+    // Memoize expensive item filtering/aggregation/sorting for large ticket volumes.
+    const { doneItemCount, visibleItems } = useMemo(() => {
+      const doneCount = ticket.items.filter(
+        i => i.kitchen_status === 'ready'
+      ).length
+
+      let processed: KDSTicketItem[] = shouldHideDoneItems
+        ? ticket.items.filter(i => i.kitchen_status !== 'ready')
+        : [...ticket.items]
+
+      if (displaySettings.aggregateIdenticalItems) {
+        const aggregated: KDSTicketItem[] = []
+        const keyMap = new Map<string, number>()
+        for (const item of processed) {
+          const modKey = item.modifiers
+            .map(m => m.modifier_name)
+            .sort()
+            .join('|')
+          const key = `${item.name}__${modKey}__${
+            item.special_instructions ?? ''
+          }`
+          const idx = keyMap.get(key)
+          if (idx !== undefined) {
+            const existing = aggregated[idx]
+            aggregated[idx] = {
+              ...existing,
+              quantity: existing.quantity + item.quantity
+            }
+          } else {
+            keyMap.set(key, aggregated.length)
+            aggregated.push({ ...item })
           }
-        } else {
-          keyMap.set(key, aggregated.length)
-          aggregated.push({ ...item })
         }
+        processed = aggregated
       }
-      processedItems = aggregated
-    }
 
-    // Stable sort: alphabetical by name (then id tiebreaker), or just by id
-    if (displaySettings.alphabeticalSort) {
-      processedItems = [...processedItems].sort((a, b) => {
-        const cmp = a.name.localeCompare(b.name)
-        return cmp !== 0 ? cmp : a.id.localeCompare(b.id)
+      processed = [...processed].sort((a, b) => {
+        if (displaySettings.alphabeticalSort) {
+          const cmp = a.name.localeCompare(b.name)
+          return cmp !== 0 ? cmp : a.id.localeCompare(b.id)
+        }
+        return a.id.localeCompare(b.id)
       })
-    } else {
-      processedItems = [...processedItems].sort((a, b) =>
-        a.id.localeCompare(b.id)
-      )
-    }
 
-    const visibleItems = processedItems
-    const hasHiddenDoneItems = hideDoneItems && doneItemCount > 0
+      // Pre-sort modifiers and detect allergens per item — avoid repeating in render
+      type ModWithMeta = {
+        mod: KDSTicketItem['modifiers'][number]
+        allergen: { label: string; color: string } | null
+      }
+      const withSortedMods = processed.map(item => {
+        if (item.modifiers.length === 0)
+          return { item, sortedModifiers: [] as ModWithMeta[] }
+        const sorted = displaySettings.exclusionsAtTop
+          ? [...item.modifiers].sort((a, b) => {
+              const aR =
+                a.is_no ||
+                a.modifier_group_name?.toLowerCase().includes('remove') ||
+                a.modifier_name?.toLowerCase().startsWith('no ')
+                  ? 0
+                  : 1
+              const bR =
+                b.is_no ||
+                b.modifier_group_name?.toLowerCase().includes('remove') ||
+                b.modifier_name?.toLowerCase().startsWith('no ')
+                  ? 0
+                  : 1
+              return aR - bR
+            })
+          : item.modifiers
+        const sortedModifiers: ModWithMeta[] = sorted.map(mod => ({
+          mod,
+          allergen: detectAllergen(mod.modifier_name)
+        }))
+        return { item, sortedModifiers }
+      })
+
+      return { doneItemCount: doneCount, visibleItems: withSortedMods }
+    }, [
+      ticket.items,
+      shouldHideDoneItems,
+      displaySettings.aggregateIdenticalItems,
+      displaySettings.alphabeticalSort,
+      displaySettings.exclusionsAtTop
+    ])
+
+    const hasHiddenDoneItems = shouldHideDoneItems && doneItemCount > 0
 
     return (
       <Pressable
@@ -542,471 +504,456 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         onLongPress={handleLongPress}
         delayLongPress={400}
       >
-        <View ref={cardRef} collapsable={false}>
-          <Animated.View
-            style={[
-              {
-                margin: 4,
-                borderRadius: 10,
-                overflow: 'hidden',
-                backgroundColor: '#FFFFFF',
-                borderTopWidth: 1,
-                borderBottomWidth: 1,
-                borderRightWidth: 1,
-                borderLeftWidth: isDineIn ? 4 : 1,
-                borderTopColor: borderColor,
-                borderBottomColor: borderColor,
-                borderRightColor: borderColor,
-                borderLeftColor: isDineIn ? colors.teal : borderColor,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: isFocused ? 0.15 : 0.08,
-                shadowRadius: isFocused ? 8 : 4,
-                elevation: isFocused ? 4 : 2
-              },
-              scaleStyle
-            ]}
-          >
-            {/* Bulk mode checkbox overlay */}
-            {bulkMode && (
-              <View
+        <View
+          style={{
+            margin: 4,
+            borderRadius: 10,
+            overflow: 'hidden',
+            backgroundColor: '#FFFFFF',
+            borderTopWidth: 1,
+            borderBottomWidth: 1,
+            borderRightWidth: 1,
+            borderLeftWidth: isDineIn ? 4 : 1,
+            borderTopColor: borderColor,
+            borderBottomColor: borderColor,
+            borderRightColor: borderColor,
+            borderLeftColor: isDineIn ? colors.teal : borderColor,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: isFocused ? 0.15 : 0.08,
+            shadowRadius: isFocused ? 8 : 4,
+            elevation: isFocused ? 4 : 2
+          }}
+        >
+          {/* Bulk mode checkbox overlay */}
+          {bulkMode && (
+            <View
+              style={{
+                position: 'absolute',
+                top: 6,
+                right: 6,
+                zIndex: 10
+              }}
+            >
+              {isSelected ? (
+                <CheckSquare size={20} color={colors.info} fill={colors.info} />
+              ) : (
+                <Square size={20} color={colors.label} />
+              )}
+            </View>
+          )}
+
+          {/* RUSH badge (yellow pill, under timer) */}
+          {hasRush && (
+            <View
+              style={{
+                position: 'absolute',
+                top: 34,
+                right: 12,
+                zIndex: 10,
+                backgroundColor: '#FEF08A',
+                borderWidth: 1,
+                borderColor: colors.warning + '50',
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <Text
                 style={{
-                  position: 'absolute',
-                  top: 6,
-                  right: 6,
-                  zIndex: 10
+                  color: '#78350F',
+                  fontSize: 10,
+                  fontWeight: '800',
+                  letterSpacing: 0.5
                 }}
               >
-                {isSelected ? (
-                  <CheckSquare
-                    size={20}
-                    color={colors.info}
-                    fill={colors.info}
-                  />
-                ) : (
-                  <Square size={20} color={colors.label} />
-                )}
-              </View>
-            )}
+                RUSHED
+              </Text>
+            </View>
+          )}
 
-            {/* RUSH badge (yellow pill, under timer) */}
-            {hasRush && (
+          {/* Card Header: Order Number + Order Type + Timer (darker background) */}
+          <View
+            style={{
+              backgroundColor: '#F3F4F6',
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderBottomWidth: 1,
+              borderBottomColor: '#E5E7EB',
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 12
+            }}
+          >
+            <View style={{ flex: 1, gap: 4 }}>
+              {/* Order Number */}
               <View
-                style={{
-                  position: 'absolute',
-                  top: 34,
-                  right: 12,
-                  zIndex: 10,
-                  backgroundColor: '#FEF08A',
-                  borderWidth: 1,
-                  borderColor: colors.warning + '50',
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
-                  borderRadius: 12,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4
-                }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
               >
                 <Text
                   style={{
-                    color: '#78350F',
-                    fontSize: 10,
-                    fontWeight: '800',
-                    letterSpacing: 0.5
+                    color: '#111827',
+                    fontSize: 16,
+                    fontWeight: '700'
                   }}
-                >
-                  RUSHED
-                </Text>
-              </View>
-            )}
-
-            {/* Card Header: Order Number + Order Type + Timer (darker background) */}
-            <View
-              style={{
-                backgroundColor: '#F3F4F6',
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                borderBottomWidth: 1,
-                borderBottomColor: '#E5E7EB',
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: 12
-              }}
-            >
-              <View style={{ flex: 1, gap: 4 }}>
-                {/* Order Number */}
-                <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                >
-                  <Text
-                    style={{
-                      color: '#111827',
-                      fontSize: 16,
-                      fontWeight: '700'
-                    }}
-                    numberOfLines={1}
-                  >
-                    #
-                    {ticket.display_number ||
-                      ticket.order_number?.slice(-4) ||
-                      '----'}
-                  </Text>
-                  {ticket.prioritized && (
-                    <Star
-                      size={16}
-                      color={colors.warning}
-                      fill={colors.warning}
-                    />
-                  )}
-                </View>
-
-                {/* Order Type */}
-                <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                >
-                  {ticket.order_type?.toLowerCase() === 'delivery' ? (
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: '#EF4444'
-                      }}
-                    />
-                  ) : ticket.order_type?.toLowerCase() === 'takeout' ||
-                    ticket.order_type?.toLowerCase() === 'to_go' ? (
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: '#3B82F6'
-                      }}
-                    />
-                  ) : (
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: '#22C55E'
-                      }}
-                    />
-                  )}
-                  <Text
-                    style={{
-                      color: '#374151',
-                      fontSize: 11,
-                      fontWeight: '600'
-                    }}
-                  >
-                    {orderTypeLabel}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Timer */}
-              <Text
-                style={{
-                  color: urgencyLevel > 0 ? colors.danger : colors.label,
-                  fontSize: 13,
-                  fontWeight: urgencyLevel > 0 ? '700' : '600'
-                }}
-              >
-                {timeElapsed}
-              </Text>
-            </View>
-
-            {/* Row 3: Customer + Table + Course (only shown when populated) */}
-            {hasMetaInfo && (
-              <View
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  paddingHorizontal: 12,
-                  paddingVertical: 5,
-                  borderBottomWidth: 1,
-                  borderBottomColor: '#E5E7EB'
-                }}
-              >
-                <Text
-                  style={{ color: '#6B7280', fontSize: 11, fontWeight: '500' }}
                   numberOfLines={1}
                 >
-                  {ticket.customer_name ? ticket.customer_name : ''}
-                  {ticket.customer_name && ticket.table_name ? ' · ' : ''}
-                  {ticket.table_name ? `Table ${ticket.table_name}` : ''}
-                  {ticket.course_number > 1
-                    ? ` · Course ${ticket.course_number}`
-                    : ''}
+                  #
+                  {ticket.display_number ||
+                    ticket.order_number?.slice(-4) ||
+                    '----'}
+                </Text>
+                {ticket.prioritized && (
+                  <Star
+                    size={16}
+                    color={colors.warning}
+                    fill={colors.warning}
+                  />
+                )}
+              </View>
+
+              {/* Order Type */}
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              >
+                {ticket.order_type?.toLowerCase() === 'delivery' ? (
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: '#EF4444'
+                    }}
+                  />
+                ) : ticket.order_type?.toLowerCase() === 'takeout' ||
+                  ticket.order_type?.toLowerCase() === 'to_go' ? (
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: '#3B82F6'
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: '#22C55E'
+                    }}
+                  />
+                )}
+                <Text
+                  style={{
+                    color: '#374151',
+                    fontSize: 11,
+                    fontWeight: '600'
+                  }}
+                >
+                  {orderTypeLabel}
                 </Text>
               </View>
-            )}
+            </View>
 
-            {/* Items list */}
-            <View style={{ padding: 10, backgroundColor: '#FFFFFF' }}>
-              {visibleItems.map((item: KDSTicketItem, index: number) => {
-                const isItemDone = item.kitchen_status === 'ready'
-                return (
-                  <Pressable
-                    key={item.id}
-                    onPress={() => {
-                      if (!isItemDone && onItemPress) {
-                        onItemPress(ticket.ticket_id, item.id)
-                      }
-                    }}
-                    style={
-                      index < visibleItems.length - 1
-                        ? { marginBottom: 6 }
-                        : undefined
+            {/* Timer */}
+            <Text
+              style={{
+                color: urgencyLevel > 0 ? colors.danger : colors.label,
+                fontSize: 13,
+                fontWeight: urgencyLevel > 0 ? '700' : '600'
+              }}
+            >
+              {timeElapsed}
+            </Text>
+          </View>
+
+          {/* Row 3: Customer + Table + Course (only shown when populated) */}
+          {hasMetaInfo && (
+            <View
+              style={{
+                backgroundColor: '#FFFFFF',
+                paddingHorizontal: 12,
+                paddingVertical: 5,
+                borderBottomWidth: 1,
+                borderBottomColor: '#E5E7EB'
+              }}
+            >
+              <Text
+                style={{ color: '#6B7280', fontSize: 11, fontWeight: '500' }}
+                numberOfLines={1}
+              >
+                {ticket.customer_name ? ticket.customer_name : ''}
+                {ticket.customer_name && ticket.table_name ? ' · ' : ''}
+                {ticket.table_name ? `Table ${ticket.table_name}` : ''}
+                {ticket.course_number > 1
+                  ? ` · Course ${ticket.course_number}`
+                  : ''}
+              </Text>
+            </View>
+          )}
+
+          {/* Items list */}
+          <View style={{ padding: 10, backgroundColor: '#FFFFFF' }}>
+            {visibleItems.map(({ item, sortedModifiers }, index) => {
+              const isItemDone = item.kitchen_status === 'ready'
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    if (!isItemDone && onItemPress) {
+                      onItemPress(ticket.ticket_id, item.id)
                     }
+                  }}
+                  style={
+                    index < visibleItems.length - 1
+                      ? { marginBottom: 6 }
+                      : undefined
+                  }
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'flex-start',
+                      opacity: isItemDone ? 0.5 : 1
+                    }}
                   >
                     <View
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'flex-start',
-                        opacity: isItemDone ? 0.5 : 1
+                        backgroundColor: isItemDone
+                          ? colors.success
+                          : '#E5E7EB',
+                        width: 22,
+                        height: 22,
+                        borderRadius: 4,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 8,
+                        minWidth: 22
                       }}
                     >
-                      <View
-                        style={{
-                          backgroundColor: isItemDone
-                            ? colors.success
-                            : '#E5E7EB',
-                          width: 22,
-                          height: 22,
-                          borderRadius: 4,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginRight: 8,
-                          minWidth: 22
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: isItemDone ? '#fff' : '#111827',
-                            fontSize: 12,
-                            fontWeight: '700'
-                          }}
-                        >
-                          {item.quantity}
-                        </Text>
-                      </View>
-                      {item.seat_number != null && (
-                        <Text
-                          style={{
-                            color: '#0D9488',
-                            fontSize: 11,
-                            fontWeight: '700',
-                            marginRight: 6
-                          }}
-                        >
-                          [S{item.seat_number}]
-                        </Text>
-                      )}
                       <Text
                         style={{
-                          color: isItemDone ? '#9CA3AF' : '#111827',
-                          fontSize: 13,
-                          fontWeight: '600',
-                          flex: 1,
-                          textDecorationLine: isItemDone
-                            ? 'line-through'
-                            : 'none'
+                          color: isItemDone ? '#fff' : '#111827',
+                          fontSize: 12,
+                          fontWeight: '700'
                         }}
-                        numberOfLines={
-                          displaySettings.itemNameLines || undefined
-                        }
                       >
-                        {item.name}
+                        {item.quantity}
                       </Text>
                     </View>
-                    {/* Modifiers */}
-                    {item.modifiers.length > 0 &&
-                      (() => {
-                        let mods = [...item.modifiers]
-                        // Exclusions at top
-                        if (displaySettings.exclusionsAtTop) {
-                          mods.sort((a, b) => {
-                            const aRemoval =
-                              a.is_no ||
-                              a.modifier_group_name
-                                ?.toLowerCase()
-                                .includes('remove') ||
-                              a.modifier_name?.toLowerCase().startsWith('no ')
-                                ? 0
-                                : 1
-                            const bRemoval =
-                              b.is_no ||
-                              b.modifier_group_name
-                                ?.toLowerCase()
-                                .includes('remove') ||
-                              b.modifier_name?.toLowerCase().startsWith('no ')
-                                ? 0
-                                : 1
-                            return aRemoval - bRemoval
-                          })
-                        }
-                        return mods.map((mod, mi) => {
-                          const isRemoval =
-                            mod.is_no ||
-                            mod.modifier_group_name
-                              ?.toLowerCase()
-                              .includes('remove') ||
-                            mod.modifier_name?.toLowerCase().startsWith('no ')
-                          // Modifier group name prefix with ✕ or +
-                          let prefix = isRemoval ? '✕ ' : '+ '
-                          if (
-                            displaySettings.modifierGroupName === 'always' &&
-                            mod.modifier_group_name
-                          ) {
-                            prefix = `${prefix}${mod.modifier_group_name}: `
-                          } else if (
-                            displaySettings.modifierGroupName ===
-                              'for_group_priced' &&
-                            mod.modifier_group_name &&
-                            mod.price_modifier !== 0
-                          ) {
-                            prefix = `${prefix}${mod.modifier_group_name}: `
-                          }
-                          const allergen = detectAllergen(mod.modifier_name)
-                          return (
+                    {item.seat_number != null && (
+                      <Text
+                        style={{
+                          color: '#0D9488',
+                          fontSize: 11,
+                          fontWeight: '700',
+                          marginRight: 6
+                        }}
+                      >
+                        [S{item.seat_number}]
+                      </Text>
+                    )}
+                    <Text
+                      style={{
+                        color: isItemDone ? '#9CA3AF' : '#111827',
+                        fontSize: 13,
+                        fontWeight: '600',
+                        flex: 1,
+                        textDecorationLine: isItemDone ? 'line-through' : 'none'
+                      }}
+                      numberOfLines={displaySettings.itemNameLines || undefined}
+                    >
+                      {item.name}
+                    </Text>
+                  </View>
+                  {/* Modifiers */}
+                  {sortedModifiers.length > 0 &&
+                    sortedModifiers.map(({ mod, allergen }, mi) => {
+                      const isRemoval =
+                        mod.is_no ||
+                        mod.modifier_group_name
+                          ?.toLowerCase()
+                          .includes('remove') ||
+                        mod.modifier_name?.toLowerCase().startsWith('no ')
+                      // Modifier group name prefix with ✕ or +
+                      let prefix = isRemoval ? '✕ ' : '+ '
+                      if (
+                        displaySettings.modifierGroupName === 'always' &&
+                        mod.modifier_group_name
+                      ) {
+                        prefix = `${prefix}${mod.modifier_group_name}: `
+                      } else if (
+                        displaySettings.modifierGroupName ===
+                          'for_group_priced' &&
+                        mod.modifier_group_name &&
+                        mod.price_modifier !== 0
+                      ) {
+                        prefix = `${prefix}${mod.modifier_group_name}: `
+                      }
+                      return (
+                        <View
+                          key={`${item.id}_m${mi}`}
+                          style={{
+                            marginTop: 2,
+                            flexDirection: 'row',
+                            alignItems: 'flex-start',
+                            gap: 6
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: isRemoval
+                                ? colors.danger
+                                : MODIFIER_ADD_COLOR,
+                              fontSize: 12,
+                              fontWeight: '600',
+                              lineHeight: 16,
+                              marginLeft: 30,
+                              opacity: isItemDone ? 0.4 : 1,
+                              textDecorationLine: isItemDone
+                                ? 'line-through'
+                                : 'none',
+                              flex: 1
+                            }}
+                          >
+                            {prefix}
+                            {mod.modifier_name}
+                          </Text>
+                          {allergen && (
                             <View
-                              key={`${item.id}_m${mi}`}
                               style={{
-                                marginTop: 2,
-                                flexDirection: 'row',
-                                alignItems: 'flex-start',
-                                gap: 6
+                                backgroundColor: allergen.color + '20',
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 4,
+                                borderWidth: 1,
+                                borderColor: allergen.color
                               }}
                             >
                               <Text
                                 style={{
-                                  color: isRemoval
-                                    ? colors.danger
-                                    : MODIFIER_ADD_COLOR,
-                                  fontSize: 12,
-                                  fontWeight: '600',
-                                  lineHeight: 16,
-                                  marginLeft: 30,
-                                  opacity: isItemDone ? 0.4 : 1,
-                                  textDecorationLine: isItemDone
-                                    ? 'line-through'
-                                    : 'none',
-                                  flex: 1
+                                  color: allergen.color,
+                                  fontSize: 8,
+                                  fontWeight: '700'
                                 }}
                               >
-                                {prefix}
-                                {mod.modifier_name}
+                                {allergen.label}
                               </Text>
-                              {allergen && (
-                                <View
-                                  style={{
-                                    backgroundColor: allergen.color + '20',
-                                    paddingHorizontal: 6,
-                                    paddingVertical: 2,
-                                    borderRadius: 4,
-                                    borderWidth: 1,
-                                    borderColor: allergen.color
-                                  }}
-                                >
-                                  <Text
-                                    style={{
-                                      color: allergen.color,
-                                      fontSize: 8,
-                                      fontWeight: '700'
-                                    }}
-                                  >
-                                    {allergen.label}
-                                  </Text>
-                                </View>
-                              )}
                             </View>
-                          )
-                        })
-                      })()}
-                    {/* Special instructions */}
-                    {item.special_instructions && (
-                      <Text
-                        style={{
-                          color: displaySettings.highlightNotes
-                            ? colors.warning
-                            : colors.muted,
-                          fontSize: 10,
-                          fontStyle: 'italic',
-                          marginLeft: 30,
-                          marginTop: 3,
-                          opacity: isItemDone ? 0.4 : 1,
-                          textDecorationLine: isItemDone
-                            ? 'line-through'
-                            : 'none'
-                        }}
-                        numberOfLines={2}
-                      >
-                        "{item.special_instructions}"
-                      </Text>
-                    )}
-                  </Pressable>
-                )
-              })}
-              {/* Hidden done items indicator */}
-              {hasHiddenDoneItems && (
-                <Text
-                  style={{
-                    color: '#9CA3AF',
-                    fontSize: 11,
-                    marginTop: 6,
-                    textAlign: 'center'
-                  }}
-                >
-                  {doneItemCount} done
-                </Text>
-              )}
-            </View>
+                          )}
+                        </View>
+                      )
+                    })}
+                  {/* Special instructions */}
+                  {item.special_instructions && (
+                    <Text
+                      style={{
+                        color: displaySettings.highlightNotes
+                          ? colors.warning
+                          : colors.muted,
+                        fontSize: 10,
+                        fontStyle: 'italic',
+                        marginLeft: 30,
+                        marginTop: 3,
+                        opacity: isItemDone ? 0.4 : 1,
+                        textDecorationLine: isItemDone ? 'line-through' : 'none'
+                      }}
+                      numberOfLines={2}
+                    >
+                      "{item.special_instructions}"
+                    </Text>
+                  )}
+                </Pressable>
+              )
+            })}
+            {/* Hidden done items indicator */}
+            {hasHiddenDoneItems && (
+              <Text
+                style={{
+                  color: '#9CA3AF',
+                  fontSize: 11,
+                  marginTop: 6,
+                  textAlign: 'center'
+                }}
+              >
+                {doneItemCount} done
+              </Text>
+            )}
+          </View>
 
-            {/* Progress bar at bottom */}
+          {/* Progress bar at bottom */}
+          <View
+            style={{
+              height: 4,
+              backgroundColor: '#E5E7EB',
+              overflow: 'hidden'
+            }}
+          >
             <View
               style={{
-                height: 4,
-                backgroundColor: '#E5E7EB',
-                overflow: 'hidden'
+                height: '100%',
+                backgroundColor: colors.teal,
+                width: `${(doneItemCount / ticket.item_count) * 100}%`
               }}
-            >
-              <View
-                style={{
-                  height: '100%',
-                  backgroundColor: colors.teal,
-                  width: `${(doneItemCount / ticket.item_count) * 100}%`
-                }}
-              />
-            </View>
-          </Animated.View>
+            />
+          </View>
         </View>
       </Pressable>
     )
   },
   (prev, next) => {
-    // Check if ticket reference is the same AND items haven't changed
-    if (prev.ticket !== next.ticket) return false
-    // Check if item count or rush status changed
-    if (prev.ticket.items.length !== next.ticket.items.length) return false
+    // Skip re-render if callbacks and config are unchanged
     if (
-      prev.ticket.items.some(
-        (item, i) => item.rush !== next.ticket.items[i]?.rush
-      )
+      prev.onAdvance !== next.onAdvance ||
+      prev.onToggleSelect !== next.onToggleSelect ||
+      prev.onLongPress !== next.onLongPress ||
+      prev.onItemPress !== next.onItemPress ||
+      prev.hideDoneItems !== next.hideDoneItems ||
+      prev.displaySettings !== next.displaySettings ||
+      prev.urgencyThresholds !== next.urgencyThresholds
     )
       return false
 
-    return (
-      prev.onAdvance === next.onAdvance &&
-      prev.onToggleSelect === next.onToggleSelect &&
-      prev.onLongPress === next.onLongPress &&
-      prev.onItemPress === next.onItemPress &&
-      prev.hideDoneItems === next.hideDoneItems &&
-      prev.displaySettings === next.displaySettings &&
-      prev.urgencyThresholds === next.urgencyThresholds
+    // Same reference — nothing changed
+    if (prev.ticket === next.ticket) return true
+
+    // Ticket reference changed — check if anything the card displays actually changed
+    const pt = prev.ticket,
+      nt = next.ticket
+    if (
+      pt.status !== nt.status ||
+      pt.prioritized !== nt.prioritized ||
+      pt.item_count !== nt.item_count ||
+      pt.display_number !== nt.display_number ||
+      pt.order_number !== nt.order_number ||
+      pt.table_name !== nt.table_name ||
+      pt.customer_name !== nt.customer_name ||
+      pt.order_type !== nt.order_type ||
+      pt.start_time_epoch !== nt.start_time_epoch ||
+      pt.items.length !== nt.items.length
     )
+      return false
+
+    for (let i = 0; i < pt.items.length; i++) {
+      const pi = pt.items[i],
+        ni = nt.items[i]
+      if (
+        pi.id !== ni.id ||
+        pi.kitchen_status !== ni.kitchen_status ||
+        pi.quantity !== ni.quantity ||
+        pi.rush !== ni.rush ||
+        pi.recalled !== ni.recalled
+      )
+        return false
+    }
+
+    return true
   }
 )
 
@@ -1217,8 +1164,9 @@ const KitchenDisplayScreen = () => {
   const kdsNewOrderPosition = kdsConfig.newOrderPosition ?? 'right'
   const setNewOrderPosition = useKDSStore(s => s.setNewOrderPosition)
 
-  const tickets = useKDSStore(s => s.tickets)
-  const counts = useKDSStore(s => s.counts)
+  const countPending = useKDSStore(s => s.counts.pending)
+  const countCooking = useKDSStore(s => s.counts.cooking)
+  const countReady = useKDSStore(s => s.counts.ready)
   const isInitialLoading = useKDSStore(s => s.isInitialLoading)
   const hasHydrated = useKDSStore(s => s._hasHydrated)
   const isFetching = useKDSStore(s => s.isFetching)
@@ -1232,7 +1180,7 @@ const KitchenDisplayScreen = () => {
   const displayName = useKDSStore(s => s.kdsDisplayConfig?.displayName)
   // Bulk mode state from store
   const bulkMode = useKDSStore(s => s.bulkMode)
-  const selectedTicketIds = useKDSStore(s => s.selectedTicketIds)
+  const selectionCount = useKDSStore(s => s.selectedTicketIds.size)
   const toggleBulkMode = useKDSStore(s => s.toggleBulkMode)
   const toggleTicketSelection = useKDSStore(s => s.toggleTicketSelection)
   const selectAllVisible = useKDSStore(s => s.selectAllVisible)
@@ -1348,17 +1296,6 @@ const KitchenDisplayScreen = () => {
     'selected' | 'all' | null
   >(null)
 
-  // Flying ticket animation state
-  const [flyingTickets, setFlyingTickets] = useState<FlyingTicketData[]>([])
-  const tabRefs = useRef<Record<string, View | null>>({}).current
-  // Cached tab positions — tabs are static, no need to re-measure on every advance
-  const tabPosCache = useRef<
-    Record<
-      string,
-      { x: number; y: number; width: number; height: number } | null
-    >
-  >({})
-
   // Action menu state (long-press)
   const [actionMenu, setActionMenu] = useState<{
     ticketId: string
@@ -1369,6 +1306,12 @@ const KitchenDisplayScreen = () => {
   // Focused ticket state (from store — each card subscribes individually for O(1) re-renders)
   const focusedTicketId = useKDSStore(s => s.focusedTicketId)
   const setFocusedTicketId = useKDSStore(s => s.setFocusedTicketId)
+  const focusedTicket = useKDSStore(
+    useCallback(
+      s => (focusedTicketId ? s._ticketsById[focusedTicketId] ?? null : null),
+      [focusedTicketId]
+    )
+  )
 
   // KDS logout handler
   const handleKDSLogout = useCallback(async () => {
@@ -1474,11 +1417,10 @@ const KitchenDisplayScreen = () => {
 
     let timeoutId: ReturnType<typeof setTimeout>
     const schedulePoll = () => {
-      const interval = isRealtimeConnectedRef.current
-        ? hasDisplayFilter
-          ? 30_000
-          : 120_000
-        : 15_000
+      // No poll needed when realtime is healthy and no display filter —
+      // broadcasts cover all updates. Only poll when offline or display-filtered.
+      if (isRealtimeConnectedRef.current && !hasDisplayFilter) return
+      const interval = isRealtimeConnectedRef.current ? 30_000 : 15_000
       timeoutId = setTimeout(() => {
         backgroundFetchTickets(locationId)
         schedulePoll()
@@ -1506,7 +1448,6 @@ const KitchenDisplayScreen = () => {
 
   // Auto-fire: pending → cooking after configured delay
   useEffect(() => {
-    
     if (!kdsAutoFireEnabled || !isReady) return
 
     const intervalId = setInterval(() => {
@@ -1522,7 +1463,7 @@ const KitchenDisplayScreen = () => {
           toast.show({
             title: `#${displayNum} auto-fired`,
             message: `Started preparing after ${kdsAutoFireDelayMinutes}m`,
-            type: 'info',
+            type: 'success',
             duration: 3000
           })
           advanceTicketStatus(
@@ -1532,7 +1473,7 @@ const KitchenDisplayScreen = () => {
           )
         }
       })
-    }, 15_000)
+    }, KDS_AUTOMATION_CHECK_MS)
 
     return () => clearInterval(intervalId)
   }, [
@@ -1568,7 +1509,7 @@ const KitchenDisplayScreen = () => {
           toast.show({
             title: `#${displayNum} auto-bumped`,
             message: `Ticket served after ${autoBumpMinutes}m`,
-            type: 'info',
+            type: 'success',
             duration: 3000
           })
           advanceTicketStatus(
@@ -1578,10 +1519,17 @@ const KitchenDisplayScreen = () => {
           )
         }
       })
-    }, 15_000)
+    }, KDS_AUTOMATION_CHECK_MS)
 
     return () => clearInterval(intervalId)
-  }, [autoBumpMinutes, readyTickets, isReady, advanceTicketStatus, isTicketRecalled, toast])
+  }, [
+    autoBumpMinutes,
+    readyTickets,
+    isReady,
+    advanceTicketStatus,
+    isTicketRecalled,
+    toast
+  ])
 
   // ─── Sound notifications on new orders ────────────────────────
   const soundServiceRef = useRef<KDSSoundService | null>(null)
@@ -1645,9 +1593,17 @@ const KitchenDisplayScreen = () => {
   }, [readyTickets, activeType])
 
   const filteredDone = useMemo(() => {
-    if (activeType === 'all') return doneTickets
-    return doneTickets.filter(t => matchesTypeFilter(t, activeType))
+    const now = Date.now()
+    const base =
+      activeType === 'all'
+        ? doneTickets
+        : doneTickets.filter(t => matchesTypeFilter(t, activeType))
+    return base.filter(
+      t => (t.done_time_epoch ?? 0) > now - DONE_TICKETS_TIME_WINDOW_MS
+    )
   }, [doneTickets, activeType])
+
+  const countDone = filteredDone.length
 
   const filteredByStatus: Record<StatusFilter, KDSTicket[]> = useMemo(
     () => ({
@@ -1657,6 +1613,37 @@ const KitchenDisplayScreen = () => {
       done: filteredDone
     }),
     [filteredPending, filteredCooking, filteredReady, filteredDone]
+  )
+
+  // Deferred data for inactive FlatLists — active tab updates instantly,
+  // inactive tabs update after the frame so they don't block the active render.
+  const [deferredByStatus, setDeferredByStatus] = useState(filteredByStatus)
+  useEffect(() => {
+    const id = requestAnimationFrame(() =>
+      setDeferredByStatus(filteredByStatus)
+    )
+    return () => cancelAnimationFrame(id)
+  }, [filteredByStatus])
+
+  // Active tab always uses live data; inactive tabs use deferred
+  const listDataByStatus = useMemo<Record<StatusFilter, KDSTicket[]>>(
+    () => ({
+      pending:
+        activeStatus === 'pending'
+          ? filteredByStatus.pending
+          : deferredByStatus.pending,
+      cooking:
+        activeStatus === 'cooking'
+          ? filteredByStatus.cooking
+          : deferredByStatus.cooking,
+      ready:
+        activeStatus === 'ready'
+          ? filteredByStatus.ready
+          : deferredByStatus.ready,
+      done:
+        activeStatus === 'done' ? filteredByStatus.done : deferredByStatus.done
+    }),
+    [activeStatus, filteredByStatus, deferredByStatus]
   )
 
   // Active tab's filtered data — for bulk actions / select-all
@@ -1734,7 +1721,7 @@ const KitchenDisplayScreen = () => {
       const ticketIdsToAdvance =
         pendingBulkAction === 'all'
           ? activeFilteredTickets.map(t => t.ticket_id)
-          : Array.from(selectedTicketIds)
+          : Array.from(useKDSStore.getState().selectedTicketIds as Set<string>)
 
       if (ticketIdsToAdvance.length === 0) {
         toast.show({
@@ -1759,7 +1746,6 @@ const KitchenDisplayScreen = () => {
       findEmployeeByPin,
       pendingBulkAction,
       activeFilteredTickets,
-      selectedTicketIds,
       bulkAdvanceTickets,
       locationId,
       toast
@@ -1815,18 +1801,12 @@ const KitchenDisplayScreen = () => {
     [markItemDone]
   )
 
-  // Remove completed flying ticket
-  const handleFlyingComplete = useCallback((id: string) => {
-    setFlyingTickets(prev => prev.filter(t => t.id !== id))
-  }, [])
-
-  // Wrap advanceTicketStatus with undo toast + flying animation
+  // Wrap advanceTicketStatus with undo toast
   const advanceWithUndo = useCallback(
     (
       ticketId: string,
       itemIds: string[],
-      newStatus: 'preparing' | 'ready' | 'served',
-      cardPos?: CardPosition
+      newStatus: 'preparing' | 'ready' | 'served'
     ) => {
       // Read ticket data before advancing (advance mutates the store)
       const ticket = useKDSStore.getState()._ticketsById[ticketId]
@@ -1838,60 +1818,8 @@ const KitchenDisplayScreen = () => {
           : newStatus === 'ready'
           ? 'Served'
           : 'Done'
-      const urgencyColor = ticket
-        ? URGENCY_BORDER_COLORS[
-            getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds)
-          ]
-        : colors.border
-
       // Fire store update FIRST — this is the critical path
       advanceTicketStatus(ticketId, itemIds, newStatus)
-
-      // Trigger flying animation using cached tab positions (no async measureInWindow)
-      if (cardPos) {
-        const destTabKey =
-          newStatus === 'preparing'
-            ? 'cooking'
-            : newStatus === 'ready'
-            ? 'ready'
-            : 'done'
-        const cached = tabPosCache.current[destTabKey]
-        if (cached) {
-          // Synchronous — no frame delay
-          setFlyingTickets(prev => [
-            ...prev,
-            {
-              id: `fly_${ticketId}_${Date.now()}`,
-              orderNumber: displayNum,
-              urgencyColor,
-              itemCount: ticket?.item_count ?? itemIds.length,
-              source: cardPos,
-              destination: cached
-            }
-          ])
-        } else {
-          // First time — measure and cache, then spawn flying ticket
-          const tabRef = tabRefs[destTabKey]
-          if (tabRef) {
-            tabRef.measureInWindow((tx, ty, tw, th) => {
-              if (tx === 0 && ty === 0 && tw === 0 && th === 0) return
-              const pos = { x: tx, y: ty, width: tw, height: th }
-              tabPosCache.current[destTabKey] = pos
-              setFlyingTickets(prev => [
-                ...prev,
-                {
-                  id: `fly_${ticketId}_${Date.now()}`,
-                  orderNumber: displayNum,
-                  urgencyColor,
-                  itemCount: ticket?.item_count ?? itemIds.length,
-                  source: cardPos,
-                  destination: pos
-                }
-              ])
-            })
-          }
-        }
-      }
 
       // Build rich context for undo toast subtitle
       const tablePart = ticket?.table_name ? `Table ${ticket.table_name}` : ''
@@ -1914,14 +1842,7 @@ const KitchenDisplayScreen = () => {
         }
       })
     },
-    [
-      advanceTicketStatus,
-      recallTicket,
-      recallDoneTicket,
-      toast,
-      urgencyThresholds,
-      tabRefs
-    ]
+    [advanceTicketStatus, recallTicket, recallDoneTicket, toast]
   )
 
   const _updateKdsConfig = useLocationConfigStore(s => s.updateConfig)
@@ -1933,11 +1854,7 @@ const KitchenDisplayScreen = () => {
   const columnWidthPct = `${100 / columnCount}%` as const
   const renderItem = useCallback(
     ({ item }: { item: KDSTicket }) => (
-      <Animated.View
-        style={{ width: columnWidthPct, paddingHorizontal: 2 }}
-        entering={CARD_ENTER_ANIM}
-        exiting={CARD_EXIT_ANIM}
-      >
+      <View style={{ width: columnWidthPct, paddingHorizontal: 2 }}>
         <KDSTicketCard
           ticket={item}
           onAdvance={advanceWithUndo}
@@ -1948,7 +1865,7 @@ const KitchenDisplayScreen = () => {
           displaySettings={displaySettings}
           urgencyThresholds={urgencyThresholds}
         />
-      </Animated.View>
+      </View>
     ),
     [
       advanceWithUndo,
@@ -1965,13 +1882,9 @@ const KitchenDisplayScreen = () => {
 
   const renderDoneItem = useCallback(
     ({ item }: { item: KDSTicket }) => (
-      <Animated.View
-        style={{ width: columnWidthPct, paddingHorizontal: 2 }}
-        entering={CARD_ENTER_ANIM}
-        exiting={CARD_EXIT_ANIM}
-      >
+      <View style={{ width: columnWidthPct, paddingHorizontal: 2 }}>
         <KDSDoneTicketCard ticket={item} onRecall={recallDoneTicket} />
-      </Animated.View>
+      </View>
     ),
     [recallDoneTicket, columnWidthPct]
   )
@@ -1993,8 +1906,6 @@ const KitchenDisplayScreen = () => {
       ))}
     </View>
   )
-
-  const selectionCount = selectedTicketIds.size
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
@@ -2021,13 +1932,7 @@ const KitchenDisplayScreen = () => {
             {visibleStatusTabs.map(tab => {
               const isActive = activeStatus === tab.key
               return (
-                <View
-                  key={tab.key}
-                  ref={r => {
-                    tabRefs[tab.key] = r
-                  }}
-                  collapsable={false}
-                >
+                <View key={tab.key}>
                   <TouchableOpacity
                     onPress={() => handleSetActiveStatus(tab.key)}
                     style={{
@@ -2075,7 +1980,13 @@ const KitchenDisplayScreen = () => {
                           opacity: isFetching ? 0.7 : 1
                         }}
                       >
-                        {tab.key === 'done' ? doneCount : counts[tab.key]}
+                        {tab.key === 'done'
+                          ? countDone
+                          : tab.key === 'pending'
+                          ? countPending
+                          : tab.key === 'cooking'
+                          ? countCooking
+                          : countReady}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -2221,7 +2132,13 @@ const KitchenDisplayScreen = () => {
             {/* Auto-fire badge */}
             {kdsAutoFireEnabled && kdsAutoFireDelayMinutes ? (
               <>
-                <View style={{ width: 1, height: 20, backgroundColor: colors.border }} />
+                <View
+                  style={{
+                    width: 1,
+                    height: 20,
+                    backgroundColor: colors.border
+                  }}
+                />
                 <View
                   style={{
                     flexDirection: 'row',
@@ -2236,7 +2153,13 @@ const KitchenDisplayScreen = () => {
                   }}
                 >
                   <Flame size={11} color={colors.info} />
-                  <Text style={{ color: colors.info, fontSize: 11, fontWeight: '600' }}>
+                  <Text
+                    style={{
+                      color: colors.info,
+                      fontSize: 11,
+                      fontWeight: '600'
+                    }}
+                  >
                     Fire {kdsAutoFireDelayMinutes}m
                   </Text>
                 </View>
@@ -2247,7 +2170,11 @@ const KitchenDisplayScreen = () => {
             {autoBumpMinutes ? (
               <>
                 <View
-                  style={{ width: 1, height: 20, backgroundColor: colors.border }}
+                  style={{
+                    width: 1,
+                    height: 20,
+                    backgroundColor: colors.border
+                  }}
                 />
                 <View
                   style={{
@@ -2466,13 +2393,12 @@ const KitchenDisplayScreen = () => {
                 }}
                 pointerEvents={isActive ? 'auto' : 'none'}
               >
-                <Animated.FlatList
+                <FlatList
                   key={columnCount}
-                  data={filteredByStatus[status]}
+                  data={listDataByStatus[status]}
                   keyExtractor={keyExtractor}
                   renderItem={renderItem}
                   numColumns={columnCount}
-                  itemLayoutAnimation={LAYOUT_ANIM}
                   contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
                   initialNumToRender={16}
                   maxToRenderPerBatch={8}
@@ -2510,13 +2436,12 @@ const KitchenDisplayScreen = () => {
             }}
             pointerEvents={activeStatus === 'done' ? 'auto' : 'none'}
           >
-            <Animated.FlatList
+            <FlatList
               key={columnCount}
-              data={filteredDone}
+              data={listDataByStatus.done}
               keyExtractor={keyExtractor}
               renderItem={renderDoneItem}
               numColumns={columnCount}
-              itemLayoutAnimation={LAYOUT_ANIM}
               contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
               initialNumToRender={16}
               maxToRenderPerBatch={8}
@@ -2557,45 +2482,43 @@ const KitchenDisplayScreen = () => {
           }}
         >
           {/* RECALL button — only show if ticket is ready */}
-          {focusedTicketId &&
-            tickets.find(t => t.ticket_id === focusedTicketId)?.status ===
-              'ready' && (
-              <TouchableOpacity
-                onPress={() => {
-                  if (focusedTicketId) {
-                    recallTicket(focusedTicketId)
-                    setFocusedTicketId(null)
-                  }
-                }}
+          {focusedTicketId && focusedTicket?.status === 'ready' && (
+            <TouchableOpacity
+              onPress={() => {
+                if (focusedTicketId) {
+                  recallTicket(focusedTicketId)
+                  setFocusedTicketId(null)
+                }
+              }}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              <RotateCcw size={14} color={colors.label} />
+              <Text
                 style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  backgroundColor: 'transparent',
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 10,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6
+                  color: colors.label,
+                  fontSize: 12,
+                  fontWeight: '600'
                 }}
               >
-                <RotateCcw size={14} color={colors.label} />
-                <Text
-                  style={{
-                    color: colors.label,
-                    fontSize: 12,
-                    fontWeight: '600'
-                  }}
-                >
-                  RECALL
-                </Text>
-              </TouchableOpacity>
-            )}
+                RECALL
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* BUMP ORDER button (center, teal) */}
           <TouchableOpacity
             onPress={() => {
-              const ticket = tickets.find(t => t.ticket_id === focusedTicketId)
+              const ticket = focusedTicket
               if (ticket) {
                 const itemIds = ticket.items.map(i => i.id)
                 let newStatus: 'preparing' | 'ready' | 'served' | undefined
@@ -2652,15 +2575,6 @@ const KitchenDisplayScreen = () => {
           </TouchableOpacity>
         </View>
       )}
-
-      {/* ─── Flying Ticket Overlays ─── */}
-      {flyingTickets.map(ft => (
-        <KDSFlyingTicket
-          key={ft.id}
-          ticket={ft}
-          onComplete={handleFlyingComplete}
-        />
-      ))}
 
       {/* ─── Action Menu Overlay ─── */}
       {actionMenu && (
