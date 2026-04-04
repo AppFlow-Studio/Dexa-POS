@@ -50,6 +50,7 @@ export type OperationType =
   | "seat_guests"
   | "update_session_status"
   | "merge_table"            // Merge additional table into existing session
+  | "unmerge_table"          // Remove table from merged session
   | "link_order_to_session"  // Bidirectional order-session linking
   // Check status operations
   | "close_check"           // Close check (lock from edits)
@@ -64,7 +65,13 @@ export type OperationType =
   | "increment_preauth"
   | "void_preauth"
   // Cash drawer operations
-  | "record_cash_drawer_operation";
+  | "record_cash_drawer_operation"
+  // Offline refund operations
+  | "process_cash_refund"        // Cash refund (no terminal needed)
+  // Tip adjust DB fallback
+  | "tip_adjust_db"              // Persist tip adjustment to DB after terminal success
+  // Order detail sync
+  | "update_order_details";      // Sync customer/order details to backend
 
 /**
  * Priority levels for operation processing.
@@ -76,6 +83,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   seat_guests: 1,
   update_session_status: 1,
   merge_table: 1,            // Seating sub-operation, same priority
+  unmerge_table: 1,          // Seating sub-operation, same priority
   link_order_to_session: 1,  // Relationship operation, high priority
 
   // Item operations after order exists
@@ -111,6 +119,13 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
 
   // Cash drawer operations (same priority as payments)
   record_cash_drawer_operation: 5,
+
+  // Offline refund + tip adjust (after payments)
+  process_cash_refund: 5,
+  tip_adjust_db: 5,
+
+  // Order detail sync (after items, before payments)
+  update_order_details: 3,
 };
 
 export interface OfflineOperation {
@@ -228,6 +243,7 @@ let autoRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 let isOnline = true;
 let forceOfflineOverride = false; // DEV-only: force offline mode for testing
+let _offlineSinceTs: number | null = null;
 let isInitialized = false;
 let isInitializing = false;
 let pendingOperations: OfflineOperation[] = [];
@@ -555,6 +571,13 @@ function handleNetworkChange(state: NetInfoState): void {
   }
 
   if (wasOnline !== isOnline) {
+    // Track offline duration
+    if (!isOnline) {
+      _offlineSinceTs = Date.now();
+    } else {
+      _offlineSinceTs = null;
+    }
+
     console.log("[OfflineSync] Network status changed:", isOnline ? "ONLINE" : "OFFLINE");
 
     // Fire the callback (async, fire-and-forget with error catching)
@@ -624,6 +647,8 @@ function generateEntityKey(op: Partial<OfflineOperation>): string | undefined {
       return op.localItemId ? `item:${op.localItemId}` : undefined;
     case "update_order_status":
       return `order_status:${op.localOrderId}`;
+    case "update_order_details":
+      return `order_details:${op.localOrderId}`;
     case "process_cash_payment":
     case "process_card_payment":
       // Each payment is unique, don't collapse
@@ -647,6 +672,7 @@ function findCollapseTarget(
     "update_item_quantity",
     "replace_modifiers",
     "update_order_status",
+    "update_order_details",
   ];
 
   if (!collapsibleTypes.includes(newType)) {
@@ -1046,6 +1072,14 @@ export function getIsOnline(): boolean {
 }
 
 /**
+ * Get how long the app has been offline (in ms). Returns 0 if currently online.
+ */
+export function getOfflineDurationMs(): number {
+  if (_offlineSinceTs === null) return 0;
+  return Date.now() - _offlineSinceTs;
+}
+
+/**
  * DEV-only: Force the app into offline mode for testing.
  * When enabled, NetInfo polling/listeners are suppressed and the app stays offline.
  */
@@ -1158,6 +1192,14 @@ export async function forceRetryAllPending(): Promise<void> {
 /** Expose all non-discarded ops for UI inspection (blocked/processing counts). */
 export function getPendingOperations(): OfflineOperation[] {
   return pendingOperations.filter((op) => op.status !== "discarded");
+}
+
+/**
+ * Get a read-only snapshot of the current queue for inspection.
+ * Used by tableSessionRealtimeSync to check for pending seat_guests ops.
+ */
+export function getQueueSnapshot(): readonly OfflineOperation[] {
+  return pendingOperations;
 }
 
 /**

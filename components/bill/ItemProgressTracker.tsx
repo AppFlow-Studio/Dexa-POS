@@ -1,6 +1,7 @@
 import { getEffectiveItemStatus } from "@/lib/kitchenStatusUtils";
 import { colors } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
+import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import {
   CheckCheck,
   CheckCircle2,
@@ -20,7 +21,6 @@ import Animated, {
 interface ItemProgressTrackerProps {
   selectedCourse: number;
   itemsInSelectedCourse: CartItem[];
-  isModifierSidebarOpen: boolean;
   onMarkAllReady: (itemIds: string[]) => void;
   isCourseSent: boolean;
 }
@@ -28,10 +28,10 @@ interface ItemProgressTrackerProps {
 const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
   selectedCourse,
   itemsInSelectedCourse,
-  isModifierSidebarOpen,
   onMarkAllReady,
   isCourseSent,
 }) => {
+  const isModifierSidebarOpen = useModifierSidebarStore(s => s.isOpen);
   // Logic derived from props
   const allItemsReady = itemsInSelectedCourse.every((item) => {
     const s = getEffectiveItemStatus(item);

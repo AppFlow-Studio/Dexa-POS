@@ -98,12 +98,21 @@ export function useTableSeating(
     const prevIds = prevItemIdsRef.current;
     const prevSet = new Set(prevIds);
 
+    // Build O(1) lookup map — avoids O(n²) .find() inside loops
+    const itemMap = new Map<string, typeof activeOrder extends { items: (infer T)[] } ? T : never>();
+    if (activeOrder?.items) {
+      for (const item of activeOrder.items) {
+        itemMap.set(item.id, item);
+      }
+    }
+
     if (prevIds.length === 0) {
       // First render — assign existing items from backend data
       const state = getForOrder(orderId);
       currentIds.forEach((id) => {
+        if (id.startsWith('draft_')) return;
         if (state?.itemSeatMap?.[id] !== undefined) return;
-        const item = activeOrder?.items?.find((i) => i.id === id);
+        const item = itemMap.get(id);
         if (!item) return;
         const dbSeat = item.db_order_item_id
           ? state?.dbIdToSeatMap?.[item.db_order_item_id]
@@ -120,12 +129,12 @@ export function useTableSeating(
       return;
     }
 
-    const newIds = currentIds.filter((id) => !prevSet.has(id));
+    const newIds = currentIds.filter((id) => !prevSet.has(id) && !id.startsWith('draft_'));
     if (newIds.length > 0) {
       const state = getForOrder(orderId);
       const useSeat = state?.activeSeat ?? null;
       newIds.forEach((id) => {
-        const item = activeOrder?.items?.find((i) => i.id === id);
+        const item = itemMap.get(id);
         const dbSeat = item?.db_order_item_id
           ? state?.dbIdToSeatMap?.[item.db_order_item_id]
           : undefined;
@@ -154,6 +163,7 @@ export function useTableSeating(
       return;
 
     activeOrder.items.forEach((item) => {
+      if (item.isDraft) return;
       if (
         item.db_order_item_id &&
         !syncedDbItemsRef.current.has(item.db_order_item_id)

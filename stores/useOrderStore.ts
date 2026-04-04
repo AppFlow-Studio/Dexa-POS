@@ -56,7 +56,7 @@ import {
   scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
-import { getIsOnline, getPendingOperations, queueOperation, updateOperationParams } from "@/services/offlineSyncService";
+import { getIsOnline, getOperationsForOrder, getPendingOperations, queueOperation, removeOperation, updateOperationParams } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 import {
@@ -5869,8 +5869,25 @@ export const useOrderStore = create<OrderState>()(
 
             if (!isOnline) {
               console.log(
-                "[updateActiveOrderDetails] Offline - update will sync on reconnect via broadcast",
+                "[updateActiveOrderDetails] Offline - queuing update_order_details",
               );
+              if (order.db_order_id) {
+                queueFailedOperation(
+                  "update_order_details",
+                  {
+                    customer_name: details.customer_name,
+                    customer_id: details.customer_id,
+                    customer_phone: details.customer_phone,
+                    customer_email: details.customer_email,
+                    guest_count: details.guest_count,
+                    service_location_id: order.service_location_id,
+                    db_order_id: order.db_order_id,
+                    order_type: details.order_type,
+                    delivery_address: details.delivery_address,
+                  },
+                  activeOrderId,
+                );
+              }
               return;
             }
 
@@ -6302,6 +6319,25 @@ export const useOrderStore = create<OrderState>()(
                 "[removeCheckDiscount] Discounts not yet synced, cannot void on backend:",
                 unsyncedDiscounts.map((d) => d.local_id),
               );
+
+              // Cancel pending apply_discount queue ops for unsynced discounts
+              const pendingOps = getOperationsForOrder(orderId);
+              for (const unsynced of unsyncedDiscounts) {
+                const matchingOp = pendingOps.find(
+                  (op) =>
+                    op.type === "apply_discount" &&
+                    (op.params as any)?.discount?.local_id === unsynced.local_id,
+                );
+                if (matchingOp) {
+                  removeOperation(matchingOp.id);
+                  console.log(
+                    "[removeCheckDiscount] Cancelled pending apply_discount op:",
+                    matchingOp.id,
+                    "for local_id:",
+                    unsynced.local_id,
+                  );
+                }
+              }
             }
 
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;

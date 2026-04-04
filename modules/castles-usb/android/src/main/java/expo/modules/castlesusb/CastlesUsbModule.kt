@@ -11,7 +11,8 @@ import android.os.Build
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
-import com.hoho.android.usbserial.driver.UsbSerialDriver
+import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
+import com.hoho.android.usbserial.driver.ProbeTable
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
@@ -19,9 +20,19 @@ import java.util.concurrent.Executors
 
 private const val ACTION_USB_PERMISSION = "expo.modules.castlesusb.USB_PERMISSION"
 
+/** Castles Technology Co., Ltd. USB vendor ID */
+private const val CASTLES_VENDOR_ID = 0x0CA6
+
+/** Known Saturn1000 product IDs — add more as discovered on LANDI/other devices */
+private val CASTLES_PRODUCT_IDS = intArrayOf(0x0070)
+
+/** Read buffer size — 16 KB handles large JSON payment responses */
+private const val READ_BUFFER_SIZE = 16 * 1024
+
 class CastlesUsbModule : Module() {
 
-  // ── State ──
+  // ── State (guarded by `lock`) ──
+  private val lock = Object()
   private var serialPort: UsbSerialPort? = null
   private var ioManager: SerialInputOutputManager? = null
   private val ioExecutor = Executors.newSingleThreadExecutor()
@@ -33,6 +44,32 @@ class CastlesUsbModule : Module() {
 
   private val usbManager: UsbManager
     get() = context.getSystemService(Context.USB_SERVICE) as UsbManager
+
+  /**
+   * Build a custom prober that includes Castles VID/PIDs mapped to CDC ACM,
+   * in addition to all default drivers. This ensures Saturn1000 is detected
+   * even on LANDI and other devices where the default prober's class-based
+   * matching may not recognise the device.
+   */
+  private fun buildProber(): UsbSerialProber {
+    val customTable = ProbeTable()
+    for (pid in CASTLES_PRODUCT_IDS) {
+      customTable.addProduct(CASTLES_VENDOR_ID, pid, CdcAcmSerialDriver::class.java)
+    }
+    return UsbSerialProber(customTable)
+  }
+
+  /**
+   * Find drivers for a device, trying default prober first, then custom
+   * Castles prober as fallback.
+   */
+  private fun findAllDrivers(): List<com.hoho.android.usbserial.driver.UsbSerialDriver> {
+    val defaultDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
+    if (defaultDrivers.isNotEmpty()) return defaultDrivers
+
+    // Fallback: try custom prober with explicit Castles VID/PID → CDC ACM mapping
+    return buildProber().findAllDrivers(usbManager)
+  }
 
   // ── Broadcast receivers ──
   private val permissionReceiver = object : BroadcastReceiver() {
@@ -52,9 +89,11 @@ class CastlesUsbModule : Module() {
         val deviceId = device?.deviceId ?: -1
 
         // If the detached device is the one we have open, clean up
-        val currentDevice = serialPort?.device
-        if (currentDevice != null && currentDevice.deviceId == deviceId) {
-          closeInternal()
+        synchronized(lock) {
+          val currentDevice = serialPort?.device
+          if (currentDevice != null && currentDevice.deviceId == deviceId) {
+            closeInternal()
+          }
         }
 
         sendEvent("onCastlesUsbDetached", mapOf("deviceId" to deviceId))
@@ -88,15 +127,14 @@ class CastlesUsbModule : Module() {
       // Enumerate raw USB devices (this is allowed without permission).
       val devices = usbManager.deviceList.values.toList()
 
-      // Best-effort driver lookup; tolerate SecurityException on newer
-      // Android versions or devices that require permission for probing.
+      // Best-effort driver lookup using default + custom prober;
+      // tolerate SecurityException on newer Android / LANDI firmware.
       val driverNamesById = mutableMapOf<Int, String>()
       try {
-        val prober = UsbSerialProber.getDefaultProber()
-        val drivers = prober.findAllDrivers(usbManager)
+        val drivers = findAllDrivers()
         drivers.forEach { driver ->
-          val device = driver.device
-          driverNamesById[device.deviceId] = driver.javaClass.simpleName
+          val d = driver.device
+          driverNamesById[d.deviceId] = driver.javaClass.simpleName
         }
       } catch (_: SecurityException) {
         // Ignore — we'll return devices without driverName in this case.
@@ -149,47 +187,72 @@ class CastlesUsbModule : Module() {
 
     // ── open(deviceId, baudRate) ──
     // Opens a USB serial connection and starts background read thread.
+    // Sets DTR + RTS to signal terminal readiness (required by CDC ACM devices).
     AsyncFunction("open") { deviceId: Int, baudRate: Int ->
-      if (serialPort != null) {
-        throw Exception("A port is already open. Call close() first.")
+      synchronized(lock) {
+        if (serialPort != null) {
+          throw Exception("A port is already open. Call close() first.")
+        }
+
+        val drivers = findAllDrivers()
+        val driver = drivers.find { it.device.deviceId == deviceId }
+          ?: throw Exception("No serial driver found for device $deviceId. " +
+            "Ensure the terminal is connected and powered on.")
+
+        val connection = usbManager.openDevice(driver.device)
+          ?: throw Exception("Could not open USB device. Missing permission?")
+
+        val port = driver.ports[0]
+        port.open(connection)
+
+        try {
+          port.setParameters(baudRate, UsbSerialPort.DATABITS_8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+        } catch (e: Exception) {
+          // Some drivers (especially on LANDI) don't support all parameter combos.
+          // Log but don't fail — the port may still work with defaults.
+          android.util.Log.w("CastlesUsbModule", "setParameters failed (non-fatal): ${e.message}")
+        }
+
+        // Assert DTR (Data Terminal Ready) and RTS (Request To Send).
+        // Critical for CDC ACM devices — without these, the terminal
+        // won't transmit data even though the port appears "open".
+        try { port.dtr = true } catch (e: Exception) {
+          android.util.Log.w("CastlesUsbModule", "Failed to set DTR (non-fatal): ${e.message}")
+        }
+        try { port.rts = true } catch (e: Exception) {
+          android.util.Log.w("CastlesUsbModule", "Failed to set RTS (non-fatal): ${e.message}")
+        }
+
+        serialPort = port
+
+        // Start background read thread with larger buffer for JSON payloads
+        val manager = SerialInputOutputManager(port, object : SerialInputOutputManager.Listener {
+          override fun onNewData(data: ByteArray) {
+            val str = String(data, Charsets.UTF_8)
+            sendEvent("onCastlesUsbData", mapOf("data" to str))
+          }
+
+          override fun onRunError(e: Exception) {
+            sendEvent("onCastlesUsbError", mapOf("message" to (e.message ?: "Unknown read error")))
+            closeInternal()
+          }
+        })
+        manager.readBufferSize = READ_BUFFER_SIZE
+        ioManager = manager
+        ioExecutor.submit(manager)
       }
-
-      val prober = UsbSerialProber.getDefaultProber()
-      val drivers = prober.findAllDrivers(usbManager)
-      val driver = drivers.find { it.device.deviceId == deviceId }
-        ?: throw Exception("No serial driver found for device $deviceId")
-
-      val connection = usbManager.openDevice(driver.device)
-        ?: throw Exception("Could not open USB device. Missing permission?")
-
-      val port = driver.ports[0]
-      port.open(connection)
-      port.setParameters(baudRate, UsbSerialPort.DATABITS_8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-
-      serialPort = port
-
-      // Start background read thread
-      val manager = SerialInputOutputManager(port, object : SerialInputOutputManager.Listener {
-        override fun onNewData(data: ByteArray) {
-          val str = String(data, Charsets.UTF_8)
-          sendEvent("onCastlesUsbData", mapOf("data" to str))
-        }
-
-        override fun onRunError(e: Exception) {
-          sendEvent("onCastlesUsbError", mapOf("message" to (e.message ?: "Unknown read error")))
-          closeInternal()
-        }
-      })
-      ioManager = manager
-      ioExecutor.submit(manager)
+      Unit
     }
 
     // ── write(data) ──
     // Sends a UTF-8 string to the open serial port.
     AsyncFunction("write") { data: String ->
-      val port = serialPort ?: throw Exception("Port is not open")
-      val bytes = data.toByteArray(Charsets.UTF_8)
-      port.write(bytes, 2000) // 2s write timeout
+      synchronized(lock) {
+        val port = serialPort ?: throw Exception("Port is not open")
+        val bytes = data.toByteArray(Charsets.UTF_8)
+        port.write(bytes, 5000) // 5s write timeout (LANDI USB can be slower)
+      }
+      Unit
     }
 
     // ── close() ──
@@ -200,18 +263,26 @@ class CastlesUsbModule : Module() {
     // ── isOpen() ──
     // Synchronous check — returns true if a port is currently open.
     Function("isOpen") {
-      serialPort != null
+      synchronized(lock) { serialPort != null }
     }
   }
 
   // ── Internal helpers ──
 
   private fun closeInternal() {
-    try { ioManager?.stop() } catch (_: Exception) {}
-    ioManager = null
+    synchronized(lock) {
+      try { ioManager?.stop() } catch (_: Exception) {}
+      ioManager = null
 
-    try { serialPort?.close() } catch (_: Exception) {}
-    serialPort = null
+      try {
+        // De-assert DTR/RTS before closing to signal disconnect cleanly
+        serialPort?.dtr = false
+        serialPort?.rts = false
+      } catch (_: Exception) {}
+
+      try { serialPort?.close() } catch (_: Exception) {}
+      serialPort = null
+    }
   }
 
   private fun registerReceivers() {
@@ -221,8 +292,10 @@ class CastlesUsbModule : Module() {
     val detachFilter = IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED)
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      // Permission receiver: app-internal broadcast via PendingIntent → NOT_EXPORTED
       context.registerReceiver(permissionReceiver, permFilter, Context.RECEIVER_NOT_EXPORTED)
-      context.registerReceiver(detachReceiver, detachFilter, Context.RECEIVER_NOT_EXPORTED)
+      // Detach receiver: system broadcast → EXPORTED (required to receive USB_DEVICE_DETACHED on LANDI/Android 13+)
+      context.registerReceiver(detachReceiver, detachFilter, Context.RECEIVER_EXPORTED)
     } else {
       context.registerReceiver(permissionReceiver, permFilter)
       context.registerReceiver(detachReceiver, detachFilter)

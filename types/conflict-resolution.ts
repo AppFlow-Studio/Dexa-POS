@@ -318,6 +318,44 @@ export function generateConflictToast(conflict: ConflictInfo): ConflictToastData
 }
 
 // ============================================================================
+// SESSION CONFLICT TYPES
+// ============================================================================
+
+/**
+ * Categories of session-level conflicts
+ */
+export type SessionConflictType =
+  | 'duplicate_session'        // Two different sessions for same table
+  | 'lifecycle_divergence'     // Local completed, remote has new session
+  | 'concurrent_modification'; // Same session, different states
+
+/**
+ * Complete information about a detected session conflict
+ */
+export interface SessionConflict {
+  id: string;
+  tableId: string;
+  tableName?: string;
+  conflictType: SessionConflictType;
+  localSession: {
+    id: string;
+    status: string;
+    orderId?: string;
+    hasItems: boolean;
+    hasPayments: boolean;
+  };
+  remoteSession: {
+    id: string;
+    status: string;
+    orderId?: string;
+  };
+  severity: 'critical' | 'warning' | 'info';
+  resolution: 'accept_remote' | 'create_separate' | 'prompt_user';
+  detectedAt: string;
+  autoResolved: boolean;
+}
+
+// ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 

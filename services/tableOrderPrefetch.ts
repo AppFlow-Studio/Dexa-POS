@@ -12,6 +12,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 
 let _unsubscribe: (() => void) | null = null;
+const _inFlightOrderIds = new Set<string>();
 
 export function setupTableOrderPrefetch() {
   // Prevent double-init
@@ -36,6 +37,7 @@ export function setupTableOrderPrefetch() {
           const { ordersById, dbOrderIdIndex } = orderState;
 
           const uncachedOrderIds = orderIds.filter((id) => {
+            if (_inFlightOrderIds.has(id)) return false;
             if (ordersById[id]) return false;
             const localId = dbOrderIdIndex[id];
             if (localId && ordersById[localId]) return false;
@@ -46,9 +48,12 @@ export function setupTableOrderPrefetch() {
             if (__DEV__) console.log(
               `[prefetch] Fetching ${uncachedOrderIds.length} uncached orders`,
             );
+            for (const id of uncachedOrderIds) _inFlightOrderIds.add(id);
             await Promise.allSettled(
               uncachedOrderIds.map((id) =>
-                orderState.syncOrderFromDatabase(id),
+                orderState.syncOrderFromDatabase(id).finally(() => {
+                  _inFlightOrderIds.delete(id);
+                }),
               ),
             );
             if (__DEV__) console.log(

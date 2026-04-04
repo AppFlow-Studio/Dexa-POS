@@ -20,11 +20,11 @@ export async function sendToKitchenEffect(ctx: SideEffectContext): Promise<void>
   const supabase = getOrderStoreSupabaseClient();
 
   if (!supabase || !dbOrderId) {
-    // No supabase or no backend order — queue for retry
+    // No supabase or no backend order — queue for retry with offline_batch flag
     if (itemIds.length > 0) {
       await queueFailedOperation(
         "send_to_kitchen",
-        { localOrderId: orderId, localItemIds: itemIds },
+        { localOrderId: orderId, localItemIds: itemIds, offline_batch: true },
         orderId,
       );
     }
@@ -32,10 +32,10 @@ export async function sendToKitchenEffect(ctx: SideEffectContext): Promise<void>
   }
 
   if (dbItemIds.length === 0 && itemIds.length > 0) {
-    // Items exist locally but have no db IDs yet — queue for retry
+    // Items exist locally but have no db IDs yet — queue for retry with offline_batch flag
     await queueFailedOperation(
       "send_to_kitchen",
-      { localOrderId: orderId, localItemIds: itemIds },
+      { localOrderId: orderId, localItemIds: itemIds, offline_batch: true },
       orderId,
     );
     return;

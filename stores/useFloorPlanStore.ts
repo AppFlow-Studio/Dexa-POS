@@ -769,6 +769,22 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           )
 
           if (error) {
+            // If offline, restore sessions from useTableSessionStore (persisted in MMKV)
+            const isOnline = getIsOnline()
+            if (!isOnline) {
+              console.log('[refreshTableSessions] Offline — restoring sessions from session store')
+              const sessionState = getTableSessionStore().getState()
+              const currentTables = get().tables
+              const restored = currentTables.map(table => {
+                const session = sessionState.sessions[table.id]
+                return session ? { ...table, session } : table
+              })
+              set({
+                tables: restored,
+                tablesById: buildTablesById(restored),
+              })
+              return
+            }
             console.warn(
               '[refreshTableSessions] Error, falling back to full load:',
               error.message
@@ -1472,15 +1488,33 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 // After hydration finishes, fetch fresh session data
 useFloorPlanStore.persist.onFinishHydration(() => {
   const { activeFloorPlanId, tables, locationId } = useFloorPlanStore.getState()
-  if (activeFloorPlanId) {
-    // Schedule fresh load without blocking startup
-    setTimeout(() => {
-      const store = useFloorPlanStore.getState()
-      if (tables.length > 0 && locationId) {
-        store.refreshTableSessions() // lightweight, geometry already cached
-      } else {
-        store.loadFloorPlanStatus() // full load
-      }
-    }, 100)
+  if (!activeFloorPlanId) return
+
+  // Immediately bridge persisted sessions → floor plan (sync, no flicker)
+  const sessionState = getTableSessionStore().getState()
+  const sessions = sessionState.sessions
+  if (Object.keys(sessions).length > 0) {
+    const currentTables = useFloorPlanStore.getState().tables
+    const restored = currentTables.map(table => {
+      const session = sessions[table.id]
+      return session ? { ...table, session } : table
+    })
+    useFloorPlanStore.setState({
+      tables: restored,
+      tablesById: buildTablesById(restored),
+    })
   }
+
+  // Defer network refresh (non-blocking)
+  setTimeout(() => {
+    const store = useFloorPlanStore.getState()
+    const isOnline = getIsOnline()
+    if (!isOnline) return  // already restored above
+
+    if (store.tables.length > 0 && locationId) {
+      store.refreshTableSessions() // lightweight, geometry already cached
+    } else {
+      store.loadFloorPlanStatus() // full load
+    }
+  }, 100)
 })

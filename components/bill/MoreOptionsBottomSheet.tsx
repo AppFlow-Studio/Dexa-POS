@@ -29,7 +29,7 @@ import {
   User,
   X,
 } from "lucide-react-native";
-import React, { forwardRef, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -72,6 +72,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const supabase = useSupabaseClient();
   const [isTogglingRush, setIsTogglingRush] = useState(false);
   const [isTogglingPriority, setIsTogglingPriority] = useState(false);
+  const [isRushed, setIsRushed] = useState(false);
+  const [isPrioritized, setIsPrioritized] = useState(false);
+
+  // Reset rush/priority state when active order changes
+  useEffect(() => {
+    setIsRushed(false);
+    setIsPrioritized(false);
+  }, [activeOrderId]);
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
@@ -306,24 +314,27 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const handleRushOrder = async () => {
     if (!hasKitchenItems) return;
     setIsTogglingRush(true);
+    const newRush = !isRushed;
     try {
       const itemDbIds = kitchenItems.map((i) => i.db_order_item_id!);
       const { error } = await OrderService.toggleRushOnItems(
         supabase,
         itemDbIds,
-        true,
+        newRush,
       );
       if (error) throw error;
+      setIsRushed(newRush);
       show({
-        title: "Order Marked as RUSH",
-        message: "Kitchen has been alerted to rush this order.",
+        title: newRush ? "Order Marked as RUSH" : "Rush Removed",
+        message: newRush
+          ? "Kitchen has been alerted to rush this order."
+          : "Rush flag has been removed from this order.",
         type: "success",
       });
-      closeSheet();
     } catch (e: any) {
       show({
         title: "Error",
-        message: e?.message || "Failed to mark rush.",
+        message: e?.message || "Failed to update rush status.",
         type: "error",
       });
     } finally {
@@ -334,24 +345,27 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const handlePrioritizeOrder = async () => {
     if (!hasKitchenItems) return;
     setIsTogglingPriority(true);
+    const newPriority = !isPrioritized;
     try {
       const itemDbIds = kitchenItems.map((i) => i.db_order_item_id!);
       const { error } = await OrderService.togglePriorityOnItems(
         supabase,
         itemDbIds,
-        true,
+        newPriority,
       );
       if (error) throw error;
+      setIsPrioritized(newPriority);
       show({
-        title: "Order Prioritized",
-        message: "This order has been prioritized in the kitchen.",
+        title: newPriority ? "Order Prioritized" : "Priority Removed",
+        message: newPriority
+          ? "This order has been prioritized in the kitchen."
+          : "Priority flag has been removed from this order.",
         type: "success",
       });
-      closeSheet();
     } catch (e: any) {
       show({
         title: "Error",
-        message: e?.message || "Failed to prioritize.",
+        message: e?.message || "Failed to update priority status.",
         type: "error",
       });
     } finally {
@@ -773,8 +787,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 16,
+                  marginHorizontal: 12,
+                  marginBottom: 4,
+                  paddingHorizontal: 12,
                   paddingVertical: 10,
+                  borderRadius: 10,
+                  backgroundColor: isRushed ? colors.danger + "15" : "transparent",
+                  borderWidth: isRushed ? 1 : 0,
+                  borderColor: isRushed ? colors.danger + "30" : "transparent",
                   opacity: isTogglingRush ? 0.5 : 1,
                 }}
               >
@@ -783,7 +803,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                     width: 30,
                     height: 30,
                     borderRadius: 8,
-                    backgroundColor: colors.danger + "15",
+                    backgroundColor: colors.danger + (isRushed ? "25" : "15"),
                     alignItems: "center",
                     justifyContent: "center",
                     marginRight: 12,
@@ -800,18 +820,20 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                     style={{
                       fontSize: 13,
                       fontWeight: "600",
-                      color: colors.heading,
+                      color: isRushed ? colors.danger : colors.heading,
                     }}
                   >
-                    Rush Order
+                    {isRushed ? "RUSH Active" : "Rush Order"}
                   </Text>
                   <Text
-                    style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: 11, color: isRushed ? colors.danger + "99" : colors.muted, marginTop: 1 }}
                   >
-                    Alert kitchen to prioritize speed
+                    {isRushed
+                      ? "Tap to remove rush flag"
+                      : "Alert kitchen to prioritize speed"}
                   </Text>
                 </View>
-                <ChevronRight size={14} color={colors.muted} />
+                <ChevronRight size={14} color={isRushed ? colors.danger + "80" : colors.muted} />
               </TouchableOpacity>
 
               {/* Prioritize Order */}
@@ -821,14 +843,20 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 16,
+                  marginHorizontal: 12,
+                  marginBottom: 4,
+                  paddingHorizontal: 12,
                   paddingVertical: 10,
+                  borderRadius: 10,
+                  backgroundColor: isPrioritized ? colors.teal + "15" : "transparent",
+                  borderWidth: isPrioritized ? 1 : 0,
+                  borderColor: isPrioritized ? colors.teal + "30" : "transparent",
                   opacity: isTogglingPriority ? 0.5 : 1,
                 }}
               >
                 <View style={{
                   width: 30, height: 30, borderRadius: 8,
-                  backgroundColor: colors.teal + "15",
+                  backgroundColor: colors.teal + (isPrioritized ? "25" : "15"),
                   alignItems: "center", justifyContent: "center", marginRight: 12,
                 }}>
                   {isTogglingPriority
@@ -840,18 +868,20 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                     style={{
                       fontSize: 13,
                       fontWeight: "600",
-                      color: colors.heading,
+                      color: isPrioritized ? colors.teal : colors.heading,
                     }}
                   >
-                    Prioritize Order
+                    {isPrioritized ? "Priority Active" : "Prioritize Order"}
                   </Text>
                   <Text
-                    style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: 11, color: isPrioritized ? colors.teal + "99" : colors.muted, marginTop: 1 }}
                   >
-                    Move to front of kitchen queue
+                    {isPrioritized
+                      ? "Tap to remove priority flag"
+                      : "Move to front of kitchen queue"}
                   </Text>
                 </View>
-                <ChevronRight size={14} color={colors.muted} />
+                <ChevronRight size={14} color={isPrioritized ? colors.teal + "80" : colors.muted} />
               </TouchableOpacity>
             </>
           )}

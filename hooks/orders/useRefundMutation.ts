@@ -201,11 +201,38 @@ export function useRefundMutation() {
 
   return useMutation({
     mutationFn: async (input: RefundMutationInput) => {
-      // Block refunds when offline — refunds require live terminal + backend RPC
+      // Check offline status — cash-only refunds can proceed offline
       if (!getIsOnline()) {
-        throw new Error(
-          "Refunds require an internet connection. Please reconnect and try again.",
+        const hasNonCashPayment = input.perPaymentDetails.some(
+          (d) => d.method?.toLowerCase() !== "cash"
         );
+        if (hasNonCashPayment) {
+          throw new Error(
+            "Card refunds require an internet connection. Please reconnect and try again.",
+          );
+        }
+
+        // All-cash refund: apply optimistic patch and queue for backend sync
+        buildAndApplyRefundPatch(input);
+        const { queueFailedOperation } = require("@/services/offlineSyncInit");
+        await queueFailedOperation(
+          "process_cash_refund",
+          {
+            dbOrderId: input.dbOrderId,
+            orderId: input.orderId,
+            totalAmount: input.totalAmount,
+            reason: input.reason,
+            perPaymentDetails: input.perPaymentDetails,
+            selectedItems: input.type === "items" ? input.selectedItems : undefined,
+            refundType: input.type,
+            initiatedBy: useEmployeeStore.getState().loggedInEmployee?.profileId || "unknown",
+          },
+          input.orderId,
+        );
+        return {
+          totalAmount: input.totalAmount,
+          isOffline: true,
+        };
       }
 
       const { loggedInEmployee } = useEmployeeStore.getState();
