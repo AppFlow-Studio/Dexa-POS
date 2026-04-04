@@ -2640,6 +2640,9 @@ export const useOrderStore = create<OrderState>()(
 
           // For dine-in orders, sync based on individual item statuses
           if (order.order_type === "dine_in") {
+            const allItemsServed = order.items.every(
+              (item) => item.item_status === "served",
+            );
             const allItemsReady = order.items.every(
               (item) => item.item_status === "ready",
             );
@@ -2648,7 +2651,10 @@ export const useOrderStore = create<OrderState>()(
             );
 
             let newOrderStatus = order.order_status;
-            if (allItemsReady) {
+            if (allItemsServed) {
+              // order_status enum has no 'served'; table/session tracks served separately
+              newOrderStatus = "ready";
+            } else if (allItemsReady) {
               newOrderStatus = "ready";
             } else if (anyItemsPreparing) {
               newOrderStatus = "preparing";

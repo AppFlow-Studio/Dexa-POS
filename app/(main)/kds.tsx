@@ -253,6 +253,10 @@ function matchesTypeFilter (
   return t === 'dine_in' || t === 'dine in' || t === '' || !ticket.order_type
 }
 
+function getTicketItems (ticket: KDSTicket | null | undefined): KDSTicketItem[] {
+  return Array.isArray(ticket?.items) ? ticket.items : []
+}
+
 // ─── Allergen Detection ────────────────────────────────────────────
 const ALLERGEN_KEYWORDS: Record<string, { label: string; color: string }> = {
   shellfish: { label: 'SHELLFISH', color: colors.danger },
@@ -374,7 +378,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       const capturedStatus = firstTapStatusRef.current
       firstTapStatusRef.current = null
 
-      const itemIds = ticket.items.map(i => i.id)
+      const itemIds = getTicketItems(ticket).map(i => i.id)
       let newStatus: 'preparing' | 'ready' | 'served' | undefined
       if (capturedStatus === 'pending') newStatus = 'preparing'
       else if (capturedStatus === 'cooking') newStatus = 'ready'
@@ -406,20 +410,21 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     )
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type)
-    const hasRush = ticket.items.some(item => item.rush)
-    const hasRefire = ticket.items.some(item => item.recalled)
+    const ticketItems = getTicketItems(ticket)
+    const hasRush = ticketItems.some(item => item.rush)
+    const hasRefire = ticketItems.some(item => item.recalled)
 
     const shouldHideDoneItems = hideDoneItems && !onItemPress
 
     // Memoize expensive item filtering/aggregation/sorting for large ticket volumes.
     const { doneItemCount, visibleItems } = useMemo(() => {
-      const doneCount = ticket.items.filter(
+      const doneCount = ticketItems.filter(
         i => i.kitchen_status === 'ready'
       ).length
 
       let processed: KDSTicketItem[] = shouldHideDoneItems
-        ? ticket.items.filter(i => i.kitchen_status !== 'ready')
-        : [...ticket.items]
+        ? ticketItems.filter(i => i.kitchen_status !== 'ready')
+        : [...ticketItems]
 
       if (displaySettings.aggregateIdenticalItems) {
         const aggregated: KDSTicketItem[] = []
@@ -489,7 +494,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
       return { doneItemCount: doneCount, visibleItems: withSortedMods }
     }, [
-      ticket.items,
+      ticketItems,
       shouldHideDoneItems,
       displaySettings.aggregateIdenticalItems,
       displaySettings.alphabeticalSort,
@@ -1080,7 +1085,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 
           {/* Items list */}
           <View style={{ padding: 12, gap: 6 }}>
-            {ticket.items.map((item: KDSTicketItem) => (
+            {getTicketItems(ticket).map((item: KDSTicketItem) => (
               <View
                 key={item.id}
                 style={{
@@ -1468,7 +1473,7 @@ const KitchenDisplayScreen = () => {
           })
           advanceTicketStatus(
             ticket.ticket_id,
-            ticket.items.map(i => i.id),
+            getTicketItems(ticket).map(i => i.id),
             'preparing'
           )
         }
@@ -1499,7 +1504,7 @@ const KitchenDisplayScreen = () => {
         // Skip recalled tickets — check item-level flag (persisted in MMKV, survives
         // hot-reloads) + module-level Set (fast path) as belt-and-suspenders
         if (
-          ticket.items.some(i => i.recalled) ||
+          getTicketItems(ticket).some(i => i.recalled) ||
           isTicketRecalled(ticket.ticket_id)
         )
           return
@@ -1514,7 +1519,7 @@ const KitchenDisplayScreen = () => {
           })
           advanceTicketStatus(
             ticket.ticket_id,
-            ticket.items.map(i => i.id),
+            getTicketItems(ticket).map(i => i.id),
             'served'
           )
         }
@@ -2520,7 +2525,7 @@ const KitchenDisplayScreen = () => {
             onPress={() => {
               const ticket = focusedTicket
               if (ticket) {
-                const itemIds = ticket.items.map(i => i.id)
+                const itemIds = getTicketItems(ticket).map(i => i.id)
                 let newStatus: 'preparing' | 'ready' | 'served' | undefined
                 if (ticket.status === 'pending') newStatus = 'preparing'
                 else if (ticket.status === 'cooking') newStatus = 'ready'
@@ -2804,7 +2809,7 @@ const KitchenDisplayScreen = () => {
                         fontWeight: '700'
                       }}
                     >
-                      {actionMenu.ticket.items.some(i => i.rush)
+                      {getTicketItems(actionMenu.ticket).some(i => i.rush)
                         ? 'Remove Rush'
                         : 'Mark Rush'}
                     </Text>

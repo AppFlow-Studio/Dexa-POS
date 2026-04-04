@@ -363,16 +363,19 @@ export class FloorPlanService {
       updateData.notes = params.p_notes
     }
 
+    console.log(
+      '[updateTableSessionStatus] Attempting update:',
+      { sessionId: params.p_session_id, status: params.p_status, updateData }
+    )
+
     const { error } = await client
       .from('table_sessions')
       .update(updateData)
       .eq('id', params.p_session_id)
 
     console.log(
-      '[updateTableSessionStatus]',
-      params.p_session_id,
-      params.p_status,
-      error
+      '[updateTableSessionStatus] Result:',
+      { sessionId: params.p_session_id, status: params.p_status, error }
     )
 
     return { error }

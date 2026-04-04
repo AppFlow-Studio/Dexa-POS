@@ -948,6 +948,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           status,
         );
         const currentSessions = get().sessions;
+        const sessionIndex = get().sessionTableIndex;
+        const tableIdsForSession = sessionIndex[sessionId];
+        console.log(
+          "[updateSessionStatus] sessionTableIndex lookup:",
+          { sessionId, tableIds: tableIdsForSession, allSessions: Object.keys(currentSessions), allIndexEntries: Object.keys(sessionIndex) }
+        );
         const actions: Array<{ tableId: string; action: SessionAction }> = [];
 
         for (const [tableId, session] of Object.entries(currentSessions)) {
