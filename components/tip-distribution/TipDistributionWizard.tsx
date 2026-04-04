@@ -63,8 +63,44 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({ isOpen, o
 
   const handleCalculate = useCallback(async () => {
     if (!selectedStore || !loggedInEmployee) return;
+
+    // Save cash tip declarations to database before calculating
+    const declarations = Object.entries(cashTipDeclarations).filter(([_, amount]) => amount > 0);
+
+    if (declarations.length > 0) {
+      const updates = declarations.map(([staffProfileId, amount]) => ({
+        staff_profile_id: staffProfileId,
+        merchant_id: selectedStore.merchant_id,
+        location_id: selectedStore.id,
+        shift_date: date,
+        cash_tips_declared: amount,
+      }));
+
+      console.log("[TipDist] Upserting declarations:", updates);
+
+      // Batch upsert all declarations at once
+      const { data, error } = await supabase
+        .from("employee_daily_tips")
+        .upsert(updates, {
+          onConflict: "staff_profile_id,location_id,shift_date",
+        });
+      if (error) {
+        console.error("[TipDist] Upsert error:", error);
+        return;
+      }
+      console.log("[TipDist] Upsert response:", { data, error });
+
+      // Verify what was actually saved
+      const { data: verifyData } = await supabase
+        .from("employee_daily_tips")
+        .select("staff_profile_id, cash_tips_declared, charged_tips")
+        .eq("location_id", selectedStore.id)
+        .eq("shift_date", date);
+      console.log("[TipDist] Verified saved data:", verifyData);
+    }
+
     await calculateDistribution(supabase, selectedStore.id, selectedStore.merchant_id, date, loggedInEmployee.profileId);
-  }, [supabase, selectedStore, loggedInEmployee, date, calculateDistribution]);
+  }, [supabase, selectedStore, loggedInEmployee, date, calculateDistribution, cashTipDeclarations]);
 
   const handleApprove = useCallback(async () => {
     if (!currentSession || !loggedInEmployee) return;
@@ -464,6 +500,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({ isOpen, o
       >
         <TouchableOpacity
           activeOpacity={1}
+          pointerEvents="box-none"
           style={{
             height: "96%",
             borderTopLeftRadius: 20,
