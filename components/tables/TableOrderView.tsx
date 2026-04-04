@@ -30,7 +30,6 @@ import {
 } from '@/stores/selectors/orderSelectors'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -112,7 +111,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const enableCoursing = useLocationConfigStore(
     s => s.config.dining.enableCoursing
   )
-  const coursingHook = useTableCoursing(activeOrder, enableCoursing)
+  const {
+    currentCourse, sentCourses, itemCourseMap, coursingInitialized,
+    setCurrentCourse, isCourseSent, markCourseSent, unmarkCourseSent,
+    markCourseServed, getForOrder, finalizeCurrentCourse: finalizeCourse,
+    setItemCourse,
+  } = useTableCoursing(activeOrder, enableCoursing)
   useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
 
   const isTableActive = isActiveSession(tableStatus) || tableStatus === 'paid'
@@ -122,8 +126,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   )
 
   // --- 5. Derived Selectors ---
-  const modSidebarOpen = useModifierSidebarStore(s => s.isOpen)
-  const isModifierSidebarOpen = renderStage >= 2 && modSidebarOpen
   const table = useFloorPlanStore(s => s.tablesById[currentTableId])
   const session = useTableSessionStore(s => s.sessions[currentTableId])
 
@@ -203,13 +205,13 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     if (!activeOrder || selectedCourseIdForTracker === null) return []
     return activeOrder.items.filter(
       item =>
-        (item.courseNumber ?? coursingHook.itemCourseMap?.[item.id] ?? 1) ===
+        (item.courseNumber ?? itemCourseMap?.[item.id] ?? 1) ===
         selectedCourseIdForTracker
     )
   }, [
     activeOrder?.items,
     selectedCourseIdForTracker,
-    coursingHook.itemCourseMap
+    itemCourseMap
   ])
 
   // --- Action handlers ---
@@ -270,7 +272,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     markNavigatingAway()
 
     // Recovery: if session isn't at "paid" yet but order IS paid,
-    // dispatch FULL_PAYMENT first (fixes stuck check_presented race)
+    // fire-and-forget FULL_PAYMENT (fixes stuck check_presented race)
     const sess = useTableSessionStore.getState().getSession(currentTableId)
     if (
       sess &&
@@ -279,7 +281,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       sess.status !== 'cleaning' &&
       currentActiveOrder.paid_status === 'Paid'
     ) {
-      await dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
+      dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
     }
 
     const result = await dispatchAction({
@@ -403,7 +405,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
       const sess = useTableSessionStore.getState().getSession(currentTableId)
       if (sess && sess.status !== 'paid' && sess.status !== 'cleaning') {
-        await dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
+        dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
       }
 
       updateActiveOrderDetails({ check_status: 'Closed' })
@@ -493,7 +495,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       batchUpdateItemKitchenStatus(itemIds, 'ready')
       const oid = useOrderStore.getState().activeOrderId
       if (oid && selectedCourseIdForTracker !== null) {
-        coursingHook.markCourseServed(oid, selectedCourseIdForTracker)
+        markCourseServed(oid, selectedCourseIdForTracker)
       }
       show({
         title: 'Items Marked Ready',
@@ -504,7 +506,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     [
       batchUpdateItemKitchenStatus,
       selectedCourseIdForTracker,
-      coursingHook,
+      markCourseServed,
       show
     ]
   )
@@ -521,7 +523,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const { activeOrderId: oid, ordersById } = useOrderStore.getState()
     const order = oid ? ordersById[oid] : null
     if (!order) return
-    const nextCourse = coursingHook.finalizeCurrentCourse(
+    const nextCourse = finalizeCourse(
       order.id,
       order.items.map(i => i.id)
     )
@@ -532,7 +534,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       } complete. New items added to Course ${nextCourse}.`,
       type: 'success'
     })
-  }, [enableCoursing, coursingHook, show])
+  }, [enableCoursing, finalizeCourse, show])
 
   const handleSendCourseToKitchen = useCallback(
     async (course: number, forceResend = false, silent = false) => {
@@ -540,7 +542,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       const activeOrder = oid ? ordersById[oid] : null
       if (!activeOrder) return
 
-      if (!forceResend && coursingHook.isCourseSent(activeOrder.id, course)) {
+      if (!forceResend && isCourseSent(activeOrder.id, course)) {
         if (!silent)
           show({
             title: 'Already Sent',
@@ -550,7 +552,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         return
       }
 
-      const state = coursingHook.getForOrder(activeOrder.id)
+      const state = getForOrder(activeOrder.id)
       const itemsInCourse = activeOrder.items.filter(
         i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
       )
@@ -564,13 +566,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         return false
       }
 
-      if (!activeOrder.opened_at)
-        updateActiveOrderDetails({ opened_at: new Date().toISOString() })
-      if (!activeOrder.sent_to_kitchen_at)
-        updateActiveOrderDetails({
-          sent_to_kitchen_at: new Date().toISOString()
-        })
-
       const originalStatuses = itemsInCourse.map(i => ({
         id: i.id,
         item_status: i.item_status,
@@ -581,7 +576,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         itemsInCourse.map(i => i.id),
         getKitchenSentStatus()
       )
-      coursingHook.markCourseSent(activeOrder.id, course)
+      markCourseSent(activeOrder.id, course)
 
       const dbItemIds = itemsInCourse
         .map(i => i.db_order_item_id)
@@ -599,6 +594,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       })
 
       if (result.success) {
+        // Set timestamps after success (non-blocking metadata)
+        if (!activeOrder.opened_at)
+          updateActiveOrderDetails({ opened_at: new Date().toISOString() })
+        if (!activeOrder.sent_to_kitchen_at)
+          updateActiveOrderDetails({ sent_to_kitchen_at: new Date().toISOString() })
+
         if (autoPrintKitchenTickets && selectedStore) {
           PrinterService.printKitchenTickets(
             activeOrder,
@@ -618,7 +619,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
           })
         return true
       } else {
-        coursingHook.unmarkCourseSent(activeOrder.id, course)
+        unmarkCourseSent(activeOrder.id, course)
         const currentOid = useOrderStore.getState().activeOrderId
         if (currentOid) {
           useOrderStore.setState(state => {
@@ -642,7 +643,10 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       }
     },
     [
-      coursingHook,
+      isCourseSent,
+      getForOrder,
+      markCourseSent,
+      unmarkCourseSent,
       updateActiveOrderDetails,
       batchUpdateItemKitchenStatus,
       dispatchAction,
@@ -660,14 +664,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       : null
     if (!activeOrder) return
 
-    const state = coursingHook.getForOrder(activeOrder.id)
+    const state = getForOrder(activeOrder.id)
     const pendingCourses = Array.from(
       new Set(
         activeOrder.items
           .map(i => i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1)
           .filter(
             courseNumber =>
-              !coursingHook.isCourseSent(activeOrder.id, courseNumber)
+              !isCourseSent(activeOrder.id, courseNumber)
           )
       )
     ).sort((a, b) => a - b)
@@ -681,11 +685,10 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       return
     }
 
-    let sentCount = 0
-    for (const course of pendingCourses) {
-      const success = await handleSendCourseToKitchen(course, false, true)
-      if (success) sentCount += 1
-    }
+    const results = await Promise.all(
+      pendingCourses.map(course => handleSendCourseToKitchen(course, false, true))
+    )
+    const sentCount = results.filter(Boolean).length
 
     if (sentCount === pendingCourses.length) {
       show({
@@ -703,19 +706,19 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       message: `Sent ${sentCount} of ${pendingCourses.length} courses.`,
       type: sentCount > 0 ? 'warning' : 'error'
     })
-  }, [coursingHook, handleSendCourseToKitchen, show])
+  }, [getForOrder, isCourseSent, handleSendCourseToKitchen, show])
 
   const handleDoubleTapCourse = useCallback(
     (course: number) => {
       const orderId = useOrderStore.getState().activeOrderId
       if (!orderId) return
-      if (coursingHook.isCourseSent(orderId, course)) {
+      if (isCourseSent(orderId, course)) {
         setActiveDialog({ type: 'course_resend', course })
       } else {
         handleSendCourseToKitchen(course, false)
       }
     },
-    [coursingHook, handleSendCourseToKitchen]
+    [isCourseSent, handleSendCourseToKitchen]
   )
 
   const handleConfirmResend = useCallback(() => {
@@ -726,9 +729,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   }, [activeDialog, handleSendCourseToKitchen, closeDialog])
 
   const handleRushCourse = useCallback(
-    async (course: number) => {
+    (course: number) => {
       if (!activeOrder) return
-      const state = coursingHook.getForOrder(activeOrder.id)
+      const state = getForOrder(activeOrder.id)
       const itemsInCourse = activeOrder.items.filter(
         i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
       )
@@ -737,32 +740,29 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         .filter((id): id is string => !!id)
       if (dbItemIds.length === 0) return
 
-      const { error } = await OrderService.toggleRushOnItems(
-        supabase,
-        dbItemIds,
-        true
-      )
-      if (error) {
-        show({
-          title: 'Rush Failed',
-          message: 'Could not rush this course.',
-          type: 'error'
+      show({
+        title: 'Course Rushed',
+        message: `Course ${course} marked as rush.`,
+        type: 'success'
+      })
+
+      OrderService.toggleRushOnItems(supabase, dbItemIds, true)
+        .then(({ error }) => {
+          if (error) {
+            show({ title: 'Rush Failed', message: 'Could not rush this course.', type: 'error' })
+          }
         })
-      } else {
-        show({
-          title: 'Course Rushed',
-          message: `Course ${course} marked as rush.`,
-          type: 'success'
+        .catch(() => {
+          show({ title: 'Rush Failed', message: 'Could not rush this course.', type: 'error' })
         })
-      }
     },
-    [activeOrder, coursingHook, supabase, show]
+    [activeOrder, getForOrder, supabase, show]
   )
 
   const handlePrioritizeCourse = useCallback(
-    async (course: number) => {
+    (course: number) => {
       if (!activeOrder) return
-      const state = coursingHook.getForOrder(activeOrder.id)
+      const state = getForOrder(activeOrder.id)
       const itemsInCourse = activeOrder.items.filter(
         i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
       )
@@ -771,26 +771,23 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         .filter((id): id is string => !!id)
       if (dbItemIds.length === 0) return
 
-      const { error } = await OrderService.togglePriorityOnItems(
-        supabase,
-        dbItemIds,
-        true
-      )
-      if (error) {
-        show({
-          title: 'Prioritize Failed',
-          message: 'Could not prioritize this course.',
-          type: 'error'
+      show({
+        title: 'Course Prioritized',
+        message: `Course ${course} marked as priority.`,
+        type: 'success'
+      })
+
+      OrderService.togglePriorityOnItems(supabase, dbItemIds, true)
+        .then(({ error }) => {
+          if (error) {
+            show({ title: 'Prioritize Failed', message: 'Could not prioritize this course.', type: 'error' })
+          }
         })
-      } else {
-        show({
-          title: 'Course Prioritized',
-          message: `Course ${course} marked as priority.`,
-          type: 'success'
+        .catch(() => {
+          show({ title: 'Prioritize Failed', message: 'Could not prioritize this course.', type: 'error' })
         })
-      }
     },
-    [activeOrder, coursingHook, supabase, show]
+    [activeOrder, getForOrder, supabase, show]
   )
 
   const handleResendCourse = useCallback(
@@ -843,19 +840,19 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     (courseId: number | null) => {
       setSelectedCourseIdForTracker(courseId)
       if (activeOrder && courseId !== null) {
-        coursingHook.setCurrentCourse(activeOrder.id, courseId)
+        setCurrentCourse(activeOrder.id, courseId)
       }
     },
-    [activeOrder?.id, coursingHook.setCurrentCourse]
+    [activeOrder?.id, setCurrentCourse]
   )
 
   const handleSetCurrentCourse = useCallback(
     (course: number) => {
       if (activeOrder?.id) {
-        coursingHook.setCurrentCourse(activeOrder.id, course)
+        setCurrentCourse(activeOrder.id, course)
       }
     },
-    [activeOrder?.id, coursingHook.setCurrentCourse]
+    [activeOrder?.id, setCurrentCourse]
   )
 
   const handlePressMore = useCallback(
@@ -947,8 +944,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   // --- Memoized course content ---
   const isCurrentCourseSent = useMemo(() => {
     if (!activeOrder?.id) return false
-    return coursingHook.sentCourses[coursingHook.currentCourse] ?? false
-  }, [activeOrder?.id, coursingHook.sentCourses, coursingHook.currentCourse])
+    return sentCourses[currentCourse] ?? false
+  }, [activeOrder?.id, sentCourses, currentCourse])
 
   // --- Render ---
 
@@ -1095,9 +1092,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
           <View className='flex-1 flex-row'>
             <TableBillSection
               showOrderDetails={false}
-              itemCourseMap={coursingHook.itemCourseMap}
-              sentCourses={coursingHook.sentCourses}
-              currentCourse={coursingHook.currentCourse}
+              itemCourseMap={itemCourseMap}
+              sentCourses={sentCourses}
+              currentCourse={currentCourse}
               onSelectCourse={handleSelectCourse}
               setCurrentCourse={handleSetCurrentCourse}
               onDoubleTapCourse={handleDoubleTapCourse}
@@ -1186,9 +1183,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             <ItemProgressTracker
               selectedCourse={selectedCourseIdForTracker}
               itemsInSelectedCourse={itemsInSelectedCourse}
-              isModifierSidebarOpen={isModifierSidebarOpen}
               onMarkAllReady={handleMarkAllReadyForCourse}
-              isCourseSent={coursingHook.isCourseSent(
+              isCourseSent={isCourseSent(
                 activeOrder?.id || '',
                 selectedCourseIdForTracker
               )}

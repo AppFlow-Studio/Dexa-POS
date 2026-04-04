@@ -8,6 +8,7 @@ import { isLocalOnlyStatus } from "@/lib/tableStateMachine";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { FloorPlanService } from "@/services/floorPlanService";
+import { getQueueSnapshot } from "@/services/offlineSyncService";
 import type { LocationTableStatusRow } from "@/types/db-floor-plan-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -31,6 +32,21 @@ function getNextInterval(): number {
   );
 }
 
+/**
+ * Check if a session is pending sync (local-only, not yet synced to backend).
+ * Returns true if the session has a local ID or there's a queued seat_guests op for this table.
+ */
+function isSessionPendingSync(tableId: string, sessionId?: string): boolean {
+  if (sessionId?.startsWith('local_session_')) return true;
+  const queue = getQueueSnapshot();
+  return queue.some(
+    (op) =>
+      op.type === 'seat_guests' &&
+      (op.status === 'pending' || op.status === 'processing' || op.status === 'blocked') &&
+      op.params.tableIds?.includes(tableId)
+  );
+}
+
 // Track voided sessions to prevent re-syncing the same session that was just cleared
 // Maps tableId -> sessionId that was voided
 const voidedSessions = new Map<string, string>();
@@ -39,6 +55,8 @@ const VOID_BLOCK_DURATION = 5000; // Block restore for 5 seconds
 // Track when tables were last cleared locally to prevent polling from immediately restoring them
 // Maps tableId -> timestamp when session was cleared
 const lastClearedTables = new Map<string, number>();
+// Track the session ID that was cleared so we can distinguish new sessions from same-session restores
+const clearedSessionIds = new Map<string, string>();
 const CLEAR_BLOCK_DURATION = 5000; // Block restore for 5 seconds after local clear
 
 /**
@@ -120,8 +138,17 @@ async function poll() {
 
         const lastClearedTime = lastClearedTables.get(row.table_id);
         if (lastClearedTime && now - lastClearedTime < CLEAR_BLOCK_DURATION) {
-          if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP restore for table ${row.table_name || row.table_id}: recently cleared locally (${now - lastClearedTime}ms ago)`);
-          continue;
+          const clearedId = clearedSessionIds.get(row.table_id);
+          if (clearedId && row.session_id !== clearedId) {
+            // NEW session at this table (different from the one we cleared)
+            // Accept it immediately — old session ops will sync via the queue
+            if (__DEV__) console.log(`[TableSessionRealtimeSync] ACCEPT new session for recently-cleared table ${row.table_name || row.table_id}: cleared=${clearedId}, new=${row.session_id}`);
+            // Fall through to SYNC dispatch below
+          } else {
+            // Same session as cleared — skip restore
+            if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP restore for table ${row.table_name || row.table_id}: recently cleared locally (${now - lastClearedTime}ms ago)`);
+            continue;
+          }
         }
 
         // New guest — sync it
@@ -131,6 +158,11 @@ async function poll() {
       if (!row.session_id || !row.session_status) {
         // No session on backend — clear local session if one exists
         if (currentSession && !isLocalOnlyStatus(currentSession.status)) {
+          // Don't clear if this session is pending sync (local-only, waiting for seat_guests to process)
+          if (isSessionPendingSync(row.table_id, currentSession.id)) {
+            if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear for table ${row.table_name || row.table_id}: session pending sync`);
+            continue;
+          }
           if (__DEV__) console.log(`[TableSessionRealtimeSync] CLEAR stale session for table ${row.table_name || row.table_id}: local status="${currentSession.status}", no backend session`);
           dispatchActions.push({
             tableId: row.table_id,
@@ -159,6 +191,14 @@ async function poll() {
 
       // Only update if session actually changed (for existing sessions)
       if (currentSession) {
+        // If local session is pending sync (local_session_*) and remote has a different UUID,
+        // skip SYNC — let the queue handler (SESSION_CREATED dispatch) handle the transition.
+        // This prevents replacing a local session with an unrelated remote one.
+        if (currentSession.id !== incomingSession.id && isSessionPendingSync(row.table_id, currentSession.id)) {
+          if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP sync for table ${row.table_name || row.table_id}: local session pending sync (${currentSession.id}), remote has different session (${incomingSession.id})`);
+          continue;
+        }
+
         const sessionChanged =
           currentSession.id !== incomingSession.id ||
           currentSession.status !== incomingSession.status ||
@@ -194,6 +234,11 @@ async function poll() {
       if (!responseTableIds.has(tableId)) {
         const currentSession = sessionStore.sessions[tableId];
         if (currentSession && !isLocalOnlyStatus(currentSession.status)) {
+          // Don't clear if this session is pending sync
+          if (isSessionPendingSync(tableId, currentSession.id)) {
+            if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear orphaned session for table ${tableId}: session pending sync`);
+            continue;
+          }
           if (__DEV__) console.log(`[TableSessionRealtimeSync] CLEAR orphaned session for table ${tableId}: not in backend response`);
           dispatchActions.push({
             tableId,
@@ -244,14 +289,20 @@ export function recordVoidedSession(tableId: string, sessionId: string) {
 }
 
 /**
- * Record a table as recently cleared so polling won't immediately restore it
- * Called when a session is cleared locally (void, checkout, etc)
+ * Record a table as recently cleared so polling won't immediately restore it.
+ * Called when a session is cleared locally (void, checkout, etc).
+ * If sessionId is provided, tracks it so we can distinguish new sessions
+ * from same-session restores during the block window.
  */
-export function recordTableCleared(tableId: string) {
+export function recordTableCleared(tableId: string, sessionId?: string) {
   lastClearedTables.set(tableId, Date.now());
+  if (sessionId) {
+    clearedSessionIds.set(tableId, sessionId);
+  }
   // Auto-cleanup after clear block duration
   setTimeout(() => {
     lastClearedTables.delete(tableId);
+    clearedSessionIds.delete(tableId);
   }, CLEAR_BLOCK_DURATION);
 }
 

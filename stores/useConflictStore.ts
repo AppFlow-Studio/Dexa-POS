@@ -7,6 +7,7 @@ import {
   ConflictInfo,
   ConflictResolution,
   PaymentLock,
+  SessionConflict,
   isConflictExpired,
   isPaymentLockExpired,
 } from '@/types/conflict-resolution';
@@ -21,6 +22,9 @@ interface ConflictState {
 
   // Critical conflicts requiring user action (payment-related)
   paymentConflicts: ConflictInfo[];
+
+  // Session-level conflicts (table lifecycle conflicts)
+  sessionConflicts: SessionConflict[];
 
   // Active payment locks (tracked locally for quick checks)
   paymentLocks: Record<string, PaymentLock>;
@@ -65,6 +69,18 @@ interface ConflictState {
    * Get the current payment conflict for an order if any
    */
   getPaymentConflict: (orderId: string) => ConflictInfo | undefined;
+
+  // ============= SESSION CONFLICT ACTIONS =============
+
+  /**
+   * Add a session-level conflict
+   */
+  addSessionConflict: (conflict: SessionConflict) => void;
+
+  /**
+   * Resolve a session conflict for a table
+   */
+  resolveSessionConflict: (tableId: string) => void;
 
   // ============= PAYMENT LOCK ACTIONS =============
 
@@ -120,6 +136,7 @@ export const useConflictStore = create<ConflictState>((set, get) => ({
   // Initial state
   recentConflicts: [],
   paymentConflicts: [],
+  sessionConflicts: [],
   paymentLocks: {},
   recentlyUpdatedOrderIds: new Set(),
 
@@ -189,6 +206,30 @@ export const useConflictStore = create<ConflictState>((set, get) => ({
 
   getPaymentConflict: (orderId: string) => {
     return get().paymentConflicts.find((c) => c.orderId === orderId);
+  },
+
+  // ============= SESSION CONFLICT ACTIONS =============
+
+  addSessionConflict: (conflict: SessionConflict) => {
+    set((state) => {
+      // Don't add duplicate conflicts for same table
+      const existing = state.sessionConflicts.find(
+        (c) => c.tableId === conflict.tableId
+      );
+      if (existing) return state;
+
+      return {
+        sessionConflicts: [conflict, ...state.sessionConflicts.slice(0, 49)],
+      };
+    });
+  },
+
+  resolveSessionConflict: (tableId: string) => {
+    set((state) => ({
+      sessionConflicts: state.sessionConflicts.filter(
+        (c) => c.tableId !== tableId
+      ),
+    }));
   },
 
   // ============= PAYMENT LOCK ACTIONS =============
@@ -332,4 +373,22 @@ export function useIsOrderLocked(orderId: string): boolean {
     const lock = state.paymentLocks[orderId];
     return lock ? !isPaymentLockExpired(lock) : false;
   });
+}
+
+// ============================================================================
+// SESSION CONFLICT SELECTORS
+// ============================================================================
+
+/**
+ * Get all session conflicts
+ */
+export function useSessionConflicts(): SessionConflict[] {
+  return useConflictStore((state) => state.sessionConflicts);
+}
+
+/**
+ * Check if any session conflicts exist
+ */
+export function useHasSessionConflicts(): boolean {
+  return useConflictStore((state) => state.sessionConflicts.length > 0);
 }

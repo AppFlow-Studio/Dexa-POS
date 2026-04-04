@@ -1,4 +1,4 @@
-import { OrderProfile } from "@/lib/types";
+import { CartItem, OrderProfile } from "@/lib/types";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -70,6 +70,14 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
   useEffect(() => {
     if (!enabled || !orderId || !coursingInitialized) return;
 
+    // Build O(1) lookup map — avoids O(n²) .find() inside loops
+    const itemMap = new Map<string, CartItem>();
+    if (activeOrder?.items) {
+      for (const item of activeOrder.items) {
+        itemMap.set(item.id, item);
+      }
+    }
+
     const currentIds = itemIds.split(",").filter(Boolean);
     const prevIds = prevItemIdsRef.current;
     const prevSet = new Set(prevIds);
@@ -78,8 +86,9 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
     if (prevIds.length === 0) {
       const state = getForOrder(orderId);
       currentIds.forEach((id) => {
+        if (id.startsWith('draft_')) return;
         if (state?.itemCourseMap?.[id] !== undefined) return;
-        const item = activeOrder?.items?.find((i) => i.id === id);
+        const item = itemMap.get(id);
         if (!item) return;
         const dbCourse = item.db_order_item_id
           ? state?.dbIdToCourseMap?.[item.db_order_item_id]
@@ -90,12 +99,12 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
         setItemCourse(orderId, id, course, item.db_order_item_id, true);
       });
     } else {
-      const newIds = currentIds.filter((id) => !prevSet.has(id));
+      const newIds = currentIds.filter((id) => !prevSet.has(id) && !id.startsWith('draft_'));
       if (newIds.length > 0) {
         const state = getForOrder(orderId);
         const useCourse = state?.workingCourse ?? 1;
         newIds.forEach((id) => {
-          const item = activeOrder?.items?.find((i) => i.id === id);
+          const item = itemMap.get(id);
           const dbCourse = item?.db_order_item_id
             ? state?.dbIdToCourseMap?.[item.db_order_item_id]
             : undefined;
@@ -126,6 +135,7 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
     // --- Part 2: DB item sync (items that received db_order_item_id) ---
     if (activeOrder?.items) {
       activeOrder.items.forEach((item) => {
+        if (item.isDraft) return;
         if (
           item.db_order_item_id &&
           !syncedDbItemsRef.current.has(item.db_order_item_id)

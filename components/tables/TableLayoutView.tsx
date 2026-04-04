@@ -557,6 +557,15 @@ export default React.memo(TableLayoutView, (prev, next) => {
       p.name !== n.name ||
       p.z_index !== n.z_index
     ) return false
+    // Merge connection lines depend on session.merged_tables
+    const pm = p.session?.merged_tables
+    const nm = n.session?.merged_tables
+    if (pm?.length !== nm?.length) return false
+    if (pm && nm) {
+      for (let j = 0; j < pm.length; j++) {
+        if (pm[j] !== nm[j]) return false
+      }
+    }
   }
   return true
 })

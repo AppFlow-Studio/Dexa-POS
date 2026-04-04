@@ -22,6 +22,7 @@ import { FloorPlanService } from "@/services/floorPlanService";
 import {
     getFailedPayments,
     getIsOnline,
+    getOfflineDurationMs,
     getPendingPaymentsCount,
     hasPendingOrderCreation,
     initOfflineSyncService,
@@ -213,6 +214,22 @@ export async function initializeOfflineSync(): Promise<void> {
 
       // When we come back online, reconcile orders with failed syncs
       if (isOnline) {
+        // Refresh stale data if offline for a significant period
+        const offlineDurationMs = getOfflineDurationMs();
+        const STALENESS_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+        if (offlineDurationMs > STALENESS_THRESHOLD_MS) {
+          console.log(
+            `[OfflineSync] Offline for ${Math.round(offlineDurationMs / 1000)}s — refreshing menu data`,
+          );
+          try {
+            const { useMenuStore } = require("@/stores/useMenuStore");
+            await useMenuStore.getState().fetchMenu?.();
+          } catch (err) {
+            console.warn("[OfflineSync] Menu refresh failed:", err);
+          }
+        }
+
         console.log(
           "[OfflineSync] Network restored, flushing queue before reconciliation...",
         );
@@ -228,6 +245,15 @@ export async function initializeOfflineSync(): Promise<void> {
             `[OfflineSync] Re-queued ${requeuedCount} lost create_order ops, flushing again...`,
           );
           await processQueueNow();
+        }
+
+        // Drain customer create+link queue so temp IDs resolve
+        // before update_order_details ops reference customer_id
+        try {
+          const { processCustomerQueue } = require("@/services/customer");
+          await processCustomerQueue(_supabaseClient);
+        } catch (err) {
+          console.warn("[OfflineSync] Customer queue processing failed:", err);
         }
 
         // Get fresh state after queue flush
@@ -260,6 +286,10 @@ export async function initializeOfflineSync(): Promise<void> {
         // This handles out-of-order syncing where orders and sessions sync separately
         console.log("[OfflineSync] Running relationship reconciliation...");
         await reconcileRelationships();
+
+        // Reconcile table sessions with backend state
+        console.log("[OfflineSync] Running table session reconciliation...");
+        await reconcileTableSessions();
 
         // Immediately refresh floor plan statuses to eliminate 5-15s polling gap
         try {
@@ -632,6 +662,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           );
           return true;
         } else {
+          const err = typeof result.error === 'string' ? result.error : '';
+          if (err.toLowerCase().includes('already voided') || err.toLowerCase().includes('not found')) {
+            console.log("[OfflineSync:void_discount] Already voided, treating as success");
+            return true;
+          }
           console.error(
             "[OfflineSync] void_discount: RPC failed:",
             result.error,
@@ -660,7 +695,15 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           resolvedItemId,
           reason,
         );
-        return !error;
+        if (error) {
+          const msg = error.message?.toLowerCase() ?? '';
+          if (msg.includes('not found') || msg.includes('already voided') || error.code === '23505') {
+            console.log("[OfflineSync:void_item] Already voided/not found, treating as success");
+            return true;
+          }
+          return false;
+        }
+        return true;
       }
 
       case "update_order_status": {
@@ -708,6 +751,13 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           resolvedOrderId,
           p_staff_id,
         );
+        if (!result.success) {
+          const err = typeof result.error === 'string' ? result.error : '';
+          if (err.toLowerCase().includes('already closed') || err.toLowerCase().includes('check is closed')) {
+            console.log("[OfflineSync:close_check] Already closed, treating as success");
+            return true;
+          }
+        }
         return result.success;
       }
 
@@ -738,6 +788,13 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           p_staff_id,
           p_reason,
         );
+        if (!result.success) {
+          const err = typeof result.error === 'string' ? result.error : '';
+          if (err.toLowerCase().includes('not closed') || err.toLowerCase().includes('already open')) {
+            console.log("[OfflineSync:reopen_check] Already open, treating as success");
+            return true;
+          }
+        }
         return result.success;
       }
 
@@ -898,6 +955,33 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             p_terminal_response: finalTerminalResponse,
           }),
         };
+
+        // ============================================================
+        // PRE-PAYMENT VALIDATION (Edge Case 4 — Payment Integrity)
+        // Check if the order was voided/cancelled while we were offline
+        // ============================================================
+        if (finalParams.p_order_id && isValidUUID(finalParams.p_order_id)) {
+          try {
+            const { data: currentOrder } = await _supabaseClient
+              .from("orders")
+              .select("order_status")
+              .eq("id", finalParams.p_order_id)
+              .single();
+
+            if (
+              currentOrder?.order_status === "void" ||
+              currentOrder?.order_status === "cancelled"
+            ) {
+              console.warn(
+                `[OfflineSync:payment] Order ${finalParams.p_order_id} is ${currentOrder.order_status} — discarding payment`,
+              );
+              return true; // Discard
+            }
+          } catch (checkErr) {
+            // Non-fatal — proceed with payment (RPC will validate)
+            console.warn("[OfflineSync:payment] Pre-payment status check failed:", checkErr);
+          }
+        }
 
         console.log(
           "[OfflineSync:payment] Calling process_payment_v8 with:",
@@ -1095,6 +1179,57 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           setTimeout(() => {
             _getOrderStore().getState().syncPaymentStatus(localOrderId);
           }, 300);
+
+          // ============================================================
+          // POST-PAYMENT OVERPAYMENT CHECK (Edge Case 4)
+          // Verify totals to detect if another station also paid
+          // ============================================================
+          if (finalParams.p_order_id && isValidUUID(finalParams.p_order_id)) {
+            try {
+              const { data: updatedOrder } = await _supabaseClient
+                .from("orders")
+                .select("amount_paid, total_amount")
+                .eq("id", finalParams.p_order_id)
+                .single();
+
+              if (
+                updatedOrder &&
+                updatedOrder.amount_paid > updatedOrder.total_amount
+              ) {
+                console.warn(
+                  `[OfflineSync:payment] OVERPAYMENT detected: paid=${updatedOrder.amount_paid}, total=${updatedOrder.total_amount}`,
+                );
+                const { useConflictStore } = require("@/stores/useConflictStore");
+                useConflictStore.getState().addPaymentConflict({
+                  id: `overpayment_${Date.now()}`,
+                  orderId: finalParams.p_order_id,
+                  orderNumber: postSyncOrder?.order_number || postSyncOrder?.display_number,
+                  localVersion: 0,
+                  serverVersion: 0,
+                  conflictType: "payment",
+                  severity: "critical",
+                  localChanges: [],
+                  serverChanges: [{
+                    field: "amount_paid",
+                    previousValue: updatedOrder.total_amount,
+                    newValue: updatedOrder.amount_paid,
+                  }],
+                  itemConflicts: [],
+                  detectedAt: new Date().toISOString(),
+                  autoResolved: false,
+                });
+                const { useToastStore } = require("@/stores/useToastStore");
+                useToastStore.getState().show({
+                  title: "Overpayment Detected",
+                  message: "Check order payments — possible duplicate payment",
+                  type: "error",
+                  duration: 10000,
+                });
+              }
+            } catch (checkErr) {
+              console.warn("[OfflineSync:payment] Overpayment check failed:", checkErr);
+            }
+          }
         }
 
         return true;
@@ -1432,10 +1567,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             }
           }
         } else {
-          console.log(
-            `[OfflineSync:add_item] Completed but no order_item_id returned`,
+          console.warn(
+            `[OfflineSync:add_item] No order_item_id in response — will retry`,
           );
-          console.log(`[OfflineSync:add_item] Response:`, data);
+          console.warn(`[OfflineSync:add_item] Response:`, data);
+          return false; // Retry — don't silently drop the item
         }
 
         return true;
@@ -1481,6 +1617,80 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           op.params.stationId ??
           useStoreSettingsStore.getState().selectedStation?.id ??
           null;
+
+        // ============================================================
+        // DUPLICATE SEATING CHECK (Edge Case 1)
+        // Before calling seatGuests RPC, check if this table already
+        // has an active session (another station seated while we were offline).
+        // ============================================================
+        let existingRemoteSession: any = null;
+        try {
+          const { data: tableStatus } = await FloorPlanService.getLocationTableStatus(
+            _supabaseClient,
+            useStoreSettingsStore.getState().selectedStore?.id || "",
+          );
+          existingRemoteSession = tableStatus?.find(
+            (row: any) => row.table_id === primaryTableId && row.session_id,
+          );
+
+          if (existingRemoteSession?.session_id) {
+            const { useTableSessionStore } = require("@/stores/useTableSessionStore");
+            const sessionStoreState = useTableSessionStore.getState();
+            const localSession = sessionStoreState.sessions[primaryTableId];
+            const localOrder = localSession?.order_id
+              ? _getOrderStore().getState().getOrder(localSession.order_id)
+              : null;
+            const hasItems = (localOrder?.items?.length ?? 0) > 0;
+
+            if (!hasItems) {
+              // No work done — accept the remote session, discard this op
+              console.log(
+                `[OfflineSync:seat_guests] Table already seated by another station (no items) — accepting remote`,
+              );
+              sessionStoreState.batchDispatch([{
+                tableId: primaryTableId,
+                action: {
+                  type: "SYNC",
+                  session: {
+                    id: existingRemoteSession.session_id,
+                    session_number: existingRemoteSession.session_number,
+                    status: existingRemoteSession.session_status,
+                    party_size: existingRemoteSession.party_size ?? 0,
+                    guest_name: existingRemoteSession.guest_name,
+                    order_id: existingRemoteSession.order_id,
+                    server_staff_id: existingRemoteSession.server_staff_id ?? undefined,
+                    seated_at: existingRemoteSession.seated_at ?? new Date().toISOString(),
+                    current_course: existingRemoteSession.current_course ?? 1,
+                    needs_attention: existingRemoteSession.needs_attention ?? false,
+                    is_vip: existingRemoteSession.is_vip ?? false,
+                  },
+                },
+              }]);
+              const { useToastStore } = require("@/stores/useToastStore");
+              useToastStore.getState().show({
+                title: "Table Synced",
+                message: "Table already seated by another station",
+                type: "success",
+              });
+              return true; // Discard op
+            }
+
+            // Has items — let seatGuests proceed to create a separate order
+            console.log(
+              `[OfflineSync:seat_guests] Table already seated but local has items — creating separate order`,
+            );
+            const { useToastStore } = require("@/stores/useToastStore");
+            useToastStore.getState().show({
+              title: "Order Saved",
+              message: `Offline order for ${existingRemoteSession.table_name || "table"} saved as separate order`,
+              type: "warning",
+            });
+            // Fall through to normal RPC
+          }
+        } catch (checkErr) {
+          console.warn("[OfflineSync:seat_guests] Duplicate check failed, proceeding:", checkErr);
+          // Non-fatal — proceed with normal seat_guests
+        }
 
         const { data, error } = await FloorPlanService.seatGuests(
           _supabaseClient,
@@ -1573,6 +1783,37 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             sessionStore.batchDispatch(actions);
           }
 
+          // If there was an existing remote session, restore it as the active
+          // table session (the offline order is now a separate backend order)
+          if (existingRemoteSession?.session_id) {
+            const restoreActions: Array<{ tableId: string; action: any }> = [];
+            for (const tableId of tableIds) {
+              restoreActions.push({
+                tableId,
+                action: {
+                  type: "SYNC",
+                  session: {
+                    id: existingRemoteSession.session_id,
+                    session_number: existingRemoteSession.session_number,
+                    status: existingRemoteSession.session_status,
+                    party_size: existingRemoteSession.party_size ?? 0,
+                    guest_name: existingRemoteSession.guest_name,
+                    order_id: existingRemoteSession.order_id,
+                    server_staff_id: existingRemoteSession.server_staff_id ?? undefined,
+                    seated_at: existingRemoteSession.seated_at ?? new Date().toISOString(),
+                    current_course: existingRemoteSession.current_course ?? 1,
+                    needs_attention: existingRemoteSession.needs_attention ?? false,
+                    is_vip: existingRemoteSession.is_vip ?? false,
+                  },
+                },
+              });
+            }
+            sessionStore.batchDispatch(restoreActions);
+            console.log(
+              "[OfflineSync:seat_guests] Restored existing remote session after creating separate order",
+            );
+          }
+
           console.log(
             "[OfflineSync:seat_guests] Completed successfully:",
             data,
@@ -1604,12 +1845,48 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           });
 
         if (mergeError) {
+          if (mergeError.code === '23505') {
+            console.log("[OfflineSync:merge_table] Already merged (23505), treating as success");
+            return true;
+          }
           console.error("[OfflineSync:merge_table] Error:", mergeError);
           return false;
         }
 
         console.log(
           `[OfflineSync:merge_table] Merged table ${tableId} into session ${resolvedMergeSessionId}`,
+        );
+        return true;
+      }
+
+      case "unmerge_table": {
+        const { sessionId, tableId } = op.params;
+        if (!sessionId || !tableId) {
+          console.error("[OfflineSync:unmerge_table] Missing params, discarding");
+          return true;
+        }
+
+        const resolvedUnmergeSessionId = resolveSessionId(sessionId) ?? sessionId;
+        if (!isValidUUID(resolvedUnmergeSessionId)) {
+          console.log(
+            `[OfflineSync:unmerge_table] Session ${sessionId} not synced yet`,
+          );
+          return false;
+        }
+
+        const { error: unmergeError } =
+          await FloorPlanService.unmergeTableFromSession(_supabaseClient, {
+            p_session_id: resolvedUnmergeSessionId,
+            p_table_id: tableId,
+          });
+
+        if (unmergeError) {
+          console.error("[OfflineSync:unmerge_table] Error:", unmergeError);
+          return false;
+        }
+
+        console.log(
+          `[OfflineSync:unmerge_table] Unmerged table ${tableId} from session ${resolvedUnmergeSessionId}`,
         );
         return true;
       }
@@ -1689,6 +1966,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           );
 
           if (error) {
+            if (error.code === '23505') {
+              console.log("[OfflineSync:link_order_to_session] Already linked (23505), treating as success");
+              return true;
+            }
             console.error(
               "[OfflineSync:link_order_to_session] RPC error:",
               error,
@@ -1875,6 +2156,13 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             useSyncStatusStore.getState().clearAllForOrder(localItemIds);
           }
 
+          // Log offline batch for KDS awareness
+          if (op.params.offline_batch) {
+            console.log(
+              `[OfflineSync:send_to_kitchen] OFFLINE BATCH: ${resolvedItemIds.length} items synced from offline queue`,
+            );
+          }
+
           console.log(`[OfflineSync:send_to_kitchen] SUCCESS!`);
           return true;
         } catch (err) {
@@ -1907,6 +2195,13 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           });
 
           if (error) {
+            // 23505 = duplicate key — course already exists (idempotent success)
+            if (error.code === '23505') {
+              console.log(
+                `[OfflineSync] fire_course: Course ${courseNumber} already exists for order ${resolvedOrderId} (23505), treating as success`,
+              );
+              return true;
+            }
             console.error("[OfflineSync] Failed to fire course:", error);
             return false;
           }
@@ -1972,7 +2267,15 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           resolvedItemId,
           "Removed",
         );
-        return !error;
+        if (error) {
+          const msg = error.message?.toLowerCase() ?? '';
+          if (msg.includes('not found') || msg.includes('already voided') || error.code === '23505') {
+            console.log("[OfflineSync:remove_item] Already removed/not found, treating as success");
+            return true;
+          }
+          return false;
+        }
+        return true;
       }
 
       case "record_cash_drawer_operation": {
@@ -2014,6 +2317,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           });
 
         if (error) {
+          if (error.code === '23505') {
+            console.log("[OfflineSync:record_cash_drawer_operation] Already recorded (23505), treating as success");
+            return true;
+          }
           console.error("[OfflineSync] record_cash_drawer_operation failed:", error);
           return false;
         }
@@ -2086,6 +2393,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           });
         }
 
+        if (preauthResult && !preauthResult.success) {
+          console.error("[OfflineSync:process_preauth] RPC returned success=false:", preauthResult);
+          return false;  // Retry instead of silently discarding
+        }
+
         return true;
       }
 
@@ -2106,6 +2418,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         });
 
         if (captureErr) {
+          const msg = captureErr.message?.toLowerCase() ?? '';
+          if (msg.includes('already captured') || msg.includes('not found')) {
+            console.log("[OfflineSync:capture_preauth] Already captured, treating as success");
+            return true;
+          }
           console.error("[OfflineSync:capture_preauth] Failed:", captureErr.message);
           return false;
         }
@@ -2150,6 +2467,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         });
 
         if (voidErr) {
+          const msg = voidErr.message?.toLowerCase() ?? '';
+          if (msg.includes('already voided') || msg.includes('not found') || voidErr.code === '23505') {
+            console.log("[OfflineSync:void_preauth] Already voided, treating as success");
+            return true;
+          }
           console.error("[OfflineSync:void_preauth] Failed:", voidErr.message);
           return false;
         }
@@ -2300,6 +2622,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const {
           customer_name, customer_id, customer_phone, customer_email,
           guest_count, service_location_id, db_order_id,
+          order_type, delivery_address,
         } = op.params;
 
         // Resolve order ID (may have been local when queued)
@@ -2317,11 +2640,42 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         try {
           // Update customer details on orders table
           if (customer_name !== undefined) {
+            // Resolve customer_id: local IDs (local_customer_*) must not go to DB
+            let resolvedCustomerId: string | null = customer_id ?? null;
+            if (resolvedCustomerId && !isValidUUID(resolvedCustomerId)) {
+              // Try to resolve from customer cache
+              try {
+                const { getCachedCustomers } = require("@/services/customer");
+                const cache = getCachedCustomers();
+                const match = cache.find(
+                  (c: any) =>
+                    c.id === resolvedCustomerId ||
+                    (c.local_temp_id && c.local_temp_id === resolvedCustomerId),
+                );
+                if (match && isValidUUID(match.id)) {
+                  console.log(
+                    `[OfflineSync:update_order_details] Resolved customer ${resolvedCustomerId} → ${match.id}`,
+                  );
+                  resolvedCustomerId = match.id;
+                } else {
+                  console.log(
+                    `[OfflineSync:update_order_details] Customer ${resolvedCustomerId} not synced yet, sending null`,
+                  );
+                  resolvedCustomerId = null;
+                }
+              } catch {
+                console.warn(
+                  `[OfflineSync:update_order_details] Failed to resolve customer ID, sending null`,
+                );
+                resolvedCustomerId = null;
+              }
+            }
+
             const { error } = await _supabaseClient
               .from("orders")
               .update({
                 customer_name,
-                customer_id: customer_id ?? null,
+                customer_id: resolvedCustomerId,
                 customer_phone: customer_phone ?? null,
                 customer_email: customer_email ?? null,
               })
@@ -2329,6 +2683,23 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
             if (error) {
               console.error("[OfflineSync:update_order_details] Customer update failed:", error);
+              return false;
+            }
+          }
+
+          // Update order type and delivery address
+          if (order_type !== undefined || delivery_address !== undefined) {
+            const updateFields: Record<string, any> = {};
+            if (order_type !== undefined) updateFields.order_type = order_type.toLowerCase();
+            if (delivery_address !== undefined) updateFields.delivery_address = delivery_address;
+
+            const { error } = await _supabaseClient
+              .from("orders")
+              .update(updateFields)
+              .eq("id", resolvedDetailsOrderId);
+
+            if (error) {
+              console.error("[OfflineSync:update_order_details] Order type/address update failed:", error);
               return false;
             }
           }
@@ -2461,16 +2832,244 @@ export async function reconcileRelationships(): Promise<void> {
     }
 
     // ================================================================
-    // PASS 2: Find sessions with local order IDs
+    // PASS 2: Resolve local order IDs in sessions to backend order IDs
     // ================================================================
-    // This would require FloorPlanStore integration
-    // For now, we rely on PASS 1 which handles most cases
-    // TODO: Add FloorPlanStore reconciliation when available
+    try {
+      const { useTableSessionStore } = require("@/stores/useTableSessionStore");
+      const sessionStore = useTableSessionStore.getState();
+
+      let resolvedCount = 0;
+      for (const [tableId, session] of Object.entries(sessionStore.sessions) as [string, any][]) {
+        if (session.order_id && isLocalId(session.order_id)) {
+          const resolved = resolveOrderId(session.order_id);
+          if (resolved) {
+            sessionStore.dispatch(tableId, {
+              type: "PATCH",
+              updates: { order_id: resolved },
+            });
+            resolvedCount++;
+            console.log(
+              `[reconcile] ✓ Resolved session order_id for table ${tableId}: ${session.order_id} → ${resolved}`,
+            );
+          }
+        }
+      }
+      if (resolvedCount > 0) {
+        console.log(`[reconcile] Resolved ${resolvedCount} session order IDs`);
+      }
+    } catch (err) {
+      console.warn("[reconcile] PASS 2 (session order IDs) failed:", err);
+    }
 
     console.log("[reconcile] ====== RECONCILIATION COMPLETE ======");
   } catch (error) {
     console.error("[reconcile] Reconciliation failed:", error);
     // Don't throw - reconciliation will retry on next sync
+  }
+}
+
+// ============================================================================
+// TABLE SESSION RECONCILIATION
+// ============================================================================
+
+/**
+ * Reconcile table sessions with backend state after reconnecting.
+ *
+ * Fetches all current sessions from backend and compares with local state.
+ * Resolves duplicate sessions, lifecycle divergence, and orphaned local sessions.
+ */
+async function reconcileTableSessions(): Promise<void> {
+  if (!_supabaseClient) {
+    console.warn("[reconcileTableSessions] No Supabase client, skipping");
+    return;
+  }
+
+  const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+  if (!locationId) {
+    console.warn("[reconcileTableSessions] No location selected, skipping");
+    return;
+  }
+
+  console.log("[reconcileTableSessions] ====== STARTING ======");
+
+  try {
+    const { data: rows, error } = await FloorPlanService.getLocationTableStatus(
+      _supabaseClient,
+      locationId,
+    );
+
+    if (error || !rows) {
+      console.error("[reconcileTableSessions] Failed to fetch backend sessions:", error);
+      return;
+    }
+
+    const { useTableSessionStore } = require("@/stores/useTableSessionStore");
+    const sessionStore = useTableSessionStore.getState();
+    const localSessions = sessionStore.sessions as Record<string, any>;
+
+    // Build remote session map: tableId -> row
+    const remoteSessions = new Map<string, any>();
+    for (const row of rows) {
+      if (row.session_id) {
+        remoteSessions.set(row.table_id, row);
+      }
+    }
+
+    const {
+      detectSessionConflict,
+      getSessionConflictToastMessage,
+    } = require("@/services/sessionConflictDetectionService");
+    const { useConflictStore } = require("@/stores/useConflictStore");
+    const { useToastStore } = require("@/stores/useToastStore");
+    const { getQueueSnapshot } = require("@/services/offlineSyncService");
+
+    const dispatchActions: Array<{ tableId: string; action: any }> = [];
+
+    // Check local sessions against remote
+    for (const [tableId, localSession] of Object.entries(localSessions) as [string, any][]) {
+      // Skip local sessions still pending sync — let the queue handler deal with them
+      if (localSession.id?.startsWith("local_session_")) continue;
+
+      const remote = remoteSessions.get(tableId);
+
+      if (!remote) {
+        // Local session with no remote — check if there are queued ops for this table
+        const queue = getQueueSnapshot();
+        const hasQueuedOps = queue.some(
+          (op: any) =>
+            (op.type === "seat_guests" || op.type === "update_session_status") &&
+            (op.status === "pending" || op.status === "processing" || op.status === "blocked") &&
+            (op.params.tableIds?.includes(tableId) || op.params.tableId === tableId)
+        );
+
+        if (!hasQueuedOps) {
+          console.log(`[reconcileTableSessions] CLEAR orphaned local session for table ${tableId}`);
+          dispatchActions.push({ tableId, action: { type: "CLEAR" } });
+        }
+        continue;
+      }
+
+      if (localSession.id !== remote.session_id) {
+        // Different session IDs — detect conflict
+        const orderStore = _getOrderStore().getState();
+        const localOrder = localSession.order_id
+          ? orderStore.getOrder(localSession.order_id)
+          : null;
+
+        const conflict = detectSessionConflict(
+          tableId,
+          {
+            id: localSession.id,
+            status: localSession.status,
+            orderId: localSession.order_id,
+            hasItems: (localOrder?.items?.length ?? 0) > 0,
+            hasPayments: (localOrder?.payments?.length ?? 0) > 0,
+          },
+          {
+            id: remote.session_id,
+            status: remote.session_status,
+            orderId: remote.order_id,
+          },
+          remote.table_name,
+        );
+
+        if (conflict) {
+          useConflictStore.getState().addSessionConflict(conflict);
+
+          // Show toast for auto-resolved conflicts
+          if (conflict.autoResolved) {
+            const toast = getSessionConflictToastMessage(conflict);
+            useToastStore.getState().show({
+              title: toast.title,
+              message: toast.message,
+              type: toast.type,
+            });
+          }
+
+          // Apply resolution: accept_remote syncs the remote session
+          if (conflict.resolution === "accept_remote") {
+            dispatchActions.push({
+              tableId,
+              action: {
+                type: "SYNC",
+                session: {
+                  id: remote.session_id,
+                  session_number: remote.session_number,
+                  status: remote.session_status,
+                  party_size: remote.party_size ?? 0,
+                  guest_name: remote.guest_name,
+                  order_id: remote.order_id,
+                  server_staff_id: remote.server_staff_id ?? undefined,
+                  seated_at: remote.seated_at ?? new Date().toISOString(),
+                  current_course: remote.current_course ?? 1,
+                  needs_attention: remote.needs_attention ?? false,
+                  is_vip: remote.is_vip ?? false,
+                },
+              },
+            });
+          }
+          // create_separate: local order already synced via queue; accept remote session for the table
+          if (conflict.resolution === "create_separate") {
+            dispatchActions.push({
+              tableId,
+              action: {
+                type: "SYNC",
+                session: {
+                  id: remote.session_id,
+                  session_number: remote.session_number,
+                  status: remote.session_status,
+                  party_size: remote.party_size ?? 0,
+                  guest_name: remote.guest_name,
+                  order_id: remote.order_id,
+                  server_staff_id: remote.server_staff_id ?? undefined,
+                  seated_at: remote.seated_at ?? new Date().toISOString(),
+                  current_course: remote.current_course ?? 1,
+                  needs_attention: remote.needs_attention ?? false,
+                  is_vip: remote.is_vip ?? false,
+                },
+              },
+            });
+          }
+        }
+        continue;
+      }
+
+      // Same session — no action needed, status transitions sync via queue
+    }
+
+    // Sync remote sessions that don't exist locally
+    for (const [tableId, remote] of remoteSessions) {
+      if (!localSessions[tableId]) {
+        dispatchActions.push({
+          tableId,
+          action: {
+            type: "SYNC",
+            session: {
+              id: remote.session_id,
+              session_number: remote.session_number,
+              status: remote.session_status,
+              party_size: remote.party_size ?? 0,
+              guest_name: remote.guest_name,
+              order_id: remote.order_id,
+              server_staff_id: remote.server_staff_id ?? undefined,
+              seated_at: remote.seated_at ?? new Date().toISOString(),
+              current_course: remote.current_course ?? 1,
+              needs_attention: remote.needs_attention ?? false,
+              is_vip: remote.is_vip ?? false,
+            },
+          },
+        });
+      }
+    }
+
+    if (dispatchActions.length > 0) {
+      sessionStore.batchDispatch(dispatchActions);
+      console.log(`[reconcileTableSessions] Applied ${dispatchActions.length} actions`);
+    }
+
+    console.log("[reconcileTableSessions] ====== COMPLETE ======");
+  } catch (error) {
+    console.error("[reconcileTableSessions] Failed:", error);
   }
 }
 

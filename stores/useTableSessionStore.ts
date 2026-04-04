@@ -27,6 +27,7 @@ import {
 } from "@/lib/tableStateMachine";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
+import { useToastStore } from "@/stores/useToastStore";
 import { markOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
 import { handleSeatingEffect } from "@/services/sessionEffects/handleSeatingEffect";
 import {
@@ -293,6 +294,30 @@ interface TableSessionStoreState {
 }
 
 // ---------------------------------------------------------------------------
+// Microtask-coalescing scheduler for _syncToFloorPlanStore
+// Multiple rapid dispatches (realtime sync, side effects) coalesce into one
+// floor plan update per microtask, reducing cascading re-renders.
+// ---------------------------------------------------------------------------
+
+let _pendingSyncIds: Set<string> | null = null;
+
+function _scheduleSyncToFloorPlan(tableIds: string | string[]) {
+  const ids = Array.isArray(tableIds) ? tableIds : [tableIds];
+  if (!_pendingSyncIds) {
+    _pendingSyncIds = new Set(ids);
+    queueMicrotask(() => {
+      const pending = _pendingSyncIds;
+      _pendingSyncIds = null;
+      if (pending && pending.size > 0) {
+        useTableSessionStore.getState()._syncToFloorPlanStore([...pending]);
+      }
+    });
+  } else {
+    for (const id of ids) _pendingSyncIds.add(id);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
@@ -321,7 +346,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           _updateIndex(state.sessionTableIndex, tableId, prev, result.session);
         });
 
-        get()._syncToFloorPlanStore(tableId);
+        _scheduleSyncToFloorPlan(tableId);
         fireSideEffects(tableId, prev, result.session, action);
         return true;
       },
@@ -369,9 +394,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           }
         });
 
-        // Selective sync — only patch changed tables instead of full rebuild
+        // Selective sync — coalesced via microtask to avoid cascading re-renders
         const changedTableIds = results.map(r => r.tableId);
-        get()._syncToFloorPlanStore(changedTableIds);
+        _scheduleSyncToFloorPlan(changedTableIds);
         for (const { tableId, action, prev, result } of results) {
           fireSideEffects(tableId, prev, result.session, action);
         }
@@ -707,6 +732,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           order_id: data.session.order_id,
           session_number: data.session.session_number,
           merged_tables: tableIds.length > 1 ? tableIds : undefined,
+          server_staff_id: data.session.server_staff_id ?? undefined,
         };
 
         // SYNC for tables in this session
@@ -775,6 +801,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           current_course: 1,
           needs_attention: false,
           is_vip: false,
+          server_staff_id: serverStaffId ?? undefined,
         };
 
         get().batchDispatch(
@@ -1000,6 +1027,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       // ------------------------------------------------------------------
 
       transferSession: async (sessionId: string, newTableIds: string[]) => {
+        if (!getIsOnline()) {
+          useToastStore.getState().show({ title: "Offline", message: "Table transfer requires connection", type: "warning" });
+          return;
+        }
         const supabase = getClient();
         const { error } = await FloorPlanService.transferTableSession(supabase, {
           p_session_id: sessionId,
@@ -1017,15 +1048,76 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       // ------------------------------------------------------------------
 
       mergeTable: async (sessionId: string, tableId: string) => {
+        const isOnline = getIsOnline();
         const supabase = getClient();
-        const { error } = await FloorPlanService.mergeTableToSession(supabase, {
-          p_session_id: sessionId,
-          p_table_id: tableId,
-        });
 
-        if (error) throw error;
+        // Optimistic: copy primary session to merged table
+        const currentSessions = get().sessions;
+        const primaryTableId = Object.keys(currentSessions).find(
+          tid => currentSessions[tid]?.id === sessionId,
+        );
+        const primarySession = primaryTableId
+          ? currentSessions[primaryTableId]
+          : undefined;
 
-        await useFloorPlanStore.getState().loadFloorPlanStatus();
+        if (primarySession) {
+          const existingMerged = primarySession.merged_tables ?? [];
+          const merged = existingMerged.length > 0
+            ? [...existingMerged, tableId]        // Primary already in list from prior merge
+            : [primaryTableId!, tableId];          // First merge: include both tables
+          const updatedSession = { ...primarySession, merged_tables: merged };
+          const batch: Array<{ tableId: string; action: SessionAction }> = [];
+          for (const tid of merged) {
+            batch.push({
+              tableId: tid,
+              action: { type: 'SET' as const, session: updatedSession },
+            });
+          }
+          // Also update the primary table
+          if (primaryTableId && !merged.includes(primaryTableId)) {
+            batch.push({
+              tableId: primaryTableId,
+              action: { type: 'SET' as const, session: updatedSession },
+            });
+          }
+          get().batchDispatch(batch);
+        }
+
+        if (isOnline && supabase) {
+          try {
+            const { error } = await FloorPlanService.mergeTableToSession(
+              supabase,
+              {
+                p_session_id: sessionId,
+                p_table_id: tableId,
+              },
+            );
+            if (error) {
+              console.error("[mergeTable] Backend error, queuing:", error);
+              await queueOperation({
+                type: "merge_table",
+                params: { sessionId, tableId },
+                localOrderId: sessionId,
+              });
+            } else {
+              await useFloorPlanStore.getState().loadFloorPlanStatus();
+            }
+          } catch (err) {
+            console.error("[mergeTable] Exception, queuing:", err);
+            await queueOperation({
+              type: "merge_table",
+              params: { sessionId, tableId },
+              localOrderId: sessionId,
+            });
+          }
+        } else {
+          console.log("[mergeTable] Offline, queuing");
+          await queueOperation({
+            type: "merge_table",
+            params: { sessionId, tableId },
+            localOrderId: sessionId,
+          });
+        }
       },
 
       // ------------------------------------------------------------------
@@ -1033,19 +1125,71 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       // ------------------------------------------------------------------
 
       unmergeTable: async (sessionId: string, tableId: string) => {
+        const isOnline = getIsOnline();
         const supabase = getClient();
-        const { error } = await FloorPlanService.unmergeTableFromSession(
-          supabase,
-          {
-            p_session_id: sessionId,
-            p_table_id: tableId,
-          },
+
+        // Optimistic: clear session from unmerged table + update merged_tables on remaining
+        get().dispatch(tableId, { type: 'CLEAR' });
+
+        // Update remaining tables' merged_tables list
+        const currentSessions = get().sessions;
+        const remaining = Object.keys(currentSessions).filter(
+          tid => currentSessions[tid]?.id === sessionId && tid !== tableId,
         );
+        if (remaining.length > 0) {
+          const currentSession = currentSessions[remaining[0]];
+          if (currentSession) {
+            const updatedMerged = (currentSession.merged_tables ?? []).filter(
+              t => t !== tableId,
+            );
+            const updatedSession = {
+              ...currentSession,
+              merged_tables:
+                updatedMerged.length > 1 ? updatedMerged : undefined,
+            };
+            const batch = remaining.map(tid => ({
+              tableId: tid,
+              action: { type: 'SET' as const, session: updatedSession },
+            }));
+            get().batchDispatch(batch);
+          }
+        }
 
-        console.log("[unmergeTable] error", error);
-        if (error) throw error;
-
-        await useFloorPlanStore.getState().loadFloorPlanStatus();
+        if (isOnline && supabase) {
+          try {
+            const { error } = await FloorPlanService.unmergeTableFromSession(
+              supabase,
+              {
+                p_session_id: sessionId,
+                p_table_id: tableId,
+              },
+            );
+            if (error) {
+              console.error("[unmergeTable] Backend error, queuing:", error);
+              await queueOperation({
+                type: "unmerge_table",
+                params: { sessionId, tableId },
+                localOrderId: sessionId,
+              });
+            } else {
+              await useFloorPlanStore.getState().loadFloorPlanStatus();
+            }
+          } catch (err) {
+            console.error("[unmergeTable] Exception, queuing:", err);
+            await queueOperation({
+              type: "unmerge_table",
+              params: { sessionId, tableId },
+              localOrderId: sessionId,
+            });
+          }
+        } else {
+          console.log("[unmergeTable] Offline, queuing");
+          await queueOperation({
+            type: "unmerge_table",
+            params: { sessionId, tableId },
+            localOrderId: sessionId,
+          });
+        }
       },
 
       // ------------------------------------------------------------------
@@ -1053,6 +1197,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       // ------------------------------------------------------------------
 
       advanceCourse: async (sessionId: string) => {
+        if (!getIsOnline()) {
+          useToastStore.getState().show({ title: "Offline", message: "Advance course requires connection", type: "warning" });
+          return;
+        }
         const supabase = getClient();
         const p_staff_id =
           useEmployeeStore.getState().loggedInEmployee?.profileId;
@@ -1088,6 +1236,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       // ------------------------------------------------------------------
 
       linkOrderToSession: async (sessionId: string, orderId: string) => {
+        if (!getIsOnline()) {
+          useToastStore.getState().show({ title: "Offline", message: "Link order requires connection", type: "warning" });
+          return;
+        }
         const supabase = getClient();
         const p_staff_id =
           useEmployeeStore.getState().loggedInEmployee?.profileId;
@@ -1109,13 +1261,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         const session = get().sessions[tableId];
         const sessionId = session?.id;
 
-        // Capture for rollback
-        const originalSession = session;
-
         // 1. Optimistic local transition to cleaning
         const transitioned = get().dispatch(tableId, { type: 'CLEAR_TABLE' });
         if (!transitioned) {
-          // If local transition failed, the session may not be in a clearable state
           console.warn("[clearTableSession] Could not transition to cleaning state");
           return;
         }
@@ -1125,7 +1273,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           try {
             const p_staff_id =
               useEmployeeStore.getState().loggedInEmployee?.profileId;
-            // Update to "cleaning" status, not directly to "available"
             const { error } = await FloorPlanService.updateTableSessionStatus(
               supabase,
               {
@@ -1136,28 +1283,29 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             );
 
             if (error) {
-              console.error("[clearTableSession] Backend error:", error);
-              // ROLLBACK
-              if (originalSession) {
-                get().dispatch(tableId, { type: 'SET', session: originalSession });
-              }
-              throw new Error(
-                `Failed to clear session: ${error.message || error}`,
-              );
+              console.error("[clearTableSession] Backend error, queuing:", error);
+              await queueOperation({
+                type: "update_session_status",
+                params: { sessionId, status: "cleaning" },
+                localOrderId: sessionId,
+              });
             }
-
-            console.log("[clearTableSession] Table marked for cleaning:", {
-              tableId,
-              sessionId,
-            });
           } catch (err) {
-            console.error("[clearTableSession] Exception:", err);
-            // ROLLBACK (only if not already rolled back above)
-            if (originalSession && !get().sessions[tableId]) {
-              get().dispatch(tableId, { type: 'SET', session: originalSession });
-            }
-            throw err;
+            console.error("[clearTableSession] Exception, queuing:", err);
+            await queueOperation({
+              type: "update_session_status",
+              params: { sessionId, status: "cleaning" },
+              localOrderId: sessionId,
+            });
           }
+        } else if (sessionId) {
+          // 3. Offline — queue for later
+          console.log("[clearTableSession] Offline, queuing");
+          await queueOperation({
+            type: "update_session_status",
+            params: { sessionId, status: "cleaning" },
+            localOrderId: sessionId,
+          });
         }
       },
 
@@ -1171,13 +1319,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         const session = get().sessions[tableId];
         const sessionId = session?.id;
 
-        // Capture for rollback
-        const originalSession = session;
-
         // 1. Optimistic local transition to available
         const transitioned = get().dispatch(tableId, { type: 'FINISH_CLEANING' });
         if (!transitioned) {
-          // If local transition failed, the session may not be in cleaning state
           console.warn("[finishCleaning] Could not transition from cleaning to available");
           return;
         }
@@ -1187,7 +1331,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           try {
             const p_staff_id =
               useEmployeeStore.getState().loggedInEmployee?.profileId;
-            // Update to "available" status
             const { error } = await FloorPlanService.updateTableSessionStatus(
               supabase,
               {
@@ -1198,28 +1341,29 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             );
 
             if (error) {
-              console.error("[finishCleaning] Backend error:", error);
-              // ROLLBACK
-              if (originalSession) {
-                get().dispatch(tableId, { type: 'SET', session: originalSession });
-              }
-              throw new Error(
-                `Failed to finish cleaning: ${error.message || error}`,
-              );
+              console.error("[finishCleaning] Backend error, queuing:", error);
+              await queueOperation({
+                type: "update_session_status",
+                params: { sessionId, status: "available" },
+                localOrderId: sessionId,
+              });
             }
-
-            console.log("[finishCleaning] Table marked as available:", {
-              tableId,
-              sessionId,
-            });
           } catch (err) {
-            console.error("[finishCleaning] Exception:", err);
-            // ROLLBACK (only if not already rolled back above)
-            if (originalSession && !get().sessions[tableId]) {
-              get().dispatch(tableId, { type: 'SET', session: originalSession });
-            }
-            throw err;
+            console.error("[finishCleaning] Exception, queuing:", err);
+            await queueOperation({
+              type: "update_session_status",
+              params: { sessionId, status: "available" },
+              localOrderId: sessionId,
+            });
           }
+        } else if (sessionId) {
+          // 3. Offline — queue for later
+          console.log("[finishCleaning] Offline, queuing");
+          await queueOperation({
+            type: "update_session_status",
+            params: { sessionId, status: "available" },
+            localOrderId: sessionId,
+          });
         }
       },
 

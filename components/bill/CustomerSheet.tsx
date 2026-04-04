@@ -175,7 +175,7 @@ const CustomerSheet: React.FC = () => {
         orderId: activeOrderId,
         dbOrderId: sanitizedDbOrderId,
         customerId: customer.id,
-        merchantId: selectedStore.id,
+        merchantId: selectedStore.merchant_id,
       });
 
       show({
@@ -247,7 +247,7 @@ const CustomerSheet: React.FC = () => {
             address: addressString,
           })
         : createCustomerOffline({
-            merchantId: selectedStore.id,
+            merchantId: selectedStore.merchant_id,
             name: newName.trim(),
             phone: newPhone.trim(),
             address: addressString,
