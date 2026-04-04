@@ -19,6 +19,7 @@ import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import PinDisplay from './auth/PinDisplay'
 import PinNumpad from './auth/PinNumpad'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
 
 interface MenuCardProps {
   icon: React.ReactNode
@@ -108,23 +109,85 @@ const MenuCard: React.FC<MenuCardProps> = ({
 
 const MainMenu: React.FC = () => {
   const router = useRouter()
+  const employees = useEmployeeStore((s) => s.employees)
   const [pinDialogOpen, setPinDialogOpen] = useState(false)
   const [currentPin, setCurrentPin] = useState('')
   const [targetRoute, setTargetRoute] = useState<string | null>(null)
+  const [pinError, setPinError] = useState('')
 
   const handleLockedAccess = (route: string) => {
     setTargetRoute(route)
     setPinDialogOpen(true)
     setCurrentPin('')
+    setPinError('')
+
+    // Debug: Log all manager/admin/owner PINs available
+    const allowedRoles = [
+      'merchant.admin',
+      'merchant.manager',
+      'merchant.owner',
+      'merchant.shift_manager',
+      'merchant.inventory_manager',
+    ]
+    const authorizedEmployees = employees.filter((emp) =>
+      allowedRoles.includes(emp.role)
+    )
+    console.log('[MainMenu] Authorized employees with PINs:', authorizedEmployees.map(e => ({
+      name: e.fullName,
+      role: e.role,
+      pin: e.pin,
+      pinLength: e.pin?.length
+    })))
   }
 
   const handlePinSubmit = () => {
-    if (currentPin.length === 4) {
-      setPinDialogOpen(false)
-      if (targetRoute) router.push(targetRoute as any)
+    if (currentPin.length !== 4) return
+
+    const allowedRoles = [
+      'merchant.admin',
+      'merchant.manager',
+      'merchant.owner',
+      'merchant.shift_manager',
+      'merchant.inventory_manager',
+    ]
+
+    // Debug logging
+    console.log('[PIN Submit] Checking PIN:', {
+      entered: currentPin,
+      enteredLength: currentPin.length,
+      totalEmployees: employees.length,
+      authorizedEmployees: employees.filter(e => allowedRoles.includes(e.role)).length
+    })
+
+    // Find any employee with matching PIN and admin/manager/owner role
+    const authorizedEmployee = employees.find((emp) => {
+      const trimmedPin = emp.pin?.trim() ?? ''
+      const isMatch = trimmedPin === currentPin && allowedRoles.includes(emp.role)
+
+      if (allowedRoles.includes(emp.role)) {
+        console.log(`[PIN Check] ${emp.fullName} (${emp.role}): stored="${trimmedPin}" vs entered="${currentPin}" - match=${isMatch}`)
+      }
+
+      return isMatch
+    })
+
+    console.log('[PIN Result]', {
+      found: !!authorizedEmployee,
+      employeeName: authorizedEmployee?.fullName
+    })
+
+    if (!authorizedEmployee) {
+      setPinError('Invalid PIN or insufficient permissions')
       setCurrentPin('')
-      setTargetRoute(null)
+      return
     }
+
+    // All validations passed
+    setPinDialogOpen(false)
+    if (targetRoute) router.push(targetRoute as any)
+    setCurrentPin('')
+    setTargetRoute(null)
+    setPinError('')
   }
 
   const menuItems = [
@@ -292,9 +355,24 @@ const MainMenu: React.FC = () => {
 
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
 
-            <View style={{ marginTop: 10 }}>
+            <View style={{ minHeight: 18, marginTop: 8, marginBottom: 2, justifyContent: 'center' }}>
+              {pinError && (
+                <Text style={{
+                  fontSize: 12,
+                  color: colors.danger,
+                  textAlign: 'center',
+                }}>
+                  {pinError}
+                </Text>
+              )}
+            </View>
+
+            <View style={{ marginTop: 8 }}>
               <PinNumpad
                 onKeyPress={(input) => {
+                  // Clear error when user starts typing
+                  if (pinError) setPinError('')
+
                   if (typeof input === 'number') {
                     if (currentPin.length < 4) {
                       const newPin = currentPin + input.toString()
