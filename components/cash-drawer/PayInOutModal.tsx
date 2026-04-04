@@ -17,14 +17,7 @@ import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { formatCurrency } from '@/utils/currency'
 import React, { useCallback, useState } from 'react'
-import {
-  Modal,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  useWindowDimensions
-} from 'react-native'
+import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -90,6 +83,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
   const [pin, setPin] = useState('')
   const [approvedBy, setApprovedBy] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [step, setStep] = useState<1 | 2>(1)
 
   const shakeX = useSharedValue(0)
   const shakeStyle = useAnimatedStyle(() => ({
@@ -98,14 +92,16 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
 
   const parsedAmount = parseFloat(amount)
   const isValidAmount = !isNaN(parsedAmount) && parsedAmount > 0
+  const displayAmount = amount.length > 0 ? amount : '0.00'
   const reason = selectedReason === 'Other' ? customReason : selectedReason
+  const hasReason = Boolean(reason && reason.trim().length > 0)
   const balance = getRunningBalance()
   const showBalanceWarning =
     (mode === 'pay_out' || mode === 'cash_drop') &&
     isValidAmount &&
     parsedAmount > balance
 
-  const canSubmit = isValidAmount && approvedBy && reason
+  const canSubmit = isValidAmount && approvedBy && hasReason
 
   const handlePinSubmit = useCallback(() => {
     const employee = useEmployeeStore.getState().findEmployeeByPin(pin)
@@ -187,6 +183,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
     setCustomReason('')
     setPin('')
     setApprovedBy(null)
+    setStep(1)
   }
 
   const handleClose = () => {
@@ -194,13 +191,38 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
     onClose()
   }
 
+  const appendAmountInput = (value: string) => {
+    setAmount(prev => {
+      if (value === '.') {
+        if (prev.includes('.')) return prev
+        return prev.length === 0 ? '0.' : prev + '.'
+      }
+
+      if (prev === '0' && value !== '.') return value
+
+      if (prev.includes('.')) {
+        const decimals = prev.split('.')[1] ?? ''
+        if (decimals.length >= 2) return prev
+      }
+
+      return prev + value
+    })
+  }
+
+  const removeAmountInput = () => {
+    setAmount(prev => prev.slice(0, -1))
+  }
+
+  const clearAmountInput = () => {
+    setAmount('')
+  }
+
   const chips = REASON_CHIPS[mode] || []
   const accentColor = MODE_ACCENTS[mode]
   const modeSubtitle = MODE_SUBTITLES[mode]
   const actionLabel =
     mode === 'cash_drop' ? 'Record Drop' : `Record ${MODE_TITLES[mode]}`
-  const { width: screenWidth } = useWindowDimensions()
-  const isTwoColumn = screenWidth >= 860
+  const canContinueToPin = isValidAmount && hasReason
 
   return (
     <Modal
@@ -225,7 +247,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
           activeOpacity={1}
           style={{
             width: '100%',
-            maxWidth: isTwoColumn ? 860 : 430,
+            maxWidth: 460,
             alignSelf: 'center'
           }}
         >
@@ -259,23 +281,19 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
               <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
                 {modeSubtitle}
               </Text>
+              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                Step {step} of 2
+              </Text>
             </View>
 
             <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
-              <View
-                style={{
-                  flexDirection: isTwoColumn ? 'row' : 'column',
-                  gap: 12
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  {/* Current Balance */}
+              {step === 1 ? (
+                <View style={{ gap: 10 }}>
                   <View
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      marginBottom: 10,
                       paddingHorizontal: 10,
                       paddingVertical: 9,
                       backgroundColor: colors.screen,
@@ -304,42 +322,87 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                     </Text>
                   </View>
 
-                  {/* Amount Input */}
-                  <Text
+                  <View
                     style={{
-                      fontSize: 12,
-                      fontWeight: '600',
-                      color: colors.label,
-                      marginBottom: 4
-                    }}
-                  >
-                    Amount
-                  </Text>
-                  <TextInput
-                    value={amount}
-                    onChangeText={setAmount}
-                    placeholder='0.00'
-                    placeholderTextColor={colors.muted}
-                    keyboardType='decimal-pad'
-                    style={{
-                      height: 44,
-                      paddingHorizontal: 12,
-                      backgroundColor: colors.screen,
+                      borderRadius: 10,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 9,
-                      color: colors.heading,
-                      fontSize: 19,
-                      fontWeight: '700',
-                      marginBottom: 10
+                      backgroundColor: colors.screen,
+                      overflow: 'hidden'
                     }}
-                  />
+                  >
+                    <View
+                      style={{
+                        minHeight: 52,
+                        paddingHorizontal: 12,
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.border
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 24,
+                          lineHeight: 28,
+                          fontWeight: '800',
+                          color: colors.heading
+                        }}
+                      >
+                        ${displayAmount}
+                      </Text>
+                    </View>
 
-                  {/* Balance Warning */}
+                    <View
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 10,
+                        gap: 8
+                      }}
+                    >
+                      <PinNumpad
+                        showDecimalKey
+                        onDecimalPress={() => appendAmountInput('.')}
+                        onKeyPress={input => {
+                          if (typeof input === 'number') {
+                            appendAmountInput(input.toString())
+                          } else if (input === 'backspace') {
+                            removeAmountInput()
+                          } else {
+                            clearAmountInput()
+                          }
+                        }}
+                      />
+                      <TouchableOpacity
+                        onPress={clearAmountInput}
+                        style={{
+                          alignSelf: 'center',
+                          minWidth: 120,
+                          minHeight: 34,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.panel,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '700',
+                            color: colors.label
+                          }}
+                        >
+                          Clear Amount
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
                   {showBalanceWarning && (
                     <View
                       style={{
-                        marginBottom: 10,
                         paddingHorizontal: 9,
                         paddingVertical: 6,
                         backgroundColor: colors.warning + '18',
@@ -360,15 +423,13 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                     </View>
                   )}
 
-                  {/* Reason Chips */}
                   {mode !== 'cash_drop' && (
                     <>
                       <Text
                         style={{
                           fontSize: 12,
                           fontWeight: '600',
-                          color: colors.label,
-                          marginBottom: 4
+                          color: colors.label
                         }}
                       >
                         Reason
@@ -377,8 +438,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                         style={{
                           flexDirection: 'row',
                           flexWrap: 'wrap',
-                          gap: 6,
-                          marginBottom: 8
+                          gap: 6
                         }}
                       >
                         {chips.map(chip => (
@@ -433,14 +493,66 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                         borderColor: colors.border,
                         borderRadius: 9,
                         color: colors.heading,
-                        fontSize: 12,
-                        marginBottom: 8
+                        fontSize: 12
                       }}
                     />
                   )}
-                </View>
 
-                <View style={{ width: isTwoColumn ? 380 : '100%' }}>
+                  <TouchableOpacity
+                    onPress={() => setStep(2)}
+                    disabled={!canContinueToPin}
+                    style={{
+                      marginTop: 4,
+                      paddingVertical: 10,
+                      borderRadius: 9,
+                      alignItems: 'center',
+                      backgroundColor: canContinueToPin
+                        ? accentColor
+                        : colors.muted,
+                      opacity: canContinueToPin ? 1 : 0.7
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: colors.onSolid
+                      }}
+                    >
+                      Continue to Manager PIN
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  <View
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 9,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      gap: 4
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, color: colors.muted }}>
+                      Amount
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: '800',
+                        color: colors.heading
+                      }}
+                    >
+                      {formatCurrency(parsedAmount || 0)}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.muted }}>
+                      Reason: {reason}
+                    </Text>
+                  </View>
+
                   {!approvedBy ? (
                     <Animated.View
                       style={[
@@ -451,7 +563,8 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                           backgroundColor: colors.screen,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          borderRadius: 9
+                          borderRadius: 9,
+                          gap: 8
                         }
                       ]}
                     >
@@ -459,8 +572,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                         style={{
                           fontSize: 12,
                           fontWeight: '600',
-                          color: colors.label,
-                          marginBottom: 6
+                          color: colors.label
                         }}
                       >
                         Manager PIN Required
@@ -472,7 +584,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                             if (pin.length < 4) setPin(pin + input.toString())
                           } else if (input === 'clear') {
                             setPin('')
-                          } else if (input === 'backspace') {
+                          } else {
                             setPin(pin.slice(0, -1))
                           }
                         }}
@@ -480,7 +592,6 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                       <TouchableOpacity
                         onPress={handlePinSubmit}
                         style={{
-                          marginTop: 8,
                           paddingVertical: 8,
                           borderRadius: 8,
                           backgroundColor: accentColor
@@ -494,7 +605,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                             color: colors.onSolid
                           }}
                         >
-                          Verify
+                          Verify PIN
                         </Text>
                       </TouchableOpacity>
                     </Animated.View>
@@ -521,40 +632,60 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                       </Text>
                     </View>
                   )}
-                </View>
-              </View>
 
-              {/* Confirm */}
-              <TouchableOpacity
-                onPress={handleConfirm}
-                disabled={!canSubmit || isSubmitting}
-                style={{
-                  marginTop: 8,
-                  paddingVertical: 10,
-                  borderRadius: 9,
-                  alignItems: 'center',
-                  backgroundColor:
-                    canSubmit && !isSubmitting ? accentColor : colors.muted,
-                  opacity: canSubmit && !isSubmitting ? 1 : 0.7
-                }}
-              >
-                <Text
-                  style={{
-                    textAlign: 'center',
-                    fontSize: 12,
-                    fontWeight: '700',
-                    color: colors.onSolid
-                  }}
-                >
-                  {isSubmitting
-                    ? 'Processing...'
-                    : `${actionLabel}${
-                        isValidAmount
-                          ? ` (${formatCurrency(parsedAmount)})`
-                          : ''
-                      }`}
-                </Text>
-              </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => setStep(1)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.panel
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '600',
+                          color: colors.label
+                        }}
+                      >
+                        Back
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={handleConfirm}
+                      disabled={!canSubmit || isSubmitting}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        backgroundColor:
+                          canSubmit && !isSubmitting
+                            ? accentColor
+                            : colors.muted,
+                        opacity: canSubmit && !isSubmitting ? 1 : 0.7
+                      }}
+                    >
+                      <Text
+                        style={{
+                          textAlign: 'center',
+                          fontSize: 12,
+                          fontWeight: '700',
+                          color: colors.onSolid
+                        }}
+                      >
+                        {isSubmitting ? 'Processing...' : actionLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
 
               <TouchableOpacity
                 onPress={handleClose}
