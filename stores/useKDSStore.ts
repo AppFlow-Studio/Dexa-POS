@@ -16,7 +16,6 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { useOrderStore } from './useOrderStore'
 import { useTableSessionStore } from './useTableSessionStore'
 
 // Global client reference (same pattern as other stores)
@@ -1223,22 +1222,20 @@ export const useKDSStore = create<KDSState>()(
                 )
 
                 if (!hasRemainingTicketsForOrder) {
-                  OrderService.updateOrderStatus(
-                    client,
-                    orderId,
-                    'ready'
-                  ).then(({ error }) => {
-                    if (
-                      error &&
-                      error.code !== 'P0001' &&
-                      !error.message?.includes('already in')
-                    ) {
-                      console.error(
-                        '[KDSStore] Failed to update order status to ready:',
-                        error
-                      )
+                  OrderService.updateOrderStatus(client, orderId, 'ready').then(
+                    ({ error }) => {
+                      if (
+                        error &&
+                        error.code !== 'P0001' &&
+                        !error.message?.includes('already in')
+                      ) {
+                        console.error(
+                          '[KDSStore] Failed to update order status to ready:',
+                          error
+                        )
+                      }
                     }
-                  })
+                  )
                 }
               }
             },
@@ -1252,10 +1249,16 @@ export const useKDSStore = create<KDSState>()(
           // When all items are marked as served in KDS, also update the table session to "served"
           if (newStatus === 'served') {
             const sessionId = ticket?.session_id
-            console.log('[KDSStore] Serve check: newStatus=served, sessionId=', sessionId)
+            console.log(
+              '[KDSStore] Serve check: newStatus=served, sessionId=',
+              sessionId
+            )
             if (sessionId) {
               const sessionStore = useTableSessionStore.getState()
-              console.log('[KDSStore] Calling updateSessionStatus for sessionId:', sessionId)
+              console.log(
+                '[KDSStore] Calling updateSessionStatus for sessionId:',
+                sessionId
+              )
               sessionStore
                 .updateSessionStatus(sessionId, 'served')
                 .catch(err => {
@@ -1273,7 +1276,11 @@ export const useKDSStore = create<KDSState>()(
         const order = payload.data?.order
         if (!order) return
 
-        console.log('[KDSStore] Broadcast received:', { orderId: order.id, sessionId: order.session_id, tableNumber: order.table_number })
+        console.log('[KDSStore] Broadcast received:', {
+          orderId: order.id,
+          sessionId: order.session_id,
+          tableNumber: order.table_number
+        })
 
         // Gate: order must have been fired to kitchen
         // Accept sent_to_kitchen_at OR status of sent_to_kitchen/preparing
