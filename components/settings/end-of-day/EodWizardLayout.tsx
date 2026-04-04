@@ -156,14 +156,14 @@ export default function EodWizardLayout ({
           paddingTop: 10
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TouchableOpacity
             onPress={onBack}
             disabled={!canGoBack}
             style={{
               flex: 1,
-              minHeight: 50,
-              borderRadius: 14,
+              minHeight: 44,
+              borderRadius: 12,
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
@@ -173,11 +173,11 @@ export default function EodWizardLayout ({
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
             >
-              <ArrowLeft size={16} color={colors.label} />
+              <ArrowLeft size={14} color={colors.label} />
               <Text
-                style={{ fontWeight: '700', fontSize: 13, color: colors.label }}
+                style={{ fontWeight: '700', fontSize: 12, color: colors.label }}
               >
                 Back
               </Text>
@@ -188,8 +188,8 @@ export default function EodWizardLayout ({
             disabled={!canGoNext || isNextLoading}
             style={{
               flex: 2,
-              minHeight: 50,
-              borderRadius: 14,
+              minHeight: 44,
+              borderRadius: 12,
               backgroundColor: canGoNext ? colors.teal : colors.teal + '66',
               alignItems: 'center',
               justifyContent: 'center',
@@ -200,18 +200,18 @@ export default function EodWizardLayout ({
               <ActivityIndicator color={colors.onSolid} />
             ) : (
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
               >
                 <Text
                   style={{
                     fontWeight: '800',
-                    fontSize: 13,
+                    fontSize: 12,
                     color: colors.onSolid
                   }}
                 >
                   {nextLabel}
                 </Text>
-                <ArrowRight size={16} color={colors.onSolid} />
+                <ArrowRight size={14} color={colors.onSolid} />
               </View>
             )}
           </TouchableOpacity>

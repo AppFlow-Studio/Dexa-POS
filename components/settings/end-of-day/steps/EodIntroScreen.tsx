@@ -295,8 +295,8 @@ export default function EodIntroScreen ({
           onPress={onStart}
           disabled={!isStartEnabled}
           style={{
-            minHeight: 56,
-            borderRadius: 14,
+            minHeight: 48,
+            borderRadius: 12,
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: isStartEnabled ? colors.teal : colors.teal + '66',
@@ -304,7 +304,7 @@ export default function EodIntroScreen ({
           }}
         >
           <Text
-            style={{ fontSize: 14, fontWeight: '800', color: colors.onSolid }}
+            style={{ fontSize: 13, fontWeight: '800', color: colors.onSolid }}
           >
             Start Close Out
           </Text>

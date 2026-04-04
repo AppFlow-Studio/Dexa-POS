@@ -357,7 +357,7 @@ export default function EndOfDayScreen () {
         />
 
         {/* Action buttons */}
-        <View style={{ marginTop: 20, gap: 12 }}>
+        <View style={{ marginTop: 20, gap: 10 }}>
           <TouchableOpacity
             onPress={handleFinalize}
             disabled={!canCompleteFinal}
@@ -365,14 +365,14 @@ export default function EndOfDayScreen () {
               backgroundColor: canCompleteFinal
                 ? colors.teal
                 : colors.teal + '66',
-              paddingVertical: 12,
-              borderRadius: 10,
+              paddingVertical: 10,
+              borderRadius: 9,
               alignItems: 'center',
               opacity: canCompleteFinal ? 1 : 0.5
             }}
           >
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}
+              style={{ fontSize: 12, fontWeight: '700', color: colors.onSolid }}
             >
               Complete Close Out
             </Text>
@@ -383,17 +383,17 @@ export default function EndOfDayScreen () {
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              paddingVertical: 12,
-              borderRadius: 10,
+              paddingVertical: 10,
+              borderRadius: 9,
               alignItems: 'center',
               flexDirection: 'row',
               justifyContent: 'center',
               gap: 8
             }}
           >
-            <Printer size={16} color={colors.label} />
+            <Printer size={14} color={colors.label} />
             <Text
-              style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
+              style={{ fontSize: 12, fontWeight: '600', color: colors.label }}
             >
               Print EOD Report
             </Text>
@@ -402,15 +402,15 @@ export default function EndOfDayScreen () {
           <TouchableOpacity
             onPress={handleBack}
             style={{
-              paddingVertical: 10,
+              paddingVertical: 8,
               alignItems: 'center'
             }}
           >
             <View
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
             >
-              <RotateCcw size={14} color={colors.label} />
-              <Text style={{ fontSize: 13, color: colors.label }}>
+              <RotateCcw size={13} color={colors.label} />
+              <Text style={{ fontSize: 12, color: colors.label }}>
                 Back to Report
               </Text>
             </View>
