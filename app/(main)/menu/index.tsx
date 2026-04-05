@@ -571,7 +571,13 @@ const MenuPage: React.FC = () => {
           ...storeMenu,
           isAvailableNow: isMenuAvailableNow(storeMenu.id),
         }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        .sort((a, b) => {
+          // Sort by display_order if available, otherwise by name
+          const aOrder = a.display_order ?? Number.MAX_SAFE_INTEGER;
+          const bOrder = b.display_order ?? Number.MAX_SAFE_INTEGER;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return a.name.localeCompare(b.name);
+        }),
     [storeMenus, isMenuAvailableNow]
   );
 
