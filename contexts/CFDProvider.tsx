@@ -225,6 +225,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loyaltyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loyaltyFlowRequestIdRef = useRef(0)
   const debouncedUpdateRef = useRef(
     debounce((ctrl: CFDController, params: any) => {
       const hash = JSON.stringify(params)
@@ -1438,6 +1439,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const showIdle = useCallback(() => {
     // If a showPayment was called very recently (e.g. next view mounting), don't clobber it
     if (Date.now() - lastShowPaymentAtRef.current < 150) return
+    loyaltyFlowRequestIdRef.current += 1
     frozenTotalsRef.current = null
     setActiveScreenState(null)
     setActivePaymentMethod(null)
@@ -1455,6 +1457,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       return
     }
 
+    const requestId = ++loyaltyFlowRequestIdRef.current
     const order = activeOrderRef.current
     const dbOrderId = order?.db_order_id
     const merchantId = selectedStore?.merchant_id
@@ -1475,14 +1478,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       }, 20_000)
     }
 
+    // Update the UI immediately so the tap feels responsive.
+    showPhonePrompt()
+
     void (async () => {
-      let hasKnownCustomerContext = false
       try {
         // No order means no way to auto-earn; fall back to manual phone prompt.
         if (!dbOrderId) {
-          showPhonePrompt()
           return
         }
+
+        if (requestId !== loyaltyFlowRequestIdRef.current) return
 
         const orderCustomerId = order?.customer_id ?? ''
         let effectiveCustomerId =
@@ -1494,6 +1500,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
         const needsBackendLookup = !effectiveCustomerId || !effectivePhone
         if (needsBackendLookup) {
+          if (requestId !== loyaltyFlowRequestIdRef.current) return
           const { data: backendOrder, error: backendOrderError } =
             await supabase
               .from('orders')
@@ -1521,6 +1528,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         }
 
         // If we have a valid customer_id but no phone yet, hydrate phone from customers.
+        if (requestId !== loyaltyFlowRequestIdRef.current) return
         if (effectiveCustomerId && !effectivePhone) {
           const { data: customerRow, error: customerRowError } = await supabase
             .from('customers')
@@ -1540,14 +1548,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           }
         }
 
-        hasKnownCustomerContext = Boolean(effectiveCustomerId || effectivePhone)
+        if (requestId !== loyaltyFlowRequestIdRef.current) return
 
         if (!effectiveCustomerId && !(merchantId && effectivePhone)) {
-          showPhonePrompt()
           return
         }
 
         if (!effectiveCustomerId && merchantId && effectivePhone) {
+          if (requestId !== loyaltyFlowRequestIdRef.current) return
           const { id: customerId, name } = await findOrCreateCustomerByPhone(
             effectivePhone,
             merchantId,
@@ -1562,6 +1570,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         }
 
         if (effectiveCustomerId) {
+          if (requestId !== loyaltyFlowRequestIdRef.current) return
           const { error: ensureCustomerError } = await supabase
             .from('orders')
             .update({ customer_id: effectiveCustomerId })
@@ -1577,6 +1586,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
         let results: LoyaltyEarnResult[] = []
         for (let attempt = 0; attempt < 3; attempt += 1) {
+          if (requestId !== loyaltyFlowRequestIdRef.current) return
           results = await earnLoyaltyForOrder(dbOrderId, supabase)
           if (results.length > 0) break
           if (attempt < 2) {
@@ -1584,18 +1594,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           }
         }
 
+        if (requestId !== loyaltyFlowRequestIdRef.current) return
         if (results.length === 0) {
           console.warn('[CFD Loyalty] Auto loyalty returned no program data')
-          if (hasKnownCustomerContext) {
-            frozenTotalsRef.current = null
-            setActiveScreenState(null)
-            setBaseAmountOverride(null)
-            setCurrentTip({ amount: 0, percentage: null })
-            controllerRef.current?.showIdle()
-            return
-          }
-
-          showPhonePrompt()
           return
         }
 
@@ -1634,6 +1635,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
         if (loyaltyTimerRef.current) clearTimeout(loyaltyTimerRef.current)
         loyaltyTimerRef.current = setTimeout(() => {
+          if (requestId !== loyaltyFlowRequestIdRef.current) return
           frozenTotalsRef.current = null
           setActiveScreenState(null)
           setBaseAmountOverride(null)
@@ -1646,16 +1648,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         }, 6000)
       } catch (err) {
         console.error('[CFD Loyalty] Auto loyalty failed, showing prompt:', err)
-        if (hasKnownCustomerContext) {
-          frozenTotalsRef.current = null
-          setActiveScreenState(null)
-          setBaseAmountOverride(null)
-          setCurrentTip({ amount: 0, percentage: null })
-          controllerRef.current?.showIdle()
-          return
-        }
-
-        showPhonePrompt()
+        if (requestId !== loyaltyFlowRequestIdRef.current) return
       }
     })()
   }, [selectedStore?.merchant_id, selectedStore?.name, supabase])
@@ -1664,6 +1657,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     async (phone: string) => {
       const ctrl = controllerRef.current
       if (!ctrl || !selectedStore?.id) return
+
+      loyaltyFlowRequestIdRef.current += 1
 
       clearTimeout(loyaltyTimerRef.current!)
       loyaltyTimerRef.current = null
@@ -1770,6 +1765,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   )
 
   const handleBuiltinLoyaltySkip = useCallback(() => {
+    loyaltyFlowRequestIdRef.current += 1
     const ctrl = controllerRef.current
     if (!ctrl) return
     clearTimeout(loyaltyTimerRef.current!)
@@ -1821,7 +1817,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (activeScreenState === 'approved') {
       const timer = setTimeout(() => {
-        showLoyaltyPrompt()
+        showIdle()
       }, 4000)
       return () => clearTimeout(timer)
     }

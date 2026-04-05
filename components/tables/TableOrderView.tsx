@@ -112,10 +112,16 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     s => s.config.dining.enableCoursing
   )
   const {
-    currentCourse, sentCourses, itemCourseMap, coursingInitialized,
-    setCurrentCourse, isCourseSent, markCourseSent, unmarkCourseSent,
-    markCourseServed, getForOrder, finalizeCurrentCourse: finalizeCourse,
-    setItemCourse,
+    currentCourse,
+    sentCourses,
+    itemCourseMap,
+    setCurrentCourse,
+    isCourseSent,
+    markCourseSent,
+    unmarkCourseSent,
+    markCourseServed,
+    getForOrder,
+    finalizeCurrentCourse: finalizeCourse
   } = useTableCoursing(activeOrder, enableCoursing)
   useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
 
@@ -208,11 +214,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         (item.courseNumber ?? itemCourseMap?.[item.id] ?? 1) ===
         selectedCourseIdForTracker
     )
-  }, [
-    activeOrder?.items,
-    selectedCourseIdForTracker,
-    itemCourseMap
-  ])
+  }, [activeOrder?.items, selectedCourseIdForTracker, itemCourseMap])
 
   // --- Action handlers ---
 
@@ -237,29 +239,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     }
     openPaymentSheet('Card', currentTableId, 'payment-method-selection')
   }, [openPaymentSheet, currentTableId])
-
-  const handleClearTable = useCallback(async () => {
-    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
-    const order = oid ? ordersById[oid] : null
-    if (!oid || !order) return
-
-    const preparingItems = order.items.filter(
-      item => !isItemReadyOrServed(item)
-    )
-    if (preparingItems.length > 0) {
-      setActiveDialog({
-        type: 'clear_not_ready_confirm',
-        items: preparingItems.map(i => ({
-          id: i.id,
-          name: i.name,
-          quantity: i.quantity
-        }))
-      })
-      return
-    }
-
-    await doClearTable()
-  }, [doClearTable])
 
   const doClearTable = useCallback(async () => {
     const orderState = useOrderStore.getState()
@@ -433,6 +412,29 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     updateActiveOrderDetails
   ])
 
+  const handleClearTable = useCallback(async () => {
+    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+    const order = oid ? ordersById[oid] : null
+    if (!oid || !order) return
+
+    const preparingItems = order.items.filter(
+      item => !isItemReadyOrServed(item)
+    )
+    if (preparingItems.length > 0) {
+      setActiveDialog({
+        type: 'clear_not_ready_confirm',
+        items: preparingItems.map(i => ({
+          id: i.id,
+          name: i.name,
+          quantity: i.quantity
+        }))
+      })
+      return
+    }
+
+    await doClearTable()
+  }, [doClearTable])
+
   const handleReopenCheck = useCallback(() => {
     const { activeOrderId: oid, ordersById } = useOrderStore.getState()
     const order = oid ? ordersById[oid] : null
@@ -598,8 +600,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         if (!activeOrder.opened_at)
           updateActiveOrderDetails({ opened_at: new Date().toISOString() })
         if (!activeOrder.sent_to_kitchen_at)
-          updateActiveOrderDetails({ sent_to_kitchen_at: new Date().toISOString() })
-
+          updateActiveOrderDetails({
+            sent_to_kitchen_at: new Date().toISOString()
+          })
         if (autoPrintKitchenTickets && selectedStore) {
           PrinterService.printKitchenTickets(
             activeOrder,
@@ -669,10 +672,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       new Set(
         activeOrder.items
           .map(i => i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1)
-          .filter(
-            courseNumber =>
-              !isCourseSent(activeOrder.id, courseNumber)
-          )
+          .filter(courseNumber => !isCourseSent(activeOrder.id, courseNumber))
       )
     ).sort((a, b) => a - b)
 
@@ -686,7 +686,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     }
 
     const results = await Promise.all(
-      pendingCourses.map(course => handleSendCourseToKitchen(course, false, true))
+      pendingCourses.map(course =>
+        handleSendCourseToKitchen(course, false, true)
+      )
     )
     const sentCount = results.filter(Boolean).length
 
@@ -749,11 +751,19 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       OrderService.toggleRushOnItems(supabase, dbItemIds, true)
         .then(({ error }) => {
           if (error) {
-            show({ title: 'Rush Failed', message: 'Could not rush this course.', type: 'error' })
+            show({
+              title: 'Rush Failed',
+              message: 'Could not rush this course.',
+              type: 'error'
+            })
           }
         })
         .catch(() => {
-          show({ title: 'Rush Failed', message: 'Could not rush this course.', type: 'error' })
+          show({
+            title: 'Rush Failed',
+            message: 'Could not rush this course.',
+            type: 'error'
+          })
         })
     },
     [activeOrder, getForOrder, supabase, show]
@@ -780,11 +790,19 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       OrderService.togglePriorityOnItems(supabase, dbItemIds, true)
         .then(({ error }) => {
           if (error) {
-            show({ title: 'Prioritize Failed', message: 'Could not prioritize this course.', type: 'error' })
+            show({
+              title: 'Prioritize Failed',
+              message: 'Could not prioritize this course.',
+              type: 'error'
+            })
           }
         })
         .catch(() => {
-          show({ title: 'Prioritize Failed', message: 'Could not prioritize this course.', type: 'error' })
+          show({
+            title: 'Prioritize Failed',
+            message: 'Could not prioritize this course.',
+            type: 'error'
+          })
         })
     },
     [activeOrder, getForOrder, supabase, show]

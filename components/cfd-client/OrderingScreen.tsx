@@ -53,7 +53,9 @@ export function OrderingScreen () {
   const { width } = useWindowDimensions()
   const showRightPanel = layout?.showOrderingRightPanel ?? true
   const rightPanelMode = layout?.orderingRightPanelMode ?? 'single'
-  const isWide = width > 850 && showRightPanel
+  // Keep the panel on the right in landscape; the old fixed breakpoint was
+  // too large for some CFD tablets and caused the panel to stack underneath.
+  const isWide = showRightPanel && width >= 700
 
   // Keep displayed totals stable while the POS recalculates in-flight item updates.
   const [displaySubtotalCard, setDisplaySubtotalCard] = useState(
@@ -108,7 +110,7 @@ export function OrderingScreen () {
     setDisplayTotalCard(nextTotalCard)
     // Don't flash 0 savings during transient recompute — keep previous value
     // until a non-zero savings or a full-zero reset lands.
-    setDisplaySavingsAmount((prev) =>
+    setDisplaySavingsAmount(prev =>
       nextSavings === 0 && prev > 0 ? prev : nextSavings
     )
   }, [

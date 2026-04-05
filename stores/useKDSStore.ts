@@ -16,7 +16,6 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { useOrderStore } from './useOrderStore'
 import { useTableSessionStore } from './useTableSessionStore'
 
 // Global client reference (same pattern as other stores)
@@ -323,6 +322,24 @@ function sortKdsTicketsStable (tickets: KDSTicket[]): KDSTicket[] {
   return [...tickets].sort(compareKdsTickets)
 }
 
+function normalizeKdsTicket (ticket: KDSTicket): KDSTicket {
+  const items = Array.isArray(ticket.items)
+    ? ticket.items.map(item => ({
+        ...item,
+        modifiers: Array.isArray(item.modifiers) ? item.modifiers : []
+      }))
+    : []
+
+  return {
+    ...ticket,
+    items,
+    item_count:
+      typeof ticket.item_count === 'number'
+        ? ticket.item_count
+        : items.reduce((sum, item) => sum + (item.quantity || 0), 0)
+  }
+}
+
 /** KDS-relevant kitchen statuses */
 const KDS_STATUSES = new Set(['sent', 'preparing', 'ready'])
 
@@ -469,7 +486,8 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
         fireTimeMs || safeParseUtcTimestamp(order.sent_to_kitchen_at),
       item_count: ticketItems.reduce((sum, i) => sum + i.quantity, 0),
       items: ticketItems,
-      prioritized: roundItems.some(i => i.is_prioritized)
+      prioritized: roundItems.some(i => i.is_prioritized),
+      session_id: order.session_id ?? null
     })
   }
 
@@ -513,14 +531,16 @@ function preserveCompletedItems (
   previous: KDSTicket,
   incoming: KDSTicket
 ): KDSTicket {
-  const incomingIds = new Set(incoming.items.map(item => item.id))
-  const preservedItems = previous.items.filter(
+  const prevItems = Array.isArray(previous.items) ? previous.items : []
+  const nextItems = Array.isArray(incoming.items) ? incoming.items : []
+  const incomingIds = new Set(nextItems.map(item => item.id))
+  const preservedItems = prevItems.filter(
     item => item.kitchen_status === 'ready' && !incomingIds.has(item.id)
   )
 
   if (preservedItems.length === 0) return incoming
 
-  const mergedItems = [...incoming.items, ...preservedItems].sort((a, b) =>
+  const mergedItems = [...nextItems, ...preservedItems].sort((a, b) =>
     a.id.localeCompare(b.id)
   )
 
@@ -544,22 +564,25 @@ function mergeTickets (
   const mergedById: Record<string, KDSTicket> = {}
   const merged: KDSTicket[] = []
   for (const ticket of incoming) {
-    const prev = existingById[ticket.ticket_id]
+    const prevRaw = existingById[ticket.ticket_id]
+    const prev = prevRaw ? normalizeKdsTicket(prevRaw) : undefined
     // Preserve customer_name/table_name from existing ticket when broadcast omits them
+    const normalizedIncoming = normalizeKdsTicket(ticket)
     const enriched =
       prev && (ticket.customer_name === null || ticket.table_name === null)
         ? {
-            ...ticket,
-            customer_name: ticket.customer_name ?? prev.customer_name,
-            table_name: ticket.table_name ?? prev.table_name
+            ...normalizedIncoming,
+            customer_name:
+              normalizedIncoming.customer_name ?? prev.customer_name,
+            table_name: normalizedIncoming.table_name ?? prev.table_name
           }
-        : ticket
+        : normalizedIncoming
     const stabilized = prev ? preserveCompletedItems(prev, enriched) : enriched
     if (prev && ticketDeepEqual(prev, stabilized)) {
-      mergedById[ticket.ticket_id] = prev
+      mergedById[normalizedIncoming.ticket_id] = prev
       merged.push(prev)
     } else {
-      mergedById[ticket.ticket_id] = stabilized
+      mergedById[normalizedIncoming.ticket_id] = stabilized
       merged.push(stabilized)
       changed = true
     }
@@ -882,10 +905,12 @@ export const useKDSStore = create<KDSState>()(
 
           const raw: KDSTicket[] = Array.isArray(data) ? data : data ?? []
           const processed = overlayPendingActions(
-            raw.map(t => ({
-              ...t,
-              start_time_epoch: safeParseUtcTimestamp(t.start_time)
-            }))
+            raw.map(t =>
+              normalizeKdsTicket({
+                ...t,
+                start_time_epoch: safeParseUtcTimestamp(t.start_time)
+              })
+            )
           )
           // In 2-step mode, remap any "pending" tickets to "cooking" (Pending bucket is hidden)
           const remapped =
@@ -980,10 +1005,12 @@ export const useKDSStore = create<KDSState>()(
 
           const raw: KDSTicket[] = Array.isArray(data) ? data : data ?? []
           const processed = overlayPendingActions(
-            raw.map(t => ({
-              ...t,
-              start_time_epoch: safeParseUtcTimestamp(t.start_time)
-            }))
+            raw.map(t =>
+              normalizeKdsTicket({
+                ...t,
+                start_time_epoch: safeParseUtcTimestamp(t.start_time)
+              })
+            )
           )
           // In 2-step mode, remap any "pending" tickets to "cooking"
           const remapped =
@@ -1009,7 +1036,7 @@ export const useKDSStore = create<KDSState>()(
               !serverTicketIds.has(t.ticket_id) &&
               (_pendingActions.has(t.ticket_id) ||
                 _recalledTicketIds.has(t.ticket_id) ||
-                t.items.some(i => i.recalled))
+                (Array.isArray(t.items) && t.items.some(i => i.recalled)))
           )
           const withProtected =
             protectedMissing.length > 0
@@ -1167,6 +1194,7 @@ export const useKDSStore = create<KDSState>()(
         set({
           tickets: updatedTickets,
           _ticketsById: updatedById,
+          _ticketIdsByOrderId: buildOrderIdIndex(updatedById),
           ...bucketed,
           ...extraState
         })
@@ -1186,6 +1214,30 @@ export const useKDSStore = create<KDSState>()(
             0,
             () => {
               _pendingActions.delete(ticketId)
+
+              // Persist final order status after all items are served from KDS.
+              if (newStatus === 'served' && orderId) {
+                const hasRemainingTicketsForOrder = updatedTickets.some(
+                  t => t.db_order_id === orderId
+                )
+
+                if (!hasRemainingTicketsForOrder) {
+                  OrderService.updateOrderStatus(client, orderId, 'ready').then(
+                    ({ error }) => {
+                      if (
+                        error &&
+                        error.code !== 'P0001' &&
+                        !error.message?.includes('already in')
+                      ) {
+                        console.error(
+                          '[KDSStore] Failed to update order status to ready:',
+                          error
+                        )
+                      }
+                    }
+                  )
+                }
+              }
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1195,26 +1247,26 @@ export const useKDSStore = create<KDSState>()(
           )
 
           // When all items are marked as served in KDS, also update the table session to "served"
-          if (newStatus === 'served' && orderId) {
-            const orderStore = useOrderStore.getState()
-            const order = orderStore.getOrder(orderId)
-            if (order && order.session_id) {
+          if (newStatus === 'served') {
+            const sessionId = ticket?.session_id
+            console.log(
+              '[KDSStore] Serve check: newStatus=served, sessionId=',
+              sessionId
+            )
+            if (sessionId) {
               const sessionStore = useTableSessionStore.getState()
-              const tableIds = sessionStore.sessionTableIndex[order.session_id]
-              if (tableIds && tableIds.length > 0) {
-                const primaryTableId = tableIds[0]
-                const session = sessionStore.sessions[primaryTableId]
-                if (session && session.id === order.session_id) {
-                  sessionStore
-                    .updateSessionStatus(session.id, 'served')
-                    .catch(err => {
-                      console.error(
-                        '[KDSStore] Failed to update table session to served:',
-                        err
-                      )
-                    })
-                }
-              }
+              console.log(
+                '[KDSStore] Calling updateSessionStatus for sessionId:',
+                sessionId
+              )
+              sessionStore
+                .updateSessionStatus(sessionId, 'served')
+                .catch(err => {
+                  console.error(
+                    '[KDSStore] Failed to update table session to served:',
+                    err
+                  )
+                })
             }
           }
         }
@@ -1223,6 +1275,12 @@ export const useKDSStore = create<KDSState>()(
       handleOrderBroadcast: (payload: OrderBroadcastPayload) => {
         const order = payload.data?.order
         if (!order) return
+
+        console.log('[KDSStore] Broadcast received:', {
+          orderId: order.id,
+          sessionId: order.session_id,
+          tableNumber: order.table_number
+        })
 
         // Gate: order must have been fired to kitchen
         // Accept sent_to_kitchen_at OR status of sent_to_kitchen/preparing

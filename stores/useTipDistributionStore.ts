@@ -266,7 +266,7 @@ export const useTipDistributionStore = create<TipDistributionState>()(
 
       try {
         const { data, error } = await supabase.rpc(
-          "calculate_tip_distribution",
+          "calculate_tip_distribution_v2",
           {
             p_location_id: locationId,
             p_merchant_id: merchantId,

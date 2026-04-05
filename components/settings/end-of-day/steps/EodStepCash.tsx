@@ -1,81 +1,150 @@
-import { colors } from "@/lib/theme";
-import { ChecklistItem, ChecklistItemId } from "@/stores/useEndOfDayStore";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import EodChecklistRow from "../EodChecklistRow";
+import { colors } from '@/lib/theme'
+import { ChecklistItem, ChecklistItemId } from '@/stores/useEndOfDayStore'
+import { Text, TouchableOpacity, View } from 'react-native'
+import EodChecklistRow from '../EodChecklistRow'
 
 interface EodStepCashProps {
-  checklist: ChecklistItem[];
-  onOpenCashDrawer: () => void;
-  onRefresh: () => Promise<void> | void;
+  checklist: ChecklistItem[]
+  onOpenCashDrawer: () => void
+  onRefresh: () => Promise<void> | void
 }
 
 const resolveItem = (
   list: ChecklistItem[],
   id: ChecklistItemId
-): ChecklistItem | undefined => list.find((i) => i.id === id);
+): ChecklistItem | undefined => list.find(i => i.id === id)
 
-export default function EodStepCash({
+export default function EodStepCash ({
   checklist,
   onOpenCashDrawer,
-  onRefresh,
+  onRefresh
 }: EodStepCashProps) {
-  const drawerItem = resolveItem(checklist, "cash_drawer_closed");
+  const drawerItem = resolveItem(checklist, 'cash_drawer_closed')
+  const isPassed = drawerItem?.status === 'passed'
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ flex: 1, justifyContent: 'space-between', gap: 10 }}>
       <View
         style={{
-          borderRadius: 10,
+          borderRadius: 16,
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
           padding: 12,
+          gap: 10
         }}
       >
-        <Text style={{ fontSize: 13, color: colors.label }}>
-          Re-open drawers should be reconciled and closed before locking in your day.
-          Use the drawer workflow to confirm end-of-day cash reconciliation.
-        </Text>
-        <View style={{ marginTop: 10, gap: 8 }}>
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.card,
+            padding: 10,
+            gap: 4
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 10,
+              fontWeight: '700',
+              color: colors.teal,
+              textTransform: 'uppercase',
+              letterSpacing: 0.6
+            }}
+          >
+            Cash drawer status
+          </Text>
+          <Text
+            style={{ fontSize: 20, fontWeight: '800', color: colors.heading }}
+          >
+            {isPassed ? 'Closed' : 'Needs review'}
+          </Text>
+          <Text
+            style={{ fontSize: 10.5, color: colors.label }}
+            numberOfLines={1}
+          >
+            {drawerItem?.detail ||
+              'Run reconciliation and close remaining drawers'}
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <TouchableOpacity
             onPress={onOpenCashDrawer}
             style={{
-              borderRadius: 8,
-              backgroundColor: colors.teal + "20",
+              flexGrow: 1,
+              flexBasis: 220,
+              minHeight: 42,
+              borderRadius: 12,
+              backgroundColor: colors.teal + '20',
               borderWidth: 1,
-              borderColor: colors.teal + "50",
+              borderColor: colors.teal + '50',
               paddingHorizontal: 10,
-              paddingVertical: 10,
+              paddingVertical: 8,
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+            <Text
+              style={{ fontSize: 11.5, fontWeight: '700', color: colors.teal }}
+            >
               Open Cash Drawer Sheet
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => void onRefresh()}
             style={{
-              borderRadius: 8,
+              flexGrow: 1,
+              flexBasis: 160,
+              minHeight: 42,
+              borderRadius: 12,
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
               paddingHorizontal: 10,
-              paddingVertical: 10,
+              paddingVertical: 8,
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
-            <Text style={{ fontSize: 13, color: colors.label }}>Refresh status</Text>
+            <Text
+              style={{ fontSize: 11.5, fontWeight: '600', color: colors.label }}
+            >
+              Refresh status
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <EodChecklistRow
-        title="Cash drawer close"
-        description={drawerItem?.description}
-        status={drawerItem?.status || "pending"}
-        detail={drawerItem?.detail}
-      />
-    </View>
-  );
-}
+      <View style={{ height: 92 }}>
+        <EodChecklistRow
+          title='Cash drawer close'
+          description={drawerItem?.description}
+          status={drawerItem?.status || 'pending'}
+          detail={drawerItem?.detail}
+          centerContent
+          containerStyle={{ flex: 1, paddingVertical: 6 }}
+        />
+      </View>
 
+      <View
+        style={{
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.teal + '50',
+          backgroundColor: colors.teal + '15',
+          paddingHorizontal: 12,
+          paddingVertical: 10
+        }}
+      >
+        <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.teal }}>
+          {isPassed
+            ? 'Cash drawer checks are complete.'
+            : 'This step resolves when drawers are reconciled and closed.'}
+        </Text>
+      </View>
+    </View>
+  )
+}

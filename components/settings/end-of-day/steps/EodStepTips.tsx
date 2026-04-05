@@ -76,53 +76,92 @@ export default function EodStepTips({
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const periodStart = tipSummary?.periodStart ?? null;
   const isMultiDay = periodStart !== null && periodStart < todayStr;
+  const pendingSessions = tipSummary?.pendingPriorDaySessions ?? [];
+  const hasPendingPrior = pendingSessions.length > 0;
 
   return (
-    <View style={{ gap: 12 }}>
-      {/* Today's tip totals */}
+    <View style={{ gap: 10 }}>
       <View
         style={{
-          borderRadius: 10,
+          borderRadius: 16,
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
           padding: 12,
+          gap: 10,
         }}
       >
-        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, marginBottom: 10 }}>
-          Tips collected today
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+            Tip Distribution Snapshot
+          </Text>
+          <View
+            style={{
+              borderRadius: 999,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              backgroundColor: colors.teal + "18",
+              borderWidth: 1,
+              borderColor: colors.teal + "45",
+            }}
+          >
+            <Text style={{ fontSize: 10, fontWeight: "700", color: colors.teal }}>
+              {isMultiDay ? "Multi-day window" : "Today"}
+            </Text>
+          </View>
+        </View>
+
         {summaryLoading ? (
           <ActivityIndicator size="small" color={colors.teal} />
         ) : (
-          <View style={{ gap: 8 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 12, color: colors.label }}>Card tips</Text>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <View
+              style={{
+                flexGrow: 1,
+                flexBasis: 120,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                padding: 10,
+              }}
+            >
+              <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>Card Tips</Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginTop: 3 }}>
                 {fmt(tipSummary?.cardTips ?? 0)}
               </Text>
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 12, color: colors.label }}>Cash tips</Text>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
+            <View
+              style={{
+                flexGrow: 1,
+                flexBasis: 120,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                padding: 10,
+              }}
+            >
+              <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>Cash Tips</Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginTop: 3 }}>
                 {fmt(tipSummary?.cashTips ?? 0)}
               </Text>
             </View>
             <View
               style={{
-                marginTop: 6,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                borderTopWidth: 1,
-                borderTopColor: colors.border,
-                paddingTop: 8,
+                flexGrow: 1,
+                flexBasis: 160,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.teal + "45",
+                backgroundColor: colors.teal + "12",
+                padding: 10,
               }}
             >
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
-                Total to distribute
+              <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>
+                Total to Distribute
               </Text>
-              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.teal }}>
+              <Text style={{ fontSize: 15, fontWeight: "800", color: colors.teal, marginTop: 3 }}>
                 {fmt(tipSummary?.totalTips ?? 0)}
               </Text>
             </View>
@@ -130,61 +169,58 @@ export default function EodStepTips({
         )}
       </View>
 
-      {/* Prior-day unresolved sessions warning */}
-      {(tipSummary?.pendingPriorDaySessions?.length ?? 0) > 0 && (
+      {hasPendingPrior && (
         <View
           style={{
-            borderRadius: 10,
+            borderRadius: 12,
             borderWidth: 1,
-            borderColor: colors.warning + "50",
-            backgroundColor: colors.warning + "15",
-            padding: 12,
+            borderColor: colors.warning + "55",
+            backgroundColor: colors.warning + "12",
+            padding: 10,
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.warning }}>
-            Unresolved prior-day sessions
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.warning }}>
+            Unresolved prior-day sessions ({pendingSessions.length})
           </Text>
-          <Text style={{ fontSize: 11, color: colors.label, marginTop: 6 }}>
-            The following recent sessions were never approved or exported. Tips from those days may not have been distributed.
-          </Text>
-          <View style={{ marginTop: 8, gap: 4 }}>
-            {tipSummary!.pendingPriorDaySessions.map((s) => (
+          <View style={{ marginTop: 6, gap: 4 }}>
+            {pendingSessions.map((s) => (
               <Text key={s.date} style={{ fontSize: 10, color: colors.warning }}>
-                {s.date} — {s.status}
+                {s.date} - {s.status}
               </Text>
             ))}
           </View>
         </View>
       )}
 
-      {/* Actions */}
       <View
         style={{
-          borderRadius: 10,
+          borderRadius: 12,
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
+          padding: 10,
+          gap: 8,
         }}
       >
-        <Text style={{ fontSize: 12, color: colors.label, marginBottom: 10 }}>
-          Review how tips are configured for this location before closing, then launch
-          the distribution workflow.
+        <Text style={{ fontSize: 12, color: colors.label }}>
+          Review rules, then run the tip distribution workflow.
         </Text>
-        <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: 8 }}>
           <TouchableOpacity
             onPress={onOpenTipWizard}
             style={{
-              borderRadius: 8,
-              backgroundColor: colors.teal + "20",
+              flex: 1,
+              borderRadius: 9,
+              backgroundColor: colors.teal + "22",
               borderWidth: 1,
-              borderColor: colors.teal + "50",
+              borderColor: colors.teal + "55",
               paddingHorizontal: 10,
               paddingVertical: 10,
+              alignItems: "center",
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
-              Open Tip Distribution Wizard
+            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
+              Open Tip Wizard
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -192,18 +228,23 @@ export default function EodStepTips({
               await Promise.all([
                 onRefresh(),
                 fetchTipConfig(supabase, locationId),
+                refetchTipSummary(),
               ]);
             }}
             style={{
-              borderRadius: 8,
+              flex: 1,
+              borderRadius: 9,
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
               paddingHorizontal: 10,
               paddingVertical: 10,
+              alignItems: "center",
             }}
           >
-            <Text style={{ fontSize: 13, color: colors.label }}>Refresh status + rules</Text>
+            <Text style={{ fontSize: 12, color: colors.label }}>
+              {summaryFetching || rulesFetching ? "Refreshing..." : "Refresh"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -215,60 +256,62 @@ export default function EodStepTips({
         detail={tipItem?.detail}
       />
 
-      {/* Tip distribution rules */}
       <View
         style={{
-          borderRadius: 10,
+          borderRadius: 12,
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
           padding: 10,
+          gap: 8,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
-            Tip distribution rules
+          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+            Tip Rules
           </Text>
           {(rulesLoading || rulesFetching) ? (
-            <Text style={{ fontSize: 10, color: colors.label }}>Refreshing…</Text>
+            <Text style={{ fontSize: 10, color: colors.label }}>Refreshing...</Text>
           ) : null}
         </View>
+
         {rulesError ? (
-          <Text style={{ fontSize: 12, color: colors.danger, marginTop: 8 }}>
+          <Text style={{ fontSize: 12, color: colors.danger }}>
             Unable to load rules. You can still proceed with tip actions.
           </Text>
         ) : null}
+
         {!rulesData && !rulesLoading ? (
-          <Text style={{ fontSize: 12, color: colors.label, marginTop: 8 }}>
-            No data available.
-          </Text>
+          <Text style={{ fontSize: 12, color: colors.label }}>No data available.</Text>
         ) : null}
+
         {!!rulesData ? (
-          <View style={{ marginTop: 10, gap: 12 }}>
+          <View style={{ gap: 10 }}>
             {rulesData.configs.length === 0 && rulesData.rules.length === 0 ? (
               <Text style={{ fontSize: 12, color: colors.label }}>
                 No active pools or rules found for this location.
               </Text>
             ) : null}
+
             {rulesData.configs.length > 0 ? (
-              <View>
-                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 8 }}>
-                  Tip pool configs
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.label }}>
+                  Tip Pool Configs
                 </Text>
                 {rulesData.configs.map((config) => (
                   <View
                     key={config.id}
                     style={{
-                      marginTop: 8,
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: colors.border,
                       backgroundColor: colors.card,
-                      padding: 10,
+                      padding: 9,
+                      gap: 5,
                     }}
                   >
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                      <Text style={{ fontWeight: "600", color: colors.heading, fontSize: 13 }}>
+                      <Text style={{ fontWeight: "700", color: colors.heading, fontSize: 12 }}>
                         {config.name}
                       </Text>
                       <View
@@ -279,20 +322,20 @@ export default function EodStepTips({
                           backgroundColor: colors.teal + "20",
                         }}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal }}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: colors.teal }}>
                           {config.distributionMethod}
                         </Text>
                       </View>
                     </View>
                     {!!config.description ? (
-                      <Text style={{ fontSize: 11, color: colors.label, marginTop: 6 }}>
+                      <Text style={{ fontSize: 11, color: colors.label }}>
                         {config.description}
                       </Text>
                     ) : null}
                     {!!config.shares.length ? (
-                      <View style={{ marginTop: 8, gap: 4 }}>
+                      <View style={{ gap: 3 }}>
                         {config.shares.map((share) => (
-                          <Text key={share.id} style={{ fontSize: 11, color: colors.label }}>
+                          <Text key={share.id} style={{ fontSize: 10, color: colors.label }}>
                             {share.roleName || share.roleCode}: {share.sharePercentage}%
                             {share.pointsPerHour ? ` (${share.pointsPerHour} pp/h)` : ""}
                           </Text>
@@ -303,27 +346,27 @@ export default function EodStepTips({
                 ))}
               </View>
             ) : null}
+
             {rulesData.rules.length > 0 ? (
-              <View>
-                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 8 }}>
-                  Tip-out rules
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.label }}>
+                  Tip-out Rules
                 </Text>
                 {rulesData.rules.map((rule) => (
                   <View
                     key={rule.id}
                     style={{
-                      marginTop: 8,
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: colors.border,
                       backgroundColor: colors.card,
-                      padding: 10,
+                      padding: 9,
                     }}
                   >
-                    <Text style={{ fontSize: 13, color: colors.heading }}>
-                      {rule.fromRoleName || rule.fromRoleCode} → {rule.toRoleName || rule.toRoleCode}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+                    <Text style={{ fontSize: 12, color: colors.heading }}>
+                      {rule.fromRoleName || rule.fromRoleCode} -{">"} {rule.toRoleName || rule.toRoleCode}
+                    </Text>-
+                    <Text style={{ fontSize: 10, color: colors.label, marginTop: 2 }}>
                       {formatRuleValue(rule)}
                     </Text>
                   </View>

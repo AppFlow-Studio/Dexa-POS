@@ -41,6 +41,7 @@ export interface KDSTicket {
   item_count: number
   items: KDSTicketItem[]
   prioritized?: boolean
+  session_id?: string | null
 }
 
 export interface KDSDisplayConfig {
