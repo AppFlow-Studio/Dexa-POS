@@ -17,13 +17,16 @@ export async function closeCheckEffect(ctx: SideEffectContext): Promise<void> {
 
   const { dbOrderId, orderId } = ctx.action;
   const supabase = getOrderStoreSupabaseClient();
-  const { activeEmployeeId } = useEmployeeStore.getState();
+  const { loggedInEmployee } = useEmployeeStore.getState();
+  // audit_logs.staff_profile_id FKs to staff_profiles.id — must use profileId,
+  // not activeEmployeeId (which is location_members.id).
+  const staffId = loggedInEmployee?.profileId ?? null;
 
   if (!supabase || !dbOrderId) {
     // Offline or no backend order — queue for retry
     await queueFailedOperation(
       "close_check",
-      { p_order_id: dbOrderId, p_staff_id: activeEmployeeId },
+      { p_order_id: dbOrderId, p_staff_id: staffId },
       orderId || dbOrderId || "",
     );
     return;
@@ -33,20 +36,20 @@ export async function closeCheckEffect(ctx: SideEffectContext): Promise<void> {
     const result = await OrderService.closeCheck(
       supabase,
       dbOrderId,
-      activeEmployeeId,
+      staffId,
     );
 
     if (!result.success) {
       await queueFailedOperation(
         "close_check",
-        { p_order_id: dbOrderId, p_staff_id: activeEmployeeId },
+        { p_order_id: dbOrderId, p_staff_id: staffId },
         orderId || dbOrderId,
       );
     }
   } catch {
     await queueFailedOperation(
       "close_check",
-      { p_order_id: dbOrderId, p_staff_id: activeEmployeeId },
+      { p_order_id: dbOrderId, p_staff_id: staffId },
       orderId || dbOrderId || "",
     );
   }
