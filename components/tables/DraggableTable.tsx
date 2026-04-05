@@ -6,11 +6,11 @@ import {
 } from '@/lib/tablePositionRegistry'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
+import { useOrderByAnyId } from '@/stores/selectors/orderSelectors'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useShallow } from 'zustand/react/shallow'
-import { useOrderByAnyId } from '@/stores/selectors/orderSelectors'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { useReservationStore } from '@/stores/useReservationStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { BrushCleaning } from 'lucide-react-native'
@@ -29,6 +29,32 @@ import Animated, {
   withSpring,
   withTiming
 } from 'react-native-reanimated'
+import { useShallow } from 'zustand/react/shallow'
+
+type NextReservationLike = {
+  date?: string
+  time: string
+}
+
+const toLocalDateKey = (date: Date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const getReservationTimeMs = (
+  reservation: NextReservationLike
+): number | null => {
+  const direct = new Date(reservation.time).getTime()
+  if (Number.isFinite(direct)) return direct
+
+  const dateKey = reservation.date || toLocalDateKey(new Date())
+  const combined = new Date(`${dateKey}T${reservation.time}`).getTime()
+  if (Number.isFinite(combined)) return combined
+
+  return null
+}
 
 /**
  * Isolated pulsing border overlay — runs entirely on UI thread via Reanimated.
@@ -75,7 +101,7 @@ const PulsingBorder = React.memo(
         height,
         borderRadius: 16,
         borderWidth: 2.5,
-        borderColor,
+        borderColor
       }
     })
 
@@ -117,7 +143,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const DRAG_HOLD_MS = 220
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
   const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
-  const defaultSittingTimeMinutes = useLocationConfigStore(s => s.config.dining.defaultSittingTimeMinutes)
+  const defaultSittingTimeMinutes = useLocationConfigStore(
+    s => s.config.dining.defaultSittingTimeMinutes
+  )
   const tick = useTableTimerTick()
 
   // Subscribe directly to live session so table color/status updates without needing
@@ -197,13 +225,50 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return preAuth?.preAuthAmount ?? null
   }, [effectiveOrder?.payments])
 
+  const reservations = useReservationStore(s => s.reservations)
+
+  const liveNextReservation = useMemo(() => {
+    const nowMs = Date.now()
+
+    return reservations
+      .filter(r => {
+        const epoch = getReservationTimeMs({
+          date: r.reservation_date,
+          time: r.reservation_time
+        })
+
+        return (
+          ['pending', 'confirmed', 'reminded'].includes(r.status) &&
+          (r.assigned_table_ids ?? []).includes(table.id) &&
+          epoch !== null &&
+          epoch > nowMs
+        )
+      })
+      .sort((a, b) => {
+        const aEpoch = getReservationTimeMs({
+          date: a.reservation_date,
+          time: a.reservation_time
+        })
+        const bEpoch = getReservationTimeMs({
+          date: b.reservation_date,
+          time: b.reservation_time
+        })
+        return (
+          (aEpoch ?? Number.MAX_SAFE_INTEGER) -
+          (bEpoch ?? Number.MAX_SAFE_INTEGER)
+        )
+      })[0]
+  }, [reservations, table.id])
+
   // Subscribe only to the specific merged table names needed, not the entire tablesById map
   const mergedTableIds = liveSession?.merged_tables ?? []
-  const mergedTableNames = useFloorPlanStore(useShallow(s =>
-    mergedTableIds
-      .filter(id => id !== table.id)
-      .map(id => s.tablesById[id]?.name ?? null)
-  ))
+  const mergedTableNames = useFloorPlanStore(
+    useShallow(s =>
+      mergedTableIds
+        .filter(id => id !== table.id)
+        .map(id => s.tablesById[id]?.name ?? null)
+    )
+  )
 
   const displayName = useMemo(() => {
     if (mergedTableIds.length > 0) {
@@ -344,10 +409,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       if (onLongPress) runOnJS(onLongPress)()
     })
 
-  const tapGesture = Gesture.Tap().enabled(isEditMode || isTableType).onEnd(() => {
-    if (isEditMode) runOnJS(onSelect)()
-    else if (onPress) runOnJS(onPress)()
-  })
+  const tapGesture = Gesture.Tap()
+    .enabled(isEditMode || isTableType)
+    .onEnd(() => {
+      if (isEditMode) runOnJS(onSelect)()
+      else if (onPress) runOnJS(onPress)()
+    })
 
   const composedGesture = isEditMode
     ? Gesture.Simultaneous(dragGesture, rotateGesture, tapGesture)
@@ -385,23 +452,38 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     }
   })
 
-  const orderTotal = useMemo(() =>
-    effectiveOrder?.items?.reduce(
-      (acc: number, item: any) => acc + item.price * item.quantity,
-      0
-    ) || 0,
+  const orderTotal = useMemo(
+    () =>
+      effectiveOrder?.items?.reduce(
+        (acc: number, item: any) => acc + item.price * item.quantity,
+        0
+      ) || 0,
     [effectiveOrder?.items]
   )
 
-  const isReservedSoon = useMemo(() =>
-    !liveSession &&
-    !!table.next_reservation &&
-    (() => {
-      const resTime = new Date(table.next_reservation!.time).getTime()
-      return resTime > Date.now() && resTime - Date.now() <= 30 * 60 * 1000
-    })(),
-    [liveSession, table.next_reservation]
-  )
+  const reservationCountdownLabel = useMemo(() => {
+    if (liveSession) return null
+
+    const nextReservation = liveNextReservation
+      ? {
+          date: liveNextReservation.reservation_date,
+          time: liveNextReservation.reservation_time
+        }
+      : null
+
+    if (!nextReservation) return null
+
+    const reservationTimeMs = getReservationTimeMs(nextReservation)
+    if (!Number.isFinite(reservationTimeMs)) return null
+
+    const diffMs = reservationTimeMs - Date.now()
+    if (diffMs <= 0 || diffMs > 30 * 60 * 1000) return null
+
+    const minutesLeft = Math.max(1, Math.ceil(diffMs / 60000))
+    return `Reserved in ${minutesLeft}m`
+  }, [tick, liveSession, liveNextReservation])
+
+  const isReservedSoon = !!reservationCountdownLabel
 
   // Determine table color status from DB-synced session status only (skip local-only intermediates)
   const sessionStatus = liveSession?.status
@@ -466,7 +548,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                   fontSize: 10,
                   fontWeight: '700',
                   textAlign: 'center',
-                  color: tableColor,
+                  color: tableColor
                 }}
                 numberOfLines={1}
               >
@@ -474,13 +556,33 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               </Text>
             )}
 
-            {isTableType && tableStatus === 'available' && (
-              <Text style={{ color: tableColor + 'AA', fontSize: 7, fontWeight: '600' }}>
+            {isTableType && tableStatus === 'available' && !isReservedSoon && (
+              <Text
+                style={{
+                  color: tableColor + 'AA',
+                  fontSize: 7,
+                  fontWeight: '600'
+                }}
+              >
                 {table.capacity ||
                   TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
                     ?.capacity ||
                   0}{' '}
                 SEATS
+              </Text>
+            )}
+
+            {isTableType && reservationCountdownLabel && (
+              <Text
+                style={{
+                  color: tableColor + 'CC',
+                  fontSize: 7,
+                  fontWeight: '600',
+                  textAlign: 'center'
+                }}
+                numberOfLines={1}
+              >
+                {reservationCountdownLabel}
               </Text>
             )}
 
@@ -495,25 +597,45 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 tableStatus === 'paid') && (
                 <>
                   {!effectiveOrder && liveSession?.order_id ? (
-                    <Text style={{ color: tableColor + 'CC', fontSize: 7, fontWeight: '600' }}>
-                      {duration}{liveSession?.party_size ? ` · ${liveSession.party_size} ${liveSession.party_size === 1 ? 'guest' : 'guests'}` : ''}
+                    <Text
+                      style={{
+                        color: tableColor + 'CC',
+                        fontSize: 7,
+                        fontWeight: '600'
+                      }}
+                    >
+                      {duration}
+                      {liveSession?.party_size
+                        ? ` · ${liveSession.party_size} ${
+                            liveSession.party_size === 1 ? 'guest' : 'guests'
+                          }`
+                        : ''}
                     </Text>
                   ) : (
                     <>
-                      <Text style={{
-                        color: '#FFFFFF',
-                        fontSize: 9,
-                        fontWeight: '700',
-                        marginTop: 2,
-                      }}>
+                      <Text
+                        style={{
+                          color: '#FFFFFF',
+                          fontSize: 9,
+                          fontWeight: '700',
+                          marginTop: 2
+                        }}
+                      >
                         ${orderTotal.toFixed(2)}
                       </Text>
-                      <Text style={{
-                        color: tableColor + 'CC',
-                        fontSize: 7,
-                        fontWeight: '600',
-                      }}>
-                        {duration}{liveSession?.party_size ? ` · ${liveSession.party_size} ${liveSession.party_size === 1 ? 'guest' : 'guests'}` : ''}
+                      <Text
+                        style={{
+                          color: tableColor + 'CC',
+                          fontSize: 7,
+                          fontWeight: '600'
+                        }}
+                      >
+                        {duration}
+                        {liveSession?.party_size
+                          ? ` · ${liveSession.party_size} ${
+                              liveSession.party_size === 1 ? 'guest' : 'guests'
+                            }`
+                          : ''}
                       </Text>
                     </>
                   )}
@@ -551,6 +673,31 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 }}
               >
                 {serverInitials}
+              </Text>
+            </View>
+          )}
+
+          {/* Reservation badge */}
+          {isReservedSoon && (
+            <View
+              style={{
+                position: 'absolute',
+                bottom: 4,
+                right: 4,
+                width: 14,
+                height: 14,
+                borderRadius: 4,
+                backgroundColor: colors.info + '30',
+                borderWidth: 1,
+                borderColor: colors.info + '80',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Text
+                style={{ color: colors.info, fontSize: 7, fontWeight: '800' }}
+              >
+                R
               </Text>
             </View>
           )}

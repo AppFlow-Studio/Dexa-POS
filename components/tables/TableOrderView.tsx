@@ -32,6 +32,7 @@ import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
+import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
@@ -323,6 +324,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     })
 
     if (result.success) {
+      if (order.session_id) {
+        await useReservationStore
+          .getState()
+          .completeReservationForSession(order.session_id)
+      }
       closeDialog()
       show({
         title: 'Check Voided',

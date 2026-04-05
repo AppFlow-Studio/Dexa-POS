@@ -2,11 +2,11 @@ import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   Clock,
   Lock,
-  Users,
   Utensils
 } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
@@ -20,12 +20,12 @@ import Animated, {
 import PinDisplay from '../auth/PinDisplay'
 import PinNumpad from '../auth/PinNumpad'
 import HistoryPanel from '../panels/HistoryPanel'
-import SeatedPanel from '../panels/SeatedPanel'
+import ReservationsPanel from '../panels/ReservationsPanel'
 import TablesPanel from '../panels/TablesPanel'
 import WaitlistPanel from '../panels/WaitlistPanel'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
 
-type TabMode = 'tables' | 'waitlist' | 'seated' | 'history'
+type TabMode = 'tables' | 'waitlist' | 'reservations' | 'history'
 
 interface SidebarProps {
   activeLayoutId: string | null
@@ -132,8 +132,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         return <TablesPanel />
       case 'waitlist':
         return <WaitlistPanel />
-      case 'seated':
-        return <SeatedPanel />
+      case 'reservations':
+        return <ReservationsPanel />
       case 'history':
         return <HistoryPanel />
       default:
@@ -144,7 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     { id: 'tables', icon: Utensils, label: 'Tables', isLocked: false },
     { id: 'waitlist', icon: Clock, label: 'Waitlist', isLocked: false },
-    { id: 'seated', icon: Users, label: 'Seated', isLocked: false }
+    { id: 'reservations', icon: CalendarClock, label: 'Reservations', isLocked: false }
     // { id: "history", icon: BarChart3, label: "History", isLocked: true },
   ] as const
 
@@ -243,23 +243,23 @@ const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 style={{
                   flex: isExpanded ? 1 : undefined,
-                  flexDirection: 'row',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: 34,
-                  gap: 5,
+                  height: 40,
+                  gap: 3,
                   borderRadius: 8,
                   borderWidth: 1,
                   backgroundColor: isActive ? colors.teal + '20' : 'transparent',
                   borderColor: isActive ? colors.teal + '40' : 'transparent'
                 }}
               >
-                <item.icon size={14} color={isActive ? colors.teal : colors.label} />
+                <item.icon size={13} color={isActive ? colors.teal : colors.label} />
                 <Animated.Text
                   style={[
                     textStyle,
                     {
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: '600',
                       color: isActive ? colors.teal : colors.label
                     }

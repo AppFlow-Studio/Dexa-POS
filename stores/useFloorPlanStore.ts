@@ -1,3 +1,4 @@
+import { findReservationTableConflictForWindow } from '@/lib/reservationConflicts'
 import { mmkvStorage } from '@/lib/storage'
 import { TABLE_SHAPES } from '@/lib/table-shapes'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
@@ -22,7 +23,13 @@ import {
 } from 'zustand/middleware'
 // Lazy accessor — breaks circular dependency with useTableSessionStore
 const getTableSessionStore = () =>
-  (require('./useTableSessionStore') as typeof import('./useTableSessionStore')).useTableSessionStore
+  (require('./useTableSessionStore') as typeof import('./useTableSessionStore'))
+    .useTableSessionStore
+
+// Lazy accessor — breaks circular dependency with useReservationStore
+const getReservationStore = () =>
+  (require('./useReservationStore') as typeof import('./useReservationStore'))
+    .useReservationStore
 
 // Global client reference to avoid direct dependency loops or hook usage outside components
 let _supabaseClient: SupabaseClient | null = null
@@ -144,7 +151,7 @@ interface FloorPlanState {
   unmergeTable: (sessionId: string, tableId: string) => Promise<void>
   advanceCourse: (sessionId: string) => Promise<void>
   linkOrderToSession: (sessionId: string, orderId: string) => Promise<void>
-  clearTableSession: (tableId: string) => Promise<void>;
+  clearTableSession: (tableId: string) => Promise<void>
   finishCleaning: (tableId: string) => Promise<void>
 
   // Selection Actions
@@ -208,7 +215,10 @@ interface FloorPlanState {
   saveSnapshot: () => void
 
   // Server Section Actions
-  assignServerToSection: (sectionId: string, staffProfileId: string) => Promise<void>
+  assignServerToSection: (
+    sectionId: string,
+    staffProfileId: string
+  ) => Promise<void>
   unassignServerFromSection: (sectionId: string) => Promise<void>
 
   // O(1) Getters
@@ -388,12 +398,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             status: data.session.status,
             party_size: data.session.party_size,
             guest_name: data.session.guest_name,
-            seated_at:
-              data.session.seated_at || new Date().toISOString(),
+            seated_at: data.session.seated_at || new Date().toISOString(),
             current_course: data.session.current_course,
             needs_attention: data.session.needs_attention,
             is_vip: data.session.is_vip,
             order_id: data.session.order_id,
+            reservation_id: (data.session as any).reservation_id ?? null,
             session_number: data.session.session_number,
             merged_tables: tableIds.length > 1 ? tableIds : undefined
           }
@@ -685,6 +695,26 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 return freshTable
               })
 
+              // Enrich next_reservation from reservation store
+              const getUpcomingForTable =
+                getReservationStore().getState().getUpcomingForTable
+              const enrichedTables = mergedTables.map(table => {
+                const upcoming = getUpcomingForTable(table.id)
+                const next = upcoming[0]
+                if (!next) return { ...table, next_reservation: null }
+                return {
+                  ...table,
+                  next_reservation: {
+                    id: next.id,
+                    party_name: next.party_name,
+                    party_size: next.party_size,
+                    date: next.reservation_date,
+                    time: next.reservation_time,
+                    status: next.status
+                  }
+                }
+              })
+
               // Build sectionsById map
               const freshSections = sectionsResult.data || []
               const newSectionsById = freshSections.reduce((acc, section) => {
@@ -693,8 +723,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               }, {} as Record<string, ServerSection>)
 
               set({
-                tables: mergedTables,
-                tablesById: buildTablesById(mergedTables),
+                tables: enrichedTables,
+                tablesById: buildTablesById(enrichedTables),
                 sections: freshSections,
                 sectionsById: newSectionsById,
                 lastSyncAt: new Date().toISOString(),
@@ -704,7 +734,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               // Hydrate session store from fresh table data
               getTableSessionStore()
                 .getState()
-                ._patchSessionsFromTables(mergedTables)
+                ._patchSessionsFromTables(enrichedTables)
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
@@ -772,7 +802,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             // If offline, restore sessions from useTableSessionStore (persisted in MMKV)
             const isOnline = getIsOnline()
             if (!isOnline) {
-              console.log('[refreshTableSessions] Offline — restoring sessions from session store')
+              console.log(
+                '[refreshTableSessions] Offline — restoring sessions from session store'
+              )
               const sessionState = getTableSessionStore().getState()
               const currentTables = get().tables
               const restored = currentTables.map(table => {
@@ -781,7 +813,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               })
               set({
                 tables: restored,
-                tablesById: buildTablesById(restored),
+                tablesById: buildTablesById(restored)
               })
               return
             }
@@ -799,7 +831,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const tableIdsBySession: Record<string, string[]> = {}
           for (const row of data) {
             if (row.session_id) {
-              (tableIdsBySession[row.session_id] ??= []).push(row.table_id)
+              ;(tableIdsBySession[row.session_id] ??= []).push(row.table_id)
             }
           }
 
@@ -821,7 +853,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 current_course: row.current_course ?? 1,
                 needs_attention: row.needs_attention ?? false,
                 is_vip: row.is_vip ?? false,
-                merged_tables: (mergedTables?.length ?? 0) > 1 ? mergedTables : undefined
+                merged_tables:
+                  (mergedTables?.length ?? 0) > 1 ? mergedTables : undefined
               }
             } else {
               sessionByTableId[row.table_id] = null
@@ -861,7 +894,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           })
 
           // Hydrate session store from merged tables
-          getTableSessionStore().getState()._patchSessionsFromTables(mergedTables)
+          getTableSessionStore()
+            .getState()
+            ._patchSessionsFromTables(mergedTables)
         },
 
         // ====================================================================
@@ -921,8 +956,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           set(state => {
             const existing = state.tablesById[tableId]
             if (!existing) return state
-            const updated = { ...existing, x, y, rotation: rotation ?? existing.rotation }
-            const newTables = state.tables.map(t => t.id === tableId ? updated : t)
+            const updated = {
+              ...existing,
+              x,
+              y,
+              rotation: rotation ?? existing.rotation
+            }
+            const newTables = state.tables.map(t =>
+              t.id === tableId ? updated : t
+            )
             return {
               tables: newTables,
               tablesById: { ...state.tablesById, [tableId]: updated }
@@ -951,7 +993,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const existing = state.tablesById[tableId]
             if (!existing) return state
             const updated = { ...existing, name }
-            const newTables = state.tables.map(t => t.id === tableId ? updated : t)
+            const newTables = state.tables.map(t =>
+              t.id === tableId ? updated : t
+            )
             return {
               tables: newTables,
               tablesById: { ...state.tablesById, [tableId]: updated }
@@ -981,7 +1025,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const existing = state.tablesById[tableId]
             if (!existing) return state
             const updated = { ...existing, width, height }
-            const newTables = state.tables.map(t => t.id === tableId ? updated : t)
+            const newTables = state.tables.map(t =>
+              t.id === tableId ? updated : t
+            )
             return {
               tables: newTables,
               tablesById: { ...state.tablesById, [tableId]: updated }
@@ -1255,8 +1301,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               p_party_name: params.partyName,
               p_party_size: params.partySize,
               p_phone: params.phone,
-              p_date: params.date,
-              p_time: params.time,
+              p_reservation_date: params.date,
+              p_reservation_time: params.time,
               p_email: params.email,
               p_notes: params.notes,
               p_special_requests: params.specialRequests,
@@ -1286,6 +1332,45 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         assignReservationTables: async (reservationId, tableIds) => {
           const supabase = getClient()
+
+          if (tableIds.length > 0) {
+            const targetReservation = get().reservations.find(
+              r => r.id === reservationId
+            )
+            const reservationDate = targetReservation?.reservation_date
+            const reservationTime = targetReservation?.reservation_time
+
+            if (targetReservation && reservationDate && reservationTime) {
+              const { data: existingData, error: existingError } =
+                await FloorPlanService.getReservations(
+                  supabase,
+                  targetReservation.location_id,
+                  reservationDate
+                )
+
+              if (!existingError) {
+                const existingReservations =
+                  existingData?.reservations ?? get().reservations
+                const conflict = findReservationTableConflictForWindow(
+                  {
+                    reservationDate,
+                    reservationTime,
+                    durationMinutes: targetReservation.duration_minutes,
+                    tableIds,
+                    ignoreReservationId: reservationId
+                  },
+                  existingReservations
+                )
+
+                if (conflict) {
+                  throw new Error(
+                    `Table already reserved for ${conflict.partyName} at ${conflict.reservationTime}.`
+                  )
+                }
+              }
+            }
+          }
+
           const { error } = await FloorPlanService.assignReservationTables(
             supabase,
             reservationId,
@@ -1373,14 +1458,19 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         },
 
         // Server Section Actions
-        assignServerToSection: async (sectionId: string, staffProfileId: string) => {
+        assignServerToSection: async (
+          sectionId: string,
+          staffProfileId: string
+        ) => {
           const client = getClient()
           if (!client) return
 
           // Optimistic update
           set(state => {
             const updatedSections = state.sections.map(s =>
-              s.id === sectionId ? { ...s, assigned_staff_id: staffProfileId } : s
+              s.id === sectionId
+                ? { ...s, assigned_staff_id: staffProfileId }
+                : s
             )
             const updatedSectionsById = { ...state.sectionsById }
             if (updatedSectionsById[sectionId]) {
@@ -1389,17 +1479,26 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 assigned_staff_id: staffProfileId
               }
             }
-            return { sections: updatedSections, sectionsById: updatedSectionsById }
+            return {
+              sections: updatedSections,
+              sectionsById: updatedSectionsById
+            }
           })
 
           // Backend update
           const { error } = await client
             .from('server_sections')
-            .update({ assigned_staff_id: staffProfileId, updated_at: new Date().toISOString() })
+            .update({
+              assigned_staff_id: staffProfileId,
+              updated_at: new Date().toISOString()
+            })
             .eq('id', sectionId)
 
           if (error) {
-            console.error('[FloorPlan] Failed to assign server to section:', error)
+            console.error(
+              '[FloorPlan] Failed to assign server to section:',
+              error
+            )
             // Revert on error
             set(state => {
               const reverted = state.sections.map(s =>
@@ -1407,7 +1506,10 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               )
               const revertedById = { ...state.sectionsById }
               if (revertedById[sectionId]) {
-                revertedById[sectionId] = { ...revertedById[sectionId], assigned_staff_id: null }
+                revertedById[sectionId] = {
+                  ...revertedById[sectionId],
+                  assigned_staff_id: null
+                }
               }
               return { sections: reverted, sectionsById: revertedById }
             })
@@ -1418,7 +1520,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const client = getClient()
           if (!client) return
 
-          const previousStaffId = get().sectionsById[sectionId]?.assigned_staff_id
+          const previousStaffId =
+            get().sectionsById[sectionId]?.assigned_staff_id
 
           // Optimistic update
           set(state => {
@@ -1427,27 +1530,44 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             )
             const updatedSectionsById = { ...state.sectionsById }
             if (updatedSectionsById[sectionId]) {
-              updatedSectionsById[sectionId] = { ...updatedSectionsById[sectionId], assigned_staff_id: null }
+              updatedSectionsById[sectionId] = {
+                ...updatedSectionsById[sectionId],
+                assigned_staff_id: null
+              }
             }
-            return { sections: updatedSections, sectionsById: updatedSectionsById }
+            return {
+              sections: updatedSections,
+              sectionsById: updatedSectionsById
+            }
           })
 
           const { error } = await client
             .from('server_sections')
-            .update({ assigned_staff_id: null, updated_at: new Date().toISOString() })
+            .update({
+              assigned_staff_id: null,
+              updated_at: new Date().toISOString()
+            })
             .eq('id', sectionId)
 
           if (error) {
-            console.error('[FloorPlan] Failed to unassign server from section:', error)
+            console.error(
+              '[FloorPlan] Failed to unassign server from section:',
+              error
+            )
             // Revert
             if (previousStaffId) {
               set(state => {
                 const reverted = state.sections.map(s =>
-                  s.id === sectionId ? { ...s, assigned_staff_id: previousStaffId } : s
+                  s.id === sectionId
+                    ? { ...s, assigned_staff_id: previousStaffId }
+                    : s
                 )
                 const revertedById = { ...state.sectionsById }
                 if (revertedById[sectionId]) {
-                  revertedById[sectionId] = { ...revertedById[sectionId], assigned_staff_id: previousStaffId }
+                  revertedById[sectionId] = {
+                    ...revertedById[sectionId],
+                    assigned_staff_id: previousStaffId
+                  }
                 }
                 return { sections: reverted, sectionsById: revertedById }
               })
@@ -1501,7 +1621,7 @@ useFloorPlanStore.persist.onFinishHydration(() => {
     })
     useFloorPlanStore.setState({
       tables: restored,
-      tablesById: buildTablesById(restored),
+      tablesById: buildTablesById(restored)
     })
   }
 
@@ -1509,7 +1629,7 @@ useFloorPlanStore.persist.onFinishHydration(() => {
   setTimeout(() => {
     const store = useFloorPlanStore.getState()
     const isOnline = getIsOnline()
-    if (!isOnline) return  // already restored above
+    if (!isOnline) return // already restored above
 
     if (store.tables.length > 0 && locationId) {
       store.refreshTableSessions() // lightweight, geometry already cached

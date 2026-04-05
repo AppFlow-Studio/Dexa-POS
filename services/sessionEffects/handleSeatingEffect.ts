@@ -11,56 +11,58 @@
  * 4. On failure: batchDispatch SEAT_FAILED
  */
 
-import { FloorPlanService } from "@/services/floorPlanService";
-import { queueOperation } from "@/services/offlineSyncService";
-import type { TableSession } from "@/types/db-floor-plan-types";
-import type { SeatGuestsParams } from "@/types/sessionRpcTypes";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { SessionAction } from "@/stores/useTableSessionStore";
+import { FloorPlanService } from '@/services/floorPlanService'
+import { queueOperation } from '@/services/offlineSyncService'
+import type { SessionAction } from '@/stores/useTableSessionStore'
+import type { TableSession } from '@/types/db-floor-plan-types'
+import type { SeatGuestsParams } from '@/types/sessionRpcTypes'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface SeatingEffectDeps {
-  supabase: SupabaseClient;
-  merchantId: string;
-  staffId: string | null;
-  serverStaffId: string | null;
-  deviceId: string | null;
-  stationId: string | null;
-  batchDispatch: (actions: Array<{ tableId: string; action: SessionAction }>) => number;
+  supabase: SupabaseClient
+  merchantId: string
+  staffId: string | null
+  serverStaffId: string | null
+  deviceId: string | null
+  stationId: string | null
+  batchDispatch: (
+    actions: Array<{ tableId: string; action: SessionAction }>
+  ) => number
 }
 
 export interface SeatingEffectParams {
-  partySize: number;
-  guestName?: string;
-  guestPhone?: string;
-  reservationId?: string;
-  waitlistId?: string;
-  createOrder: boolean;
-  localOrderId?: string;
-  optimisticSession: TableSession;
+  partySize: number
+  guestName?: string
+  guestPhone?: string
+  reservationId?: string
+  waitlistId?: string
+  createOrder: boolean
+  localOrderId?: string
+  optimisticSession: TableSession
 }
 
 export interface SeatingEffectResult {
-  success: boolean;
-  sessionId?: string;
-  orderId?: string;
-  error?: string;
+  success: boolean
+  sessionId?: string
+  orderId?: string
+  error?: string
 }
 
 // ---------------------------------------------------------------------------
 // Effect
 // ---------------------------------------------------------------------------
 
-export async function handleSeatingEffect(
+export async function handleSeatingEffect (
   tableIds: string[],
   params: SeatingEffectParams,
-  deps: SeatingEffectDeps,
+  deps: SeatingEffectDeps
 ): Promise<SeatingEffectResult> {
-  const primaryTableId = tableIds[0];
-  const additionalTableIds = tableIds.slice(1);
+  const primaryTableId = tableIds[0]
+  const additionalTableIds = tableIds.slice(1)
 
   // 1. Build RPC params and call seat_guests_v3
   const rpcParams: SeatGuestsParams = {
@@ -75,26 +77,26 @@ export async function handleSeatingEffect(
     p_reservation_id: params.reservationId || null,
     p_waitlist_id: params.waitlistId || null,
     p_device_id: deps.deviceId,
-    p_station_id: deps.stationId,
-  };
+    p_station_id: deps.stationId
+  }
 
   const { data, error } = await FloorPlanService.seatGuests(
     deps.supabase,
-    rpcParams,
-  );
+    rpcParams
+  )
 
   if (error || !data) {
     // Dispatch SEAT_FAILED for all tables
     deps.batchDispatch(
       tableIds.map(tableId => ({
         tableId,
-        action: { type: 'SEAT_FAILED' as const },
-      })),
-    );
+        action: { type: 'SEAT_FAILED' as const }
+      }))
+    )
     return {
       success: false,
-      error: error?.message || "seat_guests_v3 returned no data",
-    };
+      error: error?.message || 'seat_guests_v3 returned no data'
+    }
   }
 
   // 2. Merge additional tables for multi-table seating (parallel)
@@ -103,52 +105,58 @@ export async function handleSeatingEffect(
       additionalTableIds.map(extraTableId =>
         FloorPlanService.mergeTableToSession(deps.supabase, {
           p_session_id: data.session_id!,
-          p_table_id: extraTableId,
+          p_table_id: extraTableId
         })
       )
-    );
+    )
     mergeResults.forEach((result, i) => {
       if (result.status === 'rejected') {
-        const failedTableId = additionalTableIds[i];
+        const failedTableId = additionalTableIds[i]
         console.warn(
           `[handleSeatingEffect] Non-fatal: failed to merge table ${failedTableId}, queuing for retry:`,
-          result.reason,
-        );
+          result.reason
+        )
         // Queue failed merge for offline retry
         queueOperation({
-          type: "merge_table",
+          type: 'merge_table',
           params: {
             sessionId: data.session_id!,
-            tableId: failedTableId,
+            tableId: failedTableId
           },
-          localOrderId: data.session_id!,
-        }).catch((err) =>
-          console.error("[handleSeatingEffect] Failed to queue merge retry:", err),
-        );
+          localOrderId: data.session_id!
+        }).catch(err =>
+          console.error(
+            '[handleSeatingEffect] Failed to queue merge retry:',
+            err
+          )
+        )
       }
-    });
+    })
   }
 
   // 3. Hydrate order from RPC response
   if (data.order_id) {
-    const { useOrderStore } = await import("@/stores/useOrderStore");
+    const { useOrderStore } = await import('@/stores/useOrderStore')
 
     useOrderStore.getState().hydrateOrderFromSeat({
       localOrderId: params.localOrderId,
       dbOrderId: data.order_id,
       sessionId: data.session_id!,
       orderNumber: data.order_number,
-      displayNumber: data.display_number,
-    });
+      displayNumber: data.display_number
+    })
 
     // Fix activeOrderId if hydrateOrderFromSeat rekeyed the order
     if (params.localOrderId) {
-      const os = useOrderStore.getState();
+      const os = useOrderStore.getState()
       // If order was rekeyed, activeOrderId now points to a deleted key — fix it
-      if (os.activeOrderId === params.localOrderId && !os.ordersById[params.localOrderId]) {
-        const newKey = os.dbOrderIdIndex[data.order_id] ?? data.order_id;
+      if (
+        os.activeOrderId === params.localOrderId &&
+        !os.ordersById[params.localOrderId]
+      ) {
+        const newKey = os.dbOrderIdIndex[data.order_id] ?? data.order_id
         if (os.ordersById[newKey]) {
-          useOrderStore.getState().setActiveOrder(newKey);
+          useOrderStore.getState().setActiveOrder(newKey)
         }
       }
     }
@@ -159,21 +167,23 @@ export async function handleSeatingEffect(
     ...params.optimisticSession,
     id: data.session_id!,
     order_id: data.order_id,
-    session_number: data.session_number ?? params.optimisticSession.session_number,
-  };
+    reservation_id: params.reservationId ?? null,
+    session_number:
+      data.session_number ?? params.optimisticSession.session_number
+  }
 
   deps.batchDispatch(
     tableIds.map(tableId => ({
       tableId,
-      action: { type: 'SESSION_CREATED' as const, session: realSession },
-    })),
-  );
+      action: { type: 'SESSION_CREATED' as const, session: realSession }
+    }))
+  )
 
-  console.log("[handleSeatingEffect] Success:", data);
+  console.log('[handleSeatingEffect] Success:', data)
 
   return {
     success: true,
     sessionId: data.session_id!,
-    orderId: data.order_id,
-  };
+    orderId: data.order_id
+  }
 }
