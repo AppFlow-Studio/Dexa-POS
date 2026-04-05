@@ -23,6 +23,10 @@ import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
+import {
+  setReservationSupabaseClient,
+  useReservationStore
+} from '@/stores/useReservationStore'
 import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { Href, useFocusEffect, useRouter } from 'expo-router'
@@ -92,6 +96,19 @@ const TablesScreen = () => {
       setWaitlistSupabaseClient(supabaseClient)
     }
   }, [supabaseClient])
+
+  const fetchReservations = useReservationStore(s => s.fetchReservations)
+
+  useEffect(() => {
+    if (!supabaseClient || !location_id) return
+    setReservationSupabaseClient(supabaseClient)
+    fetchReservations(location_id)
+    const interval = setInterval(
+      () => fetchReservations(location_id, undefined, { silent: true }),
+      30000
+    )
+    return () => clearInterval(interval)
+  }, [supabaseClient, location_id, fetchReservations])
 
   // Consume pending table overlay from waitlist seating flow
   useFocusEffect(

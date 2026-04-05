@@ -24,6 +24,10 @@ import {
 const getTableSessionStore = () =>
   (require('./useTableSessionStore') as typeof import('./useTableSessionStore')).useTableSessionStore
 
+// Lazy accessor — breaks circular dependency with useReservationStore
+const getReservationStore = () =>
+  (require('./useReservationStore') as typeof import('./useReservationStore')).useReservationStore
+
 // Global client reference to avoid direct dependency loops or hook usage outside components
 let _supabaseClient: SupabaseClient | null = null
 
@@ -685,6 +689,25 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 return freshTable
               })
 
+              // Enrich next_reservation from reservation store
+              const getUpcomingForTable =
+                getReservationStore().getState().getUpcomingForTable
+              const enrichedTables = mergedTables.map(table => {
+                const upcoming = getUpcomingForTable(table.id)
+                const next = upcoming[0]
+                if (!next) return { ...table, next_reservation: null }
+                return {
+                  ...table,
+                  next_reservation: {
+                    id: next.id,
+                    party_name: next.party_name,
+                    party_size: next.party_size,
+                    time: next.reservation_time,
+                    status: next.status
+                  }
+                }
+              })
+
               // Build sectionsById map
               const freshSections = sectionsResult.data || []
               const newSectionsById = freshSections.reduce((acc, section) => {
@@ -693,8 +716,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               }, {} as Record<string, ServerSection>)
 
               set({
-                tables: mergedTables,
-                tablesById: buildTablesById(mergedTables),
+                tables: enrichedTables,
+                tablesById: buildTablesById(enrichedTables),
                 sections: freshSections,
                 sectionsById: newSectionsById,
                 lastSyncAt: new Date().toISOString(),
@@ -704,7 +727,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               // Hydrate session store from fresh table data
               getTableSessionStore()
                 .getState()
-                ._patchSessionsFromTables(mergedTables)
+                ._patchSessionsFromTables(enrichedTables)
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
