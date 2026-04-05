@@ -1,3 +1,4 @@
+import { findReservationTableConflict } from '@/lib/reservationConflicts'
 import { FloorPlanService } from '@/services/floorPlanService'
 import {
   CreateReservationParams,
@@ -205,6 +206,37 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
   createReservation: async params => {
     set({ isLoading: true, error: null })
     try {
+      if ((params.p_assigned_table_ids ?? []).length > 0) {
+        const { data: existingData, error: existingError } =
+          await FloorPlanService.getReservations(
+            getClient(),
+            params.p_location_id,
+            params.p_reservation_date
+          )
+
+        if (!existingError) {
+          const existingReservations = extractReservationRows(
+            existingData,
+            params.p_reservation_date
+          )
+          const conflict = findReservationTableConflict(
+            params,
+            existingReservations
+          )
+
+          if (conflict) {
+            throw new Error(
+              `Table already reserved for ${conflict.partyName} at ${conflict.reservationTime}.`
+            )
+          }
+        } else {
+          console.warn(
+            '[useReservationStore.createReservation] Conflict pre-check skipped:',
+            existingError
+          )
+        }
+      }
+
       const { data, error } = await FloorPlanService.createReservation(
         getClient(),
         params

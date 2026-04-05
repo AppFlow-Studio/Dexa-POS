@@ -230,6 +230,11 @@ const MINUTES = [
 
 const TIME_ITEM_H = 36
 const TIME_VISIBLE_ROWS = 3
+interface FailureModalState {
+  visible: boolean
+  title: string
+  message: string
+}
 
 const DrumColumn: React.FC<{
   items: string[]
@@ -1752,6 +1757,11 @@ const ReservationsPanel: React.FC = () => {
   const [isSeatPickerOpen, setSeatPickerOpen] = useState(false)
   const [addLoading, setAddLoading] = useState(false)
   const [seatLoading, setSeatLoading] = useState(false)
+  const [failureModal, setFailureModal] = useState<FailureModalState>({
+    visible: false,
+    title: 'Failed',
+    message: ''
+  })
 
   // Available tables (no active session, category = table/booth)
   const availableTables = useMemo(
@@ -1833,12 +1843,30 @@ const ReservationsPanel: React.FC = () => {
           setShowAddModal(false)
           if (selectedStore?.id)
             fetchReservations(selectedStore.id, selectedDate, { silent: true })
+        } else {
+          const message = 'Could not create reservation'
+          show({
+            title: 'Failed',
+            message,
+            type: 'error'
+          })
+          setFailureModal({
+            visible: true,
+            title: 'Reservation Failed',
+            message
+          })
         }
       } catch (err: any) {
+        const message = err.message || 'Could not create reservation'
         show({
           title: 'Failed',
-          message: err.message || 'Could not create reservation',
+          message,
           type: 'error'
+        })
+        setFailureModal({
+          visible: true,
+          title: 'Reservation Failed',
+          message
         })
       } finally {
         setAddLoading(false)
@@ -1896,10 +1924,16 @@ const ReservationsPanel: React.FC = () => {
           type: 'success'
         })
       } else {
+        const message = 'Please seat the guest manually from the floor plan'
         show({
           title: 'Could Not Seat',
-          message: 'Please seat the guest manually from the floor plan',
+          message,
           type: 'warning'
+        })
+        setFailureModal({
+          visible: true,
+          title: 'Seating Failed',
+          message
         })
       }
     },
@@ -1922,13 +1956,31 @@ const ReservationsPanel: React.FC = () => {
           setSeatPickerOpen(false)
           setReservationToSeat(null)
         } else {
+          const message =
+            'Please try again or seat the guest manually from the floor plan.'
           show({
             title: 'Could Not Seat',
-            message:
-              'Please try again or seat the guest manually from the floor plan.',
+            message,
             type: 'warning'
           })
+          setFailureModal({
+            visible: true,
+            title: 'Seating Failed',
+            message
+          })
         }
+      } catch (err: any) {
+        const message = err.message || 'Could not seat reservation'
+        show({
+          title: 'Could Not Seat',
+          message,
+          type: 'error'
+        })
+        setFailureModal({
+          visible: true,
+          title: 'Seating Failed',
+          message
+        })
       } finally {
         setSeatLoading(false)
       }
@@ -2161,6 +2213,70 @@ const ReservationsPanel: React.FC = () => {
         onClose={handleCloseSeatPicker}
         onSelectTable={handleSeatTableSelect}
       />
+
+      <Modal
+        visible={failureModal.visible}
+        transparent
+        animationType='fade'
+        onRequestClose={() =>
+          setFailureModal(prev => ({ ...prev, visible: false }))
+        }
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 24
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              backgroundColor: colors.card,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 16
+            }}
+          >
+            <Text
+              style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+            >
+              {failureModal.title}
+            </Text>
+            <Text
+              style={{
+                marginTop: 8,
+                fontSize: 13,
+                color: colors.label,
+                lineHeight: 18
+              }}
+            >
+              {failureModal.message}
+            </Text>
+            <TouchableOpacity
+              onPress={() =>
+                setFailureModal(prev => ({ ...prev, visible: false }))
+              }
+              style={{
+                marginTop: 14,
+                alignSelf: 'flex-end',
+                backgroundColor: colors.danger,
+                borderRadius: 8,
+                paddingHorizontal: 14,
+                paddingVertical: 9
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                OK
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }

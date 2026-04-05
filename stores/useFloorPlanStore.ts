@@ -1,3 +1,4 @@
+import { findReservationTableConflictForWindow } from '@/lib/reservationConflicts'
 import { mmkvStorage } from '@/lib/storage'
 import { TABLE_SHAPES } from '@/lib/table-shapes'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
@@ -1331,6 +1332,45 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         assignReservationTables: async (reservationId, tableIds) => {
           const supabase = getClient()
+
+          if (tableIds.length > 0) {
+            const targetReservation = get().reservations.find(
+              r => r.id === reservationId
+            )
+            const reservationDate = targetReservation?.reservation_date
+            const reservationTime = targetReservation?.reservation_time
+
+            if (targetReservation && reservationDate && reservationTime) {
+              const { data: existingData, error: existingError } =
+                await FloorPlanService.getReservations(
+                  supabase,
+                  targetReservation.location_id,
+                  reservationDate
+                )
+
+              if (!existingError) {
+                const existingReservations =
+                  existingData?.reservations ?? get().reservations
+                const conflict = findReservationTableConflictForWindow(
+                  {
+                    reservationDate,
+                    reservationTime,
+                    durationMinutes: targetReservation.duration_minutes,
+                    tableIds,
+                    ignoreReservationId: reservationId
+                  },
+                  existingReservations
+                )
+
+                if (conflict) {
+                  throw new Error(
+                    `Table already reserved for ${conflict.partyName} at ${conflict.reservationTime}.`
+                  )
+                }
+              }
+            }
+          }
+
           const { error } = await FloorPlanService.assignReservationTables(
             supabase,
             reservationId,
