@@ -57,11 +57,14 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
 
   fetchReservations: async (locationId, date, options) => {
     const silent = options?.silent ?? false
+    const effectiveDate = date ?? get().selectedDate
     if (!silent) {
-      set({ isLoading: true, error: null })
+      set({ isLoading: true, error: null, selectedDate: effectiveDate })
+    } else if (date) {
+      set({ selectedDate: date })
     }
     try {
-      const dateStr = (date ?? get().selectedDate).toISOString().split('T')[0]
+      const dateStr = effectiveDate.toISOString().split('T')[0]
       const { data, error } = await FloorPlanService.getReservations(
         getClient(),
         locationId,
