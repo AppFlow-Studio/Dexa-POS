@@ -27,6 +27,7 @@ import {
   setReservationSupabaseClient,
   useReservationStore
 } from '@/stores/useReservationStore'
+import { Reservation } from '@/types/db-floor-plan-types'
 import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { Href, useFocusEffect, useRouter } from 'expo-router'
@@ -84,6 +85,7 @@ const TablesScreen = () => {
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
   const [isGuestModalOpen, setGuestModalOpen] = useState(false)
+  const [pendingReservation, setPendingReservation] = useState<Reservation | null>(null)
   const [isMergeMode, setMergeMode] = useState(false)
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
@@ -215,6 +217,25 @@ const TablesScreen = () => {
       setContextTable(null)
       clearSelection()
       toggleTableSelection(table.id)
+      setGuestModalOpen(true)
+    },
+    [clearSelection, toggleTableSelection, show]
+  )
+
+  const handleSeatReservation = useCallback(
+    (table: FloorPlanObject, reservation: Reservation) => {
+      const freshTable = useFloorPlanStore.getState().getTableById(table.id)
+      if (!freshTable) return
+      const liveSession = useTableSessionStore.getState().sessions[table.id]
+      const activeSession = liveSession ?? freshTable.session
+      if (activeSession && activeSession.status !== 'available') {
+        show({ title: 'Table Occupied', message: 'This table is already in use.', type: 'warning' })
+        return
+      }
+      setContextTable(null)
+      clearSelection()
+      toggleTableSelection(table.id)
+      setPendingReservation(reservation)
       setGuestModalOpen(true)
     },
     [clearSelection, toggleTableSelection, show]
@@ -438,6 +459,8 @@ const TablesScreen = () => {
   const handleGuestCountSubmit = async (guestCount: number) => {
     const primaryTableId = selectedTableIds[0]
     if (!primaryTableId) return
+    const activeReservation = pendingReservation
+    setPendingReservation(null)
 
     // Double-check table is still available
     const freshTable = useFloorPlanStore.getState().getTableById(primaryTableId)
@@ -488,20 +511,23 @@ const TablesScreen = () => {
         localOrderId: newOrder.id,
         selected_station: selectedStation?.id,
         device_id: device_id,
-        serverId: assignedServerId
+        serverId: assignedServerId,
+        reservationId: activeReservation?.id
       })
 
       if (orderId && orderId !== newOrder.id) {
-        // seatGuests already called updateOrderDbId — resolve the pending promise
-        // hydrateOrderFromSeat already patched order_number/display_number from the RPC response
         resolveCreation!(orderId)
       } else {
         resolveCreation!(null)
       }
+
+      // Mark reservation as seated
+      if (activeReservation) {
+        useReservationStore.getState().updateStatus(activeReservation.id, 'seated').catch(() => {})
+      }
     } catch (err) {
       console.error('[GuestCountSubmit] Background seatGuests failed:', err)
       resolveCreation!(null)
-      // Order still works locally — ensureOrderCreated will create backend order when first item is added
     }
   }
 
@@ -914,12 +940,14 @@ const TablesScreen = () => {
         table={contextTable}
         onClose={() => setContextTable(null)}
         onSeatGuests={handleSheetSeatGuests}
+        onSeatReservation={handleSeatReservation}
         onNavigate={handleSheetNavigate}
       />
       <GuestCountModal
         isOpen={isGuestModalOpen}
         onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
+        defaultCount={pendingReservation?.party_size}
       />
 
       {/* Server Section Manager */}

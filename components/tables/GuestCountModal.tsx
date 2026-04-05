@@ -7,6 +7,7 @@ interface GuestCountModalProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (guestCount: number) => void
+  defaultCount?: number
 }
 
 const ROWS = [
@@ -17,14 +18,14 @@ const ROWS = [
 ]
 
 
-export const GuestCountModal: React.FC<GuestCountModalProps> = ({ isOpen, onClose, onSubmit }) => {
+export const GuestCountModal: React.FC<GuestCountModalProps> = ({ isOpen, onClose, onSubmit, defaultCount }) => {
   const [count, setCount] = useState('')
 
   useEffect(() => {
     if (isOpen) {
-      setCount('')
+      setCount(defaultCount ? String(defaultCount) : '')
     }
-  }, [isOpen])
+  }, [isOpen, defaultCount])
 
   const handleKey = (value: string) => {
     if (value === 'clear') { setCount(''); return }
