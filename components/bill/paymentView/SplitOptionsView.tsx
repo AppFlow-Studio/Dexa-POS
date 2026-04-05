@@ -33,12 +33,10 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border
   },
   backBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: `${colors.teal}10`,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10
@@ -54,12 +52,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     justifyContent: 'space-between',
-    minHeight: 120
+    minHeight: 110
   },
   iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10
@@ -114,7 +112,7 @@ const SplitOptionsView: React.FC = () => {
             style={styles.backBtn}
             onPress={() => setView('payment-method-selection')}
           >
-            <ArrowLeft size={18} color={colors.label} />
+            <ArrowLeft size={16} color={colors.teal} />
           </TouchableOpacity>
           <View>
             <Text style={styles.headerTitle}>Split Bill</Text>
@@ -165,7 +163,7 @@ const SplitOptionsView: React.FC = () => {
       title: 'Split by Item',
       desc: 'Assign specific items to specific guests.',
       icon: ListChecks,
-      color: colors.info,
+      color: colors.teal,
       bg: `${colors.info}15`,
       view: 'split-by-item'
     },
@@ -173,7 +171,7 @@ const SplitOptionsView: React.FC = () => {
       title: 'Split Evenly',
       desc: 'Divide the total equally among guests.',
       icon: Users,
-      color: colors.success,
+      color: colors.teal,
       bg: `${colors.success}15`,
       view: 'split-evenly'
     },
@@ -181,7 +179,7 @@ const SplitOptionsView: React.FC = () => {
       title: 'Custom Amount',
       desc: 'Type exactly how much each person pays.',
       icon: Split,
-      color: colors.warning,
+      color: colors.teal,
       bg: `${colors.warning}15`,
       view: 'split-custom-amount'
     },
@@ -189,8 +187,8 @@ const SplitOptionsView: React.FC = () => {
       title: 'Pay for Items',
       desc: 'Select items to pay now, leave rest for later.',
       icon: Receipt,
-      color: '#F97316',
-      bg: 'rgba(249,115,22,0.12)',
+      color: colors.teal,
+      bg: `${colors.warning}15`,
       view: 'pay-for-items'
     }
   ]
@@ -213,7 +211,11 @@ const SplitOptionsView: React.FC = () => {
         <View
           style={[
             styles.iconBox,
-            { backgroundColor: isLocked ? `${colors.muted}15` : opt.bg }
+            {
+              backgroundColor: isLocked
+                ? `${colors.muted}15`
+                : `${colors.teal}15`
+            }
           ]}
         >
           <Icon size={18} color={isLocked ? colors.muted : opt.color} />

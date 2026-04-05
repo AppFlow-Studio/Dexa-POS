@@ -137,18 +137,16 @@ const SplitEvenlyView = () => {
         <TouchableOpacity
           onPress={handleGoBack}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 8,
-            backgroundColor: colors.panel,
-            borderWidth: 1,
-            borderColor: colors.border,
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            backgroundColor: `${colors.teal}10`,
             alignItems: 'center',
             justifyContent: 'center',
             marginRight: 10
           }}
         >
-          <ArrowLeft size={16} color={colors.label} />
+          <ArrowLeft size={16} color={colors.teal} />
         </TouchableOpacity>
         <View>
           <Text
@@ -192,7 +190,7 @@ const SplitEvenlyView = () => {
           style={{
             flex: 1,
             backgroundColor: colors.panel,
-            borderRadius: 14,
+            borderRadius: 12,
             borderWidth: 1,
             borderColor: colors.border,
             justifyContent: 'center',
@@ -231,9 +229,9 @@ const SplitEvenlyView = () => {
                 onPress={handleDecrement}
                 disabled={numberOfPeople <= 2}
                 style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 24,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1.5,
@@ -244,14 +242,14 @@ const SplitEvenlyView = () => {
                 }}
               >
                 <Minus
-                  size={20}
+                  size={18}
                   color={numberOfPeople <= 2 ? colors.muted : colors.heading}
                 />
               </TouchableOpacity>
 
               <Text
                 style={{
-                  fontSize: 52,
+                  fontSize: 44,
                   fontWeight: '700',
                   color: colors.heading,
                   width: 72,
@@ -264,9 +262,9 @@ const SplitEvenlyView = () => {
               <TouchableOpacity
                 onPress={handleIncrement}
                 style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 24,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1.5,
@@ -274,7 +272,7 @@ const SplitEvenlyView = () => {
                   backgroundColor: colors.screen
                 }}
               >
-                <Plus size={20} color={colors.heading} />
+                <Plus size={18} color={colors.heading} />
               </TouchableOpacity>
             </View>
           </View>
@@ -286,7 +284,7 @@ const SplitEvenlyView = () => {
             style={{
               flex: 1,
               backgroundColor: colors.panel,
-              borderRadius: 14,
+              borderRadius: 12,
               borderWidth: 1,
               borderColor: colors.border,
               padding: 16,
@@ -483,8 +481,8 @@ const SplitEvenlyView = () => {
               gap: 8
             }}
           >
-            <Check size={16} color='#000' />
-            <Text style={{ fontWeight: '700', fontSize: 14, color: '#000' }}>
+            <Check size={16} color={colors.onSolid} />
+            <Text style={{ fontWeight: '700', fontSize: 13, color: colors.onSolid }}>
               {buttonLabel}
             </Text>
           </TouchableOpacity>

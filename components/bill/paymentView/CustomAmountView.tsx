@@ -13,7 +13,6 @@ import {
 import { useMemo, useRef, useState } from 'react'
 import {
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -90,7 +89,7 @@ const CustomAmountView = () => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      behavior='padding'
       style={{ flex: 1, backgroundColor: colors.screen }}
     >
       {/* Header */}
@@ -107,18 +106,16 @@ const CustomAmountView = () => {
         <TouchableOpacity
           onPress={() => setView('split-options')}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 8,
-            backgroundColor: colors.panel,
-            borderWidth: 1,
-            borderColor: colors.border,
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            backgroundColor: `${colors.teal}10`,
             alignItems: 'center',
             justifyContent: 'center',
             marginRight: 10
           }}
         >
-          <ArrowLeft size={16} color={colors.label} />
+          <ArrowLeft size={16} color={colors.teal} />
         </TouchableOpacity>
         <View>
           <Text
@@ -138,7 +135,7 @@ const CustomAmountView = () => {
           style={{
             width: '33%',
             backgroundColor: colors.panel,
-            borderRadius: 14,
+            borderRadius: 12,
             borderWidth: 1,
             borderColor: colors.border,
             padding: 14,
@@ -208,7 +205,7 @@ const CustomAmountView = () => {
               </Text>
               <Text
                 style={{
-                  fontSize: 28,
+                  fontSize: 24,
                   fontWeight: '700',
                   color: isPerfect
                     ? colors.success
@@ -294,7 +291,7 @@ const CustomAmountView = () => {
               }}
             >
               {canProceed ? (
-                <Check size={15} color='#000' />
+                <Check size={15} color={colors.onSolid} />
               ) : (
                 <ArrowRight size={15} color={colors.muted} />
               )}
@@ -302,7 +299,7 @@ const CustomAmountView = () => {
                 style={{
                   fontWeight: '700',
                   fontSize: 13,
-                  color: canProceed ? '#000' : colors.muted
+                  color: canProceed ? colors.onSolid : colors.muted
                 }}
               >
                 {isPerfect ? 'Finalize Split' : 'Pay Allocated Amount'}
@@ -316,7 +313,7 @@ const CustomAmountView = () => {
           style={{
             flex: 1,
             backgroundColor: colors.panel,
-            borderRadius: 14,
+            borderRadius: 12,
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -391,7 +388,7 @@ const CustomAmountView = () => {
                       width: 28,
                       height: 28,
                       backgroundColor: colors.panel,
-                      borderRadius: 14,
+                      borderRadius: 12,
                       alignItems: 'center',
                       justifyContent: 'center',
                       marginRight: 8
@@ -404,7 +401,7 @@ const CustomAmountView = () => {
                       fontSize: 13,
                       fontWeight: '700',
                       color: colors.label,
-                      width: 80
+                      flex: 1
                     }}
                     numberOfLines={1}
                   >
@@ -443,17 +440,11 @@ const CustomAmountView = () => {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      backgroundColor:
-                        focusedSplitId === split.id
-                          ? colors.teal + '10'
-                          : colors.panel,
+                      backgroundColor: colors.screen,
                       borderRadius: 8,
                       paddingHorizontal: 10,
                       borderWidth: 1,
-                      borderColor:
-                        focusedSplitId === split.id
-                          ? colors.teal + '40'
-                          : colors.border,
+                      borderColor: colors.border,
                       width: 120,
                       height: 40
                     }}
@@ -542,43 +533,50 @@ const CustomAmountView = () => {
           style={{
             width: 260,
             backgroundColor: colors.panel,
-            borderRadius: 14,
+            borderRadius: 12,
             borderWidth: 1,
             borderColor: colors.border,
-            padding: 12
+            padding: 12,
+            justifyContent: 'center',
+            alignItems: 'center'
           }}
         >
-          <NumericPad
-            enabled={!!focusedSplitId}
-            onInput={value => {
-              if (focusedSplitId) {
-                const split = splits.find(s => s.id === focusedSplitId)
-                if (split) {
-                  const currentValue =
-                    split.amount > 0 ? split.amount.toString() : ''
-                  const newValue = currentValue + value
-                  if ((newValue.match(/\./g) || []).length > 1) return
-                  const amount = parseFloat(newValue)
-                  updateSplitAmount(focusedSplitId, isNaN(amount) ? 0 : amount)
+          <View style={{ width: '100%', alignItems: 'center' }}>
+            <NumericPad
+              enabled={!!focusedSplitId}
+              onInput={value => {
+                if (focusedSplitId) {
+                  const split = splits.find(s => s.id === focusedSplitId)
+                  if (split) {
+                    const currentValue =
+                      split.amount > 0 ? split.amount.toString() : ''
+                    const newValue = currentValue + value
+                    if ((newValue.match(/\./g) || []).length > 1) return
+                    const amount = parseFloat(newValue)
+                    updateSplitAmount(
+                      focusedSplitId,
+                      isNaN(amount) ? 0 : amount
+                    )
+                  }
                 }
-              }
-            }}
-            onBackspace={() => {
-              if (focusedSplitId) {
-                const split = splits.find(s => s.id === focusedSplitId)
-                if (split) {
-                  const currentValue =
-                    split.amount > 0 ? split.amount.toString() : ''
-                  const newValue = currentValue.slice(0, -1)
-                  const amount = parseFloat(newValue)
-                  updateSplitAmount(
-                    focusedSplitId,
-                    newValue === '' ? 0 : isNaN(amount) ? 0 : amount
-                  )
+              }}
+              onBackspace={() => {
+                if (focusedSplitId) {
+                  const split = splits.find(s => s.id === focusedSplitId)
+                  if (split) {
+                    const currentValue =
+                      split.amount > 0 ? split.amount.toString() : ''
+                    const newValue = currentValue.slice(0, -1)
+                    const amount = parseFloat(newValue)
+                    updateSplitAmount(
+                      focusedSplitId,
+                      newValue === '' ? 0 : isNaN(amount) ? 0 : amount
+                    )
+                  }
                 }
-              }
-            }}
-          />
+              }}
+            />
+          </View>
         </View>
       </View>
     </KeyboardAvoidingView>

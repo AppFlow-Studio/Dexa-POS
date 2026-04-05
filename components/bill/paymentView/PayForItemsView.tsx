@@ -576,7 +576,6 @@ const PayForItemsView: React.FC = () => {
     )
   }
 
-  console.log('selectedItems', selectedCashTotals)
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* Header */}
@@ -593,18 +592,16 @@ const PayForItemsView: React.FC = () => {
         <TouchableOpacity
           onPress={handleGoBack}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 8,
-            backgroundColor: colors.panel,
-            borderWidth: 1,
-            borderColor: colors.border,
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            backgroundColor: `${colors.teal}10`,
             alignItems: 'center',
             justifyContent: 'center',
             marginRight: 10
           }}
         >
-          <ArrowLeft size={16} color={colors.label} />
+          <ArrowLeft size={16} color={colors.teal} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text
@@ -718,7 +715,7 @@ const PayForItemsView: React.FC = () => {
           </View>
 
           <ScrollView
-            contentContainerStyle={{ paddingTop: 8, paddingBottom: 100 }}
+            contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
           >
             {unpaidItems.length === 0 ? (
               <View style={{ padding: 20, alignItems: 'center' }}>
@@ -748,7 +745,7 @@ const PayForItemsView: React.FC = () => {
                       alignItems: 'center',
                       paddingHorizontal: 12,
                       paddingVertical: 10,
-                      marginHorizontal: 10,
+                      marginHorizontal: 12,
                       marginBottom: 8,
                       borderRadius: 10,
                       borderWidth: 1,
@@ -937,7 +934,7 @@ const PayForItemsView: React.FC = () => {
           </View>
 
           {/* Payments */}
-          <View style={{ flex: 1, padding: 16 }}>
+          <View style={{ flex: 1, padding: 14 }}>
             <Text
               style={{
                 color: colors.muted,
@@ -977,7 +974,7 @@ const PayForItemsView: React.FC = () => {
               <View
                 style={{
                   marginTop: 14,
-                  marginHorizontal: 16,
+                  marginHorizontal: 0,
                   padding: 12,
                   backgroundColor: colors.panel,
                   borderRadius: 12,
@@ -1076,7 +1073,7 @@ const PayForItemsView: React.FC = () => {
                           gap: 5
                         }}
                       >
-                        <Banknote size={14} color={colors.teal} />
+                        <Banknote size={14} color={colors.success} />
                         <Text style={{ color: colors.muted, fontSize: 11 }}>
                           Cash
                         </Text>
@@ -1103,7 +1100,7 @@ const PayForItemsView: React.FC = () => {
                       </View>
                       <Text
                         style={{
-                          color: colors.teal,
+                          color: colors.success,
                           fontWeight: '700',
                           fontSize: 13
                         }}
