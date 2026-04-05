@@ -147,7 +147,7 @@ export class FloorPlanService {
         const result = await client
           .from('table_sessions')
           .select(
-            `id, session_number, status, party_size, guest_name, order_id, server_staff_id, seated_at, current_course, needs_attention, is_vip, is_active`
+            `id, session_number, status, party_size, guest_name, order_id, reservation_id, server_staff_id, seated_at, current_course, needs_attention, is_vip, is_active`
           )
           .eq('is_active', true)
           .in('id', Array.from(sessionIdsFromJunctions))
@@ -363,20 +363,22 @@ export class FloorPlanService {
       updateData.notes = params.p_notes
     }
 
-    console.log(
-      '[updateTableSessionStatus] Attempting update:',
-      { sessionId: params.p_session_id, status: params.p_status, updateData }
-    )
+    console.log('[updateTableSessionStatus] Attempting update:', {
+      sessionId: params.p_session_id,
+      status: params.p_status,
+      updateData
+    })
 
     const { error } = await client
       .from('table_sessions')
       .update(updateData)
       .eq('id', params.p_session_id)
 
-    console.log(
-      '[updateTableSessionStatus] Result:',
-      { sessionId: params.p_session_id, status: params.p_status, error }
-    )
+    console.log('[updateTableSessionStatus] Result:', {
+      sessionId: params.p_session_id,
+      status: params.p_status,
+      error
+    })
 
     return { error }
   }

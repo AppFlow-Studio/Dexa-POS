@@ -6,6 +6,11 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 
+// Lazy accessor avoids import cycle between reservation and floor-plan stores.
+const getFloorPlanStore = () =>
+  (require('./useFloorPlanStore') as typeof import('./useFloorPlanStore'))
+    .useFloorPlanStore
+
 let _supabaseClient: SupabaseClient | null = null
 
 export const setReservationSupabaseClient = (client: SupabaseClient | null) => {
@@ -21,8 +26,104 @@ const getClient = () => {
   return _supabaseClient!
 }
 
+const toLocalDateKey = (date: Date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const getReservationEpoch = (reservation: Reservation): number | null => {
+  const direct = new Date(reservation.reservation_time).getTime()
+  if (Number.isFinite(direct)) return direct
+
+  if (reservation.reservation_date && reservation.reservation_time) {
+    const combined = new Date(
+      `${reservation.reservation_date}T${reservation.reservation_time}`
+    ).getTime()
+    if (Number.isFinite(combined)) return combined
+  }
+
+  return null
+}
+
+const normalizeReservationDateTime = (
+  reservation: Reservation
+): Reservation => {
+  const rawTime = (reservation.reservation_time ?? '').trim()
+  const hasDatePart = rawTime.includes('T') || rawTime.includes('-')
+
+  if (hasDatePart || !reservation.reservation_date || !rawTime) {
+    return reservation
+  }
+
+  const combined = `${reservation.reservation_date}T${rawTime}`
+  if (Number.isFinite(new Date(combined).getTime())) {
+    return { ...reservation, reservation_time: combined }
+  }
+
+  return reservation
+}
+
+const normalizeReservationRecord = (
+  raw: any,
+  fallbackDate?: string
+): Reservation => {
+  const reservation = {
+    ...raw,
+    reservation_date:
+      raw?.reservation_date ??
+      raw?.reservationDate ??
+      raw?.date ??
+      fallbackDate ??
+      undefined,
+    reservation_time:
+      raw?.reservation_time ?? raw?.reservationTime ?? raw?.time ?? ''
+  } as Reservation
+
+  return normalizeReservationDateTime(reservation)
+}
+
+const extractReservationRows = (
+  payload: any,
+  fallbackDate?: string
+): Reservation[] => {
+  if (!payload) return []
+
+  const topLevelDate =
+    payload?.date ?? payload?.reservation_date ?? payload?.reservationDate
+  const inheritedDate = topLevelDate ?? fallbackDate
+
+  if (Array.isArray(payload)) {
+    return payload.map(row => normalizeReservationRecord(row, inheritedDate))
+  }
+  if (Array.isArray(payload?.reservations)) {
+    return payload.reservations.map((row: any) =>
+      normalizeReservationRecord(row, inheritedDate)
+    )
+  }
+  if (Array.isArray(payload?.data)) {
+    return payload.data.map((row: any) =>
+      normalizeReservationRecord(row, inheritedDate)
+    )
+  }
+  if (Array.isArray(payload?.data?.reservations)) {
+    return payload.data.reservations.map((row: any) =>
+      normalizeReservationRecord(row, inheritedDate)
+    )
+  }
+  if (Array.isArray(payload?.items)) {
+    return payload.items.map((row: any) =>
+      normalizeReservationRecord(row, inheritedDate)
+    )
+  }
+
+  return []
+}
+
 interface ReservationState {
   reservations: Reservation[]
+  reservationBySessionId: Record<string, string>
   selectedDate: Date
   isLoading: boolean
   error: string | null
@@ -41,12 +142,15 @@ interface ReservationState {
     reservationId: string,
     tableIds?: string[]
   ) => Promise<{ session_id: string; order_id?: string } | null>
+  registerReservationSession: (sessionId: string, reservationId: string) => void
+  completeReservationForSession: (sessionId: string) => Promise<void>
   getUpcomingForTable: (tableId: string) => Reservation[]
   setSelectedDate: (date: Date) => void
 }
 
 export const useReservationStore = create<ReservationState>((set, get) => ({
   reservations: [],
+  reservationBySessionId: {},
   selectedDate: new Date(),
   isLoading: false,
   error: null,
@@ -64,7 +168,7 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       set({ selectedDate: date })
     }
     try {
-      const dateStr = effectiveDate.toISOString().split('T')[0]
+      const dateStr = toLocalDateKey(effectiveDate)
       const { data, error } = await FloorPlanService.getReservations(
         getClient(),
         locationId,
@@ -72,8 +176,20 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       )
       if (error) throw error
 
+      let reservationRows = extractReservationRows(data, dateStr)
+
+      // Some backend environments ignore/interpret p_date differently; fallback
+      // to undated fetch instead of showing an empty UI.
+      if (reservationRows.length === 0) {
+        const { data: fallbackData, error: fallbackError } =
+          await FloorPlanService.getReservations(getClient(), locationId)
+        if (!fallbackError) {
+          reservationRows = extractReservationRows(fallbackData, dateStr)
+        }
+      }
+
       set({
-        reservations: data?.reservations ?? [],
+        reservations: reservationRows,
         isLoading: false,
         error: null
       })
@@ -98,7 +214,10 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       return data
     } catch (err: any) {
       console.error('Failed to create reservation:', err)
-      set({ error: err.message || 'Failed to create reservation', isLoading: false })
+      set({
+        error: err.message || 'Failed to create reservation',
+        isLoading: false
+      })
       return null
     }
   },
@@ -114,7 +233,9 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
 
       set(state => ({
         reservations: state.reservations.map(r =>
-          r.id === reservationId ? { ...r, status: status as Reservation['status'] } : r
+          r.id === reservationId
+            ? { ...r, status: status as Reservation['status'] }
+            : r
         )
       }))
     } catch (err: any) {
@@ -153,8 +274,17 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       if (error) throw error
 
       set(state => ({
-        reservations: state.reservations.filter(r => r.id !== reservationId)
+        reservations: state.reservations.filter(r => r.id !== reservationId),
+        reservationBySessionId: data?.session_id
+          ? {
+              ...state.reservationBySessionId,
+              [data.session_id]: reservationId
+            }
+          : state.reservationBySessionId
       }))
+
+      // Ensure table/session UI reflects seated state right after seating.
+      await getFloorPlanStore().getState().loadFloorPlanStatus()
 
       return data
     } catch (err: any) {
@@ -163,19 +293,93 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
     }
   },
 
+  registerReservationSession: (sessionId, reservationId) => {
+    if (!sessionId || !reservationId) return
+    set(state => ({
+      reservationBySessionId: {
+        ...state.reservationBySessionId,
+        [sessionId]: reservationId
+      }
+    }))
+  },
+
+  completeReservationForSession: async sessionId => {
+    if (!sessionId) return
+
+    const sessionStore = (
+      require('./useTableSessionStore') as typeof import('./useTableSessionStore')
+    ).useTableSessionStore.getState()
+    const sessionReservationId = Object.values(sessionStore.sessions).find(
+      session => session.id === sessionId
+    )?.reservation_id
+
+    const mappedReservationId =
+      get().reservationBySessionId[sessionId] ?? sessionReservationId ?? null
+    if (!mappedReservationId) return
+
+    try {
+      const { error } = await FloorPlanService.updateReservationStatus(
+        getClient(),
+        mappedReservationId,
+        'completed'
+      )
+      if (error) {
+        console.warn(
+          '[useReservationStore] updateReservationStatus RPC failed, falling back to direct update:',
+          error
+        )
+
+        const { error: fallbackError } = await getClient()
+          .from('reservations')
+          .update({
+            status: 'completed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', mappedReservationId)
+
+        if (fallbackError) throw fallbackError
+      }
+
+      set(state => {
+        const nextMap = { ...state.reservationBySessionId }
+        delete nextMap[sessionId]
+        return {
+          reservationBySessionId: nextMap,
+          reservations: state.reservations.map(r =>
+            r.id === mappedReservationId
+              ? { ...r, status: 'completed' as Reservation['status'] }
+              : r
+          )
+        }
+      })
+    } catch (err) {
+      console.error(
+        '[useReservationStore] Failed to complete reservation for session:',
+        err
+      )
+    }
+  },
+
   getUpcomingForTable: tableId => {
     const now = new Date()
+    const nowMs = now.getTime()
+
     return get()
-      .reservations.filter(
-        r =>
+      .reservations.filter(r => {
+        const epoch = getReservationEpoch(r)
+        return (
           ['pending', 'confirmed', 'reminded'].includes(r.status) &&
           (r.assigned_table_ids ?? []).includes(tableId) &&
-          new Date(r.reservation_time) > now
-      )
-      .sort(
-        (a, b) =>
-          new Date(a.reservation_time).getTime() -
-          new Date(b.reservation_time).getTime()
-      )
+          epoch !== null &&
+          epoch > nowMs
+        )
+      })
+      .sort((a, b) => {
+        const aEpoch = getReservationEpoch(a)
+        const bEpoch = getReservationEpoch(b)
+        const aSafe = aEpoch ?? Number.MAX_SAFE_INTEGER
+        const bSafe = bEpoch ?? Number.MAX_SAFE_INTEGER
+        return aSafe - bSafe
+      })
   }
 }))

@@ -20,16 +20,15 @@ import {
   useOrderStore
 } from '@/stores/useOrderStore'
 import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useTableSessionStore } from '@/stores/useTableSessionStore'
-import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import {
   setReservationSupabaseClient,
   useReservationStore
 } from '@/stores/useReservationStore'
-import { Reservation } from '@/types/db-floor-plan-types'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
-import { FloorPlanObject } from '@/types/db-floor-plan-types'
+import { FloorPlanObject, Reservation } from '@/types/db-floor-plan-types'
 import { Href, useFocusEffect, useRouter } from 'expo-router'
 import {
   GitMerge,
@@ -43,6 +42,11 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useShallow } from 'zustand/react/shallow'
+
+const canSeatFromSidebar = (status?: string | null) => {
+  const normalized = status?.toLowerCase()
+  return !normalized || normalized === 'available' || normalized === 'reserved'
+}
 
 const TablesScreen = () => {
   const router = useRouter()
@@ -85,7 +89,8 @@ const TablesScreen = () => {
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
   const [isGuestModalOpen, setGuestModalOpen] = useState(false)
-  const [pendingReservation, setPendingReservation] = useState<Reservation | null>(null)
+  const [pendingReservation, setPendingReservation] =
+    useState<Reservation | null>(null)
   const [isMergeMode, setMergeMode] = useState(false)
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
@@ -205,7 +210,7 @@ const TablesScreen = () => {
       // Only allow seating on available tables — check live session store too (floor plan store can lag)
       const liveSession = useTableSessionStore.getState().sessions[table.id]
       const activeSession = liveSession ?? freshTable.session
-      if (activeSession && activeSession.status !== 'available') {
+      if (!canSeatFromSidebar(activeSession?.status)) {
         show({
           title: 'Table Occupied',
           message:
@@ -228,8 +233,12 @@ const TablesScreen = () => {
       if (!freshTable) return
       const liveSession = useTableSessionStore.getState().sessions[table.id]
       const activeSession = liveSession ?? freshTable.session
-      if (activeSession && activeSession.status !== 'available') {
-        show({ title: 'Table Occupied', message: 'This table is already in use.', type: 'warning' })
+      if (!canSeatFromSidebar(activeSession?.status)) {
+        show({
+          title: 'Table Occupied',
+          message: 'This table is already in use.',
+          type: 'warning'
+        })
         return
       }
       setContextTable(null)
@@ -464,7 +473,7 @@ const TablesScreen = () => {
 
     // Double-check table is still available
     const freshTable = useFloorPlanStore.getState().getTableById(primaryTableId)
-    if (freshTable?.session && freshTable.session.status !== 'available') {
+    if (!canSeatFromSidebar(freshTable?.session?.status)) {
       show({
         title: 'Table Occupied',
         message:
@@ -515,6 +524,16 @@ const TablesScreen = () => {
         reservationId: activeReservation?.id
       })
 
+      if (activeReservation?.id && orderId) {
+        const sessionId =
+          useTableSessionStore.getState().sessions[primaryTableId]?.id
+        if (sessionId) {
+          useReservationStore
+            .getState()
+            .registerReservationSession(sessionId, activeReservation.id)
+        }
+      }
+
       if (orderId && orderId !== newOrder.id) {
         resolveCreation!(orderId)
       } else {
@@ -523,7 +542,10 @@ const TablesScreen = () => {
 
       // Mark reservation as seated
       if (activeReservation) {
-        useReservationStore.getState().updateStatus(activeReservation.id, 'seated').catch(() => {})
+        useReservationStore
+          .getState()
+          .updateStatus(activeReservation.id, 'seated')
+          .catch(() => {})
       }
     } catch (err) {
       console.error('[GuestCountSubmit] Background seatGuests failed:', err)

@@ -65,6 +65,7 @@ export interface FloorPlanObject {
     id: string
     party_name: string
     party_size: number
+    date?: string
     time: string
     status: string
   } | null
@@ -79,6 +80,7 @@ export interface TableSession {
   guest_phone?: string
   guest_notes?: string
   order_id?: string | null | undefined
+  reservation_id?: string | null
   server_staff_id?: string
   seated_at: string
   current_course: number
@@ -126,6 +128,7 @@ export interface Reservation {
   party_size: number
   phone: string
   email?: string
+  reservation_date?: string
   reservation_time: string
   duration_minutes: number
   end_time?: string
@@ -281,10 +284,15 @@ export interface CreateReservationParams {
   p_party_name: string
   p_party_size: number
   p_phone: string
-  p_date: string
-  p_time: string
+  p_reservation_date: string
+  p_reservation_time: string
+  p_assigned_table_ids?: string[]
+  p_duration_minutes?: number
   p_email?: string
   p_notes?: string
+  p_preferred_section?: string
+  p_seating_preference?: string
+  p_source?: string
   p_special_requests?: string
   p_is_vip?: boolean
 }

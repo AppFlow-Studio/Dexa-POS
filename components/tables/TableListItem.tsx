@@ -3,10 +3,14 @@ import { useToast } from '@/contexts/ToastContext'
 import { useTableDuration } from '@/hooks/useTableDuration'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
-import { useOrderByAnyId, useOrderTotals } from '@/stores/selectors/orderSelectors'
+import {
+  useOrderByAnyId,
+  useOrderTotals
+} from '@/stores/selectors/orderSelectors'
 import { useCoursingStore } from '@/stores/useCoursingStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
@@ -457,6 +461,11 @@ const ExpandedView: React.FC<{
         orderId: order.id,
         dbOrderId: order.db_order_id
       })
+    }
+    if (table.session?.id) {
+      await useReservationStore
+        .getState()
+        .completeReservationForSession(table.session.id)
     }
     setVoidConfirmOpen(false)
     onToggleExpand()
