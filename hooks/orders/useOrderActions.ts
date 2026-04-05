@@ -103,7 +103,7 @@ export function useVoidOrder() {
       dbOrderId: string;
       reason?: string;
     }) => {
-      const { data, error } = await supabase.rpc("void_order", {
+      const { data, error } = await supabase.rpc("void_order_and_cancel_reservation", {
         p_order_id: dbOrderId,
         p_void_reason: reason || "Order cancelled",
       });

@@ -494,7 +494,7 @@ export class OrderService {
   }
 
   /**
-   * Void an entire order (soft delete - keeps audit trail)
+   * Void an entire order and cancel linked seated reservation(s) atomically.
    */
   static async voidOrder(
     client: SupabaseClient,
@@ -513,7 +513,7 @@ export class OrderService {
       };
     }
 
-    const { data, error } = await client.rpc("void_order", {
+    const { data, error } = await client.rpc("void_order_and_cancel_reservation", {
       p_order_id: orderId,
       p_void_reason: voidReason || "Order cancelled",
     });
