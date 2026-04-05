@@ -707,6 +707,19 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // Order totals with dual pricing (used by both WS sync and built-in display)
   const orderTotals = useActiveOrderTotals()
 
+  // ==================== PAYMENT STORE → CFD SYNC ====================
+  // Drive CFD payment screen directly from payment store view state,
+  // so there are no race conditions between mounting/unmounting view components.
+  const paymentIsOpen = usePaymentStore(s => s.isOpen)
+  const paymentView = usePaymentStore(s => s.view)
+  const paymentSplits = usePaymentStore(s => s.splits)
+  const paymentActiveSplitId = usePaymentStore(s => s.activeSplitId)
+  const paymentActiveSplit = useMemo(
+    () =>
+      paymentSplits.find(split => split.id === paymentActiveSplitId) ?? null,
+    [paymentSplits, paymentActiveSplitId]
+  )
+
   // Auto-sync order to CFD (WebSocket clients)
   useEffect(() => {
     const controller = controllerRef.current
@@ -811,6 +824,33 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       : Math.round((activeOrder?.amount_paid ?? 0) * 100)
     let displayDiscountAmount =
       frozen?.discountAmount ?? Math.round(activeOrderDiscount * 100)
+
+    const isSplitPaymentDisplay =
+      !frozen &&
+      !!paymentActiveSplit &&
+      (activeScreenState === 'payment' ||
+        activeScreenState === 'processing' ||
+        activeScreenState === 'tip_selection')
+
+    if (isSplitPaymentDisplay) {
+      const splitCardBase = Math.round((paymentActiveSplit.amount ?? 0) * 100)
+      const splitCashBase = Math.round(
+        (paymentActiveSplit.cashAmount ?? paymentActiveSplit.amount ?? 0) * 100
+      )
+      const splitPreferredBase =
+        activePaymentMethod === 'cash' ? splitCashBase : splitCardBase
+
+      cardSubtotal = splitCardBase
+      cashSubtotal = splitCashBase
+      cardTax = 0
+      cashTax = 0
+      cardTotal = splitCardBase + displayTipAmount
+      cashTotal = splitCashBase + displayTipAmount
+      savingsAmount = Math.max(0, cardTotal - cashTotal)
+      displayOutstandingTotal = splitPreferredBase + displayTipAmount
+      displayAmountPaid = 0
+      displayDiscountAmount = 0
+    }
 
     const hasItemsForStabilization = displayItems.length > 0
     const totalsCollapsedToZero =
@@ -928,17 +968,13 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     orderTotals,
     currentTip,
     activeScreenState,
+    activePaymentMethod,
     baseAmountOverride,
     pathname, // Essential for responding to screen changes
     showCFDOrderingRightPanel,
-    cfdOrderingRightPanelMode
+    cfdOrderingRightPanelMode,
+    paymentActiveSplit
   ])
-
-  // ==================== PAYMENT STORE → CFD SYNC ====================
-  // Drive CFD payment screen directly from payment store view state,
-  // so there are no race conditions between mounting/unmounting view components.
-  const paymentIsOpen = usePaymentStore(s => s.isOpen)
-  const paymentView = usePaymentStore(s => s.view)
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
 
@@ -1100,6 +1136,32 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     let displayAmountPaid = Math.round((activeOrder?.amount_paid ?? 0) * 100)
     let displayDiscountAmount = Math.round(activeOrderDiscount * 100)
 
+    const isSplitPaymentDisplay =
+      !!paymentActiveSplit &&
+      (activeScreenState === 'payment' ||
+        activeScreenState === 'processing' ||
+        activeScreenState === 'tip_selection')
+
+    if (isSplitPaymentDisplay) {
+      const splitCardBase = Math.round((paymentActiveSplit.amount ?? 0) * 100)
+      const splitCashBase = Math.round(
+        (paymentActiveSplit.cashAmount ?? paymentActiveSplit.amount ?? 0) * 100
+      )
+      const splitPreferredBase =
+        activePaymentMethod === 'cash' ? splitCashBase : splitCardBase
+
+      cardSubtotal = splitCardBase
+      cashSubtotal = splitCashBase
+      cardTax = 0
+      cashTax = 0
+      cardTotal = splitCardBase + displayTipAmount
+      cashTotal = splitCashBase + displayTipAmount
+      savingsAmount = Math.max(0, cardTotal - cashTotal)
+      displayOutstandingTotal = splitPreferredBase + displayTipAmount
+      displayAmountPaid = 0
+      displayDiscountAmount = 0
+    }
+
     const hasItemsForStabilization = cfdItems.length > 0
     const totalsCollapsedToZero =
       cardSubtotal === 0 &&
@@ -1195,7 +1257,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     selectedStore?.code,
     organizationLogoUrl,
     showCFDOrderingRightPanel,
-    cfdOrderingRightPanelMode
+    cfdOrderingRightPanelMode,
+    paymentActiveSplit
   ])
 
   useEffect(() => {
@@ -1316,35 +1379,61 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     ) => {
       const tipDollars =
         tipAmountOverride !== undefined ? tipAmountOverride : currentTip.amount
-      const cardTotal = Math.round((activeOrderTotal + tipDollars) * 100)
-      const cashTotal = Math.round(
-        ((orderTotals?.cashTotal ?? activeOrderTotal) + tipDollars) * 100
-      )
       const tipAmt = Math.round(tipDollars * 100)
+      const splitCardBase = paymentActiveSplit
+        ? Math.round((paymentActiveSplit.amount ?? 0) * 100)
+        : null
+      const splitCashBase = paymentActiveSplit
+        ? Math.round(
+            (paymentActiveSplit.cashAmount ?? paymentActiveSplit.amount ?? 0) *
+              100
+          )
+        : null
+      const isSplitFlow = splitCardBase !== null && splitCashBase !== null
+      const cardBaseTotal = isSplitFlow
+        ? splitCardBase
+        : Math.round(activeOrderTotal * 100)
+      const cashBaseTotal = isSplitFlow
+        ? splitCashBase
+        : Math.round((orderTotals?.cashTotal ?? activeOrderTotal) * 100)
+      const selectedPaymentMethod = paymentMethod ?? activePaymentMethod
+      const outstandingBase = isSplitFlow
+        ? selectedPaymentMethod === 'cash'
+          ? splitCashBase
+          : splitCardBase
+        : Math.round(activeOrderOutstandingTotal * 100)
+      const cardTotal = cardBaseTotal + tipAmt
+      const cashTotal = cashBaseTotal + tipAmt
       const savings = Math.max(0, cardTotal - cashTotal)
       const frozen = {
-        subtotal: Math.round((baseAmountOverride ?? activeOrderSubtotal) * 100),
-        subtotalCard: Math.round(
-          (baseAmountOverride ?? activeOrderSubtotal) * 100
-        ),
-        subtotalCash: Math.round(
-          (orderTotals?.cashSubtotal ??
-            baseAmountOverride ??
-            activeOrderSubtotal) * 100
-        ),
-        discountAmount: Math.round(activeOrderDiscount * 100),
-        taxAmount: Math.round(activeOrderTax * 100),
-        taxCash: Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100),
-        taxCard: Math.round(activeOrderTax * 100),
+        subtotal: isSplitFlow
+          ? cardBaseTotal
+          : Math.round((baseAmountOverride ?? activeOrderSubtotal) * 100),
+        subtotalCard: isSplitFlow
+          ? cardBaseTotal
+          : Math.round((baseAmountOverride ?? activeOrderSubtotal) * 100),
+        subtotalCash: isSplitFlow
+          ? cashBaseTotal
+          : Math.round(
+              (orderTotals?.cashSubtotal ??
+                baseAmountOverride ??
+                activeOrderSubtotal) * 100
+            ),
+        discountAmount: isSplitFlow ? 0 : Math.round(activeOrderDiscount * 100),
+        taxAmount: isSplitFlow ? 0 : Math.round(activeOrderTax * 100),
+        taxCash: isSplitFlow
+          ? 0
+          : Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100),
+        taxCard: isSplitFlow ? 0 : Math.round(activeOrderTax * 100),
         total: cardTotal,
         totalCard: cardTotal,
         totalCash: cashTotal,
         tipAmount: tipAmt,
         savingsAmount: savings,
-        outstandingTotal: Math.round(
-          (activeOrderOutstandingTotal + tipDollars) * 100
-        ),
-        amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+        outstandingTotal: outstandingBase + tipAmt,
+        amountPaid: isSplitFlow
+          ? 0
+          : Math.round((activeOrder?.amount_paid ?? 0) * 100),
         paymentMethod: paymentMethod ?? null,
         customerName: activeOrder?.customer_name ?? null,
         orderNumber:
@@ -1377,7 +1466,21 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       setActivePaymentMethod(paymentMethod ?? null)
       controllerRef.current?.showProcessing(paymentMethod, frozen)
     },
-    [activeOrderTotal, currentTip, orderTotals, hasBuiltinCfd]
+    [
+      activeOrder,
+      activeOrderDiscount,
+      activeOrderOutstandingTotal,
+      activeOrderSubtotal,
+      activeOrderTax,
+      activeOrderTotal,
+      activePaymentMethod,
+      baseAmountOverride,
+      cfdItems,
+      currentTip,
+      hasBuiltinCfd,
+      orderTotals,
+      paymentActiveSplit
+    ]
   )
 
   const showApproved = useCallback(() => {
