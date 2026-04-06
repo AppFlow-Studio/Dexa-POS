@@ -701,7 +701,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                   textAlign: 'center',
                   color: tableColor
                 }}
-                numberOfLines={textFit.isCircleShape || textFit.usableMinDim < 95 ? 1 : 2}
+                numberOfLines={
+                  textFit.isCircleShape || textFit.usableMinDim < 95 ? 1 : 2
+                }
                 adjustsFontSizeToFit
                 minimumFontScale={0.65}
                 ellipsizeMode='tail'
@@ -715,22 +717,22 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               !textFit.compactMeta &&
               tableStatus === 'available' &&
               !isReservedSoon && (
-              <Text
-                style={{
-                  color: tableColor + 'AA',
-                  fontSize: textFit.secondary,
-                  fontWeight: '600'
-                }}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-              >
-                {table.capacity ||
-                  TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
-                    ?.capacity ||
-                  0}{' '}
-                SEATS
-              </Text>
-            )}
+                <Text
+                  style={{
+                    color: tableColor + 'AA',
+                    fontSize: textFit.secondary,
+                    fontWeight: '600'
+                  }}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {table.capacity ||
+                    TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
+                      ?.capacity ||
+                    0}{' '}
+                  SEATS
+                </Text>
+              )}
 
             {isTableType && reservationLabel && (
               <Text
@@ -749,10 +751,39 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             )}
 
             {isTableType && isOccupiedStatus && (
-                <>
-                  {!effectiveOrder && liveSession?.order_id ? (
-                    !!occupiedMetaLabel &&
-                    !textFit.ultraCompact && (
+              <>
+                {!effectiveOrder && liveSession?.order_id ? (
+                  !!occupiedMetaLabel &&
+                  !textFit.ultraCompact && (
+                    <Text
+                      style={{
+                        color: tableColor + 'CC',
+                        fontSize: textFit.secondary,
+                        fontWeight: '600'
+                      }}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}
+                    >
+                      {occupiedMetaLabel}
+                    </Text>
+                  )
+                ) : (
+                  <>
+                    <Text
+                      style={{
+                        color: '#FFFFFF',
+                        fontSize: textFit.amount,
+                        fontWeight: '700',
+                        marginTop: textFit.compactMeta ? 1 : 2
+                      }}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                    >
+                      ${orderTotal.toFixed(2)}
+                    </Text>
+                    {!!occupiedMetaLabel && !textFit.ultraCompact && (
                       <Text
                         style={{
                           color: tableColor + 'CC',
@@ -765,40 +796,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                       >
                         {occupiedMetaLabel}
                       </Text>
-                    )
-                  ) : (
-                    <>
-                      <Text
-                        style={{
-                          color: '#FFFFFF',
-                          fontSize: textFit.amount,
-                          fontWeight: '700',
-                          marginTop: textFit.compactMeta ? 1 : 2
-                        }}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.75}
-                      >
-                        ${orderTotal.toFixed(2)}
-                      </Text>
-                      {!!occupiedMetaLabel && !textFit.ultraCompact && (
-                        <Text
-                          style={{
-                            color: tableColor + 'CC',
-                            fontSize: textFit.secondary,
-                            fontWeight: '600'
-                          }}
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.7}
-                        >
-                          {occupiedMetaLabel}
-                        </Text>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
+                    )}
+                  </>
+                )}
+              </>
+            )}
 
             {isTableType &&
               (tableStatus === 'cleaning' || tableStatus === 'closing') && (
