@@ -11,6 +11,11 @@ import { TableStatus } from '@/types/db-floor-plan-types'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+// Module-level counter to detect when a newer useTableSession mount has claimed
+// activeOrderId. The lazy useState initializer stamps a generation; the cleanup
+// only clears activeOrderId if no newer generation has claimed it.
+let _mountGeneration = 0
+
 export type SessionPhase =
   | 'initializing' // Waiting for data
   | 'loading_session' // Syncing order from DB
@@ -53,6 +58,10 @@ export function useTableSession (
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
 
+  // Incremented each time a new mount claims activeOrderId synchronously.
+  // The cleanup uses this to skip clearing when a newer instance already owns it.
+  const mountGenRef = useRef(0)
+
   const [phase, setPhase] = useState<SessionPhase>(() => {
     const t = useFloorPlanStore.getState().getTableById(tableId)
     if (!t) return 'initializing'
@@ -66,7 +75,17 @@ export function useTableSession (
     if (session.order_id) {
       const orderState = useOrderStore.getState()
       const found = orderState.getOrder(session.order_id)
-      if (found) return 'ready' // order in store, render immediately
+      if (found) {
+        // Synchronously claim activeOrderId before any effects run.
+        // This prevents a re-key from briefly having a null activeOrderId
+        // between the old mount's cleanup and the new mount's first effect.
+        _mountGeneration++
+        mountGenRef.current = _mountGeneration
+        if (orderState.activeOrderId !== found.id) {
+          useOrderStore.getState().setActiveOrder(found.id)
+        }
+        return 'ready' // order in store, render immediately
+      }
     }
 
     // Session exists but order not yet loaded
@@ -157,9 +176,13 @@ export function useTableSession (
 
   // Clear active order only on unmount / table change
   useEffect(() => {
+    const myGen = mountGenRef.current
     return () => {
       lastSetOrderIdRef.current = null
       cachedOrderRef.current = null
+      // Skip clearing if a newer useTableSession mount already claimed
+      // activeOrderId (i.e., re-key: same table opened before this cleanup ran).
+      if (_mountGeneration > myGen) return
       setActiveOrder(null)
     }
   }, [tableId, setActiveOrder])
