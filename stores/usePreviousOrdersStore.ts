@@ -98,6 +98,8 @@ const toRefundReasonType = (reason: string): RefundReasonType => {
 };
 
 
+const MAX_IN_MEMORY_PREVIOUS_ORDERS = 500;
+
 interface PreviousOrdersState {
   previousOrders: PreviousOrder[];
   refunds: RefundRecord[];
@@ -108,12 +110,18 @@ interface PreviousOrdersState {
   /** Location id used for last successful refresh (invalidates throttle on store switch) */
   _lastRefreshLocationId: string | null;
 
+  // Pagination state
+  _currentOffset: number;
+  _hasMore: boolean;
+  _isLoadingMore: boolean;
+
   // Actions
   addOrderToHistory: (order: OrderProfile) => void;
   getOrderById: (orderId: string) => PreviousOrder | undefined;
   searchOrders: (query: string) => PreviousOrder[];
   getOrdersByDate: (date: Date) => PreviousOrder[];
   refreshPreviousOrders: (opts?: { force?: boolean }) => Promise<void>; // Full refresh from backend
+  loadMoreOrders: () => Promise<void>; // Paginated load-more
   checkForNewOrders: () => Promise<number>; // Check for new orders (lightweight)
   clearNewOrdersCount: () => void; // Reset new orders counter
 
@@ -135,6 +143,75 @@ interface PreviousOrdersState {
   _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
 }
 
+/** Transform a fetched DB order row into a PreviousOrder. */
+function _transformFetchedOrder(
+  fo: FetchedOrderData,
+  index: number,
+  totalCount: number,
+): PreviousOrder {
+  const broadcastData = normalizeFetchedOrder(fo);
+  const profile = transformBroadcastToOrder(broadcastData, undefined);
+
+  const serialNo = profile.display_number
+    ? profile.display_number.replace(/\D/g, "")
+    : (totalCount - index).toString().padStart(3, "0");
+
+  const orderTimestamp = profile.opened_at || new Date().toISOString();
+  const orderDate = new Date(orderTimestamp);
+
+  return {
+    serialNo,
+    timestamp: orderTimestamp,
+    orderDate: orderDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }),
+    orderTime: orderDate.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }),
+    orderId: profile.id,
+    display_number: profile.display_number || `#${serialNo}`,
+    paymentStatus: _derivePaymentStatus(profile),
+    customer: profile.customer_name || "Walk-In Customer",
+    server: profile.server_name || "Unknown",
+    opened_at: profile.opened_at || orderTimestamp,
+    closed_at: profile.closed_at || "",
+    sent_to_kitchen_at: profile.sent_to_kitchen_at || "",
+    last_activity_at: profile.last_activity_at || orderTimestamp,
+    itemCount: profile.items.length,
+    amount_paid: profile.amount_paid || 0,
+    amount_due: profile.amount_due || 0,
+    cash_amount_due: profile.cash_amount_due || 0,
+    type: (profile.order_type || "Dine In") as any,
+    total: profile.total_amount || 0,
+    tax: profile.total_tax || 0,
+    items: profile.items,
+    notes: profile.notes,
+    voided: profile.order_status === "void",
+    refunded:
+      profile.order_status === "refunded" ||
+      (
+        (profile.payments || []).some((p) => p.isVoided === true || p.status === "voided") &&
+        !(profile.payments || []).some((p) => !p.isVoided && p.status === "captured")
+      ),
+    refundedAmount: 0,
+    originalTotal: profile.total_amount || 0,
+    payments: profile.payments,
+    service_location_id: profile.service_location_id ?? undefined,
+    service_location_name: profile.service_location_name,
+    station_id: profile.station_id,
+    station_name: profile._sourceStationName || undefined,
+    checkStatus: profile.check_status || "Opened",
+    db_order_id: profile.db_order_id,
+    order_source: profile.order_source ?? null,
+    reversals: profile.reversals,
+    order_refund_items: profile.order_refund_items,
+  };
+}
+
 export const usePreviousOrdersStore = create<PreviousOrdersState>(
   (set, get) => ({
     previousOrders: [],
@@ -143,6 +220,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     _orderLookup: {},
     lastHistoryRefreshAt: null,
     _lastRefreshLocationId: null,
+    _currentOffset: 0,
+    _hasMore: false,
+    _isLoadingMore: false,
 
     addOrderToHistory: (order: OrderProfile) => {
       // An order should be added to history if it has reached a final state.
@@ -321,13 +401,13 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       if (__DEV__) console.log("Refreshing previous orders data from backend...");
 
       try {
-        // Fetch last 50 orders with full history details
+        // Fetch last 100 orders with full history details
         const { data: fetchedOrders, error } =
           await OrderService.getHistoryOrders(
             client,
             locationId,
-            50, // Limit to 50 as requested
-            null, // Fetch all statuses (not filtering by "final" as requested)
+            100,
+            null,
           );
 
         if (error) {
@@ -337,79 +417,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
         if (!fetchedOrders) return;
 
-        // Transform fetched data into PreviousOrder objects
+        // Transform fetched data into PreviousOrder objects using extracted helper
         const newPreviousOrders: PreviousOrder[] = fetchedOrders.map(
-          (fo, index) => {
-            // 1. Normalize DB structure to Broadcast structure
-            const broadcastData = normalizeFetchedOrder(fo as FetchedOrderData);
-
-            // 2. Transform to OrderProfile (frontend model)
-            // We pass undefined for viewScopeStationId to show all items (full history)
-            const profile = transformBroadcastToOrder(broadcastData, undefined);
-
-            // 3. Map to PreviousOrder (history model)
-            // Use display_number from backend if available, or generate a serial
-            // Note: profile.display_number comes from order.display_number or order.order_number
-            const serialNo = profile.display_number
-              ? profile.display_number.replace(/\D/g, "") // remove non-digits
-              : (fetchedOrders.length - index).toString().padStart(3, "0");
-
-            const orderTimestamp =
-              profile.opened_at || new Date().toISOString();
-            const orderDate = new Date(orderTimestamp);
-
-            return {
-              serialNo,
-              timestamp: orderTimestamp,
-              orderDate: orderDate.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              }),
-              orderTime: orderDate.toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-              }),
-              orderId: profile.id,
-              display_number: profile.display_number || `#${serialNo}`,
-              paymentStatus: _derivePaymentStatus(profile),
-              customer: profile.customer_name || "Walk-In Customer",
-              server: profile.server_name || "Unknown",
-              opened_at: profile.opened_at || orderTimestamp,
-              closed_at: profile.closed_at || "",
-              sent_to_kitchen_at: profile.sent_to_kitchen_at || "",
-              last_activity_at: profile.last_activity_at || orderTimestamp,
-              itemCount: profile.items.length,
-              amount_paid: profile.amount_paid || 0,
-              amount_due: profile.amount_due || 0,
-              cash_amount_due: profile.cash_amount_due || 0,
-              type: (profile.order_type || "Dine In") as any,
-              total: profile.total_amount || 0,
-              tax: profile.total_tax || 0,
-              items: profile.items,
-              notes: profile.notes,
-              voided: profile.order_status === "void",
-              refunded:
-                profile.order_status === "refunded" ||
-                (
-                  (profile.payments || []).some((p) => p.isVoided === true || p.status === "voided") &&
-                  !(profile.payments || []).some((p) => !p.isVoided && p.status === "captured")
-                ),
-              refundedAmount: 0, // Backend might calculate this, but defaulting to 0 for now
-              originalTotal: profile.total_amount || 0,
-              payments: profile.payments,
-              service_location_id: profile.service_location_id ?? undefined,
-              service_location_name: profile.service_location_name,
-              station_id: profile.station_id,
-              station_name: profile._sourceStationName || undefined,
-              checkStatus: profile.check_status || "Opened",
-              db_order_id: profile.db_order_id,
-              order_source: profile.order_source ?? null,
-              reversals: profile.reversals,
-              order_refund_items: profile.order_refund_items,
-            };
-          },
+          (fo, index) => _transformFetchedOrder(fo as FetchedOrderData, index, fetchedOrders.length),
         );
 
         // Skip pre-sort: the merged result is sorted below, and the Map merge
@@ -447,6 +457,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           _orderLookup: newLookup,
           lastHistoryRefreshAt: now,
           _lastRefreshLocationId: locationId,
+          // Reset pagination state on refresh
+          _currentOffset: mergedPreviousOrders.length,
+          _hasMore: fetchedOrders.length === 100,
+          _isLoadingMore: false,
         });
         if (__DEV__) console.log(
           `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded.`,
@@ -526,6 +540,83 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     // Clear the new orders counter (called after user taps refresh)
     clearNewOrdersCount: () => {
       set({ newOrdersCount: 0 });
+    },
+
+    loadMoreOrders: async () => {
+      const { _isLoadingMore, _hasMore, _currentOffset } = get();
+      if (_isLoadingMore || !_hasMore) return;
+
+      const client = _supabaseClient;
+      if (!client) return;
+
+      const locationId = resolveHistoryLocationId();
+      if (!locationId) return;
+
+      set({ _isLoadingMore: true });
+
+      try {
+        const PAGE_SIZE = 50;
+        const { data, error, hasMore } =
+          await OrderService.getHistoryOrdersPaginated(
+            client,
+            locationId,
+            PAGE_SIZE,
+            _currentOffset,
+            null,
+          );
+
+        if (error || !data) {
+          console.error("Failed to load more orders:", error);
+          return;
+        }
+
+        const newOrders = data.map(
+          (fo, index) => _transformFetchedOrder(fo as FetchedOrderData, index, data.length),
+        );
+
+        // Deduplicate against existing previousOrders
+        const existingKeys = new Set<string>();
+        for (const po of get().previousOrders) {
+          if (po.db_order_id) existingKeys.add(po.db_order_id);
+          if (po.orderId) existingKeys.add(po.orderId);
+        }
+
+        const uniqueNewOrders = newOrders.filter((o) => {
+          const key = o.db_order_id || o.orderId;
+          return !existingKeys.has(key);
+        });
+
+        if (uniqueNewOrders.length === 0) {
+          set({ _hasMore: hasMore, _currentOffset: _currentOffset + data.length, _isLoadingMore: false });
+          return;
+        }
+
+        set((state) => {
+          let merged = [...state.previousOrders, ...uniqueNewOrders];
+
+          // Sort by timestamp descending
+          merged.sort(
+            (a, b) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+          );
+
+          // Safety cap: trim oldest if exceeding limit
+          if (merged.length > MAX_IN_MEMORY_PREVIOUS_ORDERS) {
+            merged = merged.slice(0, MAX_IN_MEMORY_PREVIOUS_ORDERS);
+          }
+
+          return {
+            previousOrders: merged,
+            _orderLookup: buildOrderLookupMap(merged),
+            _currentOffset: _currentOffset + data.length,
+            _hasMore: hasMore,
+          };
+        });
+      } catch (err) {
+        console.error("Error in loadMoreOrders:", err);
+      } finally {
+        set({ _isLoadingMore: false });
+      }
     },
 
     refundFullOrder: async (

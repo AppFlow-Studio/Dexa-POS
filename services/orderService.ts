@@ -616,6 +616,43 @@ export class OrderService {
   }
 
   /**
+   * Fetch orders with pagination (offset-based) for infinite scroll history.
+   * Same query as getHistoryOrders but uses .range() instead of .limit().
+   */
+  static async getHistoryOrdersPaginated (
+    client: SupabaseClient,
+    locationId: string,
+    limit: number,
+    offset: number,
+    statuses: OrderStatus[] | null = null
+  ): Promise<{ data: any[] | null; error: any; hasMore: boolean }> {
+    let query = client
+      .from('orders')
+      .select(
+        `
+        *,
+        order_items (
+          *,
+          order_item_modifiers (*)
+        ),
+        order_payments (*),
+        stations (station_name),
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
+      `
+      )
+      .eq('location_id', locationId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (statuses && statuses.length > 0) {
+      query = query.in('status', statuses)
+    }
+
+    const { data, error } = await query
+    return { data, error, hasMore: (data?.length ?? 0) === limit }
+  }
+
+  /**
    * Fetch a single order by ID with all relations
    */
   static async fetchOrderById (

@@ -902,6 +902,18 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             }))
           )
 
+          // Create optimistic order if caller didn't provide one (Path B & C)
+          if (!params.localOrderId && params.createOrder !== false) {
+            const { useOrderStore } = require('@/stores/useOrderStore')
+            useOrderStore.getState().startNewOrder({
+              tableId: params.tableIds[0],
+              guestCount: params.partySize,
+              localSessionId: localSessionId,
+              orderId: localOrderId,
+            })
+            useOrderStore.getState().setActiveOrder(localOrderId)
+          }
+
           // Clear selection on floor plan store
           useFloorPlanStore.getState().clearSelection()
 
@@ -917,7 +929,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                   reservationId: params.reservationId,
                   waitlistId: params.waitlistId,
                   createOrder: params.createOrder ?? true,
-                  localOrderId: params.localOrderId,
+                  localOrderId: localOrderId,
                   optimisticSession
                 },
                 {

@@ -5,7 +5,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useRouter } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
   Text,
@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useShallow } from "zustand/react/shallow";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 import OrderActionsMenu from "./OrderActionsMenu";
@@ -86,8 +87,29 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  // CRITICAL FIX: Use proper selector instead of destructuring entire store
-  const ordersById = useOrderStore((s) => s.ordersById);
+  // Narrow selector: only subscribe to live/active orders, not the full ordersById map
+  const liveOrders = useOrderStore(
+    useShallow((s) => {
+      const ids = new Set<string>();
+      if (s.activeOrderId) ids.add(s.activeOrderId);
+      for (const wsId of (s.workingSetOrderIds || [])) {
+        const localId = s.dbOrderIdIndex[wsId] || wsId;
+        ids.add(localId);
+      }
+      for (const id of s.orderIds) {
+        const o = s.ordersById[id];
+        if (o && (o.order_status !== 'draft' || o.items.length > 0)) {
+          ids.add(id);
+        }
+      }
+      const result: OrderProfile[] = [];
+      for (const id of ids) {
+        const o = s.ordersById[id];
+        if (o) result.push(o);
+      }
+      return result;
+    })
+  );
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabName>("All");
@@ -95,6 +117,13 @@ const PreviousOrdersSection = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync();
+  const loadMoreOrders = usePreviousOrdersStore((s) => s.loadMoreOrders);
+  const isLoadingMore = usePreviousOrdersStore((s) => s._isLoadingMore);
+  const hasMore = usePreviousOrdersStore((s) => s._hasMore);
+
+  const handleLoadMore = useCallback(() => {
+    if (hasMore && !isLoadingMore) void loadMoreOrders();
+  }, [hasMore, isLoadingMore, loadMoreOrders]);
 
   // New state for table view
   const [sortColumn, setSortColumn] = useState<SortColumn>("time");
@@ -109,14 +138,10 @@ const PreviousOrdersSection = () => {
     height: number;
   } | null>(null);
 
-  // Get all orders - combine previous orders selector with local orders for compatibility
+  // Get all orders - combine live orders with history for compatibility
   const allOrders: OrderProfile[] = useMemo(() => {
-    // 1. Get Active/Local Orders (excluding drafts/empties as per existing logic)
-    const activeOrders = Object.values(ordersById).filter(
-      (o: OrderProfile) =>
-        o.order_status !== "draft" ||
-        (o.order_status == "draft" && o.items.length > 0),
-    );
+    // liveOrders already filtered to non-empty drafts + active/working set
+    const activeOrders = liveOrders;
 
     // Create sets for O(1) lookup of active orders to prevent duplicates
     const activeIds = new Set(activeOrders.map((o) => o.id));
@@ -186,7 +211,7 @@ const PreviousOrdersSection = () => {
 
     // Combined list: Active Orders + Missing History Orders
     return [...activeOrders, ...mappedHistoryOrders];
-  }, [ordersById, previousOrders]);
+  }, [liveOrders, previousOrders]);
 
   // Compute per-tab counts
   const tabCounts = useMemo<TabCounts>(() => {
@@ -317,6 +342,8 @@ const PreviousOrdersSection = () => {
           onMoreClick={handleMoreClick}
           refreshing={isRefreshing}
           onRefresh={handleRefresh}
+          onEndReached={handleLoadMore}
+          isLoadingMore={isLoadingMore}
         />
 
         {/* New Orders Banner - Floating */}

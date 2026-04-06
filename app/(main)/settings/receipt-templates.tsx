@@ -42,7 +42,7 @@ import DraggableFlatList, {
 // TYPES
 // ============================================================================
 
-type TabType = "receipt" | "kitchen";
+type TabType = "receipt" | "kitchen" | "no_sale" | "void_order" | "time_sheet";
 
 export type ReceiptSectionId =
   | "logo"
@@ -107,6 +107,102 @@ const KITCHEN_SECTION_LABELS: Record<KitchenSectionId, string> = {
   readyBy: "Ready By Time",
   items: "Items",
   footer: "Item Count",
+};
+
+// ─── No Sale sections ───────────────────────────────────────────
+export type NoSaleSectionId =
+  | "header"
+  | "storeInfo"
+  | "details"
+  | "reason"
+  | "footer";
+
+export interface NoSaleSection {
+  id: NoSaleSectionId;
+  label: string;
+}
+
+const DEFAULT_NO_SALE_SECTION_ORDER: NoSaleSectionId[] = [
+  "header",
+  "storeInfo",
+  "details",
+  "reason",
+  "footer",
+];
+
+const NO_SALE_SECTION_LABELS: Record<NoSaleSectionId, string> = {
+  header: "Header",
+  storeInfo: "Store Info",
+  details: "Details",
+  reason: "Reason",
+  footer: "Footer",
+};
+
+// ─── Void Order sections ────────────────────────────────────────
+export type VoidOrderSectionId =
+  | "header"
+  | "storeInfo"
+  | "orderInfo"
+  | "items"
+  | "totals"
+  | "voidReason"
+  | "footer";
+
+export interface VoidOrderSection {
+  id: VoidOrderSectionId;
+  label: string;
+}
+
+const DEFAULT_VOID_ORDER_SECTION_ORDER: VoidOrderSectionId[] = [
+  "header",
+  "storeInfo",
+  "orderInfo",
+  "items",
+  "totals",
+  "voidReason",
+  "footer",
+];
+
+const VOID_ORDER_SECTION_LABELS: Record<VoidOrderSectionId, string> = {
+  header: "Header",
+  storeInfo: "Store Info",
+  orderInfo: "Order Info",
+  items: "Voided Items",
+  totals: "Totals",
+  voidReason: "Void Reason",
+  footer: "Footer",
+};
+
+// ─── Time Sheet sections ────────────────────────────────────────
+export type TimeSheetSectionId =
+  | "header"
+  | "employeeInfo"
+  | "dateRange"
+  | "shifts"
+  | "totals"
+  | "footer";
+
+export interface TimeSheetSection {
+  id: TimeSheetSectionId;
+  label: string;
+}
+
+const DEFAULT_TIME_SHEET_SECTION_ORDER: TimeSheetSectionId[] = [
+  "header",
+  "employeeInfo",
+  "dateRange",
+  "shifts",
+  "totals",
+  "footer",
+];
+
+const TIME_SHEET_SECTION_LABELS: Record<TimeSheetSectionId, string> = {
+  header: "Header",
+  employeeInfo: "Employee Info",
+  dateRange: "Date Range",
+  shifts: "Shifts",
+  totals: "Total Hours",
+  footer: "Footer",
 };
 
 // ============================================================================
@@ -492,7 +588,16 @@ function CopyFromLocationModal({
     (t) => t.locationId !== currentLocationId && t.templateType === templateType,
   );
 
-  const typeLabel = templateType === "kitchen" ? "Kitchen Ticket" : "Sale Receipt";
+  const typeLabel =
+    templateType === "kitchen"
+      ? "Kitchen Ticket"
+      : templateType === "no_sale"
+      ? "No Sale"
+      : templateType === "void_order"
+      ? "Void Order"
+      : templateType === "time_sheet"
+      ? "Time Sheet"
+      : "Sale Receipt";
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -1088,6 +1193,541 @@ function KitchenPreview({
 }
 
 // ============================================================================
+// NO SALE PREVIEW
+// ============================================================================
+
+function renderNoSaleSection(
+  sectionId: NoSaleSectionId,
+  config: ReceiptTemplateConfig,
+  storeName: string,
+): React.ReactNode {
+  switch (sectionId) {
+    case "header":
+      return (
+        <View>
+          {config.headerText ? (
+            <Text style={{ color: "#111827", textAlign: "center", fontSize: 9, marginBottom: 2 }}>
+              {config.headerText}
+            </Text>
+          ) : null}
+          <Text style={{ color: "#111827", textAlign: "center", fontWeight: "900", fontSize: 14, letterSpacing: 1 }}>
+            ** NO SALE **
+          </Text>
+          <DoubleLine />
+        </View>
+      );
+    case "storeInfo":
+      return (
+        <View>
+          <Text style={{ color: "#111827", textAlign: "center", fontWeight: "700", fontSize: 11 }}>
+            {storeName || "Sample Restaurant"}
+          </Text>
+          <Text style={{ color: "#6b7280", textAlign: "center", fontSize: 9, marginTop: 1 }}>
+            123 Main St, City, ST 12345
+          </Text>
+          <DottedLine />
+        </View>
+      );
+    case "details":
+      return (
+        <View style={{ gap: 2 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Date:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>01/15/2026</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Time:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>12:34:56</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Employee:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Sarah M.</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Drawer:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Drawer 1</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Station:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>POS-01</Text>
+          </View>
+        </View>
+      );
+    case "reason":
+      return (
+        <View style={{ marginTop: 4 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9, fontWeight: "700" }}>Reason:</Text>
+            <Text style={{ color: "#111827", fontSize: 9, fontWeight: "700" }}>Making Change</Text>
+          </View>
+          {config.showApprovedBy && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 2 }}>
+              <Text style={{ color: "#111827", fontSize: 9 }}>Approved By:</Text>
+              <Text style={{ color: "#111827", fontSize: 9 }}>Manager Jane</Text>
+            </View>
+          )}
+        </View>
+      );
+    case "footer":
+      return (
+        <View>
+          <DoubleLine />
+          <Text style={{ color: "#111827", textAlign: "center", fontSize: 9, fontWeight: "700" }}>
+            NOT A TRANSACTION
+          </Text>
+          {config.footerText ? (
+            <Text style={{ color: "#111827", textAlign: "center", fontSize: 9, marginTop: 3 }}>
+              {config.footerText}
+            </Text>
+          ) : null}
+        </View>
+      );
+    default:
+      return null;
+  }
+}
+
+function NoSalePreview({
+  config,
+  storeName,
+  sectionOrder,
+  onReorder,
+}: {
+  config: ReceiptTemplateConfig;
+  storeName: string;
+  sectionOrder: NoSaleSectionId[];
+  onReorder: (newOrder: NoSaleSectionId[]) => void;
+}) {
+  const sections: NoSaleSection[] = sectionOrder.map((id) => ({
+    id,
+    label: NO_SALE_SECTION_LABELS[id],
+  }));
+
+  const renderItem = useCallback(
+    ({ item, drag, isActive }: RenderItemParams<NoSaleSection>) => {
+      const content = renderNoSaleSection(item.id, config, storeName);
+      return (
+        <ScaleDecorator activeScale={1.02}>
+          <TouchableOpacity
+            onLongPress={drag}
+            disabled={isActive}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: isActive ? "#f0fdf4" : "transparent",
+              borderRadius: 4,
+              borderWidth: isActive ? 1 : 0,
+              borderColor: isActive ? "#86efac" : "transparent",
+              paddingLeft: 2,
+            }}
+          >
+            <View style={{ width: 16, alignItems: "center", justifyContent: "center", paddingVertical: 4, flexShrink: 0 }}>
+              <GripVertical size={12} color={isActive ? "#4ade80" : "#d1d5db"} />
+            </View>
+            <View style={{ flex: 1 }}>
+              {content !== null ? content : (
+                <View style={{ paddingVertical: 3, paddingHorizontal: 6, marginVertical: 1, borderRadius: 3, borderWidth: 1, borderStyle: "dashed", borderColor: "#e5e7eb" }}>
+                  <Text style={{ color: "#d1d5db", fontSize: 8, textAlign: "center" }}>
+                    {item.label} (hidden)
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </ScaleDecorator>
+      );
+    },
+    [config, storeName],
+  );
+
+  return (
+    <ReceiptPaper>
+      <DraggableFlatList
+        data={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        onDragEnd={({ data }) => onReorder(data.map((s) => s.id))}
+        scrollEnabled={false}
+        activationDistance={5}
+      />
+    </ReceiptPaper>
+  );
+}
+
+// ============================================================================
+// VOID ORDER PREVIEW
+// ============================================================================
+
+function renderVoidOrderSection(
+  sectionId: VoidOrderSectionId,
+  config: ReceiptTemplateConfig,
+  storeName: string,
+): React.ReactNode {
+  switch (sectionId) {
+    case "header":
+      return (
+        <View>
+          {config.headerText ? (
+            <Text style={{ color: "#111827", textAlign: "center", fontSize: 9, marginBottom: 2 }}>
+              {config.headerText}
+            </Text>
+          ) : null}
+          <Text style={{ color: "#111827", textAlign: "center", fontWeight: "900", fontSize: 14, letterSpacing: 1 }}>
+            ** VOID ORDER **
+          </Text>
+          <DoubleLine />
+        </View>
+      );
+    case "storeInfo":
+      return (
+        <View>
+          <Text style={{ color: "#111827", textAlign: "center", fontWeight: "700", fontSize: 11 }}>
+            {storeName || "Sample Restaurant"}
+          </Text>
+          <Text style={{ color: "#6b7280", textAlign: "center", fontSize: 9, marginTop: 1 }}>
+            123 Main St, City, ST 12345
+          </Text>
+          <Text style={{ color: "#6b7280", textAlign: "center", fontSize: 9 }}>
+            (555) 123-4567
+          </Text>
+          <DottedLine />
+        </View>
+      );
+    case "orderInfo":
+      return (
+        <View style={{ gap: 2 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Order:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>#1042</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Date:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>01/15/2026</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Time:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>12:34:56</Text>
+          </View>
+          {config.showServerName && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: "#111827", fontSize: 9 }}>Server:</Text>
+              <Text style={{ color: "#111827", fontSize: 9 }}>Sarah M.</Text>
+            </View>
+          )}
+          <DottedLine />
+        </View>
+      );
+    case "items":
+      return (
+        <View style={{ gap: 3 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>1x Cheeseburger</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>$12.99</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>1x Caesar Salad</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>$9.50</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>2x Iced Tea</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>$5.98</Text>
+          </View>
+          <DottedLine />
+        </View>
+      );
+    case "totals":
+      return (
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ color: "#111827", fontSize: 10, fontWeight: "700" }}>Subtotal:</Text>
+          <Text style={{ color: "#111827", fontSize: 10, fontWeight: "700" }}>$28.47</Text>
+        </View>
+      );
+    case "voidReason":
+      return (
+        <View style={{ marginTop: 4 }}>
+          {config.showVoidReason && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: "#111827", fontSize: 9, fontWeight: "700" }}>Reason:</Text>
+              <Text style={{ color: "#111827", fontSize: 9, fontWeight: "700" }}>Guest left</Text>
+            </View>
+          )}
+          {config.showApprovedBy && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 2 }}>
+              <Text style={{ color: "#111827", fontSize: 9 }}>Approved By:</Text>
+              <Text style={{ color: "#111827", fontSize: 9 }}>Manager Jane</Text>
+            </View>
+          )}
+        </View>
+      );
+    case "footer":
+      return (
+        <View>
+          <DoubleLine />
+          <Text style={{ color: "#111827", textAlign: "center", fontSize: 9, fontWeight: "700" }}>
+            THIS ORDER HAS BEEN VOIDED
+          </Text>
+          {config.footerText ? (
+            <Text style={{ color: "#111827", textAlign: "center", fontSize: 9, marginTop: 3 }}>
+              {config.footerText}
+            </Text>
+          ) : null}
+        </View>
+      );
+    default:
+      return null;
+  }
+}
+
+function VoidOrderPreview({
+  config,
+  storeName,
+  sectionOrder,
+  onReorder,
+}: {
+  config: ReceiptTemplateConfig;
+  storeName: string;
+  sectionOrder: VoidOrderSectionId[];
+  onReorder: (newOrder: VoidOrderSectionId[]) => void;
+}) {
+  const sections: VoidOrderSection[] = sectionOrder.map((id) => ({
+    id,
+    label: VOID_ORDER_SECTION_LABELS[id],
+  }));
+
+  const renderItem = useCallback(
+    ({ item, drag, isActive }: RenderItemParams<VoidOrderSection>) => {
+      const content = renderVoidOrderSection(item.id, config, storeName);
+      return (
+        <ScaleDecorator activeScale={1.02}>
+          <TouchableOpacity
+            onLongPress={drag}
+            disabled={isActive}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: isActive ? "#f0fdf4" : "transparent",
+              borderRadius: 4,
+              borderWidth: isActive ? 1 : 0,
+              borderColor: isActive ? "#86efac" : "transparent",
+              paddingLeft: 2,
+            }}
+          >
+            <View style={{ width: 16, alignItems: "center", justifyContent: "center", paddingVertical: 4, flexShrink: 0 }}>
+              <GripVertical size={12} color={isActive ? "#4ade80" : "#d1d5db"} />
+            </View>
+            <View style={{ flex: 1 }}>
+              {content !== null ? content : (
+                <View style={{ paddingVertical: 3, paddingHorizontal: 6, marginVertical: 1, borderRadius: 3, borderWidth: 1, borderStyle: "dashed", borderColor: "#e5e7eb" }}>
+                  <Text style={{ color: "#d1d5db", fontSize: 8, textAlign: "center" }}>
+                    {item.label} (hidden)
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </ScaleDecorator>
+      );
+    },
+    [config, storeName],
+  );
+
+  return (
+    <ReceiptPaper>
+      <DraggableFlatList
+        data={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        onDragEnd={({ data }) => onReorder(data.map((s) => s.id))}
+        scrollEnabled={false}
+        activationDistance={5}
+      />
+    </ReceiptPaper>
+  );
+}
+
+// ============================================================================
+// TIME SHEET PREVIEW
+// ============================================================================
+
+const SAMPLE_SHIFTS = [
+  { date: "01/13/2026", inT: "08:02 AM", outT: "04:08 PM", breakIn: "12:00 PM", breakOut: "12:30 PM", hours: 7.6 },
+  { date: "01/14/2026", inT: "08:00 AM", outT: "05:00 PM", breakIn: "N/A", breakOut: "N/A", hours: 9.0 },
+  { date: "01/15/2026", inT: "07:55 AM", outT: "03:45 PM", breakIn: "12:15 PM", breakOut: "12:45 PM", hours: 7.3 },
+];
+
+function renderTimeSheetSection(
+  sectionId: TimeSheetSectionId,
+  config: ReceiptTemplateConfig,
+  storeName: string,
+): React.ReactNode {
+  switch (sectionId) {
+    case "header":
+      return (
+        <View>
+          {config.headerText ? (
+            <Text style={{ color: "#111827", textAlign: "center", fontSize: 9, marginBottom: 2 }}>
+              {config.headerText}
+            </Text>
+          ) : null}
+          <Text style={{ color: "#111827", textAlign: "center", fontWeight: "900", fontSize: 14, letterSpacing: 1 }}>
+            ** TIME SHEET **
+          </Text>
+          <DoubleLine />
+        </View>
+      );
+    case "employeeInfo":
+      return (
+        <View>
+          <Text style={{ color: "#111827", textAlign: "center", fontWeight: "700", fontSize: 11 }}>
+            {storeName || "Sample Restaurant"}
+          </Text>
+          <DottedLine />
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 9, fontWeight: "700" }}>Employee:</Text>
+            <Text style={{ color: "#111827", fontSize: 9, fontWeight: "700" }}>Sarah M.</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 2 }}>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Role:</Text>
+            <Text style={{ color: "#111827", fontSize: 9 }}>Server</Text>
+          </View>
+        </View>
+      );
+    case "dateRange":
+      return (
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ color: "#111827", fontSize: 9 }}>Period:</Text>
+          <Text style={{ color: "#111827", fontSize: 9 }}>01/13 – 01/15</Text>
+        </View>
+      );
+    case "shifts":
+      return (
+        <View>
+          <DottedLine />
+          {SAMPLE_SHIFTS.map((s, idx) => (
+            <View key={idx} style={{ marginTop: idx > 0 ? 4 : 0 }}>
+              <Text style={{ color: "#111827", fontSize: 9, fontWeight: "700" }}>{s.date}</Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: "#6b7280", fontSize: 9 }}>  In:</Text>
+                <Text style={{ color: "#111827", fontSize: 9 }}>{s.inT}</Text>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: "#6b7280", fontSize: 9 }}>  Out:</Text>
+                <Text style={{ color: "#111827", fontSize: 9 }}>{s.outT}</Text>
+              </View>
+              {config.showBreakDetails && s.breakIn !== "N/A" && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: "#6b7280", fontSize: 9 }}>  Break:</Text>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>{s.breakIn}-{s.breakOut}</Text>
+                </View>
+              )}
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: "#6b7280", fontSize: 9 }}>  Total:</Text>
+                <Text style={{ color: "#111827", fontSize: 9 }}>{s.hours.toFixed(2)} h</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      );
+    case "totals":
+      return (
+        <View>
+          <DoubleLine />
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: "#111827", fontSize: 12, fontWeight: "900" }}>TOTAL HOURS:</Text>
+            <Text style={{ color: "#111827", fontSize: 12, fontWeight: "900" }}>23.90 h</Text>
+          </View>
+          <DoubleLine />
+        </View>
+      );
+    case "footer":
+      return (
+        <View style={{ marginTop: 2 }}>
+          <Text style={{ color: "#9ca3af", textAlign: "center", fontSize: 8 }}>
+            Printed: 01/15/2026 03:50 PM
+          </Text>
+          {config.footerText ? (
+            <Text style={{ color: "#111827", textAlign: "center", fontSize: 9, marginTop: 3 }}>
+              {config.footerText}
+            </Text>
+          ) : null}
+        </View>
+      );
+    default:
+      return null;
+  }
+}
+
+function TimeSheetPreview({
+  config,
+  storeName,
+  sectionOrder,
+  onReorder,
+}: {
+  config: ReceiptTemplateConfig;
+  storeName: string;
+  sectionOrder: TimeSheetSectionId[];
+  onReorder: (newOrder: TimeSheetSectionId[]) => void;
+}) {
+  const sections: TimeSheetSection[] = sectionOrder.map((id) => ({
+    id,
+    label: TIME_SHEET_SECTION_LABELS[id],
+  }));
+
+  const renderItem = useCallback(
+    ({ item, drag, isActive }: RenderItemParams<TimeSheetSection>) => {
+      const content = renderTimeSheetSection(item.id, config, storeName);
+      return (
+        <ScaleDecorator activeScale={1.02}>
+          <TouchableOpacity
+            onLongPress={drag}
+            disabled={isActive}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: isActive ? "#f0fdf4" : "transparent",
+              borderRadius: 4,
+              borderWidth: isActive ? 1 : 0,
+              borderColor: isActive ? "#86efac" : "transparent",
+              paddingLeft: 2,
+            }}
+          >
+            <View style={{ width: 16, alignItems: "center", justifyContent: "center", paddingVertical: 4, flexShrink: 0 }}>
+              <GripVertical size={12} color={isActive ? "#4ade80" : "#d1d5db"} />
+            </View>
+            <View style={{ flex: 1 }}>
+              {content !== null ? content : (
+                <View style={{ paddingVertical: 3, paddingHorizontal: 6, marginVertical: 1, borderRadius: 3, borderWidth: 1, borderStyle: "dashed", borderColor: "#e5e7eb" }}>
+                  <Text style={{ color: "#d1d5db", fontSize: 8, textAlign: "center" }}>
+                    {item.label} (hidden)
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </ScaleDecorator>
+      );
+    },
+    [config, storeName],
+  );
+
+  return (
+    <ReceiptPaper>
+      <DraggableFlatList
+        data={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        onDragEnd={({ data }) => onReorder(data.map((s) => s.id))}
+        scrollEnabled={false}
+        activationDistance={5}
+      />
+    </ReceiptPaper>
+  );
+}
+
+// ============================================================================
 // MAIN SCREEN
 // ============================================================================
 
@@ -1115,6 +1755,15 @@ const ReceiptTemplatesScreen = () => {
   const [kitchenSectionOrder, setKitchenSectionOrder] = useState<KitchenSectionId[]>(
     DEFAULT_KITCHEN_SECTION_ORDER,
   );
+  const [noSaleSectionOrder, setNoSaleSectionOrder] = useState<NoSaleSectionId[]>(
+    DEFAULT_NO_SALE_SECTION_ORDER,
+  );
+  const [voidOrderSectionOrder, setVoidOrderSectionOrder] = useState<
+    VoidOrderSectionId[]
+  >(DEFAULT_VOID_ORDER_SECTION_ORDER);
+  const [timeSheetSectionOrder, setTimeSheetSectionOrder] = useState<
+    TimeSheetSectionId[]
+  >(DEFAULT_TIME_SHEET_SECTION_ORDER);
 
   const storedTemplate = useMemo(() => {
     const match = templates.find(
@@ -1196,9 +1845,18 @@ const ReceiptTemplatesScreen = () => {
     <View style={{ flex: 1, backgroundColor: colors.panel }}>
       {/* Tab Bar — underline style */}
       <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingTop: 12, gap: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        {(["receipt", "kitchen"] as TabType[]).map((tab) => {
+        {(["receipt", "kitchen", "no_sale", "void_order", "time_sheet"] as TabType[]).map((tab) => {
           const active = activeTab === tab;
-          const label = tab === "receipt" ? "Sale Receipt" : "Kitchen Ticket";
+          const label =
+            tab === "receipt"
+              ? "Sale Receipt"
+              : tab === "kitchen"
+              ? "Kitchen Ticket"
+              : tab === "no_sale"
+              ? "No Sale"
+              : tab === "void_order"
+              ? "Void Order"
+              : "Time Sheet";
           return (
             <TouchableOpacity
               key={tab}
@@ -1206,6 +1864,9 @@ const ReceiptTemplatesScreen = () => {
                 setActiveTab(tab);
                 if (tab === "receipt") setSectionOrder(DEFAULT_RECEIPT_SECTION_ORDER);
                 if (tab === "kitchen") setKitchenSectionOrder(DEFAULT_KITCHEN_SECTION_ORDER);
+                if (tab === "no_sale") setNoSaleSectionOrder(DEFAULT_NO_SALE_SECTION_ORDER);
+                if (tab === "void_order") setVoidOrderSectionOrder(DEFAULT_VOID_ORDER_SECTION_ORDER);
+                if (tab === "time_sheet") setTimeSheetSectionOrder(DEFAULT_TIME_SHEET_SECTION_ORDER);
               }}
               style={{
                 paddingHorizontal: 14,
@@ -1245,12 +1906,33 @@ const ReceiptTemplatesScreen = () => {
                 sectionOrder={sectionOrder}
                 onReorder={setSectionOrder}
               />
-            ) : (
+            ) : activeTab === "kitchen" ? (
               <KitchenPreview
                 config={localConfig}
                 storeName={storeName}
                 sectionOrder={kitchenSectionOrder}
                 onReorder={setKitchenSectionOrder}
+              />
+            ) : activeTab === "no_sale" ? (
+              <NoSalePreview
+                config={localConfig}
+                storeName={storeName}
+                sectionOrder={noSaleSectionOrder}
+                onReorder={setNoSaleSectionOrder}
+              />
+            ) : activeTab === "void_order" ? (
+              <VoidOrderPreview
+                config={localConfig}
+                storeName={storeName}
+                sectionOrder={voidOrderSectionOrder}
+                onReorder={setVoidOrderSectionOrder}
+              />
+            ) : (
+              <TimeSheetPreview
+                config={localConfig}
+                storeName={storeName}
+                sectionOrder={timeSheetSectionOrder}
+                onReorder={setTimeSheetSectionOrder}
               />
             )}
           </ScrollView>
@@ -1271,13 +1953,15 @@ const ReceiptTemplatesScreen = () => {
               <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500", marginLeft: 5 }}>Copy from Location</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setShowPresets(true)}
-              style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.teal + "20", borderRadius: 8, borderWidth: 1, borderColor: colors.teal + "50" }}
-            >
-              <Layers size={11} color={colors.teal} />
-              <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600", marginLeft: 5 }}>Presets</Text>
-            </TouchableOpacity>
+            {(activeTab === "receipt" || activeTab === "kitchen") && (
+              <TouchableOpacity
+                onPress={() => setShowPresets(true)}
+                style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.teal + "20", borderRadius: 8, borderWidth: 1, borderColor: colors.teal + "50" }}
+              >
+                <Layers size={11} color={colors.teal} />
+                <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600", marginLeft: 5 }}>Presets</Text>
+              </TouchableOpacity>
+            )}
             </View>
           </View>
 
@@ -1288,8 +1972,14 @@ const ReceiptTemplatesScreen = () => {
           >
             {activeTab === "receipt" ? (
               <ReceiptSettings config={localConfig} updateField={updateField} />
-            ) : (
+            ) : activeTab === "kitchen" ? (
               <KitchenSettings config={localConfig} updateField={updateField} />
+            ) : activeTab === "no_sale" ? (
+              <NoSaleSettings config={localConfig} updateField={updateField} />
+            ) : activeTab === "void_order" ? (
+              <VoidOrderSettings config={localConfig} updateField={updateField} />
+            ) : (
+              <TimeSheetSettings config={localConfig} updateField={updateField} />
             )}
           </ScrollView>
 
@@ -1550,6 +2240,147 @@ function KitchenSettings({
           subtitle="Label each item with its seat number for easy runner service"
           value={config.groupBySeat}
           onToggle={(v) => updateField("groupBySeat", v)}
+        />
+      </CollapsibleSection>
+    </>
+  );
+}
+
+// ============================================================================
+// NO SALE SETTINGS
+// ============================================================================
+
+function NoSaleSettings({
+  config,
+  updateField,
+}: {
+  config: ReceiptTemplateConfig;
+  updateField: <K extends keyof ReceiptTemplateConfig>(
+    key: K,
+    value: ReceiptTemplateConfig[K],
+  ) => void;
+}) {
+  return (
+    <>
+      <CollapsibleSection title="Branding" subtitle="Header and footer text" defaultOpen>
+        <TextRow
+          label="Header Text"
+          value={config.headerText ?? ""}
+          onChangeText={(v) => updateField("headerText", v || null)}
+          placeholder="e.g. No-sale audit copy"
+        />
+        <TextRow
+          label="Footer Text"
+          value={config.footerText ?? ""}
+          onChangeText={(v) => updateField("footerText", v || null)}
+          placeholder="Optional note at the bottom"
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Content" subtitle="What prints on the no-sale slip" defaultOpen>
+        <ToggleRow
+          label="Show Approved By"
+          subtitle="Print the manager name who approved the no-sale"
+          value={config.showApprovedBy}
+          onToggle={(v) => updateField("showApprovedBy", v)}
+        />
+      </CollapsibleSection>
+    </>
+  );
+}
+
+// ============================================================================
+// VOID ORDER SETTINGS
+// ============================================================================
+
+function VoidOrderSettings({
+  config,
+  updateField,
+}: {
+  config: ReceiptTemplateConfig;
+  updateField: <K extends keyof ReceiptTemplateConfig>(
+    key: K,
+    value: ReceiptTemplateConfig[K],
+  ) => void;
+}) {
+  return (
+    <>
+      <CollapsibleSection title="Branding" subtitle="Header and footer text" defaultOpen>
+        <TextRow
+          label="Header Text"
+          value={config.headerText ?? ""}
+          onChangeText={(v) => updateField("headerText", v || null)}
+          placeholder="e.g. Customer copy — void"
+        />
+        <TextRow
+          label="Footer Text"
+          value={config.footerText ?? ""}
+          onChangeText={(v) => updateField("footerText", v || null)}
+          placeholder="Optional note at the bottom"
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Content" subtitle="What prints on the void receipt" defaultOpen>
+        <ToggleRow
+          label="Show Server Name"
+          subtitle="Print the server who placed the voided order"
+          value={config.showServerName}
+          onToggle={(v) => updateField("showServerName", v)}
+        />
+        <ToggleRow
+          label="Show Void Reason"
+          subtitle="Print the reason the order was voided"
+          value={config.showVoidReason}
+          onToggle={(v) => updateField("showVoidReason", v)}
+        />
+        <ToggleRow
+          label="Show Approved By"
+          subtitle="Print the manager who authorized the void"
+          value={config.showApprovedBy}
+          onToggle={(v) => updateField("showApprovedBy", v)}
+        />
+      </CollapsibleSection>
+    </>
+  );
+}
+
+// ============================================================================
+// TIME SHEET SETTINGS
+// ============================================================================
+
+function TimeSheetSettings({
+  config,
+  updateField,
+}: {
+  config: ReceiptTemplateConfig;
+  updateField: <K extends keyof ReceiptTemplateConfig>(
+    key: K,
+    value: ReceiptTemplateConfig[K],
+  ) => void;
+}) {
+  return (
+    <>
+      <CollapsibleSection title="Branding" subtitle="Header and footer text" defaultOpen>
+        <TextRow
+          label="Header Text"
+          value={config.headerText ?? ""}
+          onChangeText={(v) => updateField("headerText", v || null)}
+          placeholder="e.g. Payroll — employee copy"
+        />
+        <TextRow
+          label="Footer Text"
+          value={config.footerText ?? ""}
+          onChangeText={(v) => updateField("footerText", v || null)}
+          placeholder="Optional signature line"
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Content" subtitle="What prints per shift" defaultOpen>
+        <ToggleRow
+          label="Show Break Details"
+          subtitle="Print break start/end times under each shift"
+          value={config.showBreakDetails}
+          onToggle={(v) => updateField("showBreakDetails", v)}
         />
       </CollapsibleSection>
     </>

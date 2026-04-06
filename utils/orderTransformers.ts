@@ -21,6 +21,45 @@ import type {
 } from "@/lib/types";
 
 /**
+ * Derive cashSavings for a cash-priced payment.
+ *
+ * Prefers backend-provided original_amount. Falls back to deriving from
+ * the order's card vs cash totals when original_amount is missing/null.
+ */
+export function deriveCashSavings(
+  payment: {
+    is_cash_priced?: boolean | null;
+    original_amount?: number | null;
+    amount: number;
+  },
+  orderCardTotal?: number | null,
+  orderCashTotal?: number | null,
+): number | undefined {
+  if (!payment.is_cash_priced) return undefined;
+
+  // Preferred: backend original_amount
+  if (
+    payment.original_amount != null &&
+    payment.original_amount > payment.amount
+  ) {
+    return Number((payment.original_amount - payment.amount).toFixed(2));
+  }
+
+  // Fallback: derive from order-level cash:card ratio
+  if (
+    orderCardTotal != null &&
+    orderCashTotal != null &&
+    orderCardTotal > orderCashTotal &&
+    orderCashTotal > 0
+  ) {
+    const ratio = orderCardTotal / orderCashTotal;
+    return Number((payment.amount * (ratio - 1)).toFixed(2));
+  }
+
+  return undefined;
+}
+
+/**
  * Transform broadcast modifiers to CartItem customizations.modifiers format.
  *
  * Modifiers are grouped by their group name (category) to match the CartItem structure:
@@ -326,6 +365,8 @@ function transformBroadcastPaymentToProfile(
   payment: BroadcastOrderPaymentData,
   orderItems?: BroadcastOrderItemData[],
   paymentItems?: BroadcastOrderData['payment_items'],
+  orderCardTotal?: number | null,
+  orderCashTotal?: number | null,
 ): OrderProfilePayment {
   // Prefer per-payment item coverage from junction table (accurate per-payment quantities)
   // Fall back to deriveItemCoverage (flat covers_items + paid_quantity) for legacy data
@@ -346,11 +387,8 @@ function transformBroadcastPaymentToProfile(
   // Determine PaymentType for UI
   const method = payment.payment_method === "cash" ? "Cash" : "Card";
 
-  // Calculate cash savings if applicable
-  const cashSavings =
-    payment.is_cash_priced && payment.original_amount
-      ? payment.original_amount - payment.amount
-      : undefined;
+  // Calculate cash savings — falls back to order-level ratio when original_amount is missing
+  const cashSavings = deriveCashSavings(payment, orderCardTotal, orderCashTotal);
 
   // Build split info if applicable
   const splitInfo =
@@ -478,6 +516,8 @@ export function transformBroadcastPaymentsToProfile(
   payments: BroadcastOrderPaymentData[] | undefined,
   orderItems?: BroadcastOrderItemData[],
   allPaymentItems?: BroadcastOrderData['payment_items'],
+  orderCardTotal?: number | null,
+  orderCashTotal?: number | null,
 ): OrderProfilePayment[] {
   if (!payments || payments.length === 0) return [];
 
@@ -489,7 +529,7 @@ export function transformBroadcastPaymentsToProfile(
   }
 
   return payments.map((p) =>
-    transformBroadcastPaymentToProfile(p, orderItems, byPaymentId.get(p.id))
+    transformBroadcastPaymentToProfile(p, orderItems, byPaymentId.get(p.id), orderCardTotal, orderCashTotal)
   );
 }
 
@@ -602,6 +642,8 @@ export function transformBroadcastToOrder(
       backendOrder.order_payments,
       backendOrder.order_items,
       backendOrder.payment_items,
+      backendOrder.card_total || backendOrder.total_amount,
+      backendOrder.cash_total,
     ),
     // Cast reversals and refund items to proper types (broadcast returns Record<string, unknown>[])
     reversals: (backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined,

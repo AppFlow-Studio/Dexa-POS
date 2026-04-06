@@ -637,7 +637,14 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
       new Decimal(0)
     );
     outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance);
-    outstandingCashTotal = outstandingCashTotal.plus(customRefundBalance);
+    // customRefundBalance is in card-equivalent terms; scale to cash-equivalent
+    // using order-level ratio (not current outstanding, which can be 0 when items are paid)
+    const cashToCardRatio = cardTotal.gt(0)
+      ? cashTotal.div(cardTotal)
+      : new Decimal(1);
+    outstandingCashTotal = outstandingCashTotal.plus(
+      customRefundBalance.times(cashToCardRatio)
+    );
 
     // Clamping: when payments exceed item-level tracking (e.g., split-evenly doesn't mark items),
     // clamp outstanding down to payment-based remaining (matches SQL §10 lines 796-803)

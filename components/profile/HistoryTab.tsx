@@ -1,9 +1,13 @@
 import { ShiftHistoryEntry } from "@/lib/types";
 import { colors } from "@/lib/theme";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { toastService } from "@/lib/toastService";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { Clock } from "lucide-react-native";
-import { ScrollView, Text, View } from "react-native";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { Clock, Printer } from "lucide-react-native";
+import { useMemo, useState } from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const TABLE_HEADERS = ["Date", "Clock In", "Break", "Clock Out", "Duration"];
 
@@ -108,29 +112,153 @@ const HistoryTableRow = ({
 
 const HistoryTab = () => {
   const { shiftHistory } = useTimeclockStore();
-  const { activeEmployeeId } = useEmployeeStore();
+  const { activeEmployeeId, getEmployeeById } = useEmployeeStore();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const [isPrinting, setIsPrinting] = useState(false);
 
-  const myHistory = shiftHistory.filter(
-    (e) => !activeEmployeeId || e.employeeId === activeEmployeeId
+  const myHistory = useMemo(
+    () =>
+      shiftHistory.filter(
+        (e) => !activeEmployeeId || e.employeeId === activeEmployeeId,
+      ),
+    [shiftHistory, activeEmployeeId],
   );
+
+  const handlePrintTimesheet = async () => {
+    if (!selectedStore?.id) {
+      toastService.show({
+        title: "No store selected",
+        message: "Cannot print without an active location.",
+        type: "error",
+      });
+      return;
+    }
+    if (myHistory.length === 0) {
+      toastService.show({
+        title: "Nothing to print",
+        message: "No shifts in history yet.",
+        type: "info",
+      });
+      return;
+    }
+
+    const employee = activeEmployeeId
+      ? getEmployeeById(activeEmployeeId)
+      : null;
+
+    const shifts = myHistory.map((s) => ({
+      date: s.date,
+      clockIn: s.clockIn,
+      clockOut: s.clockOut,
+      breakInitiated: s.breakInitiated,
+      breakEnded: s.breakEnded,
+      durationHours: parseFloat(s.duration) || 0,
+    }));
+
+    const totalHours = shifts.reduce((sum, s) => sum + s.durationHours, 0);
+
+    const addressParts = selectedStore
+      ? [
+          selectedStore.address_line1,
+          selectedStore.address_line2,
+          `${selectedStore.city}, ${selectedStore.state} ${selectedStore.postal_code}`,
+        ].filter(Boolean)
+      : [];
+
+    setIsPrinting(true);
+    try {
+      const ok = await PrinterService.printTimeSheet({
+        storeName: selectedStore.name,
+        storeAddress: addressParts.join(", ") || undefined,
+        employeeName:
+          employee?.displayName || employee?.fullName || "Employee",
+        employeeRole: employee?.role,
+        shifts,
+        totalHours,
+        timestamp: new Date().toISOString(),
+        locationId: selectedStore.id,
+      });
+      if (ok) {
+        toastService.show({
+          title: "Printing...",
+          message: "Time sheet sent to printer.",
+          type: "success",
+        });
+      } else {
+        toastService.show({
+          title: "Print failed",
+          message: "No receipt printer configured.",
+          type: "error",
+        });
+      }
+    } catch (err: any) {
+      toastService.show({
+        title: "Print failed",
+        message: err?.message ?? "Unknown error",
+        type: "error",
+      });
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
     >
-      <Text
+      <View
         style={{
-          fontSize: 11,
-          fontWeight: "700",
-          color: colors.muted,
-          textTransform: "uppercase",
-          letterSpacing: 1,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
           marginBottom: 10,
         }}
       >
-        Shift History
-      </Text>
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: "700",
+            color: colors.muted,
+            textTransform: "uppercase",
+            letterSpacing: 1,
+          }}
+        >
+          Shift History
+        </Text>
+        <TouchableOpacity
+          onPress={handlePrintTimesheet}
+          disabled={isPrinting || myHistory.length === 0}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor:
+              myHistory.length === 0 ? colors.border : colors.teal + "50",
+            backgroundColor:
+              myHistory.length === 0 ? "transparent" : colors.teal + "15",
+            opacity: isPrinting ? 0.6 : 1,
+            gap: 5,
+          }}
+        >
+          <Printer
+            size={12}
+            color={myHistory.length === 0 ? colors.muted : colors.teal}
+          />
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: "600",
+              color: myHistory.length === 0 ? colors.muted : colors.teal,
+            }}
+          >
+            {isPrinting ? "Printing..." : "Print Timesheet"}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <View
         style={{

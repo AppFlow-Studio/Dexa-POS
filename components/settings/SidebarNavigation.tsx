@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "expo-router";
 import {
   Banknote,
   BarChart2,
+  Bell,
   Calendar,
   ChevronDown,
   ChevronRight,
@@ -52,6 +53,7 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
       { id: "dining-room", label: "Dining Room", icon: LayoutGrid, route: "/settings/dining-room" },
       { id: "stations-devices", label: "Stations & Devices", icon: Monitor, route: "/settings/stations-devices" },
       { id: "order-line", label: "Order Line", icon: List, route: "/settings/order-line" },
+      { id: "notifications", label: "Notifications", icon: Bell, route: "/settings/notifications" },
     ],
   },
   {

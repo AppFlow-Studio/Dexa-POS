@@ -75,6 +75,7 @@ import {
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { paymentPreviewService } from '@/services/paymentPreviewService'
 import {
+  deriveCashSavings,
   mapBackendItemToCartItem,
   mapOrderType,
   mapPaymentStatus,
@@ -486,9 +487,9 @@ const pendingSyncOperations = new Map<string, Promise<boolean>>()
 // ============================================================================
 const DRAFT_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
 const DRAFT_CLEANUP_INTERVAL_MS = 15 * 60 * 1000 // 15 minutes
-const ORDER_PRUNE_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
-const COMPLETED_ORDER_MAX_AGE_MS = 2 * 60 * 60 * 1000 // 2 hours
-const MAX_COMPLETED_ORDERS = 50
+const ORDER_PRUNE_INTERVAL_MS = 2 * 60 * 1000 // 2 minutes
+const COMPLETED_ORDER_MAX_AGE_MS = 30 * 60 * 1000 // 30 minutes
+const MAX_COMPLETED_ORDERS = 20
 let draftCleanupInterval: ReturnType<typeof setInterval> | null = null
 let orderPruneInterval: ReturnType<typeof setInterval> | null = null
 
@@ -2355,6 +2356,7 @@ interface OrderState {
     guestCount?: number
     sessionId?: string // Backend session UUID
     localSessionId?: string // Local session ID for offline
+    orderId?: string // Pre-generated order ID for optimistic seating
   }) => OrderProfile
   addItemToActiveOrder: (newItem: CartItem) => void
   updateItemInActiveOrder: (updatedItem: CartItem) => void
@@ -3358,7 +3360,9 @@ export const useOrderStore = create<OrderState>()(
                                 transformBroadcastPaymentsToProfile(
                                   backendOrder.order_payments,
                                   backendOrder.order_items,
-                                  backendOrder.payment_items
+                                  backendOrder.payment_items,
+                                  backendOrder.card_total || backendOrder.total_amount,
+                                  backendOrder.cash_total
                                 )
                               )
                             }
@@ -4024,7 +4028,10 @@ export const useOrderStore = create<OrderState>()(
                   ) {
                     const serverPayments = transformBroadcastPaymentsToProfile(
                       normalized.order_payments,
-                      normalized.order_items
+                      normalized.order_items,
+                      undefined,
+                      normalized.card_total || normalized.total_amount,
+                      normalized.cash_total
                     )
                     if (serverPayments.length > 0) {
                       console.log(
@@ -4414,7 +4421,7 @@ export const useOrderStore = create<OrderState>()(
               : undefined
 
             const newOrder: OrderProfile = {
-              id: `order_${Date.now()}`,
+              id: details?.orderId || `order_${Date.now()}`,
               service_location_id: details?.tableId || null,
               order_status: 'draft',
               customer_name: '',
@@ -9872,12 +9879,13 @@ export const useOrderStore = create<OrderState>()(
                       isVoided: p.status === 'voided',
                       sync_status: 'synced' as const,
                       sync_attempt_count: 0,
-                      // Cash pricing fields
+                      // Cash pricing fields — falls back to order-level ratio when original_amount is missing
                       isCashPriced: (p as any).is_cash_priced ?? undefined,
-                      cashSavings:
-                        (p as any).is_cash_priced && (p as any).original_amount
-                          ? (p as any).original_amount - p.amount
-                          : undefined,
+                      cashSavings: deriveCashSavings(
+                        { is_cash_priced: (p as any).is_cash_priced, original_amount: (p as any).original_amount, amount: p.amount },
+                        dbOrder.card_total ?? dbOrder.total_amount,
+                        dbOrder.cash_total
+                      ),
                       // Pre-auth fields
                       isPreAuth,
                       ...(isPreAuth
@@ -10085,11 +10093,12 @@ export const useOrderStore = create<OrderState>()(
                         }
                       : undefined
 
-                  // Calculate cash savings if applicable
-                  const cashSavings =
-                    p.is_cash_priced && p.original_amount
-                      ? p.original_amount - p.amount
-                      : undefined
+                  // Calculate cash savings — falls back to order-level ratio when original_amount is missing
+                  const cashSavings = deriveCashSavings(
+                    { is_cash_priced: p.is_cash_priced, original_amount: p.original_amount, amount: p.amount },
+                    dbOrder.card_total ?? dbOrder.total_amount,
+                    dbOrder.cash_total
+                  )
 
                   const isPreAuth = p.status === 'authorized'
                   const terminalResponse = (p as any).terminal_response as

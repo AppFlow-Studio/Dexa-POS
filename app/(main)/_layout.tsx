@@ -30,6 +30,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import MenuSearchSheet from "@/components/menu/MenuSearchSheet";
 import { setHeaderHeight } from "@/lib/headerHeight";
+import KDSSoundService from "@/services/kds/kdsSoundService";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
   useOrderSyncRecovery(locationId)
@@ -82,6 +84,34 @@ export default function MainLayout () {
         )
     }
   }, [paymentDetailSheetRef, isKDS])
+
+  // --- POS Sound Notifications for external orders ---
+  const soundServiceRef = useRef<KDSSoundService | null>(null)
+
+  useEffect(() => {
+    if (isKDS) return
+    const service = new KDSSoundService()
+    soundServiceRef.current = service
+    service.init()
+    return () => {
+      service.dispose()
+      soundServiceRef.current = null
+    }
+  }, [isKDS])
+
+  // Sync sound config from location config store
+  const notifConfig = useLocationConfigStore(s => s.config.notifications)
+  useEffect(() => {
+    if (isKDS || !soundServiceRef.current) return
+    soundServiceRef.current.updateConfig({
+      enabled: notifConfig.soundEnabled,
+      online: notifConfig.onlineOrderSound,
+      kiosk: notifConfig.kioskOrderSound,
+      third_party: notifConfig.thirdPartyOrderSound,
+      pos: 'none',
+      default: 'none',
+    })
+  }, [isKDS, notifConfig])
 
   // Initialize table order prefetch subscriber and session side effects (POS mode only)
   useTableSessionInit({ skip: isKDS })
@@ -138,6 +168,16 @@ export default function MainLayout () {
     useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
     useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
     usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
+
+    // Play notification sound for external orders (not own-station)
+    if (broadcastPayload.operation === 'INSERT') {
+      const src = broadcastPayload.data?.order?.order_source
+      const orderStationId = broadcastPayload.data?.order?.station_id
+      const currentSid = useStoreSettingsStore.getState().selectedStation?.id
+      if (src && orderStationId !== currentSid) {
+        soundServiceRef.current?.playForSource(src)
+      }
+    }
   }, []);
 
   const handlePaymentChange = useCallback((payload: PaymentPayload) => {
