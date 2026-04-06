@@ -6,10 +6,12 @@ import {
   StarPrinter,
   StarConnectionSettings,
   InterfaceType,
+  StarIO10InUseError,
 } from "react-native-star-io10";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { useToastStore } from "@/stores/useToastStore";
+import { getStarPrinterMutex } from "@/services/printing/starPrinterMutex";
 import type { PrinterConfig } from "@/types/printer";
 
 // ============================================================================
@@ -106,43 +108,59 @@ function sleep(ms: number): Promise<void> {
 async function probePrinter(
   networkAddress: string,
 ): Promise<{ online: boolean; error?: string }> {
-  const settings = new StarConnectionSettings();
-  settings.interfaceType = InterfaceType.Lan;
-  settings.identifier = networkAddress;
+  const mutex = getStarPrinterMutex(networkAddress);
 
-  const probe = new StarPrinter(settings);
-  probe.openTimeout = PROBE_TIMEOUT_MS;
-  probe.getStatusTimeout = PROBE_TIMEOUT_MS;
-
-  try {
-    await probe.open();
-    const status = await probe.getStatus();
-    await probe.close();
-
-    if (status.hasError) {
-      const msg = status.paperEmpty
-        ? "Paper empty"
-        : status.coverOpen
-          ? "Cover open"
-          : "Printer error";
-      return { online: false, error: msg };
-    }
-
+  // If a print job is in progress (mutex locked), skip the health check —
+  // we know the printer is reachable since it's actively printing.
+  if (mutex.isLocked()) {
     return { online: true };
-  } catch (e: any) {
-    try {
-      await probe.close();
-    } catch {
-      // ignore close errors
-    }
-    return { online: false, error: e.message };
-  } finally {
-    try {
-      await probe.dispose();
-    } catch {
-      // ignore disposal errors
-    }
   }
+
+  return mutex.runExclusive(async () => {
+    const settings = new StarConnectionSettings();
+    settings.interfaceType = InterfaceType.Lan;
+    settings.identifier = networkAddress;
+    settings.autoSwitchInterface = false; // LAN only — skip BT/USB probing
+
+    const probe = new StarPrinter(settings);
+    probe.openTimeout = PROBE_TIMEOUT_MS;
+    probe.getStatusTimeout = PROBE_TIMEOUT_MS;
+
+    try {
+      await probe.open();
+      const status = await probe.getStatus();
+      await probe.close();
+
+      if (status.hasError) {
+        const msg = status.paperEmpty
+          ? "Paper empty"
+          : status.coverOpen
+            ? "Cover open"
+            : "Printer error";
+        return { online: false, error: msg };
+      }
+
+      return { online: true };
+    } catch (e: any) {
+      // InUseError means the printer is reachable but held by another connection
+      // (e.g. another POS station). Report as online — it's not offline.
+      if (e instanceof StarIO10InUseError) {
+        return { online: true };
+      }
+      try {
+        await probe.close();
+      } catch {
+        // ignore close errors
+      }
+      return { online: false, error: e.message };
+    } finally {
+      try {
+        await probe.dispose();
+      } catch {
+        // ignore disposal errors
+      }
+    }
+  });
 }
 
 // ============================================================================

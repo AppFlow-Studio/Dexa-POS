@@ -15,6 +15,9 @@ import { PrinterConfig, printerRowToConfig } from "@/types/printer";
 import { DejavooDriver } from "@/services/printing/drivers/DejavooDriver";
 import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
 import { usePrinterStore } from "@/stores/usePrinterStore";
+import { StarPrinter, StarConnectionSettings, InterfaceType, StarIO10InUseError } from "react-native-star-io10";
+import { getStarPrinterMutex } from "@/services/printing/starPrinterMutex";
+import { initLandiPrinter, getLandiPrinterStatus } from "@/native/LandiPrinter";
 
 // ============================================================================
 // TYPES
@@ -408,6 +411,25 @@ async function reassignPrinterDefaults(
 // BUILTIN PRINTER AUTO-PROVISIONING
 // ============================================================================
 
+async function verifyLandiPrinter(
+  supabase: SupabaseClient,
+  printerId: string,
+): Promise<void> {
+  try {
+    const initOk = await initLandiPrinter();
+    if (initOk) {
+      const status = await getLandiPrinterStatus();
+      await supabase.from("printers").update({
+        is_connected: status?.isOnline ?? false,
+        last_status: status?.isOnline ? "verified" : `offline: ${status?.errorMessage ?? "unknown"}`,
+        last_status_at: new Date().toISOString(),
+      }).eq("id", printerId);
+    }
+  } catch (e) {
+    console.warn("[DeviceDetection] Landi verification failed:", e);
+  }
+}
+
 /**
  * Ensures a `printers` row exists for devices with a built-in printer.
  * Called once after hardware detection — if a matching row already exists,
@@ -438,6 +460,7 @@ export async function ensureBuiltinPrinterProvisioned(
 
   if (existing && existing.length > 0) {
     console.log("[DeviceDetection] Builtin printer already provisioned:", existing[0].id);
+    await verifyLandiPrinter(supabase, existing[0].id);
     return;
   }
 
@@ -474,6 +497,7 @@ export async function ensureBuiltinPrinterProvisioned(
       console.error("[DeviceDetection] Failed to reactivate builtin printer:", reactivateError.message);
     } else {
       console.log("[DeviceDetection] Reactivated builtin printer:", deactivated[0].id, "→", capabilities.model);
+      await verifyLandiPrinter(supabase, deactivated[0].id);
     }
     return;
   }
@@ -515,6 +539,7 @@ export async function ensureBuiltinPrinterProvisioned(
     console.error("[DeviceDetection] Failed to auto-provision builtin printer:", insertError.message);
   } else {
     console.log("[DeviceDetection] Auto-provisioned builtin printer:", inserted?.id);
+    if (inserted?.id) await verifyLandiPrinter(supabase, inserted.id);
   }
 }
 
@@ -886,67 +911,78 @@ export async function verifyStarPrinter(
     return false;
   }
 
-  // Use the same connectivity-only pattern as starPrinterHealthCheck.probePrinter()
-  const { StarPrinter, StarConnectionSettings, InterfaceType } = require("react-native-star-io10");
-  const settings = new StarConnectionSettings();
-  settings.interfaceType = InterfaceType.Lan;
-  settings.identifier = config.networkAddress;
+  const mutex = getStarPrinterMutex(config.networkAddress);
+  return mutex.runExclusive(async () => {
+    const settings = new StarConnectionSettings();
+    settings.interfaceType = InterfaceType.Lan;
+    settings.identifier = config.networkAddress!;
+    settings.autoSwitchInterface = false;
 
-  const probe = new StarPrinter(settings);
-  probe.openTimeout = 5000;
-  probe.getStatusTimeout = 5000;
+    const probe = new StarPrinter(settings);
+    probe.openTimeout = 5000;
+    probe.getStatusTimeout = 5000;
 
-  try {
-    await probe.open();
-    const status = await probe.getStatus();
-    await probe.close();
+    try {
+      await probe.open();
+      const status = await probe.getStatus();
+      await probe.close();
 
-    if (status.hasError) {
-      const errorDetail = status.paperEmpty
-        ? "Paper empty"
-        : status.coverOpen
-          ? "Cover open"
-          : "Printer error";
+      if (status.hasError) {
+        const errorDetail = status.paperEmpty
+          ? "Paper empty"
+          : status.coverOpen
+            ? "Cover open"
+            : "Printer error";
+
+        await supabase
+          .from("printers")
+          .update({
+            is_connected: false,
+            last_status: `verification_failed: ${errorDetail}`,
+            last_status_at: new Date().toISOString(),
+          })
+          .eq("id", printerId);
+
+        console.warn("[DeviceDetection] Star printer has error:", errorDetail);
+        return false;
+      }
+
+      await supabase
+        .from("printers")
+        .update({
+          is_connected: true,
+          last_status: "verified",
+          last_status_at: new Date().toISOString(),
+        })
+        .eq("id", printerId);
+
+      console.log("[DeviceDetection] Star printer verified:", printerId);
+      return true;
+    } catch (e: any) {
+      try { await probe.close(); } catch { /* ignore */ }
+
+      if (e instanceof StarIO10InUseError) {
+        await supabase.from("printers").update({
+          is_connected: true,
+          last_status: "verified (in use)",
+          last_status_at: new Date().toISOString(),
+        }).eq("id", printerId);
+        return true;
+      }
 
       await supabase
         .from("printers")
         .update({
           is_connected: false,
-          last_status: `verification_failed: ${errorDetail}`,
+          last_status: `verification_failed: ${e.message}`,
           last_status_at: new Date().toISOString(),
         })
         .eq("id", printerId);
 
-      console.warn("[DeviceDetection] Star printer has error:", errorDetail);
+      console.warn("[DeviceDetection] Star printer verification failed:", e.message);
       return false;
+    } finally {
+      try { await probe.dispose(); } catch { /* ignore */ }
     }
-
-    await supabase
-      .from("printers")
-      .update({
-        is_connected: true,
-        last_status: "verified",
-        last_status_at: new Date().toISOString(),
-      })
-      .eq("id", printerId);
-
-    console.log("[DeviceDetection] Star printer verified:", printerId);
-    return true;
-  } catch (e: any) {
-    try { await probe.close(); } catch { /* ignore */ }
-
-    await supabase
-      .from("printers")
-      .update({
-        is_connected: false,
-        last_status: `verification_failed: ${e.message}`,
-        last_status_at: new Date().toISOString(),
-      })
-      .eq("id", printerId);
-
-    console.warn("[DeviceDetection] Star printer verification failed:", e.message);
-    return false;
-  } finally {
-    try { await probe.dispose(); } catch { /* ignore */ }
-  }
+  });
 }

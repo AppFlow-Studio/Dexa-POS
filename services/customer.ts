@@ -35,6 +35,14 @@ type CustomerOperation =
             customerId: string;
             merchantId: string;
         };
+    }
+    | {
+        id: string;
+        type: "update";
+        payload: {
+            customer_id: string;
+            updates: { name?: string | null; address?: string | null };
+        };
     };
 
 // -----------------------------------------------------------------------------
@@ -333,7 +341,23 @@ export async function processCustomerQueue(
         }
     }
 
-    // 2) Handle link operations
+    // 2) Handle updates
+    for (const op of queue) {
+        if (op.type !== "update") continue;
+        const resolvedId = resolveCustomerId(op.payload.customer_id, cache);
+        if (!resolvedId || !isValidUUID(resolvedId)) {
+            remaining.push(op);
+            continue;
+        }
+        try {
+            await updateCustomer(resolvedId, op.payload.updates, supabase);
+        } catch (err) {
+            console.warn("[CustomerQueue] Failed to update customer:", err);
+            remaining.push(op);
+        }
+    }
+
+    // 3) Handle link operations
     for (const op of queue) {
         if (op.type !== "link") continue;
         const resolvedId = resolveCustomerId(op.payload.customerId, cache);
@@ -397,6 +421,45 @@ export async function linkCustomerToOrder(
     queueLinkCustomerToOrder(params);
     if (getIsOnline()) {
         await processCustomerQueue(supabase);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Update helpers
+// -----------------------------------------------------------------------------
+
+export function updateCustomerLocal(
+    customerId: string,
+    updates: { name?: string | null; address?: string | null }
+): void {
+    const cache = readCache();
+    const idx = cache.findIndex((c) => c.id === customerId);
+    if (idx >= 0) {
+        cache[idx] = { ...cache[idx], ...updates, updated_at: new Date().toISOString() };
+        writeCache(cache);
+    }
+    const queue = readQueue();
+    queue.push({
+        id: uuidv4(),
+        type: "update",
+        payload: { customer_id: customerId, updates },
+    });
+    writeQueue(queue);
+}
+
+export async function updateCustomerInfo(
+    customerId: string,
+    updates: { name?: string | null; address?: string | null },
+    supabase: SupabaseClient
+): Promise<void> {
+    updateCustomerLocal(customerId, updates);
+
+    if (getIsOnline() && isValidUUID(customerId)) {
+        try {
+            await updateCustomer(customerId, updates, supabase);
+        } catch (err) {
+            console.warn("[Customer] Online update failed, queued for retry:", err);
+        }
     }
 }
 

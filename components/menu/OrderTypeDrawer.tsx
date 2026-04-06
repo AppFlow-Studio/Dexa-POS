@@ -1,3 +1,4 @@
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
@@ -6,11 +7,11 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
+import { formatAddress } from "@/utils/addressUtils";
 import { useRouter } from "expo-router";
 import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { formatAddress } from "../bill/CustomerSheet";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { GuestCountModal } from "../tables/GuestCountModal";
 import TableLayoutView from "../tables/TableLayoutView";
 import { Dialog, DialogContent } from "../ui/dialog";
@@ -275,16 +276,16 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
               {currentOrderType === "delivery" && (
                 <View className="gap-y-1.5">
                   <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.label }}>Delivery Address</Text>
-                  <TextInput
-                    className="px-4 py-3 rounded-xl border text-sm"
-                    style={{ backgroundColor: colors.panel, borderColor: colors.border, color: colors.heading }}
-                    placeholder="Enter delivery address"
-                    placeholderTextColor={colors.muted}
+                  <AddressAutocomplete
                     value={formatAddress(activeOrder?.delivery_address) || ""}
                     onChangeText={(text) => {
-                      if (activeOrderId) updateActiveOrderDetails({ delivery_address: text });
+                      if (activeOrderId) updateActiveOrderDetails({ delivery_address: JSON.stringify({ street: text, city: "", state: "", zip: "" }) });
                     }}
-                    multiline
+                    onAddressSelected={(addr) => {
+                      if (activeOrderId) updateActiveOrderDetails({ delivery_address: JSON.stringify(addr) });
+                    }}
+                    placeholder="Enter delivery address"
+                    inputStyle={{ backgroundColor: colors.panel }}
                   />
                 </View>
               )}

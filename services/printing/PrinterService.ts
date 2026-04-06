@@ -678,7 +678,7 @@ async function processNextJob (): Promise<void> {
     const printer = usePrinterStore.getState().getPrinterById(job.printerId)
     if (printer) {
       const isConnectionError =
-        /timed out|unreachable|device not found|connect|ETIMEDOUT|EHOSTUNREACH/i.test(
+        /timed out|unreachable|device not found|connect|ETIMEDOUT|EHOSTUNREACH|used by another/i.test(
           errorMsg
         )
       await usePrinterStore.getState().syncPrinterStatus(printer.id, {
@@ -859,7 +859,8 @@ function buildReceiptTemplateData (
           : undefined,
       isVoided: item.is_voided ?? false,
       modifiers,
-      notes: item.customizations?.notes
+      notes: item.customizations?.notes,
+      seatNumber: item.seatNumber ?? null,
     }
   })
 

@@ -1,5 +1,5 @@
 import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
-import { ReceiptTemplateData } from "@/types/printer";
+import { ReceiptItemData, ReceiptTemplateData } from "@/types/printer";
 import { formatCurrency } from "@/utils/currency";
 
 /**
@@ -32,7 +32,7 @@ function scaledFormat(
  * uses regular weight for contrast.
  */
 export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
-  const w = 32;
+  const w = data.maxCharsPerLine || 32;
   const nodes: PrintNode[] = [];
   const cfg = data.templateConfig;
 
@@ -110,37 +110,10 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
 
   // ── Items ──
-  for (const item of data.items) {
-    if (item.isVoided) continue;
-
-    const qty = `${item.quantity}x `;
-    let itemName = `${qty}${item.name}`;
-    const itemPrice = formatCurrency(item.price);
-    const maxNameLen = w - itemPrice.length - 1;
-    if (itemName.length > maxNameLen) {
-      itemName = itemName.slice(0, maxNameLen);
-    }
-
-    nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true } });
-
-    // Modifiers (conditional) — regular weight for contrast
-    if (cfg?.showItemModifiers !== false) {
-      for (const mod of item.modifiers) {
-        const isNo = !!mod.isNo;
-        const prefix = isNo ? "-" : "+";
-        const modLine = isNo
-          ? `  ${prefix} NO ${mod.name}`
-          : mod.price > 0
-            ? `  ${prefix} ${mod.name} (${formatCurrency(mod.price)})`
-            : `  ${prefix} ${mod.name}`;
-        nodes.push({ type: "text_line", content: modLine });
-      }
-    }
-
-    // Notes — regular weight
-    if (item.notes) {
-      nodes.push({ type: "text_line", content: `  Note: ${item.notes}` });
-    }
+  if (cfg?.groupBySeat) {
+    pushReceiptItemsGroupedBySeat(nodes, data.items, w, cfg);
+  } else {
+    pushReceiptItemsFlat(nodes, data.items, w, cfg);
   }
 
   // ── Totals ──
@@ -319,4 +292,93 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   nodes.push({ type: "cut" });
 
   return { nodes, maxCharsPerLine: w };
+}
+
+// ============================================================================
+// ITEM HELPERS
+// ============================================================================
+
+function pushReceiptSingleItem(
+  nodes: PrintNode[],
+  item: ReceiptItemData,
+  w: number,
+  cfg: ReceiptTemplateData["templateConfig"],
+): void {
+  if (item.isVoided) return;
+
+  const qty = `${item.quantity}x `;
+  let itemName = `${qty}${item.name}`;
+  const itemPrice = formatCurrency(item.price);
+  const maxNameLen = w - itemPrice.length - 1;
+  if (itemName.length > maxNameLen) {
+    itemName = itemName.slice(0, maxNameLen);
+  }
+
+  nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true } });
+
+  // Modifiers (conditional) — regular weight for contrast
+  if (cfg?.showItemModifiers !== false) {
+    for (const mod of item.modifiers) {
+      const isNo = !!mod.isNo;
+      const prefix = isNo ? "-" : "+";
+      const modLine = isNo
+        ? `  ${prefix} NO ${mod.name}`
+        : mod.price > 0
+          ? `  ${prefix} ${mod.name} (${formatCurrency(mod.price)})`
+          : `  ${prefix} ${mod.name}`;
+      nodes.push({ type: "text_line", content: modLine });
+    }
+  }
+
+  // Notes — regular weight
+  if (item.notes) {
+    nodes.push({ type: "text_line", content: `  Note: ${item.notes}` });
+  }
+}
+
+function pushReceiptItemsFlat(
+  nodes: PrintNode[],
+  items: ReceiptItemData[],
+  w: number,
+  cfg: ReceiptTemplateData["templateConfig"],
+): void {
+  for (const item of items) {
+    pushReceiptSingleItem(nodes, item, w, cfg);
+  }
+}
+
+function pushReceiptItemsGroupedBySeat(
+  nodes: PrintNode[],
+  items: ReceiptItemData[],
+  w: number,
+  cfg: ReceiptTemplateData["templateConfig"],
+): void {
+  const groups = new Map<string, ReceiptItemData[]>();
+  for (const item of items) {
+    const seat = item.seatNumber != null ? `SEAT ${item.seatNumber}` : "SHARED";
+    if (!groups.has(seat)) {
+      groups.set(seat, []);
+    }
+    groups.get(seat)!.push(item);
+  }
+
+  let isFirst = true;
+  for (const [seat, seatItems] of groups) {
+    if (!isFirst) {
+      nodes.push({ type: "empty_line" });
+    }
+    isFirst = false;
+
+    nodes.push({
+      type: "text_line",
+      content: `-- ${seat} --`,
+      align: "center",
+      format: { bold: true },
+    });
+    nodes.push({ type: "divider", style: "solid", lineWidth: w });
+
+    for (const item of seatItems) {
+      pushReceiptSingleItem(nodes, item, w, cfg);
+    }
+  }
 }

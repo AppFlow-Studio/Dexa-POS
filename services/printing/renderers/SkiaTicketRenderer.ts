@@ -7,6 +7,7 @@ import * as FileSystem from "expo-file-system";
 
 export interface TextBlock {
   text: string;
+  rightAlignedText?: string; // If set, draw left text at left margin and this text at right margin (pixel-perfect two-column)
   bold: boolean;
   doubleHeight: boolean;
   doubleWidth: boolean;
@@ -209,10 +210,23 @@ export async function renderTextBlocksToImage(
     const font = Skia.Font(typeface, BASE_FONT_SIZE);
     font.setEdging(0); // 0 = Alias — no anti-aliasing, crisp for thermal printing
 
-    // Handle inverted: draw black rect, then white text
+    // Handle inverted: draw black rect behind text only, then white text
     if (block.inverted) {
+      const invFont = Skia.Font(getTypeface(block.bold), BASE_FONT_SIZE);
+      const invScaleX = doubleWidth ? 2 : 1;
+      const textW = invFont.getTextWidth(block.text) * invScaleX;
+      const pad = 4;
+      let rectX: number;
+      if (block.align === "center") {
+        rectX = Math.max(0, (printWidthDots - textW) / 2 - pad);
+      } else if (block.align === "right") {
+        rectX = Math.max(0, printWidthDots - HORIZONTAL_PADDING - textW - pad);
+      } else {
+        rectX = Math.max(0, HORIZONTAL_PADDING - pad);
+      }
+      const rectW = Math.min(textW + pad * 2, printWidthDots - rectX);
       canvas.drawRect(
-        { x: 0, y, width: printWidthDots, height: lineHeight },
+        { x: rectX, y, width: rectW, height: lineHeight },
         invertBgPaint,
       );
     }
@@ -240,7 +254,22 @@ export async function renderTextBlocksToImage(
       outputX = printWidthDots - HORIZONTAL_PADDING - outputTextWidth;
     }
 
-    if (scaleX !== 1 || scaleY !== 1) {
+    if (block.rightAlignedText) {
+      // ── Pixel-perfect two-column: left text at left margin, right text at right edge ──
+      const drawY = y + BASE_FONT_SIZE;
+      // Left text
+      canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, fillPaint, font);
+      if (strokeOverlay) {
+        canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, strokeOverlay, font);
+      }
+      // Right text — measure and right-align to pixel edge
+      const rightW = font.getTextWidth(block.rightAlignedText);
+      const rightX = printWidthDots - HORIZONTAL_PADDING - rightW;
+      canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, font);
+      if (strokeOverlay) {
+        canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, font);
+      }
+    } else if (scaleX !== 1 || scaleY !== 1) {
       canvas.save();
       canvas.translate(outputX, y);
       canvas.scale(scaleX, scaleY);

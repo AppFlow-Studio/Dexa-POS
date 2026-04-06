@@ -7,15 +7,19 @@ import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { PARTNER_LOGO_MAP } from '@/lib/mockData'
+import { normalizePlatform } from '@/lib/platformAliases'
 
-// Helper for mapping store names to logo keys
+const PLATFORM_LOGO_MAP: Record<string, any> = {
+  doordash: PARTNER_LOGO_MAP['Door Dash'],
+  ubereats: PARTNER_LOGO_MAP['Uber-Eats'],
+  grubhub: PARTNER_LOGO_MAP['grubhub'],
+  foodpanda: PARTNER_LOGO_MAP['Food Panda'],
+}
+
+// Helper for mapping store names to logo keys via normalized platform alias
 const getPartnerLogo = (name: string) => {
-  const map: Record<string, any> = {
-    DoorDash: PARTNER_LOGO_MAP['Door Dash'],
-    UberEats: PARTNER_LOGO_MAP['Uber-Eats'],
-    Grubhub: PARTNER_LOGO_MAP['grubhub']
-  }
-  return map[name]
+  const normalized = normalizePlatform(name)
+  return normalized ? PLATFORM_LOGO_MAP[normalized] : undefined
 }
 
 const DeliveryManagementScreen = () => {

@@ -150,9 +150,10 @@ async function renderNodesGraphicsOnly(
       }
 
       case "two_column": {
-        const line = padTwoColumn(node.left, node.right, node.lineWidth);
+        // Pixel-based: let Skia renderer draw left + right independently at pixel edges
         textBuffer.push({
-          text: line,
+          text: node.left,
+          rightAlignedText: node.right,
           bold: !!node.format?.bold,
           doubleHeight: !!node.format?.doubleHeight,
           doubleWidth: !!node.format?.doubleWidth,

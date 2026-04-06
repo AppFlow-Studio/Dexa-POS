@@ -1,4 +1,5 @@
-import { ReceiptTemplateData } from "@/types/printer";
+import { ReceiptItemData, ReceiptTemplateData } from "@/types/printer";
+import { ReceiptTemplateConfig } from "@/types/receipt-template";
 import { formatCurrency } from "@/utils/currency";
 import { EscPosBuilder } from "../escpos/EscPosBuilder";
 
@@ -89,45 +90,10 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.solidLine(w);
 
   // ── Items ──
-  for (const item of data.items) {
-    if (item.isVoided) continue;
-
-    const qty = `${item.quantity}x `;
-    let itemName = `${qty}${item.name}`;
-    const itemPrice = formatCurrency(item.price);
-    const maxNameLen = w - itemPrice.length - 1;
-    if (itemName.length > maxNameLen) {
-      itemName = itemName.slice(0, maxNameLen);
-    }
-
-    b.bold(true);
-    b.doubleHeight(true);
-    b.twoColumnRow(itemName, itemPrice, w);
-    b.doubleHeight(false);
-    b.bold(false);
-
-    // Modifiers (conditional)
-    if (cfg?.showItemModifiers !== false) {
-      for (const mod of item.modifiers) {
-        const isNo = !!mod.isNo;
-        const prefix = isNo ? "-" : "+";
-        const modLine = isNo
-          ? `  ${prefix} NO ${mod.name}`
-          : mod.price > 0
-            ? `  ${prefix} ${mod.name} (${formatCurrency(mod.price)})`
-            : `  ${prefix} ${mod.name}`;
-        b.bold(true);
-        b.textLine(modLine);
-        b.bold(false);
-      }
-    }
-
-    // Notes
-    if (item.notes) {
-      b.bold(true);
-      b.textLine(`  Note: ${item.notes}`);
-      b.bold(false);
-    }
+  if (cfg?.groupBySeat) {
+    pushEscPosItemsGroupedBySeat(b, data.items, w, cfg);
+  } else {
+    pushEscPosItemsFlat(b, data.items, w, cfg);
   }
 
   // ── Totals ──
@@ -269,4 +235,100 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.cut();
 
   return b.build();
+}
+
+// ============================================================================
+// ITEM HELPERS
+// ============================================================================
+
+function pushEscPosSingleItem(
+  b: EscPosBuilder,
+  item: ReceiptItemData,
+  w: number,
+  cfg: ReceiptTemplateConfig | undefined,
+): void {
+  if (item.isVoided) return;
+
+  const qty = `${item.quantity}x `;
+  let itemName = `${qty}${item.name}`;
+  const itemPrice = formatCurrency(item.price);
+  const maxNameLen = w - itemPrice.length - 1;
+  if (itemName.length > maxNameLen) {
+    itemName = itemName.slice(0, maxNameLen);
+  }
+
+  b.bold(true);
+  b.doubleHeight(true);
+  b.twoColumnRow(itemName, itemPrice, w);
+  b.doubleHeight(false);
+  b.bold(false);
+
+  // Modifiers (conditional)
+  if (cfg?.showItemModifiers !== false) {
+    for (const mod of item.modifiers) {
+      const isNo = !!mod.isNo;
+      const prefix = isNo ? "-" : "+";
+      const modLine = isNo
+        ? `  ${prefix} NO ${mod.name}`
+        : mod.price > 0
+          ? `  ${prefix} ${mod.name} (${formatCurrency(mod.price)})`
+          : `  ${prefix} ${mod.name}`;
+      b.bold(true);
+      b.textLine(modLine);
+      b.bold(false);
+    }
+  }
+
+  // Notes
+  if (item.notes) {
+    b.bold(true);
+    b.textLine(`  Note: ${item.notes}`);
+    b.bold(false);
+  }
+}
+
+function pushEscPosItemsFlat(
+  b: EscPosBuilder,
+  items: ReceiptItemData[],
+  w: number,
+  cfg: ReceiptTemplateConfig | undefined,
+): void {
+  for (const item of items) {
+    pushEscPosSingleItem(b, item, w, cfg);
+  }
+}
+
+function pushEscPosItemsGroupedBySeat(
+  b: EscPosBuilder,
+  items: ReceiptItemData[],
+  w: number,
+  cfg: ReceiptTemplateConfig | undefined,
+): void {
+  const groups = new Map<string, ReceiptItemData[]>();
+  for (const item of items) {
+    const seat = item.seatNumber != null ? `SEAT ${item.seatNumber}` : "SHARED";
+    if (!groups.has(seat)) {
+      groups.set(seat, []);
+    }
+    groups.get(seat)!.push(item);
+  }
+
+  let isFirst = true;
+  for (const [seat, seatItems] of groups) {
+    if (!isFirst) {
+      b.emptyLine();
+    }
+    isFirst = false;
+
+    b.alignCenter();
+    b.bold(true);
+    b.textLine(`-- ${seat} --`);
+    b.bold(false);
+    b.alignLeft();
+    b.solidLine(w);
+
+    for (const item of seatItems) {
+      pushEscPosSingleItem(b, item, w, cfg);
+    }
+  }
 }

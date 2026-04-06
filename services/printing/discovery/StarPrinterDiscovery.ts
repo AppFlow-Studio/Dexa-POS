@@ -6,6 +6,7 @@ import {
   StarConnectionSettings,
   InterfaceType,
 } from "react-native-star-io10";
+import { getStarPrinterMutex } from "../starPrinterMutex";
 
 // ============================================================================
 // TYPES
@@ -123,55 +124,59 @@ export async function probeStarPrinterByIp(
     throw new Error("Invalid IP address format. Expected format: 192.168.1.100");
   }
 
-  const settings = new StarConnectionSettings();
-  settings.interfaceType = InterfaceType.Lan;
-  settings.identifier = ipAddress;
+  const mutex = getStarPrinterMutex(ipAddress);
+  return mutex.runExclusive(async () => {
+    const settings = new StarConnectionSettings();
+    settings.interfaceType = InterfaceType.Lan;
+    settings.identifier = ipAddress;
+    settings.autoSwitchInterface = false; // LAN only — skip BT/USB probing
 
-  const printer = new StarPrinter(settings);
-  printer.openTimeout = 5000;
-  printer.getStatusTimeout = 5000;
+    const printer = new StarPrinter(settings);
+    printer.openTimeout = 5000;
+    printer.getStatusTimeout = 5000;
 
-  try {
-    // Open populates printer.information.model from firmware
-    await printer.open();
+    try {
+      // Open populates printer.information.model from firmware
+      await printer.open();
 
-    const model = printer.information?.model ?? StarPrinterModel.Unknown;
+      const model = printer.information?.model ?? StarPrinterModel.Unknown;
 
-    // Verify the printer is functional
-    const status = await printer.getStatus();
-    if (status.hasError) {
-      const msg = status.paperEmpty
-        ? "Printer found but paper is empty"
-        : status.coverOpen
-          ? "Printer found but cover is open"
-          : "Printer found but has an error";
-      throw new Error(msg);
+      // Verify the printer is functional
+      const status = await printer.getStatus();
+      if (status.hasError) {
+        const msg = status.paperEmpty
+          ? "Printer found but paper is empty"
+          : status.coverOpen
+            ? "Printer found but cover is open"
+            : "Printer found but has an error";
+        throw new Error(msg);
+      }
+
+      await printer.close();
+      await printer.dispose();
+
+      return {
+        identifier: ipAddress,
+        ipAddress,
+        macAddress: null,
+        model,
+        modelName: getModelDisplayName(model),
+        capabilities: inferCapabilities(model),
+      };
+    } catch (e: any) {
+      // Clean up on failure
+      try { await printer.close(); } catch {}
+      try { await printer.dispose(); } catch {}
+
+      // Re-throw with descriptive message if not already descriptive
+      if (e.message?.includes("Printer found")) {
+        throw e;
+      }
+      throw new Error(
+        `Could not connect to printer at ${ipAddress}. Verify the IP address and that the printer is powered on and connected to the network.`,
+      );
     }
-
-    await printer.close();
-    await printer.dispose();
-
-    return {
-      identifier: ipAddress,
-      ipAddress,
-      macAddress: null,
-      model,
-      modelName: getModelDisplayName(model),
-      capabilities: inferCapabilities(model),
-    };
-  } catch (e: any) {
-    // Clean up on failure
-    try { await printer.close(); } catch {}
-    try { await printer.dispose(); } catch {}
-
-    // Re-throw with descriptive message if not already descriptive
-    if (e.message?.includes("Printer found")) {
-      throw e;
-    }
-    throw new Error(
-      `Could not connect to printer at ${ipAddress}. Verify the IP address and that the printer is powered on and connected to the network.`,
-    );
-  }
+  });
 }
 
 // ============================================================================
