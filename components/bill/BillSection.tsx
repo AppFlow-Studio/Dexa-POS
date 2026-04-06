@@ -515,8 +515,13 @@ const BillSectionContent = ({
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
+              disabled={!activeOrderId || (activeOrderItems?.length ?? 0) === 0}
               className="w-1/3 h-11 items-center justify-center rounded-lg border shrink-0"
-              style={{ backgroundColor: colors.card, borderColor: colors.border }}
+              style={{
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                opacity: !activeOrderId || (activeOrderItems?.length ?? 0) === 0 ? 0.4 : 1,
+              }}
             >
               <Text className="text-center text-base font-bold text-white leading-none mb-0.5">···</Text>
               <Text className="text-center" style={{ fontSize: 10, fontWeight: "600", color: "#FFFFFF" }}>More</Text>
