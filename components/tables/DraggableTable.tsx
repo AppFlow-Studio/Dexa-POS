@@ -10,6 +10,7 @@ import { useOrderByAnyId } from '@/stores/selectors/orderSelectors'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { useOrderStore } from '@/stores/useOrderStore'
 import { useReservationStore } from '@/stores/useReservationStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
@@ -35,6 +36,32 @@ type NextReservationLike = {
   date?: string
   time: string
 }
+
+const compactTableName = (rawName: string): string => {
+  const name = rawName.trim()
+  if (!name) return ''
+
+  const digits = name.match(/\d+/)?.[0] ?? ''
+  const alphaToken = name.match(/[A-Za-z]+/)?.[0] ?? ''
+  if (digits && alphaToken) {
+    return `${alphaToken[0].toUpperCase()}${digits}`
+  }
+
+  const words = name.split(/\s+/).filter(Boolean)
+  if (words.length >= 2) {
+    return words
+      .map(w => w[0]?.toUpperCase() ?? '')
+      .join('')
+      .slice(0, 3)
+  }
+
+  return name.slice(0, 4).toUpperCase()
+}
+
+// Prevent repeated network fetches for the same missing order during rapid rerenders.
+const missingOrderSyncInFlight = new Set<string>()
+const missingOrderLastAttemptAt: Record<string, number> = {}
+const MISSING_ORDER_SYNC_THROTTLE_MS = 8000
 
 const toLocalDateKey = (date: Date) => {
   const y = date.getFullYear()
@@ -167,6 +194,36 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const effectiveHeight = table.height ?? shapeDef?.height ?? 100
 
   const effectiveOrder = useOrderByAnyId(liveSession?.order_id) ?? undefined
+
+  useEffect(() => {
+    const id = liveSession?.order_id
+    if (!id || effectiveOrder) return
+
+    const now = Date.now()
+    const lastAttempt = missingOrderLastAttemptAt[id] ?? 0
+    if (missingOrderSyncInFlight.has(id)) return
+    if (now - lastAttempt < MISSING_ORDER_SYNC_THROTTLE_MS) return
+
+    missingOrderLastAttemptAt[id] = now
+    missingOrderSyncInFlight.add(id)
+
+    useOrderStore
+      .getState()
+      .syncOrderFromDatabase(id)
+      .catch((err: unknown) => {
+        console.warn(
+          '[DraggableTable] Failed to sync missing order for table card:',
+          {
+            tableId: table.id,
+            orderId: id,
+            error: err
+          }
+        )
+      })
+      .finally(() => {
+        missingOrderSyncInFlight.delete(id)
+      })
+  }, [liveSession?.order_id, effectiveOrder, table.id])
 
   const openedAt = effectiveOrder?.opened_at ?? null
   const liveSessionStatus = liveSession?.status ?? null
@@ -423,10 +480,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     : Gesture.Race(longPressGesture, tapGesture)
 
   const animatedStyle = useAnimatedStyle(() => {
-    const isMerged = isMergedShared.value
     const hasAttention = attentionShared.value
-    const showStaticBorder =
-      !hasAttention && (isSelected || isMerged || !!sectionColor)
+    const showStaticBorder = !hasAttention && isSelected
 
     return {
       position: 'absolute',
@@ -440,13 +495,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       ],
       opacity: entryOpacity.value,
       borderWidth: showStaticBorder ? 2 : 0,
-      borderColor: isSelected
-        ? colors.info
-        : isMerged
-        ? colors.warning
-        : sectionColor
-        ? sectionColor + '99'
-        : 'transparent',
+      borderColor: isSelected ? colors.info : 'transparent',
       borderRadius: 18,
       padding: showStaticBorder ? 4 : 0
     }
@@ -474,7 +523,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     if (!nextReservation) return null
 
     const reservationTimeMs = getReservationTimeMs(nextReservation)
-    if (!Number.isFinite(reservationTimeMs)) return null
+    if (reservationTimeMs == null || !Number.isFinite(reservationTimeMs))
+      return null
 
     const diffMs = reservationTimeMs - Date.now()
     if (diffMs <= 0 || diffMs > 30 * 60 * 1000) return null
@@ -499,6 +549,94 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     : isReservedSoon
     ? colors.info // blue for reserved soon
     : TABLE_STATUS_COLORS[tableStatus] || TABLE_STATUS_COLORS.available
+
+  const textFit = useMemo(() => {
+    const shapeId = table.shape_id?.toLowerCase() ?? ''
+    const isCircleShape = shapeId.includes('circle')
+    const isBoothShape = shapeId.includes('booth') || table.category === 'booth'
+    const minDim = Math.min(effectiveWidth, effectiveHeight)
+    const usableFactor = isCircleShape ? 0.76 : isBoothShape ? 0.84 : 1
+    const usableMinDim = minDim * usableFactor
+    const primary = Math.max(7, Math.min(12, Math.round(usableMinDim * 0.12)))
+    const secondary = Math.max(6, Math.min(8, Math.round(usableMinDim * 0.085)))
+    const amount = Math.max(7, Math.min(11, Math.round(usableMinDim * 0.11)))
+    const compactMeta = usableMinDim < 76
+    const ultraCompact = usableMinDim < 62
+    const contentWidth = Math.round(
+      effectiveWidth * (isCircleShape ? 0.58 : isBoothShape ? 0.72 : 0.82)
+    )
+    const contentHeight = Math.round(
+      effectiveHeight * (isCircleShape ? 0.5 : isBoothShape ? 0.64 : 0.72)
+    )
+    const showSecondaryMeta =
+      !ultraCompact && (!isCircleShape || usableMinDim >= 92)
+    return {
+      minDim,
+      usableMinDim,
+      isCircleShape,
+      primary,
+      secondary,
+      amount,
+      compactMeta,
+      ultraCompact,
+      contentWidth,
+      contentHeight,
+      showSecondaryMeta,
+      maxLabelChars:
+        usableMinDim < 62
+          ? 6
+          : usableMinDim < 78
+          ? 9
+          : usableMinDim < 95
+          ? 13
+          : usableMinDim < 115
+          ? 18
+          : 28
+    }
+  }, [effectiveWidth, effectiveHeight, table.shape_id, table.category])
+
+  const tableLabel = useMemo(() => {
+    const raw = (displayName || table.name || '').trim()
+    if (!raw) return table.name
+    if (textFit.ultraCompact) return compactTableName(raw)
+    if (raw.length <= textFit.maxLabelChars) return raw
+    const clipped = raw.slice(0, Math.max(6, textFit.maxLabelChars - 1)).trim()
+    return `${clipped}...`
+  }, [displayName, table.name, textFit.maxLabelChars, textFit.ultraCompact])
+
+  const reservationLabel = useMemo(() => {
+    if (!reservationCountdownLabel) return null
+    if (!textFit.compactMeta) return reservationCountdownLabel
+    const mins = reservationCountdownLabel.match(/(\d+)m/)?.[1]
+    return mins ? `R ${mins}m` : 'Reserved'
+  }, [reservationCountdownLabel, textFit.compactMeta])
+
+  const isOccupiedStatus =
+    tableStatus === 'seating' ||
+    tableStatus === 'seated' ||
+    tableStatus === 'ordering' ||
+    tableStatus === 'ordered' ||
+    tableStatus === 'served' ||
+    tableStatus === 'check_presented' ||
+    tableStatus === 'paying' ||
+    tableStatus === 'paid'
+
+  const occupiedMetaLabel = useMemo(() => {
+    const partySize = liveSession?.party_size
+    const hasDuration = !!duration
+    const partyLong =
+      partySize != null
+        ? `${partySize} ${partySize === 1 ? 'guest' : 'guests'}`
+        : ''
+    const partyShort = partySize != null ? `${partySize}g` : ''
+
+    const party = textFit.showSecondaryMeta ? partyLong : partyShort
+
+    if (hasDuration && party) return `${duration} · ${party}`
+    if (hasDuration) return duration
+    if (party) return party
+    return ''
+  }, [duration, liveSession?.party_size, textFit.showSecondaryMeta])
 
   return (
     <GestureDetector gesture={composedGesture}>
@@ -541,28 +679,50 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               }}
             />
           )}
-          <View className='absolute inset-0 items-center justify-center px-1'>
+          <View
+            pointerEvents='none'
+            style={{
+              position: 'absolute',
+              left: (effectiveWidth - textFit.contentWidth) / 2,
+              top: (effectiveHeight - textFit.contentHeight) / 2,
+              width: textFit.contentWidth,
+              height: textFit.contentHeight,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 2,
+              overflow: 'hidden'
+            }}
+          >
             {isTableType && (
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: textFit.primary,
                   fontWeight: '700',
                   textAlign: 'center',
                   color: tableColor
                 }}
-                numberOfLines={1}
+                numberOfLines={textFit.isCircleShape || textFit.usableMinDim < 95 ? 1 : 2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.65}
+                ellipsizeMode='tail'
               >
-                {displayName ? displayName : table.name}
+                {tableLabel}
               </Text>
             )}
 
-            {isTableType && tableStatus === 'available' && !isReservedSoon && (
+            {isTableType &&
+              textFit.showSecondaryMeta &&
+              !textFit.compactMeta &&
+              tableStatus === 'available' &&
+              !isReservedSoon && (
               <Text
                 style={{
                   color: tableColor + 'AA',
-                  fontSize: 7,
+                  fontSize: textFit.secondary,
                   fontWeight: '600'
                 }}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
               >
                 {table.capacity ||
                   TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
@@ -572,71 +732,69 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               </Text>
             )}
 
-            {isTableType && reservationCountdownLabel && (
+            {isTableType && reservationLabel && (
               <Text
                 style={{
                   color: tableColor + 'CC',
-                  fontSize: 7,
+                  fontSize: textFit.secondary,
                   fontWeight: '600',
                   textAlign: 'center'
                 }}
                 numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
               >
-                {reservationCountdownLabel}
+                {reservationLabel}
               </Text>
             )}
 
-            {isTableType &&
-              (tableStatus === 'seating' ||
-                tableStatus === 'seated' ||
-                tableStatus === 'ordering' ||
-                tableStatus === 'ordered' ||
-                tableStatus === 'served' ||
-                tableStatus === 'check_presented' ||
-                tableStatus === 'paying' ||
-                tableStatus === 'paid') && (
+            {isTableType && isOccupiedStatus && (
                 <>
                   {!effectiveOrder && liveSession?.order_id ? (
-                    <Text
-                      style={{
-                        color: tableColor + 'CC',
-                        fontSize: 7,
-                        fontWeight: '600'
-                      }}
-                    >
-                      {duration}
-                      {liveSession?.party_size
-                        ? ` · ${liveSession.party_size} ${
-                            liveSession.party_size === 1 ? 'guest' : 'guests'
-                          }`
-                        : ''}
-                    </Text>
+                    !!occupiedMetaLabel &&
+                    !textFit.ultraCompact && (
+                      <Text
+                        style={{
+                          color: tableColor + 'CC',
+                          fontSize: textFit.secondary,
+                          fontWeight: '600'
+                        }}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.7}
+                      >
+                        {occupiedMetaLabel}
+                      </Text>
+                    )
                   ) : (
                     <>
                       <Text
                         style={{
                           color: '#FFFFFF',
-                          fontSize: 9,
+                          fontSize: textFit.amount,
                           fontWeight: '700',
-                          marginTop: 2
+                          marginTop: textFit.compactMeta ? 1 : 2
                         }}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
                       >
                         ${orderTotal.toFixed(2)}
                       </Text>
-                      <Text
-                        style={{
-                          color: tableColor + 'CC',
-                          fontSize: 7,
-                          fontWeight: '600'
-                        }}
-                      >
-                        {duration}
-                        {liveSession?.party_size
-                          ? ` · ${liveSession.party_size} ${
-                              liveSession.party_size === 1 ? 'guest' : 'guests'
-                            }`
-                          : ''}
-                      </Text>
+                      {!!occupiedMetaLabel && !textFit.ultraCompact && (
+                        <Text
+                          style={{
+                            color: tableColor + 'CC',
+                            fontSize: textFit.secondary,
+                            fontWeight: '600'
+                          }}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.7}
+                        >
+                          {occupiedMetaLabel}
+                        </Text>
+                      )}
                     </>
                   )}
                 </>
