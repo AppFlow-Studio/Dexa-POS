@@ -109,7 +109,7 @@ export default function MainLayout () {
       kiosk: notifConfig.kioskOrderSound,
       third_party: notifConfig.thirdPartyOrderSound,
       pos: 'none',
-      default: 'none',
+      default: notifConfig.thirdPartyOrderSound, // unknown external sources use third-party sound
     })
   }, [isKDS, notifConfig])
 
@@ -169,12 +169,12 @@ export default function MainLayout () {
     useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
     usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
 
-    // Play notification sound for external orders (not own-station)
+    // Play notification sound for external orders (not POS-originated)
     if (broadcastPayload.operation === 'INSERT') {
       const src = broadcastPayload.data?.order?.order_source
-      const orderStationId = broadcastPayload.data?.order?.station_id
-      const currentSid = useStoreSettingsStore.getState().selectedStation?.id
-      if (src && orderStationId !== currentSid) {
+      // Play sound for all external orders (online, delivery, kiosk, etc.)
+      // Only skip if order_source is 'pos' (originated from POS)
+      if (src && src !== 'pos' && src !== 'in_store') {
         soundServiceRef.current?.playForSource(src)
       }
     }
