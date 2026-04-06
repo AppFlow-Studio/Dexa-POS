@@ -167,6 +167,7 @@ export interface BroadcastOrderData {
   station_name: string | null;
   // Order info
   order_source?: string | null;
+  delivery_platform?: string | null;
   split_payment_path?: string | null;
   order_type: "dine_in" | "takeout" | "delivery";
   status:

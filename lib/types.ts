@@ -511,6 +511,7 @@ export interface PreviousOrder {
   checkStatus?: "Opened" | "Closed";
   db_order_id?: string; // For RPC calls
   order_source?: string | null;
+  delivery_platform?: string | null;
   reversals?: ReversalRecord[];
   order_refund_items?: OrderRefundItemRecord[];
 }
@@ -943,6 +944,7 @@ export interface OrderProfile {
 
   // === ORDER SOURCE ===
   order_source?: string | null; // "pos" | "online" | null
+  delivery_platform?: string | null; // "uber_eats" | "grubhub" | "doordash" | "food_panda" | null
 
   // === SYNC VERSION (for optimistic concurrency) ===
   sync_version?: number; // Backend sync version for conflict detection
