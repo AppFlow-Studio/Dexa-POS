@@ -393,6 +393,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const sessionId = data.session.id
           const tableIds = data.tables?.map(t => t.table_id) || []
 
+          // Base session data from broadcast (server_staff_id is NOT in the payload;
+          // it's preserved per-table inside the set() callback below)
           const newSessionData = {
             id: sessionId,
             status: data.session.status,
@@ -421,22 +423,31 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 ) {
                   return t
                 }
+                // Build the final session with server_staff_id preserved from current table
+                const sessionWithPreservedFields = {
+                  ...newSessionData,
+                  server_staff_id:
+                    t.session?.id === sessionId
+                      ? t.session.server_staff_id
+                      : undefined
+                }
                 // Only create new object if data actually differs
                 const s = t.session
                 if (
                   s?.id === sessionId &&
-                  s?.status === newSessionData.status &&
-                  s?.party_size === newSessionData.party_size &&
-                  s?.order_id === newSessionData.order_id &&
-                  s?.guest_name === newSessionData.guest_name &&
-                  s?.current_course === newSessionData.current_course &&
-                  s?.needs_attention === newSessionData.needs_attention &&
-                  s?.is_vip === newSessionData.is_vip
+                  s?.status === sessionWithPreservedFields.status &&
+                  s?.party_size === sessionWithPreservedFields.party_size &&
+                  s?.order_id === sessionWithPreservedFields.order_id &&
+                  s?.guest_name === sessionWithPreservedFields.guest_name &&
+                  s?.current_course === sessionWithPreservedFields.current_course &&
+                  s?.needs_attention === sessionWithPreservedFields.needs_attention &&
+                  s?.is_vip === sessionWithPreservedFields.is_vip &&
+                  s?.server_staff_id === sessionWithPreservedFields.server_staff_id
                 ) {
                   return t // same reference — no change
                 }
                 changed = true
-                return { ...t, session: newSessionData }
+                return { ...t, session: sessionWithPreservedFields }
               }
               // Clear session if table was previously in this session but isn't anymore
               if (t.session?.id === sessionId) {

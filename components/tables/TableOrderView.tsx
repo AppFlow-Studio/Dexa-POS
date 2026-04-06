@@ -28,6 +28,8 @@ import {
   useHasActivePreAuth,
   useOrderPreAuth
 } from '@/stores/selectors/orderSelectors'
+import { transferTableServer } from '@/services/serverAssignmentService'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -903,8 +905,32 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     (name: string) => {
       updateActiveOrderDetails({ server_name: name })
       setServerSheetOpen(false)
+
+      // Also update server_staff_id on the session so the server badge on the
+      // floor plan renders immediately without waiting for a full refresh.
+      const sess = useTableSessionStore.getState().sessions[currentTableId]
+      if (!sess?.id) return
+
+      const employee = useEmployeeStore
+        .getState()
+        .employees.find(e => e.fullName === name)
+      const staffProfileId = employee?.profileId
+      if (!staffProfileId) return
+
+      // Optimistic update — PATCH the session store immediately
+      useTableSessionStore.getState().dispatch(currentTableId, {
+        type: 'PATCH',
+        updates: { server_staff_id: staffProfileId }
+      })
+
+      // Persist to DB in background (supabase comes from useSupabaseClient() at line 75)
+      if (supabase) {
+        transferTableServer(supabase, sess.id, staffProfileId).catch(err =>
+          console.warn('[handleSelectServer] Failed to update server_staff_id:', err)
+        )
+      }
     },
-    [updateActiveOrderDetails]
+    [updateActiveOrderDetails, currentTableId, supabase]
   )
 
   const handleCloseDiscountSheet = useCallback(

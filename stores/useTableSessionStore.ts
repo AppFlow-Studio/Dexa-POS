@@ -606,6 +606,14 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             if (!row.session_id || !row.session_status) continue
             incomingTableIds.add(row.table_id)
 
+            // Preserve merged_tables from existing session — the status RPC
+            // returns one row per table and doesn't encode merge relationships.
+            // Wiping it on every poll causes the merged-table display to flicker.
+            const existingSession = currentSessions[row.table_id]
+            const preservedMergedTables = existingSession?.id === row.session_id
+              ? (existingSession.merged_tables ?? [])
+              : []
+
             const session: TableSession = {
               id: row.session_id,
               session_number: row.session_number,
@@ -616,7 +624,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               current_course: row.current_course ?? 1,
               needs_attention: row.needs_attention ?? false,
               is_vip: row.is_vip ?? false,
-              order_id: row.order_id ?? undefined
+              order_id: row.order_id ?? undefined,
+              server_staff_id: row.server_staff_id ?? undefined,
+              merged_tables: preservedMergedTables
             }
 
             actions.push({
@@ -804,6 +814,18 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           const actions: Array<{ tableId: string; action: SessionAction }> = []
 
+          // The broadcast payload (TableSessionData) doesn't include server_staff_id.
+          // Preserve it from the existing session so the server badge doesn't flicker
+          // until the next full loadFloorPlanStatus restores it from the DB.
+          const existingSessionForBroadcast =
+            tableIds.length > 0
+              ? get().sessions[tableIds[0]]
+              : undefined
+          const preservedServerStaffId =
+            existingSessionForBroadcast?.id === sessionId
+              ? existingSessionForBroadcast.server_staff_id
+              : undefined
+
           const incomingSession: TableSession = {
             id: sessionId,
             status: data.session.status,
@@ -817,7 +839,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             reservation_id: (data.session as any).reservation_id ?? null,
             session_number: data.session.session_number,
             merged_tables: tableIds.length > 1 ? tableIds : undefined,
-            server_staff_id: data.session.server_staff_id ?? undefined
+            server_staff_id: preservedServerStaffId
           }
 
           // SYNC for tables in this session
@@ -1569,6 +1591,41 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
     )
   )
 )
+
+// ---------------------------------------------------------------------------
+// After session store hydrates, immediately bridge sessions → floor plan store
+// so table colors/status are correct before the first network refresh arrives.
+// Handles the race where floor plan store hydrates first (sessions still empty).
+// ---------------------------------------------------------------------------
+useTableSessionStore.persist.onFinishHydration(() => {
+  const sessions = useTableSessionStore.getState().sessions
+  if (Object.keys(sessions).length === 0) return
+
+  // Lazy-require to avoid circular deps at module init time
+  try {
+    const { useFloorPlanStore, buildTablesById } = require('@/stores/useFloorPlanStore') as typeof import('@/stores/useFloorPlanStore')
+    const currentTables = useFloorPlanStore.getState().tables
+    if (currentTables.length === 0) return // floor plan not loaded yet — bridge runs from its own onFinishHydration
+
+    let changed = false
+    const patched = currentTables.map(table => {
+      const session = sessions[table.id]
+      if (!session) return table
+      if (table.session?.id === session.id && table.session?.status === session.status) return table
+      changed = true
+      return { ...table, session }
+    })
+
+    if (changed) {
+      useFloorPlanStore.setState({
+        tables: patched,
+        tablesById: buildTablesById(patched)
+      })
+    }
+  } catch {
+    // Non-fatal — loadFloorPlanStatus will correct state on next sync
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Helper: resolve seating → seated for error/offline paths

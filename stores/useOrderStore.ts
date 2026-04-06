@@ -10532,7 +10532,23 @@ export const useOrderStore = create<OrderState>()(
                 }
               }
 
-              // Replacement strategy: preserve unsynced + pending-items orders, server wins for the rest
+              // Collect order_ids referenced by active table sessions so we never
+              // evict them — even if their status falls outside the fetch filter.
+              const activeSessionOrderIds = new Set<string>()
+              try {
+                const sessionStore = (
+                  require('@/stores/useTableSessionStore') as typeof import('@/stores/useTableSessionStore')
+                ).useTableSessionStore
+                for (const sess of Object.values(
+                  sessionStore.getState().sessions
+                )) {
+                  if (sess.order_id) activeSessionOrderIds.add(sess.order_id)
+                }
+              } catch {
+                // Non-fatal: prefetch will re-sync if needed
+              }
+
+              // Replacement strategy: preserve unsynced + pending-items + active-session orders, server wins for the rest
               set(state => {
                 const preservedIds: string[] = []
 
@@ -10545,10 +10561,16 @@ export const useOrderStore = create<OrderState>()(
                 for (const id of state.orderIds) {
                   if (preservedIds.includes(id)) continue
                   const order = state.ordersById[id]
+                  if (!order) continue
+                  // Preserve if it has unsynced items
+                  if (order.items.some(item => !item.db_order_item_id && !item.isDraft)) {
+                    preservedIds.push(id)
+                    continue
+                  }
+                  // Preserve if it's referenced by an active table session (db_order_id match)
                   if (
-                    order?.items.some(
-                      item => !item.db_order_item_id && !item.isDraft
-                    )
+                    order.db_order_id &&
+                    activeSessionOrderIds.has(order.db_order_id)
                   ) {
                     preservedIds.push(id)
                   }
