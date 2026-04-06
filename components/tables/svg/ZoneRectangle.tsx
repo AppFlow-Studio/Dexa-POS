@@ -1,24 +1,28 @@
-import React from "react";
-import { Svg, Rect } from "react-native-svg";
+import { Rect, Svg } from 'react-native-svg'
 
-const ZoneRectangle = ({ color = "#2DD4BF", width = 100, height = 100 }) => {
-  const defaultSize = 100;
-  const scaleX = (width || defaultSize) / defaultSize;
+const ZoneRectangle = ({ color = '#2DD4BF', width = 200, height = 200 }) => {
+  const defaultSize = 200
+  const scaleX = (width || defaultSize) / defaultSize
 
   return (
-    <Svg width={width} height={height} viewBox="0 0 100 100" preserveAspectRatio="none">
+    <Svg
+      width={width}
+      height={height}
+      viewBox='0 0 200 200'
+      preserveAspectRatio='none'
+    >
       <Rect
-        width="100"
-        height="100"
+        width='200'
+        height='200'
         fill={color}
-        fillOpacity="0.07"
+        fillOpacity='0.07'
         stroke={color}
         strokeWidth={1.5 * scaleX}
-        strokeDasharray="6,4"
-        strokeOpacity="0.6"
+        strokeDasharray='6,4'
+        strokeOpacity='0.6'
       />
     </Svg>
-  );
-};
+  )
+}
 
-export default ZoneRectangle;
+export default ZoneRectangle

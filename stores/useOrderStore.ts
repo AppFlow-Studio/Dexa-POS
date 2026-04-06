@@ -3635,15 +3635,37 @@ export const useOrderStore = create<OrderState>()(
               return false
             }
 
-            // 3. Check view_scope
+            // 2b. External/online orders (non-POS origin) bypass view_scope and are always
+            // accepted at the location level. view_scope controls POS-to-POS visibility only.
+            // An order is external if: order_source indicates non-POS origin, OR it has no
+            // station_id (came from an external platform) with an online order type.
+            const isOnlineOrderType = ['delivery', 'takeout'].includes(
+              backendOrder.order_type ?? ''
+            )
+            const isExternalOrder =
+              (backendOrder.order_source &&
+                backendOrder.order_source !== 'pos' &&
+                backendOrder.order_source !== 'in_store') ||
+              (!backendOrder.station_id && isOnlineOrderType)
+            if (isExternalOrder) {
+              const accept = backendOrder.location_id === currentLocationId
+              if (__DEV__)
+                console.log(
+                  `[RemoteOrder] External order bypass: ${accept ? 'ACCEPT' : 'REJECT (wrong location)'}`,
+                  { orderSource: backendOrder.order_source, locationMatch: accept }
+                )
+              return accept
+            }
+
+            // 3. Check view_scope (POS-to-POS station visibility)
             const viewScope = currentStation.view_scope || 'own'
 
             switch (viewScope) {
               case 'own':
-                // Never accept remote orders
+                // Never accept remote POS orders
                 if (__DEV__)
                   console.log(
-                    "[RemoteOrder] REJECT: view_scope='own' blocks all remote orders"
+                    "[RemoteOrder] REJECT: view_scope='own' blocks all remote POS orders"
                   )
                 return false
 
@@ -4121,6 +4143,7 @@ export const useOrderStore = create<OrderState>()(
 
               // Order source
               order_source: serverOrder.order_source ?? null,
+              delivery_platform: serverOrder.delivery_platform ?? null,
 
               // Station tracking (for display)
               _sourceStationId: serverOrder.station_id ?? null,
@@ -9966,6 +9989,7 @@ export const useOrderStore = create<OrderState>()(
                   // Session tracking - sync from database
                   session_id: dbOrder.session_id,
                   order_source: dbOrder.order_source ?? null,
+                  delivery_platform: dbOrder.delivery_platform ?? null,
                   sync_status: 'synced'
                 }
 
@@ -10508,7 +10532,23 @@ export const useOrderStore = create<OrderState>()(
                 }
               }
 
-              // Replacement strategy: preserve unsynced + pending-items orders, server wins for the rest
+              // Collect order_ids referenced by active table sessions so we never
+              // evict them — even if their status falls outside the fetch filter.
+              const activeSessionOrderIds = new Set<string>()
+              try {
+                const sessionStore = (
+                  require('@/stores/useTableSessionStore') as typeof import('@/stores/useTableSessionStore')
+                ).useTableSessionStore
+                for (const sess of Object.values(
+                  sessionStore.getState().sessions
+                )) {
+                  if (sess.order_id) activeSessionOrderIds.add(sess.order_id)
+                }
+              } catch {
+                // Non-fatal: prefetch will re-sync if needed
+              }
+
+              // Replacement strategy: preserve unsynced + pending-items + active-session orders, server wins for the rest
               set(state => {
                 const preservedIds: string[] = []
 
@@ -10521,10 +10561,16 @@ export const useOrderStore = create<OrderState>()(
                 for (const id of state.orderIds) {
                   if (preservedIds.includes(id)) continue
                   const order = state.ordersById[id]
+                  if (!order) continue
+                  // Preserve if it has unsynced items
+                  if (order.items.some(item => !item.db_order_item_id && !item.isDraft)) {
+                    preservedIds.push(id)
+                    continue
+                  }
+                  // Preserve if it's referenced by an active table session (db_order_id match)
                   if (
-                    order?.items.some(
-                      item => !item.db_order_item_id && !item.isDraft
-                    )
+                    order.db_order_id &&
+                    activeSessionOrderIds.has(order.db_order_id)
                   ) {
                     preservedIds.push(id)
                   }

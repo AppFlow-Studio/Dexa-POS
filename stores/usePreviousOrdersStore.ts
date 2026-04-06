@@ -207,6 +207,7 @@ function _transformFetchedOrder(
     checkStatus: profile.check_status || "Opened",
     db_order_id: profile.db_order_id,
     order_source: profile.order_source ?? null,
+    delivery_platform: profile.delivery_platform ?? null,
     reversals: profile.reversals,
     order_refund_items: profile.order_refund_items,
   };
@@ -318,6 +319,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         reversals: order.reversals,
         order_refund_items: order.order_refund_items,
         order_source: order.order_source ?? null,
+        delivery_platform: order.delivery_platform ?? null,
       };
 
       set((state) => {

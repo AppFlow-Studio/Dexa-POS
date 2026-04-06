@@ -479,6 +479,7 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
       status: ticketStatus,
       order_type: order.order_type,
       order_source: order.order_source ?? null,
+      delivery_platform: order.delivery_platform ?? null,
       table_name: order.table_number,
       customer_name: order.customer_name ?? null,
       start_time: fireTime ?? order.sent_to_kitchen_at,

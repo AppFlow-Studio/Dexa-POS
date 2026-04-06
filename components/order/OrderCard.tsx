@@ -4,6 +4,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { formatOrderStatus } from "@/utils/orderStatusHelpers";
 import { ArrowUpRight, Archive, RefreshCcw, Repeat2, CreditCard, XCircle } from "lucide-react-native";
+import DeliveryPlatformBadge from "./DeliveryPlatformBadge";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -145,9 +146,16 @@ const OrderCard: React.FC<OrderCardProps> = ({
       </View>
 
       {/* Customer + order number */}
-      <Text className="text-xl font-bold text-white mt-2">
-        {order.customer_name || "Walk-In"} {order?.display_number}
-      </Text>
+      <View className="flex-row items-center mt-2 gap-2">
+        <Text className="text-xl font-bold text-white flex-1" numberOfLines={1}>
+          {order.customer_name || "Walk-In"} {order?.display_number}
+        </Text>
+        <DeliveryPlatformBadge
+          deliveryPlatform={order.delivery_platform}
+          orderSource={order.order_source}
+          size="md"
+        />
+      </View>
 
       {/* Order type, table, time */}
       <View className="flex-row justify-between mt-1">

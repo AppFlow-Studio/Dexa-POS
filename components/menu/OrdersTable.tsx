@@ -2,6 +2,7 @@ import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { ArrowDown, ArrowUp, Lock, MoreVertical, XCircle } from "lucide-react-native";
+import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
 import React, { memo, useCallback, useMemo } from "react";
 import { ActivityIndicator, FlatList, Text, TouchableOpacity, View } from "react-native";
 
@@ -235,17 +236,11 @@ const OrderRow = memo<OrderRowProps>(
               <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, letterSpacing: 0.2 }}>
                 {displayNumber}
               </Text>
-              {order.order_source?.toLowerCase() === "online" && (
-                <View style={{
-                  backgroundColor: colors.teal + "25",
-                  borderWidth: 1, borderColor: colors.teal + "60",
-                  borderRadius: 20, paddingHorizontal: 6, paddingVertical: 1,
-                  flexDirection: "row", alignItems: "center", gap: 3,
-                }}>
-                  <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colors.teal }} />
-                  <Text style={{ fontSize: 9, fontWeight: "700", color: colors.teal, letterSpacing: 0.3 }}>ONLINE</Text>
-                </View>
-              )}
+              <DeliveryPlatformBadge
+                deliveryPlatform={order.delivery_platform}
+                orderSource={order.order_source}
+                size="sm"
+              />
             </View>
             <Text style={{ fontSize: 11, marginTop: 2, color: colors.muted }} numberOfLines={1}>
               {customerName !== "" ? customerName : "Walk-in"}

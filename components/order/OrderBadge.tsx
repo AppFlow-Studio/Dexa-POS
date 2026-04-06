@@ -8,7 +8,6 @@ import {
   ChevronRight,
   CreditCard,
   Eye,
-  Globe,
   MoreHorizontal,
   Printer,
   RefreshCw,
@@ -16,6 +15,7 @@ import {
   RotateCcw,
   ShoppingBag,
 } from "lucide-react-native";
+import DeliveryPlatformBadge from "./DeliveryPlatformBadge";
 import React, { useCallback, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Popover from "react-native-popover-view";
@@ -546,16 +546,13 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
                 <RefreshCw color={colors.info} size={8} />
               </View>
             )}
-            {order.order_source === "online" && (
-              <View style={{
-                flexDirection: "row", alignItems: "center", gap: 3,
-                backgroundColor: colors.teal + "20",
-                borderWidth: 1, borderColor: colors.teal + "50",
-                borderRadius: 20, paddingHorizontal: 6, paddingVertical: 2,
-                marginRight: 5,
-              }}>
-                <Globe size={9} color={colors.teal} />
-                <Text style={{ fontSize: 10, fontWeight: "700", color: colors.teal }}>Online</Text>
+            {(order.delivery_platform || (order.order_source && order.order_source !== "pos" && order.order_source !== "in_store")) && (
+              <View style={{ marginRight: 5 }}>
+                <DeliveryPlatformBadge
+                  deliveryPlatform={order.delivery_platform}
+                  orderSource={order.order_source}
+                  size="sm"
+                />
               </View>
             )}
             <View
@@ -626,7 +623,8 @@ const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
     // Station-related fields for display
     prev.order.station_id === next.order.station_id &&
     prev.order._sourceStationName === next.order._sourceStationName &&
-    prev.order.order_source === next.order.order_source
+    prev.order.order_source === next.order.order_source &&
+    prev.order.delivery_platform === next.order.delivery_platform
   );
 });
 

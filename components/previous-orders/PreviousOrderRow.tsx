@@ -14,6 +14,7 @@ import {
   Utensils,
   XCircle,
 } from "lucide-react-native";
+import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { LayoutAnimation, Modal, Platform, Text, TouchableOpacity, UIManager, View } from "react-native";
 import ExpandedOrderPanel from "./ExpandedOrderPanel";
@@ -187,17 +188,11 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               {order.display_number || order.order_number || `#${order.id.slice(-4)}`}
             </Text>
             <Text style={{ fontSize: 11, color: colors.muted }}>{orderTime}</Text>
-            {order.order_source?.toLowerCase() === "online" && (
-              <View style={{
-                flexDirection: "row", alignItems: "center", gap: 3,
-                backgroundColor: colors.teal + "25",
-                borderWidth: 1, borderColor: colors.teal + "60",
-                borderRadius: 20, paddingHorizontal: 6, paddingVertical: 1,
-              }}>
-                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colors.teal }} />
-                <Text style={{ fontSize: 9, fontWeight: "700", color: colors.teal, letterSpacing: 0.3 }}>ONLINE</Text>
-              </View>
-            )}
+            <DeliveryPlatformBadge
+              deliveryPlatform={order.delivery_platform}
+              orderSource={order.order_source}
+              size="sm"
+            />
             {needsAttention && (
               <AlertTriangle size={12} color={colors.warning} />
             )}

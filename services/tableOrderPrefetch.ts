@@ -14,6 +14,46 @@ import { useTableSessionStore } from "@/stores/useTableSessionStore";
 let _unsubscribe: (() => void) | null = null;
 const _inFlightOrderIds = new Set<string>();
 
+function getSessionOrderIds(): string[] {
+  const ids: string[] = [];
+  for (const s of Object.values(useTableSessionStore.getState().sessions)) {
+    if (s.order_id) ids.push(s.order_id);
+  }
+  return ids;
+}
+
+async function prefetchUncachedOrders(orderIds: string[]) {
+  if (orderIds.length === 0) return;
+
+  const orderState = useOrderStore.getState();
+  const { ordersById, dbOrderIdIndex } = orderState;
+
+  const uncachedOrderIds = orderIds.filter((id) => {
+    if (_inFlightOrderIds.has(id)) return false;
+    if (ordersById[id]) return false;
+    const localId = dbOrderIdIndex[id];
+    if (localId && ordersById[localId]) return false;
+    return true;
+  });
+
+  if (uncachedOrderIds.length === 0) return;
+
+  if (__DEV__) console.log(
+    `[prefetch] Fetching ${uncachedOrderIds.length} uncached orders`,
+  );
+  for (const id of uncachedOrderIds) _inFlightOrderIds.add(id);
+  await Promise.allSettled(
+    uncachedOrderIds.map((id) =>
+      orderState.syncOrderFromDatabase(id).finally(() => {
+        _inFlightOrderIds.delete(id);
+      }),
+    ),
+  );
+  if (__DEV__) console.log(
+    `[prefetch] Finished fetching ${uncachedOrderIds.length} orders`,
+  );
+}
+
 export function setupTableOrderPrefetch() {
   // Prevent double-init
   if (_unsubscribe) return;
@@ -28,41 +68,11 @@ export function setupTableOrderPrefetch() {
       return ids;
     },
     (orderIds) => {
-      if (orderIds.length === 0) return;
-
       // Defer to avoid blocking UI
-      queueMicrotask(async () => {
-        try {
-          const orderState = useOrderStore.getState();
-          const { ordersById, dbOrderIdIndex } = orderState;
-
-          const uncachedOrderIds = orderIds.filter((id) => {
-            if (_inFlightOrderIds.has(id)) return false;
-            if (ordersById[id]) return false;
-            const localId = dbOrderIdIndex[id];
-            if (localId && ordersById[localId]) return false;
-            return true;
-          });
-
-          if (uncachedOrderIds.length > 0) {
-            if (__DEV__) console.log(
-              `[prefetch] Fetching ${uncachedOrderIds.length} uncached orders`,
-            );
-            for (const id of uncachedOrderIds) _inFlightOrderIds.add(id);
-            await Promise.allSettled(
-              uncachedOrderIds.map((id) =>
-                orderState.syncOrderFromDatabase(id).finally(() => {
-                  _inFlightOrderIds.delete(id);
-                }),
-              ),
-            );
-            if (__DEV__) console.log(
-              `[prefetch] Finished fetching ${uncachedOrderIds.length} orders`,
-            );
-          }
-        } catch (err) {
+      queueMicrotask(() => {
+        prefetchUncachedOrders(orderIds).catch((err) => {
           console.error("[prefetch] Failed:", err);
-        }
+        });
       });
     },
     {
@@ -74,6 +84,15 @@ export function setupTableOrderPrefetch() {
       },
     },
   );
+
+  // Run immediately for sessions already loaded before this subscriber was set up.
+  // Without this, tables that were occupied at startup never get their orders
+  // fetched until a session change occurs (e.g. long-press triggers a manual sync).
+  queueMicrotask(() => {
+    prefetchUncachedOrders(getSessionOrderIds()).catch((err) => {
+      console.error("[prefetch] Initial fetch failed:", err);
+    });
+  });
 }
 
 export function teardownTableOrderPrefetch() {

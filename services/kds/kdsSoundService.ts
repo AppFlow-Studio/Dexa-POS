@@ -46,7 +46,17 @@ function normalizeSource(orderSource: string | null): ConfigKey {
   if (lower === "online" || lower === "web") return "online";
   if (lower === "kiosk") return "kiosk";
   if (lower === "pos" || lower === "in_store") return "pos";
-  if (lower === "third_party" || lower === "3rd_party" || lower === "third-party")
+  if (
+    lower === "third_party" ||
+    lower === "3rd_party" ||
+    lower === "third-party" ||
+    lower === "uber_eats" ||
+    lower === "ubereats" ||
+    lower === "grubhub" ||
+    lower === "doordash" ||
+    lower === "door_dash" ||
+    lower === "delivery"
+  )
     return "third_party";
   return "default";
 }
