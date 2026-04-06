@@ -130,6 +130,7 @@ export const useLocationConfigStore = create<LocationConfigState>()(
           const namespaces: ConfigNamespace[] = [
             'dining', 'kds', 'printing', 'cashDrawer',
             'onlineOrdering', 'tips', 'preAuth', 'waitlist', 'payment',
+            'notifications',
           ]
 
           for (const ns of namespaces) {
@@ -197,6 +198,7 @@ export const useLocationConfigStore = create<LocationConfigState>()(
         const namespaces: ConfigNamespace[] = [
           'dining', 'kds', 'printing', 'cashDrawer',
           'onlineOrdering', 'tips', 'preAuth', 'waitlist', 'payment',
+          'notifications',
         ]
         const mergedConfig = { ...DEFAULT_POS_CONFIG }
         for (const ns of namespaces) {

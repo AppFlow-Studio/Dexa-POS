@@ -42,6 +42,10 @@ export interface ReceiptTemplateConfig {
   groupByStation: boolean
   groupBySeat: boolean
   modifierStyle: ModifierStyle
+  // New flags for no_sale / void_order / time_sheet templates
+  showVoidReason: boolean
+  showApprovedBy: boolean
+  showBreakDetails: boolean
 }
 
 // ============================================================================
@@ -72,7 +76,10 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplateConfig = {
   largeItemText: true,
   groupByStation: true,
   groupBySeat: false,
-  modifierStyle: 'inverted'
+  modifierStyle: 'inverted',
+  showVoidReason: true,
+  showApprovedBy: true,
+  showBreakDetails: true
 }
 
 // ============================================================================
@@ -89,7 +96,12 @@ export type ReceiptTemplateInsert =
 export function receiptTemplateConfigToRow (
   config: ReceiptTemplateConfig
 ): ReceiptTemplateInsert {
-  const row: ReceiptTemplateInsert & { group_by_seat?: boolean | null } = {
+  const row: ReceiptTemplateInsert & {
+    group_by_seat?: boolean | null
+    show_void_reason?: boolean | null
+    show_approved_by?: boolean | null
+    show_break_details?: boolean | null
+  } = {
     merchant_id: config.merchantId,
     location_id: config.locationId,
     template_name: config.templateName,
@@ -112,7 +124,10 @@ export function receiptTemplateConfigToRow (
     large_item_text: config.largeItemText,
     group_by_station: config.groupByStation,
     group_by_seat: config.groupBySeat,
-    modifier_style: config.modifierStyle
+    modifier_style: config.modifierStyle,
+    show_void_reason: config.showVoidReason,
+    show_approved_by: config.showApprovedBy,
+    show_break_details: config.showBreakDetails
   }
 
   // Only include id if it's a real UUID (not "default")
@@ -150,6 +165,9 @@ export function receiptTemplateRowToConfig (
     largeItemText: row.large_item_text ?? true,
     groupByStation: row.group_by_station ?? true,
     groupBySeat: (row as any).group_by_seat ?? false,
-    modifierStyle: (row.modifier_style as ModifierStyle) ?? 'inverted'
+    modifierStyle: (row.modifier_style as ModifierStyle) ?? 'inverted',
+    showVoidReason: (row as any).show_void_reason ?? true,
+    showApprovedBy: (row as any).show_approved_by ?? true,
+    showBreakDetails: (row as any).show_break_details ?? true
   }
 }

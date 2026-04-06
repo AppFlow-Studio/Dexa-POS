@@ -20,6 +20,9 @@ interface ReceiptTemplateStoreState {
   fetchTemplates: (locationId: string) => Promise<void>;
   getReceiptTemplate: (locationId: string) => ReceiptTemplateConfig;
   getKitchenTemplate: (locationId: string) => ReceiptTemplateConfig;
+  getNoSaleTemplate: (locationId: string) => ReceiptTemplateConfig;
+  getVoidOrderTemplate: (locationId: string) => ReceiptTemplateConfig;
+  getTimeSheetTemplate: (locationId: string) => ReceiptTemplateConfig;
   updateTemplate: (
     templateId: string,
     updates: Partial<ReceiptTemplateConfig>,
@@ -92,6 +95,34 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
             t.templateType === "kitchen",
         );
         return match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "kitchen" };
+      },
+
+      getNoSaleTemplate: (locationId: string) => {
+        const match = get().templates.find(
+          (t) =>
+            t.locationId === locationId && t.templateType === "no_sale",
+        );
+        return match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "no_sale" };
+      },
+
+      getVoidOrderTemplate: (locationId: string) => {
+        const match = get().templates.find(
+          (t) =>
+            t.locationId === locationId && t.templateType === "void_order",
+        );
+        return (
+          match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "void_order" }
+        );
+      },
+
+      getTimeSheetTemplate: (locationId: string) => {
+        const match = get().templates.find(
+          (t) =>
+            t.locationId === locationId && t.templateType === "time_sheet",
+        );
+        return (
+          match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "time_sheet" }
+        );
       },
 
       updateTemplate: (

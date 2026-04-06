@@ -15,13 +15,17 @@
 import { clearOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
 import type { SideEffectContext } from "@/lib/sessionSideEffects";
 import { InventoryService } from "@/services/inventoryService";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import {
   getOrderStoreSupabaseClient,
   useOrderStore,
 } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { calculateItemEffectiveCardPrice } from "@/lib/order-calculator";
 
 export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
   if (ctx.action.type !== "VOID_ORDER") return;
@@ -59,6 +63,59 @@ export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
 
   // 3. Void the order locally + triggers void_order RPC which closes the backend session
   orderState.voidOrder(orderId);
+
+  // 3b. Print void-order receipt (customer-facing) — non-blocking
+  const printingConfig = useLocationConfigStore.getState().config.printing;
+  if (printingConfig?.autoPrintVoidReceipt) {
+    const selectedStore = useStoreSettingsStore.getState().selectedStore;
+    const locationId = selectedStore?.id ?? "";
+    if (locationId) {
+      try {
+        const voidedSnapshot = order.items.map((it) => ({
+          name: it.is_open_item ? it.open_item_name || it.name : it.name,
+          quantity: it.quantity,
+          // unit price with modifiers applied (matches ReceiptTemplateData convention)
+          price: calculateItemEffectiveCardPrice(it),
+        }));
+        const subtotal = order.items.reduce(
+          (sum, it) =>
+            sum + calculateItemEffectiveCardPrice(it) * (it.quantity || 1),
+          0,
+        );
+
+        // Try to pick any void_reason from items (void reason is stored per-item)
+        const firstReason =
+          order.items.find((it) => it.void_reason)?.void_reason ?? undefined;
+
+        const addressParts = selectedStore
+          ? [
+              selectedStore.address_line1,
+              selectedStore.address_line2,
+              `${selectedStore.city}, ${selectedStore.state} ${selectedStore.postal_code}`,
+            ].filter(Boolean)
+          : [];
+
+        await PrinterService.printVoidOrderReceipt({
+          storeName: selectedStore?.name || "Store",
+          storeAddress: addressParts.join(", ") || undefined,
+          storePhone: selectedStore?.phone || undefined,
+          orderNumber:
+            order.display_number ||
+            order.order_number ||
+            `#${order.id.slice(-4)}`,
+          serverName: order.server_name,
+          items: voidedSnapshot,
+          subtotal,
+          reason: firstReason,
+          approvedBy: undefined,
+          timestamp: new Date().toISOString(),
+          locationId,
+        });
+      } catch (err) {
+        console.warn("[voidOrderEffect] printVoidOrderReceipt failed:", err);
+      }
+    }
+  }
 
   // 4. Clear active order if it was this one
   if (useOrderStore.getState().activeOrderId === orderId) {

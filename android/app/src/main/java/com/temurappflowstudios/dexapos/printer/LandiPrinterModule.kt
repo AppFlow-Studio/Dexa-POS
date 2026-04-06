@@ -22,6 +22,9 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         const val TAG = "LandiPrinter"
         const val NAME = "LandiPrinterModule"
         const val STATUS_OK = 0
+        const val DEFAULT_PRINT_DENSITY = 3
+        const val MIN_DENSITY = 1
+        const val MAX_DENSITY = 8
     }
 
     override fun getName(): String = NAME
@@ -29,6 +32,17 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     private var isInitialized = false
     private var printer: Printer? = null
     private var cashBox: CashBox? = null
+
+    // Last-applied text format — used to suppress redundant setFormat() calls
+    // that cause the LANDI head to flush its buffer and produce vertical streaks.
+    // -1 sentinel => "unknown, force next setFormat".
+    private var lastAppliedSize: Int = -1
+    private var lastAppliedScale: Int = -1
+
+    // Print density (gray level) passed to OmniDriver's setGray(int).
+    // LANDI heads typically accept 1..8. The out-of-box default is too aggressive
+    // for long prints and causes ghosting/streaks on dense columns. Start lower.
+    private var printDensity: Int = DEFAULT_PRINT_DENSITY
 
     // ==================== INITIALIZATION ====================
 
@@ -43,7 +57,12 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                         printer!!.openDevice(0)
                         cashBox = driver.getCashBox(Bundle())
                         isInitialized = true
-                        Log.d(TAG, "OmniDriver initialized — Printer opened and CashBox acquired")
+                        // Reset format tracker — fresh device needs explicit first setFormat
+                        lastAppliedSize = -1
+                        lastAppliedScale = -1
+                        // Apply density to reduce thermal bleed / streaks on LANDI head
+                        applyDensity(printer!!)
+                        Log.d(TAG, "OmniDriver initialized — Printer opened, density=$printDensity, CashBox acquired")
                         promise.resolve(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to acquire peripherals: ${e.message}")
@@ -106,7 +125,10 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
             val doc = JSONObject(documentJson)
             val nodes = doc.getJSONArray("nodes")
-            p.setFormat(ASCSize.DOT24x12, ASCScale.SC1x1)  // reset before rendering
+            // Reset tracked format and emit one explicit setFormat before rendering.
+            lastAppliedSize = -1
+            lastAppliedScale = -1
+            setFormatIfChanged(p, ASCSize.DOT24x12, ASCScale.SC1x1)
             Log.d(TAG, "Starting print job: ${nodes.length()} nodes")
             for (i in 0 until nodes.length()) {
                 renderNode(p, nodes.getJSONObject(i))
@@ -125,6 +147,10 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                     try {
                         printer?.closeDevice()
                         printer?.openDevice(0)
+                        // Device was re-opened — format state is unknown, density reset needed
+                        lastAppliedSize = -1
+                        lastAppliedScale = -1
+                        printer?.let { applyDensity(it) }
                         Log.d(TAG, "Printer device reset after failure")
                     } catch (e: Exception) {
                         Log.w(TAG, "Printer reset failed: ${e.message}")
@@ -136,6 +162,33 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             Log.e(TAG, "Failed to print document: ${e.message}")
             promise.reject("PRINT_FAILED", "Failed to print document: ${e.message}", e)
+        }
+    }
+
+    // ==================== DENSITY ====================
+
+    @ReactMethod
+    fun setPrintDensity(level: Int, promise: Promise) {
+        try {
+            val clamped = level.coerceIn(MIN_DENSITY, MAX_DENSITY)
+            printDensity = clamped
+            val p = printer
+            if (p != null) {
+                applyDensity(p)
+            }
+            Log.d(TAG, "Print density set to $clamped (requested=$level)")
+            promise.resolve(clamped)
+        } catch (e: Exception) {
+            Log.e(TAG, "setPrintDensity failed: ${e.message}")
+            promise.reject("DENSITY_FAILED", "Failed to set print density: ${e.message}", e)
+        }
+    }
+
+    private fun applyDensity(p: Printer) {
+        try {
+            p.setGray(printDensity)
+        } catch (e: Exception) {
+            Log.w(TAG, "setGray($printDensity) failed: ${e.message}")
         }
     }
 
@@ -192,20 +245,20 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             "text" -> {
                 applyFormat(p, node.optJSONObject("format"))
                 val align = parseAlign(node.optString("align", "left"))
-                p.addText(node.getString("content"), align, 0)
+                p.addText(sanitizeForLandi(node.getString("content")), align, 0)
             }
 
             "text_line" -> {
                 applyFormat(p, node.optJSONObject("format"))
                 val align = parseAlign(node.optString("align", "left"))
-                p.addText(node.getString("content"), align, 0)
+                p.addText(sanitizeForLandi(node.getString("content")), align, 0)
                 p.feedLine(1)
             }
 
             "two_column" -> {
                 applyFormat(p, node.optJSONObject("format"))
-                val left = node.getString("left")
-                val right = node.getString("right")
+                val left = sanitizeForLandi(node.getString("left"))
+                val right = sanitizeForLandi(node.getString("right"))
                 val lineWidth = node.optInt("lineWidth", 32)
                 val padding = lineWidth - left.length - right.length
                 val line = if (padding > 0) {
@@ -252,6 +305,53 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    /**
+     * Replace characters that the LANDI thermal head renders incorrectly
+     * (boxes, garbage bytes, or streaks). Narrow no-break space and other
+     * Unicode space variants are known offenders. Typographic quotes and
+     * em-dashes also map to single-byte ASCII equivalents to avoid
+     * multi-byte encoding corruption.
+     */
+    private fun sanitizeForLandi(s: String): String {
+        if (s.isEmpty()) return s
+        val sb = StringBuilder(s.length)
+        for (ch in s) {
+            val mapped: Char = when (ch) {
+                // Unicode space variants → regular space
+                '\u00A0', '\u2009', '\u200A', '\u202F', '\u205F', '\u3000' -> ' '
+                // Zero-width characters → strip
+                '\u200B', '\u200C', '\u200D', '\uFEFF' -> '\u0000'
+                // Curly/smart quotes → ASCII quotes
+                '\u2018', '\u2019', '\u201A', '\u2032' -> '\''
+                '\u201C', '\u201D', '\u201E', '\u2033' -> '"'
+                // Dashes → ASCII hyphen
+                '\u2013', '\u2014', '\u2015', '\u2212' -> '-'
+                // Ellipsis → three periods (multi-char replacement handled below)
+                '\u2026' -> {
+                    sb.append("...")
+                    continue
+                }
+                // Bullet → asterisk
+                '\u2022', '\u2023', '\u25E6' -> '*'
+                else -> ch
+            }
+            if (mapped != '\u0000') sb.append(mapped)
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Only emit setFormat() when the requested size/scale differs from the
+     * last call. LANDI's head performs a buffer flush + mode switch on every
+     * setFormat call, and rapid repeats cause vertical streaks mid-receipt.
+     */
+    private fun setFormatIfChanged(p: Printer, size: Int, scale: Int) {
+        if (size == lastAppliedSize && scale == lastAppliedScale) return
+        p.setFormat(size, scale)
+        lastAppliedSize = size
+        lastAppliedScale = scale
+    }
+
     private fun applyFormat(p: Printer, formatObj: JSONObject?) {
         if (formatObj == null) {
             resetFormat(p)
@@ -269,11 +369,11 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             else -> ASCScale.SC1x1                // bold alone = normal size
         }
 
-        p.setFormat(ASCSize.DOT24x12, scale)
+        setFormatIfChanged(p, ASCSize.DOT24x12, scale)
     }
 
     private fun resetFormat(p: Printer) {
-        p.setFormat(ASCSize.DOT24x12, ASCScale.SC1x1)
+        setFormatIfChanged(p, ASCSize.DOT24x12, ASCScale.SC1x1)
     }
 
     private fun parseAlign(align: String): Int {

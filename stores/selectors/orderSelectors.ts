@@ -154,6 +154,10 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
         frontend: totals.outstanding_total,
         backend: backendAmountDue,
         orderId: activeOrderId,
+        // Diagnostic: dump payment cashSavings to verify derivation
+        payments: (activeOrder.payments ?? []).map(p => ({
+          id: p.id, amount: p.amount, isCashPriced: p.isCashPriced, cashSavings: p.cashSavings,
+        })),
       });
     }
 

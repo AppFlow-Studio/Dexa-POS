@@ -265,6 +265,10 @@ export function useTableSession (
         if (updatedSession?.order_id) {
           const sOrderId = updatedSession.order_id
 
+          // Early guard: if getOrder resolves to active order, this is a local→DB UUID swap
+          const earlyResolved = useOrderStore.getState().getOrder(sOrderId)
+          if (earlyResolved && earlyResolved.id === useOrderStore.getState().activeOrderId) return
+
           // Skip if already matched by db_order_id
           if (activeOrder?.db_order_id === sOrderId) return
 

@@ -3,7 +3,7 @@ import { OrderProfile } from "@/lib/types";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { ArrowDown, ArrowUp, Lock, MoreVertical, XCircle } from "lucide-react-native";
 import React, { memo, useCallback, useMemo } from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Text, TouchableOpacity, View } from "react-native";
 
 export type SortColumn =
   | "order"
@@ -42,6 +42,8 @@ interface OrdersTableProps {
   ) => void;
   refreshing?: boolean;
   onRefresh?: () => void;
+  onEndReached?: () => void;
+  isLoadingMore?: boolean;
 }
 
 // Status pill config — follows design_theme.md: bg=color+'20', border=color+'50'
@@ -345,6 +347,8 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   onMoreClick,
   refreshing,
   onRefresh,
+  onEndReached,
+  isLoadingMore,
 }) => {
   // Sort orders based on current sort column and direction
   const sortedOrders = useMemo(() => {
@@ -459,6 +463,15 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         showsVerticalScrollIndicator={true}
         refreshing={refreshing}
         onRefresh={onRefresh}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={
+          isLoadingMore ? (
+            <View style={{ paddingVertical: 16, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={colors.teal} />
+            </View>
+          ) : null
+        }
       />
     </View>
   );

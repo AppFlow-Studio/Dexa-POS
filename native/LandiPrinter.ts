@@ -13,6 +13,7 @@ interface LandiPrinterNative {
   getPrinterStatus(): Promise<LandiPrinterStatus>;
   printDocument(documentJson: string): Promise<boolean>;
   openCashDrawer(): Promise<boolean>;
+  setPrintDensity(level: number): Promise<number>;
 }
 
 const { LandiPrinterModule } = NativeModules as {
@@ -56,5 +57,23 @@ export async function openLandiCashDrawer(): Promise<boolean> {
   } catch (e) {
     console.warn("[LandiPrinter] Cash drawer failed:", e);
     return false;
+  }
+}
+
+/**
+ * Set the LANDI built-in printer's gray-level (density).
+ * Accepted range is 1..8 (lower = lighter, higher = darker).
+ * Values outside the range are clamped natively. Returns the applied level.
+ *
+ * Lower densities (3..4) generally reduce thermal bleed and vertical
+ * streaks on long receipts at the cost of slightly lighter text.
+ */
+export async function setLandiPrintDensity(level: number): Promise<number | null> {
+  if (Platform.OS !== "android") return null;
+  try {
+    return await LandiPrinterModule.setPrintDensity(level);
+  } catch (e) {
+    console.warn("[LandiPrinter] setPrintDensity failed:", e);
+    return null;
   }
 }

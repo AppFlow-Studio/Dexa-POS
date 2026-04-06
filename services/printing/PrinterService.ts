@@ -33,6 +33,14 @@ import {
 } from './templates/NoSaleDocumentTemplate'
 import { buildReceiptDocument } from './templates/ReceiptDocumentTemplate'
 import { buildReceiptCommands } from './templates/ReceiptTemplate'
+import {
+  buildTimeSheetDocument,
+  TimeSheetReceiptData
+} from './templates/TimeSheetDocumentTemplate'
+import {
+  buildVoidOrderDocument,
+  VoidOrderReceiptData
+} from './templates/VoidOrderDocumentTemplate'
 
 /**
  * Sanitize time strings from toLocaleTimeString() which may insert
@@ -244,7 +252,52 @@ export const PrinterService = {
       console.warn('[PrinterService] No receipt printer for no-sale receipt')
       return false
     }
-    const doc = buildNoSaleDocument(data)
+    const template = useReceiptTemplateStore
+      .getState()
+      .getNoSaleTemplate(data.locationId)
+    const doc = buildNoSaleDocument(data, template)
+    const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
+    usePrintQueueStore.getState().enqueue(job)
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print a Void Order receipt on the receipt printer (customer-facing).
+   */
+  async printVoidOrderReceipt (
+    data: VoidOrderReceiptData & { locationId: string }
+  ): Promise<boolean> {
+    const printer = getReceiptPrinter(data.locationId)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer for void-order receipt')
+      return false
+    }
+    const template = useReceiptTemplateStore
+      .getState()
+      .getVoidOrderTemplate(data.locationId)
+    const doc = buildVoidOrderDocument(data, template)
+    const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
+    usePrintQueueStore.getState().enqueue(job)
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print a Time Sheet receipt on the receipt printer.
+   */
+  async printTimeSheet (
+    data: TimeSheetReceiptData & { locationId: string }
+  ): Promise<boolean> {
+    const printer = getReceiptPrinter(data.locationId)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer for time-sheet receipt')
+      return false
+    }
+    const template = useReceiptTemplateStore
+      .getState()
+      .getTimeSheetTemplate(data.locationId)
+    const doc = buildTimeSheetDocument(data, template)
     const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
     usePrintQueueStore.getState().enqueue(job)
     this.ensureProcessing()

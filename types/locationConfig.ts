@@ -12,6 +12,8 @@
  * Zero changes to sync infrastructure needed.
  */
 
+import type { SoundPreset } from '@/services/kds/kdsSoundService'
+
 // ============================================================================
 // NAMESPACE TYPES
 // ============================================================================
@@ -49,6 +51,7 @@ export interface KdsConfig {
 export interface PrintingConfig {
   autoPrintKitchenTickets: boolean
   autoPrintReceipt: boolean
+  autoPrintVoidReceipt: boolean
 }
 
 export interface CashDrawerConfig {
@@ -113,6 +116,13 @@ export interface PaymentConfig {
   splitEvenly: boolean
 }
 
+export interface NotificationsConfig {
+  soundEnabled: boolean
+  onlineOrderSound: SoundPreset
+  kioskOrderSound: SoundPreset
+  thirdPartyOrderSound: SoundPreset
+}
+
 // ============================================================================
 // ROOT CONFIG TYPE
 // ============================================================================
@@ -130,6 +140,7 @@ export interface LocationPosConfig {
   preAuth: PreAuthConfig
   waitlist: WaitlistConfig
   payment: PaymentConfig
+  notifications: NotificationsConfig
 }
 
 /** All valid namespace keys */
@@ -175,6 +186,7 @@ export const DEFAULT_KDS_CONFIG: KdsConfig = {
 export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {
   autoPrintKitchenTickets: true,
   autoPrintReceipt: false,
+  autoPrintVoidReceipt: true,
 }
 
 export const DEFAULT_CASH_DRAWER_CONFIG: CashDrawerConfig = {
@@ -239,6 +251,13 @@ export const DEFAULT_PAYMENT_CONFIG: PaymentConfig = {
   splitEvenly: true,
 }
 
+export const DEFAULT_NOTIFICATIONS_CONFIG: NotificationsConfig = {
+  soundEnabled: true,
+  onlineOrderSound: 'bell',
+  kioskOrderSound: 'ding',
+  thirdPartyOrderSound: 'alert',
+}
+
 export const DEFAULT_POS_CONFIG: LocationPosConfig = {
   _version: 1,
   _updated_at: null,
@@ -252,4 +271,5 @@ export const DEFAULT_POS_CONFIG: LocationPosConfig = {
   preAuth: DEFAULT_PRE_AUTH_CONFIG,
   waitlist: DEFAULT_WAITLIST_CONFIG,
   payment: DEFAULT_PAYMENT_CONFIG,
+  notifications: DEFAULT_NOTIFICATIONS_CONFIG,
 }

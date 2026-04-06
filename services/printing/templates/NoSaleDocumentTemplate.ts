@@ -6,6 +6,7 @@
  */
 
 import { PrintDocument, PrintNode } from "@/types/print-document";
+import { ReceiptTemplateConfig } from "@/types/receipt-template";
 
 export interface NoSaleReceiptData {
   storeName: string;
@@ -18,9 +19,23 @@ export interface NoSaleReceiptData {
   timestamp: string; // ISO
 }
 
-export function buildNoSaleDocument(data: NoSaleReceiptData): PrintDocument {
+export function buildNoSaleDocument(
+  data: NoSaleReceiptData,
+  config?: ReceiptTemplateConfig,
+): PrintDocument {
   const w = 32;
   const nodes: PrintNode[] = [];
+
+  // Optional custom header text
+  if (config?.headerText) {
+    nodes.push({
+      type: "text_line",
+      content: config.headerText,
+      align: "center",
+      format: { bold: true },
+    });
+    nodes.push({ type: "empty_line" });
+  }
 
   // Header
   nodes.push({
@@ -105,7 +120,9 @@ export function buildNoSaleDocument(data: NoSaleReceiptData): PrintDocument {
     format: { bold: true },
   });
 
-  if (data.approvedBy) {
+  // Gate "Approved By" by the showApprovedBy flag (default true when no config)
+  const showApprovedBy = config?.showApprovedBy ?? true;
+  if (data.approvedBy && showApprovedBy) {
     nodes.push({
       type: "two_column",
       left: "Approved By:",
@@ -122,6 +139,16 @@ export function buildNoSaleDocument(data: NoSaleReceiptData): PrintDocument {
     align: "center",
     format: { bold: true },
   });
+
+  if (config?.footerText) {
+    nodes.push({ type: "empty_line" });
+    nodes.push({
+      type: "text_line",
+      content: config.footerText,
+      align: "center",
+    });
+  }
+
   nodes.push({ type: "empty_line" });
   nodes.push({ type: "cut" });
 
