@@ -1,3 +1,4 @@
+import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import PinInputModal from '@/components/timeclock/PinInputModal'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
@@ -619,6 +620,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     fill={colors.warning}
                   />
                 )}
+                <DeliveryPlatformBadge
+                  deliveryPlatform={ticket.delivery_platform}
+                  orderSource={ticket.order_source}
+                  size='sm'
+                />
               </View>
 
               {/* Order Type */}

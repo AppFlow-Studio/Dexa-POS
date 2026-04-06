@@ -12,7 +12,6 @@
 
 import { colors } from '@/lib/theme'
 import { Globe } from 'lucide-react-native'
-import React from 'react'
 import { Image, ImageSourcePropType, Text, View } from 'react-native'
 
 // ── Logo asset map (backend platform name → bundled asset) ──────────────────
@@ -30,7 +29,7 @@ const PLATFORM_LOGOS: Record<string, ImageSourcePropType> = {
   // Food Panda / Postmates (reuse food-panda asset as placeholder)
   food_panda: require('@/assets/images/food-panda.png'),
   foodpanda: require('@/assets/images/food-panda.png'),
-  postmates: require('@/assets/images/food-panda.png'),
+  postmates: require('@/assets/images/food-panda.png')
 }
 
 // Brand accent colors (background tint for the logo container)
@@ -43,7 +42,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   'uber-eats': '#06C167',
   food_panda: '#D70F64',
   foodpanda: '#D70F64',
-  postmates: '#6E48AA',
+  postmates: '#6E48AA'
 }
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -59,17 +58,25 @@ interface DeliveryPlatformBadgeProps {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function DeliveryPlatformBadge({
+export default function DeliveryPlatformBadge ({
   deliveryPlatform,
   orderSource,
-  size = 'sm',
+  size = 'sm'
 }: DeliveryPlatformBadgeProps) {
+  const normalizedSource = orderSource?.toLowerCase().trim() ?? ''
+  const isPosLikeSource =
+    normalizedSource === '' ||
+    normalizedSource === 'pos' ||
+    normalizedSource === 'in_store' ||
+    normalizedSource === 'in-store'
+
   // POS orders → show nothing
-  if (!deliveryPlatform && (!orderSource || orderSource === 'pos' || orderSource === 'in_store')) {
+  if (!deliveryPlatform && isPosLikeSource) {
     return null
   }
 
-  const key = deliveryPlatform?.toLowerCase() ?? ''
+  // Some flows provide platform info only in order_source. Use it as a platform fallback.
+  const key = (deliveryPlatform?.toLowerCase() ?? normalizedSource).trim()
   const logo = PLATFORM_LOGOS[key]
   const accent = PLATFORM_COLORS[key] ?? colors.teal
 
@@ -90,7 +97,7 @@ export default function DeliveryPlatformBadge({
           borderColor: accent + '55',
           alignItems: 'center',
           justifyContent: 'center',
-          overflow: 'hidden',
+          overflow: 'hidden'
         }}
       >
         <Image
@@ -114,7 +121,7 @@ export default function DeliveryPlatformBadge({
         borderColor: colors.teal + '50',
         borderRadius: 20,
         paddingHorizontal: size === 'md' ? 8 : 6,
-        paddingVertical: size === 'md' ? 3 : 2,
+        paddingVertical: size === 'md' ? 3 : 2
       }}
     >
       <Globe size={size === 'md' ? 12 : 9} color={colors.teal} />

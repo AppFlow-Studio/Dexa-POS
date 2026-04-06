@@ -33,6 +33,7 @@ export interface KDSTicket {
   status: 'pending' | 'cooking' | 'ready' | 'done'
   order_type: string | null
   order_source?: string | null
+  delivery_platform?: string | null
   table_name: string | null
   customer_name: string | null
   start_time: string | null
