@@ -23,6 +23,7 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import { getTerminalMatchInfo } from '@/utils/terminalMatchGuard'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { formatDistanceToNow } from 'date-fns'
@@ -38,7 +39,6 @@ import {
   CreditCard,
   Delete,
   DollarSign,
-  Globe,
   Package,
   Printer,
   RefreshCcw,
@@ -4215,13 +4215,12 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  {/* Online Badge */}
-                  {order.order_source === 'online' && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: colors.info + '20', borderWidth: 1, borderColor: colors.info + '50', gap: 5 }}>
-                      <Globe color={colors.teal} size={11} />
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.info, textTransform: 'uppercase' }}>Online</Text>
-                    </View>
-                  )}
+                  {/* Delivery Platform / Online Badge */}
+                  <DeliveryPlatformBadge
+                    deliveryPlatform={order.delivery_platform}
+                    orderSource={order.order_source}
+                    size="sm"
+                  />
                   {/* Status Badge */}
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, gap: 6,

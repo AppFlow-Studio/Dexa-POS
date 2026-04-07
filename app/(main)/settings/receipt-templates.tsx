@@ -4,6 +4,7 @@ import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   DEFAULT_RECEIPT_TEMPLATE,
+  ModifierStyle,
   ReceiptTemplateConfig,
 } from "@/types/receipt-template";
 import {
@@ -813,28 +814,63 @@ function renderReceiptSection(
       return (
         <View>
           <View style={{ gap: 3 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ color: "#111827", fontSize: 9 }}>1x Cheeseburger</Text>
-              <Text style={{ color: "#111827", fontSize: 9 }}>$12.99</Text>
-            </View>
-            {config.showItemModifiers && (
-              <Text style={{ color: "#6b7280", fontSize: 8, marginLeft: 8 }}>
-                + Extra Cheese, No Onions
-              </Text>
+            {config.groupBySeat ? (
+              <>
+                <Text style={{ color: "#6b7280", fontSize: 8, textAlign: "center", fontWeight: "700" }}>-- SEAT 1 --</Text>
+                <View style={{ height: 1, backgroundColor: "#d1d5db", marginVertical: 2 }} />
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>1x Cheeseburger</Text>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>$12.99</Text>
+                </View>
+                {config.showItemModifiers && (
+                  <Text style={{ color: "#6b7280", fontSize: 8, marginLeft: 8 }}>
+                    + Extra Cheese, No Onions
+                  </Text>
+                )}
+                <Text style={{ color: "#6b7280", fontSize: 8, textAlign: "center", fontWeight: "700", marginTop: 4 }}>-- SEAT 2 --</Text>
+                <View style={{ height: 1, backgroundColor: "#d1d5db", marginVertical: 2 }} />
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>1x Caesar Salad</Text>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>$9.50</Text>
+                </View>
+                {config.showItemModifiers && (
+                  <Text style={{ color: "#6b7280", fontSize: 8, marginLeft: 8 }}>
+                    + Grilled Chicken
+                  </Text>
+                )}
+                <Text style={{ color: "#6b7280", fontSize: 8, textAlign: "center", fontWeight: "700", marginTop: 4 }}>-- SHARED --</Text>
+                <View style={{ height: 1, backgroundColor: "#d1d5db", marginVertical: 2 }} />
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>2x Iced Tea</Text>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>$5.98</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>1x Cheeseburger</Text>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>$12.99</Text>
+                </View>
+                {config.showItemModifiers && (
+                  <Text style={{ color: "#6b7280", fontSize: 8, marginLeft: 8 }}>
+                    + Extra Cheese, No Onions
+                  </Text>
+                )}
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>1x Caesar Salad</Text>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>$9.50</Text>
+                </View>
+                {config.showItemModifiers && (
+                  <Text style={{ color: "#6b7280", fontSize: 8, marginLeft: 8 }}>
+                    + Grilled Chicken
+                  </Text>
+                )}
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>2x Iced Tea</Text>
+                  <Text style={{ color: "#111827", fontSize: 9 }}>$5.98</Text>
+                </View>
+              </>
             )}
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ color: "#111827", fontSize: 9 }}>1x Caesar Salad</Text>
-              <Text style={{ color: "#111827", fontSize: 9 }}>$9.50</Text>
-            </View>
-            {config.showItemModifiers && (
-              <Text style={{ color: "#6b7280", fontSize: 8, marginLeft: 8 }}>
-                + Grilled Chicken
-              </Text>
-            )}
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ color: "#111827", fontSize: 9 }}>2x Iced Tea</Text>
-              <Text style={{ color: "#111827", fontSize: 9 }}>$5.98</Text>
-            </View>
           </View>
           <DottedLine />
         </View>
@@ -1018,9 +1054,22 @@ function renderKitchenSection(
           {item.qty}x {item.name}
         </Text>
       </View>
-      {config.showItemModifiers && item.mods.map((m, i) => (
-        <Text key={i} style={{ color: "#4b5563", fontSize: modFontSize, marginLeft: 10 }}>{m}</Text>
-      ))}
+      {config.showItemModifiers && item.mods.map((m, i) => {
+        const modStyle = config.modifierStyle ?? "inverted";
+        const modTextStyle: any = { fontSize: modFontSize, marginLeft: 10, fontWeight: "700" };
+        if (modStyle === "inverted") {
+          modTextStyle.backgroundColor = "#111827";
+          modTextStyle.color = "#FFFFFF";
+          modTextStyle.paddingHorizontal = 3;
+          modTextStyle.borderRadius = 2;
+          modTextStyle.alignSelf = "flex-start";
+        } else if (modStyle === "red") {
+          modTextStyle.color = "#dc2626";
+        } else {
+          modTextStyle.color = "#4b5563";
+        }
+        return <Text key={i} style={modTextStyle}>{m}</Text>;
+      })}
       {config.showAllergyAlert && item.allergy && (
         <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 10, marginTop: 2 }}>
           <TriangleAlert size={9} color="#dc2626" />
@@ -2127,6 +2176,19 @@ function ReceiptSettings({
           onToggle={(v) => updateField("showQrCode", v)}
         />
       </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Organisation"
+        subtitle="Group items by seat for table orders"
+        defaultOpen={false}
+      >
+        <ToggleRow
+          label="Group by Seat"
+          subtitle="Print items grouped under seat numbers — great for table service"
+          value={config.groupBySeat}
+          onToggle={(v) => updateField("groupBySeat", v)}
+        />
+      </CollapsibleSection>
     </>
   );
 }
@@ -2189,6 +2251,44 @@ function KitchenSettings({
           value={config.showAllergyAlert}
           onToggle={(v) => updateField("showAllergyAlert", v)}
         />
+        {config.showItemModifiers && (
+          <View style={{ marginTop: 8, paddingHorizontal: 4 }}>
+            <Text style={{ color: colors.label, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>
+              Modifier Style
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {(["inverted", "red", "bold"] as ModifierStyle[]).map((opt) => {
+                const isSelected = config.modifierStyle === opt;
+                const label = opt === "inverted" ? "Inverted" : opt === "red" ? "Red Text" : "Bold Only";
+                return (
+                  <TouchableOpacity
+                    key={opt}
+                    onPress={() => updateField("modifierStyle", opt)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      borderRadius: 8,
+                      borderWidth: 1.5,
+                      borderColor: isSelected ? colors.primary : colors.border,
+                      backgroundColor: isSelected ? colors.primary + "15" : colors.card,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: isSelected ? "700" : "500",
+                        color: isSelected ? colors.primary : colors.label,
+                      }}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -2204,11 +2304,22 @@ function KitchenSettings({
           <Text style={{ color: colors.heading, fontWeight: "700", fontSize: config.largeItemText ? 15 : 11 }}>
             2x Cheeseburger
           </Text>
-          {config.showItemModifiers && (
-            <Text style={{ color: colors.label, marginLeft: 10, fontSize: config.showModsLarge ? 13 : 9 }}>
-              + Extra Cheese
-            </Text>
-          )}
+          {config.showItemModifiers && (() => {
+            const ms = config.modifierStyle ?? "inverted";
+            const s: any = { marginLeft: 10, fontSize: config.showModsLarge ? 13 : 9, fontWeight: "700" };
+            if (ms === "inverted") {
+              s.backgroundColor = "#111827";
+              s.color = "#FFFFFF";
+              s.paddingHorizontal = 3;
+              s.borderRadius = 2;
+              s.alignSelf = "flex-start";
+            } else if (ms === "red") {
+              s.color = "#dc2626";
+            } else {
+              s.color = colors.label;
+            }
+            return <Text style={s}>+ Extra Cheese</Text>;
+          })()}
         </View>
         <ToggleRow
           label="Large Item Text"

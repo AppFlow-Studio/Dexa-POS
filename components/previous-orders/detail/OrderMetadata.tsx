@@ -1,7 +1,9 @@
+import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import { colors } from '@/lib/theme'
 import { PreviousOrder } from '@/lib/types'
 import {
   Clock,
+  Globe,
   MapPin,
   Monitor,
   ShoppingBag,
@@ -65,6 +67,40 @@ const OrderMetadata: React.FC<OrderMetadataProps> = ({ order }) => {
         label='Order Type'
         value={order.type}
       />
+
+      {(order.delivery_platform || (order.order_source && order.order_source !== 'pos' && order.order_source !== 'in_store')) && (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 7,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border
+          }}
+        >
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: colors.teal + '15',
+              borderWidth: 1,
+              borderColor: colors.teal + '30',
+              marginRight: 8
+            }}
+          >
+            <Globe color={colors.teal} size={15} />
+          </View>
+          <Text style={{ fontSize: 12, color: colors.label, flex: 1 }}>Platform</Text>
+          <DeliveryPlatformBadge
+            deliveryPlatform={order.delivery_platform}
+            orderSource={order.order_source}
+            size='sm'
+          />
+        </View>
+      )}
 
       {order.service_location_name && (
         <MetadataRow

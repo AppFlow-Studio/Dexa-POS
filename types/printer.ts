@@ -251,6 +251,7 @@ export interface ReceiptItemData {
   isVoided: boolean;
   modifiers: { name: string; price: number; isNo?: boolean }[];
   notes?: string;
+  seatNumber?: number | null; // Which seat (1..N), null = shared/unassigned
 }
 
 export interface ReceiptPaymentData {

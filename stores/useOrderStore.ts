@@ -63,6 +63,7 @@ import {
   invalidateCalculationCache,
   scheduleCalculationCacheInvalidation
 } from '@/lib/order-calculator'
+import { normalizePlatform } from '@/lib/platformAliases'
 import { queueFailedOperation } from '@/services/offlineSyncInit'
 import {
   getIsOnline,
@@ -4143,7 +4144,9 @@ export const useOrderStore = create<OrderState>()(
 
               // Order source
               order_source: serverOrder.order_source ?? null,
-              delivery_platform: serverOrder.delivery_platform ?? null,
+              delivery_platform: serverOrder.delivery_platform
+                ?? normalizePlatform((serverOrder as any).metadata?.delivery_company)
+                ?? null,
 
               // Station tracking (for display)
               _sourceStationId: serverOrder.station_id ?? null,
@@ -9989,7 +9992,9 @@ export const useOrderStore = create<OrderState>()(
                   // Session tracking - sync from database
                   session_id: dbOrder.session_id,
                   order_source: dbOrder.order_source ?? null,
-                  delivery_platform: dbOrder.delivery_platform ?? null,
+                  delivery_platform: dbOrder.delivery_platform
+                    ?? normalizePlatform((dbOrder as any).metadata?.delivery_company)
+                    ?? null,
                   sync_status: 'synced'
                 }
 

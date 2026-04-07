@@ -19,6 +19,7 @@ import type {
     OrderRefundItemRecord,
     ReversalRecord,
 } from "@/lib/types";
+import { normalizePlatform } from "@/lib/platformAliases";
 
 /**
  * Derive cashSavings for a cash-priced payment.
@@ -656,9 +657,9 @@ export function transformBroadcastToOrder(
 
     // Order source
     order_source: backendOrder.order_source ?? undefined,
-    delivery_platform: backendOrder.delivery_platform ?? undefined,
-
-    // Split payment path (multi-station sync)
+      delivery_platform: backendOrder.delivery_platform
+        ?? normalizePlatform((backendOrder as any).metadata?.delivery_company)
+        ?? undefined,
     split_payment_path: (backendOrder.split_payment_path as import("@/lib/types").SplitPaymentPath) ?? null,
 
     // Sync status - already synced since from DB
@@ -743,6 +744,7 @@ export interface FetchedOrderData {
   // Nested relations from Supabase
   order_items?: FetchedOrderItem[];
   order_payments?: FetchedOrderPayment[];
+  metadata?: Record<string, unknown> | null;
   stations?: { station_name: string } | null;
   created_by_staff?: { first_name: string; last_name: string } | null;
 }
@@ -1134,9 +1136,9 @@ export function normalizeFetchedOrder(
 
     // Order source
     order_source: fetchedOrder.order_source ?? null,
-    delivery_platform: fetchedOrder.delivery_platform ?? null,
-
-    // Split payment path
+      delivery_platform: fetchedOrder.delivery_platform
+        ?? normalizePlatform(fetchedOrder.metadata?.delivery_company)
+        ?? null,
     split_payment_path: fetchedOrder.split_payment_path ?? null,
 
     // Sync

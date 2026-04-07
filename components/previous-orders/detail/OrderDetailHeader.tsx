@@ -1,3 +1,4 @@
+import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import { colors } from '@/lib/theme'
 import { PreviousOrder } from '@/lib/types'
 import { ArrowLeft, ShoppingBag, Truck, Utensils } from 'lucide-react-native'
@@ -176,6 +177,13 @@ const OrderDetailHeader: React.FC<OrderDetailHeaderProps> = ({
               {order.type}
             </Text>
           </View>
+
+          {/* Delivery Platform */}
+          <DeliveryPlatformBadge
+            deliveryPlatform={order.delivery_platform}
+            orderSource={order.order_source}
+            size="sm"
+          />
         </View>
       </View>
     </View>

@@ -122,17 +122,31 @@ export function useTableSession (
 
   // Reactive order subscription — raw selector (inlined O(1) lookup for narrow subscription)
   const rawActiveOrder = useOrderStore(state => {
+    // Priority 1: resolve via session's order_id (DB UUID → local key via index)
     if (sessionOrderId) {
       const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId
       const found = state.ordersById[localKey]
       if (found) return found
     }
+    // Priority 2: active order already set and belongs to this table
     if (state.activeOrderId) {
       const active = state.ordersById[state.activeOrderId]
-      // Table-scoped fallback: if active order belongs to this table, use it
-      // even when sessionOrderId doesn't resolve (handles localId → dbUUID transition)
       if (active?.service_location_id === tableId) return active
-      return undefined
+    }
+    // Priority 3: scan ordersById for any active order for this table
+    // (handles gaps where activeOrderId is transiently null but order still exists)
+    const keys = Object.keys(state.ordersById)
+    for (let i = 0; i < keys.length; i++) {
+      const o = state.ordersById[keys[i]]
+      if (
+        o.service_location_id === tableId &&
+        o.order_status !== 'completed' &&
+        o.order_status !== 'void' &&
+        o.order_status !== 'voided' &&
+        o.order_status !== 'cancelled'
+      ) {
+        return o
+      }
     }
     return undefined
   })
@@ -167,8 +181,11 @@ export function useTableSession (
   }, [tableId])
 
   // Set active order when we have one (no cleanup on re-run)
+  // Also re-claims if the store's activeOrderId was externally cleared while we still have the order
   useEffect(() => {
-    if (activeOrder?.id && activeOrder.id !== lastSetOrderIdRef.current) {
+    if (!activeOrder?.id) return
+    const storeActiveId = useOrderStore.getState().activeOrderId
+    if (activeOrder.id !== lastSetOrderIdRef.current || storeActiveId !== activeOrder.id) {
       lastSetOrderIdRef.current = activeOrder.id
       setActiveOrder(activeOrder.id)
     }

@@ -235,13 +235,26 @@ function pushSingleItem (
         break
     }
 
+    if (cfg?.showModsLarge) {
+      modFormat = { ...modFormat, doubleHeight: true }
+    }
+
     for (const mod of item.modifiers) {
       const isNo = mod.startsWith('NO ')
-      nodes.push({
-        type: 'text_line',
-        content: `  ${isNo ? '-' : '+'} ${mod}`,
-        format: modFormat
-      })
+      if (modStyle === 'inverted') {
+        // Reduced indent for inverted — avoids full-line black bar on leading whitespace
+        nodes.push({
+          type: 'text_line',
+          content: ` ${isNo ? '-' : '+'} ${mod}`,
+          format: modFormat
+        })
+      } else {
+        nodes.push({
+          type: 'text_line',
+          content: `  ${isNo ? '-' : '+'} ${mod}`,
+          format: modFormat
+        })
+      }
     }
   }
 

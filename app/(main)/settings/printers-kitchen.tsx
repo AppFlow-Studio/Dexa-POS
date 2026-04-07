@@ -49,7 +49,7 @@ import {
 } from "@/services/printing/discovery/StarPrinterDiscovery";
 import { toastService } from "@/lib/toastService";
 import { formatDistanceToNow } from "date-fns";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -414,6 +414,20 @@ const PrintersKitchenScreen = () => {
     };
   }, []);
 
+  // Auto-scan for Star printers when Printers tab opens
+  const hasAutoScannedRef = useRef(false);
+  useEffect(() => {
+    if (activeTab === "printers" && !hasAutoScannedRef.current && selectedStation && selectedStore && !isScanningStar) {
+      hasAutoScannedRef.current = true;
+      handleScanStarPrinters();
+    }
+  }, [activeTab, selectedStation?.id, selectedStore?.id]);
+
+  // Reset auto-scan flag when station changes
+  useEffect(() => {
+    hasAutoScannedRef.current = false;
+  }, [selectedStation?.id]);
+
   // Initialize advanced drafts when configure panel opens
   useEffect(() => {
     if (!editingPrinterId) return;
@@ -460,10 +474,10 @@ const PrintersKitchenScreen = () => {
   const dejavooPrinter = visiblePrinters.find((p) => p.printerType === "dejavoo_spin_p") ?? null;
   const builtinPrinter = visiblePrinters.find((p) => p.printerType === "builtin_landi") ?? null;
   const receiptPrinters = visiblePrinters.filter(
-    (p) => p.printerRole === "receipt",
+    (p) => p.printerRole === "receipt" || p.isDefaultReceipt,
   );
   const kitchenPrinters = visiblePrinters.filter(
-    (p) => p.printerRole === "kitchen" || p.printerRole === "bar",
+    (p) => p.printerRole === "kitchen" || p.printerRole === "bar" || p.isDefaultKitchen,
   );
   const connectedCount = visiblePrinters.filter((p) => p.isActive && p.isConnected).length;
   const totalActive = visiblePrinters.filter((p) => p.isActive).length;
@@ -573,19 +587,24 @@ const PrintersKitchenScreen = () => {
     }
   };
 
-  const handleProvisionStar = async (discovered: DiscoveredStarPrinter, roleOverride?: "receipt" | "kitchen") => {
+  const handleProvisionStar = async (discovered: DiscoveredStarPrinter, roleOverride?: "receipt" | "kitchen" | "both") => {
     if (!selectedStation || !selectedStore) return;
     setProvisioningStarIp(discovered.ipAddress);
     try {
+      const actualRole = roleOverride === "both" ? "receipt" : (roleOverride ?? starRoleOverrides[discovered.ipAddress] ?? discovered.capabilities.suggestedRole);
       const printerId = await provisionStarPrinter(
         supabase,
         selectedStation.id,
         selectedStore.id,
         selectedStore.merchant_id,
         discovered,
-        roleOverride ?? starRoleOverrides[discovered.ipAddress] ?? discovered.capabilities.suggestedRole,
+        actualRole,
       );
       if (printerId) {
+        // If "both" role, mark as dual-role printer
+        if (roleOverride === "both") {
+          await updatePrinterConfig(printerId, { isDefaultReceipt: true, isDefaultKitchen: true });
+        }
         const verified = await verifyStarPrinter(supabase, printerId);
         await fetchPrinters(selectedStore.id);
         if (verified) {
@@ -932,94 +951,6 @@ const PrintersKitchenScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Star Discovery results (inline) */}
-        {isScanningStar && (
-          <View style={{ alignItems: "center", paddingVertical: 16 }}>
-            <ActivityIndicator size="large" color={accentColor} />
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>Scanning for Star printers...</Text>
-          </View>
-        )}
-
-        {starScanError && (
-          <View style={{ backgroundColor: colors.danger + "12", borderWidth: 1, borderColor: colors.danger + "30", borderRadius: 8, padding: 10, marginBottom: 10 }}>
-            <Text style={{ fontSize: 12, color: colors.danger }}>{starScanError}</Text>
-          </View>
-        )}
-
-        {discoveredStarPrinters.map((dp) => {
-          const alreadyAdded = storedPrinters.some(
-            (p) => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress && p.stationId === selectedStation?.id,
-          );
-          const isProvisioningThis = provisioningStarIp === dp.ipAddress;
-
-          return (
-            <View
-              key={dp.ipAddress}
-              style={{
-                backgroundColor: colors.panel,
-                padding: 10,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.border,
-                marginBottom: 6,
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Printer size={13} color={accentColor} />
-                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading, marginLeft: 6 }}>{dp.modelName}</Text>
-                    {alreadyAdded && (
-                      <View style={{ backgroundColor: colors.success + "20", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 6 }}>
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: colors.success }}>Added</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
-                    <Wifi size={10} color={colors.muted} />
-                    <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 4 }}>{dp.ipAddress}</Text>
-                    {dp.macAddress && (
-                      <Text style={{ fontSize: 10, color: colors.muted, marginLeft: 10 }}>{dp.macAddress}</Text>
-                    )}
-                  </View>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 4, gap: 4 }}>
-                    <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                      <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.paperWidth}mm</Text>
-                    </View>
-                    <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                      <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.maxCharsPerLine} chars</Text>
-                    </View>
-                    <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                      <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.supportsAutoCut ? "Auto-cut" : "Tear-off"}</Text>
-                    </View>
-                  </View>
-                </View>
-                {!alreadyAdded && (
-                  <TouchableOpacity
-                    onPress={() => handleProvisionStar(dp, forRole)}
-                    disabled={isProvisioningThis}
-                    style={{
-                      marginLeft: 10,
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 8,
-                      backgroundColor: accentColor + "20",
-                      borderWidth: 1,
-                      borderColor: accentColor + "50",
-                    }}
-                  >
-                    {isProvisioningThis ? (
-                      <ActivityIndicator size="small" color={accentColor} />
-                    ) : (
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: accentColor }}>Add</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          );
-        })}
-
         {/* Dejavoo provisioning — only in receipt panel */}
         {isReceipt && paymentTerminal?.terminal_type === "dejavoo" && !hasDejavooPrinter && (
           <View style={{ backgroundColor: colors.panel, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginTop: 6 }}>
@@ -1287,6 +1218,25 @@ const PrintersKitchenScreen = () => {
               </View>
             )}
 
+            {/* Cross-role: receipt printer also prints kitchen tickets */}
+            {draftRole === "receipt" && (
+              <View style={{
+                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                paddingHorizontal: 12, paddingVertical: 10,
+                backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+                marginBottom: 8,
+              }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Also prints kitchen tickets</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>This printer will also receive kitchen orders</Text>
+                </View>
+                <Switch
+                  checked={draftDefaultKitchen}
+                  onCheckedChange={(v) => setDraftPrinterEdits((prev) => ({ ...prev, isDefaultKitchen: v }))}
+                />
+              </View>
+            )}
+
             {/* Default Kitchen toggle + Routing */}
             {(draftRole === "kitchen" || draftRole === "bar") && (
               <>
@@ -1328,6 +1278,22 @@ const PrintersKitchenScreen = () => {
                   </View>
                   <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Edit →</Text>
                 </TouchableOpacity>
+                {/* Cross-role: kitchen printer also prints receipts */}
+                <View style={{
+                  flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                  paddingHorizontal: 12, paddingVertical: 10,
+                  backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+                  marginBottom: 8,
+                }}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Also prints receipts</Text>
+                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>This printer will also print customer receipts</Text>
+                  </View>
+                  <Switch
+                    checked={draftDefaultReceipt}
+                    onCheckedChange={(v) => setDraftPrinterEdits((prev) => ({ ...prev, isDefaultReceipt: v }))}
+                  />
+                </View>
               </>
             )}
 
@@ -1788,6 +1754,137 @@ const PrintersKitchenScreen = () => {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Discovered Printers Section */}
+            {(isScanningStar || discoveredStarPrinters.some(dp => !storedPrinters.some(p => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress))) && (
+              <View style={{ marginBottom: 12 }}>
+                <SectionHeader
+                  title="Discovered Printers"
+                  rightContent={
+                    <TouchableOpacity
+                      onPress={handleScanStarPrinters}
+                      disabled={isScanningStar}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.teal + "15", borderRadius: 6 }}
+                    >
+                      {isScanningStar ? (
+                        <ActivityIndicator size="small" color={colors.teal} />
+                      ) : (
+                        <>
+                          <RefreshCw size={11} color={colors.teal} />
+                          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Refresh</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  }
+                />
+                {isScanningStar && discoveredStarPrinters.length === 0 && (
+                  <View style={{ alignItems: "center", paddingVertical: 20, backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+                    <ActivityIndicator size="large" color={colors.teal} />
+                    <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>Scanning for Star printers...</Text>
+                  </View>
+                )}
+                {starScanError && (
+                  <View style={{ backgroundColor: colors.danger + "12", borderWidth: 1, borderColor: colors.danger + "30", borderRadius: 8, padding: 10, marginBottom: 6 }}>
+                    <Text style={{ fontSize: 12, color: colors.danger }}>{starScanError}</Text>
+                  </View>
+                )}
+                {discoveredStarPrinters.filter(dp => !storedPrinters.some(p => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress)).map((dp) => {
+                  const isProvisioningThis = provisioningStarIp === dp.ipAddress;
+                  return (
+                    <View
+                      key={dp.ipAddress}
+                      style={{
+                        backgroundColor: colors.card,
+                        padding: 12,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                        <Printer size={14} color={colors.teal} />
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, marginLeft: 6, flex: 1 }}>{dp.modelName}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <Wifi size={10} color={colors.muted} />
+                          <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 4 }}>{dp.ipAddress}</Text>
+                        </View>
+                      </View>
+                      {dp.macAddress && (
+                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 6 }}>MAC: {dp.macAddress}</Text>
+                      )}
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                        <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.paperWidth}mm</Text>
+                        </View>
+                        <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.maxCharsPerLine} chars</Text>
+                        </View>
+                        <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.supportsAutoCut ? "Auto-cut" : "Tear-off"}</Text>
+                        </View>
+                        {dp.capabilities.graphicsOnly && (
+                          <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 10, color: colors.label }}>Graphics-only</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={{ flexDirection: "row", gap: 6 }}>
+                        <TouchableOpacity
+                          onPress={() => handleProvisionStar(dp, "receipt")}
+                          disabled={isProvisioningThis}
+                          style={{
+                            flex: 1,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            alignItems: "center",
+                            backgroundColor: isProvisioningThis ? colors.border : colors.teal + "15",
+                            borderWidth: 1,
+                            borderColor: isProvisioningThis ? colors.border : colors.teal + "40",
+                          }}
+                        >
+                          {isProvisioningThis ? (
+                            <ActivityIndicator size="small" color={colors.teal} />
+                          ) : (
+                            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Add as Receipt</Text>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleProvisionStar(dp, "kitchen")}
+                          disabled={isProvisioningThis}
+                          style={{
+                            flex: 1,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            alignItems: "center",
+                            backgroundColor: isProvisioningThis ? colors.border : "#f97316" + "15",
+                            borderWidth: 1,
+                            borderColor: isProvisioningThis ? colors.border : "#f97316" + "40",
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: "600", color: isProvisioningThis ? colors.muted : "#f97316" }}>Add as Kitchen</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleProvisionStar(dp, "both")}
+                          disabled={isProvisioningThis}
+                          style={{
+                            flex: 1,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            alignItems: "center",
+                            backgroundColor: isProvisioningThis ? colors.border : "#8b5cf6" + "15",
+                            borderWidth: 1,
+                            borderColor: isProvisioningThis ? colors.border : "#8b5cf6" + "40",
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: "600", color: isProvisioningThis ? colors.muted : "#8b5cf6" }}>Add as Both</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             {/* Print Queue Banner */}
             {(queuedJobCount > 0 || failedJobCount > 0) && (

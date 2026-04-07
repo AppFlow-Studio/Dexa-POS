@@ -1,3 +1,4 @@
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { isValidUUID } from "@/lib/offlineIdRegistry";
@@ -8,6 +9,7 @@ import {
     getCachedCustomers,
     linkCustomerToOrder,
     processCustomerQueue,
+    updateCustomerInfo,
 } from "@/services/customer";
 import { getIsOnline } from "@/services/offlineSyncService";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
@@ -15,6 +17,7 @@ import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { CustomerWithMeta } from "@/types/customer";
+import { formatAddress, parseAddressString } from "@/utils/addressUtils";
 import { ArrowLeft, Search, X } from "lucide-react-native";
 import React, {
     useCallback,
@@ -37,24 +40,7 @@ import {
 } from "react-native";
 import { colors } from "@/lib/theme";
 
-export const formatAddress = (address: string | null | undefined) => {
-  if (!address) return "";
-  try {
-    const parsed = JSON.parse(address);
-    if (parsed && typeof parsed === "object") {
-      const parts = [
-        parsed.street,
-        parsed.city,
-        parsed.state,
-        parsed.zip,
-      ].filter(Boolean);
-      return parts.join(", ");
-    }
-    return address;
-  } catch {
-    return address;
-  }
-};
+export { formatAddress } from "@/utils/addressUtils";
 
 const CustomerSheet: React.FC = () => {
   const { isOpen, closeSheet } = useCustomerSheetStore();
@@ -65,7 +51,8 @@ const CustomerSheet: React.FC = () => {
   const { show } = useToast();
   const supabase = useSupabaseClient();
 
-  const [viewMode, setViewMode] = useState<"search" | "add">("search");
+  const [viewMode, setViewMode] = useState<"search" | "add" | "edit">("search");
+  const [editingCustomer, setEditingCustomer] = useState<CustomerWithMeta | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -73,6 +60,7 @@ const CustomerSheet: React.FC = () => {
   const [city, setCity] = useState("");
   const [stateCode, setStateCode] = useState("");
   const [zip, setZip] = useState("");
+  const [addressDisplay, setAddressDisplay] = useState("");
   const [customers, setCustomers] = useState<CustomerWithMeta[]>([]);
   const isAssignDisabled = !activeOrderId;
 
@@ -152,13 +140,11 @@ const CustomerSheet: React.FC = () => {
       return;
     }
 
-    const displayAddress = formatAddress(customer.address);
-
     updateActiveOrderDetails({
       customer_name: customer.name || "",
       customer_phone: customer.phone ?? customer.phoneNumber ?? "",
       customer_email: customer.email || "",
-      delivery_address: displayAddress,
+      delivery_address: customer.address || "",
       customer_id: customer.id,
     });
 
@@ -271,6 +257,73 @@ const CustomerSheet: React.FC = () => {
     setCity("");
     setStateCode("");
     setZip("");
+    setAddressDisplay("");
+    setEditingCustomer(null);
+  };
+
+  const handleLongPressCustomer = useCallback((customer: CustomerWithMeta) => {
+    setEditingCustomer(customer);
+    setNewName(customer.name || "");
+
+    // Format phone for read-only display
+    const rawPhone = (customer.phone ?? customer.phoneNumber ?? "").replace(/\D/g, "");
+    let formatted = rawPhone;
+    if (rawPhone.length > 6) {
+      formatted = `(${rawPhone.slice(0, 3)}) - ${rawPhone.slice(3, 6)} - ${rawPhone.slice(6, 10)}`;
+    } else if (rawPhone.length > 3) {
+      formatted = `(${rawPhone.slice(0, 3)}) - ${rawPhone.slice(3)}`;
+    } else if (rawPhone.length > 0) {
+      formatted = `(${rawPhone}`;
+    }
+    setNewPhone(formatted);
+
+    // Parse structured address if available
+    const parsed = parseAddressString(customer.address);
+    if (parsed) {
+      setStreet(parsed.street);
+      setCity(parsed.city);
+      setStateCode(parsed.state);
+      setZip(parsed.zip);
+      setAddressDisplay(formatAddress(customer.address));
+    } else {
+      setStreet(customer.address || "");
+      setCity("");
+      setStateCode("");
+      setZip("");
+      setAddressDisplay(customer.address || "");
+    }
+    setViewMode("edit");
+  }, []);
+
+  const handleSaveEditCustomer = async () => {
+    if (!editingCustomer) return;
+    if (!newName.trim()) {
+      show({ title: "Missing Name", message: "Customer name is required.", type: "error" });
+      return;
+    }
+
+    const addressObj = {
+      street: street.trim(),
+      city: city.trim(),
+      state: stateCode.trim(),
+      zip: zip.trim(),
+    };
+    const hasAddress = Object.values(addressObj).some((val) => val.length > 0);
+    const addressString = hasAddress ? JSON.stringify(addressObj) : "";
+
+    try {
+      await updateCustomerInfo(
+        editingCustomer.id,
+        { name: newName.trim(), address: addressString },
+        supabase
+      );
+      setCustomers(getCachedCustomers());
+      show({ title: "Customer Updated", message: `${newName.trim()} has been updated.`, type: "success" });
+      setViewMode("search");
+      clearForm();
+    } catch (error: any) {
+      show({ title: "Could Not Update", message: error.message, type: "error" });
+    }
   };
 
   const handleClose = () => {
@@ -303,13 +356,13 @@ const CustomerSheet: React.FC = () => {
               {/* Header */}
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: colors.border }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  {viewMode === "add" && (
-                    <TouchableOpacity onPress={() => setViewMode("search")}>
+                  {(viewMode === "add" || viewMode === "edit") && (
+                    <TouchableOpacity onPress={() => { setViewMode("search"); clearForm(); }}>
                       <ArrowLeft color={colors.label} size={16} />
                     </TouchableOpacity>
                   )}
                   <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "700" }}>
-                    {viewMode === "search" ? "Assign Customer" : "Add Customer"}
+                    {viewMode === "search" ? "Assign Customer" : viewMode === "add" ? "Add Customer" : "Edit Customer"}
                   </Text>
                 </View>
                 <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
@@ -358,6 +411,7 @@ const CustomerSheet: React.FC = () => {
                             key={c.id}
                             disabled={isAssignDisabled}
                             onPress={() => handleSelectCustomer(c)}
+                            onLongPress={() => handleLongPressCustomer(c)}
                             style={{
                               flex: 1,
                               flexDirection: 'row',
@@ -398,6 +452,7 @@ const CustomerSheet: React.FC = () => {
                       <TouchableOpacity
                         disabled={isAssignDisabled}
                         onPress={() => handleSelectCustomer(item)}
+                        onLongPress={() => handleLongPressCustomer(item)}
                         style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1, marginBottom: 6, backgroundColor: colors.card, borderColor: colors.border, opacity: isAssignDisabled ? 0.6 : 1 }}
                       >
                         <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", marginRight: 10, backgroundColor: colors.teal + "20" }}>
@@ -427,7 +482,9 @@ const CustomerSheet: React.FC = () => {
               ) : (
                 <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
                   <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
-                    <Text style={{ color: colors.muted, fontSize: 11 }}>Address fields are optional.</Text>
+                    <Text style={{ color: colors.muted, fontSize: 11 }}>
+                      {viewMode === "edit" ? "Update customer name or address. Phone number cannot be changed." : "Address fields are optional."}
+                    </Text>
 
                     <View style={{ gap: 5 }}>
                       <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>Full Name *</Text>
@@ -441,30 +498,69 @@ const CustomerSheet: React.FC = () => {
                     </View>
 
                     <View style={{ gap: 5 }}>
-                      <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>Phone Number *</Text>
+                      <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>
+                        Phone Number {viewMode === "add" ? "*" : "(read-only)"}
+                      </Text>
                       <TextInput
                         value={newPhone}
-                        onChangeText={handlePhoneChange}
+                        onChangeText={viewMode === "edit" ? undefined : handlePhoneChange}
+                        editable={viewMode !== "edit"}
                         placeholder="(555) - 555 - 5555"
                         maxLength={20}
                         keyboardType="phone-pad"
                         placeholderTextColor={colors.muted}
-                        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.teal + "60", borderRadius: 8, height: 38, paddingHorizontal: 12, color: colors.heading, fontSize: 13 }}
+                        style={{
+                          backgroundColor: viewMode === "edit" ? colors.card + "80" : colors.card,
+                          borderWidth: 1,
+                          borderColor: viewMode === "edit" ? colors.border : colors.teal + "60",
+                          borderRadius: 8,
+                          height: 38,
+                          paddingHorizontal: 12,
+                          color: viewMode === "edit" ? colors.muted : colors.heading,
+                          fontSize: 13,
+                        }}
                       />
                     </View>
 
                     <View style={{ gap: 5 }}>
                       <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>Delivery Address</Text>
-                      <TextInput value={street} onChangeText={setStreet} placeholder="Street Address" placeholderTextColor={colors.muted} style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, height: 38, paddingHorizontal: 12, color: colors.heading, fontSize: 13 }} />
-                      <View style={{ flexDirection: "row", gap: 8 }}>
-                        <TextInput value={city} onChangeText={setCity} placeholder="City" placeholderTextColor={colors.muted} style={{ flex: 2, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, height: 38, paddingHorizontal: 12, color: colors.heading, fontSize: 13 }} />
-                        <TextInput value={stateCode} onChangeText={setStateCode} placeholder="State" placeholderTextColor={colors.muted} style={{ flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, height: 38, paddingHorizontal: 12, color: colors.heading, fontSize: 13 }} />
-                      </View>
-                      <TextInput value={zip} onChangeText={setZip} placeholder="Zip Code" keyboardType="numeric" placeholderTextColor={colors.muted} style={{ width: "50%", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, height: 38, paddingHorizontal: 12, color: colors.heading, fontSize: 13 }} />
+                      <AddressAutocomplete
+                        value={addressDisplay}
+                        onChangeText={(text) => {
+                          setAddressDisplay(text);
+                          setStreet(text);
+                          setCity("");
+                          setStateCode("");
+                          setZip("");
+                        }}
+                        onAddressSelected={(addr) => {
+                          setStreet(addr.street);
+                          setCity(addr.city);
+                          setStateCode(addr.state);
+                          setZip(addr.zip);
+                          setAddressDisplay(
+                            [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(", ")
+                          );
+                        }}
+                        placeholder="Search address..."
+                        inline
+                      />
+                      {(city || stateCode || zip) && (
+                        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                          {[street, city, stateCode, zip].filter(Boolean).map((v, i) => (
+                            <Text key={i} style={{ fontSize: 11, color: colors.muted, backgroundColor: colors.card, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: colors.border }}>{v}</Text>
+                          ))}
+                        </View>
+                      )}
                     </View>
 
-                    <TouchableOpacity onPress={handleSaveNewCustomer} style={{ borderRadius: 8, height: 38, alignItems: "center", justifyContent: "center", marginTop: 4, backgroundColor: colors.teal + "18", borderWidth: 1, borderColor: colors.teal + "50" }}>
-                      <Text style={{ color: colors.teal, fontSize: 13, fontWeight: "700" }}>Save Customer</Text>
+                    <TouchableOpacity
+                      onPress={viewMode === "edit" ? handleSaveEditCustomer : handleSaveNewCustomer}
+                      style={{ borderRadius: 8, height: 38, alignItems: "center", justifyContent: "center", marginTop: 4, backgroundColor: colors.teal + "18", borderWidth: 1, borderColor: colors.teal + "50" }}
+                    >
+                      <Text style={{ color: colors.teal, fontSize: 13, fontWeight: "700" }}>
+                        {viewMode === "edit" ? "Update Customer" : "Save Customer"}
+                      </Text>
                     </TouchableOpacity>
                   </ScrollView>
                 </KeyboardAvoidingView>
