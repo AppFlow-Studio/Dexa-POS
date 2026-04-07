@@ -160,8 +160,12 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const handleIncrementRef = useRef<() => void>(() => {})
   const incrementThrottleRef = useRef(0)
   const swipeActivatedRef = useRef(false)
-  const markSwipeActive = () => { swipeActivatedRef.current = true }
-  const resetSwipeActive = () => { swipeActivatedRef.current = false }
+  // Stable refs so the worklet always calls the same function pointer
+  const markSwipeActiveRef = useRef(() => { swipeActivatedRef.current = true })
+  const resetSwipeActiveRef = useRef(() => {
+    // Delay reset so handleNotesPress runs first before the guard clears
+    setTimeout(() => { swipeActivatedRef.current = false }, 300)
+  })
 
   // Reset animation when item becomes voided
   useEffect(() => {
@@ -190,6 +194,17 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         : withTiming(0, { duration: 100 })
   }))
 
+  // Check if item is in draft/new state (simple delete) or in kitchen (needs void reason)
+  const isKitchenItem =
+    item.kitchen_status === 'sent' ||
+    item.kitchen_status === 'preparing' ||
+    item.kitchen_status === 'ready' ||
+    item.kitchen_status === 'served'
+
+  // Shared value so the worklet can read isKitchenItem on the UI thread
+  const isKitchenItemSV = useSharedValue(isKitchenItem)
+  isKitchenItemSV.value = isKitchenItem
+
   // Pan gesture to reveal delete (left) or increment (right)
   // OPTIMIZED: Memoize gesture to prevent recreation on each render
   const MAX_LEFT = -DELETE_BUTTON_WIDTH
@@ -198,9 +213,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     () =>
       Gesture.Pan()
         .onUpdate(e => {
-          const next = Math.max(MAX_LEFT, Math.min(MAX_RIGHT, e.translationX))
+          const rightLimit = isKitchenItemSV.value ? 0 : MAX_RIGHT
+          const next = Math.max(MAX_LEFT, Math.min(rightLimit, e.translationX))
           translateX.value = next
-          if (Math.abs(next) > 5) runOnJS(markSwipeActive)()
+          if (Math.abs(next) > 5) runOnJS(markSwipeActiveRef.current)()
         })
         .onEnd(() => {
           if (translateX.value > MAX_RIGHT / 2) {
@@ -211,19 +227,12 @@ const BillItemComponent: React.FC<BillItemProps> = ({
           } else {
             translateX.value = withTiming(0)
           }
-          runOnJS(resetSwipeActive)()
+          runOnJS(resetSwipeActiveRef.current)()
         })
         .activeOffsetX([-20, 20])
         .failOffsetY([-20, 20]),
-    [translateX]
+    [translateX, isKitchenItemSV]
   )
-
-  // Check if item is in draft/new state (simple delete) or in kitchen (needs void reason)
-  const isKitchenItem =
-    item.kitchen_status === 'sent' ||
-    item.kitchen_status === 'preparing' ||
-    item.kitchen_status === 'ready' ||
-    item.kitchen_status === 'served'
 
   const handleDelete = () => {
     if (!activeOrderId) return
@@ -261,7 +270,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   }
 
   const handleIncrement = () => {
-    if (!activeOrderId || !isEditable || item.is_voided) return
+    if (!activeOrderId || !isEditable || item.is_voided || isKitchenItem) return
     const now = Date.now()
     if (now - incrementThrottleRef.current < 400) return
     incrementThrottleRef.current = now
@@ -452,7 +461,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         </Animated.View>
       )}
 
-      {isEditable && !isVoided && (
+      {isEditable && !isVoided && !isKitchenItem && (
         <Animated.View
           style={incrementButtonStyle}
           className='absolute top-0 left-1 h-full justify-center items-start self-center z-10'
