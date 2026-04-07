@@ -134,12 +134,8 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
     // Navigate to station select
     replaceRoute('(auth)', 'station-select');
 
-    // Reset kick state
-    isKickedRef.current = false;
+    // Hide the modal but keep isKickedRef.current = true so no further triggers fire
     setIsKicked(false);
-    setKickedBy(null);
-    setKickReason(null);
-    setCountdown(KICK_COUNTDOWN_SECONDS);
   }, [setStationSessionId, clearSelectedStation, router]);
 
   // ============================================================================
@@ -414,12 +410,17 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
     };
   }, []);
 
-  // Debug: Log initialization
+  // Reset kick state when a new session starts
   useEffect(() => {
-    console.log(
-      `[KickListener] Initialized - deviceId: ${deviceId}, sessionId: ${stationSessionId}`
-    );
-  }, [deviceId, stationSessionId]);
+    if (stationSessionId) {
+      isKickedRef.current = false;
+      isVoluntaryLogoutRef.current = false;
+      setIsKicked(false);
+      setKickedBy(null);
+      setKickReason(null);
+      setCountdown(KICK_COUNTDOWN_SECONDS);
+    }
+  }, [stationSessionId]);
 
   return {
     isKicked,
