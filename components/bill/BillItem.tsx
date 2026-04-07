@@ -7,11 +7,12 @@ import {
   useItemSyncError,
   useItemSyncStatus
 } from '@/stores/useSyncStatusStore'
-import { AlertCircle, Banknote, Trash2 } from 'lucide-react-native'
-import React, { useEffect, useMemo, useState } from 'react'
+import { AlertCircle, Banknote, Plus, Trash2 } from 'lucide-react-native'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming
@@ -26,6 +27,7 @@ interface BillItemProps {
 }
 
 const DELETE_BUTTON_WIDTH = 90
+const INCREMENT_BUTTON_WIDTH = 90
 
 function getKitchenBorderColor (kitchenStatus?: string): string | undefined {
   switch (kitchenStatus) {
@@ -128,6 +130,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const removeItemFromActiveOrder = useOrderStore(
     s => s.removeItemFromActiveOrder
   )
+  const incrementItemQuantity = useOrderStore(s => s.incrementItemQuantity)
   const openToView = useModifierSidebarStore(s => s.openToView)
   const openToEdit = useModifierSidebarStore(s => s.openToEdit)
   const isModifierActive = useModifierSidebarStore(
@@ -154,6 +157,15 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
   const translateX = useSharedValue(0)
   const [showVoidDialog, setShowVoidDialog] = useState(false)
+  const handleIncrementRef = useRef<() => void>(() => {})
+  const incrementThrottleRef = useRef(0)
+  const swipeActivatedRef = useRef(false)
+  // Stable refs so the worklet always calls the same function pointer
+  const markSwipeActiveRef = useRef(() => { swipeActivatedRef.current = true })
+  const resetSwipeActiveRef = useRef(() => {
+    // Delay reset so handleNotesPress runs first before the guard clears
+    setTimeout(() => { swipeActivatedRef.current = false }, 300)
+  })
 
   // Reset animation when item becomes voided
   useEffect(() => {
@@ -166,7 +178,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     transform: [{ translateX: translateX.value }]
   }))
 
-  // Delete button opacity - only visible when swiping
+  // Delete button opacity - only visible when swiping left
   const deleteButtonStyle = useAnimatedStyle(() => ({
     opacity:
       translateX.value < -10
@@ -174,24 +186,13 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         : withTiming(0, { duration: 100 })
   }))
 
-  // Pan gesture to reveal delete
-  // OPTIMIZED: Memoize gesture to prevent recreation on each render
-  const MAX_LEFT = -DELETE_BUTTON_WIDTH
-  const pan = useMemo(
-    () =>
-      Gesture.Pan()
-        .onUpdate(e => {
-          const next = Math.max(MAX_LEFT, Math.min(0, e.translationX))
-          translateX.value = next
-        })
-        .onEnd(() => {
-          const shouldOpen = translateX.value < MAX_LEFT / 2
-          translateX.value = withTiming(shouldOpen ? MAX_LEFT : 0)
-        })
-        .activeOffsetX([-20, 20]) // Only activate if horizontal movement exceeds 20px
-        .failOffsetY([-20, 20]), // Fail if vertical movement exceeds 20px
-    [translateX]
-  )
+  // Increment button opacity - only visible when swiping right
+  const incrementButtonStyle = useAnimatedStyle(() => ({
+    opacity:
+      translateX.value > 10
+        ? withTiming(1, { duration: 100 })
+        : withTiming(0, { duration: 100 })
+  }))
 
   // Check if item is in draft/new state (simple delete) or in kitchen (needs void reason)
   const isKitchenItem =
@@ -199,6 +200,39 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     item.kitchen_status === 'preparing' ||
     item.kitchen_status === 'ready' ||
     item.kitchen_status === 'served'
+
+  // Shared value so the worklet can read isKitchenItem on the UI thread
+  const isKitchenItemSV = useSharedValue(isKitchenItem)
+  isKitchenItemSV.value = isKitchenItem
+
+  // Pan gesture to reveal delete (left) or increment (right)
+  // OPTIMIZED: Memoize gesture to prevent recreation on each render
+  const MAX_LEFT = -DELETE_BUTTON_WIDTH
+  const MAX_RIGHT = INCREMENT_BUTTON_WIDTH
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .onUpdate(e => {
+          const rightLimit = isKitchenItemSV.value ? 0 : MAX_RIGHT
+          const next = Math.max(MAX_LEFT, Math.min(rightLimit, e.translationX))
+          translateX.value = next
+          if (Math.abs(next) > 5) runOnJS(markSwipeActiveRef.current)()
+        })
+        .onEnd(() => {
+          if (translateX.value > MAX_RIGHT / 2) {
+            translateX.value = withTiming(0, { duration: 150 })
+            runOnJS(handleIncrementRef.current)()
+          } else if (translateX.value < MAX_LEFT / 2) {
+            translateX.value = withTiming(MAX_LEFT)
+          } else {
+            translateX.value = withTiming(0)
+          }
+          runOnJS(resetSwipeActiveRef.current)()
+        })
+        .activeOffsetX([-20, 20])
+        .failOffsetY([-20, 20]),
+    [translateX, isKitchenItemSV]
+  )
 
   const handleDelete = () => {
     if (!activeOrderId) return
@@ -235,6 +269,15 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     translateX.value = withTiming(0)
   }
 
+  const handleIncrement = () => {
+    if (!activeOrderId || !isEditable || item.is_voided || isKitchenItem) return
+    const now = Date.now()
+    if (now - incrementThrottleRef.current < 400) return
+    incrementThrottleRef.current = now
+    incrementItemQuantity(item.id)
+  }
+  handleIncrementRef.current = handleIncrement
+
   // Warm cache ahead of time so table-item modifier opens are instant on tap.
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -256,6 +299,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
   const handleNotesPress = (e: any) => {
     e.stopPropagation()
+    if (swipeActivatedRef.current) return
 
     if (isEditable && !isKitchenItem) {
       openToEdit(item, activeOrderId)
@@ -413,6 +457,20 @@ const BillItemComponent: React.FC<BillItemProps> = ({
             className='w-20 h-[85%] bg-red-500 items-center rounded-lg justify-center'
           >
             <Trash2 color='white' size={20} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {isEditable && !isVoided && !isKitchenItem && (
+        <Animated.View
+          style={incrementButtonStyle}
+          className='absolute top-0 left-1 h-full justify-center items-start self-center z-10'
+        >
+          <TouchableOpacity
+            onPress={handleIncrement}
+            className='w-20 h-[85%] bg-teal-600 items-center rounded-lg justify-center'
+          >
+            <Plus color='white' size={20} />
           </TouchableOpacity>
         </Animated.View>
       )}

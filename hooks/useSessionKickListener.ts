@@ -45,6 +45,8 @@ export interface UseSessionKickListenerResult {
   acknowledgeKick: () => void;
   /** Manually check if the session is still valid. Returns false if kicked. */
   validateSession: () => Promise<boolean>;
+  /** Call before intentionally ending the session to suppress the kicked-out modal. */
+  markVoluntaryLogout: () => void;
 }
 
 // ============================================================================
@@ -89,6 +91,7 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
   );
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isKickedRef = useRef(false); // Ref to avoid stale closures
+  const isVoluntaryLogoutRef = useRef(false); // Set true when we intentionally end the session
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -101,8 +104,8 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
 
   const triggerKick = useCallback(
     (by: string | null, reason: string | null) => {
-      // Prevent duplicate triggers
-      if (isKickedRef.current) return;
+      // Prevent duplicate triggers or triggering after a voluntary logout
+      if (isKickedRef.current || isVoluntaryLogoutRef.current) return;
       isKickedRef.current = true;
 
       console.log(
@@ -131,17 +134,17 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
     // Navigate to station select
     replaceRoute('(auth)', 'station-select');
 
-    // Reset kick state
-    isKickedRef.current = false;
+    // Hide the modal but keep isKickedRef.current = true so no further triggers fire
     setIsKicked(false);
-    setKickedBy(null);
-    setKickReason(null);
-    setCountdown(KICK_COUNTDOWN_SECONDS);
   }, [setStationSessionId, clearSelectedStation, router]);
 
   // ============================================================================
   // Core: Acknowledge kick (user presses OK before countdown)
   // ============================================================================
+
+  const markVoluntaryLogout = useCallback(() => {
+    isVoluntaryLogoutRef.current = true;
+  }, []);
 
   const acknowledgeKick = useCallback(() => {
     if (countdownIntervalRef.current) {
@@ -407,12 +410,17 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
     };
   }, []);
 
-  // Debug: Log initialization
+  // Reset kick state when a new session starts
   useEffect(() => {
-    console.log(
-      `[KickListener] Initialized - deviceId: ${deviceId}, sessionId: ${stationSessionId}`
-    );
-  }, [deviceId, stationSessionId]);
+    if (stationSessionId) {
+      isKickedRef.current = false;
+      isVoluntaryLogoutRef.current = false;
+      setIsKicked(false);
+      setKickedBy(null);
+      setKickReason(null);
+      setCountdown(KICK_COUNTDOWN_SECONDS);
+    }
+  }, [stationSessionId]);
 
   return {
     isKicked,
@@ -421,5 +429,6 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
     countdown,
     acknowledgeKick,
     validateSession,
+    markVoluntaryLogout,
   };
 }

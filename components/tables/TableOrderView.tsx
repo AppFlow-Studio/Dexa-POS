@@ -24,9 +24,9 @@ import { colors } from '@/lib/theme'
 import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
 import {
-  useActiveOrderTotals,
   useHasActivePreAuth,
-  useOrderPreAuth
+  useOrderPreAuth,
+  useOrderTotals
 } from '@/stores/selectors/orderSelectors'
 import { transferTableServer } from '@/services/serverAssignmentService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -161,19 +161,21 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const setPreAuthMode = usePaymentStore(s => s.setPreAuthMode)
 
-  const totalsEnabled = renderStage >= 1
-  const totals = useActiveOrderTotals(totalsEnabled)
-  const preAuth = useOrderPreAuth(totalsEnabled ? activeOrder?.id : undefined)
-  const hasPreAuth = useHasActivePreAuth(
-    totalsEnabled ? activeOrder?.id : undefined
-  )
+  const totals = useOrderTotals(activeOrder?.id ?? null)
+  const preAuth = useOrderPreAuth(activeOrder?.id)
+  const hasPreAuth = useHasActivePreAuth(activeOrder?.id)
   const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0
   const storeActiveOrderTotal = totals?.total ?? 0
 
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0
-  const displayBalanceDue = hasPayments
+  // Only derive displayBalanceDue when totals are available; otherwise keep previous value
+  // to prevent transient null → 0 from making the UI think the bill is $0 / fully paid.
+  const displayBalanceDueRaw = hasPayments
     ? storeActiveOrderOutstandingTotal
     : storeActiveOrderTotal
+  const lastDisplayBalanceDueRef = React.useRef(displayBalanceDueRaw)
+  if (totals !== null) lastDisplayBalanceDueRef.current = displayBalanceDueRaw
+  const displayBalanceDue = totals !== null ? displayBalanceDueRaw : lastDisplayBalanceDueRef.current
 
   // --- 6. Bottom sheet refs ---
   const pricingSheetRef = useRef<BottomSheetMethods>(null)
@@ -198,14 +200,17 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   // --- 8. Final Derived UI State ---
   const isFullyPaid = useMemo(() => {
     if (activeOrder?.check_status === 'Opened') return false
+    // Only consider balance <= 0 as fully paid when we have real totals data
+    // (guard against transient null totals showing $0 and blocking item additions)
     return (
       activeOrder?.paid_status === 'Paid' ||
-      (hasPayments && displayBalanceDue <= 0)
+      (hasPayments && totals !== null && displayBalanceDue <= 0)
     )
   }, [
     activeOrder?.check_status,
     activeOrder?.paid_status,
     hasPayments,
+    totals,
     displayBalanceDue
   ])
 

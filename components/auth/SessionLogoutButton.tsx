@@ -1,4 +1,5 @@
 import SessionLogoutModal from "@/components/auth/SessionLogoutModal";
+import { useSessionKick } from "@/contexts/SessionKickListenerProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
 import { toastService } from "@/lib/toastService";
@@ -33,6 +34,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
   const clearStationSession = useStoreSettingsStore(
     (state) => state.clearStationSession
   );
+  const { markVoluntaryLogout } = useSessionKick();
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -68,6 +70,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
 
   const handleEndStationSession = async () => {
     setIsLoading(true);
+    markVoluntaryLogout();
     try {
       // End session on server (don't clock out)
       await endStationSessionOnServer(false);
@@ -100,6 +103,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
 
   const handleFullLogout = async () => {
     setIsLoading(true);
+    markVoluntaryLogout();
     try {
       // End session on server (don't clock out - they can clock out separately)
       await endStationSessionOnServer(false);

@@ -29,6 +29,17 @@ export interface CastlesUsbDetachedEvent {
   deviceId: number;
 }
 
+export interface UsbDiagnosticInfo {
+  hasUsbHostFeature: boolean;
+  hasUsbAccessoryFeature: boolean;
+  usbManagerAvailable: boolean;
+  rawDeviceCount: number;
+  manufacturer: string;
+  model: string;
+  androidSdk: number;
+  deviceNames: string[];
+}
+
 // ── Native module ──
 
 const CastlesUsb = requireNativeModule('CastlesUsbModule');
@@ -63,6 +74,11 @@ export function close(): Promise<void> {
 /** Synchronous check — returns true if a port is currently open. */
 export function isOpen(): boolean {
   return CastlesUsb.isOpen();
+}
+
+/** Returns USB host diagnostic info — call when listDevices() returns empty. */
+export function diagnoseUsb(): Promise<UsbDiagnosticInfo> {
+  return CastlesUsb.diagnoseUsb();
 }
 
 // ── Event listeners ──

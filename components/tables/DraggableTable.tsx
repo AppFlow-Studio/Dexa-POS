@@ -6,7 +6,7 @@ import {
 } from '@/lib/tablePositionRegistry'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
-import { useOrderByAnyId } from '@/stores/selectors/orderSelectors'
+import { useOrderByAnyId, useOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
@@ -501,14 +501,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     }
   })
 
-  const orderTotal = useMemo(
-    () =>
-      effectiveOrder?.items?.reduce(
-        (acc: number, item: any) => acc + item.price * item.quantity,
-        0
-      ) || 0,
-    [effectiveOrder?.items]
-  )
+  const orderTotals = useOrderTotals(effectiveOrder?.id ?? null)
+  const orderTotal = orderTotals?.total ?? 0
 
   const reservationCountdownLabel = useMemo(() => {
     if (liveSession) return null

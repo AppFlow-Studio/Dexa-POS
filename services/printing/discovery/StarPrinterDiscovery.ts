@@ -21,6 +21,8 @@ export interface DiscoveredStarPrinter {
   macAddress: string | null;
   model: StarPrinterModel;
   modelName: string;
+  emulation: string | null;
+  serialNumber: string | null;
   capabilities: {
     supportsAutoCut: boolean;
     paperWidth: number;
@@ -28,6 +30,11 @@ export interface DiscoveredStarPrinter {
     suggestedRole: "receipt" | "kitchen";
     graphicsOnly: boolean;
   };
+}
+
+export interface DiscoveryOptions {
+  /** Called incrementally as each printer is found during scan */
+  onPrinterFound?: (printer: DiscoveredStarPrinter) => void;
 }
 
 // ============================================================================
@@ -43,9 +50,11 @@ let activeManager: StarDeviceDiscoveryManager | null = null;
 /**
  * Scans the LAN for Star Micronics printers.
  * Returns deduplicated list of discovered printers after timeout.
+ * Optionally calls `onPrinterFound` incrementally as printers are found.
  */
 export async function discoverStarPrinters(
   timeoutMs = 10000,
+  options?: DiscoveryOptions,
 ): Promise<DiscoveredStarPrinter[]> {
   // Stop any active scan first
   await stopDiscovery();
@@ -71,16 +80,31 @@ export async function discoverStarPrinters(
           info?.detail?.lan?.macAddress ?? null;
         const model = info?.model ?? StarPrinterModel.Unknown;
 
+        // Extract emulation and serial number from SDK info
+        const emulation = info?.emulation != null
+          ? String(info.emulation)
+          : null;
+        const serialNumber =
+          info?.detail?.usb?.productSerialNumber
+          ?? info?.detail?.bluetooth?.serialNumber
+          ?? null;
+
         // Deduplicate by IP
         if (!found.has(ipAddress)) {
-          found.set(ipAddress, {
+          const discovered: DiscoveredStarPrinter = {
             identifier,
             ipAddress,
             macAddress,
             model,
             modelName: getModelDisplayName(model),
+            emulation,
+            serialNumber,
             capabilities: inferCapabilities(model),
-          });
+          };
+          found.set(ipAddress, discovered);
+
+          // Notify caller incrementally
+          options?.onPrinterFound?.(discovered);
         }
       } catch (e) {
         console.warn("[StarDiscovery] Error processing found printer:", e);
@@ -135,8 +159,14 @@ export async function probeStarPrinterByIp(
       // Open populates printer.information.model from firmware
       await printer.open();
 
-      const model = printer.information?.model ?? StarPrinterModel.Unknown;
-      const macAddress = printer.information?.detail?.lan?.macAddress ?? null;
+      const info = printer.information;
+      const model = info?.model ?? StarPrinterModel.Unknown;
+      const macAddress = info?.detail?.lan?.macAddress ?? null;
+      const emulation = info?.emulation != null ? String(info.emulation) : null;
+      const serialNumber =
+        info?.detail?.usb?.productSerialNumber
+        ?? info?.detail?.bluetooth?.serialNumber
+        ?? null;
 
       // Verify the printer is functional
       const status = await printer.getStatus();
@@ -151,13 +181,22 @@ export async function probeStarPrinterByIp(
 
       await closeAndDispose(printer);
 
+      // Use detected paper width from status if available, otherwise infer from model
+      const caps = inferCapabilities(model);
+      const detectedWidth = (status as any).detail?.detectedPaperWidth;
+      if (detectedWidth && typeof detectedWidth === "number" && detectedWidth > 0) {
+        caps.paperWidth = detectedWidth;
+      }
+
       return {
         identifier: ipAddress,
         ipAddress,
         macAddress,
         model,
         modelName: getModelDisplayName(model),
-        capabilities: inferCapabilities(model),
+        emulation,
+        serialNumber,
+        capabilities: caps,
       };
     } catch (e: any) {
       // Clean up on failure

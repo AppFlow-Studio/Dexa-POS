@@ -84,6 +84,7 @@ interface KDSState {
     newStatus: 'preparing' | 'ready' | 'served'
   ) => void
   handleOrderBroadcast: (payload: OrderBroadcastPayload) => void
+  _processOrderBroadcast: (payload: OrderBroadcastPayload) => void
   incrementTimerTick: () => void
   scheduleRefetch: (locationId: string) => void
 
@@ -124,6 +125,12 @@ interface KDSState {
 
 // Debounce timer for scheduleRefetch
 let _refetchTimeout: ReturnType<typeof setTimeout> | null = null
+
+// Per-order broadcast debounce — absorbs rapid-fire broadcasts from row-level triggers
+// (bulk_update_order_item_status fires one trigger per row, producing N partial-state
+// broadcasts. We hold each for 80ms and only apply the last one.)
+const _broadcastDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const BROADCAST_DEBOUNCE_MS = 80
 
 // ─── Fetch sequence counter + in-flight guard ───────────────────
 let _fetchSeq = 0
@@ -221,6 +228,32 @@ const _recalledTicketIds = new Set<string>()
 /** Track new order IDs filtered out by routing rules — sound fires when server refetch adds them */
 const _pendingNewOrderSounds = new Set<string>()
 
+function pendingActionSatisfied (
+  ticket: KDSTicket,
+  pending: PendingAction
+): boolean {
+  if (pending.targetStatus === 'done') return false
+  if (ticket.status !== pending.targetStatus) return false
+  if (
+    pending.prioritized != null &&
+    Boolean(ticket.prioritized) !== pending.prioritized
+  ) {
+    return false
+  }
+
+  for (const item of ticket.items) {
+    const expectedStatus = pending.itemStatuses.get(item.id)
+    if (expectedStatus && item.kitchen_status !== expectedStatus) {
+      return false
+    }
+    if (pending.rushOverride != null && Boolean(item.rush) !== pending.rushOverride) {
+      return false
+    }
+  }
+
+  return true
+}
+
 /** Overlay pending optimistic states onto server/broadcast tickets */
 function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
   if (_pendingActions.size === 0 && _recalledTicketIds.size === 0)
@@ -231,6 +264,18 @@ function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
     const pending = _pendingActions.get(ticket.ticket_id)
     if (!pending) {
       // Still overlay recalled flag even without pending action
+      if (_recalledTicketIds.has(ticket.ticket_id)) {
+        acc.push({
+          ...ticket,
+          items: ticket.items.map(item => ({ ...item, recalled: true }))
+        })
+      } else {
+        acc.push(ticket)
+      }
+      return acc
+    }
+    if (pendingActionSatisfied(ticket, pending)) {
+      _pendingActions.delete(ticket.ticket_id)
       if (_recalledTicketIds.has(ticket.ticket_id)) {
         acc.push({
           ...ticket,
@@ -1123,6 +1168,13 @@ export const useKDSStore = create<KDSState>()(
             ? 'ready'
             : null // "served" removes from KDS
 
+        // Cancel any in-flight per-item retries for this ticket so they don't
+        // overwrite the whole-ticket status we're about to write (e.g. markItemDone
+        // retries running after advanceTicketStatus would set items back to 'ready').
+        for (const id of itemIds) {
+          cancelRetry(`item_${ticketId}_${id}`)
+        }
+
         // Register pending action (protects optimistic state from broadcast clobber)
         const itemStatusMap = new Map<string, string>()
         for (const id of itemIds) itemStatusMap.set(id, newStatus)
@@ -1216,7 +1268,8 @@ export const useKDSStore = create<KDSState>()(
               ),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const lastLoc = get()._lastLocationId
+              if (lastLoc) get().scheduleRefetch(lastLoc)
 
               // Persist final order status after all items are served from KDS.
               if (newStatus === 'served' && orderId) {
@@ -1276,6 +1329,24 @@ export const useKDSStore = create<KDSState>()(
       },
 
       handleOrderBroadcast: (payload: OrderBroadcastPayload) => {
+        const order = payload.data?.order
+        if (!order) return
+
+        // Debounce per-order: bulk_update_order_item_status fires one DB trigger per
+        // row, producing N rapid broadcasts with partial item state. Hold 80ms and
+        // only process the last one to prevent flickering item counts.
+        const existing = _broadcastDebounceTimers.get(order.id)
+        if (existing) clearTimeout(existing)
+        _broadcastDebounceTimers.set(
+          order.id,
+          setTimeout(() => {
+            _broadcastDebounceTimers.delete(order.id)
+            get()._processOrderBroadcast(payload)
+          }, BROADCAST_DEBOUNCE_MS)
+        )
+      },
+
+      _processOrderBroadcast: (payload: OrderBroadcastPayload) => {
         const order = payload.data?.order
         if (!order) return
 
@@ -1523,7 +1594,8 @@ export const useKDSStore = create<KDSState>()(
             () => OrderService.recallOrderItems(client, itemIds, recallStatus),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const lastLoc = get()._lastLocationId
+              if (lastLoc) get().scheduleRefetch(lastLoc)
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1602,7 +1674,8 @@ export const useKDSStore = create<KDSState>()(
               ),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const loc = get()._lastLocationId
+              if (loc) get().scheduleRefetch(loc)
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1660,7 +1733,8 @@ export const useKDSStore = create<KDSState>()(
             () => OrderService.toggleRushOnItems(client, itemIds, newRush),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const lastLoc = get()._lastLocationId
+              if (lastLoc) get().scheduleRefetch(lastLoc)
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1747,7 +1821,8 @@ export const useKDSStore = create<KDSState>()(
               OrderService.bulkUpdateOrderItemStatus(client, [itemId], 'ready'),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const lastLoc = get()._lastLocationId
+              if (lastLoc) get().scheduleRefetch(lastLoc)
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1979,14 +2054,8 @@ export const useKDSStore = create<KDSState>()(
               () => OrderService.bulkUpdateOrderItemStatus(client, ids, status),
               0,
               () => {
-                // Clear pending actions for tickets in this batch
-                for (const [tid] of ticketIndex) {
-                  const m = mutations.get(tid)
-                  const effectiveStatus = removeIds.has(tid)
-                    ? 'served'
-                    : m?.newStatus
-                  if (effectiveStatus === status) _pendingActions.delete(tid)
-                }
+                const lastLoc = get()._lastLocationId
+                if (lastLoc) get().scheduleRefetch(lastLoc)
               },
               () => {
                 for (const [tid] of ticketIndex) {
@@ -2013,6 +2082,8 @@ export const useKDSStore = create<KDSState>()(
           clearTimeout(_refetchTimeout)
           _refetchTimeout = null
         }
+        _broadcastDebounceTimers.forEach(t => clearTimeout(t))
+        _broadcastDebounceTimers.clear()
         _fetchInFlight = false
       }
     }),

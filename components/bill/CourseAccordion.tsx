@@ -243,23 +243,13 @@ function CourseGroupInner ({
           exiting={FadeOut.duration(150)}
           layout={LinearTransition.duration(200)}
           className='pl-4 gap-y-2 overflow-hidden'
-          style={isSent || aggregateStatus ? { opacity: 0.5 } : undefined}
+          style={undefined}
         >
-          {items.map(item =>
-            shouldAnimateRows ? (
-              <Animated.View
-                key={item.id}
-                layout={LinearTransition.duration(150)}
-                className='overflow-hidden'
-              >
-                <BillItem item={item} isEditable={true} />
-              </Animated.View>
-            ) : (
-              <View key={item.id} className='overflow-hidden'>
-                <BillItem item={item} isEditable={true} />
-              </View>
-            )
-          )}
+          {items.map(item => (
+            <View key={item.id} className='overflow-hidden'>
+              <BillItem item={item} isEditable={true} />
+            </View>
+          ))}
         </Animated.View>
       )}
 
@@ -474,11 +464,20 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const groupedItems = useMemo(() => {
     const groups: Record<number, CartItem[]> = {}
     activeOrder?.items?.forEach(item => {
+      if (item.is_voided) return
       const course = item.courseNumber ?? itemCourseMap?.[item.id] ?? 1
       if (!groups[course]) {
         groups[course] = []
       }
       groups[course].push(item)
+    })
+    // Stable sort within each course so broadcast re-ordering doesn't cause visual jumps
+    Object.values(groups).forEach(arr => {
+      arr.sort((a, b) => {
+        const ka = a.db_order_item_id ?? a.id
+        const kb = b.db_order_item_id ?? b.id
+        return ka < kb ? -1 : ka > kb ? 1 : 0
+      })
     })
     return groups
     // eslint-disable-next-line react-hooks/exhaustive-deps

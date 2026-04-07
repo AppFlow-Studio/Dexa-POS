@@ -260,8 +260,8 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 "text_line" -> {
                     applyFormat(p, node.optJSONObject("format"))
                     val align = parseAlign(node.optString("align", "left"))
-                    p.addText(sanitizeForLandi(node.getString("content")), align, 0)
-                    p.feedLine(1)
+                    // Use hardware newline instead of feedLine(1) for more compact vertical spacing
+                    p.addText(sanitizeForLandi(node.getString("content")) + "\n", align, 0)
                 }
 
                 "two_column" -> {
@@ -275,8 +275,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                     } else {
                         left + " " + right
                     }
-                    p.addText(line, Align.LEFT, 0)
-                    p.feedLine(1)
+                    p.addText(line + "\n", Align.LEFT, 0)
                 }
 
                 "divider" -> {
@@ -289,12 +288,11 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                         "double" -> "=".repeat(lineWidth)
                         else -> "-".repeat(lineWidth)
                     }
-                    p.addText(separator, Align.LEFT, 0)
-                    p.feedLine(1)
+                    p.addText(separator + "\n", Align.LEFT, 0)
                 }
 
                 "empty_line" -> {
-                    p.feedLine(1)
+                    p.addText("\n", Align.LEFT, 0)
                 }
 
                 "feed" -> {
