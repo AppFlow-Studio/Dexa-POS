@@ -1,5 +1,6 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTimeClock } from "@/hooks/useTimeclock";
+import { useSessionKick } from "@/contexts/SessionKickListenerProvider";
 import { getDeviceId } from "@/lib/deviceId";
 import { toastService } from "@/lib/toastService";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -51,6 +52,7 @@ const DeactivateTerminalModal = ({
     (s) => s.clearStationSession
   );
   const { findEmployeeByPin, getEmployeeByStaffId } = useEmployeeStore();
+  const { markVoluntaryLogout } = useSessionKick();
 
   const shakeX = useSharedValue(0);
 
@@ -123,6 +125,9 @@ const DeactivateTerminalModal = ({
         return;
       }
 
+      // Suppress kicked-out modal since this is a voluntary logout
+      markVoluntaryLogout();
+
       // End station session on server
       if (stationSessionId) {
         try {
@@ -155,7 +160,7 @@ const DeactivateTerminalModal = ({
         type: "success",
       });
 
-      handleClose();
+      onClose();
       replaceRoute('(auth)', 'station-select');
     } catch (err: any) {
       triggerShake();

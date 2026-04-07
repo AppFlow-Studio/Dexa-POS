@@ -14,11 +14,14 @@ interface SessionKickContextValue {
   validateSession: () => Promise<boolean>;
   /** Whether the device has been kicked from the station. */
   isKicked: boolean;
+  /** Call before intentionally ending the session to suppress the kicked-out modal. */
+  markVoluntaryLogout: () => void;
 }
 
 const SessionKickContext = createContext<SessionKickContextValue>({
   validateSession: async () => true,
   isKicked: false,
+  markVoluntaryLogout: () => {},
 });
 
 /**
@@ -48,10 +51,11 @@ export function SessionKickListenerProvider({
     countdown,
     acknowledgeKick,
     validateSession,
+    markVoluntaryLogout,
   } = useSessionKickListener();
 
   return (
-    <SessionKickContext.Provider value={{ validateSession, isKicked }}>
+    <SessionKickContext.Provider value={{ validateSession, isKicked, markVoluntaryLogout }}>
       {children}
       <KickedOutModal
         visible={isKicked}

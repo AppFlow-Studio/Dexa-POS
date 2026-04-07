@@ -18,6 +18,7 @@ import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useSessionKick } from '@/contexts/SessionKickListenerProvider'
 import { useClerk } from '@clerk/clerk-expo'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -433,6 +434,7 @@ const GeneralSettingsScreen = () => {
 
   // ── Log out — requires manager PIN ─────────────────────────────────────
   const { signOut } = useClerk()
+  const { markVoluntaryLogout } = useSessionKick()
   const stationSessionId = useStoreSettingsStore(s => s.stationSessionId)
   const clearSelectedStore = useStoreSettingsStore(s => s.clearSelectedStore)
   const clearStationSession = useStoreSettingsStore(s => s.clearStationSession)
@@ -458,6 +460,7 @@ const GeneralSettingsScreen = () => {
 
   const handleEndStationSession = async () => {
     setIsLoggingOut(true)
+    markVoluntaryLogout()
     try {
       await endStationSessionOnServer()
       clearStationSession()
@@ -482,6 +485,7 @@ const GeneralSettingsScreen = () => {
 
   const handleFullLogout = async () => {
     setIsLoggingOut(true)
+    markVoluntaryLogout()
     try {
       await endStationSessionOnServer()
       clearStationSession()
