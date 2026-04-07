@@ -7,6 +7,7 @@
 
 import { PrintDocument, PrintNode } from "@/types/print-document";
 import { ReceiptTemplateConfig } from "@/types/receipt-template";
+import { sanitizeForPrint, safeTimeString } from "../utils/sanitizeText";
 
 export interface VoidOrderItemData {
   name: string;
@@ -70,21 +71,21 @@ export function buildVoidOrderDocument(
   // Store info
   nodes.push({
     type: "text_line",
-    content: data.storeName,
+    content: sanitizeForPrint(data.storeName),
     align: "center",
     format: { bold: true },
   });
   if (data.storeAddress) {
     nodes.push({
       type: "text_line",
-      content: data.storeAddress,
+      content: sanitizeForPrint(data.storeAddress),
       align: "center",
     });
   }
   if (data.storePhone) {
     nodes.push({
       type: "text_line",
-      content: data.storePhone,
+      content: sanitizeForPrint(data.storePhone),
       align: "center",
     });
   }
@@ -98,16 +99,12 @@ export function buildVoidOrderDocument(
     day: "2-digit",
     year: "numeric",
   });
-  const timeStr = date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const timeStr = safeTimeString(date);
 
   nodes.push({
     type: "two_column",
     left: "Order:",
-    right: data.orderNumber,
+    right: sanitizeForPrint(data.orderNumber),
     lineWidth: w,
   });
   nodes.push({
@@ -126,7 +123,7 @@ export function buildVoidOrderDocument(
     nodes.push({
       type: "two_column",
       left: "Server:",
-      right: data.serverName,
+      right: sanitizeForPrint(data.serverName),
       lineWidth: w,
     });
   }
@@ -142,7 +139,7 @@ export function buildVoidOrderDocument(
     });
   } else {
     for (const item of data.items) {
-      const qtyName = `${item.quantity}x ${item.name}`;
+      const qtyName = `${item.quantity}x ${sanitizeForPrint(item.name)}`;
       nodes.push({
         type: "two_column",
         left: truncate(qtyName, w - 10),
@@ -171,7 +168,7 @@ export function buildVoidOrderDocument(
     nodes.push({
       type: "two_column",
       left: "Reason:",
-      right: truncate(data.reason, w - 10),
+      right: truncate(sanitizeForPrint(data.reason), w - 10),
       lineWidth: w,
       format: { bold: true },
     });
@@ -183,7 +180,7 @@ export function buildVoidOrderDocument(
     nodes.push({
       type: "two_column",
       left: "Approved By:",
-      right: truncate(data.approvedBy, w - 14),
+      right: truncate(sanitizeForPrint(data.approvedBy), w - 14),
       lineWidth: w,
     });
   }

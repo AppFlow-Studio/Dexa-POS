@@ -1,6 +1,7 @@
 import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
 import * as FileSystem from "expo-file-system";
 import { TextBlock, renderTextBlocksToImage } from "./SkiaTicketRenderer";
+import { sanitizeForPrint } from "../utils/sanitizeText";
 
 // ============================================================================
 // TYPES
@@ -15,6 +16,11 @@ export interface StarRenderOptions {
 // 80mm paper @ 203dpi = 576 dots printable width
 const PRINT_WIDTH_DOTS_80MM = 576;
 const PRINT_WIDTH_DOTS_58MM = 384;
+
+// Graphics chunking constants (match SkiaTicketRenderer's BASE_FONT_SIZE / LINE_SPACING)
+const GFX_BASE_FONT_SIZE = 28;
+const GFX_LINE_SPACING = 6;
+const MAX_CHUNK_HEIGHT_PX = 1200; // ~2.7MB RGBA — safe for resource-constrained devices
 
 // Lazy-loaded to avoid circular dependency issues in the react-native-star-io10 SDK.
 // The SDK has PrinterBuilder.ts → index.ts → StarXpandCommand.ts → PrinterBuilder.ts
@@ -68,8 +74,9 @@ export async function renderDocumentToStarCommands(
   if (options.graphicsOnly) {
     await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand);
   } else {
+    const fmt = createFormatTracker(printerBuilder, StarXpandCommand);
     for (const node of doc.nodes) {
-      await renderNode(printerBuilder, node, w, options, StarXpandCommand);
+      await renderNode(printerBuilder, node, w, options, StarXpandCommand, fmt);
     }
   }
 
@@ -108,6 +115,7 @@ async function renderNodesGraphicsOnly(
     : PRINT_WIDTH_DOTS_58MM;
 
   let textBuffer: TextBlock[] = [];
+  let chunkHeightPx = 0;
 
   const flushTextBuffer = async () => {
     if (textBuffer.length === 0) return;
@@ -119,13 +127,25 @@ async function renderNodesGraphicsOnly(
       );
     }
     textBuffer = [];
+    chunkHeightPx = 0;
+  };
+
+  const pushAndMaybeFlush = async (block: TextBlock) => {
+    textBuffer.push(block);
+    const blockHeight = block.isDivider
+      ? ((block.dividerStyle ?? 'solid') === 'double' ? 20 : 16)
+      : (GFX_BASE_FONT_SIZE * (block.doubleHeight ? 2 : 1) + GFX_LINE_SPACING);
+    chunkHeightPx += blockHeight;
+    if (chunkHeightPx >= MAX_CHUNK_HEIGHT_PX) {
+      await flushTextBuffer();
+    }
   };
 
   for (const node of nodes) {
     switch (node.type) {
       case "text": {
-        textBuffer.push({
-          text: node.content,
+        await pushAndMaybeFlush({
+          text: sanitizeForPrint(node.content),
           bold: !!node.format?.bold,
           doubleHeight: !!node.format?.doubleHeight,
           doubleWidth: !!node.format?.doubleWidth,
@@ -137,8 +157,8 @@ async function renderNodesGraphicsOnly(
       }
 
       case "text_line": {
-        textBuffer.push({
-          text: node.content,
+        await pushAndMaybeFlush({
+          text: sanitizeForPrint(node.content),
           bold: !!node.format?.bold,
           doubleHeight: !!node.format?.doubleHeight,
           doubleWidth: !!node.format?.doubleWidth,
@@ -151,9 +171,9 @@ async function renderNodesGraphicsOnly(
 
       case "two_column": {
         // Pixel-based: let Skia renderer draw left + right independently at pixel edges
-        textBuffer.push({
-          text: node.left,
-          rightAlignedText: node.right,
+        await pushAndMaybeFlush({
+          text: sanitizeForPrint(node.left),
+          rightAlignedText: sanitizeForPrint(node.right),
           bold: !!node.format?.bold,
           doubleHeight: !!node.format?.doubleHeight,
           doubleWidth: !!node.format?.doubleWidth,
@@ -165,7 +185,7 @@ async function renderNodesGraphicsOnly(
       }
 
       case "divider": {
-        textBuffer.push({
+        await pushAndMaybeFlush({
           text: "",
           bold: false,
           doubleHeight: false,
@@ -179,7 +199,7 @@ async function renderNodesGraphicsOnly(
       }
 
       case "empty_line": {
-        textBuffer.push({
+        await pushAndMaybeFlush({
           text: " ",
           bold: false,
           doubleHeight: false,
@@ -297,6 +317,12 @@ function fitFormat(
   return format;
 }
 
+interface FormatTracker {
+  setAlignment(align: string | undefined): void;
+  setFormat(format: PrintTextFormat | undefined): void;
+  reset(): void;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function renderNode(
   pb: any,
@@ -305,34 +331,39 @@ async function renderNode(
   options: StarRenderOptions,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sdk: any,
+  fmt: FormatTracker,
 ): Promise<void> {
   switch (node.type) {
     case "text": {
-      const fmt = fitFormat(node.content, lineWidth, node.format);
-      applyAlignment(pb, node.align, sdk);
-      applyFormat(pb, fmt, sdk);
-      pb.actionPrintText(node.content);
-      resetFormat(pb, fmt, sdk);
+      const fitFmt = fitFormat(sanitizeForPrint(node.content), lineWidth, node.format);
+      fmt.setAlignment(node.align);
+      fmt.setFormat(fitFmt);
+      pb.actionPrintText(sanitizeForPrint(node.content));
+      fmt.reset();
       break;
     }
 
     case "text_line": {
-      const fmt = fitFormat(node.content, lineWidth, node.format);
-      applyAlignment(pb, node.align, sdk);
-      applyFormat(pb, fmt, sdk);
-      pb.actionPrintText(node.content + "\n");
-      resetFormat(pb, fmt, sdk);
-      applyAlignment(pb, "left", sdk);
+      const content = sanitizeForPrint(node.content);
+      const fitFmt = fitFormat(content, lineWidth, node.format);
+      fmt.setAlignment(node.align);
+      fmt.setFormat(fitFmt);
+      pb.actionPrintText(content + "\n");
+      fmt.reset();
       break;
     }
 
     case "two_column": {
       const w = node.lineWidth;
-      const line = padTwoColumn(node.left, node.right, w);
-      const fmt = fitFormat(line, w, node.format);
-      applyFormat(pb, fmt, sdk);
+      const line = padTwoColumn(
+        sanitizeForPrint(node.left),
+        sanitizeForPrint(node.right),
+        w,
+      );
+      const fitFmt = fitFormat(line, w, node.format);
+      fmt.setFormat(fitFmt);
       pb.actionPrintText(line + "\n");
-      resetFormat(pb, fmt, sdk);
+      fmt.reset();
       break;
     }
 
@@ -354,6 +385,7 @@ async function renderNode(
           line = "=".repeat(w);
           break;
       }
+      fmt.reset();
       pb.actionPrintText(line + "\n");
       break;
     }
@@ -379,13 +411,13 @@ async function renderNode(
     }
 
     case "qr_code": {
-      applyAlignment(pb, "center", sdk);
+      fmt.setAlignment("center");
       pb.actionPrintQRCode(
         new sdk.Printer.QRCodeParameter(node.data)
           .setCellSize(node.size ?? 4),
       );
       pb.actionPrintText("\n");
-      applyAlignment(pb, "left", sdk);
+      fmt.setAlignment("left");
       break;
     }
 
@@ -399,11 +431,11 @@ async function renderNode(
           await FileSystem.writeAsStringAsync(tempUri, node.base64Png, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          pb.styleAlignment(sdk.Printer.Alignment.Center);
+          fmt.setAlignment("center");
           pb.actionPrintImage(
             new sdk.Printer.ImageParameter(tempUri, printWidthDots / 2),
           );
-          pb.styleAlignment(sdk.Printer.Alignment.Left);
+          fmt.setAlignment("left");
         } catch {
           // Silently skip if file write fails
         }
@@ -412,7 +444,7 @@ async function renderNode(
     }
 
     case "barcode": {
-      applyAlignment(pb, "center", sdk);
+      fmt.setAlignment("center");
       pb.actionPrintBarcode(
         new sdk.Printer.BarcodeParameter(
           node.data,
@@ -423,7 +455,7 @@ async function renderNode(
           .setPrintHri(true),
       );
       pb.actionPrintText("\n");
-      applyAlignment(pb, "left", sdk);
+      fmt.setAlignment("left");
       break;
     }
 
@@ -435,68 +467,68 @@ async function renderNode(
 }
 
 // ============================================================================
-// FORMAT HELPERS
+// FORMAT TRACKER — only emits style commands when values actually change
 // ============================================================================
 
-function applyAlignment(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pb: any,
-  align: string | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sdk: any,
-): void {
-  switch (align) {
-    case "center":
-      pb.styleAlignment(sdk.Printer.Alignment.Center);
-      break;
-    case "right":
-      pb.styleAlignment(sdk.Printer.Alignment.Right);
-      break;
-    case "left":
-    default:
-      pb.styleAlignment(sdk.Printer.Alignment.Left);
-      break;
-  }
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createFormatTracker(pb: any, sdk: any): FormatTracker {
+  const current = {
+    bold: false,
+    underline: false,
+    inverted: false,
+    magX: 1,
+    magY: 1,
+    alignment: 'left',
+  };
 
-function applyFormat(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pb: any,
-  format: PrintTextFormat | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sdk: any,
-): void {
-  if (!format) return;
+  return {
+    setAlignment(align: string | undefined) {
+      const a = align ?? 'left';
+      if (a === current.alignment) return;
+      current.alignment = a;
+      switch (a) {
+        case 'center':
+          pb.styleAlignment(sdk.Printer.Alignment.Center);
+          break;
+        case 'right':
+          pb.styleAlignment(sdk.Printer.Alignment.Right);
+          break;
+        default:
+          pb.styleAlignment(sdk.Printer.Alignment.Left);
+          break;
+      }
+    },
 
-  if (format.bold) pb.styleBold(true);
-  if (format.underline) pb.styleUnderLine(true);
-  if (format.inverted) pb.styleInvert(true);
+    setFormat(format: PrintTextFormat | undefined) {
+      if (!format) return;
 
-  if (format.doubleHeight && format.doubleWidth) {
-    pb.styleMagnification(new sdk.MagnificationParameter(2, 2));
-  } else if (format.doubleHeight) {
-    pb.styleMagnification(new sdk.MagnificationParameter(1, 2));
-  } else if (format.doubleWidth) {
-    pb.styleMagnification(new sdk.MagnificationParameter(2, 1));
-  }
-}
+      if (!!format.bold !== current.bold) {
+        current.bold = !!format.bold;
+        pb.styleBold(current.bold);
+      }
+      if (!!format.underline !== current.underline) {
+        current.underline = !!format.underline;
+        pb.styleUnderLine(current.underline);
+      }
+      if (!!format.inverted !== current.inverted) {
+        current.inverted = !!format.inverted;
+        pb.styleInvert(current.inverted);
+      }
 
-function resetFormat(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pb: any,
-  format: PrintTextFormat | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sdk: any,
-): void {
-  if (!format) return;
+      const magX = format.doubleWidth ? 2 : 1;
+      const magY = format.doubleHeight ? 2 : 1;
+      if (magX !== current.magX || magY !== current.magY) {
+        current.magX = magX;
+        current.magY = magY;
+        pb.styleMagnification(new sdk.MagnificationParameter(magX, magY));
+      }
+    },
 
-  if (format.bold) pb.styleBold(false);
-  if (format.underline) pb.styleUnderLine(false);
-  if (format.inverted) pb.styleInvert(false);
-
-  if (format.doubleHeight || format.doubleWidth) {
-    pb.styleMagnification(new sdk.MagnificationParameter(1, 1));
-  }
+    reset() {
+      this.setFormat({ bold: false, underline: false, inverted: false });
+      this.setAlignment('left');
+    },
+  };
 }
 
 // ============================================================================

@@ -121,6 +121,13 @@ export async function renderTextBlocksToImage(
 
   // Create offscreen surface
   const surfaceHeight = Math.max(totalHeight, 1);
+
+  const MAX_SURFACE_HEIGHT = 4000;
+  if (surfaceHeight > MAX_SURFACE_HEIGHT) {
+    console.error(`[SkiaTicketRenderer] Surface height ${surfaceHeight}px exceeds max ${MAX_SURFACE_HEIGHT}px`);
+    return "";
+  }
+
   const surface = Skia.Surface.Make(printWidthDots, surfaceHeight);
   if (!surface) {
     console.error("[SkiaTicketRenderer] Failed to create Skia surface");
@@ -290,7 +297,17 @@ export async function renderTextBlocksToImage(
 
   // Export to PNG base64, then write to temp file for reliable Star SDK transfer
   const image = surface.makeImageSnapshot();
+  if (!image) {
+    console.error('[SkiaTicketRenderer] makeImageSnapshot() returned null');
+    return '';
+  }
+
   const base64 = image.encodeToBase64(4, 100); // 4 = PNG format
+
+  if (!base64 || base64.length < 200) {
+    console.error(`[SkiaTicketRenderer] PNG too small: ${base64?.length ?? 0} chars for ${blocks.length} blocks`);
+    return '';
+  }
 
   const fileName = `star-ticket-${Date.now()}.png`;
   const fileUri = `${FileSystem.cacheDirectory}${fileName}`;

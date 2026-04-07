@@ -134,6 +134,14 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 renderNode(p, nodes.getJSONObject(i))
             }
 
+            // Re-check status after rendering — large jobs may push printer into error state
+            val preFlightStatus = p.getStatus()
+            if (preFlightStatus != STATUS_OK) {
+                Log.e(TAG, "Printer entered error state during rendering (status: $preFlightStatus)")
+                promise.reject("PRINTER_ERROR", "Printer not ready after rendering (status: $preFlightStatus)")
+                return
+            }
+
             // Start printing
             p.startPrint(object : OnPrintListener {
                 override fun onSuccess() {
@@ -153,8 +161,9 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                         printer?.let { applyDensity(it) }
                         Log.d(TAG, "Printer device reset after failure")
                     } catch (e: Exception) {
-                        Log.w(TAG, "Printer reset failed: ${e.message}")
+                        Log.w(TAG, "Printer reset failed, marking uninitialized: ${e.message}")
                         isInitialized = false
+                        printer = null  // Force full re-init on next print
                     }
                     promise.reject("PRINT_FAILED", "Print failed (error: 0x${errorCode.toString(16)})")
                 }
@@ -241,67 +250,76 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     // ==================== RENDERING ====================
 
     private fun renderNode(p: Printer, node: JSONObject) {
-        when (node.getString("type")) {
-            "text" -> {
-                applyFormat(p, node.optJSONObject("format"))
-                val align = parseAlign(node.optString("align", "left"))
-                p.addText(sanitizeForLandi(node.getString("content")), align, 0)
-            }
-
-            "text_line" -> {
-                applyFormat(p, node.optJSONObject("format"))
-                val align = parseAlign(node.optString("align", "left"))
-                p.addText(sanitizeForLandi(node.getString("content")), align, 0)
-                p.feedLine(1)
-            }
-
-            "two_column" -> {
-                applyFormat(p, node.optJSONObject("format"))
-                val left = sanitizeForLandi(node.getString("left"))
-                val right = sanitizeForLandi(node.getString("right"))
-                val lineWidth = node.optInt("lineWidth", 32)
-                val padding = lineWidth - left.length - right.length
-                val line = if (padding > 0) {
-                    left + " ".repeat(padding) + right
-                } else {
-                    left + " " + right
+        val nodeType = node.optString("type", "unknown")
+        try {
+            when (nodeType) {
+                "text" -> {
+                    applyFormat(p, node.optJSONObject("format"))
+                    val align = parseAlign(node.optString("align", "left"))
+                    p.addText(sanitizeForLandi(node.getString("content")), align, 0)
                 }
-                p.addText(line, Align.LEFT, 0)
-                p.feedLine(1)
-            }
 
-            "divider" -> {
-                resetFormat(p)
-                val lineWidth = node.getInt("lineWidth")
-                val style = node.getString("style")
-                val separator = when (style) {
-                    "solid" -> "-".repeat(lineWidth)
-                    "dotted" -> "- ".repeat(lineWidth / 2).take(lineWidth)
-                    "double" -> "=".repeat(lineWidth)
-                    else -> "-".repeat(lineWidth)
+                "text_line" -> {
+                    applyFormat(p, node.optJSONObject("format"))
+                    val align = parseAlign(node.optString("align", "left"))
+                    p.addText(sanitizeForLandi(node.getString("content")), align, 0)
+                    p.feedLine(1)
                 }
-                p.addText(separator, Align.LEFT, 0)
-                p.feedLine(1)
-            }
 
-            "empty_line" -> {
-                p.feedLine(1)
-            }
+                "two_column" -> {
+                    applyFormat(p, node.optJSONObject("format"))
+                    val left = sanitizeForLandi(node.getString("left"))
+                    val right = sanitizeForLandi(node.getString("right"))
+                    val lineWidth = node.optInt("lineWidth", 32)
+                    val padding = lineWidth - left.length - right.length
+                    val line = if (padding > 0) {
+                        left + " ".repeat(padding) + right
+                    } else {
+                        left + " " + right
+                    }
+                    p.addText(line, Align.LEFT, 0)
+                    p.feedLine(1)
+                }
 
-            "feed" -> {
-                p.feedLine(node.getInt("lines"))
-            }
+                "divider" -> {
+                    resetFormat(p)
+                    val lineWidth = node.getInt("lineWidth")
+                    val style = node.getString("style")
+                    val separator = when (style) {
+                        "solid" -> "-".repeat(lineWidth)
+                        "dotted" -> "- ".repeat(lineWidth / 2).take(lineWidth)
+                        "double" -> "=".repeat(lineWidth)
+                        else -> "-".repeat(lineWidth)
+                    }
+                    p.addText(separator, Align.LEFT, 0)
+                    p.feedLine(1)
+                }
 
-            "qr_code" -> {
-                val data = node.getString("data")
-                val size = node.optInt("size", 8)
-                p.addQrCode(size, ECLevel.M, data, Align.CENTER, 0)
-                p.feedLine(1)
-            }
+                "empty_line" -> {
+                    p.feedLine(1)
+                }
 
-            "cut" -> {
-                p.cutPaper()
+                "feed" -> {
+                    p.feedLine(node.getInt("lines"))
+                }
+
+                "qr_code" -> {
+                    val data = node.getString("data")
+                    val size = node.optInt("size", 8)
+                    p.addQrCode(size, ECLevel.M, data, Align.CENTER, 0)
+                    p.feedLine(1)
+                }
+
+                "cut" -> {
+                    p.cutPaper()
+                }
+
+                else -> {
+                    Log.w(TAG, "Skipping unhandled node type: $nodeType")
+                }
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "renderNode($nodeType) failed, skipping: ${e.message}")
         }
     }
 

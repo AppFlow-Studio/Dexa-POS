@@ -3,9 +3,12 @@ import {
   StarDeviceDiscoveryManager,
   StarPrinter,
   StarPrinterModel,
-  StarConnectionSettings,
   InterfaceType,
 } from "react-native-star-io10";
+import {
+  createStarPrinterInstance,
+  closeAndDispose,
+} from "../starPrinterFactory";
 import { getStarPrinterMutex } from "../starPrinterMutex";
 
 // ============================================================================
@@ -126,20 +129,14 @@ export async function probeStarPrinterByIp(
 
   const mutex = getStarPrinterMutex(ipAddress);
   return mutex.runExclusive(async () => {
-    const settings = new StarConnectionSettings();
-    settings.interfaceType = InterfaceType.Lan;
-    settings.identifier = ipAddress;
-    settings.autoSwitchInterface = false; // LAN only — skip BT/USB probing
-
-    const printer = new StarPrinter(settings);
-    printer.openTimeout = 5000;
-    printer.getStatusTimeout = 5000;
+    const printer = createStarPrinterInstance(ipAddress, "probe");
 
     try {
       // Open populates printer.information.model from firmware
       await printer.open();
 
       const model = printer.information?.model ?? StarPrinterModel.Unknown;
+      const macAddress = printer.information?.detail?.lan?.macAddress ?? null;
 
       // Verify the printer is functional
       const status = await printer.getStatus();
@@ -152,21 +149,19 @@ export async function probeStarPrinterByIp(
         throw new Error(msg);
       }
 
-      await printer.close();
-      await printer.dispose();
+      await closeAndDispose(printer);
 
       return {
         identifier: ipAddress,
         ipAddress,
-        macAddress: null,
+        macAddress,
         model,
         modelName: getModelDisplayName(model),
         capabilities: inferCapabilities(model),
       };
     } catch (e: any) {
       // Clean up on failure
-      try { await printer.close(); } catch {}
-      try { await printer.dispose(); } catch {}
+      await closeAndDispose(printer);
 
       // Re-throw with descriptive message if not already descriptive
       if (e.message?.includes("Printer found")) {

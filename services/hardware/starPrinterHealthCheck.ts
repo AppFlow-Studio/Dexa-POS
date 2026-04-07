@@ -2,16 +2,15 @@
 // Background Star Micronics printer health monitoring (singleton pattern)
 
 import { AppState, AppStateStatus } from "react-native";
-import {
-  StarPrinter,
-  StarConnectionSettings,
-  InterfaceType,
-  StarIO10InUseError,
-} from "react-native-star-io10";
+import { StarIO10InUseError } from "react-native-star-io10";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { useToastStore } from "@/stores/useToastStore";
 import { getStarPrinterMutex } from "@/services/printing/starPrinterMutex";
+import {
+  createStarPrinterInstance,
+  disposeQuietly,
+} from "@/services/printing/starPrinterFactory";
 import type { PrinterConfig } from "@/types/printer";
 
 // ============================================================================
@@ -117,14 +116,7 @@ async function probePrinter(
   }
 
   return mutex.runExclusive(async () => {
-    const settings = new StarConnectionSettings();
-    settings.interfaceType = InterfaceType.Lan;
-    settings.identifier = networkAddress;
-    settings.autoSwitchInterface = false; // LAN only — skip BT/USB probing
-
-    const probe = new StarPrinter(settings);
-    probe.openTimeout = PROBE_TIMEOUT_MS;
-    probe.getStatusTimeout = PROBE_TIMEOUT_MS;
+    const probe = createStarPrinterInstance(networkAddress, "probe");
 
     try {
       await probe.open();
@@ -154,11 +146,7 @@ async function probePrinter(
       }
       return { online: false, error: e.message };
     } finally {
-      try {
-        await probe.dispose();
-      } catch {
-        // ignore disposal errors
-      }
+      await disposeQuietly(probe);
     }
   });
 }

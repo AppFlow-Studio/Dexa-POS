@@ -1,18 +1,22 @@
 import { PrintDocument } from "@/types/print-document";
 import { PrinterConfig, PrinterStatusResult } from "@/types/printer";
-import {
-  StarPrinter,
-  StarConnectionSettings,
-  InterfaceType,
-  StarIO10InUseError,
-} from "react-native-star-io10";
+import { StarIO10InUseError } from "react-native-star-io10";
 import { renderDocumentToStarCommands } from "../renderers/StarXpandRenderer";
+import {
+  createStarPrinterInstance,
+  closeAndDispose,
+  disposeQuietly,
+} from "../starPrinterFactory";
 import { getStarPrinterMutex } from "../starPrinterMutex";
 import { PrinterDriver } from "./PrinterDriver";
 
 // Brief delay before retrying after an InUseError (another connection still releasing)
 const IN_USE_RETRY_DELAY_MS = 1500;
 const IN_USE_MAX_RETRIES = 2;
+
+/** If no successful operation within this window, isConnected() returns false
+ *  so PrinterService re-initializes on next job. */
+const STALE_THRESHOLD_MS = 30_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,21 +37,8 @@ export class StarMicronicsDriver implements PrinterDriver {
 
   private config: PrinterConfig | null = null;
   private connected = false;
-
-  /** Create a fresh StarPrinter instance for one open/op/close cycle. */
-  private createPrinter(): StarPrinter {
-    const settings = new StarConnectionSettings();
-    settings.interfaceType = InterfaceType.Lan;
-    settings.identifier = this.config!.networkAddress ?? "";
-    // Disable auto-switch: we only use LAN, skip BT/USB fallback probing
-    settings.autoSwitchInterface = false;
-
-    const printer = new StarPrinter(settings);
-    printer.openTimeout = 8000; // SDK default is 10s; 8s balances speed vs reliability
-    printer.getStatusTimeout = 5000;
-    printer.printTimeout = 30000;
-    return printer;
-  }
+  private lastSuccessAt = 0;
+  private configFingerprint: string | null = null;
 
   /**
    * Execute an operation with automatic retry on StarIO10InUseError.
@@ -76,8 +67,15 @@ export class StarMicronicsDriver implements PrinterDriver {
     throw new Error(`${label}: exhausted retries`);
   }
 
+  /** Check whether printer config has changed since last initialize(). */
+  hasConfigChanged(config: PrinterConfig): boolean {
+    const fp = `${config.networkAddress}|${config.graphicsOnly}|${config.maxCharsPerLine}`;
+    return this.configFingerprint !== null && this.configFingerprint !== fp;
+  }
+
   async initialize(config: PrinterConfig): Promise<void> {
     this.config = config;
+    this.configFingerprint = `${config.networkAddress}|${config.graphicsOnly}|${config.maxCharsPerLine}`;
 
     if (!config.networkAddress) {
       throw new Error("Star Micronics printer requires a network address");
@@ -86,7 +84,7 @@ export class StarMicronicsDriver implements PrinterDriver {
     const mutex = getStarPrinterMutex(config.networkAddress);
     await mutex.runExclusive(() =>
       this.withInUseRetry(async () => {
-        const printer = this.createPrinter();
+        const printer = createStarPrinterInstance(config.networkAddress!, "print");
         try {
           await printer.open();
           const status = await printer.getStatus();
@@ -102,13 +100,14 @@ export class StarMicronicsDriver implements PrinterDriver {
           }
 
           this.connected = true;
+          this.lastSuccessAt = Date.now();
         } catch (e: any) {
           this.connected = false;
           // Re-throw InUseError so withInUseRetry can handle it
           if (e instanceof StarIO10InUseError) throw e;
           throw new Error(`Star printer unreachable: ${e.message}`);
         } finally {
-          try { await printer.dispose(); } catch { /* ignore */ }
+          await disposeQuietly(printer);
         }
       }, "initialize"),
     );
@@ -127,13 +126,14 @@ export class StarMicronicsDriver implements PrinterDriver {
     const mutex = getStarPrinterMutex(this.config.networkAddress);
     return mutex.runExclusive(() =>
       this.withInUseRetry(async () => {
-        const printer = this.createPrinter();
+        const printer = createStarPrinterInstance(this.config!.networkAddress!, "print");
         try {
           await printer.open();
           const status = await printer.getStatus();
           await printer.close();
 
           this.connected = true;
+          this.lastSuccessAt = Date.now();
 
           return {
             isOnline: !status.hasError,
@@ -158,7 +158,7 @@ export class StarMicronicsDriver implements PrinterDriver {
             errorMessage: e.message,
           };
         } finally {
-          try { await printer.dispose(); } catch { /* ignore */ }
+          await disposeQuietly(printer);
         }
       }, "getStatus"),
     );
@@ -186,12 +186,19 @@ export class StarMicronicsDriver implements PrinterDriver {
     const mutex = getStarPrinterMutex(this.config.networkAddress!);
     await mutex.runExclusive(() =>
       this.withInUseRetry(async () => {
-        const printer = this.createPrinter();
+        const printer = createStarPrinterInstance(this.config!.networkAddress!, "print");
         try {
           await printer.open();
+
+          // Pre-print status check — surface descriptive errors early
+          const status = await printer.getStatus();
+          if (status.paperEmpty) throw new Error("Paper empty");
+          if (status.coverOpen) throw new Error("Cover open");
+
           await printer.print(commands);
           await printer.close();
           this.connected = true;
+          this.lastSuccessAt = Date.now();
         } catch (e: any) {
           this.connected = false;
           try { await printer.close(); } catch { /* ignore */ }
@@ -199,7 +206,7 @@ export class StarMicronicsDriver implements PrinterDriver {
           if (e instanceof StarIO10InUseError) throw e;
           throw new Error(`Star print failed: ${e.message}`);
         } finally {
-          try { await printer.dispose(); } catch { /* ignore */ }
+          await disposeQuietly(printer);
         }
       }, "printDocument"),
     );
@@ -218,6 +225,11 @@ export class StarMicronicsDriver implements PrinterDriver {
 
     const StarXpandCommand = require("react-native-star-io10").StarXpandCommand;
 
+    // actionOpen() is intentionally NOT used here.
+    // Its deferred action calls convertDrawerChannel() which accesses
+    // StarXpandCommand.Drawer.Channel via the same circular-dep path that
+    // crashes convertPrinterInternationalCharacterType. Direct _parameters
+    // push with string literals bypasses the converter safely.
     const drawerBuilder = new StarXpandCommand.DrawerBuilder();
     const contents = drawerBuilder._parameters.get("contents") as Array<Map<string, any>>;
     contents.push(
@@ -240,19 +252,20 @@ export class StarMicronicsDriver implements PrinterDriver {
     const mutex = getStarPrinterMutex(this.config.networkAddress);
     await mutex.runExclusive(() =>
       this.withInUseRetry(async () => {
-        const printer = this.createPrinter();
+        const printer = createStarPrinterInstance(this.config!.networkAddress!, "print");
         try {
           await printer.open();
           await printer.print(commands);
           await printer.close();
           this.connected = true;
+          this.lastSuccessAt = Date.now();
         } catch (e: any) {
           this.connected = false;
           try { await printer.close(); } catch { /* ignore */ }
           if (e instanceof StarIO10InUseError) throw e;
           throw new Error(`Star cash drawer open failed: ${e.message}`);
         } finally {
-          try { await printer.dispose(); } catch { /* ignore */ }
+          await disposeQuietly(printer);
         }
       }, "openCashDrawer"),
     );
@@ -260,10 +273,15 @@ export class StarMicronicsDriver implements PrinterDriver {
 
   async disconnect(): Promise<void> {
     this.connected = false;
+    this.lastSuccessAt = 0;
+    this.configFingerprint = null;
     this.config = null;
   }
 
   isConnected(): boolean {
-    return this.connected;
+    if (!this.connected || !this.config) return false;
+    // Stale check: if no successful operation in the last 30s, report
+    // as disconnected so PrinterService re-initializes on next job.
+    return Date.now() - this.lastSuccessAt < STALE_THRESHOLD_MS;
   }
 }

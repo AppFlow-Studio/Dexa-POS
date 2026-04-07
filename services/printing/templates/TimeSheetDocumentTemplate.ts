@@ -7,6 +7,7 @@
 
 import { PrintDocument, PrintNode } from "@/types/print-document";
 import { ReceiptTemplateConfig } from "@/types/receipt-template";
+import { sanitizeForPrint, safeTimeString } from "../utils/sanitizeText";
 
 export interface TimeSheetShiftData {
   date: string; // formatted date, e.g. "01/15/2026"
@@ -66,14 +67,14 @@ export function buildTimeSheetDocument(
   // Store info
   nodes.push({
     type: "text_line",
-    content: data.storeName,
+    content: sanitizeForPrint(data.storeName),
     align: "center",
     format: { bold: true },
   });
   if (data.storeAddress) {
     nodes.push({
       type: "text_line",
-      content: data.storeAddress,
+      content: sanitizeForPrint(data.storeAddress),
       align: "center",
     });
   }
@@ -84,7 +85,7 @@ export function buildTimeSheetDocument(
   nodes.push({
     type: "two_column",
     left: "Employee:",
-    right: truncate(data.employeeName, w - 11),
+    right: truncate(sanitizeForPrint(data.employeeName), w - 11),
     lineWidth: w,
     format: { bold: true },
   });
@@ -92,7 +93,7 @@ export function buildTimeSheetDocument(
     nodes.push({
       type: "two_column",
       left: "Role:",
-      right: truncate(data.employeeRole, w - 7),
+      right: truncate(sanitizeForPrint(data.employeeRole), w - 7),
       lineWidth: w,
     });
   }
@@ -193,10 +194,7 @@ export function buildTimeSheetDocument(
       year: "numeric",
     }) +
     " " +
-    printedAt.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    safeTimeString(printedAt);
 
   nodes.push({
     type: "text_line",

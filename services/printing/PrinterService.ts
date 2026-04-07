@@ -41,21 +41,7 @@ import {
   buildVoidOrderDocument,
   VoidOrderReceiptData
 } from './templates/VoidOrderDocumentTemplate'
-
-/**
- * Sanitize time strings from toLocaleTimeString() which may insert
- * U+202F (Narrow No-Break Space) or other exotic spaces that thermal
- * printers render as a square/box character.
- */
-function safeTimeString (date: Date): string {
-  return date
-    .toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    })
-    .replace(/[\u00A0\u202F\u2009\u200A]/g, ' ')
-}
+import { safeTimeString } from './utils/sanitizeText'
 
 let processingInterval: ReturnType<typeof setInterval> | null = null
 let isProcessing = false
@@ -617,6 +603,16 @@ async function processNextJob (): Promise<void> {
       setTimeout(() => processNextJob(), 3000)
       isProcessing = false
       return
+    }
+
+    // Landi built-in printer error — force driver re-init so next retry reconnects fresh
+    if (
+      printer?.printerType === 'builtin_landi' &&
+      /PRINT_FAILED|NOT_INITIALIZED|PRINTER_ERROR/i.test(errorMsg)
+    ) {
+      console.warn('[PrinterService] Landi print error, forcing re-init on next attempt')
+      const landiDriver = getDriver(printer)
+      try { await landiDriver.disconnect() } catch {}
     }
 
     console.error('[PrinterService] Print job failed:', errorMsg)

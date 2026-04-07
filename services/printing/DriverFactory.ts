@@ -10,7 +10,14 @@ const driverCache = new Map<string, PrinterDriver>();
 export function getDriver(config: PrinterConfig): PrinterDriver {
   const existing = driverCache.get(config.id);
   if (existing) {
-    return existing;  // Always reuse — caller handles re-initialization
+    // Evict stale Star driver if printer config changed (IP, capabilities)
+    if (existing instanceof StarMicronicsDriver && existing.hasConfigChanged(config)) {
+      existing.disconnect().catch(() => {});
+      driverCache.delete(config.id);
+      // Fall through to create new driver
+    } else {
+      return existing;
+    }
   }
 
   let driver: PrinterDriver;
