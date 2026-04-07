@@ -83,6 +83,7 @@ interface KDSState {
     newStatus: 'preparing' | 'ready' | 'served'
   ) => void
   handleOrderBroadcast: (payload: OrderBroadcastPayload) => void
+  _processOrderBroadcast: (payload: OrderBroadcastPayload) => void
   incrementTimerTick: () => void
   scheduleRefetch: (locationId: string) => void
 
@@ -123,6 +124,12 @@ interface KDSState {
 
 // Debounce timer for scheduleRefetch
 let _refetchTimeout: ReturnType<typeof setTimeout> | null = null
+
+// Per-order broadcast debounce — absorbs rapid-fire broadcasts from row-level triggers
+// (bulk_update_order_item_status fires one trigger per row, producing N partial-state
+// broadcasts. We hold each for 80ms and only apply the last one.)
+const _broadcastDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const BROADCAST_DEBOUNCE_MS = 80
 
 // ─── Fetch sequence counter + in-flight guard ───────────────────
 let _fetchSeq = 0
@@ -1159,6 +1166,13 @@ export const useKDSStore = create<KDSState>()(
             ? 'ready'
             : null // "served" removes from KDS
 
+        // Cancel any in-flight per-item retries for this ticket so they don't
+        // overwrite the whole-ticket status we're about to write (e.g. markItemDone
+        // retries running after advanceTicketStatus would set items back to 'ready').
+        for (const id of itemIds) {
+          cancelRetry(`item_${ticketId}_${id}`)
+        }
+
         // Register pending action (protects optimistic state from broadcast clobber)
         const itemStatusMap = new Map<string, string>()
         for (const id of itemIds) itemStatusMap.set(id, newStatus)
@@ -1313,6 +1327,24 @@ export const useKDSStore = create<KDSState>()(
       },
 
       handleOrderBroadcast: (payload: OrderBroadcastPayload) => {
+        const order = payload.data?.order
+        if (!order) return
+
+        // Debounce per-order: bulk_update_order_item_status fires one DB trigger per
+        // row, producing N rapid broadcasts with partial item state. Hold 80ms and
+        // only process the last one to prevent flickering item counts.
+        const existing = _broadcastDebounceTimers.get(order.id)
+        if (existing) clearTimeout(existing)
+        _broadcastDebounceTimers.set(
+          order.id,
+          setTimeout(() => {
+            _broadcastDebounceTimers.delete(order.id)
+            get()._processOrderBroadcast(payload)
+          }, BROADCAST_DEBOUNCE_MS)
+        )
+      },
+
+      _processOrderBroadcast: (payload: OrderBroadcastPayload) => {
         const order = payload.data?.order
         if (!order) return
 
@@ -2048,6 +2080,8 @@ export const useKDSStore = create<KDSState>()(
           clearTimeout(_refetchTimeout)
           _refetchTimeout = null
         }
+        _broadcastDebounceTimers.forEach(t => clearTimeout(t))
+        _broadcastDebounceTimers.clear()
         _fetchInFlight = false
       }
     }),

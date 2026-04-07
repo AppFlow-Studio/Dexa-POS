@@ -12,6 +12,7 @@ import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -98,7 +99,6 @@ const BillSectionContent = ({
   );
   const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
   const setActiveOrder = useOrderStore((state) => state.setActiveOrder);
-  const getSyncStatus = useOrderStore((state) => state.getSyncStatus);
   const retryFailedSyncs = useOrderStore((state) => state.retryFailedSyncs);
 
   // Offline sync state — subscribe directly to offlineSyncService for reliable updates
@@ -125,14 +125,22 @@ const BillSectionContent = ({
     [cart],
   );
 
-  // Get sync status for the active order
-  const syncStatus = useMemo(
-    () =>
-      activeOrderId
-        ? getSyncStatus(activeOrderId)
-        : { pending: 0, failed: 0, synced: 0 },
-    [activeOrderId, getSyncStatus, cart], // Include cart to recompute when items change
-  );
+  // Get sync status for the active order — subscribe directly to useSyncStatusStore
+  // so the component re-renders as items transition pending→synced (the Map reference
+  // changes on every setSyncStatus call, making this reactive).
+  const itemSyncStatus = useSyncStatusStore((s) => s.itemSyncStatus);
+  const syncStatus = useMemo(() => {
+    if (!activeOrderId) return { pending: 0, failed: 0, synced: 0 };
+    const items = cart.filter((item) => !item.isDraft);
+    let pending = 0, failed = 0, synced = 0;
+    for (const item of items) {
+      const status = itemSyncStatus.get(item.id);
+      if (status === "pending" || status === "syncing") pending++;
+      else if (status === "failed") failed++;
+      else synced++;
+    }
+    return { pending, failed, synced };
+  }, [activeOrderId, cart, itemSyncStatus]);
   const hasPendingSyncs = syncStatus.pending > 0;
   const hasFailedSyncs = syncStatus.failed > 0;
 
@@ -486,17 +494,17 @@ const BillSectionContent = ({
 
           <TouchableOpacity
             className={`flex-1 py-1.5 px-2 flex-row items-center justify-center gap-1.5 rounded-lg border ${
-              newItemsCount === 0 || hasDraftItems ? "opacity-40" : ""
+              newItemsCount === 0 || hasDraftItems || (isOnline && hasPendingSyncs) ? "opacity-40" : ""
             }`}
             style={{
-              backgroundColor: newItemsCount === 0 || hasDraftItems ? colors.panel : colors.card,
+              backgroundColor: newItemsCount === 0 || hasDraftItems || (isOnline && hasPendingSyncs) ? colors.panel : colors.card,
               borderColor: colors.border,
             }}
-            disabled={newItemsCount === 0 || hasDraftItems}
+            disabled={newItemsCount === 0 || hasDraftItems || (isOnline && hasPendingSyncs)}
             onPress={handleSendToKitchen}
             activeOpacity={1}
           >
-            {hasPendingSyncs ? (
+            {isOnline && hasPendingSyncs ? (
               <ActivityIndicator size={10} color={colors.teal} />
             ) : null}
             <Text className="text-center text-xs font-semibold text-white">
