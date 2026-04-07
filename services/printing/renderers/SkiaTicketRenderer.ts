@@ -1,5 +1,6 @@
 import { Skia, PaintStyle } from "@shopify/react-native-skia";
 import * as FileSystem from "expo-file-system";
+import { Asset } from "expo-asset";
 
 // ============================================================================
 // TYPES
@@ -23,7 +24,7 @@ export interface TextBlock {
 // ============================================================================
 
 const BASE_FONT_SIZE = 28;
-const LINE_SPACING = 6; // extra pixels between lines
+const LINE_SPACING = 2; // extra pixels between lines
 const HORIZONTAL_PADDING = 4; // left/right margin in dots
 
 // Monospace font families to try (platform-dependent)
@@ -38,12 +39,33 @@ const MONO_FAMILIES = [
 // FONT CACHE
 // ============================================================================
 
-let cachedRegularTypeface: ReturnType<
-  ReturnType<typeof Skia.FontMgr.System>["matchFamilyStyle"]
-> | null = null;
-let cachedBoldTypeface: typeof cachedRegularTypeface = null;
+let cachedCustomTypeface: ReturnType<typeof Skia.Typeface.MakeFreeTypeFaceFromData> | null = null;
+let isCustomFontLoaded = false;
 
-function getTypeface(bold: boolean) {
+async function loadCustomTypeface() {
+  if (isCustomFontLoaded) return cachedCustomTypeface;
+  try {
+    const assets = await Asset.loadAsync(require("../../../assets/fonts/SpaceMono-Regular.ttf"));
+    if (assets && assets[0] && assets[0].localUri) {
+      const data = await FileSystem.readAsStringAsync(assets[0].localUri, { encoding: FileSystem.EncodingType.Base64 });
+      cachedCustomTypeface = Skia.Typeface.MakeFreeTypeFaceFromData(Skia.Data.fromBase64(data));
+    }
+  } catch (error) {
+    console.error("[SkiaTicketRenderer] Failed to load custom font:", error);
+  } finally {
+    isCustomFontLoaded = true; // prevent repeated failing loads
+  }
+  return cachedCustomTypeface;
+}
+
+let cachedRegularTypeface: any = null;
+let cachedBoldTypeface: any = null;
+
+function getTypeface(bold: boolean): any {
+  if (cachedCustomTypeface) {
+    return cachedCustomTypeface;
+  }
+
   const fontMgr = Skia.FontMgr.System();
 
   if (bold) {
@@ -98,6 +120,9 @@ export async function renderTextBlocksToImage(
   printWidthDots: number,
 ): Promise<string> {
   if (blocks.length === 0) return "";
+
+  // Ensure custom typeface is loaded before rasterizing text
+  await loadCustomTypeface();
 
   // First pass: calculate total height
   let totalHeight = 0;
@@ -207,7 +232,8 @@ export async function renderTextBlocksToImage(
     // doubleHeight uses vertical scaling only — it never affects width.
     // Only doubleWidth needs width checking.
     let { doubleWidth, doubleHeight } = block;
-    const checkFont = Skia.Font(getTypeface(block.bold), BASE_FONT_SIZE);
+    const typeface = getTypeface(block.bold) ?? undefined;
+    const checkFont = Skia.Font(typeface, BASE_FONT_SIZE);
     const rawWidth = checkFont.getTextWidth(block.text);
     const effectiveWidth = doubleWidth ? rawWidth * 2 : rawWidth;
     if (effectiveWidth > maxContentWidth && doubleWidth) {
@@ -215,13 +241,12 @@ export async function renderTextBlocksToImage(
       // doubleHeight stays — it doesn't affect width
     }
 
-    const typeface = getTypeface(block.bold);
     const font = Skia.Font(typeface, BASE_FONT_SIZE);
     font.setEdging(0); // 0 = Alias — no anti-aliasing, crisp for thermal printing
 
     // Handle inverted: draw black rect behind text only, then white text
     if (block.inverted) {
-      const invFont = Skia.Font(getTypeface(block.bold), BASE_FONT_SIZE);
+      const invFont = Skia.Font(typeface, BASE_FONT_SIZE);
       const invScaleX = doubleWidth ? 2 : 1;
       const textW = invFont.getTextWidth(block.text) * invScaleX;
       const pad = 4;
@@ -266,35 +291,20 @@ export async function renderTextBlocksToImage(
     if (block.rightAlignedText) {
       // ── Pixel-perfect two-column: left text at left margin, right text at right edge ──
       if (scaleY !== 1 || scaleX !== 1) {
-        // Magnified two-column: use scaled font (same approach as single-text scaled branch)
-        const targetFontSize = BASE_FONT_SIZE * scaleY;
-        const scaledTwoColFont = Skia.Font(typeface, targetFontSize);
-        scaledTwoColFont.setEdging(0);
-        const effectiveScaleX = scaleX / scaleY;
-        const drawY = y + targetFontSize;
+        canvas.save();
+        canvas.translate(0, y);
+        canvas.scale(scaleX, scaleY);
+        
+        const drawY = BASE_FONT_SIZE;
+        const leftX = HORIZONTAL_PADDING / scaleX;
+        canvas.drawText(block.text, leftX, drawY, fillPaint, font);
+        if (strokeOverlay) canvas.drawText(block.text, leftX, drawY, strokeOverlay, font);
 
-        if (effectiveScaleX !== 1) {
-          canvas.save();
-          canvas.scale(effectiveScaleX, 1);
-          // In canvas coords, output X = canvasX * effectiveScaleX
-          const leftX = HORIZONTAL_PADDING / effectiveScaleX;
-          canvas.drawText(block.text, leftX, drawY, fillPaint, scaledTwoColFont);
-          if (strokeOverlay) canvas.drawText(block.text, leftX, drawY, strokeOverlay, scaledTwoColFont);
-
-          const rightW = scaledTwoColFont.getTextWidth(block.rightAlignedText);
-          const rightX = (printWidthDots - HORIZONTAL_PADDING) / effectiveScaleX - rightW;
-          canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, scaledTwoColFont);
-          if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, scaledTwoColFont);
-          canvas.restore();
-        } else {
-          canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, fillPaint, scaledTwoColFont);
-          if (strokeOverlay) canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, strokeOverlay, scaledTwoColFont);
-
-          const rightW = scaledTwoColFont.getTextWidth(block.rightAlignedText);
-          const rightX = printWidthDots - HORIZONTAL_PADDING - rightW;
-          canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, scaledTwoColFont);
-          if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, scaledTwoColFont);
-        }
+        const rightW = font.getTextWidth(block.rightAlignedText);
+        const rightX = (printWidthDots - HORIZONTAL_PADDING) / scaleX - rightW;
+        canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, font);
+        if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, font);
+        canvas.restore();
       } else {
         const drawY = y + BASE_FONT_SIZE;
         canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, fillPaint, font);
@@ -306,35 +316,14 @@ export async function renderTextBlocksToImage(
         if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, font);
       }
     } else if (scaleX !== 1 || scaleY !== 1) {
-      // Render at native target font size for crisp glyph rendering.
-      // Stretching a small bitmap via canvas.scale() misaligns font hints,
-      // causing streaky/missing letters on binary thermal printers.
-      const targetFontSize = BASE_FONT_SIZE * scaleY;
-      const scaledFont = Skia.Font(typeface, targetFontSize);
-      scaledFont.setEdging(0);
-
-      // Larger font produces proportionally wider glyphs; compensate X scale
-      // so output width matches the original intent:
-      //   doubleHeight only  → 0.5 (squeeze width to match normal)
-      //   doubleWidth only   → 2   (stretch width)
-      //   both               → 1   (no X change)
-      const effectiveScaleX = scaleX / scaleY;
-
-      if (effectiveScaleX !== 1) {
-        canvas.save();
-        canvas.translate(outputX, y);
-        canvas.scale(effectiveScaleX, 1);
-        canvas.drawText(block.text, 0, targetFontSize, fillPaint, scaledFont);
-        if (strokeOverlay) {
-          canvas.drawText(block.text, 0, targetFontSize, strokeOverlay, scaledFont);
-        }
-        canvas.restore();
-      } else {
-        canvas.drawText(block.text, outputX, y + targetFontSize, fillPaint, scaledFont);
-        if (strokeOverlay) {
-          canvas.drawText(block.text, outputX, y + targetFontSize, strokeOverlay, scaledFont);
-        }
+      canvas.save();
+      canvas.translate(outputX, y);
+      canvas.scale(scaleX, scaleY);
+      canvas.drawText(block.text, 0, BASE_FONT_SIZE, fillPaint, font);
+      if (strokeOverlay) {
+        canvas.drawText(block.text, 0, BASE_FONT_SIZE, strokeOverlay, font);
       }
+      canvas.restore();
     } else {
       canvas.drawText(block.text, outputX, y + BASE_FONT_SIZE, fillPaint, font);
       if (strokeOverlay) {

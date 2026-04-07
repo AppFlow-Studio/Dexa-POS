@@ -819,6 +819,8 @@ export async function provisionStarPrinter(
           macAddress: discovered.macAddress,
           identifier: discovered.identifier,
           graphicsOnly: caps.graphicsOnly || false,
+          emulation: discovered.emulation,
+          serialNumber: discovered.serialNumber,
         },
       })
       .eq("id", existingId);
@@ -858,6 +860,8 @@ export async function provisionStarPrinter(
         macAddress: discovered.macAddress,
         identifier: discovered.identifier,
         graphicsOnly: caps.graphicsOnly || false,
+        emulation: discovered.emulation,
+        serialNumber: discovered.serialNumber,
       },
     })
     .select("id")

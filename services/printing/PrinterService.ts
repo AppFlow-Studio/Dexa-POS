@@ -548,8 +548,9 @@ async function processNextJob (): Promise<void> {
   isProcessing = true
   processingStartedAt = Date.now()
 
+  const printer = usePrinterStore.getState().getPrinterById(job.printerId)
+
   try {
-    const printer = usePrinterStore.getState().getPrinterById(job.printerId)
     if (!printer) {
       usePrintQueueStore
         .getState()
@@ -673,7 +674,6 @@ async function processNextJob (): Promise<void> {
     }
 
     // Update printer error count + mark disconnected for connection errors
-    const printer = usePrinterStore.getState().getPrinterById(job.printerId)
     if (printer) {
       const isConnectionError =
         /timed out|unreachable|device not found|connect|ETIMEDOUT|EHOSTUNREACH|used by another/i.test(

@@ -9,7 +9,7 @@
 // REMOVE THIS SCREEN BEFORE PRODUCTION RELEASE.
 // ============================================================
 
-import { listDevices } from "@/modules/castles-usb";
+import { listDevices, diagnoseUsb } from "@/modules/castles-usb";
 import {
     getSharedCastlesService,
     probeCastlesTerminal,
@@ -614,7 +614,29 @@ export default function CastlesTerminalTestScreen() {
     try {
       const devices = await listDevices();
       if (devices.length === 0) {
-        addLog("No USB serial devices found. Check cable.", "warn");
+        addLog("No USB serial devices found. Running diagnostics...", "warn");
+        try {
+          const diag = await diagnoseUsb();
+          addLog(`Device: ${diag.manufacturer} ${diag.model} (SDK ${diag.androidSdk})`, "data");
+          addLog(`USB Host feature: ${diag.hasUsbHostFeature ? "YES" : "NO"}`, diag.hasUsbHostFeature ? "data" : "error");
+          addLog(`USB Accessory feature: ${diag.hasUsbAccessoryFeature ? "YES" : "NO"}`, "data");
+          addLog(`UsbManager available: ${diag.usbManagerAvailable ? "YES" : "NO"}`, "data");
+          addLog(`Raw device count: ${diag.rawDeviceCount}`, "data");
+          if (diag.deviceNames.length > 0) {
+            addLog(`Device names: ${diag.deviceNames.join(", ")}`, "data");
+          }
+          if (!diag.hasUsbHostFeature) {
+            addLog("USB Host NOT supported on this device — USB terminals cannot work", "error");
+          } else if (diag.rawDeviceCount === 0) {
+            addLog("USB Host supported but 0 devices detected at OS level.", "warn");
+            addLog("Check: (1) cable is data-capable, not charge-only", "warn");
+            addLog("Check: (2) Saturn1000 is powered and set to USB CDC mode", "warn");
+            addLog("Check: (3) try unplugging and replugging the USB cable", "warn");
+            addLog("Check: (4) look for OTG/USB Host toggle in Android Settings", "warn");
+          }
+        } catch (diagErr) {
+          addLog(`Diagnostic failed: ${diagErr instanceof Error ? diagErr.message : String(diagErr)}`, "error");
+        }
       } else {
         addLog(`Found ${devices.length} USB serial device(s):`, "success");
         for (const d of devices) {

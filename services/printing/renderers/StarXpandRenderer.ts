@@ -71,31 +71,9 @@ export async function renderDocumentToStarCommands(
   // (TSP100III/IIU+ are graphics-only anyway and never reach this path.)
   printerBuilder.styleCharacterSpace(0);
 
-  if (options.graphicsOnly) {
-    await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand);
-  } else {
-    const fmt = createFormatTracker(printerBuilder, StarXpandCommand);
-    const printWidthDots = w >= 42 ? PRINT_WIDTH_DOTS_80MM : PRINT_WIDTH_DOTS_58MM;
-
-    let i = 0;
-    while (i < doc.nodes.length) {
-      const node = doc.nodes[i];
-      if (hasMagnification(node)) {
-        // Batch consecutive magnified text nodes → render as image via Skia
-        // to bypass firmware text rendering that causes streaked/missing letters
-        const batch: TextBlock[] = [];
-        while (i < doc.nodes.length && hasMagnification(doc.nodes[i])) {
-          batch.push(nodeToTextBlock(doc.nodes[i]));
-          i++;
-        }
-        fmt.reset(); // Clean state before switching to image mode
-        await flushMagnifiedBatch(printerBuilder, batch, printWidthDots, StarXpandCommand);
-      } else {
-        await renderNode(printerBuilder, node, w, options, StarXpandCommand, fmt);
-        i++;
-      }
-    }
-  }
+  // Force all printing to use graphics mode to ensure exact font consistency across all printers.
+  // This uses SkiaTicketRenderer which enforces the bundled SpaceMono font.
+  await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand);
 
   const builder = new StarXpandCommand.StarXpandCommandBuilder();
   builder.addDocument(

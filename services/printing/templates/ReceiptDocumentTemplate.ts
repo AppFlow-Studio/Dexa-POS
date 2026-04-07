@@ -67,7 +67,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
 
   // ── Prominent Order Number ──
-  nodes.push({ type: "empty_line" });
   const orderNumText = `${data.orderNumber} `;
   nodes.push({
     type: "text_line",
@@ -75,7 +74,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     align: "center",
     format: scaledFormat(orderNumText, w, { doubleHeight: true, doubleWidth: true, inverted: true }),
   });
-  nodes.push({ type: "empty_line" });
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
 
   // ── Order Info ──
@@ -129,6 +127,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     left: "Subtotal",
     right: formatCurrency(data.subtotal),
     lineWidth: w,
+    format: { bold: true, doubleHeight: true },
   });
 
   if (data.tax > 0) {
@@ -141,6 +140,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: taxLabel,
       right: formatCurrency(data.tax),
       lineWidth: w,
+      format: { bold: true, doubleHeight: true },
     });
   }
   if (data.discount > 0) {
@@ -149,6 +149,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Discount",
       right: `-${formatCurrency(data.discount)}`,
       lineWidth: w,
+      format: { bold: true, doubleHeight: true },
     });
   }
   if (data.tip > 0) {
@@ -157,6 +158,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Tip",
       right: formatCurrency(data.tip),
       lineWidth: w,
+      format: { bold: true, doubleHeight: true },
     });
   }
 
@@ -252,7 +254,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
 
   // ── Order Details Footer — regular weight ──
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
-  nodes.push({ type: "empty_line" });
 
   if (data.backendOrderNumber) {
     nodes.push({ type: "two_column", left: "Order #", right: sanitizeForPrint(data.backendOrderNumber), lineWidth: w });
@@ -270,7 +271,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     nodes.push({ type: "two_column", left: "Customer", right: sanitizeForPrint(data.customerName), lineWidth: w });
   }
 
-  nodes.push({ type: "empty_line" });
   nodes.push({ type: "text_line", content: "Customer Copy", align: "center", format: { bold: true } });
 
   // ── Footer ──
@@ -281,13 +281,11 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
 
   // ── Barcode ──
   if (cfg?.showBarcode !== false && data.orderNumber) {
-    nodes.push({ type: "empty_line" });
     nodes.push({ type: "barcode", data: data.orderNumber });
   }
 
   // ── QR Code ──
   if (cfg?.showQrCode !== false && data.orderNumber) {
-    nodes.push({ type: "empty_line" });
     nodes.push({ type: "qr_code", data: data.orderNumber, size: 6 });
   }
 
@@ -316,7 +314,7 @@ function pushReceiptSingleItem(
     itemName = itemName.slice(0, maxNameLen);
   }
 
-  nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true } });
+  nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true, doubleHeight: true } });
 
   // Modifiers (conditional) — regular weight for contrast
   if (cfg?.showItemModifiers !== false) {
@@ -368,7 +366,7 @@ function pushReceiptItemsGroupedBySeat(
   let isFirst = true;
   for (const [seat, seatItems] of groups) {
     if (!isFirst) {
-      nodes.push({ type: "empty_line" });
+      nodes.push({ type: "divider", style: "solid", lineWidth: w });
     }
     isFirst = false;
 
