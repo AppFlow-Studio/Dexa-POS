@@ -233,7 +233,10 @@ const NotesInput = memo(
           <TextInput
             editable={!isReadOnly}
             value={localValue}
-            onChangeText={setLocalValue}
+            onChangeText={(text) => {
+              setLocalValue(text)
+              onChange(text)
+            }}
             onBlur={() => onChange(localValue)}
             placeholder='No onions, extra sauce...'
             numberOfLines={1}

@@ -1095,43 +1095,67 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
               <View
                 key={item.id}
                 style={{
-                  flexDirection: 'row',
+                  flexDirection: 'column',
                   alignItems: 'flex-start',
-                  gap: 6
+                  gap: 2
                 }}
               >
                 <View
                   style={{
-                    backgroundColor: '#E5E7EB',
-                    width: 22,
-                    height: 22,
-                    borderRadius: 4,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: 22
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 6,
+                    width: '100%'
                   }}
                 >
+                  <View
+                    style={{
+                      backgroundColor: '#E5E7EB',
+                      width: 22,
+                      height: 22,
+                      borderRadius: 4,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: 22
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: '#9CA3AF',
+                        fontSize: 12,
+                        fontWeight: '700'
+                      }}
+                    >
+                      {item.quantity}
+                    </Text>
+                  </View>
                   <Text
                     style={{
                       color: '#9CA3AF',
-                      fontSize: 12,
-                      fontWeight: '700'
+                      fontSize: 13,
+                      fontWeight: '500',
+                      flex: 1
                     }}
+                    numberOfLines={2}
                   >
-                    {item.quantity}
+                    {item.name}
                   </Text>
                 </View>
-                <Text
-                  style={{
-                    color: '#9CA3AF',
-                    fontSize: 13,
-                    fontWeight: '500',
-                    flex: 1
-                  }}
-                  numberOfLines={2}
-                >
-                  {item.name}
-                </Text>
+                {/* Special instructions */}
+                {item.special_instructions && (
+                  <Text
+                    style={{
+                      color: colors.warning,
+                      fontSize: 11,
+                      fontStyle: 'italic',
+                      marginLeft: 28,
+                      fontWeight: '600'
+                    }}
+                    numberOfLines={2}
+                  >
+                    "{item.special_instructions}"
+                  </Text>
+                )}
               </View>
             ))}
           </View>
