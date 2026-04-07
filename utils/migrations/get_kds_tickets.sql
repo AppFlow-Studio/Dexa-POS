@@ -12,12 +12,12 @@ CREATE INDEX IF NOT EXISTS idx_order_items_kitchen
 
 CREATE INDEX IF NOT EXISTS idx_orders_location_status
   ON orders (location_id, status)
-  WHERE status NOT IN ('completed', 'cancelled', 'void', 'voided', 'refunded');
+  WHERE status NOT IN ('completed', 'cancelled', 'void',  'refunded');
 
 -- Main RPC function
 CREATE OR REPLACE FUNCTION get_kds_tickets_v2(
   p_location_id UUID,
-  p_statuses TEXT[] DEFAULT ARRAY['new', 'sent', 'preparing', 'ready'],
+  p_statuses TEXT[] DEFAULT ARRAY['sent', 'preparing', 'ready'],
   p_kds_display_id UUID DEFAULT NULL
 )
 RETURNS JSONB
@@ -61,7 +61,7 @@ BEGIN
         COALESCE(oi.course_number, 1) AS course_number,
         -- Status aggregation
         bool_and(oi.kitchen_status = 'ready') AS all_ready,
-        bool_or(oi.kitchen_status = 'sent' OR oi.kitchen_status IS NULL) AS any_sent,
+        bool_or(oi.kitchen_status = 'sent') AS any_sent,
         -- Item count (sum of quantities)
         SUM(oi.quantity)::int AS item_count,
         oi.fire_time,
@@ -73,6 +73,7 @@ BEGIN
             'id', oi.id,
             'name', COALESCE(oi.open_item_name, oi.item_name),
             'quantity', oi.quantity,
+            'seat_number', oi.seat_number,
             'kitchen_status', COALESCE(oi.kitchen_status, 'sent'),
             'special_instructions', oi.special_instructions,
             'category_name', oi.category_name,
@@ -105,7 +106,7 @@ BEGIN
         AND kis.kds_display_id = p_kds_display_id
         AND kis.status NOT IN ('cancelled', 'completed')
       WHERE COALESCE(oi.is_voided, false) = false
-        AND (oi.kitchen_status = ANY(p_statuses) OR oi.kitchen_status IS NULL)
+        AND oi.kitchen_status = ANY(p_statuses)
         -- Filter: if display ID provided, only show routed items; otherwise show all
         AND (p_kds_display_id IS NULL OR kis.id IS NOT NULL)
       GROUP BY oi.order_id, COALESCE(oi.course_number, 1), oi.fire_time

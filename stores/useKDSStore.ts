@@ -220,6 +220,32 @@ const _recalledTicketIds = new Set<string>()
 /** Track new order IDs filtered out by routing rules — sound fires when server refetch adds them */
 const _pendingNewOrderSounds = new Set<string>()
 
+function pendingActionSatisfied (
+  ticket: KDSTicket,
+  pending: PendingAction
+): boolean {
+  if (pending.targetStatus === 'done') return false
+  if (ticket.status !== pending.targetStatus) return false
+  if (
+    pending.prioritized != null &&
+    Boolean(ticket.prioritized) !== pending.prioritized
+  ) {
+    return false
+  }
+
+  for (const item of ticket.items) {
+    const expectedStatus = pending.itemStatuses.get(item.id)
+    if (expectedStatus && item.kitchen_status !== expectedStatus) {
+      return false
+    }
+    if (pending.rushOverride != null && Boolean(item.rush) !== pending.rushOverride) {
+      return false
+    }
+  }
+
+  return true
+}
+
 /** Overlay pending optimistic states onto server/broadcast tickets */
 function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
   if (_pendingActions.size === 0 && _recalledTicketIds.size === 0)
@@ -230,6 +256,18 @@ function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
     const pending = _pendingActions.get(ticket.ticket_id)
     if (!pending) {
       // Still overlay recalled flag even without pending action
+      if (_recalledTicketIds.has(ticket.ticket_id)) {
+        acc.push({
+          ...ticket,
+          items: ticket.items.map(item => ({ ...item, recalled: true }))
+        })
+      } else {
+        acc.push(ticket)
+      }
+      return acc
+    }
+    if (pendingActionSatisfied(ticket, pending)) {
+      _pendingActions.delete(ticket.ticket_id)
       if (_recalledTicketIds.has(ticket.ticket_id)) {
         acc.push({
           ...ticket,
@@ -1214,7 +1252,8 @@ export const useKDSStore = create<KDSState>()(
               ),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const lastLoc = get()._lastLocationId
+              if (lastLoc) get().scheduleRefetch(lastLoc)
 
               // Persist final order status after all items are served from KDS.
               if (newStatus === 'served' && orderId) {
@@ -1521,7 +1560,8 @@ export const useKDSStore = create<KDSState>()(
             () => OrderService.recallOrderItems(client, itemIds, recallStatus),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const lastLoc = get()._lastLocationId
+              if (lastLoc) get().scheduleRefetch(lastLoc)
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1600,7 +1640,8 @@ export const useKDSStore = create<KDSState>()(
               ),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const loc = get()._lastLocationId
+              if (loc) get().scheduleRefetch(loc)
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1658,7 +1699,8 @@ export const useKDSStore = create<KDSState>()(
             () => OrderService.toggleRushOnItems(client, itemIds, newRush),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const lastLoc = get()._lastLocationId
+              if (lastLoc) get().scheduleRefetch(lastLoc)
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1745,7 +1787,8 @@ export const useKDSStore = create<KDSState>()(
               OrderService.bulkUpdateOrderItemStatus(client, [itemId], 'ready'),
             0,
             () => {
-              _pendingActions.delete(ticketId)
+              const lastLoc = get()._lastLocationId
+              if (lastLoc) get().scheduleRefetch(lastLoc)
             },
             () => {
               _pendingActions.delete(ticketId)
@@ -1977,14 +2020,8 @@ export const useKDSStore = create<KDSState>()(
               () => OrderService.bulkUpdateOrderItemStatus(client, ids, status),
               0,
               () => {
-                // Clear pending actions for tickets in this batch
-                for (const [tid] of ticketIndex) {
-                  const m = mutations.get(tid)
-                  const effectiveStatus = removeIds.has(tid)
-                    ? 'served'
-                    : m?.newStatus
-                  if (effectiveStatus === status) _pendingActions.delete(tid)
-                }
+                const lastLoc = get()._lastLocationId
+                if (lastLoc) get().scheduleRefetch(lastLoc)
               },
               () => {
                 for (const [tid] of ticketIndex) {
