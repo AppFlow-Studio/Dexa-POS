@@ -14,6 +14,7 @@ interface LandiPrinterNative {
   printDocument(documentJson: string): Promise<boolean>;
   openCashDrawer(): Promise<boolean>;
   setPrintDensity(level: number): Promise<number>;
+  closePrinter(): Promise<boolean>;
 }
 
 const { LandiPrinterModule } = NativeModules as {
@@ -75,5 +76,15 @@ export async function setLandiPrintDensity(level: number): Promise<number | null
   } catch (e) {
     console.warn("[LandiPrinter] setPrintDensity failed:", e);
     return null;
+  }
+}
+
+export async function closeLandiPrinter(): Promise<boolean> {
+  if (Platform.OS !== "android") return false;
+  try {
+    return await LandiPrinterModule.closePrinter();
+  } catch (e) {
+    console.warn("[LandiPrinter] Close failed:", e);
+    return false;
   }
 }

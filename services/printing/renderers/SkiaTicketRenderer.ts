@@ -1,5 +1,6 @@
 import { Skia, PaintStyle } from "@shopify/react-native-skia";
 import * as FileSystem from "expo-file-system";
+import { Asset } from "expo-asset";
 
 // ============================================================================
 // TYPES
@@ -23,7 +24,7 @@ export interface TextBlock {
 // ============================================================================
 
 const BASE_FONT_SIZE = 28;
-const LINE_SPACING = 6; // extra pixels between lines
+const LINE_SPACING = 2; // extra pixels between lines
 const HORIZONTAL_PADDING = 4; // left/right margin in dots
 
 // Monospace font families to try (platform-dependent)
@@ -38,12 +39,33 @@ const MONO_FAMILIES = [
 // FONT CACHE
 // ============================================================================
 
-let cachedRegularTypeface: ReturnType<
-  ReturnType<typeof Skia.FontMgr.System>["matchFamilyStyle"]
-> | null = null;
-let cachedBoldTypeface: typeof cachedRegularTypeface = null;
+let cachedCustomTypeface: ReturnType<typeof Skia.Typeface.MakeFreeTypeFaceFromData> | null = null;
+let isCustomFontLoaded = false;
 
-function getTypeface(bold: boolean) {
+async function loadCustomTypeface() {
+  if (isCustomFontLoaded) return cachedCustomTypeface;
+  try {
+    const assets = await Asset.loadAsync(require("../../../assets/fonts/SpaceMono-Regular.ttf"));
+    if (assets && assets[0] && assets[0].localUri) {
+      const data = await FileSystem.readAsStringAsync(assets[0].localUri, { encoding: FileSystem.EncodingType.Base64 });
+      cachedCustomTypeface = Skia.Typeface.MakeFreeTypeFaceFromData(Skia.Data.fromBase64(data));
+    }
+  } catch (error) {
+    console.error("[SkiaTicketRenderer] Failed to load custom font:", error);
+  } finally {
+    isCustomFontLoaded = true; // prevent repeated failing loads
+  }
+  return cachedCustomTypeface;
+}
+
+let cachedRegularTypeface: any = null;
+let cachedBoldTypeface: any = null;
+
+function getTypeface(bold: boolean): any {
+  if (cachedCustomTypeface) {
+    return cachedCustomTypeface;
+  }
+
   const fontMgr = Skia.FontMgr.System();
 
   if (bold) {
@@ -99,6 +121,9 @@ export async function renderTextBlocksToImage(
 ): Promise<string> {
   if (blocks.length === 0) return "";
 
+  // Ensure custom typeface is loaded before rasterizing text
+  await loadCustomTypeface();
+
   // First pass: calculate total height
   let totalHeight = 0;
   const lineHeights: number[] = [];
@@ -110,7 +135,9 @@ export async function renderTextBlocksToImage(
       totalHeight += divHeight;
     } else {
       const scaleY = block.doubleHeight ? 2 : 1;
-      const lineHeight = BASE_FONT_SIZE * scaleY + LINE_SPACING;
+      // Scale line spacing proportionally — at 2x, descent extends beyond
+      // BASE_FONT_SIZE*2 + LINE_SPACING, clipping into the next line.
+      const lineHeight = (BASE_FONT_SIZE + LINE_SPACING) * scaleY;
       lineHeights.push(lineHeight);
       totalHeight += lineHeight;
     }
@@ -121,6 +148,13 @@ export async function renderTextBlocksToImage(
 
   // Create offscreen surface
   const surfaceHeight = Math.max(totalHeight, 1);
+
+  const MAX_SURFACE_HEIGHT = 4000;
+  if (surfaceHeight > MAX_SURFACE_HEIGHT) {
+    console.error(`[SkiaTicketRenderer] Surface height ${surfaceHeight}px exceeds max ${MAX_SURFACE_HEIGHT}px`);
+    return "";
+  }
+
   const surface = Skia.Surface.Make(printWidthDots, surfaceHeight);
   if (!surface) {
     console.error("[SkiaTicketRenderer] Failed to create Skia surface");
@@ -198,7 +232,8 @@ export async function renderTextBlocksToImage(
     // doubleHeight uses vertical scaling only — it never affects width.
     // Only doubleWidth needs width checking.
     let { doubleWidth, doubleHeight } = block;
-    const checkFont = Skia.Font(getTypeface(block.bold), BASE_FONT_SIZE);
+    const typeface = getTypeface(block.bold) ?? undefined;
+    const checkFont = Skia.Font(typeface, BASE_FONT_SIZE);
     const rawWidth = checkFont.getTextWidth(block.text);
     const effectiveWidth = doubleWidth ? rawWidth * 2 : rawWidth;
     if (effectiveWidth > maxContentWidth && doubleWidth) {
@@ -206,13 +241,12 @@ export async function renderTextBlocksToImage(
       // doubleHeight stays — it doesn't affect width
     }
 
-    const typeface = getTypeface(block.bold);
     const font = Skia.Font(typeface, BASE_FONT_SIZE);
     font.setEdging(0); // 0 = Alias — no anti-aliasing, crisp for thermal printing
 
     // Handle inverted: draw black rect behind text only, then white text
     if (block.inverted) {
-      const invFont = Skia.Font(getTypeface(block.bold), BASE_FONT_SIZE);
+      const invFont = Skia.Font(typeface, BASE_FONT_SIZE);
       const invScaleX = doubleWidth ? 2 : 1;
       const textW = invFont.getTextWidth(block.text) * invScaleX;
       const pad = 4;
@@ -256,18 +290,30 @@ export async function renderTextBlocksToImage(
 
     if (block.rightAlignedText) {
       // ── Pixel-perfect two-column: left text at left margin, right text at right edge ──
-      const drawY = y + BASE_FONT_SIZE;
-      // Left text
-      canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, fillPaint, font);
-      if (strokeOverlay) {
-        canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, strokeOverlay, font);
-      }
-      // Right text — measure and right-align to pixel edge
-      const rightW = font.getTextWidth(block.rightAlignedText);
-      const rightX = printWidthDots - HORIZONTAL_PADDING - rightW;
-      canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, font);
-      if (strokeOverlay) {
-        canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, font);
+      if (scaleY !== 1 || scaleX !== 1) {
+        canvas.save();
+        canvas.translate(0, y);
+        canvas.scale(scaleX, scaleY);
+        
+        const drawY = BASE_FONT_SIZE;
+        const leftX = HORIZONTAL_PADDING / scaleX;
+        canvas.drawText(block.text, leftX, drawY, fillPaint, font);
+        if (strokeOverlay) canvas.drawText(block.text, leftX, drawY, strokeOverlay, font);
+
+        const rightW = font.getTextWidth(block.rightAlignedText);
+        const rightX = (printWidthDots - HORIZONTAL_PADDING) / scaleX - rightW;
+        canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, font);
+        if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, font);
+        canvas.restore();
+      } else {
+        const drawY = y + BASE_FONT_SIZE;
+        canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, fillPaint, font);
+        if (strokeOverlay) canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, strokeOverlay, font);
+
+        const rightW = font.getTextWidth(block.rightAlignedText);
+        const rightX = printWidthDots - HORIZONTAL_PADDING - rightW;
+        canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, font);
+        if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, font);
       }
     } else if (scaleX !== 1 || scaleY !== 1) {
       canvas.save();
@@ -290,7 +336,17 @@ export async function renderTextBlocksToImage(
 
   // Export to PNG base64, then write to temp file for reliable Star SDK transfer
   const image = surface.makeImageSnapshot();
+  if (!image) {
+    console.error('[SkiaTicketRenderer] makeImageSnapshot() returned null');
+    return '';
+  }
+
   const base64 = image.encodeToBase64(4, 100); // 4 = PNG format
+
+  if (!base64 || base64.length < 200) {
+    console.error(`[SkiaTicketRenderer] PNG too small: ${base64?.length ?? 0} chars for ${blocks.length} blocks`);
+    return '';
+  }
 
   const fileName = `star-ticket-${Date.now()}.png`;
   const fileUri = `${FileSystem.cacheDirectory}${fileName}`;

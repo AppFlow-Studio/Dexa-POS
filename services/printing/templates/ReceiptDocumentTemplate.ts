@@ -1,6 +1,7 @@
 import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
 import { ReceiptItemData, ReceiptTemplateData } from "@/types/printer";
 import { formatCurrency } from "@/utils/currency";
+import { sanitizeForPrint } from "../utils/sanitizeText";
 
 /**
  * Build format that scales down magnification to fit content on one line.
@@ -43,29 +44,29 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   }
 
   // ── Store Header ──
+  const storeName = sanitizeForPrint(data.storeName);
   nodes.push({
     type: "text_line",
-    content: data.storeName,
+    content: storeName,
     align: "center",
-    format: scaledFormat(data.storeName, w, { doubleHeight: true }),
+    format: scaledFormat(storeName, w, { doubleHeight: true }),
   });
 
   if (data.storeAddress) {
-    nodes.push({ type: "text_line", content: data.storeAddress, align: "center", format: { bold: true } });
+    nodes.push({ type: "text_line", content: sanitizeForPrint(data.storeAddress), align: "center", format: { bold: true } });
   }
   if (data.storePhone) {
-    nodes.push({ type: "text_line", content: data.storePhone, align: "center", format: { bold: true } });
+    nodes.push({ type: "text_line", content: sanitizeForPrint(data.storePhone), align: "center", format: { bold: true } });
   }
 
   // ── Header message (from template) ──
   if (data.headerMessage) {
-    nodes.push({ type: "text_line", content: data.headerMessage, align: "center", format: { bold: true } });
+    nodes.push({ type: "text_line", content: sanitizeForPrint(data.headerMessage), align: "center", format: { bold: true } });
   }
 
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
 
   // ── Prominent Order Number ──
-  nodes.push({ type: "empty_line" });
   const orderNumText = `${data.orderNumber} `;
   nodes.push({
     type: "text_line",
@@ -73,15 +74,14 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     align: "center",
     format: scaledFormat(orderNumText, w, { doubleHeight: true, doubleWidth: true, inverted: true }),
   });
-  nodes.push({ type: "empty_line" });
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
 
   // ── Order Info ──
   // Combined order type + table on one line
   if (cfg?.showOrderType !== false) {
     const typeLine = data.tableName
-      ? `${data.orderType} - ${data.tableName}`
-      : data.orderType;
+      ? `${sanitizeForPrint(data.orderType)} - ${sanitizeForPrint(data.tableName)}`
+      : sanitizeForPrint(data.orderType);
     nodes.push({ type: "text_line", content: typeLine, format: { bold: true } });
   }
 
@@ -89,13 +89,13 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     nodes.push({
       type: "two_column",
       left: "Customer:",
-      right: data.customerName,
+      right: sanitizeForPrint(data.customerName),
       lineWidth: w,
       format: { bold: true },
     });
   }
   if (cfg?.showServerName !== false && data.serverName) {
-    nodes.push({ type: "text_line", content: `Server: ${data.serverName}`, format: { bold: true } });
+    nodes.push({ type: "text_line", content: `Server: ${sanitizeForPrint(data.serverName)}`, format: { bold: true } });
   }
 
   // Date + Time line
@@ -127,6 +127,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     left: "Subtotal",
     right: formatCurrency(data.subtotal),
     lineWidth: w,
+    format: { bold: true, doubleHeight: true },
   });
 
   if (data.tax > 0) {
@@ -139,6 +140,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: taxLabel,
       right: formatCurrency(data.tax),
       lineWidth: w,
+      format: { bold: true, doubleHeight: true },
     });
   }
   if (data.discount > 0) {
@@ -147,6 +149,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Discount",
       right: `-${formatCurrency(data.discount)}`,
       lineWidth: w,
+      format: { bold: true, doubleHeight: true },
     });
   }
   if (data.tip > 0) {
@@ -155,6 +158,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Tip",
       right: formatCurrency(data.tip),
       lineWidth: w,
+      format: { bold: true, doubleHeight: true },
     });
   }
 
@@ -250,42 +254,38 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
 
   // ── Order Details Footer — regular weight ──
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
-  nodes.push({ type: "empty_line" });
 
   if (data.backendOrderNumber) {
-    nodes.push({ type: "two_column", left: "Order #", right: data.backendOrderNumber, lineWidth: w });
+    nodes.push({ type: "two_column", left: "Order #", right: sanitizeForPrint(data.backendOrderNumber), lineWidth: w });
   } else {
-    nodes.push({ type: "two_column", left: "Order #", right: data.orderNumber, lineWidth: w });
+    nodes.push({ type: "two_column", left: "Order #", right: sanitizeForPrint(data.orderNumber), lineWidth: w });
   }
   nodes.push({ type: "two_column", left: "Ordered", right: `${data.orderDate}, ${data.orderTime}`, lineWidth: w });
   if (data.printDate && data.printTime) {
     nodes.push({ type: "two_column", left: "Printed", right: `${data.printDate}, ${data.printTime}`, lineWidth: w });
   }
   if (data.serverName) {
-    nodes.push({ type: "two_column", left: "Server", right: data.serverName, lineWidth: w });
+    nodes.push({ type: "two_column", left: "Server", right: sanitizeForPrint(data.serverName), lineWidth: w });
   }
   if (data.customerName) {
-    nodes.push({ type: "two_column", left: "Customer", right: data.customerName, lineWidth: w });
+    nodes.push({ type: "two_column", left: "Customer", right: sanitizeForPrint(data.customerName), lineWidth: w });
   }
 
-  nodes.push({ type: "empty_line" });
   nodes.push({ type: "text_line", content: "Customer Copy", align: "center", format: { bold: true } });
 
   // ── Footer ──
   if (data.footerMessage) {
     nodes.push({ type: "divider", style: "solid", lineWidth: w });
-    nodes.push({ type: "text_line", content: data.footerMessage, align: "center", format: { bold: true } });
+    nodes.push({ type: "text_line", content: sanitizeForPrint(data.footerMessage), align: "center", format: { bold: true } });
   }
 
   // ── Barcode ──
   if (cfg?.showBarcode !== false && data.orderNumber) {
-    nodes.push({ type: "empty_line" });
     nodes.push({ type: "barcode", data: data.orderNumber });
   }
 
   // ── QR Code ──
   if (cfg?.showQrCode !== false && data.orderNumber) {
-    nodes.push({ type: "empty_line" });
     nodes.push({ type: "qr_code", data: data.orderNumber, size: 6 });
   }
 
@@ -307,32 +307,33 @@ function pushReceiptSingleItem(
   if (item.isVoided) return;
 
   const qty = `${item.quantity}x `;
-  let itemName = `${qty}${item.name}`;
+  let itemName = `${qty}${sanitizeForPrint(item.name)}`;
   const itemPrice = formatCurrency(item.price);
   const maxNameLen = w - itemPrice.length - 1;
   if (itemName.length > maxNameLen) {
     itemName = itemName.slice(0, maxNameLen);
   }
 
-  nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true } });
+  nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true, doubleHeight: true } });
 
   // Modifiers (conditional) — regular weight for contrast
   if (cfg?.showItemModifiers !== false) {
     for (const mod of item.modifiers) {
       const isNo = !!mod.isNo;
       const prefix = isNo ? "-" : "+";
+      const modName = sanitizeForPrint(mod.name);
       const modLine = isNo
-        ? `  ${prefix} NO ${mod.name}`
+        ? `  ${prefix} NO ${modName}`
         : mod.price > 0
-          ? `  ${prefix} ${mod.name} (${formatCurrency(mod.price)})`
-          : `  ${prefix} ${mod.name}`;
+          ? `  ${prefix} ${modName} (${formatCurrency(mod.price)})`
+          : `  ${prefix} ${modName}`;
       nodes.push({ type: "text_line", content: modLine });
     }
   }
 
   // Notes — regular weight
   if (item.notes) {
-    nodes.push({ type: "text_line", content: `  Note: ${item.notes}` });
+    nodes.push({ type: "text_line", content: `  Note: ${sanitizeForPrint(item.notes)}` });
   }
 }
 
@@ -365,7 +366,7 @@ function pushReceiptItemsGroupedBySeat(
   let isFirst = true;
   for (const [seat, seatItems] of groups) {
     if (!isFirst) {
-      nodes.push({ type: "empty_line" });
+      nodes.push({ type: "divider", style: "solid", lineWidth: w });
     }
     isFirst = false;
 

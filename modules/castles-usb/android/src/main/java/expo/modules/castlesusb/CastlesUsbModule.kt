@@ -260,6 +260,24 @@ class CastlesUsbModule : Module() {
       closeInternal()
     }
 
+    // ── diagnoseUsb() ──
+    // Returns diagnostic info about USB host support and device state.
+    // Useful when listDevices() returns empty — helps distinguish between
+    // hardware issues (no USB host), cable issues, and driver issues.
+    AsyncFunction("diagnoseUsb") {
+      val pm = context.packageManager
+      mapOf(
+        "hasUsbHostFeature" to pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_USB_HOST),
+        "hasUsbAccessoryFeature" to pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_USB_ACCESSORY),
+        "usbManagerAvailable" to (context.getSystemService(Context.USB_SERVICE) != null),
+        "rawDeviceCount" to usbManager.deviceList.size,
+        "manufacturer" to Build.MANUFACTURER,
+        "model" to Build.MODEL,
+        "androidSdk" to Build.VERSION.SDK_INT,
+        "deviceNames" to usbManager.deviceList.values.map { it.deviceName }
+      )
+    }
+
     // ── isOpen() ──
     // Synchronous check — returns true if a port is currently open.
     Function("isOpen") {

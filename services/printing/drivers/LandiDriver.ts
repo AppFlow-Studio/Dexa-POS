@@ -1,12 +1,16 @@
-import { PrintDocument } from "@/types/print-document";
+import { PrintDocument, PrintNode } from "@/types/print-document";
 import { PrinterConfig, PrinterStatusResult } from "@/types/printer";
 import {
   initLandiPrinter,
   getLandiPrinterStatus,
   printLandiDocument,
   openLandiCashDrawer,
+  closeLandiPrinter,
 } from "@/native/LandiPrinter";
 import { PrinterDriver } from "./PrinterDriver";
+
+/** Node types the Landi C20Pro built-in thermal printer cannot handle. */
+const UNSUPPORTED_LANDI_NODES = new Set(["barcode", "image"]);
 
 export class LandiDriver implements PrinterDriver {
   readonly supportsRawPrint = false;
@@ -48,7 +52,13 @@ export class LandiDriver implements PrinterDriver {
     if (!this.connected) {
       throw new Error("Landi printer not initialized");
     }
-    await printLandiDocument(JSON.stringify(doc));
+    // Built-in thermal printer: no cutter, no image, no barcode support.
+    // Filter unsupported nodes and add trailing feed for tear-off gap.
+    const filtered: PrintNode[] = doc.nodes.filter(
+      (n) => !UNSUPPORTED_LANDI_NODES.has(n.type),
+    );
+    filtered.push({ type: "feed", lines: 4 });
+    await printLandiDocument(JSON.stringify({ ...doc, nodes: filtered }));
   }
 
   async openCashDrawer(): Promise<void> {
@@ -59,6 +69,7 @@ export class LandiDriver implements PrinterDriver {
   }
 
   async disconnect(): Promise<void> {
+    await closeLandiPrinter();
     this.connected = false;
   }
 

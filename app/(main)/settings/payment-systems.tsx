@@ -1239,7 +1239,6 @@ const PaymentSystemsScreen = () => {
                           <Text style={{ color: colors.teal, fontSize: 13, marginLeft: 6, fontWeight: "500" }}>Diagnose</Text>
                         </TouchableOpacity>
                       </View>
-                      )}
                       {/* Inline test — WiFi/TCP only */}
                       {editForm.connectionType === "local_socket" && (
                       <View className="flex-row gap-2 mb-4">

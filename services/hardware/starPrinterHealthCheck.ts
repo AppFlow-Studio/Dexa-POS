@@ -2,16 +2,19 @@
 // Background Star Micronics printer health monitoring (singleton pattern)
 
 import { AppState, AppStateStatus } from "react-native";
-import {
-  StarPrinter,
-  StarConnectionSettings,
-  InterfaceType,
-  StarIO10InUseError,
-} from "react-native-star-io10";
+import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
+import { StarIO10InUseError } from "react-native-star-io10";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { useToastStore } from "@/stores/useToastStore";
 import { getStarPrinterMutex } from "@/services/printing/starPrinterMutex";
+import {
+  createStarPrinterInstance,
+  disposeQuietly,
+} from "@/services/printing/starPrinterFactory";
+import {
+  discoverStarPrinters,
+} from "@/services/printing/discovery/StarPrinterDiscovery";
 import type { PrinterConfig } from "@/types/printer";
 
 // ============================================================================
@@ -37,9 +40,15 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: ReturnType<
   typeof AppState.addEventListener
 > | null = null;
+let netInfoUnsubscribe: (() => void) | null = null;
+let wasConnected = true; // assume connected initially
 let currentLocationId: string | null = null;
 let isChecking = false;
 const printerStates = new Map<string, PrinterHealthState>();
+
+// DHCP recovery: track which printers have already attempted a recovery scan
+// to avoid repeated scans during the same failure streak
+const dhcpRecoveryAttempted = new Set<string>();
 
 // ============================================================================
 // HELPERS
@@ -105,9 +114,22 @@ function sleep(ms: number): Promise<void> {
 // PROBE (isolated from DriverFactory)
 // ============================================================================
 
+interface ProbeResult {
+  online: boolean;
+  error?: string;
+  paperNearEmpty?: boolean;
+  paperEmpty?: boolean;
+  coverOpen?: boolean;
+  cutterError?: boolean;
+  paperJamError?: boolean;
+  printHeadOverTemperature?: boolean;
+  detectedPaperWidth?: number;
+  drawerOpen?: boolean;
+}
+
 async function probePrinter(
   networkAddress: string,
-): Promise<{ online: boolean; error?: string }> {
+): Promise<ProbeResult> {
   const mutex = getStarPrinterMutex(networkAddress);
 
   // If a print job is in progress (mutex locked), skip the health check —
@@ -117,30 +139,51 @@ async function probePrinter(
   }
 
   return mutex.runExclusive(async () => {
-    const settings = new StarConnectionSettings();
-    settings.interfaceType = InterfaceType.Lan;
-    settings.identifier = networkAddress;
-    settings.autoSwitchInterface = false; // LAN only — skip BT/USB probing
-
-    const probe = new StarPrinter(settings);
-    probe.openTimeout = PROBE_TIMEOUT_MS;
-    probe.getStatusTimeout = PROBE_TIMEOUT_MS;
+    const probe = createStarPrinterInstance(networkAddress, "probe");
 
     try {
       await probe.open();
       const status = await probe.getStatus();
       await probe.close();
 
+      // Extract detailed status fields from the SDK
+      const detail = (status as any).detail;
+      const paperNearEmpty = !!(status as any).paperNearEmpty;
+      const cutterError = !!detail?.cutterError;
+      const paperJamError = !!detail?.paperJamError;
+      const printHeadOverTemperature = !!detail?.printHeadOverTemperature;
+      const detectedPaperWidth = detail?.detectedPaperWidth ?? undefined;
+      const drawerOpen = !!(status as any).drawerOpenCloseSignal;
+
       if (status.hasError) {
-        const msg = status.paperEmpty
-          ? "Paper empty"
-          : status.coverOpen
-            ? "Cover open"
-            : "Printer error";
-        return { online: false, error: msg };
+        // Provide specific error messages based on detailed fault codes
+        let msg = "Printer error";
+        if (status.paperEmpty) msg = "Paper empty";
+        else if (status.coverOpen) msg = "Cover open";
+        else if (cutterError) msg = "Cutter error";
+        else if (paperJamError) msg = "Paper jam";
+        else if (printHeadOverTemperature) msg = "Print head overheating";
+
+        return {
+          online: false,
+          error: msg,
+          paperNearEmpty,
+          paperEmpty: status.paperEmpty,
+          coverOpen: status.coverOpen,
+          cutterError,
+          paperJamError,
+          printHeadOverTemperature,
+          detectedPaperWidth,
+          drawerOpen,
+        };
       }
 
-      return { online: true };
+      return {
+        online: true,
+        paperNearEmpty,
+        detectedPaperWidth,
+        drawerOpen,
+      };
     } catch (e: any) {
       // InUseError means the printer is reachable but held by another connection
       // (e.g. another POS station). Report as online — it's not offline.
@@ -154,11 +197,7 @@ async function probePrinter(
       }
       return { online: false, error: e.message };
     } finally {
-      try {
-        await probe.dispose();
-      } catch {
-        // ignore disposal errors
-      }
+      await disposeQuietly(probe);
     }
   });
 }
@@ -167,13 +206,16 @@ async function probePrinter(
 // STATUS HANDLERS
 // ============================================================================
 
-function handlePrinterOnline(printer: PrinterConfig): void {
+function handlePrinterOnline(printer: PrinterConfig, result?: ProbeResult): void {
   const state = getState(printer.id);
   const wasDown = state.consecutiveFailures >= FAILURE_TOAST_THRESHOLD && state.toastShownForStreak;
 
   state.consecutiveFailures = 0;
   state.toastShownForStreak = false;
   state.lastCheckAt = Date.now();
+
+  // Reset DHCP recovery flag on successful check
+  dhcpRecoveryAttempted.delete(printer.id);
 
   // Update store + backend
   usePrinterStore.getState().syncPrinterStatus(printer.id, {
@@ -188,6 +230,16 @@ function handlePrinterOnline(printer: PrinterConfig): void {
       message: `${printer.printerName} is now online.`,
       type: "success",
       duration: 5000,
+    });
+  }
+
+  // Warn about paper running low on default printers
+  if (result?.paperNearEmpty && isDefaultPrinter(printer)) {
+    useToastStore.getState().show({
+      title: "Paper Running Low",
+      message: `${printer.printerName} paper is running low. Replace soon.`,
+      type: "warning",
+      duration: 6000,
     });
   }
 
@@ -232,6 +284,78 @@ function handlePrinterOffline(printer: PrinterConfig, errorMessage: string): voi
       duration: 8000,
     });
   }
+
+  // DHCP IP Auto-Recovery: after threshold failures, if printer has MAC address,
+  // run a background scan to find the printer at its new IP.
+  // Only attempt once per failure streak to avoid repeated scans.
+  const macAddress = (printer.metadata as Record<string, unknown> | null)?.macAddress as string | undefined;
+  if (
+    state.consecutiveFailures >= FAILURE_TOAST_THRESHOLD &&
+    macAddress &&
+    !dhcpRecoveryAttempted.has(printer.id)
+  ) {
+    dhcpRecoveryAttempted.add(printer.id);
+    attemptDhcpRecovery(printer, macAddress);
+  }
+}
+
+/**
+ * Attempts to find a printer that moved to a new IP via DHCP.
+ * Runs a short background discovery scan, matches by MAC address,
+ * and updates the printer config if found at a new IP.
+ * Fire-and-forget — non-blocking.
+ */
+function attemptDhcpRecovery(printer: PrinterConfig, macAddress: string): void {
+  console.log(
+    `[StarPrinterHealthCheck] Attempting DHCP recovery for ${printer.printerName} (MAC: ${macAddress})`,
+  );
+
+  // Fire-and-forget — don't block health check
+  discoverStarPrinters(5000)
+    .then(async (discovered) => {
+      const match = discovered.find(
+        (d) => d.macAddress && d.macAddress.toLowerCase() === macAddress.toLowerCase(),
+      );
+
+      if (!match || match.ipAddress === printer.networkAddress) {
+        console.log(
+          `[StarPrinterHealthCheck] DHCP recovery: no new IP found for ${printer.printerName}`,
+        );
+        return;
+      }
+
+      console.log(
+        `[StarPrinterHealthCheck] DHCP recovery: ${printer.printerName} moved ${printer.networkAddress} → ${match.ipAddress}`,
+      );
+
+      // Update the printer config with the new IP
+      const store = usePrinterStore.getState();
+      await store.updatePrinterConfig(printer.id, {
+        networkAddress: match.ipAddress,
+      });
+
+      // Immediately verify at new IP
+      const verifyResult = await probePrinter(match.ipAddress);
+      if (verifyResult.online) {
+        handlePrinterOnline(
+          { ...printer, networkAddress: match.ipAddress },
+          verifyResult,
+        );
+
+        useToastStore.getState().show({
+          title: "Printer Reconnected",
+          message: `${printer.printerName} moved to ${match.ipAddress}. Connection restored.`,
+          type: "success",
+          duration: 6000,
+        });
+      }
+    })
+    .catch((e) => {
+      console.warn(
+        `[StarPrinterHealthCheck] DHCP recovery scan failed for ${printer.printerName}:`,
+        e,
+      );
+    });
 }
 
 // ============================================================================
@@ -275,7 +399,7 @@ async function performHealthCheckRound(): Promise<void> {
       const result = await probePrinter(printer.networkAddress!);
 
       if (result.online) {
-        handlePrinterOnline(printer);
+        handlePrinterOnline(printer, result);
       } else {
         handlePrinterOffline(printer, result.error ?? "Unknown error");
       }
@@ -317,7 +441,9 @@ export function startStarPrinterHealthCheck(locationId: string): void {
 
   currentLocationId = locationId;
   printerStates.clear();
+  dhcpRecoveryAttempted.clear();
   isChecking = false;
+  wasConnected = true;
 
   // Initial check immediately
   performHealthCheckRound();
@@ -327,6 +453,18 @@ export function startStarPrinterHealthCheck(locationId: string): void {
 
   // Listen for app state changes
   appStateSubscription = AppState.addEventListener("change", handleAppState);
+
+  // Listen for network connectivity changes — trigger immediate health check
+  // when WiFi reconnects so printers recover in seconds instead of waiting
+  // for the 2-minute interval.
+  netInfoUnsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+    const isNow = state.isConnected ?? false;
+    if (!wasConnected && isNow) {
+      console.log("[StarPrinterHealthCheck] Network reconnected, triggering immediate health check");
+      performHealthCheckRound();
+    }
+    wasConnected = isNow;
+  });
 
   console.log(
     `[StarPrinterHealthCheck] Started for location ${locationId} (every ${HEALTH_CHECK_INTERVAL_MS / 1000}s)`,
@@ -344,8 +482,14 @@ export function stopStarPrinterHealthCheck(): void {
     appStateSubscription = null;
   }
 
+  if (netInfoUnsubscribe) {
+    netInfoUnsubscribe();
+    netInfoUnsubscribe = null;
+  }
+
   currentLocationId = null;
   printerStates.clear();
+  dhcpRecoveryAttempted.clear();
   isChecking = false;
 
   console.log("[StarPrinterHealthCheck] Stopped");

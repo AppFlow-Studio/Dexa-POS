@@ -43,6 +43,10 @@ import {
   startStarPrinterHealthCheck,
   stopStarPrinterHealthCheck,
 } from "@/services/hardware";
+import {
+  startStarPrinterDiscoveryService,
+  stopStarPrinterDiscoveryService,
+} from "@/services/printing/discovery/StarPrinterDiscoveryService";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { TaxRate } from "@/types/menu";
@@ -155,13 +159,15 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     };
   }, [supabase, selectedStation?.payment_terminal?.id]);
 
-  // Star printer health check lifecycle
+  // Star printer health check + background discovery lifecycle
   useEffect(() => {
     if (selectedStore?.id && !isKDS) {
       startStarPrinterHealthCheck(selectedStore.id);
+      startStarPrinterDiscoveryService();
     }
     return () => {
       stopStarPrinterHealthCheck();
+      stopStarPrinterDiscoveryService();
     };
   }, [selectedStore?.id, isKDS]);
 

@@ -45,6 +45,19 @@ const PLATFORM_COLORS: Record<string, string> = {
   postmates: '#6E48AA'
 }
 
+// Human-readable display names for KDS badges
+const PLATFORM_DISPLAY_NAMES: Record<string, string> = {
+  doordash: 'DoorDash',
+  door_dash: 'DoorDash',
+  grubhub: 'Grubhub',
+  uber_eats: 'Uber Eats',
+  ubereats: 'Uber Eats',
+  'uber-eats': 'Uber Eats',
+  food_panda: 'Food Panda',
+  foodpanda: 'Food Panda',
+  postmates: 'Postmates'
+}
+
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface DeliveryPlatformBadgeProps {
@@ -52,8 +65,8 @@ interface DeliveryPlatformBadgeProps {
   deliveryPlatform?: string | null
   /** Backend order_source field (fallback for generic online badge) */
   orderSource?: string | null
-  /** Badge size variant — 'sm' fits inside order chips row, 'md' for detail views */
-  size?: 'sm' | 'md'
+  /** Badge size variant — 'sm' fits inside order chips row, 'md' for detail views, 'kds' for KDS ticket headers */
+  size?: 'sm' | 'md' | 'kds'
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -82,10 +95,40 @@ export default function DeliveryPlatformBadge ({
 
   const logoSize = size === 'md' ? 20 : 14
   const containerSize = size === 'md' ? 28 : 20
-  const fontSize = size === 'md' ? 11 : 10
+  const fontSize = size === 'kds' ? 11 : size === 'md' ? 11 : 10
 
   // Known platform with logo
   if (logo) {
+    // KDS: pill badge with icon + platform name
+    if (size === 'kds') {
+      const displayName = PLATFORM_DISPLAY_NAMES[key] ?? key
+      return (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            backgroundColor: accent + '15',
+            borderWidth: 1,
+            borderColor: accent + '40',
+            borderRadius: 20,
+            paddingHorizontal: 8,
+            paddingVertical: 3
+          }}
+        >
+          <Image
+            source={logo}
+            style={{ width: 16, height: 16 }}
+            resizeMode='contain'
+          />
+          <Text style={{ fontSize: 11, fontWeight: '700', color: accent }}>
+            {displayName}
+          </Text>
+        </View>
+      )
+    }
+
+    // sm / md: circular icon only
     return (
       <View
         style={{
@@ -120,11 +163,11 @@ export default function DeliveryPlatformBadge ({
         borderWidth: 1,
         borderColor: colors.teal + '50',
         borderRadius: 20,
-        paddingHorizontal: size === 'md' ? 8 : 6,
-        paddingVertical: size === 'md' ? 3 : 2
+        paddingHorizontal: size === 'kds' ? 8 : size === 'md' ? 8 : 6,
+        paddingVertical: size === 'kds' ? 3 : size === 'md' ? 3 : 2
       }}
     >
-      <Globe size={size === 'md' ? 12 : 9} color={colors.teal} />
+      <Globe size={size === 'kds' ? 12 : size === 'md' ? 12 : 9} color={colors.teal} />
       <Text style={{ fontSize, fontWeight: '700', color: colors.teal }}>
         Online
       </Text>
