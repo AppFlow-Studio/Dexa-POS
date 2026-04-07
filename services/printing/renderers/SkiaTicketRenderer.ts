@@ -110,7 +110,9 @@ export async function renderTextBlocksToImage(
       totalHeight += divHeight;
     } else {
       const scaleY = block.doubleHeight ? 2 : 1;
-      const lineHeight = BASE_FONT_SIZE * scaleY + LINE_SPACING;
+      // Scale line spacing proportionally — at 2x, descent extends beyond
+      // BASE_FONT_SIZE*2 + LINE_SPACING, clipping into the next line.
+      const lineHeight = (BASE_FONT_SIZE + LINE_SPACING) * scaleY;
       lineHeights.push(lineHeight);
       totalHeight += lineHeight;
     }
@@ -263,28 +265,76 @@ export async function renderTextBlocksToImage(
 
     if (block.rightAlignedText) {
       // ── Pixel-perfect two-column: left text at left margin, right text at right edge ──
-      const drawY = y + BASE_FONT_SIZE;
-      // Left text
-      canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, fillPaint, font);
-      if (strokeOverlay) {
-        canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, strokeOverlay, font);
-      }
-      // Right text — measure and right-align to pixel edge
-      const rightW = font.getTextWidth(block.rightAlignedText);
-      const rightX = printWidthDots - HORIZONTAL_PADDING - rightW;
-      canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, font);
-      if (strokeOverlay) {
-        canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, font);
+      if (scaleY !== 1 || scaleX !== 1) {
+        // Magnified two-column: use scaled font (same approach as single-text scaled branch)
+        const targetFontSize = BASE_FONT_SIZE * scaleY;
+        const scaledTwoColFont = Skia.Font(typeface, targetFontSize);
+        scaledTwoColFont.setEdging(0);
+        const effectiveScaleX = scaleX / scaleY;
+        const drawY = y + targetFontSize;
+
+        if (effectiveScaleX !== 1) {
+          canvas.save();
+          canvas.scale(effectiveScaleX, 1);
+          // In canvas coords, output X = canvasX * effectiveScaleX
+          const leftX = HORIZONTAL_PADDING / effectiveScaleX;
+          canvas.drawText(block.text, leftX, drawY, fillPaint, scaledTwoColFont);
+          if (strokeOverlay) canvas.drawText(block.text, leftX, drawY, strokeOverlay, scaledTwoColFont);
+
+          const rightW = scaledTwoColFont.getTextWidth(block.rightAlignedText);
+          const rightX = (printWidthDots - HORIZONTAL_PADDING) / effectiveScaleX - rightW;
+          canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, scaledTwoColFont);
+          if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, scaledTwoColFont);
+          canvas.restore();
+        } else {
+          canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, fillPaint, scaledTwoColFont);
+          if (strokeOverlay) canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, strokeOverlay, scaledTwoColFont);
+
+          const rightW = scaledTwoColFont.getTextWidth(block.rightAlignedText);
+          const rightX = printWidthDots - HORIZONTAL_PADDING - rightW;
+          canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, scaledTwoColFont);
+          if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, scaledTwoColFont);
+        }
+      } else {
+        const drawY = y + BASE_FONT_SIZE;
+        canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, fillPaint, font);
+        if (strokeOverlay) canvas.drawText(block.text, HORIZONTAL_PADDING, drawY, strokeOverlay, font);
+
+        const rightW = font.getTextWidth(block.rightAlignedText);
+        const rightX = printWidthDots - HORIZONTAL_PADDING - rightW;
+        canvas.drawText(block.rightAlignedText, rightX, drawY, fillPaint, font);
+        if (strokeOverlay) canvas.drawText(block.rightAlignedText, rightX, drawY, strokeOverlay, font);
       }
     } else if (scaleX !== 1 || scaleY !== 1) {
-      canvas.save();
-      canvas.translate(outputX, y);
-      canvas.scale(scaleX, scaleY);
-      canvas.drawText(block.text, 0, BASE_FONT_SIZE, fillPaint, font);
-      if (strokeOverlay) {
-        canvas.drawText(block.text, 0, BASE_FONT_SIZE, strokeOverlay, font);
+      // Render at native target font size for crisp glyph rendering.
+      // Stretching a small bitmap via canvas.scale() misaligns font hints,
+      // causing streaky/missing letters on binary thermal printers.
+      const targetFontSize = BASE_FONT_SIZE * scaleY;
+      const scaledFont = Skia.Font(typeface, targetFontSize);
+      scaledFont.setEdging(0);
+
+      // Larger font produces proportionally wider glyphs; compensate X scale
+      // so output width matches the original intent:
+      //   doubleHeight only  → 0.5 (squeeze width to match normal)
+      //   doubleWidth only   → 2   (stretch width)
+      //   both               → 1   (no X change)
+      const effectiveScaleX = scaleX / scaleY;
+
+      if (effectiveScaleX !== 1) {
+        canvas.save();
+        canvas.translate(outputX, y);
+        canvas.scale(effectiveScaleX, 1);
+        canvas.drawText(block.text, 0, targetFontSize, fillPaint, scaledFont);
+        if (strokeOverlay) {
+          canvas.drawText(block.text, 0, targetFontSize, strokeOverlay, scaledFont);
+        }
+        canvas.restore();
+      } else {
+        canvas.drawText(block.text, outputX, y + targetFontSize, fillPaint, scaledFont);
+        if (strokeOverlay) {
+          canvas.drawText(block.text, outputX, y + targetFontSize, strokeOverlay, scaledFont);
+        }
       }
-      canvas.restore();
     } else {
       canvas.drawText(block.text, outputX, y + BASE_FONT_SIZE, fillPaint, font);
       if (strokeOverlay) {

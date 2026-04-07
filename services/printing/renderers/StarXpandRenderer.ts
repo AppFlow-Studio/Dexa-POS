@@ -75,8 +75,25 @@ export async function renderDocumentToStarCommands(
     await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand);
   } else {
     const fmt = createFormatTracker(printerBuilder, StarXpandCommand);
-    for (const node of doc.nodes) {
-      await renderNode(printerBuilder, node, w, options, StarXpandCommand, fmt);
+    const printWidthDots = w >= 42 ? PRINT_WIDTH_DOTS_80MM : PRINT_WIDTH_DOTS_58MM;
+
+    let i = 0;
+    while (i < doc.nodes.length) {
+      const node = doc.nodes[i];
+      if (hasMagnification(node)) {
+        // Batch consecutive magnified text nodes → render as image via Skia
+        // to bypass firmware text rendering that causes streaked/missing letters
+        const batch: TextBlock[] = [];
+        while (i < doc.nodes.length && hasMagnification(doc.nodes[i])) {
+          batch.push(nodeToTextBlock(doc.nodes[i]));
+          i++;
+        }
+        fmt.reset(); // Clean state before switching to image mode
+        await flushMagnifiedBatch(printerBuilder, batch, printWidthDots, StarXpandCommand);
+      } else {
+        await renderNode(printerBuilder, node, w, options, StarXpandCommand, fmt);
+        i++;
+      }
     }
   }
 
@@ -134,7 +151,7 @@ async function renderNodesGraphicsOnly(
     textBuffer.push(block);
     const blockHeight = block.isDivider
       ? ((block.dividerStyle ?? 'solid') === 'double' ? 20 : 16)
-      : (GFX_BASE_FONT_SIZE * (block.doubleHeight ? 2 : 1) + GFX_LINE_SPACING);
+      : ((GFX_BASE_FONT_SIZE + GFX_LINE_SPACING) * (block.doubleHeight ? 2 : 1));
     chunkHeightPx += blockHeight;
     if (chunkHeightPx >= MAX_CHUNK_HEIGHT_PX) {
       await flushTextBuffer();
@@ -315,6 +332,59 @@ function fitFormat(
 
   // Only doubleHeight (doesn't affect char width, but drop if needed for consistency)
   return format;
+}
+
+/**
+ * Returns true for text/text_line/two_column nodes that have doubleHeight or doubleWidth.
+ * These nodes are routed to Skia image rendering to avoid streaked/missing letters
+ * from firmware-rendered magnified text on Star printers.
+ */
+function hasMagnification(node: PrintNode): boolean {
+  if (node.type !== "text" && node.type !== "text_line" && node.type !== "two_column") return false;
+  return !!node.format?.doubleHeight || !!node.format?.doubleWidth;
+}
+
+/** Converts a PrintNode to a TextBlock for Skia rendering. Only call for text/text_line/two_column. */
+function nodeToTextBlock(node: PrintNode): TextBlock {
+  switch (node.type) {
+    case "two_column":
+      return {
+        text: sanitizeForPrint(node.left),
+        rightAlignedText: sanitizeForPrint(node.right),
+        bold: !!node.format?.bold,
+        doubleHeight: !!node.format?.doubleHeight,
+        doubleWidth: !!node.format?.doubleWidth,
+        inverted: !!node.format?.inverted,
+        align: "left",
+        secondColor: !!node.format?.secondColor,
+      };
+    case "text":
+    case "text_line":
+      return {
+        text: sanitizeForPrint(node.content),
+        bold: !!node.format?.bold,
+        doubleHeight: !!node.format?.doubleHeight,
+        doubleWidth: !!node.format?.doubleWidth,
+        inverted: !!node.format?.inverted,
+        align: node.align ?? "left",
+        secondColor: !!node.format?.secondColor,
+      };
+    default:
+      // Should never reach here — hasMagnification guards the call
+      return { text: "", bold: false, doubleHeight: false, doubleWidth: false, inverted: false, align: "left" };
+  }
+}
+
+/** Renders a batch of magnified TextBlocks as a PNG image and sends via actionPrintImage. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function flushMagnifiedBatch(pb: any, batch: TextBlock[], printWidthDots: number, sdk: any): Promise<void> {
+  if (batch.length === 0) return;
+  const imageUri = await renderTextBlocksToImage(batch, printWidthDots);
+  if (imageUri) {
+    pb.actionPrintImage(
+      new sdk.Printer.ImageParameter(imageUri, printWidthDots),
+    );
+  }
 }
 
 interface FormatTracker {

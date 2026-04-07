@@ -606,9 +606,11 @@ async function processNextJob (): Promise<void> {
     }
 
     // Landi built-in printer error — force driver re-init so next retry reconnects fresh
+    // Check both e.code (RN native error code) and e.message (human-readable string)
     if (
       printer?.printerType === 'builtin_landi' &&
-      /PRINT_FAILED|NOT_INITIALIZED|PRINTER_ERROR/i.test(errorMsg)
+      (/PRINT_FAILED|NOT_INITIALIZED|PRINTER_ERROR/i.test(e?.code ?? '') ||
+       /print failed|not initialized|printer.*error|printer not ready/i.test(errorMsg))
     ) {
       console.warn('[PrinterService] Landi print error, forcing re-init on next attempt')
       const landiDriver = getDriver(printer)
