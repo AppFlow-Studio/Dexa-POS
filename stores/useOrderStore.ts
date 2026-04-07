@@ -2361,6 +2361,7 @@ interface OrderState {
   }) => OrderProfile
   addItemToActiveOrder: (newItem: CartItem) => void
   updateItemInActiveOrder: (updatedItem: CartItem) => void
+  incrementItemQuantity: (itemId: string) => void
   updateDraftItem: (draftItemId: string, updates: Partial<CartItem>) => void
   removeDraftItem: (draftItemId: string) => void
   removeDraftItems: (menuItemId: string) => void
@@ -5848,6 +5849,93 @@ export const useOrderStore = create<OrderState>()(
                 )
               }
             }
+          },
+
+          incrementItemQuantity: itemId => {
+            const { activeOrderId, ordersById } = get()
+            if (!activeOrderId) return
+            const order = ordersById[activeOrderId]
+            if (!order) return
+            if (order.check_status === 'Closed') return
+
+            const item = order.items.find(i => i.id === itemId)
+            if (!item || item.is_voided) return
+
+            const newQuantity = item.quantity + 1
+
+            // 1. Update local state immediately
+            const updatedItems = order.items.map(i =>
+              i.id === itemId ? { ...i, quantity: newQuantity } : i
+            )
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap
+            const totals = calculateOrderTotals(
+              updatedItems,
+              order.checkDiscount,
+              order.payments || [],
+              taxRatesMap
+            )
+            set(state => {
+              const o = state.ordersById[activeOrderId]
+              if (!o) return
+              o.items = updatedItems
+              o.total_amount = totals.total_amount
+              o.total_tax = totals.tax_amount
+              o.total_discount = totals.discount_amount
+              o.amount_due = totals.outstanding_total
+              o.cash_amount_due = totals.cash_outstanding_total
+              state.activeOrderSubtotal = totals.subtotal
+              state.activeOrderTax = totals.tax_amount
+              state.activeOrderTotal = totals.total_amount
+              state.activeOrderDiscount = totals.discount_amount
+              state.activeOrderOutstandingSubtotal = totals.outstanding_subtotal
+              state.activeOrderOutstandingTax = totals.outstanding_tax
+              state.activeOrderOutstandingTotal = totals.outstanding_total
+              state.activeOrderTotalCash = totals.cash_total_amount
+              state.activeOrderOutstandingCash = totals.cash_outstanding_total
+            })
+
+            const dbItemId = item.db_order_item_id
+            const supabase = _supabaseClient
+
+            if (!dbItemId || !supabase) {
+              // Item not synced to DB yet — queue for when it is
+              queueOperation({
+                type: 'update_item_quantity',
+                params: { orderItemId: itemId, quantity: newQuantity },
+                localOrderId: activeOrderId,
+                localItemId: itemId
+              })
+              return
+            }
+
+            // 2. Update quantity on DB — the broadcast trigger fires automatically,
+            //    so the KDS sees the new quantity without any extra send-to-kitchen call.
+            OrderService.updateOrderItemQuantity(supabase, dbItemId, newQuantity)
+              .then(response => {
+                if (response.data?.success) {
+                  get().applyBackendItemData(itemId, {
+                    quantity: response.data.quantity,
+                    card_subtotal: response.data.card_subtotal,
+                    card_tax_amount: response.data.card_tax_amount,
+                    unit_price: response.data.unit_price,
+                    cash_unit_price: response.data.cash_unit_price,
+                    cash_subtotal: response.data.cash_subtotal,
+                    cash_tax_amount: response.data.cash_tax_amount,
+                    discount_amount: response.data.discount_amount,
+                    discount_cash_amount: response.data.discount_cash_amount,
+                    sync_version: response.data.sync_version
+                  })
+                }
+              })
+              .catch(async err => {
+                console.error('[incrementItemQuantity] sync failed:', err)
+                await queueOperation({
+                  type: 'update_item_quantity',
+                  params: { orderItemId: dbItemId, quantity: newQuantity },
+                  localOrderId: activeOrderId,
+                  localItemId: itemId
+                })
+              })
           },
 
           confirmDraftItem: itemId => {
