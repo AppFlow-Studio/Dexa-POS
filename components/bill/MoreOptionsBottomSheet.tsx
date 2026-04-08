@@ -292,7 +292,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       const success = await PrinterService.printKitchenTickets(
         activeOrder,
         nonVoidedItems,
-        selectedStore
+        selectedStore,
+        { forceGroupBySeat: true }
       )
       if (success) {
         show({

@@ -90,7 +90,8 @@ export const PrinterService = {
   async printKitchenTickets (
     order: OrderProfile,
     items: CartItem[],
-    location: SelectedLocation
+    location: SelectedLocation,
+    options?: { forceGroupBySeat?: boolean }
   ): Promise<boolean> {
     const routedItems = routeKitchenItems(items, location.id, {
       orderType: order.order_type
@@ -126,6 +127,12 @@ export const PrinterService = {
         location,
         routingConfig.printModifiers
       )
+
+      // Force seat grouping for reprint-all scenarios (context menu, more options)
+      if (options?.forceGroupBySeat && ticketData.templateConfig) {
+        ticketData.templateConfig = { ...ticketData.templateConfig, groupBySeat: true }
+      }
+
       const job = createJobForPrinter(
         printer,
         ticketData,

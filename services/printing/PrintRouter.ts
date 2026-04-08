@@ -87,14 +87,18 @@ export function routeKitchenItems(
   const defaultKitchenPrinter =
     kitchenPrinters.find((p) => p.isDefaultKitchen) ?? kitchenPrinters[0];
 
-  // Check if any printer has non-default routing configured
-  const hasAnyV2Config = kitchenPrinters.some((p) => {
+  // Check if any KITCHEN printer has custom/unassigned routing configured.
+  // Only look at kitchen printers — routingConfigs may contain entries for
+  // receipt printers too, which would falsely skip the legacy fast-path.
+  const hasAnyCustomRouting = kitchenPrinters.some((p) => {
     const cfg = routingConfigs[p.id];
     return cfg && cfg.routingMode !== "all";
   });
 
-  // Fast path: if no V2 routing is configured, fall back to legacy behavior
-  if (!hasAnyV2Config && Object.keys(routingConfigs).length === 0) {
+  // Fast path: if no kitchen printer uses custom/unassigned routing, use legacy.
+  // This prevents multiple "all"-mode printers from each receiving the full item
+  // list (legacy routes by category → default printer, avoiding duplicates).
+  if (!hasAnyCustomRouting) {
     return routeLegacy(items, kitchenPrinters, defaultKitchenPrinter);
   }
 
