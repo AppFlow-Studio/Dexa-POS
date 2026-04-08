@@ -233,6 +233,7 @@ BEGIN
       'station_name', v_station_name,
       'order_type', NEW.order_type,
       'order_source', NEW.order_source,
+      'delivery_platform', COALESCE(NEW.delivery_platform, NEW.metadata->>'delivery_company'),
       'status', NEW.status,
       'table_number', NEW.table_number,
       'seat_number', NEW.seat_number,

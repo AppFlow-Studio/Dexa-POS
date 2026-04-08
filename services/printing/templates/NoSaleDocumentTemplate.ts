@@ -7,6 +7,7 @@
 
 import { PrintDocument, PrintNode } from "@/types/print-document";
 import { ReceiptTemplateConfig } from "@/types/receipt-template";
+import { sanitizeForPrint, safeTimeString } from "../utils/sanitizeText";
 
 export interface NoSaleReceiptData {
   storeName: string;
@@ -52,14 +53,14 @@ export function buildNoSaleDocument(
   // Store info
   nodes.push({
     type: "text_line",
-    content: data.storeName,
+    content: sanitizeForPrint(data.storeName),
     align: "center",
     format: { bold: true },
   });
   if (data.storeAddress) {
     nodes.push({
       type: "text_line",
-      content: data.storeAddress,
+      content: sanitizeForPrint(data.storeAddress),
       align: "center",
     });
   }
@@ -73,11 +74,7 @@ export function buildNoSaleDocument(
     day: "2-digit",
     year: "numeric",
   });
-  const timeStr = date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const timeStr = safeTimeString(date);
 
   nodes.push({
     type: "two_column",
@@ -94,19 +91,19 @@ export function buildNoSaleDocument(
   nodes.push({
     type: "two_column",
     left: "Employee:",
-    right: data.employeeName,
+    right: sanitizeForPrint(data.employeeName),
     lineWidth: w,
   });
   nodes.push({
     type: "two_column",
     left: "Drawer:",
-    right: data.drawerName,
+    right: sanitizeForPrint(data.drawerName),
     lineWidth: w,
   });
   nodes.push({
     type: "two_column",
     left: "Station:",
-    right: data.stationName,
+    right: sanitizeForPrint(data.stationName),
     lineWidth: w,
   });
 
@@ -115,7 +112,7 @@ export function buildNoSaleDocument(
   nodes.push({
     type: "two_column",
     left: "Reason:",
-    right: data.reason,
+    right: sanitizeForPrint(data.reason),
     lineWidth: w,
     format: { bold: true },
   });
@@ -126,7 +123,7 @@ export function buildNoSaleDocument(
     nodes.push({
       type: "two_column",
       left: "Approved By:",
-      right: data.approvedBy,
+      right: sanitizeForPrint(data.approvedBy),
       lineWidth: w,
     });
   }

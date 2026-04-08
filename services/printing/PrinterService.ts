@@ -41,21 +41,7 @@ import {
   buildVoidOrderDocument,
   VoidOrderReceiptData
 } from './templates/VoidOrderDocumentTemplate'
-
-/**
- * Sanitize time strings from toLocaleTimeString() which may insert
- * U+202F (Narrow No-Break Space) or other exotic spaces that thermal
- * printers render as a square/box character.
- */
-function safeTimeString (date: Date): string {
-  return date
-    .toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    })
-    .replace(/[\u00A0\u202F\u2009\u200A]/g, ' ')
-}
+import { safeTimeString } from './utils/sanitizeText'
 
 let processingInterval: ReturnType<typeof setInterval> | null = null
 let isProcessing = false
@@ -562,8 +548,9 @@ async function processNextJob (): Promise<void> {
   isProcessing = true
   processingStartedAt = Date.now()
 
+  const printer = usePrinterStore.getState().getPrinterById(job.printerId)
+
   try {
-    const printer = usePrinterStore.getState().getPrinterById(job.printerId)
     if (!printer) {
       usePrintQueueStore
         .getState()
@@ -617,6 +604,18 @@ async function processNextJob (): Promise<void> {
       setTimeout(() => processNextJob(), 3000)
       isProcessing = false
       return
+    }
+
+    // Landi built-in printer error — force driver re-init so next retry reconnects fresh
+    // Check both e.code (RN native error code) and e.message (human-readable string)
+    if (
+      printer?.printerType === 'builtin_landi' &&
+      (/PRINT_FAILED|NOT_INITIALIZED|PRINTER_ERROR/i.test(e?.code ?? '') ||
+       /print failed|not initialized|printer.*error|printer not ready/i.test(errorMsg))
+    ) {
+      console.warn('[PrinterService] Landi print error, forcing re-init on next attempt')
+      const landiDriver = getDriver(printer)
+      try { await landiDriver.disconnect() } catch {}
     }
 
     console.error('[PrinterService] Print job failed:', errorMsg)
@@ -675,7 +674,6 @@ async function processNextJob (): Promise<void> {
     }
 
     // Update printer error count + mark disconnected for connection errors
-    const printer = usePrinterStore.getState().getPrinterById(job.printerId)
     if (printer) {
       const isConnectionError =
         /timed out|unreachable|device not found|connect|ETIMEDOUT|EHOSTUNREACH|used by another/i.test(

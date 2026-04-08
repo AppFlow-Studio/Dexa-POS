@@ -612,7 +612,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 <DeliveryPlatformBadge
                   deliveryPlatform={ticket.delivery_platform}
                   orderSource={ticket.order_source}
-                  size='sm'
+                  size='kds'
                 />
               </View>
 
@@ -1026,6 +1026,11 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                     ticket.order_number?.slice(-4) ||
                     '----'}
                 </Text>
+                <DeliveryPlatformBadge
+                  deliveryPlatform={ticket.delivery_platform}
+                  orderSource={ticket.order_source}
+                  size='kds'
+                />
               </View>
 
               {/* Order Type */}

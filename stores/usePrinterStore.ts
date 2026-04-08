@@ -8,8 +8,10 @@ import {
   PrinterRoutingConfig,
   printerRowToConfig,
 } from "@/types/printer";
+import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 interface PrinterStoreState {
@@ -17,6 +19,11 @@ interface PrinterStoreState {
   routeRules: PrinterRouteRule[];
   routingConfigs: Record<string, PrinterRoutingConfig>;
   lastFetchedAt: number | null;
+
+  // Ephemeral discovery state (not persisted to MMKV)
+  discoveredPrinters: DiscoveredStarPrinter[];
+  lastScanAt: number | null;
+  isScanning: boolean;
 
   // Actions
   fetchPrinters: (locationId: string) => Promise<void>;
@@ -62,6 +69,12 @@ interface PrinterStoreState {
 
   deletePrinter: (printerId: string) => Promise<void>;
 
+  // Discovery actions (ephemeral)
+  setDiscoveredPrinters: (printers: DiscoveredStarPrinter[]) => void;
+  addDiscoveredPrinter: (printer: DiscoveredStarPrinter) => void;
+  clearDiscoveredPrinters: () => void;
+  setIsScanning: (scanning: boolean) => void;
+
   // Routing V2 actions
   fetchRoutingRules: (locationId: string) => Promise<void>;
   setRoutingMode: (printerId: string, mode: PrinterRoutingMode) => Promise<void>;
@@ -86,11 +99,14 @@ function defaultRoutingConfig(printerId: string): PrinterRoutingConfig {
 
 export const usePrinterStore = create<PrinterStoreState>()(
   persist(
-    (set, get) => ({
+    immer((set, get) => ({
       printers: [],
       routeRules: [],
       routingConfigs: {},
       lastFetchedAt: null,
+      discoveredPrinters: [],
+      lastScanAt: null,
+      isScanning: false,
 
       fetchPrinters: async (locationId: string) => {
         const supabase = getOrderStoreSupabaseClient();
@@ -129,20 +145,16 @@ export const usePrinterStore = create<PrinterStoreState>()(
         const supabase = getOrderStoreSupabaseClient();
         if (!supabase) return;
 
-        // Update local state
-        set((state) => ({
-          printers: state.printers.map((p) => {
-            if (p.id !== printerId) return p;
-            return {
-              ...p,
-              isConnected: updates.isConnected ?? p.isConnected,
-              lastStatus: updates.lastStatus ?? p.lastStatus,
-              errorCount: updates.errorCount ?? p.errorCount,
-              lastPrintAt: updates.lastPrintAt ?? p.lastPrintAt,
-              lastStatusAt: new Date().toISOString(),
-            };
-          }),
-        }));
+        // Update local state (mutative via Immer)
+        set((state) => {
+          const p = state.printers.find((pr) => pr.id === printerId);
+          if (!p) return;
+          if (updates.isConnected !== undefined) p.isConnected = updates.isConnected;
+          if (updates.lastStatus !== undefined) p.lastStatus = updates.lastStatus;
+          if (updates.errorCount !== undefined) p.errorCount = updates.errorCount;
+          if (updates.lastPrintAt !== undefined) p.lastPrintAt = updates.lastPrintAt;
+          p.lastStatusAt = new Date().toISOString();
+        });
 
         // Sync to Supabase (fire-and-forget)
         try {
@@ -236,52 +248,62 @@ export const usePrinterStore = create<PrinterStoreState>()(
             .update(dbUpdates)
             .eq("id", printerId);
 
-          // Optimistic local update
-          set((state) => ({
-            printers: state.printers.map((p) => {
-              if (p.id !== printerId) {
+          // Optimistic local update (mutative via Immer)
+          set((state) => {
+            for (const p of state.printers) {
+              if (p.id === printerId) {
+                // Apply all provided updates directly
+                if (updates.printerRole !== undefined) p.printerRole = updates.printerRole;
+                if (updates.isDefaultReceipt !== undefined) p.isDefaultReceipt = updates.isDefaultReceipt;
+                if (updates.isDefaultKitchen !== undefined) p.isDefaultKitchen = updates.isDefaultKitchen;
+                if (updates.isActive !== undefined) p.isActive = updates.isActive;
+                if (updates.printerName !== undefined) p.printerName = updates.printerName;
+                if (updates.networkAddress !== undefined) p.networkAddress = updates.networkAddress;
+                if (updates.networkPort !== undefined) p.networkPort = updates.networkPort;
+                if (updates.paperWidth !== undefined) p.paperWidth = updates.paperWidth;
+                if (updates.maxCharsPerLine !== undefined) p.maxCharsPerLine = updates.maxCharsPerLine;
+                if (updates.printDensity !== undefined) p.printDensity = updates.printDensity;
+                if (updates.copies !== undefined) p.copies = updates.copies;
+                if (updates.printLogo !== undefined) p.printLogo = updates.printLogo;
+                if (updates.autoPrintReceipt !== undefined) p.autoPrintReceipt = updates.autoPrintReceipt;
+                if (updates.printOrderTickets !== undefined) p.printOrderTickets = updates.printOrderTickets;
+                if (updates.receiptHeader !== undefined) p.receiptHeader = updates.receiptHeader;
+                if (updates.receiptFooter !== undefined) p.receiptFooter = updates.receiptFooter;
+                if (updates.supportsAutoCut !== undefined) p.supportsAutoCut = updates.supportsAutoCut;
+                if (updates.supportsCashDrawerKick !== undefined) p.supportsCashDrawerKick = updates.supportsCashDrawerKick;
+                if (updates.supportsBarcode !== undefined) p.supportsBarcode = updates.supportsBarcode;
+                if (updates.supportsQrCode !== undefined) p.supportsQrCode = updates.supportsQrCode;
+                if (updates.supportsLogo !== undefined) p.supportsLogo = updates.supportsLogo;
+                if (updates.graphicsOnly !== undefined) p.graphicsOnly = updates.graphicsOnly;
+              } else {
                 // Clear default flags on other printers if we just claimed them
-                let updated = p;
                 if (updates.isDefaultReceipt === true && p.locationId === printer.locationId) {
-                  updated = { ...updated, isDefaultReceipt: false };
+                  p.isDefaultReceipt = false;
                 }
                 if (updates.isDefaultKitchen === true && p.locationId === printer.locationId) {
-                  updated = { ...updated, isDefaultKitchen: false };
+                  p.isDefaultKitchen = false;
                 }
-                return updated;
               }
-              return {
-                ...p,
-                ...(updates.printerRole !== undefined && { printerRole: updates.printerRole }),
-                ...(updates.isDefaultReceipt !== undefined && { isDefaultReceipt: updates.isDefaultReceipt }),
-                ...(updates.isDefaultKitchen !== undefined && { isDefaultKitchen: updates.isDefaultKitchen }),
-                ...(updates.isActive !== undefined && { isActive: updates.isActive }),
-                ...(updates.printerName !== undefined && { printerName: updates.printerName }),
-                ...(updates.networkAddress !== undefined && { networkAddress: updates.networkAddress }),
-                ...(updates.networkPort !== undefined && { networkPort: updates.networkPort }),
-                ...(updates.paperWidth !== undefined && { paperWidth: updates.paperWidth }),
-                ...(updates.maxCharsPerLine !== undefined && { maxCharsPerLine: updates.maxCharsPerLine }),
-                ...(updates.printDensity !== undefined && { printDensity: updates.printDensity }),
-                ...(updates.copies !== undefined && { copies: updates.copies }),
-                ...(updates.printLogo !== undefined && { printLogo: updates.printLogo }),
-                ...(updates.autoPrintReceipt !== undefined && { autoPrintReceipt: updates.autoPrintReceipt }),
-                ...(updates.printOrderTickets !== undefined && { printOrderTickets: updates.printOrderTickets }),
-                ...(updates.receiptHeader !== undefined && { receiptHeader: updates.receiptHeader }),
-                ...(updates.receiptFooter !== undefined && { receiptFooter: updates.receiptFooter }),
-                ...(updates.supportsAutoCut !== undefined && { supportsAutoCut: updates.supportsAutoCut }),
-                ...(updates.supportsCashDrawerKick !== undefined && { supportsCashDrawerKick: updates.supportsCashDrawerKick }),
-                ...(updates.supportsBarcode !== undefined && { supportsBarcode: updates.supportsBarcode }),
-                ...(updates.supportsQrCode !== undefined && { supportsQrCode: updates.supportsQrCode }),
-                ...(updates.supportsLogo !== undefined && { supportsLogo: updates.supportsLogo }),
-                ...(updates.graphicsOnly !== undefined && { graphicsOnly: updates.graphicsOnly }),
-              };
-            }),
-          }));
+            }
+          });
         } catch (e) {
           console.error("[PrinterStore] Failed to update printer config:", e);
           throw e;
         }
       },
+
+      // Discovery actions (ephemeral — not persisted)
+      setDiscoveredPrinters: (printers) => set({ discoveredPrinters: printers, lastScanAt: Date.now() }),
+      addDiscoveredPrinter: (printer) =>
+        set((state) => {
+          // Deduplicate by IP
+          if (state.discoveredPrinters.some((p) => p.ipAddress === printer.ipAddress)) {
+            return state;
+          }
+          return { discoveredPrinters: [...state.discoveredPrinters, printer] };
+        }),
+      clearDiscoveredPrinters: () => set({ discoveredPrinters: [], lastScanAt: null }),
+      setIsScanning: (scanning) => set({ isScanning: scanning }),
 
       deletePrinter: async (printerId: string) => {
         const supabase = getOrderStoreSupabaseClient();
@@ -308,13 +330,10 @@ export const usePrinterStore = create<PrinterStoreState>()(
             throw error;
           }
 
-          // 3. Remove from local state
+          // 3. Remove from local state (mutative via Immer)
           set((state) => {
-            const { [printerId]: _, ...remainingConfigs } = state.routingConfigs;
-            return {
-              printers: state.printers.filter((p) => p.id !== printerId),
-              routingConfigs: remainingConfigs,
-            };
+            state.printers = state.printers.filter((p) => p.id !== printerId);
+            delete state.routingConfigs[printerId];
           });
         } catch (e) {
           console.error("[PrinterStore] Error deleting printer:", e);
@@ -406,18 +425,14 @@ export const usePrinterStore = create<PrinterStoreState>()(
       },
 
       setRoutingMode: async (printerId, mode) => {
-        // Optimistic update
+        // Optimistic update (mutative via Immer)
         set((state) => {
-          const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
-          return {
-            routingConfigs: {
-              ...state.routingConfigs,
-              [printerId]: { ...existing, routingMode: mode },
-            },
-            printers: state.printers.map((p) =>
-              p.id === printerId ? { ...p, routingMode: mode } : p,
-            ),
-          };
+          if (!state.routingConfigs[printerId]) {
+            state.routingConfigs[printerId] = defaultRoutingConfig(printerId);
+          }
+          state.routingConfigs[printerId].routingMode = mode;
+          const p = state.printers.find((pr) => pr.id === printerId);
+          if (p) p.routingMode = mode;
         });
 
         const supabase = getOrderStoreSupabaseClient();
@@ -434,18 +449,14 @@ export const usePrinterStore = create<PrinterStoreState>()(
       },
 
       setPrintModifiers: async (printerId, value) => {
-        // Optimistic update
+        // Optimistic update (mutative via Immer)
         set((state) => {
-          const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
-          return {
-            routingConfigs: {
-              ...state.routingConfigs,
-              [printerId]: { ...existing, printModifiers: value },
-            },
-            printers: state.printers.map((p) =>
-              p.id === printerId ? { ...p, printModifiers: value } : p,
-            ),
-          };
+          if (!state.routingConfigs[printerId]) {
+            state.routingConfigs[printerId] = defaultRoutingConfig(printerId);
+          }
+          state.routingConfigs[printerId].printModifiers = value;
+          const p = state.printers.find((pr) => pr.id === printerId);
+          if (p) p.printModifiers = value;
         });
 
         const supabase = getOrderStoreSupabaseClient();
@@ -485,26 +496,22 @@ export const usePrinterStore = create<PrinterStoreState>()(
             return;
           }
 
-          // Update local state
+          // Update local state (mutative via Immer)
           set((state) => {
-            const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
-            const newRule: PrinterRouteRuleV2 = {
+            if (!state.routingConfigs[printerId]) {
+              state.routingConfigs[printerId] = defaultRoutingConfig(printerId);
+            }
+            const config = state.routingConfigs[printerId];
+            config.rules = config.rules.filter(
+              (r) => !(r.rule_type === ruleType && r.rule_value === ruleValue),
+            );
+            config.rules.push({
               id: data.id,
               printer_id: data.printer_id,
               rule_type: data.rule_type,
               rule_value: data.rule_value,
               is_enabled: data.is_enabled,
-            };
-            const rules = existing.rules.filter(
-              (r) => !(r.rule_type === ruleType && r.rule_value === ruleValue),
-            );
-            rules.push(newRule);
-            return {
-              routingConfigs: {
-                ...state.routingConfigs,
-                [printerId]: { ...existing, rules },
-              },
-            };
+            });
           });
         } catch (e) {
           console.error("[PrinterStore] Error upserting routing rule:", e);
@@ -512,18 +519,12 @@ export const usePrinterStore = create<PrinterStoreState>()(
       },
 
       removeRoutingRule: async (printerId, ruleId) => {
-        // Optimistic remove
+        // Optimistic remove (mutative via Immer)
         set((state) => {
-          const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
-          return {
-            routingConfigs: {
-              ...state.routingConfigs,
-              [printerId]: {
-                ...existing,
-                rules: existing.rules.filter((r) => r.id !== ruleId),
-              },
-            },
-          };
+          const config = state.routingConfigs[printerId];
+          if (config) {
+            config.rules = config.rules.filter((r) => r.id !== ruleId);
+          }
         });
 
         const supabase = getOrderStoreSupabaseClient();
@@ -577,20 +578,16 @@ export const usePrinterStore = create<PrinterStoreState>()(
             .eq("printer_id", printerId);
 
           set((state) => {
-            const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
-            const rules: PrinterRouteRuleV2[] = (data ?? []).map((r: any) => ({
+            if (!state.routingConfigs[printerId]) {
+              state.routingConfigs[printerId] = defaultRoutingConfig(printerId);
+            }
+            state.routingConfigs[printerId].rules = (data ?? []).map((r: any) => ({
               id: r.id,
               printer_id: r.printer_id,
               rule_type: r.rule_type,
               rule_value: r.rule_value,
               is_enabled: r.is_enabled,
             }));
-            return {
-              routingConfigs: {
-                ...state.routingConfigs,
-                [printerId]: { ...existing, rules },
-              },
-            };
           });
         } catch (e) {
           console.error("[PrinterStore] Failed to bulk set rules:", e);
@@ -600,7 +597,7 @@ export const usePrinterStore = create<PrinterStoreState>()(
       getRoutingConfig: (printerId) => {
         return get().routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
       },
-    }),
+    })),
     {
       name: "printer-store-storage",
       storage: createJSONStorage(() => mmkvStorage),
@@ -609,6 +606,7 @@ export const usePrinterStore = create<PrinterStoreState>()(
         routeRules: state.routeRules,
         routingConfigs: state.routingConfigs,
         lastFetchedAt: state.lastFetchedAt,
+        // discoveredPrinters, lastScanAt, isScanning are intentionally excluded (ephemeral)
       }),
     },
   ),

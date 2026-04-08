@@ -18,6 +18,8 @@ import {
 import { colors, spinnerColor } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { PrinterRoutingModal } from "@/components/settings/PrinterRoutingModal";
+import { ManualIpPanel, isValidIpv4 } from "@/components/settings/ManualIpPanel";
+import { DiscoveredPrinterList } from "@/components/settings/DiscoveredPrinterList";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
@@ -291,6 +293,11 @@ const PrintersKitchenScreen = () => {
   const updatePrinterConfig = usePrinterStore((s) => s.updatePrinterConfig);
   const deletePrinter = usePrinterStore((s) => s.deletePrinter);
   const routingConfigs = usePrinterStore((s) => s.routingConfigs);
+  const discoveredStarPrinters = usePrinterStore((s) => s.discoveredPrinters);
+  const isScanningStar = usePrinterStore((s) => s.isScanning);
+  const setDiscoveredPrinters = usePrinterStore((s) => s.setDiscoveredPrinters);
+  const addDiscoveredPrinter = usePrinterStore((s) => s.addDiscoveredPrinter);
+  const setIsScanning = usePrinterStore((s) => s.setIsScanning);
 
 
   // Print queue (reactive via selector on jobs array)
@@ -313,10 +320,17 @@ const PrintersKitchenScreen = () => {
   const [provisioningError, setProvisioningError] = useState<string | null>(null);
 
   // Star Micronics discovery
-  const [isScanningStar, setIsScanningStar] = useState(false);
-  const [discoveredStarPrinters, setDiscoveredStarPrinters] = useState<DiscoveredStarPrinter[]>([]);
   const [starScanError, setStarScanError] = useState<string | null>(null);
   const [provisioningStarIp, setProvisioningStarIp] = useState<string | null>(null);
+  const [scanSecondsRemaining, setScanSecondsRemaining] = useState<number | null>(null);
+
+  // Pre-provision test results keyed by IP
+  const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string } | null>>({});
+  const [testingIp, setTestingIp] = useState<string | null>(null);
+
+  // Inline status pills (replaces Alert.alert for non-blocking feedback)
+  const [statusPill, setStatusPill] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
+  const statusPillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Star role overrides (keyed by IP, user can switch before provisioning)
   const [starRoleOverrides, setStarRoleOverrides] = useState<Record<string, "receipt" | "kitchen">>({});
@@ -367,6 +381,9 @@ const PrintersKitchenScreen = () => {
 
   // Printer scope toggle
   const [printerScope, setPrinterScope] = useState<"station" | "location">("station");
+
+  // Status filter
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "error">("all");
 
   // Routing modal state
   const [routingModalPrinter, setRoutingModalPrinter] = useState<PrinterConfig | null>(null);
@@ -462,7 +479,7 @@ const PrintersKitchenScreen = () => {
 
   // Derived
   const paymentTerminal = selectedStation?.payment_terminal ?? null;
-  const visiblePrinters = storedPrinters.filter((p) => {
+  const scopedPrinters = storedPrinters.filter((p) => {
     if (printerScope === "station") {
       // Show this station's printers + shared (null station) printers
       return p.stationId === selectedStation?.id || p.stationId === null;
@@ -470,17 +487,31 @@ const PrintersKitchenScreen = () => {
     // "location" mode: show all, but still hide other stations' builtins
     return p.connectionType !== "builtin" || p.stationId === selectedStation?.id;
   });
-  const hasDejavooPrinter = visiblePrinters.some((p) => p.printerType === "dejavoo_spin_p");
-  const dejavooPrinter = visiblePrinters.find((p) => p.printerType === "dejavoo_spin_p") ?? null;
-  const builtinPrinter = visiblePrinters.find((p) => p.printerType === "builtin_landi") ?? null;
+
+  // Status filter counts (computed from scoped printers)
+  const onlineCount = scopedPrinters.filter((p) => p.isActive && p.isConnected).length;
+  const offlineCount = scopedPrinters.filter((p) => p.isActive && !p.isConnected && !p.lastStatus?.includes("error") && !p.lastStatus?.includes("Paper") && !p.lastStatus?.includes("Cover") && !p.lastStatus?.includes("Cutter")).length;
+  const errorCount = scopedPrinters.filter((p) => p.isActive && !p.isConnected && (p.lastStatus?.includes("error") || p.lastStatus?.includes("Paper") || p.lastStatus?.includes("Cover") || p.lastStatus?.includes("Cutter"))).length;
+
+  // Apply status filter
+  const visiblePrinters = statusFilter === "all" ? scopedPrinters : scopedPrinters.filter((p) => {
+    if (statusFilter === "online") return p.isActive && p.isConnected;
+    if (statusFilter === "offline") return p.isActive && !p.isConnected && !p.lastStatus?.includes("error") && !p.lastStatus?.includes("Paper") && !p.lastStatus?.includes("Cover") && !p.lastStatus?.includes("Cutter");
+    if (statusFilter === "error") return p.isActive && !p.isConnected && (p.lastStatus?.includes("error") || p.lastStatus?.includes("Paper") || p.lastStatus?.includes("Cover") || p.lastStatus?.includes("Cutter"));
+    return true;
+  });
+
+  const hasDejavooPrinter = scopedPrinters.some((p) => p.printerType === "dejavoo_spin_p");
+  const dejavooPrinter = scopedPrinters.find((p) => p.printerType === "dejavoo_spin_p") ?? null;
+  const builtinPrinter = scopedPrinters.find((p) => p.printerType === "builtin_landi") ?? null;
   const receiptPrinters = visiblePrinters.filter(
     (p) => p.printerRole === "receipt" || p.isDefaultReceipt,
   );
   const kitchenPrinters = visiblePrinters.filter(
     (p) => p.printerRole === "kitchen" || p.printerRole === "bar" || p.isDefaultKitchen,
   );
-  const connectedCount = visiblePrinters.filter((p) => p.isActive && p.isConnected).length;
-  const totalActive = visiblePrinters.filter((p) => p.isActive).length;
+  const connectedCount = onlineCount;
+  const totalActive = scopedPrinters.filter((p) => p.isActive).length;
 
   // Receipt settings state
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>({
@@ -506,6 +537,23 @@ const PrintersKitchenScreen = () => {
     largeFont: false,
     modifierStyle: "inverted",
   });
+
+  // ---------------------------------------------------------------------------
+  // HELPERS
+  // ---------------------------------------------------------------------------
+
+  const showStatusPill = (message: string, type: "success" | "error" | "warning") => {
+    if (statusPillTimerRef.current) clearTimeout(statusPillTimerRef.current);
+    setStatusPill({ message, type });
+    statusPillTimerRef.current = setTimeout(() => setStatusPill(null), 5000);
+  };
+
+  // Cleanup status pill timer on unmount
+  useEffect(() => {
+    return () => {
+      if (statusPillTimerRef.current) clearTimeout(statusPillTimerRef.current);
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // HANDLERS
@@ -553,15 +601,9 @@ const PrintersKitchenScreen = () => {
         const verified = await verifyDejavooPrinter(supabase, printerId);
         await fetchPrinters(selectedStore.id);
         if (verified) {
-          Alert.alert(
-            "Terminal Connected",
-            "The Dejavoo terminal printer has been successfully verified and is ready to use.",
-          );
+          showStatusPill("Dejavoo terminal printer verified and ready.", "success");
         } else {
-          Alert.alert(
-            "Verification Failed",
-            "The printer was provisioned but verification failed. The terminal may come online later.",
-          );
+          showStatusPill("Printer provisioned but verification failed. Terminal may come online later.", "warning");
         }
       } else {
         setProvisioningError("Failed to provision printer. Check terminal credentials.");
@@ -574,16 +616,35 @@ const PrintersKitchenScreen = () => {
   };
 
   const handleScanStarPrinters = async () => {
-    setIsScanningStar(true);
+    const SCAN_DURATION_S = 10;
+    setIsScanning(true);
     setStarScanError(null);
-    setDiscoveredStarPrinters([]);
+    setDiscoveredPrinters([]);
+    setScanSecondsRemaining(SCAN_DURATION_S);
+
+    // Countdown timer
+    const countdownId = setInterval(() => {
+      setScanSecondsRemaining((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(countdownId);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
     try {
-      const printers = await discoverStarPrinters(10000);
-      setDiscoveredStarPrinters(printers);
+      await discoverStarPrinters(SCAN_DURATION_S * 1000, {
+        onPrinterFound: (printer) => {
+          addDiscoveredPrinter(printer);
+        },
+      });
     } catch (e: any) {
       setStarScanError(e.message || "Discovery failed");
     } finally {
-      setIsScanningStar(false);
+      clearInterval(countdownId);
+      setScanSecondsRemaining(null);
+      setIsScanning(false);
     }
   };
 
@@ -608,21 +669,15 @@ const PrintersKitchenScreen = () => {
         const verified = await verifyStarPrinter(supabase, printerId);
         await fetchPrinters(selectedStore.id);
         if (verified) {
-          Alert.alert(
-            "Printer Connected",
-            `${discovered.modelName} has been verified and is ready to use.`,
-          );
+          showStatusPill(`${discovered.modelName} connected and verified.`, "success");
         } else {
-          Alert.alert(
-            "Verification Failed",
-            "The printer was added but verification failed. It may come online later.",
-          );
+          showStatusPill("Printer added but verification failed. It may come online later.", "warning");
         }
       } else {
-        Alert.alert("Error", "Failed to provision printer.");
+        showStatusPill("Failed to provision printer.", "error");
       }
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Provisioning failed");
+      showStatusPill(e.message || "Provisioning failed", "error");
     } finally {
       setProvisioningStarIp(null);
     }
@@ -632,6 +687,12 @@ const PrintersKitchenScreen = () => {
     const ip = manualIp.trim();
     if (!ip) return;
     if (!selectedStation || !selectedStore) return;
+
+    // Validate IPv4 format
+    if (!isValidIpv4(ip)) {
+      setManualIpError("Invalid IP address format. Expected format: 192.168.1.100");
+      return;
+    }
 
     // Check for duplicate
     const alreadyExists = storedPrinters.some(
@@ -661,15 +722,9 @@ const PrintersKitchenScreen = () => {
         setManualIpError(null);
         setAddingForRole(null);
         if (verified) {
-          Alert.alert(
-            "Printer Connected",
-            `${discovered.modelName} at ${ip} has been verified and is ready to use.`,
-          );
+          showStatusPill(`${discovered.modelName} at ${ip} connected and verified.`, "success");
         } else {
-          Alert.alert(
-            "Verification Failed",
-            "The printer was added but verification failed. It may come online later.",
-          );
+          showStatusPill("Printer added but verification failed. It may come online later.", "warning");
         }
       } else {
         setManualIpError("Failed to provision printer.");
@@ -678,6 +733,19 @@ const PrintersKitchenScreen = () => {
       setManualIpError(e.message || "Failed to connect to printer");
     } finally {
       setIsProbing(false);
+    }
+  };
+
+  const handleTestDiscovered = async (ip: string) => {
+    setTestingIp(ip);
+    setTestResults((prev) => ({ ...prev, [ip]: null }));
+    try {
+      await probeStarPrinterByIp(ip);
+      setTestResults((prev) => ({ ...prev, [ip]: { success: true, message: "Connection successful" } }));
+    } catch (e: any) {
+      setTestResults((prev) => ({ ...prev, [ip]: { success: false, message: e.message || "Connection failed" } }));
+    } finally {
+      setTestingIp(null);
     }
   };
 
@@ -780,7 +848,7 @@ const PrintersKitchenScreen = () => {
     setManualIpRole(role);
     setManualIp("");
     setManualIpError(null);
-    setDiscoveredStarPrinters([]);
+    setDiscoveredPrinters([]);
     setStarScanError(null);
   };
 
@@ -788,7 +856,7 @@ const PrintersKitchenScreen = () => {
     setAddingForRole(null);
     setManualIp("");
     setManualIpError(null);
-    setDiscoveredStarPrinters([]);
+    setDiscoveredPrinters([]);
     setStarScanError(null);
   };
 
@@ -846,110 +914,20 @@ const PrintersKitchenScreen = () => {
 
   const renderAddPrinterPanel = (forRole: "receipt" | "kitchen") => {
     const isReceipt = forRole === "receipt";
-    const accentColor = isReceipt ? colors.teal : "#f97316";
     return (
-      <View style={{
-        backgroundColor: colors.card,
-        padding: 14,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: colors.border,
-        marginBottom: 10,
-      }}>
-        {/* Header + Cancel */}
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Plus size={14} color={accentColor} />
-            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
-              Add {isReceipt ? "Receipt" : "Kitchen"} Printer by IP
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={handleCancelAdding}
-            style={{ padding: 6, backgroundColor: colors.panel, borderRadius: 6 }}
-          >
-            <XCircle size={14} color={colors.label} />
-          </TouchableOpacity>
-        </View>
-        <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 10 }}>
-          Enter the IP address from the printer's configuration receipt.
-        </Text>
-        <TextInput
-          value={manualIp}
-          onChangeText={(t) => {
-            setManualIp(t);
-            if (manualIpError) setManualIpError(null);
-          }}
-          placeholder="192.168.1.100"
-          placeholderTextColor={colors.muted}
-          keyboardType="numeric"
-          style={{
-            backgroundColor: colors.panel,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 9,
-            fontSize: 13,
-            color: colors.heading,
-            marginBottom: 10,
-          }}
-          editable={!isProbing}
+      <View style={{ marginBottom: 10 }}>
+        <ManualIpPanel
+          forRole={forRole}
+          manualIp={manualIp}
+          onChangeIp={setManualIp}
+          manualIpError={manualIpError}
+          onClearError={() => setManualIpError(null)}
+          isProbing={isProbing}
+          isScanningStar={isScanningStar}
+          onConnect={handleManualIpAdd}
+          onScanNetwork={handleScanStarPrinters}
+          onCancel={handleCancelAdding}
         />
-        {manualIpError && (
-          <View style={{ backgroundColor: colors.danger + "12", borderWidth: 1, borderColor: colors.danger + "30", borderRadius: 8, padding: 10, marginBottom: 10 }}>
-            <Text style={{ fontSize: 11, color: colors.danger }}>{manualIpError}</Text>
-          </View>
-        )}
-        <View style={{ flexDirection: "row", marginBottom: 10, gap: 8 }}>
-          <TouchableOpacity
-            onPress={handleManualIpAdd}
-            disabled={isProbing || !manualIp.trim()}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              borderRadius: 8,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: isProbing || !manualIp.trim() ? colors.border : accentColor + "20",
-              borderWidth: 1,
-              borderColor: isProbing || !manualIp.trim() ? colors.border : accentColor + "60",
-            }}
-          >
-            {isProbing ? (
-              <ActivityIndicator size="small" color={accentColor} />
-            ) : (
-              <>
-                <Wifi size={14} color={isProbing || !manualIp.trim() ? colors.muted : accentColor} />
-                <Text style={{ fontSize: 12, fontWeight: "600", marginLeft: 6, color: isProbing || !manualIp.trim() ? colors.muted : accentColor }}>Connect</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleScanStarPrinters}
-            disabled={isScanningStar}
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 8,
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: colors.panel,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            {isScanningStar ? (
-              <ActivityIndicator size="small" color={colors.teal} />
-            ) : (
-              <>
-                <Wifi size={13} color={colors.teal} />
-                <Text style={{ fontSize: 12, fontWeight: "600", marginLeft: 5, color: colors.teal }}>Scan</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
 
         {/* Dejavoo provisioning — only in receipt panel */}
         {isReceipt && paymentTerminal?.terminal_type === "dejavoo" && !hasDejavooPrinter && (
@@ -1755,134 +1733,106 @@ const PrintersKitchenScreen = () => {
               ))}
             </View>
 
-            {/* Discovered Printers Section */}
-            {(isScanningStar || discoveredStarPrinters.some(dp => !storedPrinters.some(p => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress))) && (
-              <View style={{ marginBottom: 12 }}>
-                <SectionHeader
-                  title="Discovered Printers"
-                  rightContent={
-                    <TouchableOpacity
-                      onPress={handleScanStarPrinters}
-                      disabled={isScanningStar}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.teal + "15", borderRadius: 6 }}
-                    >
-                      {isScanningStar ? (
-                        <ActivityIndicator size="small" color={colors.teal} />
-                      ) : (
-                        <>
-                          <RefreshCw size={11} color={colors.teal} />
-                          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Refresh</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  }
-                />
-                {isScanningStar && discoveredStarPrinters.length === 0 && (
-                  <View style={{ alignItems: "center", paddingVertical: 20, backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
-                    <ActivityIndicator size="large" color={colors.teal} />
-                    <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>Scanning for Star printers...</Text>
-                  </View>
-                )}
-                {starScanError && (
-                  <View style={{ backgroundColor: colors.danger + "12", borderWidth: 1, borderColor: colors.danger + "30", borderRadius: 8, padding: 10, marginBottom: 6 }}>
-                    <Text style={{ fontSize: 12, color: colors.danger }}>{starScanError}</Text>
-                  </View>
-                )}
-                {discoveredStarPrinters.filter(dp => !storedPrinters.some(p => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress)).map((dp) => {
-                  const isProvisioningThis = provisioningStarIp === dp.ipAddress;
+            {/* Status Filter Pills */}
+            {totalActive > 3 && (
+              <View style={{ flexDirection: "row", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                {([
+                  { key: "all" as const, label: "All", count: scopedPrinters.length },
+                  { key: "online" as const, label: "Online", count: onlineCount, color: colors.success },
+                  { key: "offline" as const, label: "Offline", count: offlineCount, color: colors.warning },
+                  { key: "error" as const, label: "Error", count: errorCount, color: colors.danger },
+                ]).map(({ key, label, count, color }) => {
+                  const isActive = statusFilter === key;
+                  const pillColor = color ?? colors.teal;
                   return (
-                    <View
-                      key={dp.ipAddress}
+                    <TouchableOpacity
+                      key={key}
+                      onPress={() => setStatusFilter(key)}
                       style={{
-                        backgroundColor: colors.card,
-                        padding: 12,
-                        borderRadius: 10,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 14,
+                        backgroundColor: isActive ? pillColor + "20" : colors.panel,
                         borderWidth: 1,
-                        borderColor: colors.border,
-                        marginBottom: 6,
+                        borderColor: isActive ? pillColor + "50" : colors.border,
                       }}
                     >
-                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                        <Printer size={14} color={colors.teal} />
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, marginLeft: 6, flex: 1 }}>{dp.modelName}</Text>
-                        <View style={{ flexDirection: "row", alignItems: "center" }}>
-                          <Wifi size={10} color={colors.muted} />
-                          <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 4 }}>{dp.ipAddress}</Text>
-                        </View>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: isActive ? pillColor : colors.label }}>
+                        {label}
+                      </Text>
+                      <View style={{
+                        backgroundColor: isActive ? pillColor + "30" : colors.border,
+                        borderRadius: 8,
+                        paddingHorizontal: 5,
+                        paddingVertical: 1,
+                        minWidth: 18,
+                        alignItems: "center",
+                      }}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: isActive ? pillColor : colors.muted }}>
+                          {count}
+                        </Text>
                       </View>
-                      {dp.macAddress && (
-                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 6 }}>MAC: {dp.macAddress}</Text>
-                      )}
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
-                        <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                          <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.paperWidth}mm</Text>
-                        </View>
-                        <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                          <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.maxCharsPerLine} chars</Text>
-                        </View>
-                        <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                          <Text style={{ fontSize: 10, color: colors.label }}>{dp.capabilities.supportsAutoCut ? "Auto-cut" : "Tear-off"}</Text>
-                        </View>
-                        {dp.capabilities.graphicsOnly && (
-                          <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                            <Text style={{ fontSize: 10, color: colors.label }}>Graphics-only</Text>
-                          </View>
-                        )}
-                      </View>
-                      <View style={{ flexDirection: "row", gap: 6 }}>
-                        <TouchableOpacity
-                          onPress={() => handleProvisionStar(dp, "receipt")}
-                          disabled={isProvisioningThis}
-                          style={{
-                            flex: 1,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                            alignItems: "center",
-                            backgroundColor: isProvisioningThis ? colors.border : colors.teal + "15",
-                            borderWidth: 1,
-                            borderColor: isProvisioningThis ? colors.border : colors.teal + "40",
-                          }}
-                        >
-                          {isProvisioningThis ? (
-                            <ActivityIndicator size="small" color={colors.teal} />
-                          ) : (
-                            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Add as Receipt</Text>
-                          )}
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleProvisionStar(dp, "kitchen")}
-                          disabled={isProvisioningThis}
-                          style={{
-                            flex: 1,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                            alignItems: "center",
-                            backgroundColor: isProvisioningThis ? colors.border : "#f97316" + "15",
-                            borderWidth: 1,
-                            borderColor: isProvisioningThis ? colors.border : "#f97316" + "40",
-                          }}
-                        >
-                          <Text style={{ fontSize: 11, fontWeight: "600", color: isProvisioningThis ? colors.muted : "#f97316" }}>Add as Kitchen</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleProvisionStar(dp, "both")}
-                          disabled={isProvisioningThis}
-                          style={{
-                            flex: 1,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                            alignItems: "center",
-                            backgroundColor: isProvisioningThis ? colors.border : "#8b5cf6" + "15",
-                            borderWidth: 1,
-                            borderColor: isProvisioningThis ? colors.border : "#8b5cf6" + "40",
-                          }}
-                        >
-                          <Text style={{ fontSize: 11, fontWeight: "600", color: isProvisioningThis ? colors.muted : "#8b5cf6" }}>Add as Both</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
+              </View>
+            )}
+
+            {/* Discovered Printers Section */}
+            <DiscoveredPrinterList
+              discoveredPrinters={discoveredStarPrinters}
+              storedPrinters={storedPrinters}
+              isScanning={isScanningStar}
+              scanSecondsRemaining={scanSecondsRemaining}
+              scanError={starScanError}
+              provisioningIp={provisioningStarIp}
+              testResults={testResults}
+              testingIp={testingIp}
+              onRefresh={handleScanStarPrinters}
+              onProvision={handleProvisionStar}
+              onTest={handleTestDiscovered}
+            />
+
+            {/* Inline Status Pill */}
+            {statusPill && (
+              <View style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+                marginBottom: 10,
+                backgroundColor: statusPill.type === "success" ? colors.success + "12"
+                  : statusPill.type === "warning" ? colors.warning + "12"
+                  : colors.danger + "12",
+                borderWidth: 1,
+                borderColor: statusPill.type === "success" ? colors.success + "30"
+                  : statusPill.type === "warning" ? colors.warning + "30"
+                  : colors.danger + "30",
+              }}>
+                {statusPill.type === "success" ? (
+                  <CheckCircle2 size={14} color={colors.success} />
+                ) : statusPill.type === "warning" ? (
+                  <AlertTriangle size={14} color={colors.warning} />
+                ) : (
+                  <XCircle size={14} color={colors.danger} />
+                )}
+                <Text style={{
+                  fontSize: 12,
+                  color: statusPill.type === "success" ? colors.success
+                    : statusPill.type === "warning" ? colors.warning
+                    : colors.danger,
+                  flex: 1,
+                }}>
+                  {statusPill.message}
+                </Text>
+                <TouchableOpacity onPress={() => setStatusPill(null)} style={{ padding: 2 }}>
+                  <XCircle size={12} color={colors.muted} />
+                </TouchableOpacity>
               </View>
             )}
 
@@ -1916,7 +1866,7 @@ const PrintersKitchenScreen = () => {
                         onPress={() => {
                           const count = usePrintQueueStore.getState().retryAllFailed();
                           if (count > 0) {
-                            toastService.show({ title: "Retrying", message: `${count} failed jobs re-queued`, type: "info", duration: 3000 });
+                            toastService.show({ title: "Retrying", message: `${count} failed jobs re-queued`, type: "success", duration: 3000 });
                           }
                         }}
                         style={{
@@ -1938,7 +1888,7 @@ const PrintersKitchenScreen = () => {
                     <TouchableOpacity
                       onPress={() => {
                         usePrintQueueStore.getState().clearAll();
-                        toastService.show({ title: "Queue Cleared", message: "All print jobs removed", type: "info", duration: 3000 });
+                        toastService.show({ title: "Queue Cleared", message: "All print jobs removed", type: "success", duration: 3000 });
                       }}
                       style={{
                         flexDirection: "row",

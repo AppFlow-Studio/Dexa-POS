@@ -46,6 +46,7 @@ BEGIN
       END,
       'order_type', o.order_type,
       'order_source', o.order_source,
+      'delivery_platform', COALESCE(o.delivery_platform, o.metadata->>'delivery_company'),
       'table_name', o.table_number,
       'customer_name', o.customer_name,
       'start_time', COALESCE(oi_grouped.fire_time::timestamptz, o.sent_to_kitchen_at, o.created_at),

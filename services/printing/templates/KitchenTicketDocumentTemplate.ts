@@ -4,6 +4,7 @@ import {
   PrintTextFormat
 } from '@/types/print-document'
 import { KitchenTicketData, KitchenTicketItemData } from '@/types/printer'
+import { sanitizeForPrint } from '../utils/sanitizeText'
 
 /**
  * Build format that scales down magnification to fit content on one line.
@@ -60,8 +61,8 @@ export function buildKitchenTicketDocument (
   // Combined order type + table on one line
   if (cfg?.showOrderType !== false) {
     const typeLine = data.tableName
-      ? `${data.orderType.toUpperCase()} - ${data.tableName}`
-      : data.orderType.toUpperCase()
+      ? `${sanitizeForPrint(data.orderType).toUpperCase()} - ${sanitizeForPrint(data.tableName)}`
+      : sanitizeForPrint(data.orderType).toUpperCase()
     nodes.push({
       type: 'text_line',
       content: typeLine,
@@ -74,7 +75,7 @@ export function buildKitchenTicketDocument (
   if (cfg?.showServerName !== false && data.serverName) {
     nodes.push({
       type: 'text_line',
-      content: `Server: ${data.serverName}`,
+      content: `Server: ${sanitizeForPrint(data.serverName)}`,
       align: 'center',
       format: { bold: true }
     })
@@ -92,7 +93,7 @@ export function buildKitchenTicketDocument (
   if (cfg?.showReadyByTime !== false && data.readyByTime) {
     nodes.push({
       type: 'text_line',
-      content: `Ready by: ${data.readyByTime}`,
+      content: `Ready by: ${sanitizeForPrint(data.readyByTime)}`,
       align: 'center',
       format: { bold: true }
     })
@@ -209,8 +210,8 @@ function pushSingleItem (
 ): void {
   const useLargeText = cfg?.largeItemText !== false
   const prefix = item.isVoided ? 'VOID ' : ''
-  const qtyStr = `${item.quantity}× `
-  const itemText = `${prefix}${qtyStr}${item.name}`
+  const qtyStr = `${item.quantity}x `
+  const itemText = `${prefix}${qtyStr}${sanitizeForPrint(item.name)}`
 
   nodes.push({
     type: 'text_line',
@@ -240,18 +241,19 @@ function pushSingleItem (
     }
 
     for (const mod of item.modifiers) {
-      const isNo = mod.startsWith('NO ')
+      const sanitizedMod = sanitizeForPrint(mod)
+      const isNo = sanitizedMod.startsWith('NO ')
       if (modStyle === 'inverted') {
         // Reduced indent for inverted — avoids full-line black bar on leading whitespace
         nodes.push({
           type: 'text_line',
-          content: ` ${isNo ? '-' : '+'} ${mod}`,
+          content: ` ${isNo ? '-' : '+'} ${sanitizedMod}`,
           format: modFormat
         })
       } else {
         nodes.push({
           type: 'text_line',
-          content: `  ${isNo ? '-' : '+'} ${mod}`,
+          content: `  ${isNo ? '-' : '+'} ${sanitizedMod}`,
           format: modFormat
         })
       }
@@ -262,7 +264,7 @@ function pushSingleItem (
   if (cfg?.showAllergyAlert !== false && item.allergyAlert) {
     nodes.push({
       type: 'text_line',
-      content: `  !! ALLERGY: ${item.allergyAlert} !!`,
+      content: `  !! ALLERGY: ${sanitizeForPrint(item.allergyAlert)} !!`,
       format: { bold: true }
     })
   }
@@ -271,7 +273,7 @@ function pushSingleItem (
   if (item.notes) {
     nodes.push({
       type: 'text_line',
-      content: `  *** ${item.notes} ***`,
+      content: `  *** ${sanitizeForPrint(item.notes)} ***`,
       format: { bold: true }
     })
   }
