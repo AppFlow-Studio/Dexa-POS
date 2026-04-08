@@ -16,11 +16,39 @@ import { useOrderStore } from "@/stores/useOrderStore";
 export async function sendToKitchenEffect(ctx: SideEffectContext): Promise<void> {
   if (ctx.action.type !== "SEND_TO_KITCHEN") return;
 
-  const { dbItemIds, itemIds, orderId, dbOrderId } = ctx.action;
+  const { itemIds, orderId } = ctx.action;
+  let { dbItemIds, dbOrderId } = ctx.action;
   const supabase = getOrderStoreSupabaseClient();
 
-  if (!supabase || !dbOrderId) {
-    // No supabase or no backend order — queue for retry with offline_batch flag
+  if (!supabase) {
+    // No supabase — queue for retry with offline_batch flag
+    if (itemIds.length > 0) {
+      await queueFailedOperation(
+        "send_to_kitchen",
+        { localOrderId: orderId, localItemIds: itemIds, offline_batch: true },
+        orderId,
+      );
+    }
+    return;
+  }
+
+  // Wait for any in-flight item syncs so all items have db_order_item_ids
+  // before broadcasting to the kitchen (same logic as sendNewItemsToKitchen).
+  await useOrderStore.getState().waitForPendingSyncs(orderId);
+
+  // Re-read fresh state — syncs may have assigned db_order_item_ids and db_order_id
+  const freshOrder = useOrderStore.getState().ordersById[orderId];
+  if (freshOrder) {
+    dbOrderId = freshOrder.db_order_id ?? dbOrderId;
+    // Rebuild dbItemIds from items that were in this send (matched by local ID)
+    const sentLocalIds = new Set(itemIds);
+    dbItemIds = freshOrder.items
+      .filter(i => sentLocalIds.has(i.id) && !!i.db_order_item_id)
+      .map(i => i.db_order_item_id!);
+  }
+
+  if (!dbOrderId) {
+    // Still no backend order after waiting — queue for retry
     if (itemIds.length > 0) {
       await queueFailedOperation(
         "send_to_kitchen",
@@ -32,7 +60,7 @@ export async function sendToKitchenEffect(ctx: SideEffectContext): Promise<void>
   }
 
   if (dbItemIds.length === 0 && itemIds.length > 0) {
-    // Items exist locally but have no db IDs yet — queue for retry with offline_batch flag
+    // Items still have no db IDs after waiting — queue for retry
     await queueFailedOperation(
       "send_to_kitchen",
       { localOrderId: orderId, localItemIds: itemIds, offline_batch: true },
