@@ -325,7 +325,6 @@ export function useStationOrders(): OrderProfile[] {
       if (DINE_IN_TYPES.has(order.order_type ?? "")) continue;
       if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
       if (!order.items || order.items.length === 0) continue;
-      if (order.order_status === "draft") continue;
 
       const orderTime = new Date(order.opened_at || 0).getTime();
       if (orderTime < cutoffTime) continue;
@@ -333,6 +332,11 @@ export function useStationOrders(): OrderProfile[] {
       const isInWorkingSet =
         order.db_order_id && workingSet.has(order.db_order_id);
       const isOurStationOrder = order.station_id === currentStationId;
+
+      // Draft orders: only show if they belong to this station (don't show
+      // remote drafts — they aren't visible until sent to kitchen).
+      if (order.order_status === "draft" && !isOurStationOrder) continue;
+
       if (isInWorkingSet || isOurStationOrder) {
         result.push(order);
       }
@@ -574,17 +578,26 @@ export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]];
         if (!o) continue;
+        const isOwnStation = o.station_id === state.currentStationId;
+        const isDraft = o.order_status === "draft";
         if (
           new Date(o.opened_at || 0).getTime() >= cutoffTime &&
           o.order_type !== "Dine In" &&
           o.order_type !== "dine_in" &&
-          (((o.order_status === "preparing" || o.order_status === "sent_to_kitchen") && o.items.length > 0) ||
-            ((o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial") &&
-              o.order_status !== "completed" &&
-              o.order_status !== "draft" &&
-              o.order_status !== "void" &&
-              o.check_status !== "Closed") ||
-            (o.order_status === "ready" && o.paid_status === "Paid" && o.items.length > 0))
+          o.order_status !== "void" &&
+          o.order_status !== "completed" &&
+          o.check_status !== "Closed" &&
+          o.items.length > 0 &&
+          (
+            // Draft orders: only show own-station ones
+            (isDraft && isOwnStation) ||
+            // Active non-draft orders
+            (!isDraft && (
+              (o.order_status === "preparing" || o.order_status === "sent_to_kitchen") ||
+              (o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial") ||
+              (o.order_status === "ready" && o.paid_status === "Paid")
+            ))
+          )
         ) {
           result.push(o);
         }

@@ -149,7 +149,7 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                       {items.map((item, index) => {
                         return (
                           <Animated.View
-                            key={`${item.id}-${index}`}
+                            key={item.id}
                             entering={FadeInDown.duration(200)}
                             exiting={FadeOutUp.duration(150)}
                             layout={LinearTransition.duration(200)}

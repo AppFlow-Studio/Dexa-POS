@@ -12,7 +12,7 @@ import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
+import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -93,13 +93,21 @@ const BillSectionContent = ({
   // Phase 7: Use derived selector instead of 3 individual store selectors
   const orderTotals = useActiveOrderTotals();
 
-  const startNewOrder = useOrderStore((state) => state.startNewOrder);
-  const sendNewItemsToKitchen = useOrderStore(
-    (state) => state.sendNewItemsToKitchen,
+  const {
+    startNewOrder,
+    sendNewItemsToKitchen,
+    assignOrderToTable,
+    setActiveOrder,
+    retryFailedSyncs,
+  } = useOrderStore(
+    useShallow((s) => ({
+      startNewOrder: s.startNewOrder,
+      sendNewItemsToKitchen: s.sendNewItemsToKitchen,
+      assignOrderToTable: s.assignOrderToTable,
+      setActiveOrder: s.setActiveOrder,
+      retryFailedSyncs: s.retryFailedSyncs,
+    }))
   );
-  const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
-  const setActiveOrder = useOrderStore((state) => state.setActiveOrder);
-  const retryFailedSyncs = useOrderStore((state) => state.retryFailedSyncs);
 
   // Offline sync state — subscribe directly to offlineSyncService for reliable updates
   const { isOnline, pendingSyncCount } = useNetworkStatus();
@@ -125,22 +133,14 @@ const BillSectionContent = ({
     [cart],
   );
 
-  // Get sync status for the active order — subscribe directly to useSyncStatusStore
-  // so the component re-renders as items transition pending→synced (the Map reference
-  // changes on every setSyncStatus call, making this reactive).
-  const itemSyncStatus = useSyncStatusStore((s) => s.itemSyncStatus);
-  const syncStatus = useMemo(() => {
-    if (!activeOrderId) return { pending: 0, failed: 0, synced: 0 };
-    const items = cart.filter((item) => !item.isDraft);
-    let pending = 0, failed = 0, synced = 0;
-    for (const item of items) {
-      const status = itemSyncStatus.get(item.id);
-      if (status === "pending" || status === "syncing") pending++;
-      else if (status === "failed") failed++;
-      else synced++;
-    }
-    return { pending, failed, synced };
-  }, [activeOrderId, cart, itemSyncStatus]);
+  // Get sync counts for the active order's non-draft items.
+  // useOrderSyncCounts only re-renders BillSection when the actual counts change,
+  // not on every individual item sync status transition.
+  const nonDraftItemIds = useMemo(
+    () => cart.filter((item) => !item.isDraft).map((item) => item.id),
+    [cart]
+  );
+  const syncStatus = useOrderSyncCounts(nonDraftItemIds);
   const hasPendingSyncs = syncStatus.pending > 0;
   const hasFailedSyncs = syncStatus.failed > 0;
 

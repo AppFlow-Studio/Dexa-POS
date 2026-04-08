@@ -15,6 +15,7 @@
  * - Backend never stored sync_status
  */
 
+import React from "react";
 import { create } from "zustand";
 
 export type SyncStatus = "pending" | "syncing" | "synced" | "failed";
@@ -45,6 +46,10 @@ interface SyncStatusState {
   setSyncStatusBatch: (
     updates: Array<{ itemId: string; status: SyncStatus; error?: string }>
   ) => void;
+
+  // Derived count selector — returns primitive counts so callers don't
+  // need to subscribe to the full Map (avoids re-render on every item sync change)
+  getOrderSyncCounts: (itemIds: string[]) => { pending: number; failed: number; synced: number };
 }
 
 export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
@@ -114,6 +119,18 @@ export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
     });
   },
 
+  getOrderSyncCounts: (itemIds) => {
+    const { itemSyncStatus } = get()
+    let pending = 0, failed = 0, synced = 0
+    for (const id of itemIds) {
+      const status = itemSyncStatus.get(id)
+      if (status === 'pending' || status === 'syncing') pending++
+      else if (status === 'failed') failed++
+      else synced++
+    }
+    return { pending, failed, synced }
+  },
+
   setSyncStatusBatch: (updates) => {
     if (updates.length === 0) return;
 
@@ -155,6 +172,36 @@ export function useItemSyncStatus(itemId: string): SyncStatus | undefined {
  */
 export function useItemSyncError(itemId: string): string | undefined {
   return useSyncStatusStore((state) => state.itemSyncErrors.get(itemId));
+}
+
+const ZERO_COUNTS = { pending: 0, failed: 0, synced: 0 }
+
+/**
+ * Hook to get aggregate sync counts for a list of item IDs.
+ * Only re-renders when the actual pending/failed/synced counts change,
+ * not on every individual item sync status update.
+ *
+ * Returns a stable cached reference so Zustand's getSnapshot doesn't loop.
+ */
+export function useOrderSyncCounts(itemIds: string[]): { pending: number; failed: number; synced: number } {
+  const cacheRef = React.useRef(ZERO_COUNTS)
+
+  return useSyncStatusStore((state) => {
+    let pending = 0, failed = 0, synced = 0
+    for (const id of itemIds) {
+      const status = state.itemSyncStatus.get(id)
+      if (status === 'pending' || status === 'syncing') pending++
+      else if (status === 'failed') failed++
+      else synced++
+    }
+    const prev = cacheRef.current
+    if (prev.pending === pending && prev.failed === failed && prev.synced === synced) {
+      return prev // same reference — no re-render, no infinite loop
+    }
+    const next = { pending, failed, synced }
+    cacheRef.current = next
+    return next
+  })
 }
 
 /**
