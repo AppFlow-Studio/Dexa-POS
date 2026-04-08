@@ -199,7 +199,7 @@ function CourseGroupInner ({
           </View>
 
           <View className='flex-row items-center gap-2'>
-            {!isSent && !aggregateStatus && courseItemCount > 0 && (
+            {isCurrent && !isSent && !aggregateStatus && courseItemCount > 0 && (
               <TouchableOpacity
                 onPress={() => runOnJS(onDoubleTap)(courseId)}
                 style={{

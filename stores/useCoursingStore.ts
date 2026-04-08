@@ -339,6 +339,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
   getUnsentCourses: (orderId: string) => get().getOpenCourses(orderId),
 
   markCourseSent: (orderId: string, course: number) => {
+    if (!get().byOrderId[orderId]) return;
     get().fireCourse(orderId, course).catch(console.error);
   },
 
@@ -637,7 +638,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     }
 
     const orderData = get().byOrderId[orderId];
-    if (!orderData) throw new Error("Order not initialized");
+    if (!orderData) return; // Coursing disabled or order not initialized — skip
 
     if (orderData.courses[courseNumber]?.status !== "open") {
       throw new Error(`Course ${courseNumber} is already fired`);

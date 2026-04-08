@@ -52,6 +52,7 @@ BEGIN
       'start_time', COALESCE(oi_grouped.fire_time::timestamptz, o.sent_to_kitchen_at, o.created_at),
       'item_count', oi_grouped.item_count,
       'prioritized', oi_grouped.any_prioritized,
+      'session_id', o.session_id,
       'items', oi_grouped.items_json
     ) AS ticket
     FROM orders o

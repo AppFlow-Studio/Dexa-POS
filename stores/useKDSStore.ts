@@ -1304,18 +1304,19 @@ export const useKDSStore = create<KDSState>()(
 
           // When all items are marked as served in KDS, also update the table session to "served"
           if (newStatus === 'served') {
-            const sessionId = ticket?.session_id
-            console.log(
-              '[KDSStore] Serve check: newStatus=served, sessionId=',
-              sessionId
-            )
-            if (sessionId) {
-              const sessionStore = useTableSessionStore.getState()
-              console.log(
-                '[KDSStore] Calling updateSessionStatus for sessionId:',
-                sessionId
+            // Prefer session_id on the ticket (set from broadcast).
+            // Fallback: scan sessions by db_order_id for tickets loaded via RPC
+            // which don't carry session_id (get_kds_tickets_v2 doesn't return it).
+            let sessionId = ticket?.session_id
+            if (!sessionId && orderId) {
+              const sessions = useTableSessionStore.getState().sessions
+              const match = Object.values(sessions).find(
+                s => s?.order_id === orderId
               )
-              sessionStore
+              sessionId = match?.id ?? null
+            }
+            if (sessionId) {
+              useTableSessionStore.getState()
                 .updateSessionStatus(sessionId, 'served')
                 .catch(err => {
                   console.error(
