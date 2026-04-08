@@ -98,12 +98,12 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       </View>
 
       {/* Total Line */}
-      {/* <View className="border-t border-dashed border-gray-600 mt-2 flex-row justify-between items-center">
-        <Text className="text-lg font-bold text-white">Total</Text>
-        <Text className="text-lg font-bold text-white">
+      <View className="flex-row justify-between items-center mt-0.5 pt-0.5 border-t border-gray-600/50">
+        <Text className="text-xs font-bold text-white">Total</Text>
+        <Text className="text-xs font-bold text-white">
           ${totals.total.toFixed(2)}
         </Text>
-      </View> */}
+      </View>
 
       {/* Amount Paid (only show if partial payment made) */}
       {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
