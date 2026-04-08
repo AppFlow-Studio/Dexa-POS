@@ -32,19 +32,19 @@ export async function sendToKitchenEffect(ctx: SideEffectContext): Promise<void>
     return;
   }
 
-  // Wait for any in-flight item syncs so all items have db_order_item_ids
+  // Track which items had db_order_item_id at press time.
+  // Items without it at press time rely on addItemToBackend's retroactive path (Scenario E).
+  const hadDbIdAtPressTime = new Set(dbItemIds);
+
+  // Wait for any in-flight item syncs AND quantity updates to complete
   // before broadcasting to the kitchen (same logic as sendNewItemsToKitchen).
+  // This covers Scenarios B, C, D — all pending promises resolve here.
   await useOrderStore.getState().waitForPendingSyncs(orderId);
 
-  // Re-read fresh state — syncs may have assigned db_order_item_ids and db_order_id
+  // Re-read fresh state after the wait
   const freshOrder = useOrderStore.getState().ordersById[orderId];
   if (freshOrder) {
     dbOrderId = freshOrder.db_order_id ?? dbOrderId;
-    // Rebuild dbItemIds from items that were in this send (matched by local ID)
-    const sentLocalIds = new Set(itemIds);
-    dbItemIds = freshOrder.items
-      .filter(i => sentLocalIds.has(i.id) && !!i.db_order_item_id)
-      .map(i => i.db_order_item_id!);
   }
 
   if (!dbOrderId) {
@@ -59,67 +59,69 @@ export async function sendToKitchenEffect(ctx: SideEffectContext): Promise<void>
     return;
   }
 
-  if (dbItemIds.length === 0 && itemIds.length > 0) {
-    // Items still have no db IDs after waiting — queue for retry
-    await queueFailedOperation(
-      "send_to_kitchen",
-      { localOrderId: orderId, localItemIds: itemIds, offline_batch: true },
-      orderId,
-    );
+  // Rebuild dbItemIds excluding items handled by the retroactive path:
+  // items that had no db_order_item_id at press time were already sent to kitchen
+  // by addItemToBackend when they finished syncing (Scenario E).
+  const sentLocalIds = new Set(itemIds);
+  const freshSentItems = (freshOrder?.items ?? []).filter(
+    i => sentLocalIds.has(i.id) && hadDbIdAtPressTime.has(i.db_order_item_id ?? '')
+  );
+  dbItemIds = freshSentItems.map(i => i.db_order_item_id!).filter(Boolean);
+
+  if (dbItemIds.length === 0) {
+    // All items were handled by the retroactive path — nothing left to do
     return;
   }
 
-  if (dbItemIds.length > 0) {
-    try {
-      // Check if order is still draft — must transition to sent_to_kitchen first
-      // (bulk_update_order_item_status sets sent_to_kitchen_at on the order,
-      // which violates valid_status_transitions constraint on draft orders)
-      const order = useOrderStore.getState().getOrder(orderId);
-      const isDraft = order?.order_status === "draft";
+  try {
+    // Check if order is still draft — must transition to sent_to_kitchen first
+    // (bulk_update_order_item_status sets sent_to_kitchen_at on the order,
+    // which violates valid_status_transitions constraint on draft orders)
+    const order = useOrderStore.getState().getOrder(orderId);
+    const isDraft = order?.order_status === "draft";
 
-      if (isDraft) {
-        const { error: statusError } = await OrderService.updateOrderStatus(
-          supabase,
-          dbOrderId,
-          getOrderSentStatus(),
-        );
-        if (
-          statusError &&
-          statusError.code !== "P0001" &&
-          !statusError.message?.includes("already in")
-        ) {
-          console.error(
-            "[sendToKitchenEffect] Failed to update order status:",
-            statusError,
-          );
-          await queueFailedOperation(
-            "send_to_kitchen",
-            { localOrderId: orderId, localItemIds: itemIds },
-            orderId,
-          );
-          return;
-        }
-      }
-
-      const targetStatus = getKitchenSentStatus();
-      const result = await OrderService.bulkUpdateOrderItemStatus(
+    if (isDraft) {
+      const { error: statusError } = await OrderService.updateOrderStatus(
         supabase,
-        dbItemIds,
-        targetStatus,
+        dbOrderId,
+        getOrderSentStatus(),
       );
-      if (result?.error) {
+      if (
+        statusError &&
+        statusError.code !== "P0001" &&
+        !statusError.message?.includes("already in")
+      ) {
+        console.error(
+          "[sendToKitchenEffect] Failed to update order status:",
+          statusError,
+        );
         await queueFailedOperation(
           "send_to_kitchen",
           { localOrderId: orderId, localItemIds: itemIds },
           orderId,
         );
+        return;
       }
-    } catch {
+    }
+
+    const targetStatus = getKitchenSentStatus();
+    const result = await OrderService.bulkUpdateOrderItemStatus(
+      supabase,
+      dbItemIds,
+      targetStatus,
+    );
+    if (result?.error) {
       await queueFailedOperation(
         "send_to_kitchen",
         { localOrderId: orderId, localItemIds: itemIds },
         orderId,
       );
     }
+  } catch {
+    await queueFailedOperation(
+      "send_to_kitchen",
+      { localOrderId: orderId, localItemIds: itemIds },
+      orderId,
+    );
   }
 }
