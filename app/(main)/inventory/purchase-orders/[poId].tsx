@@ -1,30 +1,32 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { useInventoryStore } from "@/stores/useInventoryStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { useToast } from '@/contexts/ToastContext'
+import { colors } from '@/lib/theme'
+import { useInventoryStore } from '@/stores/useInventoryStore'
+import * as ImagePicker from 'expo-image-picker'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import {
   Calendar,
   Camera,
   CreditCard,
   DollarSign,
-  X,
-} from "lucide-react-native";
-import React, { useState } from "react";
+  X
+} from 'lucide-react-native'
+import { useState } from 'react'
 import {
   Alert,
-  FlatList,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-} from "react-native";
+  View
+} from 'react-native'
 
 const PurchaseOrderDetailScreen = () => {
-  const router = useRouter();
-  const { poId } = useLocalSearchParams();
+  const router = useRouter()
+  const { poId } = useLocalSearchParams()
   const {
     purchaseOrders,
     vendors,
@@ -33,202 +35,225 @@ const PurchaseOrderDetailScreen = () => {
     logPaymentForPO,
     cancelPurchaseOrder,
     submitPurchaseOrder,
-    deletePurchaseOrder,
-  } = useInventoryStore();
+    deletePurchaseOrder
+  } = useInventoryStore()
+  const { show } = useToast()
 
-  const po = purchaseOrders.find((p) => p.id === poId);
-  const vendor = po ? vendors.find((v) => v.id === po.vendorId) : null;
+  const po = purchaseOrders.find(p => p.id === poId)
+  const vendor = po ? vendors.find(v => v.id === po.vendorId) : null
 
   // Delivery logging state
-  const [showDeliveryForm, setShowDeliveryForm] = useState(false);
-  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString());
-  const [deliveryNotes, setDeliveryNotes] = useState("");
-  const [deliveryPhotos, setDeliveryPhotos] = useState<string[]>([]);
+  const [showDeliveryForm, setShowDeliveryForm] = useState(false)
+  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString())
+  const [deliveryNotes, setDeliveryNotes] = useState('')
+  const [deliveryPhotos, setDeliveryPhotos] = useState<string[]>([])
   // receivedDraft holds per-inventoryItemId quantities the manager confirms
-  const [receivedDraft, setReceivedDraft] = useState<Record<string, number>>(
-    {}
-  );
+  const [receivedDraft, setReceivedDraft] = useState<Record<string, number>>({})
 
   // Payment logging state
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"Card" | "Cash">("Card");
-  const [cardLast4, setCardLast4] = useState("");
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paidToEmployee, setPaidToEmployee] = useState("");
+  const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<'Card' | 'Cash'>('Card')
+  const [cardLast4, setCardLast4] = useState('')
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paidToEmployee, setPaidToEmployee] = useState('')
 
   // Cancel PO state
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
   // Delete Draft state
-  const [showDeleteDraftDialog, setShowDeleteDraftDialog] = useState(false);
+  const [showDeleteDraftDialog, setShowDeleteDraftDialog] = useState(false)
   // Image Viewer state
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [modalImageUri, setModalImageUri] = useState<string | null>(null);
+  const [showImageModal, setShowImageModal] = useState(false)
+  const [modalImageUri, setModalImageUri] = useState<string | null>(null)
 
   if (!po) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center">
-        <Text className="text-2xl text-white">Purchase Order not found.</Text>
+      <View className='flex-1 bg-screen items-center justify-center'>
+        <Text className='text-2xl text-white'>Purchase Order not found.</Text>
       </View>
-    );
+    )
   }
 
   const totalCost = po.items.reduce(
     (acc, item) => acc + item.cost * item.quantity,
     0
-  );
+  )
 
   const statusColors = {
-    Draft: "bg-gray-600",
-    "Pending Delivery": "bg-yellow-600",
-    "Awaiting Payment": "bg-blue-600",
-    Paid: "bg-green-600",
-    Cancelled: "bg-red-600",
-  };
+    Draft: {
+      bg: colors.teal + '1A',
+      border: colors.teal + '55',
+      text: colors.teal
+    },
+    'Pending Delivery': {
+      bg: colors.teal + '1A',
+      border: colors.teal + '55',
+      text: colors.teal
+    },
+    'Awaiting Payment': {
+      bg: colors.teal + '1F',
+      border: colors.teal + '65',
+      text: colors.teal
+    },
+    Paid: {
+      bg: colors.teal + '25',
+      border: colors.teal + '70',
+      text: colors.teal
+    },
+    Cancelled: {
+      bg: colors.danger + '1A',
+      border: colors.danger + '60',
+      text: colors.danger
+    }
+  }
 
   const handleLogDelivery = () => {
-    if (!poId) return;
+    if (!poId) return
     // Build received items payload from draft (fallback to original quantities)
     const receivedItems = po.items
-      .map((li) => ({
+      .map(li => ({
         inventoryItemId: li.inventoryItemId,
         quantity: receivedDraft[li.inventoryItemId] ?? li.quantity,
-        cost: li.cost,
+        cost: li.cost
       }))
-      .filter((li) => li.quantity > 0);
+      .filter(li => li.quantity > 0)
 
     logDeliveryForPO(poId as string, {
       photos: deliveryPhotos,
       deliveredAt: deliveryDate,
       notes: deliveryNotes,
-      receivedItems,
-    });
-    setShowDeliveryForm(false);
-    toast.success(`Delivery logged for PO #${po.poNumber}`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
-    });
-  };
+      receivedItems
+    })
+    setShowDeliveryForm(false)
+    show({
+      title: 'Success',
+      message: `Delivery logged for PO #${po.poNumber}`,
+      type: 'success'
+    })
+  }
 
-  const handleSubmitDelivery = () => handleLogDelivery();
+  const handleSubmitDelivery = () => handleLogDelivery()
 
   const adjustReceivedQty = (inventoryItemId: string, qty: number) => {
-    setReceivedDraft((prev) => ({
+    setReceivedDraft(prev => ({
       ...prev,
-      [inventoryItemId]: Math.max(0, qty),
-    }));
-  };
+      [inventoryItemId]: Math.max(0, qty)
+    }))
+  }
 
   const handleLogPayment = () => {
-    if (!poId || !paymentAmount) return;
-    const amount = parseFloat(paymentAmount);
+    if (!poId || !paymentAmount) return
+    const amount = parseFloat(paymentAmount)
     if (isNaN(amount)) {
-      Alert.alert("Invalid Amount", "Please enter a valid payment amount.");
-      return;
+      Alert.alert('Invalid Amount', 'Please enter a valid payment amount.')
+      return
     }
     logPaymentForPO(poId as string, {
       method: paymentMethod,
       amount,
       paidAt: new Date().toISOString(),
-      cardLast4: paymentMethod === "Card" ? cardLast4 : undefined,
-      paidToEmployee,
-    });
-    setShowPaymentForm(false);
-    toast.success(`Payment logged for PO #${po.poNumber}`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
-    });
-  };
+      cardLast4: paymentMethod === 'Card' ? cardLast4 : undefined,
+      paidToEmployee
+    })
+    setShowPaymentForm(false)
+    show({
+      title: 'Success',
+      message: `Payment logged for PO #${po.poNumber}`,
+      type: 'success'
+    })
+  }
 
   const handleCancelPO = () => {
-    if (!poId) return;
-    cancelPurchaseOrder(poId as string);
-    setShowCancelDialog(false);
-    toast.success(`PO #${po.poNumber} has been cancelled`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
-    });
-  };
+    if (!poId) return
+    cancelPurchaseOrder(poId as string)
+    setShowCancelDialog(false)
+    show({
+      title: 'Success',
+      message: `PO #${po.poNumber} has been cancelled`,
+      type: 'success'
+    })
+  }
 
   const handleSubmitDraft = () => {
-    if (!poId) return;
-    submitPurchaseOrder(poId as string);
-    toast.success(`PO #${po.poNumber} submitted to Pending Delivery`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
-    });
-  };
+    if (!poId) return
+    submitPurchaseOrder(poId as string)
+    show({
+      title: 'Success',
+      message: `PO #${po.poNumber} submitted to Pending Delivery`,
+      type: 'success'
+    })
+  }
 
   const handleDeleteDraft = () => {
-    if (!poId) return;
-    deletePurchaseOrder(poId as string);
-    setShowDeleteDraftDialog(false);
-    toast.success(`Draft ${po.poNumber} deleted`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
-    });
-    router.back();
-  };
+    if (!poId) return
+    deletePurchaseOrder(poId as string)
+    setShowDeleteDraftDialog(false)
+    show({
+      title: 'Success',
+      message: `Draft ${po.poNumber} deleted`,
+      type: 'success'
+    })
+    router.back()
+  }
 
   const handleAddPhoto = async () => {
     try {
       // Request permissions
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+      if (status !== 'granted') {
         Alert.alert(
-          "Permission Required",
-          "Please grant camera roll permissions to add photos."
-        );
-        return;
+          'Permission Required',
+          'Please grant camera roll permissions to add photos.'
+        )
+        return
       }
 
       // Show action sheet for camera or gallery
-      Alert.alert("Add Photos", "Choose how you want to add photos", [
+      Alert.alert('Add Photos', 'Choose how you want to add photos', [
         {
-          text: "Camera",
-          onPress: () => openCamera(),
+          text: 'Camera',
+          onPress: () => openCamera()
         },
         {
-          text: "Photo Library",
-          onPress: () => openImagePicker(),
+          text: 'Photo Library',
+          onPress: () => openImagePicker()
         },
         {
-          text: "Cancel",
-          style: "cancel",
-        },
-      ]);
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ])
     } catch (error) {
-      console.error("Error requesting permissions:", error);
-      Alert.alert("Error", "Failed to request permissions.");
+      console.error('Error requesting permissions:', error)
+      Alert.alert('Error', 'Failed to request permissions.')
     }
-  };
+  }
 
   const openCamera = async () => {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync()
+      if (status !== 'granted') {
         Alert.alert(
-          "Permission Required",
-          "Please grant camera permissions to take photos."
-        );
-        return;
+          'Permission Required',
+          'Please grant camera permissions to take photos.'
+        )
+        return
       }
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
-      });
+        quality: 0.8
+      })
 
       if (!result.canceled && result.assets[0]) {
-        setDeliveryPhotos((prev) => [...prev, result.assets[0].uri]);
+        setDeliveryPhotos(prev => [...prev, result.assets[0].uri])
       }
     } catch (error) {
-      console.error("Error taking photo:", error);
-      Alert.alert("Error", "Failed to take photo.");
+      console.error('Error taking photo:', error)
+      Alert.alert('Error', 'Failed to take photo.')
     }
-  };
+  }
 
   const openImagePicker = async () => {
     try {
@@ -236,129 +261,495 @@ const PurchaseOrderDetailScreen = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
         quality: 0.8,
-        selectionLimit: 10, // Limit to 10 photos
-      });
+        selectionLimit: 10 // Limit to 10 photos
+      })
 
       if (!result.canceled && result.assets) {
-        const newPhotos = result.assets.map((asset) => asset.uri);
-        setDeliveryPhotos((prev) => [...prev, ...newPhotos]);
+        const newPhotos = result.assets.map(asset => asset.uri)
+        setDeliveryPhotos(prev => [...prev, ...newPhotos])
       }
     } catch (error) {
-      console.error("Error picking images:", error);
-      Alert.alert("Error", "Failed to pick images.");
+      console.error('Error picking images:', error)
+      Alert.alert('Error', 'Failed to pick images.')
     }
-  };
+  }
 
   const removePhoto = (index: number) => {
-    setDeliveryPhotos((prev) => prev.filter((_, i) => i !== index));
-  };
+    setDeliveryPhotos(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const inputStyle = {
+    backgroundColor: colors.screen,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    color: colors.heading,
+    fontSize: 12,
+    height: 36,
+    paddingHorizontal: 10,
+    paddingVertical: 0
+  } as const
+
+  const sectionTitleStyle = {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: colors.heading
+  } as const
 
   return (
-    <ScrollView className="flex-1 bg-[#212121]">
-      <View className="p-6">
-        {/* Section A: Order Summary */}
-        <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-          <View className="flex-row justify-between items-center mb-3">
-            <Text className="text-xl font-bold text-white">
-              PO Details: {po.poNumber}
-            </Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, backgroundColor: colors.screen }}
+    >
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 18 }}
+      >
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 10
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 10
+            }}
+          >
+            <Text style={sectionTitleStyle}>PO Details: {po.poNumber}</Text>
             <View
-              className={`px-2 py-0.5 rounded-full ${statusColors[po.status]}`}
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 999,
+                borderWidth: 1,
+                backgroundColor: statusColors[po.status].bg,
+                borderColor: statusColors[po.status].border
+              }}
             >
-              <Text className="text-white font-semibold text-sm">
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  color: statusColors[po.status].text
+                }}
+              >
                 {po.status}
               </Text>
             </View>
           </View>
 
-          <View className="flex-row justify-between mb-3">
-            <View>
-              <Text className="text-base text-gray-400">Vendor</Text>
-              <Text className="text-lg font-semibold text-white">
-                {vendor?.name || "Unknown"}
-              </Text>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              overflow: 'hidden',
+              marginBottom: 10
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                backgroundColor: colors.screen,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  paddingVertical: 6,
+                  paddingHorizontal: 8,
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: colors.muted,
+                    textAlign: 'center'
+                  }}
+                >
+                  Vendor
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  paddingVertical: 6,
+                  paddingHorizontal: 8,
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: colors.muted,
+                    textAlign: 'center'
+                  }}
+                >
+                  Created
+                </Text>
+              </View>
+              <View
+                style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8 }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: colors.muted,
+                    textAlign: 'center'
+                  }}
+                >
+                  Total Cost
+                </Text>
+              </View>
             </View>
-            <View>
-              <Text className="text-base text-gray-400">Created</Text>
-              <Text className="text-lg font-semibold text-white">
-                {new Date(po.createdAt).toLocaleDateString()}
-              </Text>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                backgroundColor: colors.panel,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 34,
+                  justifyContent: 'center',
+                  paddingHorizontal: 8,
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border
+                }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: colors.heading,
+                    textAlign: 'center'
+                  }}
+                >
+                  {vendor?.name || 'Unknown'}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 34,
+                  justifyContent: 'center',
+                  paddingHorizontal: 8,
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border
+                }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: colors.heading,
+                    textAlign: 'center'
+                  }}
+                >
+                  {new Date(po.createdAt).toLocaleDateString()}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 34,
+                  justifyContent: 'center',
+                  paddingHorizontal: 8
+                }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: colors.teal,
+                    textAlign: 'center'
+                  }}
+                >
+                  ${totalCost.toFixed(2)}
+                </Text>
+              </View>
             </View>
-            <View>
-              <Text className="text-base text-gray-400">Total Cost</Text>
-              <Text className="text-lg font-semibold text-white">
-                ${totalCost.toFixed(2)}
-              </Text>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                backgroundColor: colors.screen,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  paddingVertical: 6,
+                  paddingHorizontal: 8,
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: colors.muted,
+                    textAlign: 'center'
+                  }}
+                >
+                  Created By
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  paddingVertical: 6,
+                  paddingHorizontal: 8,
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: colors.muted,
+                    textAlign: 'center'
+                  }}
+                >
+                  PO Number
+                </Text>
+              </View>
+              <View
+                style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8 }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: colors.muted,
+                    textAlign: 'center'
+                  }}
+                >
+                  Items Count
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{ flexDirection: 'row', backgroundColor: colors.panel }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 34,
+                  justifyContent: 'center',
+                  paddingHorizontal: 8,
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border
+                }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: colors.heading,
+                    textAlign: 'center'
+                  }}
+                >
+                  {po.createdByEmployeeName || 'Unknown'}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 34,
+                  justifyContent: 'center',
+                  paddingHorizontal: 8,
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border
+                }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: colors.teal,
+                    textAlign: 'center'
+                  }}
+                >
+                  {po.poNumber}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 34,
+                  justifyContent: 'center',
+                  paddingHorizontal: 8
+                }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: colors.heading,
+                    textAlign: 'center'
+                  }}
+                >
+                  {po.items.length}
+                </Text>
+              </View>
             </View>
           </View>
 
-          <View className="flex-row justify-between mb-3">
-            <View>
-              <Text className="text-base text-gray-400">Created By</Text>
-              <Text className="text-lg font-semibold text-white">
-                {po.createdByEmployeeName || "Unknown Employee"}
-              </Text>
-            </View>
-            <View>
-              <Text className="text-base text-gray-400">PO Number</Text>
-              <Text className="text-lg font-semibold text-white">
-                {po.poNumber}
-              </Text>
-            </View>
-            <View>
-              <Text className="text-base text-gray-400">Items Count</Text>
-              <Text className="text-lg font-semibold text-white">
-                {po.items.length}
-              </Text>
-            </View>
-          </View>
-
-          <Text className="text-lg font-semibold text-white mb-2">Items</Text>
-          <FlatList
-            data={po.items}
-            className="max-h-150"
-            keyExtractor={(item) => item.inventoryItemId}
-            renderItem={({ item }) => {
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '700',
+              color: colors.heading,
+              marginBottom: 6
+            }}
+          >
+            Items
+          </Text>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              overflow: 'hidden'
+            }}
+          >
+            {po.items.map(item => {
               const invItem = inventoryItems.find(
-                (i) => i.id === item.inventoryItemId
-              );
+                i => i.id === item.inventoryItemId
+              )
               return (
-                <View className="flex-row justify-between p-2 border-b border-gray-600">
-                  <Text className="text-base text-white flex-1">
-                    {invItem?.name}
+                <View
+                  key={item.inventoryItemId}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                    backgroundColor: colors.screen
+                  }}
+                >
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 12,
+                      fontWeight: '600',
+                      color: colors.heading
+                    }}
+                  >
+                    {invItem?.name || 'Item'}
                   </Text>
-                  <Text className="text-sm text-gray-300 w-28">
+                  <Text
+                    style={{
+                      width: 90,
+                      fontSize: 11,
+                      color: colors.label,
+                      textAlign: 'right'
+                    }}
+                  >
                     {item.quantity} {invItem?.unit}
                   </Text>
-                  <Text className="text-sm text-gray-300 w-28">
+                  <Text
+                    style={{
+                      width: 90,
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.teal,
+                      textAlign: 'right'
+                    }}
+                  >
                     ${(item.cost * item.quantity).toFixed(2)}
                   </Text>
                 </View>
-              );
-            }}
-          />
+              )
+            })}
+          </View>
         </View>
 
         {/* Draft Actions */}
-        {po.status === "Draft" && (
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <Text className="text-lg font-bold text-white mb-2">
+        {po.status === 'Draft' && (
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10
+            }}
+          >
+            <Text style={{ ...sectionTitleStyle, marginBottom: 8 }}>
               Draft Actions
             </Text>
-            <View className="flex-row gap-2">
+            <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
                 onPress={handleSubmitDraft}
-                className="flex-1 bg-blue-600 rounded-lg p-3 items-center"
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.teal + '20',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '50',
+                  borderRadius: 8,
+                  paddingVertical: 9,
+                  alignItems: 'center'
+                }}
               >
-                <Text className="text-white font-semibold text-base">
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: colors.teal
+                  }}
+                >
                   Submit to Pending
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowDeleteDraftDialog(true)}
-                className="flex-1 bg-red-600 rounded-lg p-3 items-center"
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.danger + '20',
+                  borderWidth: 1,
+                  borderColor: colors.danger + '50',
+                  borderRadius: 8,
+                  paddingVertical: 9,
+                  alignItems: 'center'
+                }}
               >
-                <Text className="text-white font-semibold text-base">
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: colors.danger
+                  }}
+                >
                   Delete Draft
                 </Text>
               </TouchableOpacity>
@@ -366,49 +757,105 @@ const PurchaseOrderDetailScreen = () => {
           </View>
         )}
 
-        {po.status === "Pending Delivery" && (
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <View className="flex-row items-center mb-3 gap-x-1.5">
-              <Calendar size={20} color="#9CA3AF" />
-              <Text className="text-lg font-bold text-white">Log Delivery</Text>
+        {po.status === 'Pending Delivery' && (
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                marginBottom: 10
+              }}
+            >
+              <Calendar size={15} color={colors.label} />
+              <Text style={sectionTitleStyle}>Log Delivery</Text>
             </View>
 
             {!showDeliveryForm ? (
               <TouchableOpacity
                 onPress={() => setShowDeliveryForm(true)}
-                className="bg-blue-600 rounded-lg p-3 items-center"
+                style={{
+                  backgroundColor: colors.teal + '20',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '50',
+                  borderRadius: 8,
+                  paddingVertical: 9,
+                  alignItems: 'center'
+                }}
               >
-                <Text className="text-white font-semibold text-base">
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: colors.teal
+                  }}
+                >
                   Log Goods Received
                 </Text>
               </TouchableOpacity>
             ) : (
-              <View>
-                <View className="mb-3">
-                  <Text className="text-white font-semibold mb-1.5 text-sm">
+              <View style={{ gap: 10 }}>
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.label,
+                      marginBottom: 4
+                    }}
+                  >
                     Date & Time of Delivery
                   </Text>
                   <TextInput
                     value={new Date(deliveryDate).toLocaleString()}
                     editable={false}
-                    className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white h-16 text-sm"
+                    style={inputStyle}
                   />
                 </View>
 
-                <View className="mb-3">
-                  <Text className="text-white font-semibold mb-1.5 text-sm">
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.label,
+                      marginBottom: 4
+                    }}
+                  >
                     Received Items
                   </Text>
-                  {po.items.map((li) => {
+                  {po.items.map(li => {
                     const invItem = inventoryItems.find(
-                      (i) => i.id === li.inventoryItemId
-                    );
+                      i => i.id === li.inventoryItemId
+                    )
                     return (
                       <View
                         key={li.inventoryItemId}
-                        className="flex-row items-center gap-1.5 py-1.5 border-b border-gray-700"
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                          paddingVertical: 6,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border
+                        }}
                       >
-                        <Text className="flex-1 text-white text-sm">
+                        <Text
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            color: colors.heading
+                          }}
+                        >
                           {invItem?.name}
                         </Text>
                         <TouchableOpacity
@@ -422,22 +869,44 @@ const PurchaseOrderDetailScreen = () => {
                               )
                             )
                           }
-                          className="w-7 h-7 rounded-lg bg-[#212121] border border-gray-600 items-center justify-center"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
                         >
-                          <Text className="text-white text-lg">-</Text>
+                          <Text style={{ fontSize: 14, color: colors.heading }}>
+                            -
+                          </Text>
                         </TouchableOpacity>
                         <TextInput
                           value={String(
                             receivedDraft[li.inventoryItemId] ?? li.quantity
                           )}
-                          onChangeText={(t) =>
+                          onChangeText={t =>
                             adjustReceivedQty(
                               li.inventoryItemId,
                               Number(t) || 0
                             )
                           }
-                          keyboardType="numeric"
-                          className="w-14 text-center bg-[#212121] border border-gray-600 rounded-lg p-1.5 text-white h-16 text-sm"
+                          keyboardType='numeric'
+                          style={{
+                            width: 52,
+                            textAlign: 'center',
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 6,
+                            color: colors.heading,
+                            fontSize: 12,
+                            height: 30,
+                            paddingVertical: 0
+                          }}
                         />
                         <TouchableOpacity
                           onPress={() =>
@@ -447,52 +916,120 @@ const PurchaseOrderDetailScreen = () => {
                                 li.quantity) + 1
                             )
                           }
-                          className="w-7 h-7 rounded-lg bg-[#212121] border border-gray-600 items-center justify-center"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
                         >
-                          <Text className="text-white text-lg">+</Text>
+                          <Text style={{ fontSize: 14, color: colors.heading }}>
+                            +
+                          </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() =>
                             adjustReceivedQty(li.inventoryItemId, 0)
                           }
-                          className="ml-1 px-1.5 py-0.5 rounded-lg bg-red-600"
+                          style={{
+                            marginLeft: 4,
+                            paddingHorizontal: 6,
+                            paddingVertical: 3,
+                            borderRadius: 6,
+                            backgroundColor: colors.danger + '20',
+                            borderWidth: 1,
+                            borderColor: colors.danger + '50'
+                          }}
                         >
-                          <Text className="text-white text-[10px]">Remove</Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: '600',
+                              color: colors.danger
+                            }}
+                          >
+                            Remove
+                          </Text>
                         </TouchableOpacity>
                       </View>
-                    );
+                    )
                   })}
                 </View>
 
-                <View className="mb-3">
-                  <Text className="text-white font-semibold mb-1.5 text-sm">
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.label,
+                      marginBottom: 4
+                    }}
+                  >
                     Photos
                   </Text>
                   <TouchableOpacity
                     onPress={handleAddPhoto}
-                    className="bg-[#212121] border border-gray-600 rounded-lg gap-x-1.5 p-3 items-center flex-row"
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 9,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
                   >
-                    <Camera size={18} color="#9CA3AF" />
-                    <Text className="text-gray-400 text-sm">Add Photos</Text>
+                    <Camera size={18} color={colors.label} />
+                    <Text style={{ fontSize: 12, color: colors.label }}>
+                      Add Photos
+                    </Text>
                   </TouchableOpacity>
                   {deliveryPhotos.length > 0 && (
-                    <View className="mt-2">
-                      <Text className="text-gray-400 text-xs mb-1.5">
+                    <View style={{ marginTop: 8 }}>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: colors.muted,
+                          marginBottom: 6
+                        }}
+                      >
                         {deliveryPhotos.length} photo(s)
                       </Text>
-                      <View className="flex-row flex-wrap gap-1.5">
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          flexWrap: 'wrap',
+                          gap: 6
+                        }}
+                      >
                         {deliveryPhotos.map((photo, index) => (
-                          <View key={index} className="relative">
+                          <View key={index} style={{ position: 'relative' }}>
                             <Image
                               source={{ uri: photo }}
-                              className="w-16 h-16 rounded-lg"
-                              resizeMode="cover"
+                              style={{ width: 64, height: 64, borderRadius: 8 }}
+                              resizeMode='cover'
                             />
                             <TouchableOpacity
                               onPress={() => removePhoto(index)}
-                              className="absolute -top-1.5 -right-1.5 bg-red-500 rounded-full w-5 h-5 items-center justify-center"
+                              style={{
+                                position: 'absolute',
+                                top: -6,
+                                right: -6,
+                                backgroundColor: colors.danger,
+                                borderRadius: 999,
+                                width: 20,
+                                height: 20,
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
                             >
-                              <X size={12} color="white" />
+                              <X size={12} color='white' />
                             </TouchableOpacity>
                           </View>
                         ))}
@@ -501,33 +1038,75 @@ const PurchaseOrderDetailScreen = () => {
                   )}
                 </View>
 
-                <View className="mb-3">
-                  <Text className="text-white font-semibold mb-1.5 text-sm">
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.label,
+                      marginBottom: 4
+                    }}
+                  >
                     Notes
                   </Text>
                   <TextInput
                     value={deliveryNotes}
                     onChangeText={setDeliveryNotes}
-                    placeholder="e.g., Box damaged"
+                    placeholder='e.g., Box damaged'
+                    placeholderTextColor={colors.muted}
                     multiline
-                    className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white min-h-[60px] text-sm"
+                    style={{
+                      ...inputStyle,
+                      minHeight: 56,
+                      height: 56,
+                      textAlignVertical: 'top',
+                      paddingTop: 8
+                    }}
                   />
                 </View>
 
-                <View className="flex-row gap-2">
+                <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TouchableOpacity
                     onPress={() => setShowDeliveryForm(false)}
-                    className="flex-1 bg-gray-600 rounded-lg p-2.5 items-center"
+                    style={{
+                      flex: 1,
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingVertical: 9,
+                      alignItems: 'center'
+                    }}
                   >
-                    <Text className="text-white font-semibold text-sm">
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: colors.label
+                      }}
+                    >
                       Cancel
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleSubmitDelivery}
-                    className="flex-1 bg-green-600 rounded-lg p-2.5 items-center"
+                    style={{
+                      flex: 1,
+                      backgroundColor: colors.teal + '20',
+                      borderWidth: 1,
+                      borderColor: colors.teal + '50',
+                      borderRadius: 8,
+                      paddingVertical: 9,
+                      alignItems: 'center'
+                    }}
                   >
-                    <Text className="text-white font-semibold text-sm">
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: colors.teal
+                      }}
+                    >
                       Submit Log
                     </Text>
                   </TouchableOpacity>
@@ -537,78 +1116,154 @@ const PurchaseOrderDetailScreen = () => {
           </View>
         )}
 
-        {po.status === "Awaiting Payment" && (
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <View className="flex-row items-center mb-3">
-              <DollarSign size={20} color="#9CA3AF" className="mr-1.5" />
-              <Text className="text-lg font-bold text-white">Log Payment</Text>
+        {po.status === 'Awaiting Payment' && (
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                marginBottom: 10
+              }}
+            >
+              <DollarSign size={15} color={colors.label} />
+              <Text style={sectionTitleStyle}>Log Payment</Text>
             </View>
 
             {!showPaymentForm ? (
               <TouchableOpacity
                 onPress={() => setShowPaymentForm(true)}
-                className="bg-green-600 rounded-lg p-3 items-center"
+                style={{
+                  backgroundColor: colors.teal + '20',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '50',
+                  borderRadius: 8,
+                  paddingVertical: 9,
+                  alignItems: 'center'
+                }}
               >
-                <Text className="text-white font-semibold text-base">
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: colors.teal
+                  }}
+                >
                   Log Payment
                 </Text>
               </TouchableOpacity>
             ) : (
-              <View>
-                <View className="mb-3">
-                  <Text className="text-white font-semibold mb-2 text-sm">
+              <View style={{ gap: 10 }}>
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.label,
+                      marginBottom: 6
+                    }}
+                  >
                     Method
                   </Text>
-                  <View className="flex-row gap-2">
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity
-                      onPress={() => setPaymentMethod("Card")}
-                      className={`flex-1 p-2.5 rounded-lg border ${
-                        paymentMethod === "Card"
-                          ? "border-blue-500 bg-blue-500/20"
-                          : "border-gray-600"
-                      }`}
+                      onPress={() => setPaymentMethod('Card')}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 9,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor:
+                          paymentMethod === 'Card'
+                            ? colors.teal + '60'
+                            : colors.border,
+                        backgroundColor:
+                          paymentMethod === 'Card'
+                            ? colors.teal + '20'
+                            : colors.screen
+                      }}
                     >
-                      <View className="flex-row items-center justify-center">
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6
+                        }}
+                      >
                         <CreditCard
-                          size={18}
+                          size={16}
                           color={
-                            paymentMethod === "Card" ? "#3B82F6" : "#9CA3AF"
+                            paymentMethod === 'Card'
+                              ? colors.teal
+                              : colors.label
                           }
-                          className="mr-1.5"
                         />
                         <Text
-                          className={`font-semibold text-sm ${
-                            paymentMethod === "Card"
-                              ? "text-blue-400"
-                              : "text-gray-400"
-                          }`}
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '700',
+                            color:
+                              paymentMethod === 'Card'
+                                ? colors.teal
+                                : colors.label
+                          }}
                         >
                           Card
                         </Text>
                       </View>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => setPaymentMethod("Cash")}
-                      className={`flex-1 p-2.5 rounded-lg border ${
-                        paymentMethod === "Cash"
-                          ? "border-green-500 bg-green-500/20"
-                          : "border-gray-600"
-                      }`}
+                      onPress={() => setPaymentMethod('Cash')}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 9,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor:
+                          paymentMethod === 'Cash'
+                            ? colors.teal + '60'
+                            : colors.border,
+                        backgroundColor:
+                          paymentMethod === 'Cash'
+                            ? colors.teal + '20'
+                            : colors.screen
+                      }}
                     >
-                      <View className="flex-row items-center justify-center">
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6
+                        }}
+                      >
                         <DollarSign
-                          size={18}
+                          size={16}
                           color={
-                            paymentMethod === "Cash" ? "#10B981" : "#9CA3AF"
+                            paymentMethod === 'Cash'
+                              ? colors.teal
+                              : colors.label
                           }
-                          className="mr-1.5"
                         />
                         <Text
-                          className={`font-semibold text-sm ${
-                            paymentMethod === "Cash"
-                              ? "text-green-400"
-                              : "text-gray-400"
-                          }`}
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '700',
+                            color:
+                              paymentMethod === 'Cash'
+                                ? colors.teal
+                                : colors.label
+                          }}
                         >
                           Cash
                         </Text>
@@ -617,70 +1272,133 @@ const PurchaseOrderDetailScreen = () => {
                   </View>
                 </View>
 
-                {paymentMethod === "Card" && (
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-1.5 text-sm">
+                {paymentMethod === 'Card' && (
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '600',
+                        color: colors.label,
+                        marginBottom: 4
+                      }}
+                    >
                       Card Last 4
                     </Text>
                     <TextInput
                       value={cardLast4}
                       onChangeText={setCardLast4}
-                      placeholder="1234"
-                      keyboardType="numeric"
+                      placeholder='1234'
+                      placeholderTextColor={colors.muted}
+                      keyboardType='numeric'
                       maxLength={4}
-                      className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white h-16 text-sm"
+                      style={inputStyle}
                     />
                   </View>
                 )}
 
-                <View className="mb-3">
-                  <Text className="text-white font-semibold mb-1.5 text-sm">
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.label,
+                      marginBottom: 4
+                    }}
+                  >
                     Amount
                   </Text>
                   <TextInput
                     value={paymentAmount}
                     onChangeText={setPaymentAmount}
-                    placeholder="0.00"
-                    keyboardType="numeric"
-                    className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white h-16 text-sm"
+                    placeholder='0.00'
+                    placeholderTextColor={colors.muted}
+                    keyboardType='numeric'
+                    style={inputStyle}
                   />
                 </View>
-                <View className="mb-3">
-                  <Text className="text-white font-semibold mb-1.5 text-sm">
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.label,
+                      marginBottom: 4
+                    }}
+                  >
                     Vendor
                   </Text>
                   <TextInput
-                    value={vendor?.name || ""}
+                    value={vendor?.name || ''}
                     editable={false}
-                    className="bg-[#404040] border border-gray-600 rounded-lg p-2 text-gray-300 h-16 text-sm"
+                    style={{
+                      ...inputStyle,
+                      color: colors.label,
+                      backgroundColor: colors.panel
+                    }}
                   />
                 </View>
-                <View className="mb-3">
-                  <Text className="text-white font-semibold mb-1.5 text-sm">
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.label,
+                      marginBottom: 4
+                    }}
+                  >
                     Paid To
                   </Text>
                   <TextInput
                     value={paidToEmployee}
                     onChangeText={setPaidToEmployee}
-                    placeholder="Employee name"
-                    className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white h-16 text-sm"
+                    placeholder='Employee name'
+                    placeholderTextColor={colors.muted}
+                    style={inputStyle}
                   />
                 </View>
 
-                <View className="flex-row gap-2">
+                <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TouchableOpacity
                     onPress={() => setShowPaymentForm(false)}
-                    className="flex-1 bg-gray-600 rounded-lg p-2.5 items-center"
+                    style={{
+                      flex: 1,
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingVertical: 9,
+                      alignItems: 'center'
+                    }}
                   >
-                    <Text className="text-white font-semibold text-sm">
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: colors.label
+                      }}
+                    >
                       Cancel
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleLogPayment}
-                    className="flex-1 bg-green-600 rounded-lg p-2.5 items-center"
+                    style={{
+                      flex: 1,
+                      backgroundColor: colors.teal + '20',
+                      borderWidth: 1,
+                      borderColor: colors.teal + '50',
+                      borderRadius: 8,
+                      paddingVertical: 9,
+                      alignItems: 'center'
+                    }}
                   >
-                    <Text className="text-white font-semibold text-sm">
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: colors.teal
+                      }}
+                    >
                       Confirm
                     </Text>
                   </TouchableOpacity>
@@ -692,41 +1410,92 @@ const PurchaseOrderDetailScreen = () => {
 
         {/* Delivery History */}
         {po.deliveryLoggedAt && (
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-6 mb-6">
-            <Text className="text-xl font-bold text-white mb-3">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10
+            }}
+          >
+            <Text style={{ ...sectionTitleStyle, marginBottom: 8 }}>
               Delivery History
             </Text>
-            <View className="bg-[#212121] border border-gray-600 rounded-lg p-4">
-              <View className="flex-row justify-between mb-2">
-                <Text className="text-white font-semibold">Delivered At</Text>
-                <Text className="text-white">
+            <View
+              style={{
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                padding: 10
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  marginBottom: 6
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
+                  Delivered At
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.heading }}>
                   {new Date(po.deliveryLoggedAt).toLocaleString()}
                 </Text>
               </View>
               {po.discrepancyNotes && (
-                <View className="mb-2">
-                  <Text className="text-white font-semibold mb-1">Notes</Text>
-                  <Text className="text-gray-300">{po.discrepancyNotes}</Text>
+                <View style={{ marginBottom: 6 }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.heading,
+                      marginBottom: 4
+                    }}
+                  >
+                    Notes
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.label }}>
+                    {po.discrepancyNotes}
+                  </Text>
                 </View>
               )}
               {po.deliveryPhotos && po.deliveryPhotos.length > 0 && (
                 <View>
-                  <Text className="text-white font-semibold mb-2">
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.heading,
+                      marginBottom: 6
+                    }}
+                  >
                     Photos ({po.deliveryPhotos.length})
                   </Text>
-                  <View className="flex-row flex-wrap gap-2">
+                  <View
+                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+                  >
                     {po.deliveryPhotos.map((photo, index) => (
                       <TouchableOpacity
                         key={index}
                         onPress={() => {
-                          setModalImageUri(photo);
-                          setShowImageModal(true);
+                          setModalImageUri(photo)
+                          setShowImageModal(true)
                         }}
                       >
                         <Image
                           source={{ uri: photo }}
-                          className="w-16 h-16 rounded-lg"
-                          resizeMode="cover"
+                          style={{ width: 64, height: 64, borderRadius: 8 }}
+                          resizeMode='cover'
                         />
                       </TouchableOpacity>
                     ))}
@@ -742,68 +1511,138 @@ const PurchaseOrderDetailScreen = () => {
           const requested =
             po.originalItems && po.originalItems.length > 0
               ? po.originalItems
-              : po.items;
-          const received = po.receivedItems || [];
+              : po.items
+          const received = po.receivedItems || []
           const ids = Array.from(
             new Set([
-              ...requested.map((i) => i.inventoryItemId),
-              ...received.map((i) => i.inventoryItemId),
+              ...requested.map(i => i.inventoryItemId),
+              ...received.map(i => i.inventoryItemId)
             ])
-          );
-          const rows = ids.map((id) => {
-            const req = requested.find((x) => x.inventoryItemId === id);
-            const rec = received.find((x) => x.inventoryItemId === id);
-            const reqQty = req?.quantity ?? 0;
-            const recQty = rec?.quantity ?? 0;
-            return { id, reqQty, recQty, cost: req?.cost ?? rec?.cost ?? 0 };
-          });
-          const hasDiscrepancy = rows.some((r) => r.reqQty !== r.recQty);
-          if (!hasDiscrepancy) return null;
+          )
+          const rows = ids.map(id => {
+            const req = requested.find(x => x.inventoryItemId === id)
+            const rec = received.find(x => x.inventoryItemId === id)
+            const reqQty = req?.quantity ?? 0
+            const recQty = rec?.quantity ?? 0
+            return { id, reqQty, recQty, cost: req?.cost ?? rec?.cost ?? 0 }
+          })
+          const hasDiscrepancy = rows.some(r => r.reqQty !== r.recQty)
+          if (!hasDiscrepancy) return null
           return (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-              <Text className="text-lg font-bold text-white mb-2">
+            <View
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 10
+              }}
+            >
+              <Text style={{ ...sectionTitleStyle, marginBottom: 8 }}>
                 Discrepancy Report
               </Text>
-              <View className="bg-[#212121] border border-gray-600 rounded-lg">
-                <View className="flex-row px-3 py-2 border-b border-gray-700">
-                  <Text className="text-gray-400 flex-1 text-sm">Item</Text>
-                  <Text className="text-gray-400 w-16 text-right text-sm">
+              <View
+                style={{
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border
+                  }}
+                >
+                  <Text style={{ flex: 1, fontSize: 11, color: colors.muted }}>
+                    Item
+                  </Text>
+                  <Text
+                    style={{
+                      width: 52,
+                      textAlign: 'right',
+                      fontSize: 11,
+                      color: colors.muted
+                    }}
+                  >
                     Req
                   </Text>
-                  <Text className="text-gray-400 w-16 text-right text-sm">
+                  <Text
+                    style={{
+                      width: 52,
+                      textAlign: 'right',
+                      fontSize: 11,
+                      color: colors.muted
+                    }}
+                  >
                     Rec
                   </Text>
-                  <Text className="text-gray-400 w-20 text-right text-sm">
+                  <Text
+                    style={{
+                      width: 64,
+                      textAlign: 'right',
+                      fontSize: 11,
+                      color: colors.muted
+                    }}
+                  >
                     Status
                   </Text>
                 </View>
-                {rows.map((r) => {
-                  if (r.reqQty === r.recQty) return null;
-                  const invItem = inventoryItems.find((i) => i.id === r.id);
-                  let status = "Modified";
-                  let badge = "bg-yellow-600 text-yellow-50";
+                {rows.map(r => {
+                  if (r.reqQty === r.recQty) return null
+                  const invItem = inventoryItems.find(i => i.id === r.id)
+                  let status = 'Modified'
+                  let badge = 'bg-teal-600 text-teal-50'
                   if (r.recQty === 0 && r.reqQty > 0) {
-                    status = "Missing";
-                    badge = "bg-red-600 text-red-50";
+                    status = 'Missing'
+                    badge = 'bg-red-600 text-red-50'
                   } else if (r.recQty > r.reqQty) {
-                    status = "+ Added";
-                    badge = "bg-green-600 text-green-50";
+                    status = '+ Added'
+                    badge = 'bg-teal-500 text-teal-50'
                   }
                   return (
                     <View
                       key={r.id}
-                      className="flex-row items-center px-3 py-2 border-b border-gray-800 last:border-b-0"
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.border
+                      }}
                     >
-                      <Text className="text-white flex-1 text-sm">
+                      <Text
+                        style={{ flex: 1, fontSize: 11, color: colors.heading }}
+                      >
                         {invItem?.name || r.id}
                       </Text>
-                      <Text className="text-gray-300 w-16 text-right text-sm">
+                      <Text
+                        style={{
+                          width: 52,
+                          textAlign: 'right',
+                          fontSize: 11,
+                          color: colors.label
+                        }}
+                      >
                         {r.reqQty}
                       </Text>
-                      <Text className="text-gray-300 w-16 text-right text-sm">
+                      <Text
+                        style={{
+                          width: 52,
+                          textAlign: 'right',
+                          fontSize: 11,
+                          color: colors.label
+                        }}
+                      >
                         {r.recQty}
                       </Text>
-                      <View className="w-20 items-end">
+                      <View style={{ width: 64, alignItems: 'flex-end' }}>
                         <Text
                           className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${badge}`}
                         >
@@ -811,54 +1650,142 @@ const PurchaseOrderDetailScreen = () => {
                         </Text>
                       </View>
                     </View>
-                  );
+                  )
                 })}
               </View>
             </View>
-          );
+          )
         })()}
 
         {po.payment && (
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <Text className="text-lg font-bold text-white mb-2">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10
+            }}
+          >
+            <Text style={{ ...sectionTitleStyle, marginBottom: 8 }}>
               Payment History
             </Text>
-            <View className="bg-[#212121] border border-gray-600 rounded-lg p-3">
-              <View className="flex-row justify-between mb-1.5">
-                <Text className="text-white font-semibold text-sm">Method</Text>
-                <Text className="text-white text-sm">{po.payment.method}</Text>
+            <View
+              style={{
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                padding: 10
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  marginBottom: 6
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
+                  Method
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.heading }}>
+                  {po.payment.method}
+                </Text>
               </View>
-              <View className="flex-row justify-between mb-1.5">
-                <Text className="text-white font-semibold text-sm">Amount</Text>
-                <Text className="text-white text-sm">
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  marginBottom: 6
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
+                  Amount
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: colors.teal
+                  }}
+                >
                   ${po.payment.amount.toFixed(2)}
                 </Text>
               </View>
               {po.payment.cardLast4 && (
-                <View className="flex-row justify-between mb-1.5">
-                  <Text className="text-white font-semibold text-sm">
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    marginBottom: 6
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.heading
+                    }}
+                  >
                     Card Last 4
                   </Text>
-                  <Text className="text-white text-sm">
+                  <Text style={{ fontSize: 11, color: colors.heading }}>
                     ****{po.payment.cardLast4}
                   </Text>
                 </View>
               )}
               {po.payment.paidToEmployee && (
-                <View className="flex-row justify-between mb-1.5">
-                  <Text className="text-white font-semibold text-sm">
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    marginBottom: 6
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: colors.heading
+                    }}
+                  >
                     Paid To
                   </Text>
-                  <Text className="text-white text-sm">
+                  <Text style={{ fontSize: 11, color: colors.heading }}>
                     {po.payment.paidToEmployee}
                   </Text>
                 </View>
               )}
-              <View className="flex-row justify-between">
-                <Text className="text-white font-semibold text-sm">
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between'
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
                   Paid At
                 </Text>
-                <Text className="text-white text-sm">
+                <Text style={{ fontSize: 11, color: colors.heading }}>
                   {new Date(po.payment.paidAt).toLocaleString()}
                 </Text>
               </View>
@@ -866,13 +1793,35 @@ const PurchaseOrderDetailScreen = () => {
           </View>
         )}
 
-        {po.status !== "Cancelled" && po.status !== "Paid" && (
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 w-fit">
+        {po.status !== 'Cancelled' && po.status !== 'Paid' && (
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 12
+            }}
+          >
             <TouchableOpacity
               onPress={() => setShowCancelDialog(true)}
-              className="bg-red-600 rounded-lg p-3 items-center w-fit"
+              style={{
+                backgroundColor: colors.danger + '20',
+                borderWidth: 1,
+                borderColor: colors.danger + '50',
+                borderRadius: 8,
+                paddingVertical: 9,
+                paddingHorizontal: 14,
+                alignItems: 'center'
+              }}
             >
-              <Text className="text-white font-semibold text-base">
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: colors.danger
+                }}
+              >
                 Cancel Purchase Order
               </Text>
             </TouchableOpacity>
@@ -880,28 +1829,87 @@ const PurchaseOrderDetailScreen = () => {
         )}
 
         {showCancelDialog && (
-          <View className="absolute inset-0 bg-black/50 items-center justify-center">
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mx-4 w-full max-w-sm">
-              <Text className="text-lg font-bold text-white mb-2">
+          <View
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 14
+            }}
+          >
+            <View
+              style={{
+                width: '100%',
+                maxWidth: 360,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 14
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: colors.heading,
+                  marginBottom: 8
+                }}
+              >
                 Cancel PO
               </Text>
-              <Text className="text-gray-300 mb-4 text-sm">
+              <Text
+                style={{ fontSize: 12, color: colors.label, marginBottom: 12 }}
+              >
                 Cancel PO #{po.poNumber}? This cannot be undone.
               </Text>
-              <View className="flex-row gap-2">
+              <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity
                   onPress={() => setShowCancelDialog(false)}
-                  className="flex-1 bg-gray-600 rounded-lg p-2.5 items-center"
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    paddingVertical: 9,
+                    alignItems: 'center'
+                  }}
                 >
-                  <Text className="text-white font-semibold text-sm">
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      color: colors.label
+                    }}
+                  >
                     Keep PO
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleCancelPO}
-                  className="flex-1 bg-red-600 rounded-lg p-2.5 items-center"
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.danger + '20',
+                    borderWidth: 1,
+                    borderColor: colors.danger + '50',
+                    borderRadius: 8,
+                    paddingVertical: 9,
+                    alignItems: 'center'
+                  }}
                 >
-                  <Text className="text-white font-semibold text-sm">
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: colors.danger
+                    }}
+                  >
                     Cancel PO
                   </Text>
                 </TouchableOpacity>
@@ -911,28 +1919,87 @@ const PurchaseOrderDetailScreen = () => {
         )}
 
         {showDeleteDraftDialog && (
-          <View className="absolute inset-0 bg-black/50 items-center justify-center">
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mx-4 w-full max-w-sm">
-              <Text className="text-lg font-bold text-white mb-2">
+          <View
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 14
+            }}
+          >
+            <View
+              style={{
+                width: '100%',
+                maxWidth: 360,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 14
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: colors.heading,
+                  marginBottom: 8
+                }}
+              >
                 Delete Draft
               </Text>
-              <Text className="text-gray-300 mb-4 text-sm">
+              <Text
+                style={{ fontSize: 12, color: colors.label, marginBottom: 12 }}
+              >
                 Delete draft {po.poNumber}? This cannot be undone.
               </Text>
-              <View className="flex-row gap-2">
+              <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity
                   onPress={() => setShowDeleteDraftDialog(false)}
-                  className="flex-1 bg-gray-600 rounded-lg p-2.5 items-center"
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    paddingVertical: 9,
+                    alignItems: 'center'
+                  }}
                 >
-                  <Text className="text-white font-semibold text-sm">
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      color: colors.label
+                    }}
+                  >
                     Keep Draft
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleDeleteDraft}
-                  className="flex-1 bg-red-600 rounded-lg p-2.5 items-center"
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.danger + '20',
+                    borderWidth: 1,
+                    borderColor: colors.danger + '50',
+                    borderRadius: 8,
+                    paddingVertical: 9,
+                    alignItems: 'center'
+                  }}
                 >
-                  <Text className="text-white font-semibold text-sm">
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: colors.danger
+                    }}
+                  >
                     Delete
                   </Text>
                 </TouchableOpacity>
@@ -945,10 +2012,10 @@ const PurchaseOrderDetailScreen = () => {
         <Dialog
           open={showImageModal}
           onOpenChange={() => setShowImageModal(false)}
-          className="w-full h-full items-center justify-center flex"
+          className='w-full h-full items-center justify-center flex'
         >
-          <DialogContent className="w-full h-full bg-transparent border-none p-0">
-            <View className="flex-1 items-center w-full h-full justify-center">
+          <DialogContent className='w-full h-full bg-transparent border-none p-0'>
+            <View className='flex-1 items-center w-full h-full justify-center'>
               {/* <TouchableOpacity
                 className="absolute top-10 right-6 z-10 bg-black/50 rounded-full px-4 py-2"
                 onPress={() => setShowImageModal(false)}
@@ -958,16 +2025,16 @@ const PurchaseOrderDetailScreen = () => {
               {modalImageUri && (
                 <Image
                   source={{ uri: modalImageUri }}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="contain"
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode='contain'
                 />
               )}
             </View>
           </DialogContent>
         </Dialog>
-      </View>
-    </ScrollView>
-  );
-};
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
+}
 
-export default PurchaseOrderDetailScreen;
+export default PurchaseOrderDetailScreen

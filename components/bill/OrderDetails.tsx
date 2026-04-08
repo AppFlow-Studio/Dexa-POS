@@ -1,12 +1,21 @@
+import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Edit3, Plus, User } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useShallow } from "zustand/react/shallow";
 import {
   Dialog,
   DialogContent,
@@ -19,35 +28,61 @@ import { Label } from "../ui/label";
 // Define a consistent type for our dropdown options
 type SelectOption = { label: string; value: string };
 
-// Static options for the Order Type dropdown
-// const ORDER_TYPE_OPTIONS: SelectOption[] = [
-//   { label: "Dine In", value: "Dine In" },
-//   { label: "Takeaway", value: "Takeaway" },
-//   { label: "Delivery", value: "Delivery" },
-// ];
+const OrderDetailsComponent: React.FC = () => {
+  const { show } = useToast();
 
-const OrderDetails: React.FC = () => {
-  const { layouts } = useFloorPlanStore();
-
+  // PERF: Single useShallow selector - runs 1 function instead of 11
+  // useShallow compares values shallowly, so primitive returns prevent unnecessary re-renders
   const {
     activeOrderId,
-    orders,
-    updateActiveOrderDetails,
-    updateOrderStatus,
-    assignActiveOrderToTable,
-    assignOrderToTable,
-    addItemToActiveOrder,
-    setPendingTableSelection,
-  } = useOrderStore();
+    customerName,
+    customerPhone,
+    orderType,
+    serviceLocationId,
+    orderStatus,
+    paidStatus,
+    checkStatus,
+    hasRefunds,
+    isSplitPayment,
+    hasAnyPayments,
+  } = useOrderStore(
+    useShallow((s) => {
+      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+      const type = order?.order_type || "takeout";
+      const labels: Record<string, string> = {
+        dine_in: "Dine In",
+        takeout: "Takeaway",
+        delivery: "Delivery",
+      };
+      const activePayments = order?.payments?.filter((p) => !p.isVoided) ?? [];
+      return {
+        activeOrderId: s.activeOrderId,
+        customerName: order?.customer_name || null,
+        customerPhone: order?.customer_phone || null,
+        orderType: labels[type] || type,
+        serviceLocationId: order?.service_location_id || null,
+        orderStatus: order?.order_status || "draft",
+        paidStatus: order?.paid_status || "Unpaid",
+        checkStatus: order?.check_status || "Opened",
+        hasRefunds: (order?.order_refund_items?.length ?? 0) > 0,
+        isSplitPayment: activePayments.some((p) => p.method === "Cash") && activePayments.some((p) => p.method === "Card"),
+        hasAnyPayments: activePayments.length > 0,
+      };
+    })
+  );
+
+  // Actions - stable function references
+  const updateActiveOrderDetails = useOrderStore(
+    (s) => s.updateActiveOrderDetails,
+  );
+  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
+
   const { openDrawer } = useOrderTypeDrawerStore();
   const { openSheet } = useCustomerSheetStore();
-  // Find the full active order object
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const currentOrderType = activeOrder?.order_type || "Takeaway";
 
   // The state now reflects the data from the global store
   const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
-    undefined
+    undefined,
   );
   // Temporary storage for selected table (not yet assigned to order)
   const [pendingTableSelection, setLocalPendingTableSelection] = useState<
@@ -59,100 +94,113 @@ const OrderDetails: React.FC = () => {
   const [openItemName, setOpenItemName] = useState("");
   const [openItemPrice, setOpenItemPrice] = useState("");
 
-  // Order naming state
-  const [customerName, setCustomerName] = useState("");
+  // Local state for editing customer name
+  const [localCustomerName, setLocalCustomerName] = useState("");
   const [isCustomerNameModalVisible, setIsCustomerNameModalVisible] =
     useState(false);
   const [tempCustomerName, setTempCustomerName] = useState("");
 
-  const allTables = useMemo(
-    () => layouts.flatMap((layout) => layout.tables),
-    [layouts]
-  );
-
+  // FIXED: Don't compute available tables at all - not used in this component
+  // Only compute when actually needed for display
   const availableTableOptions = useMemo(() => {
-    return allTables
+    const tablesById = useFloorPlanStore.getState().tablesById;
+    return Object.values(tablesById)
       .filter(
-        (t) =>
-          t.status === "Available" || t.id === activeOrder?.service_location_id
+        (t) => t.session?.status === "available" || t.id === serviceLocationId,
       )
       .map((t) => ({ label: t.name, value: t.id }));
-  }, [allTables, activeOrder]);
+  }, [serviceLocationId]);
+
+  // Track the last processed service location to avoid redundant updates
+  const lastProcessedServiceLocationRef = useRef<string | null>(null);
+
+  // FIXED: Only run when service location ID actually changes
+  useEffect(() => {
+    // Skip if we've already processed this service location
+    if (lastProcessedServiceLocationRef.current === serviceLocationId) {
+      return;
+    }
+
+    // Only update if conditions are met and value is different
+    if (serviceLocationId && orderStatus === "preparing") {
+      // Use O(1) lookup directly from store
+      const table = useFloorPlanStore
+        .getState()
+        .getTableById(serviceLocationId);
+      if (table) {
+        setSelectedTable({ label: table.name, value: table.id });
+        lastProcessedServiceLocationRef.current = serviceLocationId;
+      }
+    } else if (!serviceLocationId) {
+      // Reset tracking when no service location
+      lastProcessedServiceLocationRef.current = null;
+    }
+  }, [serviceLocationId, orderStatus]);
+
+  // FIXED: Separate effect for pending table selection - also use ref to avoid loops
+  const lastProcessedPendingRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Initialize selected table from active order if it exists (only for already assigned tables)
-    if (
-      activeOrder?.service_location_id &&
-      activeOrder.order_status === "Preparing" &&
-      !selectedTable
-    ) {
-      const tableOption = availableTableOptions.find(
-        (option) => option.value === activeOrder.service_location_id
-      );
-      if (tableOption) {
-        setSelectedTable(tableOption);
-      }
+    const pendingValue = pendingTableSelection?.value;
+
+    // Skip if we've already processed this pending value
+    if (!pendingValue || lastProcessedPendingRef.current === pendingValue) {
+      return;
     }
 
-    // Initialize pending table selection from store
-    if (pendingTableSelection && !selectedTable) {
-      const tableOption = availableTableOptions.find(
-        (option) => option.value === pendingTableSelection.value
-      );
-      if (tableOption) {
-        setSelectedTable(tableOption);
-      }
+    const table = useFloorPlanStore.getState().getTableById(pendingValue);
+    if (table) {
+      setSelectedTable({ label: table.name, value: table.id });
+      lastProcessedPendingRef.current = pendingValue;
     }
-  }, [
-    activeOrder,
-    availableTableOptions,
-    selectedTable,
-    pendingTableSelection,
-  ]);
+  }, [pendingTableSelection?.value]);
 
   useEffect(() => {
     setSelectedTable(undefined);
+    // Reset refs when order changes
+    lastProcessedServiceLocationRef.current = null;
+    lastProcessedPendingRef.current = null;
   }, [activeOrderId]);
 
-  // Initialize customer name from active order
+  // Initialize local customer name from store customer name
   useEffect(() => {
-    if (activeOrder?.customer_name) {
-      setCustomerName(activeOrder.customer_name);
-    } else {
-      setCustomerName("");
-    }
-  }, [activeOrderId, activeOrder?.customer_name]);
+    setLocalCustomerName(customerName || "");
+  }, [activeOrderId, customerName]);
 
   const handleAddOpenItem = () => {
     if (!openItemName.trim()) {
-      toast.error("Please enter an item name", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Item Name Required",
+        message: "Please enter a name for the open item.",
+        type: "error",
       });
       return;
     }
 
     const price = parseFloat(openItemPrice);
     if (isNaN(price) || price <= 0) {
-      toast.error("Please enter a valid price", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Invalid Price",
+        message: "Please enter a valid, positive price for the item.",
+        type: "error",
       });
       return;
     }
 
-    // Check if the active order is closed
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
-    if (activeOrder?.order_status === "Closed") {
-      toast.error("Order is closed. Please reopen the check to add items.", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+    // Check if the active order is closed - O(1) lookup from store directly
+    const ordersById = useOrderStore.getState().ordersById;
+    const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+    if (currentOrder?.order_status === "completed") {
+      show({
+        title: "Order Closed",
+        message: "Cannot add items to a closed order. Please reopen it first.",
+        type: "error",
       });
       return;
     }
 
     // Create a new cart item for the open item
-    const newOpenItem = {
+    const newOpenItem: any = {
       id: `open_item_${Date.now()}`,
       itemId: `open_item_${Date.now()}`,
       menuItemId: `open_item_${Date.now()}`,
@@ -165,13 +213,27 @@ const OrderDetails: React.FC = () => {
       },
       availableDiscount: undefined,
       appliedDiscount: null,
+      // Default missing properties to satisfy CartItem
+      paidQuantity: 0,
+      unitPrice: price,
+      cashPrice: price,
+      subtotal: price,
+      baseCardPrice: price,
+      baseCashPrice: price,
+      cashSubtotal: price,
+      taxRate: 0,
+      taxAmount: 0,
+      cashTaxAmount: 0,
     };
 
     addItemToActiveOrder(newOpenItem);
 
-    toast.success(`${openItemName} ${price.toFixed(2)} added`, {
-      duration: 4000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Item Added",
+      message: `${openItemName.trim()} for $${price.toFixed(
+        2,
+      )} has been added to the order.`,
+      type: "success",
     });
 
     // Reset form and close modal
@@ -188,28 +250,28 @@ const OrderDetails: React.FC = () => {
 
   // Customer name modal handlers
   const handleAddCustomerName = () => {
-    setTempCustomerName(customerName);
+    setTempCustomerName(localCustomerName);
     setIsCustomerNameModalVisible(true);
   };
 
   const handleSaveCustomerName = () => {
     if (activeOrderId) {
       const trimmedName = tempCustomerName.trim();
-      setCustomerName(trimmedName);
+      setLocalCustomerName(trimmedName);
       updateActiveOrderDetails({ customer_name: trimmedName });
       setIsCustomerNameModalVisible(false);
-      toast.success(
-        trimmedName ? "Customer name updated" : "Customer name removed",
-        {
-          duration: 2000,
-          position: ToastPosition.BOTTOM,
-        }
-      );
+      show({
+        title: "Customer Name Updated",
+        message: trimmedName
+          ? `Order is now under the name: ${trimmedName}`
+          : "Customer name has been removed from the order.",
+        type: "success",
+      });
     }
   };
 
   const handleCancelCustomerName = () => {
-    setTempCustomerName(customerName);
+    setTempCustomerName(localCustomerName);
     setIsCustomerNameModalVisible(false);
   };
 
@@ -222,118 +284,134 @@ const OrderDetails: React.FC = () => {
   };
 
   return (
-    <View className=" px-6 bg-[#212121] overflow-hidden ">
+    <View className=" px-4 overflow-hidden ">
       {/* Header */}
       <View className="flex-row flex items-center justify-center w-full gap-x-4">
-        <View className="w-[50%] flex items-center justify-center flex-col gap-y-1">
-          <Label className="text-white font-semibold text-xl">Customer</Label>
+        <View className="w-[50%] flex items-start justify-center flex-col gap-y-1">
+          <Label className="text-label font-small text-xs ml-2 mt-1">Customer</Label>
           <TouchableOpacity
-            onPress={openSheet} // 3. Trigger the bottom sheet
-            className="flex-row w-full items-center p-2 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-12"
+            onPress={openSheet}
+            className="flex-row w-full items-center px-2.5 rounded-lg h-10"
+            style={customerName ? {
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            } : {
+              backgroundColor: colors.teal + '20',
+              borderWidth: 1,
+              borderColor: colors.teal + '50',
+            }}
           >
-            {activeOrder?.customer_name ? (
+            {customerName ? (
               <>
-                <User color="#A5A5B5" size={24} />
-                <View className="ml-3 flex-1">
-                  <Text
-                    className="text-xl font-semibold text-white overflow-ellipsis"
-                    numberOfLines={1}
-                  >
-                    {activeOrder.customer_name}
+                <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+                  <User color={colors.teal} size={14} />
+                </View>
+                <View className="ml-2 flex-1">
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>
+                    {customerName}
                   </Text>
-                  {activeOrder.customer_phone && (
-                    <Text className="text-sm text-gray-400">
-                      {activeOrder.customer_phone}
+                  {customerPhone && (
+                    <Text style={{ fontSize: 11, color: colors.label }}>
+                      {customerPhone}
                     </Text>
                   )}
                 </View>
-                <Edit3 color="#60A5FA" size={24} />
+                <Edit3 color={colors.teal} size={13} />
               </>
             ) : (
               <>
-                <Plus color="#9CA3AF" size={24} />
-                <Text className="text-xl font-semibold text-gray-300 ml-3">
+                <Plus color={colors.teal} size={15} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal, marginLeft: 6 }}>
                   Add Customer
                 </Text>
               </>
             )}
           </TouchableOpacity>
         </View>
-        <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-xl">Order Type</Label>
+        <View className="w-[50%] flex items-start justify-center flex-col gap-y-1">
+          <Label className="text-label font-medium text-xs ml-2 mt-1">Order Type</Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
-            className="w-full flex-row items-center justify-between p-2 border border-background-400 rounded-lg bg-[#303030] h-12"
+            className="w-full flex-row items-center justify-between p-2 rounded-xl h-10 bg-surface"
             onPress={openDrawer}
           >
-            <Text className="text-xl font-semibold text-white">
-              {currentOrderType}
+            <Text className="ml-2 text-sm font-medium text-white">
+              {orderType}
             </Text>
-            <Text className="text-gray-400">▼</Text>
+            <Text className="text-white text-sm">▼</Text>
           </TouchableOpacity>
         </View>
       </View>
+
 
       {/* Customer Name Modal */}
       <Dialog
         open={isCustomerNameModalVisible}
         onOpenChange={setIsCustomerNameModalVisible}
       >
-        <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-[#11111A] border-none">
-          {/* Dark Header */}
-          <View className="p-6 rounded-lg ">
-            <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
-              {customerName ? "Edit Customer Name" : "Add Customer Name"}
-            </DialogTitle>
-          </View>
-
-          {/* White Content */}
-          <View className="rounded-t-lg rounded-b-lg p-6 bg-background-100">
-            <DialogHeader>
-              <Text className="text-accent-500 text-2xl text-center mb-4">
-                Enter the customer's name for this order
-              </Text>
-            </DialogHeader>
-
-            {/* Customer Name Input */}
-            <View className="mb-6">
-              <Text className="text-accent-500 text-xl font-semibold mb-2">
-                Customer Name
-              </Text>
-              <TextInput
-                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500 h-20"
-                placeholder="Enter customer name"
-                placeholderTextColor="#9CA3AF"
-                value={tempCustomerName}
-                onChangeText={setTempCustomerName}
-                autoFocus
-              />
+        <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-screen border-none">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            {/* Dark Header */}
+            <View className="p-6 rounded-lg ">
+              <DialogTitle className="text-heading text-3xl font-bold text-center">
+                {localCustomerName ? "Edit Customer Name" : "Add Customer Name"}
+              </DialogTitle>
             </View>
 
-            {/* Footer with Buttons */}
-            <DialogFooter className="flex-row gap-4">
-              <TouchableOpacity
-                onPress={handleCancelCustomerName}
-                className="flex-1 py-4 border border-gray-300 rounded-lg"
-              >
-                <Text className="font-bold text-2xl text-gray-700 text-center">
-                  Cancel
+            {/* White Content */}
+            <View className="rounded-t-lg rounded-b-lg p-6 bg-background-100">
+              <DialogHeader>
+                <Text className="text-accent-500 text-2xl text-center mb-4">
+                  Enter the customer's name for this order
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSaveCustomerName}
-                className="flex-1 py-4 bg-white rounded-lg  border border-blue-400"
-              >
-                <Text className="font-bold text-2xl text-gray-800 text-center">
-                  {customerName ? "Update" : "Add"}
+              </DialogHeader>
+
+              {/* Customer Name Input */}
+              <View className="mb-6">
+                <Text className="text-accent-500 text-xl font-semibold mb-2">
+                  Customer Name
                 </Text>
-              </TouchableOpacity>
-            </DialogFooter>
-          </View>
+                <TextInput
+                  className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500 h-20"
+                  placeholder="Enter customer name"
+                  placeholderTextColor={colors.muted}
+                  value={tempCustomerName}
+                  onChangeText={setTempCustomerName}
+                  autoFocus
+                />
+              </View>
+
+              {/* Footer with Buttons */}
+              <DialogFooter className="flex-row gap-4">
+                <TouchableOpacity
+                  onPress={handleCancelCustomerName}
+                  className="flex-1 py-4 border border-gray-300 rounded-lg"
+                >
+                  <Text className="font-bold text-2xl text-gray-700 text-center">
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveCustomerName}
+                  className="flex-1 py-4 bg-white rounded-lg  border border-blue-400"
+                >
+                  <Text className="font-bold text-2xl text-gray-800 text-center">
+                    {localCustomerName ? "Update" : "Add"}
+                  </Text>
+                </TouchableOpacity>
+              </DialogFooter>
+            </View>
+          </KeyboardAvoidingView>
         </DialogContent>
       </Dialog>
     </View>
   );
 };
+
+// OPTIMIZED: Memoize to prevent re-renders when parent updates
+const OrderDetails = React.memo(OrderDetailsComponent);
 
 export default OrderDetails;

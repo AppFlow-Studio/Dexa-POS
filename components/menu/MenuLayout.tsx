@@ -1,9 +1,17 @@
 import { MENU_SIDEBAR_DATA, MenuSidebarItem } from "@/lib/menu-sidebar-data";
+import { colors } from "@/lib/theme";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePathname, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
-import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useRef, useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface MenuLayoutProps {
   children: React.ReactNode;
@@ -12,8 +20,13 @@ interface MenuLayoutProps {
 const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
   const pathname = usePathname();
   const router = useRouter();
-  const { menuItems, categories, menus, modifierGroups } = useMenuStore();
+  const menuItems = useMenuStore((s) => s.menuItems);
+  const categories = useMenuStore((s) => s.categories);
+  const menus = useMenuStore((s) => s.menus);
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchRef = useRef<any>(null);
 
   const getItemCount = (itemId: string): number => {
     switch (itemId) {
@@ -43,10 +56,13 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <View className="flex-row h-full">
         {/* Sidebar */}
-        <View className="w-80 border-r border-gray-700 h-full bg-[#303030]">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="w-80 border-r border-gray-700 h-full bg-surface"
+        >
           {/* Header */}
           <View className="p-4 border-b border-gray-700">
             <Text className="text-xl font-bold text-white">
@@ -56,16 +72,35 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
 
           {/* Search */}
           <View className="p-4 border-b border-gray-700">
-            <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2">
-              <Search size={16} color="#9CA3AF" />
-              <TextInput
-                className="flex-1 ml-2 text-white h-20"
-                placeholder="Search items..."
-                placeholderTextColor="#9CA3AF"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => {
+                setSearchFocused(true);
+                setTimeout(() => searchRef.current?.focus(), 50);
+              }}
+            >
+              <View className="flex-row items-center bg-panel rounded-lg px-3 py-2">
+                <Search size={16} color={colors.label} />
+                {searchFocused ? (
+                  <TextInput
+                    ref={searchRef}
+                    className="flex-1 ml-2 text-white"
+                    placeholder="Search items..."
+                    placeholderTextColor={colors.label}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    onBlur={() => {
+                      if (!searchQuery) setSearchFocused(false);
+                    }}
+                    autoFocus={false}
+                  />
+                ) : (
+                  <Text style={{ flex: 1, marginLeft: 8, fontSize: 14, color: colors.muted }}>
+                    {searchQuery || "Search items..."}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
 
           {/* Sidebar Navigation */}
@@ -86,7 +121,7 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
                       <item.icon
                         size={18}
                         color={
-                          isActive(item.href || "") ? "#60A5FA" : "#9CA3AF"
+                          isActive(item.href || "") ? colors.info : colors.label
                         }
                       />
                     )}
@@ -111,7 +146,7 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </KeyboardAvoidingView>
 
         {/* Main Content */}
         <View className="flex-1">{children}</View>

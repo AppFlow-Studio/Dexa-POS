@@ -1,5 +1,3 @@
-// stores/useAnalyticsStore.ts
-
 import {
     InventoryAnalysis,
     KPIs,
@@ -172,11 +170,11 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
     },
     // Actions
     addSaleEvent: (event: SaleEvent[]) => {
-        console.log('📈 Analytics Store: Adding sale events:', event);
+        // console.log('📈 Analytics Store: Adding sale events:', event);
 
         set((state) => {
             const newSalesData = [...state.salesData, ...event];
-            console.log('📈 Analytics Store: Total sales data count:', newSalesData.length);
+            // console.log('📈 Analytics Store: Total sales data count:', newSalesData.length);
             // Ensure current filters include "now" so new sales reflect immediately
             const now = new Date();
             const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -208,13 +206,13 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
         // Recalculate current report if it exists
         const { currentReportData } = get();
         if (currentReportData) {
-            console.log('📈 Analytics Store: Refreshing report data...');
+            // console.log('📈 Analytics Store: Refreshing report data...');
             // Use setTimeout to avoid blocking the UI during payment processing
             setTimeout(() => {
                 get().fetchReportData({ type: 'overview' });
             }, 100);
         } else {
-            console.log('📈 Analytics Store: No current report data, initializing...');
+            // console.log('📈 Analytics Store: No current report data, initializing...');
             // Initialize the report data if it doesn't exist
             setTimeout(() => {
                 get().fetchReportData({ type: 'overview' });
@@ -262,13 +260,13 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
                 reportData = generatePreBuiltReport(config.type, salesData, filters);
             } else if (config.customConfig) {
                 // Custom report
-                console.log('📊 Analytics Store: Generating custom report with config:', config.customConfig);
+                // console.log('📊 Analytics Store: Generating custom report with config:', config.customConfig);
                 reportData = useAnalyticsStore.getState().generateCustomReport(config.customConfig, salesData);
-                console.log('📊 Analytics Store: Generated custom report data:', {
-                    title: reportData.title,
-                    chartDataLength: reportData.chartData?.length,
-                    firstChartItem: reportData.chartData?.[0]
-                });
+                // console.log('📊 Analytics Store: Generated custom report data:', {
+                //     title: reportData.title,
+                //     chartDataLength: reportData.chartData?.length,
+                //     firstChartItem: reportData.chartData?.[0]
+                // });
             } else {
                 throw new Error('Invalid report configuration');
             }
@@ -313,7 +311,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
 
     // Force refresh analytics data (useful for debugging)
     forceRefresh: () => {
-        console.log('🔄 Analytics Store: Force refreshing...');
+        // console.log('🔄 Analytics Store: Force refreshing...');
         get().fetchReportData({ type: 'overview' });
     },
 

@@ -1,246 +1,409 @@
-import { useRouter } from "expo-router";
+import { colors } from '@/lib/theme'
+import { useRouter } from 'expo-router'
 import {
+  BarChart3,
+  CalendarClock,
+  ChefHat,
+  Cpu,
   History,
-  Home,
+  LayoutGrid,
   Lock,
   Package,
   Settings,
   ShoppingBag,
-  Table,
+  ShoppingCart,
   UtensilsCrossed,
-} from "lucide-react-native";
-import React, { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import PinDisplay from "./auth/PinDisplay";
-import PinNumpad from "./auth/PinNumpad";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
+} from 'lucide-react-native'
+import { useState } from 'react'
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import PinDisplay from './auth/PinDisplay'
+import PinNumpad from './auth/PinNumpad'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
 
 interface MenuCardProps {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-  isLocked?: boolean;
-  onLockPress?: () => void;
-  isHighlighted?: boolean;
+  icon: React.ReactNode
+  title: string
+  subtitle: string
+  onPress: () => void
+  isLocked?: boolean
+  onLockPress?: () => void
 }
 
 const MenuCard: React.FC<MenuCardProps> = ({
   icon,
   title,
-  subtitle,
   onPress,
   isLocked = false,
   onLockPress,
-  isHighlighted = false,
 }) => {
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`w-full h-full rounded-2xl border border-gray-700 p-6 ${
-        isHighlighted ? "bg-blue-50" : "bg-[#303030]"
-      }`}
-      style={{ minHeight: 140 }}
+      activeOpacity={0.7}
+      style={{
+        width: '100%',
+        height: '100%',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: colors.teal + '25',
+        backgroundColor: colors.card,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 12,
+      }}
     >
-      <View className="justify-center h-full w-full flex">
-        <View className="flex-row justify-center items-center w-full h-full relative">
-          <View className=" w-full h-full flex items-center justify-center">
-            <View className="mb-3">{icon}</View>
-            <Text className="text-3xl font-bold text-white mb-1 text-center">
-              {title}
-            </Text>
-            <Text className="text-xl text-gray-200 text-center">
-              {subtitle}
-            </Text>
-          </View>
-          {isLocked && (
-            <TouchableOpacity
-              onPress={onLockPress}
-              className="p-3 bg-gray-800 rounded-lg absolute top-0 right-0"
-            >
-              <Lock color="white" size={24} />
-            </TouchableOpacity>
-          )}
-        </View>
+      {/* Top accent line */}
+      <View style={{
+        position: 'absolute',
+        top: 0,
+        left: '20%',
+        right: '20%',
+        height: 2,
+        backgroundColor: colors.teal + '60',
+        borderBottomLeftRadius: 2,
+        borderBottomRightRadius: 2,
+      }} />
+
+      {isLocked && (
+        <TouchableOpacity
+          onPress={onLockPress}
+          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+          style={{ position: 'absolute', top: 10, right: 10 }}
+        >
+          <Lock color={colors.muted} size={11} />
+        </TouchableOpacity>
+      )}
+
+      {/* Icon */}
+      <View
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 14,
+          backgroundColor: colors.teal + '15',
+          borderWidth: 1,
+          borderColor: colors.teal + '40',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 10,
+        }}
+      >
+        {icon}
       </View>
+
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '600',
+          color: colors.heading,
+          textAlign: 'center',
+        }}
+        numberOfLines={1}
+      >
+        {title}
+      </Text>
     </TouchableOpacity>
-  );
-};
+  )
+}
 
 const MainMenu: React.FC = () => {
-  const router = useRouter();
-  const [pinDialogOpen, setPinDialogOpen] = useState(false);
-  const [currentPin, setCurrentPin] = useState("");
-  const [targetRoute, setTargetRoute] = useState<string | null>(null);
+  const router = useRouter()
+  const employees = useEmployeeStore((s) => s.employees)
+  const [pinDialogOpen, setPinDialogOpen] = useState(false)
+  const [currentPin, setCurrentPin] = useState('')
+  const [targetRoute, setTargetRoute] = useState<string | null>(null)
+  const [pinError, setPinError] = useState('')
+
   const handleLockedAccess = (route: string) => {
-    setTargetRoute(route);
-    setPinDialogOpen(true);
-    setCurrentPin("");
-  };
+    setTargetRoute(route)
+    setPinDialogOpen(true)
+    setCurrentPin('')
+    setPinError('')
+
+    // Debug: Log all manager/admin/owner PINs available
+    const allowedRoles = [
+      'merchant.admin',
+      'merchant.manager',
+      'merchant.owner',
+      'merchant.shift_manager',
+      'merchant.inventory_manager',
+    ]
+    const authorizedEmployees = employees.filter((emp) =>
+      allowedRoles.includes(emp.role)
+    )
+    console.log('[MainMenu] Authorized employees with PINs:', authorizedEmployees.map(e => ({
+      name: e.fullName,
+      role: e.role,
+      pin: e.pin,
+      pinLength: e.pin?.length
+    })))
+  }
 
   const handlePinSubmit = () => {
-    // TODO: Implement actual PIN validation logic
-    // For now, we'll accept any 4-digit PIN
-    if (currentPin.length === 4) {
-      setPinDialogOpen(false);
-      if (targetRoute) {
-        router.push(targetRoute as any);
+    if (currentPin.length !== 4) return
+
+    const allowedRoles = [
+      'merchant.admin',
+      'merchant.manager',
+      'merchant.owner',
+      'merchant.shift_manager',
+      'merchant.inventory_manager',
+    ]
+
+    // Debug logging
+    console.log('[PIN Submit] Checking PIN:', {
+      entered: currentPin,
+      enteredLength: currentPin.length,
+      totalEmployees: employees.length,
+      authorizedEmployees: employees.filter(e => allowedRoles.includes(e.role)).length
+    })
+
+    // Find any employee with matching PIN and admin/manager/owner role
+    const authorizedEmployee = employees.find((emp) => {
+      const trimmedPin = emp.pin?.trim() ?? ''
+      const isMatch = trimmedPin === currentPin && allowedRoles.includes(emp.role)
+
+      if (allowedRoles.includes(emp.role)) {
+        console.log(`[PIN Check] ${emp.fullName} (${emp.role}): stored="${trimmedPin}" vs entered="${currentPin}" - match=${isMatch}`)
       }
-      setCurrentPin("");
-      setTargetRoute(null);
+
+      return isMatch
+    })
+
+    console.log('[PIN Result]', {
+      found: !!authorizedEmployee,
+      employeeName: authorizedEmployee?.fullName
+    })
+
+    if (!authorizedEmployee) {
+      setPinError('Invalid PIN or insufficient permissions')
+      setCurrentPin('')
+      return
     }
-  };
+
+    // All validations passed
+    setPinDialogOpen(false)
+    if (targetRoute) router.push(targetRoute as any)
+    setCurrentPin('')
+    setTargetRoute(null)
+    setPinError('')
+  }
 
   const menuItems = [
     {
-      id: "home",
-      icon: <Home color="#3b82f6" size={48} />,
-      title: "Sales",
-      subtitle: "Process Orders",
-      route: "/order-processing",
-      isHighlighted: false,
+      id: 'home',
+      icon: <ShoppingCart color={colors.teal} size={20} />,
+      title: 'Sales',
+      subtitle: 'Process Orders',
+      route: '/order-processing',
     },
     {
-      id: "tables",
-      icon: <Table color="#3b82f6" size={48} />,
-      title: "Tables",
-      subtitle: "Manage Seating",
-      route: "/tables",
-      isHighlighted: false,
+      id: 'tables',
+      icon: <LayoutGrid color={colors.teal} size={20} />,
+      title: 'Tables',
+      subtitle: 'Manage Seating',
+      route: '/tables',
     },
     {
-      id: "previous-orders",
-      icon: <History color="#3b82f6" size={48} />,
-      title: "Previous Orders",
-      subtitle: "Order History",
-      route: "/previous-orders",
-      isHighlighted: false,
+      id: 'previous-orders',
+      icon: <History color={colors.teal} size={20} />,
+      title: 'Previous Orders',
+      subtitle: 'Order History',
+      route: '/previous-orders',
     },
     {
-      id: "online-orders",
-      icon: <ShoppingBag color="#3b82f6" size={48} />,
-      title: "Online Orders",
-      subtitle: "Web & App Orders",
-      route: "/online-orders",
-      isHighlighted: false,
+      id: 'online-orders',
+      icon: <ShoppingBag color={colors.teal} size={20} />,
+      title: 'Online Orders',
+      subtitle: 'Web & App Orders',
+      route: '/online-orders',
     },
-    // {
-    //     id: "customers",
-    //     icon: <Users color="#3b82f6" size={48} />,
-    //     title: "Customers",
-    //     subtitle: "Customer Database",
-    //     route: "/customers-list",
-    //     isHighlighted: false,
-    // },
     {
-      id: "menu-management",
-      icon: <UtensilsCrossed color="#3b82f6" size={48} />,
-      title: "Menu Management",
-      subtitle: "Edit Menu Items",
-      route: "/menu",
+      id: 'kds',
+      icon: <ChefHat color={colors.teal} size={20} />,
+      title: 'Kitchen Display',
+      subtitle: 'Manage Orders',
+      route: '/kds',
+    },
+    {
+      id: 'scheduling',
+      icon: <CalendarClock color={colors.teal} size={20} />,
+      title: 'Scheduling',
+      subtitle: 'Time Management',
+      route: '/scheduling',
       isLocked: true,
-      isHighlighted: false,
     },
     {
-      id: "inventory",
-      icon: <Package color="#3b82f6" size={48} />,
-      title: "Inventory",
-      subtitle: "Stock Management",
-      route: "/inventory",
+      id: 'menu-management',
+      icon: <UtensilsCrossed color={colors.teal} size={20} />,
+      title: 'Menu Management',
+      subtitle: 'Edit Menu Items',
+      route: '/menu',
       isLocked: true,
-      isHighlighted: false,
     },
-    // {
-    //   id: "analytics",
-    //   icon: <BarChart3 color="#3b82f6" size={48} />,
-    //   title: "Analytics",
-    //   subtitle: "Sales Reports",
-    //   route: "/analytics",
-    //   isLocked: true,
-    //   isHighlighted: false,
-    // },
     {
-      id: "settings",
-      icon: <Settings color="#3b82f6" size={48} />,
-      title: "Settings",
-      subtitle: "System Config",
-      route: "/settings",
+      id: 'inventory',
+      icon: <Package color={colors.teal} size={20} />,
+      title: 'Inventory',
+      subtitle: 'Stock Management',
+      route: '/inventory',
       isLocked: true,
-      isHighlighted: false,
     },
-  ];
+    {
+      id: 'analytics',
+      icon: <BarChart3 color={colors.teal} size={20} />,
+      title: 'Analytics',
+      subtitle: 'Sales Reports',
+      route: '/analytics',
+      isLocked: true,
+    },
+    {
+      id: 'settings',
+      icon: <Settings color={colors.teal} size={20} />,
+      title: 'Settings',
+      subtitle: 'System Config',
+      route: '/settings',
+      isLocked: true,
+    },
+    {
+      id: 'castlestest',
+      icon: <Cpu color={colors.teal} size={20} />,
+      title: 'Castles Test',
+      subtitle: 'Castles device test',
+      route: '/castlestest',
+    },
+  ]
+
+  const regularItems = menuItems.filter((item) => !item.isLocked)
+  const managementItems = menuItems.filter((item) => item.isLocked)
+
+  const renderRow = (items: typeof menuItems) => (
+    <View style={{ flexDirection: 'row', gap: 20, justifyContent: 'center' }}>
+      {items.map((item) => (
+        <View key={item.id} style={{ width: 150, height: 150 }}>
+          <MenuCard
+            icon={item.icon}
+            title={item.title}
+            subtitle={item.subtitle}
+            onPress={() => {
+              if (item.isLocked) {
+                handleLockedAccess(item.route)
+              } else {
+                router.push(item.route as any)
+              }
+            }}
+            isLocked={item.isLocked}
+            onLockPress={() => handleLockedAccess(item.route)}
+          />
+        </View>
+      ))}
+    </View>
+  )
 
   return (
-    <View className="w-full h-full flex-1">
-      <View className="flex-1 p-6 w-full h-full items-center justify-center">
-        <View className="flex-1 w-full h-full items-center justify-center">
-          <View className="flex-row flex-wrap gap-4 w-full h-full items-center justify-center">
-            {menuItems.map((item, index) => (
-              <View
-                key={item.id}
-                className="w-1/4 h-1/4"
-                style={{ marginBottom: 16 }}
-              >
-                <MenuCard
-                  icon={item.icon}
-                  title={item.title}
-                  subtitle={item.subtitle}
-                  onPress={() => {
-                    if (item.isLocked) {
-                      handleLockedAccess(item.route);
-                    } else {
-                      router.push(item.route as any);
-                    }
-                  }}
-                  isLocked={item.isLocked}
-                  onLockPress={() => handleLockedAccess(item.route)}
-                  isHighlighted={item.isHighlighted}
-                />
-              </View>
-            ))}
-          </View>
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+          gap: 50,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ alignItems: 'center', gap: 14 }}>
+          <Text style={{ fontSize: 12, color: colors.heading, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase',padding:8 }}>
+            Operations
+          </Text>
+          {renderRow(regularItems)}
         </View>
-      </View>
+        <View style={{ alignItems: 'center', gap: 14 }}>
+          <Text style={{ fontSize: 12, color: colors.heading, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase',padding:8  }}>
+            Management
+          </Text>
+          {renderRow(managementItems)}
+        </View>
+      </ScrollView>
 
       {/* Manager PIN Dialog */}
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
-        <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-8">
-          <DialogHeader>
-            <DialogTitle className="text-center text-3xl font-semibold text-white">
-              Manager Access Required
-            </DialogTitle>
-          </DialogHeader>
-          <View className="py-4">
-            <Text className="text-center text-2xl text-gray-300 mb-6">
-              Enter your manager PIN to access this feature
+        <DialogContent className="w-fit h-fit p-0">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 24,
+              minWidth: 320,
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading, textAlign: 'center' }}>
+                  Manager Access Required
+                </Text>
+              </DialogTitle>
+            </DialogHeader>
+
+            <Text style={{ fontSize: 12, color: colors.muted, textAlign: 'center', marginTop: 6, marginBottom: 16 }}>
+              Enter your manager PIN to continue
             </Text>
+
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
-            <PinNumpad
-              onKeyPress={(input) => {
-                if (typeof input === "number") {
-                  if (currentPin.length < 4) {
-                    const newPin = currentPin + input.toString();
-                    setCurrentPin(newPin);
-                    if (newPin.length === 4) {
-                      setTimeout(() => {
-                        handlePinSubmit();
-                      }, 100);
+
+            <View style={{ minHeight: 18, marginTop: 8, marginBottom: 2, justifyContent: 'center' }}>
+              {pinError && (
+                <Text style={{
+                  fontSize: 12,
+                  color: colors.danger,
+                  textAlign: 'center',
+                }}>
+                  {pinError}
+                </Text>
+              )}
+            </View>
+
+            <View style={{ marginTop: 8 }}>
+              <PinNumpad
+                onKeyPress={(input) => {
+                  // Clear error when user starts typing
+                  if (pinError) setPinError('')
+
+                  if (typeof input === 'number') {
+                    if (currentPin.length < 4) {
+                      const newPin = currentPin + input.toString()
+                      setCurrentPin(newPin)
+                      if (newPin.length === 4) setTimeout(handlePinSubmit, 100)
                     }
+                  } else if (input === 'clear') {
+                    setCurrentPin('')
+                  } else if (input === 'backspace') {
+                    setCurrentPin(currentPin.slice(0, -1))
                   }
-                } else if (input === "clear") {
-                  setCurrentPin("");
-                } else if (input === "backspace") {
-                  setCurrentPin(currentPin.slice(0, -1));
-                }
-              }}
-            />
+                }}
+              />
+            </View>
 
             <TouchableOpacity
               onPress={handlePinSubmit}
-              className="p-4 bg-blue-600 rounded-lg w-full self-center mt-6"
+              disabled={currentPin.length < 4}
+              style={{
+                marginTop: 14,
+                paddingVertical: 11,
+                backgroundColor: currentPin.length === 4 ? colors.teal : colors.teal + '30',
+                borderRadius: 10,
+                alignItems: 'center',
+              }}
             >
-              <Text className="text-center text-2xl font-bold text-white">
+              <Text style={{
+                fontSize: 13,
+                fontWeight: '700',
+                color: currentPin.length === 4 ? colors.onSolid : colors.muted,
+              }}>
                 Enter
               </Text>
             </TouchableOpacity>
@@ -248,7 +411,7 @@ const MainMenu: React.FC = () => {
         </DialogContent>
       </Dialog>
     </View>
-  );
-};
+  )
+}
 
-export default MainMenu;
+export default MainMenu

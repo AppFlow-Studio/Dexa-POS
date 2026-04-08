@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { SidebarNavigationItem } from "@/lib/sidebar-data";
 import { Href, Link } from "expo-router";
 import { ChevronDown } from "lucide-react-native";
@@ -132,15 +133,15 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
       >
         <View className="flex-row items-center">
           {Icon && (
-            <Icon className="text-accent-500" size={22} strokeWidth={2.5} />
+            <Icon color={colors.label} size={22} strokeWidth={2.5} />
           )}
-          <Text className="ml-4 text-base font-semibold text-accent-500">
+          <Text className="ml-4 text-base font-semibold text-label">
             {label}
           </Text>
         </View>
         <ChevronDown
           style={{ transform: [{ rotate: isOpen ? "180deg" : "0deg" }] }}
-          className="text-accent-500"
+          color={colors.label}
           size={20}
         />
       </TouchableOpacity>
@@ -152,7 +153,7 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
             marginLeft: level * 6 + 6,
             paddingLeft: Icon ? 14 : 8,
           }}
-          className="border-l-2 border-gray-200"
+          className="border-l-2 border-border"
         >
           {subItems.map((subItem) => (
             <SidebarAccordion

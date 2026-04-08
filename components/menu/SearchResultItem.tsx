@@ -1,63 +1,142 @@
+import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
-import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Plus } from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface SearchResultItemProps {
   item: MenuItemType;
+  menuName?: string;
+  displayPrice?: number;
+  isDisabled?: boolean;
+  disabledReason?: string;
 }
 
-const SearchResultItem: React.FC<SearchResultItemProps> = ({ item }) => {
-  const openDialog = useCustomizationStore((state) => state.openToAdd);
-  const closeSearchSheet = useSearchStore((state) => state.closeSearch);
-  const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
-  const { openFullscreen } = useModifierSidebarStore();
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    backgroundColor: `${colors.card}cc`,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  name: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.heading,
+  },
+  nameDisabled: {
+    color: colors.muted,
+  },
+  price: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.teal,
+    marginTop: 4,
+  },
+  priceDisabled: {
+    color: colors.muted,
+  },
+  cashPrice: {
+    fontSize: 11,
+    color: colors.muted,
+    marginLeft: 8,
+  },
+  disabledReason: {
+    fontSize: 11,
+    color: colors.danger,
+    marginTop: 3,
+  },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: `${colors.teal}20`,
+    borderWidth: 1,
+    borderColor: `${colors.teal}50`,
+    gap: 4,
+  },
+  addBtnDisabled: {
+    backgroundColor: `${colors.muted}15`,
+    borderColor: `${colors.muted}30`,
+  },
+  addText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.teal,
+  },
+  addTextDisabled: {
+    color: colors.muted,
+  },
+});
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const { openToAdd } = useModifierSidebarStore();
+const SearchResultItem: React.FC<SearchResultItemProps> = ({
+  item,
+  displayPrice,
+  isDisabled = false,
+  disabledReason,
+}) => {
+  const closeSearchSheet = useSearchStore((state) => state.closeSearch);
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const { openFullscreen } = useModifierSidebarStore();
+  const { show } = useToast();
+  const activeOrder = useActiveOrder();
 
   const handleAddToCart = () => {
-    // 2. Add validation check before opening the dialog
-    if (!activeOrder?.order_type) {
-      toast.error("Please select an Order Type", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
-      });
-      return; // Stop execution
-    }
+    if (isDisabled) return;
+
+    // if (!activeOrder?.order_type) {
+    //   show({
+    //     title: "Order Type Required",
+    //     message: "Please select an order type before adding items.",
+    //     type: "warning",
+    //   });
+    //   return;
+    // }
 
     openFullscreen(item, activeOrderId);
     closeSearchSheet();
   };
 
+  const finalPrice = displayPrice !== undefined ? displayPrice : item.price;
+
   return (
-    <View className="flex-row justify-between items-center py-3 border-b border-gray-100">
-      <View>
-        <Text className="text-xl font-bold text-gray-800">{item.name}</Text>
-        <View className="flex-row items-baseline mt-1">
-          <Text className="text-xl font-semibold text-accent-500">
-            ${item.price.toFixed(2)}
+    <View style={styles.row}>
+      <View style={{ flex: 1, marginRight: 12 }}>
+        <Text style={[styles.name, isDisabled && styles.nameDisabled]} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 2 }}>
+          <Text style={[styles.price, isDisabled && styles.priceDisabled]}>
+            ${finalPrice.toFixed(2)}
           </Text>
-          {item.cashPrice && (
-            <Text className="text-lg text-accent-500 ml-2">
-              Cash Price: ${item.cashPrice.toFixed(2)}
-            </Text>
+          {item.cashPrice && !isDisabled && (
+            <Text style={styles.cashPrice}>Cash ${item.cashPrice.toFixed(2)}</Text>
           )}
         </View>
+        {isDisabled && disabledReason && (
+          <Text style={styles.disabledReason}>{disabledReason}</Text>
+        )}
       </View>
       <TouchableOpacity
-        className="flex-row items-center py-2 px-4 border border-background-500 rounded-xl"
+        style={[styles.addBtn, isDisabled && styles.addBtnDisabled]}
         onPress={handleAddToCart}
+        disabled={isDisabled}
       >
-        <Plus color="#374151" size={20} strokeWidth={3} />
-        <Text className="font-bold text-gray-700 ml-1.5 text-base">
-          Add to Cart
-        </Text>
+        <Plus color={isDisabled ? colors.muted : colors.teal} size={13} strokeWidth={3} />
+        <Text style={[styles.addText, isDisabled && styles.addTextDisabled]}>Add</Text>
       </TouchableOpacity>
     </View>
   );

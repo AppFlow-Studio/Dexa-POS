@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import React from "react";
 import { View } from "react-native";
 
@@ -11,13 +12,29 @@ const PinDisplay: React.FC<PinDisplayProps> = ({
   maxLength = 6,
 }) => {
   return (
-    <View className="flex-row items-center justify-center gap-6 h-20 bg-[#212121] border-gray-700 rounded-lg mb-4">
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        height: 64,
+        backgroundColor: colors.screen,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 10,
+        marginBottom: 12,
+      }}
+    >
       {Array.from({ length: maxLength }).map((_, index) => (
         <View
           key={index}
-          className={`w-6 h-6 m-2 rounded-full ${
-            index < pinLength ? "bg-white" : "bg-gray-600"
-          }`}
+          style={{
+            width: index < pinLength ? 14 : 10,
+            height: index < pinLength ? 14 : 10,
+            borderRadius: 999,
+            backgroundColor: index < pinLength ? colors.teal : colors.border,
+          }}
         />
       ))}
     </View>

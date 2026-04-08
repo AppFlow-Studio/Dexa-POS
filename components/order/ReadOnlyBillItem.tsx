@@ -1,132 +1,153 @@
+import { colors } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
-import { ChevronDown, ChevronUp } from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Text, View } from "react-native";
 
 interface ReadOnlyBillItemProps {
   item: CartItem;
-  expandedItemId?: string | null;
-  onToggleExpand?: (itemId: string) => void;
+  isLast?: boolean;
 }
 
-const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({
-  item,
-  expandedItemId,
-  onToggleExpand,
-}) => {
-  const isExpanded = expandedItemId === item.id;
-
-  const handleItemPress = () => {
-    if (onToggleExpand) {
-      onToggleExpand(item.id);
-    }
-  };
-
-  // Check if item has any modifiers to show
+const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => {
   const hasModifiers =
-    (item.customizations.modifiers &&
-      item.customizations.modifiers.length > 0) ||
+    (item.customizations.modifiers && item.customizations.modifiers.length > 0) ||
     item.customizations.notes;
 
+  const isVoided = item.is_voided;
+  const nameColor = isVoided ? colors.muted : colors.heading;
+  const priceColor = isVoided ? colors.muted : colors.heading;
+
   return (
-    <View className="rounded-xl overflow-hidden bg-[#303030] border border-gray-600">
-      <TouchableOpacity onPress={handleItemPress} activeOpacity={0.9}>
-        <View className="flex-row items-center p-2">
-          <View className="flex-1">
-            <View className="flex-row items-center">
-              <Text className="font-semibold text-xl text-white">
-                {item.name}
-              </Text>
-            </View>
-            <View className="flex-row items-center mt-1">
-              <Text className="text-lg text-gray-300">x {item.quantity}</Text>
-
-              {hasModifiers && (
-                <TouchableOpacity
-                  className="flex-row items-center ml-2 px-2 py-0.5 bg-gray-700 border border-gray-500 rounded-3xl"
-                  onPress={handleItemPress}
-                >
-
-                  <Text className="text-base font-semibold text-gray-300 mr-1">
-                    Details
-                  </Text>
-
-                  {isExpanded ? (
-                    <ChevronUp color="#9CA3AF" size={14} />
-                  ) : (
-                    <ChevronDown color="#9CA3AF" size={14} />
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-          <Text className="font-semibold text-xl text-white">
-            ${(item.price * item.quantity).toFixed(2)}
+    <View style={{ opacity: isVoided ? 0.55 : 1 }}>
+      {/* Item row */}
+      <View style={{ flexDirection: "row", alignItems: "flex-start", paddingVertical: 8 }}>
+        {/* Qty badge */}
+        <View
+          style={{
+            minWidth: 22,
+            height: 22,
+            borderRadius: 6,
+            backgroundColor: isVoided ? colors.border : colors.teal + "18",
+            borderWidth: 1,
+            borderColor: isVoided ? colors.border : colors.teal + "40",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 9,
+            marginTop: 1,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: "700",
+              color: isVoided ? colors.muted : colors.teal,
+            }}
+          >
+            {item.quantity}
           </Text>
         </View>
-      </TouchableOpacity>
 
-      {/* Modifiers Dropdown - Only show if expanded and has modifiers */}
-      {hasModifiers && isExpanded && (
-        <View className="overflow-hidden">
-          <View className="px-2 pb-2 bg-[#212121] border-t border-gray-600">
-            {/* Modifiers */}
-            {item.customizations.modifiers &&
-              item.customizations.modifiers.length > 0 && (
-                <View className="py-1">
-                  {item.customizations.modifiers.map((modifier, index) => (
-                    <View key={index} className="">
-                      {modifier.options.length > 0 && (
-                        <View
-                          key={index}
-                          className="flex flex-row flex-wrap items-center mb-1"
-                        >
-                          <Text className="text-lg font-medium text-gray-300">
-                            {modifier.categoryName}:
-                          </Text>
-                          {modifier.options.map((option, optionIndex) => {
-                            return (
-                              <View
-                                key={optionIndex}
-                                className="flex-row justify-between items-center ml-1"
-                              >
-                                <Text className="text-xl text-gray-200">
-                                  {option.name}
-                                  {optionIndex < modifier.options.length - 1 &&
-                                    " • "}
-                                </Text>
-                                {option.price > 0 && (
-                                  <Text className="text-lg font-medium ml-1 text-green-400">
-                                    +${option.price.toFixed(2)}{" "}
-                                    {optionIndex <
-                                      modifier.options.length - 1 && ","}
-                                  </Text>
-                                )}
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              )}
-
-            {/* Notes */}
-            {item.customizations.notes && (
-              <View className="py-1">
-                <Text className="text-lg text-gray-300 mb-1">Notes:</Text>
-                <Text className="text-lg text-gray-200 ml-2 italic">
-                  {item.customizations.notes}
+        {/* Name + void badge */}
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: 13,
+                fontWeight: "600",
+                color: nameColor,
+                flex: 1,
+                textDecorationLine: isVoided ? "line-through" : "none",
+              }}
+            >
+              {item.name}
+            </Text>
+            {isVoided && (
+              <View
+                style={{
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 20,
+                  backgroundColor: colors.danger + "20",
+                  borderWidth: 1,
+                  borderColor: colors.danger + "40",
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: "600", color: colors.danger }}>
+                  Voided
                 </Text>
               </View>
             )}
           </View>
+
+          {/* Modifiers */}
+          {hasModifiers && (
+            <View style={{ marginTop: 3, gap: 2 }}>
+              {item.customizations.modifiers?.map((modifier, index) =>
+                modifier.options.length > 0
+                  ? modifier.options.map((option, optIdx) => (
+                      <View
+                        key={`${index}-${optIdx}`}
+                        style={{ flexDirection: "row", alignItems: "center" }}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={{ fontSize: 11, color: colors.label, flex: 1 }}
+                        >
+                          {modifier.categoryName}: {option.name}
+                        </Text>
+                        {option.price > 0 && (
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: "500",
+                              color: colors.success,
+                              marginLeft: 6,
+                            }}
+                          >
+                            +${option.price.toFixed(2)}
+                          </Text>
+                        )}
+                      </View>
+                    ))
+                  : null,
+              )}
+              {item.customizations.notes && (
+                <Text style={{ fontSize: 11, fontStyle: "italic", color: colors.muted, marginTop: 1 }}>
+                  "{item.customizations.notes}"
+                </Text>
+              )}
+            </View>
+          )}
         </View>
+
+        {/* Price */}
+        <Text
+          style={{
+            fontSize: 13,
+            fontWeight: "600",
+            color: priceColor,
+            fontVariant: ["tabular-nums"],
+            marginLeft: 10,
+            minWidth: 56,
+            textAlign: "right",
+            marginTop: 1,
+          }}
+        >
+          ${(item.price * item.quantity).toFixed(2)}
+        </Text>
+      </View>
+
+      {!isLast && (
+        <View
+          style={{
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        />
       )}
-      <View className="h-[1px] bg-gray-600 w-[90%] self-center mt-1" />
     </View>
   );
 };
 
-export default ReadOnlyBillItem;
+export default React.memo(ReadOnlyBillItem);

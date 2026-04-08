@@ -1,115 +1,480 @@
-import { PreviousOrder } from "@/lib/types";
-import { Printer } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
+import { colors } from '@/lib/theme'
+import { OrderProfile } from '@/lib/types'
+import { PrinterService } from '@/services/printing/PrinterService'
+import { SelectedLocation } from '@/stores/useStoreSettingsStore'
+import { Printer, X } from 'lucide-react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import {
+  ActivityIndicator,
+  Animated,
+  Easing,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 
 interface PrintReceiptModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  order: PreviousOrder | null;
+  isOpen: boolean
+  onClose: () => void
+  order: OrderProfile | null
+  location: SelectedLocation | null
 }
+
 const ReceiptRow = ({
   label,
   value,
+  bold = false
 }: {
-  label: string;
-  value: string | number;
+  label: string
+  value: string | number
+  bold?: boolean
 }) => (
-  <View className="flex-row justify-between items-center py-1.5 border-b border-dashed border-gray-200">
-    <Text className="text-xl text-gray-600">{label}</Text>
-    <Text className="text-xl font-semibold text-gray-800">{value}</Text>
+  <View
+    style={{
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 7,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border
+    }}
+  >
+    <Text
+      style={{
+        fontSize: bold ? 14 : 12,
+        color: colors.label,
+        fontWeight: bold ? '700' : '400'
+      }}
+    >
+      {label}
+    </Text>
+    <Text
+      style={{
+        fontSize: bold ? 14 : 12,
+        fontWeight: bold ? '700' : '600',
+        color: colors.heading
+      }}
+    >
+      {value}
+    </Text>
   </View>
-);
+)
+
+const ANIMATION_DURATION = 280
+const SWIPE_THRESHOLD = 100
 
 const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
   isOpen,
   onClose,
   order,
+  location
 }) => {
-  if (!order) return null;
+  const slideAnim = useRef(new Animated.Value(1)).current
+  const scaleAnim = useRef(new Animated.Value(0.98)).current
+  const fadeAnim = useRef(new Animated.Value(0)).current
+  const dragY = useRef(new Animated.Value(0)).current
+  const [isVisible, setIsVisible] = useState(false)
+  const [closeButtonPressed, setCloseButtonPressed] = useState(false)
+  const [isPrinting, setIsPrinting] = useState(false)
+
+  // Pan responder for drag gesture
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          dragY.setValue(gestureState.dy)
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > SWIPE_THRESHOLD) {
+          onClose()
+        } else {
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 100,
+            friction: 10
+          }).start()
+        }
+      }
+    })
+  ).current
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsVisible(true)
+      dragY.setValue(0)
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: ANIMATION_DURATION,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: ANIMATION_DURATION,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: ANIMATION_DURATION,
+          useNativeDriver: true
+        })
+      ]).start()
+    } else {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 1,
+          duration: ANIMATION_DURATION,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0.98,
+          duration: ANIMATION_DURATION,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: ANIMATION_DURATION,
+          useNativeDriver: true
+        })
+      ]).start(() => {
+        setIsVisible(false)
+      })
+    }
+  }, [isOpen, slideAnim, scaleAnim, fadeAnim, dragY])
+
+  if (!isVisible || !order) return null
 
   // Create a simplified summary for the receipt
-  const receiptSummary = order.items.reduce((acc, item) => {
-    const existing = acc.find((i) => i.name === item.name);
+  const nonVoidedItems = (order.items || []).filter(item => !item.is_voided)
+  const receiptSummary = nonVoidedItems.reduce((acc, item) => {
+    const existing = acc.find(i => i.name === item.name)
     if (existing) {
-      existing.quantity += item.quantity;
-      existing.totalPrice += item.price * item.quantity;
+      existing.quantity += item.quantity
+      existing.totalPrice += item.price * item.quantity
     } else {
       acc.push({
         name: item.name,
         quantity: item.quantity,
-        totalPrice: item.price * item.quantity,
-      });
+        totalPrice: item.price * item.quantity
+      })
     }
-    return acc;
-  }, [] as { name: string; quantity: number; totalPrice: number }[]);
+    return acc
+  }, [] as { name: string; quantity: number; totalPrice: number }[])
+
+  const handlePrintReceipt = async () => {
+    if (!order || !location) return
+    setIsPrinting(true)
+    try {
+      const success = await PrinterService.printReceipt(order, location)
+      if (success) {
+        onClose()
+      }
+    } catch (e) {
+      console.warn('[PrintReceiptModal] Print failed:', e)
+    } finally {
+      setIsPrinting(false)
+    }
+  }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] w-[480px]">
-        {/* Dark Header */}
-        <View className="p-4 rounded-t-[36px]">
-          <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1000
+      }}
+    >
+      {/* Semi-transparent backdrop */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.4)',
+          opacity: fadeAnim
+        }}
+      >
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+      </Animated.View>
+
+      {/* Bottom sheet */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          backgroundColor: colors.panel,
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          borderTopWidth: 1,
+          borderLeftWidth: 1,
+          borderRightWidth: 1,
+          borderColor: colors.border,
+          maxHeight: '85%',
+          shadowColor: colors.screen,
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 8,
+          elevation: 10,
+          transform: [
+            {
+              translateY: Animated.add(
+                slideAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 600]
+                }),
+                dragY
+              )
+            },
+            { scale: scaleAnim }
+          ]
+        }}
+      >
+        {/* Drag Handle */}
+        <Animated.View
+          style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}
+          {...panResponder.panHandlers}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 4,
+              backgroundColor: colors.border,
+              borderRadius: 2
+            }}
+          />
+        </Animated.View>
+
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border
+          }}
+        >
+          <Text
+            style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          >
             Print Receipt
-          </DialogTitle>
+          </Text>
+          <Pressable
+            onPress={onClose}
+            onPressIn={() => setCloseButtonPressed(true)}
+            onPressOut={() => setCloseButtonPressed(false)}
+            style={{
+              padding: 7,
+              borderRadius: 10,
+              backgroundColor: closeButtonPressed
+                ? colors.teal + '15'
+                : colors.screen,
+              borderWidth: 1,
+              borderColor: closeButtonPressed
+                ? colors.teal + '40'
+                : colors.border
+            }}
+          >
+            <X
+              color={closeButtonPressed ? colors.teal : colors.label}
+              size={16}
+            />
+          </Pressable>
         </View>
 
-        {/* White Content */}
-        <View className="p-4 rounded-[36px] bg-background-100 gap-y-3">
-          <ReceiptRow label="No. Transaction" value="PZ05329283" />
-          <ReceiptRow label="Table" value="T-12, T-05, T-14" />
-          <ReceiptRow label="Payment" value="Cash" />
-          <ReceiptRow label="Payment Terminal Id" value="Terminal-a-457678" />
-
-          <View className="mt-3">
+        {/* Receipt Content */}
+        <ScrollView
+          style={{ flexShrink: 1 }}
+          contentContainerStyle={{ padding: 14, paddingBottom: 8 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Receipt Card */}
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderRadius: 12,
+              padding: 12,
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
+          >
             <ReceiptRow
-              label="Total Items"
-              value={`${order.itemCount} Items`}
+              label='Order #'
+              value={
+                order.display_number ||
+                order.order_number ||
+                `#${order.id.slice(-4)}`
+              }
             />
-            {receiptSummary.map((item) => (
+            <ReceiptRow
+              label='Table'
+              value={order.service_location_name || 'N/A'}
+            />
+            <ReceiptRow label='Type' value={order.order_type || 'Dine In'} />
+
+            <View
+              style={{
+                height: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border
+              }}
+            />
+
+            <ReceiptRow
+              label='Total Items'
+              value={`${nonVoidedItems.length} Items`}
+            />
+            {receiptSummary.map(item => (
               <ReceiptRow
                 key={item.name}
-                label={item.name}
-                value={`${item.totalPrice.toFixed(2)}`}
+                label={`${item.quantity}x ${item.name}`}
+                value={`$${item.totalPrice.toFixed(2)}`}
               />
             ))}
-          </View>
 
-          <View className="mt-3">
-            <ReceiptRow label="Subtotal" value={`${order.total.toFixed(2)}`} />
-            <ReceiptRow label="Tax" value="$1.50" />
-            <ReceiptRow label="Tips" value="$2.00" />
-          </View>
+            <View
+              style={{
+                height: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border
+              }}
+            />
 
-          <View className="flex-row justify-between items-center pt-3 border-t border-dashed border-gray-300">
-            <Text className="text-2xl font-bold text-accent-500">Total</Text>
-            <Text className="text-2xl font-bold text-accent-500">
-              ${(order.total + 1.5 + 2.0).toFixed(2)}
-            </Text>
+            <ReceiptRow
+              label='Subtotal'
+              value={`$${receiptSummary
+                .reduce((sum, i) => sum + i.totalPrice, 0)
+                .toFixed(2)}`}
+            />
+            <ReceiptRow
+              label='Tax'
+              value={`$${(order.total_tax || 0).toFixed(2)}`}
+            />
+            {(order.total_discount ?? 0) > 0 && (
+              <ReceiptRow
+                label='Discount'
+                value={`-$${(order.total_discount || 0).toFixed(2)}`}
+              />
+            )}
+
+            <View
+              style={{
+                height: 1,
+                backgroundColor: colors.border,
+                marginVertical: 10
+              }}
+            />
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: '700',
+                  color: colors.heading
+                }}
+              >
+                Total
+              </Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: '700',
+                  color: colors.success
+                }}
+              >
+                ${(order.total_amount || 0).toFixed(2)}
+              </Text>
+            </View>
           </View>
-        </View>
+        </ScrollView>
+
         {/* Footer with Buttons */}
-        <View className="p-4 flex-row gap-3 border-t border-gray-200">
+        <View
+          style={{
+            flexDirection: 'row',
+            paddingHorizontal: 14,
+            paddingTop: 10,
+            paddingBottom: 14,
+            gap: 8,
+            borderTopWidth: 1,
+            borderTopColor: colors.border
+          }}
+        >
           <TouchableOpacity
+            style={{
+              flex: 1,
+              paddingVertical: 7,
+              borderWidth: 1,
+              borderColor: colors.danger + '50',
+              borderRadius: 8,
+              alignItems: 'center',
+              backgroundColor: colors.danger + '15'
+            }}
             onPress={onClose}
-            className="flex-1 py-3 border border-gray-300 rounded-lg"
           >
-            <Text className="font-bold text-lg text-gray-700 text-center">
+            <Text
+              style={{ fontSize: 12, fontWeight: '600', color: colors.danger }}
+            >
               Close
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => alert("Printing...")}
-            className="flex-1 flex-row justify-center items-center gap-2 py-3 bg-primary-400 rounded-lg"
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: 6,
+              paddingVertical: 7,
+              backgroundColor: colors.teal,
+              borderRadius: 8,
+              opacity: isPrinting ? 0.6 : 1
+            }}
+            onPress={handlePrintReceipt}
+            disabled={isPrinting || !location}
           >
-            <Printer color="#FFFFFF" size={20} />
-            <Text className="font-bold text-white text-lg">Print Receipt</Text>
+            {isPrinting ? (
+              <ActivityIndicator size='small' color={colors.onSolid} />
+            ) : (
+              <Printer color={colors.onSolid} size={16} />
+            )}
+            <Text
+              style={{ fontSize: 12, fontWeight: '700', color: colors.onSolid }}
+            >
+              {isPrinting ? 'Printing...' : 'Print Receipt'}
+            </Text>
           </TouchableOpacity>
         </View>
-      </DialogContent>
-    </Dialog>
-  );
-};
+      </Animated.View>
+    </View>
+  )
+}
 
-export default PrintReceiptModal;
+export default PrintReceiptModal

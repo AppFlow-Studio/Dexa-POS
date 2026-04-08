@@ -1,188 +1,247 @@
-import BarSection from "@/components/tables/svg/BarSection";
-import Booth2Person from "@/components/tables/svg/Booth2Person";
-import Booth4Person from "@/components/tables/svg/Booth4Person";
-import CashierStand from "@/components/tables/svg/CashierStand";
-import DecorativePlant from "@/components/tables/svg/DecorativePlant";
-import HostStand from "@/components/tables/svg/HostStand";
-import KitchenPass from "@/components/tables/svg/KitchenPass";
-import Pillar from "@/components/tables/svg/Pillar";
-import ServerStation from "@/components/tables/svg/ServerStation";
-import TableCircle2Chair from "@/components/tables/svg/TableCircle2Chair";
-import TableCircle4Chair from "@/components/tables/svg/TableCircle4Chair";
-import TableCircle6Chair from "@/components/tables/svg/TableCircle6Chair";
-import TableHighTop from "@/components/tables/svg/TableHighTop";
-import TableRectangle4Chair from "@/components/tables/svg/TableRectangle4Chair";
-import TableRectangle6Chair from "@/components/tables/svg/TableRectangle6Chair";
-import TableSquare2Chair from "@/components/tables/svg/TableSquare2Chair";
-import TableSquare4Chair from "@/components/tables/svg/TableSquare4Chair";
-import TableSquare8Chair from "@/components/tables/svg/TableSquare8Chair";
-import WallSection from "@/components/tables/svg/WallSection";
+import BarSection from '@/components/tables/svg/BarSection'
+import Booth2Person from '@/components/tables/svg/Booth2Person'
+import Booth4Person from '@/components/tables/svg/Booth4Person'
+import CashierStand from '@/components/tables/svg/CashierStand'
+import DecorativePlant from '@/components/tables/svg/DecorativePlant'
+import HostStand from '@/components/tables/svg/HostStand'
+import KitchenPass from '@/components/tables/svg/KitchenPass'
+import Pillar from '@/components/tables/svg/Pillar'
+import ServerStation from '@/components/tables/svg/ServerStation'
+import TableCircle2Chair from '@/components/tables/svg/TableCircle2Chair'
+import TableCircle4Chair from '@/components/tables/svg/TableCircle4Chair'
+import TableCircle6Chair from '@/components/tables/svg/TableCircle6Chair'
+import TableHighTop from '@/components/tables/svg/TableHighTop'
+import TableRectangle4Chair from '@/components/tables/svg/TableRectangle4Chair'
+import TableRectangle6Chair from '@/components/tables/svg/TableRectangle6Chair'
+import TableSquare2Chair from '@/components/tables/svg/TableSquare2Chair'
+import TableSquare4Chair from '@/components/tables/svg/TableSquare4Chair'
+import TableSquare8Chair from '@/components/tables/svg/TableSquare8Chair'
+import TextLabel from '@/components/tables/svg/TextLabel'
+import WallSection from '@/components/tables/svg/WallSection'
+import ZoneRectangle from '@/components/tables/svg/ZoneRectangle'
 
-// This object is now the single source of truth for your available table shapes
+// This object is the single source of truth.
+// I have added 'id' to every object so you can access it directly.
 export const TABLE_SHAPES = {
   // --- Standard Tables ---
-  "square-2": {
-    label: "2-Seater Square",
+  'square-2': {
+    id: 'square-2',
+    label: '2-Seater Square',
     component: TableSquare2Chair,
     capacity: 2,
     width: 79,
     height: 97,
-    type: "table" as const,
+    type: 'table' as const,
+    category: 'table'
   },
-  "square-4": {
-    label: "4-Seater Square",
+  'square-4': {
+    id: 'square-4',
+    label: '4-Seater Square',
     component: TableSquare4Chair,
     capacity: 4,
     width: 97,
     height: 97,
-    type: "table" as const,
+    type: 'table' as const,
+    category: 'table'
   },
-  "rectangle-4": {
-    label: "4-Seater Rectangle",
+  'rectangle-4': {
+    id: 'rectangle-4',
+    label: '4-Seater Rectangle',
     component: TableRectangle4Chair,
     capacity: 4,
     width: 140,
     height: 90,
-    type: "table" as const,
+    type: 'table' as const,
+    category: 'table'
   },
-  "rectangle-6": {
-    label: "6-Seater Rectangle",
+  'rectangle-6': {
+    id: 'rectangle-6',
+    label: '6-Seater Rectangle',
     component: TableRectangle6Chair,
     capacity: 6,
     width: 180,
     height: 90,
-    type: "table" as const,
+    type: 'table' as const,
+    category: 'table'
   },
-  "square-8": {
-    label: "8-Seater Long",
+  'square-8': {
+    id: 'square-8',
+    label: '8-Seater Long',
     component: TableSquare8Chair,
     capacity: 8,
     width: 208,
     height: 97,
-    type: "table" as const,
+    type: 'table' as const,
+    category: 'table'
   },
-  "circle-2": {
-    label: "2-Seater Circle",
+  'circle-2': {
+    id: 'circle-2',
+    label: '2-Seater Circle',
     component: TableCircle2Chair,
     capacity: 2,
-    width: 80,
-    height: 80,
-    type: "table" as const,
+    width: 130,
+    height: 130,
+    type: 'table' as const,
+    category: 'table'
   },
-  "circle-4": {
-    label: "4-Seater Circle",
+  'circle-4': {
+    id: 'circle-4',
+    label: '4-Seater Circle',
     component: TableCircle4Chair,
     capacity: 4,
-    width: 90,
-    height: 90,
-    type: "table" as const,
+    width: 130,
+    height: 130,
+    type: 'table' as const,
+    category: 'table'
   },
-  "circle-6": {
-    label: "6-Seater Circle",
+  'circle-6': {
+    id: 'circle-6',
+    label: '6-Seater Circle',
     component: TableCircle6Chair,
     capacity: 6,
-    width: 120,
-    height: 120,
-    type: "table" as const,
+    width: 150,
+    height: 150,
+    type: 'table' as const,
+    category: 'table'
   },
-  "high-top-2": {
-    label: "2-Seater High-Top",
+  'high-top-2': {
+    id: 'high-top-2',
+    label: '2-Seater High-Top',
     component: TableHighTop,
     capacity: 2,
-    width: 60,
-    height: 60,
-    type: "table" as const,
+    width: 120,
+    height: 120,
+    type: 'table' as const,
+    category: 'table'
   },
 
   // --- Booths ---
-  "booth-2": {
-    label: "2-Person Booth",
+  'booth-2': {
+    id: 'booth-2',
+    label: '2-Person Booth',
     component: Booth2Person,
     capacity: 2,
-    width: 70,
-    height: 90,
-    type: "table" as const,
+    width: 150,
+    height: 100,
+    type: 'table' as const,
+    category: 'booth'
   },
-  "booth-4": {
-    label: "4-Person Booth",
+  'booth-4': {
+    id: 'booth-4',
+    label: '4-Person Booth',
     component: Booth4Person,
     capacity: 4,
-    width: 120,
-    height: 90,
-    type: "table" as const,
+    width: 200,
+    height: 100,
+    type: 'table' as const,
+    category: 'booth'
   },
 
   // --- Functional Objects ---
-  "bar-section": {
-    label: "Bar Section",
+  'bar-section': {
+    id: 'bar-section',
+    label: 'Bar Section',
     component: BarSection,
     capacity: 0,
     width: 170,
     height: 100,
-    type: "static-object" as const,
+    type: 'static-object' as const,
+    category: 'functional'
   },
-  "cashier-stand": {
-    label: "Cashier Stand",
+  'cashier-stand': {
+    id: 'cashier-stand',
+    label: 'Cashier Stand',
     component: CashierStand,
     capacity: 0,
     width: 100,
     height: 100,
-    type: "static-object" as const,
+    type: 'static-object' as const,
+    category: 'functional'
   },
-  "host-stand": {
-    label: "Host Stand",
+  'host-stand': {
+    id: 'host-stand',
+    label: 'Host Stand',
     component: HostStand,
     capacity: 0,
     width: 40,
     height: 35,
-    type: "static-object" as const,
+    type: 'static-object' as const,
+    category: 'functional'
   },
-  "server-station": {
-    label: "Server Station",
+  'server-station': {
+    id: 'server-station',
+    label: 'Server Station',
     component: ServerStation,
     capacity: 0,
     width: 60,
     height: 40,
-    type: "static-object" as const,
+    type: 'static-object' as const,
+    category: 'functional'
   },
-  "kitchen-pass": {
-    label: "Kitchen Pass",
+  'kitchen-pass': {
+    id: 'kitchen-pass',
+    label: 'Kitchen Pass',
     component: KitchenPass,
     capacity: 0,
     width: 180,
     height: 25,
-    type: "static-object" as const,
+    type: 'static-object' as const,
+    category: 'functional'
   },
 
   // --- Architectural & Decorative ---
-  "wall-section": {
-    label: "Wall Section",
+  'wall-section': {
+    id: 'wall-section',
+    label: 'Wall Section',
     component: WallSection,
     capacity: 0,
     width: 200,
     height: 10,
-    type: "static-object" as const,
+    type: 'static-object' as const,
+    category: 'structure'
   },
   pillar: {
-    label: "Pillar",
+    id: 'pillar',
+    label: 'Pillar',
     component: Pillar,
     capacity: 0,
     width: 40,
     height: 40,
-    type: "static-object" as const,
+    type: 'static-object' as const,
+    category: 'structure'
   },
   plant: {
-    label: "Decorative Plant",
+    id: 'plant',
+    label: 'Decorative Plant',
     component: DecorativePlant,
     capacity: 0,
     width: 50,
     height: 50,
-    type: "static-object" as const,
+    type: 'static-object' as const,
+    category: 'decor'
   },
-};
+  // --- Zone & Label Placeholders ---
+  'zone-rectangle': {
+    id: 'zone-rectangle',
+    label: 'Zone',
+    component: ZoneRectangle,
+    capacity: 0,
+    width: 200,
+    height: 200,
+    type: 'static-object' as const,
+    category: 'zone'
+  },
+  'label-text': {
+    id: 'label-text',
+    label: 'Text Label',
+    component: TextLabel,
+    capacity: 0,
+    width: 100,
+    height: 50,
+    type: 'static-object' as const,
+    category: 'zone'
+  }
+}
 
-// We can also create an array for easy mapping in the UI
-export const SHAPE_OPTIONS = Object.entries(TABLE_SHAPES).map(([id, data]) => ({
-  id,
-  ...data,
-}));
+// We create the array from the object values directly since they now contain the ID
+export const SHAPE_OPTIONS = Object.values(TABLE_SHAPES)

@@ -1,5 +1,3 @@
-// Reworked flow: use BottomSheet for item selection instead of modal
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -7,42 +5,61 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { POLineItem } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetFlatList,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import { ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
-import { default as React, useEffect, useMemo, useRef, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import { FlatList, ScrollView, TextInput } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ArrowLeft, ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import POVendorsSheet from "./_compoenets/POVendorsSheet";
+
+const fieldLabel = {
+  fontSize: 11,
+  fontWeight: "600" as const,
+  color: colors.muted,
+  textTransform: "uppercase" as const,
+  letterSpacing: 0.5,
+  marginBottom: 5,
+};
+
+const inputStyle = {
+  backgroundColor: colors.screen,
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: 8,
+  color: colors.heading,
+  fontSize: 13,
+  height: 38,
+  paddingHorizontal: 12,
+};
 
 const CreatePurchaseOrderScreen = () => {
   const router = useRouter();
-  const {
-    vendors,
-    inventoryItems,
-    createPurchaseOrder,
-    submitPurchaseOrder,
-    purchaseOrders,
-    addInventoryItem,
-  } = useInventoryStore();
-  const { activeEmployeeId, employees, loadMockEmployees } = useEmployeeStore();
-  const [selectedVendorId, setSelectedVendorId] = useState<
-    string | undefined
-  >();
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
-    activeEmployeeId
-  );
+  const { vendors, inventoryItems, createPurchaseOrder, purchaseOrders, addInventoryItem } = useInventoryStore();
+  const { activeEmployeeId, employees } = useEmployeeStore();
+
+  const [selectedVendorId, setSelectedVendorId] = useState<string | undefined>();
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(activeEmployeeId);
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
-  const vendorsSheetRef = useRef<BottomSheet>(null);
-  const itemsSheetRef = useRef<BottomSheet>(null);
-  const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<
-    string | null
-  >(null);
-  const [selectedQuantity, setSelectedQuantity] = useState<string>("1");
+  const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<string | null>(null);
+  const [selectedQuantity, setSelectedQuantity] = useState("1");
+  const [itemSearch, setItemSearch] = useState("");
   const [newItemModalOpen, setNewItemModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemUnit, setNewItemUnit] = useState("pcs");
@@ -50,20 +67,15 @@ const CreatePurchaseOrderScreen = () => {
   const [newItemStock, setNewItemStock] = useState("");
   const [newItemReorder, setNewItemReorder] = useState("");
   const [newItemPOQty, setNewItemPOQty] = useState("1");
-  const [itemSearch, setItemSearch] = useState("");
-  const vendorOptions = vendors.map((v) => ({ label: v.name, value: v.id }));
 
-  // Load employees on component mount
-  useEffect(() => {
-    loadMockEmployees();
-  }, [loadMockEmployees]);
+  const vendorsSheetRef = useRef<BottomSheet>(null);
+  const itemsSheetRef = useRef<BottomSheet>(null);
 
-  // Update selected employee when activeEmployeeId changes
   useEffect(() => {
-    if (activeEmployeeId && !selectedEmployeeId) {
-      setSelectedEmployeeId(activeEmployeeId);
-    }
-  }, [activeEmployeeId, selectedEmployeeId]);
+    if (activeEmployeeId && !selectedEmployeeId) setSelectedEmployeeId(activeEmployeeId);
+  }, [activeEmployeeId]);
+
+  const selectedVendor = vendors.find((v) => v.id === selectedVendorId);
 
   const vendorItems = useMemo(() => {
     if (!selectedVendorId) return [] as typeof inventoryItems;
@@ -73,253 +85,168 @@ const CreatePurchaseOrderScreen = () => {
   const filteredVendorItems = useMemo(() => {
     const q = itemSearch.trim().toLowerCase();
     if (!q) return vendorItems;
-    return vendorItems.filter(
-      (i) =>
-        i.name.toLowerCase().includes(q) ||
-        (i.unit ?? "").toString().toLowerCase().includes(q)
-    );
+    return vendorItems.filter((i) => i.name.toLowerCase().includes(q) || (i.unit ?? "").toString().toLowerCase().includes(q));
   }, [vendorItems, itemSearch]);
+
+  const totalCost = lineItems.reduce((a, li) => a + li.cost * li.quantity, 0);
 
   const addSelectedItemToPO = () => {
     if (!selectedInventoryItemId) return;
-    const qtyNum = Math.max(1, Number(selectedQuantity || 1));
+    const qty = Math.max(1, Number(selectedQuantity || 1));
     const inv = inventoryItems.find((i) => i.id === selectedInventoryItemId);
     if (!inv) return;
     if (lineItems.some((li) => li.inventoryItemId === inv.id)) {
       alert("This item is already in the purchase order.");
       return;
     }
-    const newLine: POLineItem = {
-      inventoryItemId: inv.id,
-      quantity: qtyNum,
-      cost: inv.cost,
-    };
-    setLineItems((prev) => [...prev, newLine]);
-    // reset and close sheet
+    setLineItems((prev) => [...prev, { inventoryItemId: inv.id, quantity: qty, cost: inv.cost }]);
     setSelectedInventoryItemId(null);
     setSelectedQuantity("1");
     itemsSheetRef.current?.close();
   };
 
   const handleCreateNewItem = () => {
-    if (!selectedVendorId) {
-      alert("Please select a vendor first");
-      return;
-    }
-    if (!newItemName.trim()) {
-      alert("Please enter item name");
-      return;
-    }
-    const costNum = Number(newItemCost || 0);
-    const stockNum = Math.max(0, Number(newItemStock || 0));
-    const reorderNum = Math.max(0, Number(newItemReorder || 0));
-    const poQty = Math.max(1, Number(newItemPOQty || 1));
-
-    // Create inventory item linked to vendor
+    if (!selectedVendorId) { alert("Please select a vendor first"); return; }
+    if (!newItemName.trim()) { alert("Please enter item name"); return; }
     addInventoryItem({
       name: newItemName.trim(),
       category: "Uncategorized",
-      stockQuantity: stockNum,
+      stockQuantity: Math.max(0, Number(newItemStock || 0)),
       unit: newItemUnit as any,
-      reorderThreshold: reorderNum,
-      cost: costNum,
+      reorderThreshold: Math.max(0, Number(newItemReorder || 0)),
+      cost: Number(newItemCost || 0),
       vendorId: selectedVendorId,
       stockTrackingMode: "quantity",
     });
-
-    // Retrieve the newly added item (latest by id timestamp)
     const created = useInventoryStore.getState().inventoryItems[0];
     if (created && created.vendorId === selectedVendorId) {
-      const newLine: POLineItem = {
-        inventoryItemId: created.id,
-        quantity: poQty,
-        cost: created.cost,
-      };
-      setLineItems((prev) => [...prev, newLine]);
+      setLineItems((prev) => [...prev, { inventoryItemId: created.id, quantity: Math.max(1, Number(newItemPOQty || 1)), cost: created.cost }]);
     }
-
-    // Reset and close
-    setNewItemName("");
-    setNewItemUnit("pcs");
-    setNewItemCost("");
-    setNewItemStock("");
-    setNewItemReorder("");
-    setNewItemPOQty("1");
+    setNewItemName(""); setNewItemUnit("pcs"); setNewItemCost(""); setNewItemStock(""); setNewItemReorder(""); setNewItemPOQty("1");
     setNewItemModalOpen(false);
     itemsSheetRef.current?.close();
   };
 
-  const handleRemoveLineItem = (itemId: string) => {
-    setLineItems((prev) =>
-      prev.filter((item) => item.inventoryItemId !== itemId)
-    );
+  const handleQuantityChange = (itemId: string, text: string) => {
+    const n = parseInt(text, 10);
+    setLineItems((prev) => prev.map((li) => li.inventoryItemId === itemId ? { ...li, quantity: isNaN(n) ? 0 : n } : li));
   };
 
   const handleSave = () => {
-    if (!selectedVendorId || lineItems.length === 0) {
-      alert("Please select a vendor and add at least one item.");
-      return;
-    }
-    const assignedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-    createPurchaseOrder({
-      vendorId: selectedVendorId,
-      status: "Draft",
-      items: lineItems,
-      createdByEmployeeId: selectedEmployeeId || undefined,
-      createdByEmployeeName: assignedEmployee?.fullName,
-    });
+    if (!selectedVendorId || lineItems.length === 0) { alert("Please select a vendor and add at least one item."); return; }
+    const emp = employees.find((e) => e.id === selectedEmployeeId);
+    createPurchaseOrder({ vendorId: selectedVendorId, status: "Draft", items: lineItems, createdByEmployeeId: selectedEmployeeId || undefined, createdByEmployeeName: emp?.fullName });
     router.back();
   };
 
   const handleSubmit = () => {
-    if (!selectedVendorId || lineItems.length === 0) {
-      alert("Please select a vendor and add at least one item.");
-      return;
-    }
-    // First create as Draft, then immediately submit to Pending Delivery
-    const tempId = `po_${Date.now()}`; // predict id not ideal, so instead we update latest created
-    const assignedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-    createPurchaseOrder({
-      vendorId: selectedVendorId,
-      status: "Pending Delivery",
-      items: lineItems,
-
-      createdByEmployeeId: selectedEmployeeId || undefined,
-      createdByEmployeeName: assignedEmployee?.fullName,
-    });
+    if (!selectedVendorId || lineItems.length === 0) { alert("Please select a vendor and add at least one item."); return; }
+    const emp = employees.find((e) => e.id === selectedEmployeeId);
+    createPurchaseOrder({ vendorId: selectedVendorId, status: "Pending Delivery", items: lineItems, createdByEmployeeId: selectedEmployeeId || undefined, createdByEmployeeName: emp?.fullName });
     router.back();
   };
 
-  const insets = useSafeAreaInsets();
-  const contentInsets = {
-    top: insets.top,
-    bottom: insets.bottom,
-    left: 12,
-    right: 12,
-  };
-
-  const handleUseTemplate = (poId: string) => {
-    const po = purchaseOrders.find((p) => p.id === poId);
-    vendorsSheetRef.current?.close();
-    if (!po) return;
-    setLineItems(po.items);
-    setSelectedVendorId(po.vendorId);
-  };
-
-  const selectVendor = (vendorId: string) => {
-    setSelectedVendorId(vendorId);
-    vendorsSheetRef.current?.close();
-  };
-
-  const handleQuantityChange = (itemId: string, text: string) => {
-    const newQuantity = parseInt(text, 10);
-    setLineItems((prevItems) =>
-      prevItems.map((item) => {
-        if (item.inventoryItemId === itemId) {
-          // If input is empty or invalid, default to 0, otherwise use the parsed number
-          return { ...item, quantity: isNaN(newQuantity) ? 0 : newQuantity };
-        }
-        return item;
-      })
-    );
-  };
-
-  return (
+  const renderHeader = () => (
     <>
-      <ScrollView
-        bounces={false}
-        className="flex-1 flex-grow h-full"
-        contentContainerStyle={{ flexGrow: 1 }}
-      >
-        <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-2xl font-bold text-white">
-            Create Purchase Order
-          </Text>
-          <View className="flex-row gap-2">
+      {/* Page Header */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "30", borderRadius: 7 }}
+          >
+            <ArrowLeft size={13} color={colors.teal} />
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Back</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Create Purchase Order</Text>
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            onPress={handleSave}
+            style={{ paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Save Draft</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleSubmit}
+            style={{ paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8 }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Submit PO</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* PO Info Card */}
+      <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14, marginBottom: 12 }}>
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          {/* Vendor */}
+          <View style={{ flex: 1 }}>
+            <Text style={fieldLabel}>Vendor</Text>
             <TouchableOpacity
-              onPress={() => router.back()}
-              className="py-3 px-4 bg-gray-600 rounded-lg"
+              onPress={() => vendorsSheetRef.current?.expand()}
+              style={{
+                height: 38,
+                borderWidth: 1,
+                borderColor: selectedVendorId ? colors.teal + "50" : colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: selectedVendorId ? colors.teal + "10" : "transparent",
+                borderStyle: selectedVendorId ? "solid" : "dashed",
+              }}
             >
-              <Text className="text-xl font-bold text-white">Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSave}
-              className="py-3 px-4 bg-gray-600 rounded-lg"
-            >
-              <Text className="text-xl font-bold text-white">Save Draft</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSubmit}
-              className="py-3 px-4 bg-blue-600 rounded-lg"
-            >
-              <Text className="text-xl font-bold text-white">Submit</Text>
+              <Text style={{ fontSize: 13, color: selectedVendorId ? colors.heading : colors.muted }}>
+                {selectedVendor?.name || "Select a vendor..."}
+              </Text>
+              <ChevronDown size={14} color={colors.muted} />
             </TouchableOpacity>
           </View>
-        </View>
 
-        <View className="bg-[#303030] border border-gray-700 rounded-xl p-4">
-          <Text className="text-lg font-medium text-gray-300 mb-1.5">
-            Vendor
-          </Text>
-          <TouchableOpacity
-            className="h-fit border border-gray-600 border-dashed rounded-lg p-3"
-            onPress={() => vendorsSheetRef.current?.expand()}
-          >
-            <Text className="text-xl text-white">
-              {selectedVendorId
-                ? vendorOptions.find((v) => v.value === selectedVendorId)?.label
-                : "Select a vendor..."}
-            </Text>
-          </TouchableOpacity>
-
-          <View className="mt-4">
-            <Text className="text-lg font-medium text-gray-300 mb-1.5">
-              Assigned Employee
-            </Text>
+          {/* Employee */}
+          <View style={{ flex: 1 }}>
+            <Text style={fieldLabel}>Assigned Employee</Text>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
-                  <View className="flex-row items-center">
-                    <User color="#9CA3AF" size={18} className="mr-1.5" />
-                    <Text className="text-xl text-white">
-                      {selectedEmployeeId
-                        ? employees.find((e) => e.id === selectedEmployeeId)
-                            ?.fullName
-                        : "Select..."}
+                <TouchableOpacity
+                  style={{
+                    height: 38,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <User size={13} color={colors.muted} />
+                    <Text style={{ fontSize: 13, color: selectedEmployeeId ? colors.heading : colors.muted }}>
+                      {selectedEmployeeId ? employees.find((e) => e.id === selectedEmployeeId)?.fullName : "Select..."}
                     </Text>
                   </View>
-                  <ChevronDown color="#9CA3AF" size={18} />
+                  <ChevronDown size={14} color={colors.muted} />
                 </TouchableOpacity>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
-                {employees.map((employee) => (
-                  <DropdownMenuItem
-                    key={employee.id}
-                    onPress={() => setSelectedEmployeeId(employee.id)}
-                    className="flex-row items-center p-2"
-                  >
-                    <View className="flex-row items-center flex-1">
-                      <View className="w-7 h-7 bg-blue-600 rounded-full items-center justify-center mr-2">
-                        <Text className="text-white text-xs font-semibold">
-                          {employee.fullName
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()}
+              <DropdownMenuContent className="w-64" style={{ backgroundColor: colors.panel, borderColor: colors.border }}>
+                {employees.map((emp) => (
+                  <DropdownMenuItem key={emp.id} onPress={() => setSelectedEmployeeId(emp.id)}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                      <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "40", alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: colors.teal }}>
+                          {emp.fullName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                         </Text>
                       </View>
-                      <View className="flex-1">
-                        <Text className="text-white text-base font-medium">
-                          {employee.fullName}
-                        </Text>
-                        <Text className="text-gray-400 text-xs">
-                          {employee.shiftStatus === "clocked_in"
-                            ? "Clocked In"
-                            : "Clocked Out"}
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, color: colors.heading }}>{emp.fullName}</Text>
+                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                          {emp.shiftStatus === "clocked_in" ? "Clocked In" : "Clocked Out"}
                         </Text>
                       </View>
-                      {selectedEmployeeId === employee.id && (
-                        <View className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
+                      {selectedEmployeeId === emp.id && (
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.teal }} />
                       )}
                     </View>
                   </DropdownMenuItem>
@@ -327,265 +254,335 @@ const CreatePurchaseOrderScreen = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </View>
-
-          <View className="mt-4">
-            <Text className="text-xl font-semibold text-white mb-1.5">
-              Items
-            </Text>
-            <FlatList
-              data={lineItems}
-              keyExtractor={(item) => item.inventoryItemId}
-              renderItem={({ item }) => {
-                const invItem = inventoryItems.find(
-                  (i) => i.id === item.inventoryItemId
-                );
-                return (
-                  <View className="flex-row items-center justify-between p-3 border-b border-gray-600">
-                    <Text className="text-xl text-white flex-1">
-                      {invItem?.name}
-                    </Text>
-                    <View className="flex-row items-center gap-x-1.5 w-36">
-                      <TextInput
-                        value={item.quantity.toString()}
-                        onChangeText={(text) =>
-                          handleQuantityChange(item.inventoryItemId, text)
-                        }
-                        keyboardType="number-pad"
-                        className="w-16 bg-[#212121] border border-gray-500 rounded-lg text-lg text-white text-center h-10"
-                      />
-                      <Text className="text-lg text-gray-300">
-                        {invItem?.unit}
-                      </Text>
-                    </View>
-                    <Text className="text-lg text-gray-300 w-36">
-                      ${(item.cost * item.quantity).toFixed(2)}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleRemoveLineItem(item.inventoryItemId)}
-                    >
-                      <Trash2 color="#EF4444" size={20} />
-                    </TouchableOpacity>
-                  </View>
-                );
-              }}
-              ListEmptyComponent={
-                <Text className="text-lg text-gray-400 text-center py-4">
-                  No items added yet.
-                </Text>
-              }
-            />
-            <TouchableOpacity
-              disabled={!selectedVendorId}
-              onPress={() => itemsSheetRef.current?.expand()}
-              className={`mt-3 py-2 border border-dashed rounded-lg items-center ${
-                selectedVendorId
-                  ? "border-gray-500"
-                  : "border-gray-700 opacity-50"
-              }`}
-            >
-              <Text className="text-lg font-semibold text-gray-300">
-                + Add Item
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
-      </ScrollView>
+      </View>
 
+      {/* Items section header */}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          backgroundColor: colors.screen,
+          borderWidth: 1,
+          borderBottomWidth: 0,
+          borderColor: colors.border,
+          borderTopLeftRadius: 12,
+          borderTopRightRadius: 12,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+        }}
+      >
+        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Line Items ({lineItems.length})
+        </Text>
+        {lineItems.length > 0 && (
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}>
+            Total: ${totalCost.toFixed(2)}
+          </Text>
+        )}
+      </View>
+    </>
+  );
+
+  const renderFooter = () => (
+    <View
+      style={{
+        borderWidth: 1,
+        borderTopWidth: 0,
+        borderColor: colors.border,
+        borderBottomLeftRadius: 12,
+        borderBottomRightRadius: 12,
+        overflow: "hidden",
+      }}
+    >
+      <TouchableOpacity
+        disabled={!selectedVendorId}
+        onPress={() => itemsSheetRef.current?.expand()}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          paddingVertical: 10,
+          borderStyle: "dashed",
+          borderWidth: 1,
+          borderColor: selectedVendorId ? colors.teal + "40" : colors.border,
+          margin: 10,
+          borderRadius: 8,
+          opacity: selectedVendorId ? 1 : 0.5,
+        }}
+      >
+        <Plus size={13} color={selectedVendorId ? colors.teal : colors.muted} />
+        <Text style={{ fontSize: 13, fontWeight: "600", color: selectedVendorId ? colors.teal : colors.muted }}>
+          Add Item
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  return (
+    <>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <FlatList
+          data={lineItems}
+          keyExtractor={(item, index) => `${item.inventoryItemId}-${index}`}
+          ListHeaderComponent={renderHeader}
+          ListFooterComponent={renderFooter}
+          contentContainerStyle={{ padding: 14, paddingBottom: 60 }}
+          renderItem={({ item }) => {
+            const inv = inventoryItems.find((i) => i.id === item.inventoryItemId);
+            return (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  borderLeftWidth: 1,
+                  borderRightWidth: 1,
+                  borderBottomWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.panel,
+                }}
+              >
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                  {inv?.name || "Unknown"}
+                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <TextInput
+                    value={item.quantity.toString()}
+                    onChangeText={(t) => handleQuantityChange(item.inventoryItemId, t)}
+                    keyboardType="number-pad"
+                    style={{ width: 52, height: 34, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 6, color: colors.heading, fontSize: 13, textAlign: "center", paddingVertical: 0 }}
+                  />
+                  <Text style={{ fontSize: 12, color: colors.muted, width: 36 }}>{inv?.unit}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, width: 70, textAlign: "right" }}>
+                    ${(item.cost * item.quantity).toFixed(2)}
+                  </Text>
+                  <TouchableOpacity onPress={() => setLineItems((prev) => prev.filter((li) => li.inventoryItemId !== item.inventoryItemId))} style={{ padding: 5 }}>
+                    <Trash2 size={14} color={colors.danger} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          }}
+          ListEmptyComponent={
+            <View
+              style={{
+                borderLeftWidth: 1,
+                borderRightWidth: 1,
+                borderBottomWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.panel,
+                alignItems: "center",
+                paddingVertical: 24,
+              }}
+            >
+              <Text style={{ fontSize: 13, color: colors.muted }}>No items added yet</Text>
+            </View>
+          }
+        />
+      </KeyboardAvoidingView>
+
+      {/* Item Selection Sheet */}
       <BottomSheet
         ref={itemsSheetRef}
         index={-1}
         snapPoints={["50%", "95%"]}
-        backgroundStyle={{ backgroundColor: "#2b2b2b" }}
-        handleIndicatorStyle={{ backgroundColor: "#666" }}
+        {...bottomSheetTheme}
+        backdropComponent={(props) => (
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
+        )}
       >
-        <BottomSheetView className="h-full flex-grow flex-1">
-          <View className="px-3 pt-1 pb-2 border-b border-gray-700 flex-row items-center justify-between">
-            <Text className="text-white text-lg font-bold">Select Item</Text>
-            <View className="flex-row items-center justify-between gap-1.5">
-              <View className="w-1/2 flex-row items-center gap-1.5 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5">
-                <Search color="#9CA3AF" size={16} />
-                <TextInput
-                  value={itemSearch}
-                  onChangeText={setItemSearch}
-                  placeholder="Search..."
-                  className="text-white h-10 w-full text-sm"
-                />
+        <BottomSheetView style={{ flex: 1 }}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+            {/* Header */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Select Item</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, height: 36, gap: 6 }}>
+                  <Search size={13} color={colors.muted} />
+                  <TextInput
+                    value={itemSearch}
+                    onChangeText={setItemSearch}
+                    placeholder="Search..."
+                    placeholderTextColor={colors.muted}
+                    style={{ fontSize: 13, color: colors.heading, width: 120, paddingVertical: 0 }}
+                  />
+                </View>
+                <TouchableOpacity
+                  onPress={() => setNewItemModalOpen(true)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8 }}
+                >
+                  <Plus size={13} color={colors.teal} />
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>New Item</Text>
+                </TouchableOpacity>
               </View>
-              <Button
-                onPress={() => setNewItemModalOpen(true)}
-                className="bg-blue-600 border flex-row items-center gap-1.5 border-blue-500 px-2 py-1"
-              >
-                <Plus color="#fff" size={18} />
-                <Text className="text-white text-sm">New</Text>
-              </Button>
             </View>
-          </View>
 
-          <View className="px-3 py-2">
-            {!selectedVendorId ? (
-              <Text className="text-gray-400 text-sm">Select a vendor.</Text>
-            ) : vendorItems.length === 0 ? (
-              <Text className="text-gray-400 text-sm">
-                No items for this vendor.
-              </Text>
-            ) : (
-              <>
-                {selectedInventoryItemId && (
-                  <View className="mb-3 p-2 rounded-lg border border-gray-700 bg-[#303030]">
-                    <Text className="text-white mb-1.5 text-base font-semibold">
-                      Qty -{" "}
-                      {
-                        vendorItems.find(
-                          (i) => i.id === selectedInventoryItemId
-                        )?.name
-                      }{" "}
-                      (
-                      {
-                        vendorItems.find(
-                          (i) => i.id === selectedInventoryItemId
-                        )?.unit
-                      }
-                      )
-                    </Text>
+            {/* Qty input for selected item */}
+            {selectedInventoryItemId && (() => {
+              const sel = vendorItems.find((i) => i.id === selectedInventoryItemId);
+              return (
+                <View style={{ marginHorizontal: 12, marginTop: 10, marginBottom: 4, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.teal + "40", borderRadius: 10, padding: 12 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, marginBottom: 8 }}>
+                    Qty — {sel?.name} ({sel?.unit})
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
                     <TextInput
                       keyboardType="number-pad"
                       value={selectedQuantity}
                       onChangeText={setSelectedQuantity}
                       placeholder="Quantity"
-                      className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 mb-2 h-16"
+                      placeholderTextColor={colors.muted}
+                      style={{ flex: 1, height: 38, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, color: colors.heading, fontSize: 13, paddingHorizontal: 12, paddingVertical: 0 }}
                     />
-                    <Button
+                    <TouchableOpacity
                       onPress={addSelectedItemToPO}
-                      className="bg-blue-600 border border-blue-500 py-1.5"
+                      style={{ paddingHorizontal: 14, paddingVertical: 9, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8 }}
                     >
-                      <Text className="text-white text-sm">Add to PO</Text>
-                    </Button>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Add to PO</Text>
+                    </TouchableOpacity>
                   </View>
-                )}
+                </View>
+              );
+            })()}
+
+            <View style={{ flex: 1, paddingHorizontal: 0 }}>
+              {!selectedVendorId ? (
+                <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 13, color: colors.muted }}>Select a vendor first.</Text>
+                </View>
+              ) : vendorItems.length === 0 ? (
+                <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 13, color: colors.muted }}>No items for this vendor.</Text>
+                </View>
+              ) : (
                 <FlatList
                   data={filteredVendorItems}
-                  contentContainerStyle={{ paddingBottom: 50 }}
-                  keyExtractor={(i: any) => i.id}
-                  renderItem={({ item }: { item: any }) => (
-                    <TouchableOpacity
-                      onPress={() => setSelectedInventoryItemId(item.id)}
-                      className="p-3 border-b border-gray-700"
-                    >
-                      <View className="flex-row justify-between items-center">
-                        <View className="flex-1 pr-2">
-                          <Text className="text-white text-base font-semibold">
-                            {item.name}
-                          </Text>
-                          <Text className="text-gray-400 text-xs">
-                            Unit: {item.unit} • Cost: ${item.cost.toFixed(2)}
+                  keyExtractor={(i, idx) => `${i.id}-${idx}`}
+                  contentContainerStyle={{ paddingBottom: 40 }}
+                  renderItem={({ item: inv }) => {
+                    const isSelected = selectedInventoryItemId === inv.id;
+                    return (
+                      <TouchableOpacity
+                        onPress={() => setSelectedInventoryItemId(inv.id)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border,
+                          backgroundColor: isSelected ? colors.teal + "10" : "transparent",
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: isSelected ? colors.teal : colors.heading }}>{inv.name}</Text>
+                          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                            {inv.unit} · ${inv.cost.toFixed(2)} · Stock: {inv.stockQuantity}
                           </Text>
                         </View>
-                        <Text className="text-gray-300 text-sm">
-                          Stock: {item.stockQuantity}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
+                        {isSelected && (
+                          <View style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "40", borderRadius: 5 }}>
+                            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Selected</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  }}
                   ListEmptyComponent={
-                    <Text className="text-gray-400 px-3 py-4">
-                      No items match.
-                    </Text>
+                    <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                      <Text style={{ fontSize: 13, color: colors.muted }}>No items match.</Text>
+                    </View>
                   }
                 />
-              </>
-            )}
-          </View>
+              )}
+            </View>
+          </KeyboardAvoidingView>
         </BottomSheetView>
       </BottomSheet>
 
+      {/* New Item Modal */}
       <Dialog open={newItemModalOpen} onOpenChange={setNewItemModalOpen}>
         <DialogContent>
-          <ScrollView
-            bounces={false}
-            className="rounded-2xl h-fit p-4 w-[550px]"
-            style={{
-              backgroundColor: "#2b2b2b",
-              borderWidth: 1,
-              borderColor: "#4b5563",
-            }}
-          >
-            <Text className="text-white text-xl font-bold mb-3">
-              Add Inventory Item
-            </Text>
-            <View className="gap-y-2">
-              <Text className="text-gray-300 text-sm">Vendor</Text>
-              <View className="bg-[#303030] border border-gray-700 rounded-lg p-2">
-                <Text className="text-white text-base">
-                  {
-                    vendorOptions.find((v) => v.value === selectedVendorId)
-                      ?.label
-                  }
-                </Text>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>
+            <ScrollView
+              bounces={false}
+              style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 14, width: 500 }}
+              contentContainerStyle={{ padding: 18 }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginBottom: 14 }}>Add Inventory Item</Text>
+              <View style={{ gap: 10 }}>
+                <View>
+                  <Text style={fieldLabel}>Vendor</Text>
+                  <View style={{ height: 38, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, justifyContent: "center" }}>
+                    <Text style={{ fontSize: 13, color: colors.heading }}>{vendors.find((v) => v.id === selectedVendorId)?.name}</Text>
+                  </View>
+                </View>
+                {[
+                  { label: "Name *", value: newItemName, onChange: setNewItemName, placeholder: "Item name", keyboard: "default" },
+                  { label: "Unit", value: newItemUnit, onChange: setNewItemUnit, placeholder: "e.g. pcs, kg", keyboard: "default" },
+                ].map((f) => (
+                  <View key={f.label}>
+                    <Text style={fieldLabel}>{f.label}</Text>
+                    <TextInput value={f.value} onChangeText={f.onChange} placeholder={f.placeholder} placeholderTextColor={colors.muted} style={inputStyle} />
+                  </View>
+                ))}
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>Cost / Unit</Text>
+                    <TextInput value={newItemCost} onChangeText={setNewItemCost} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.muted} style={inputStyle} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>PO Quantity</Text>
+                    <TextInput value={newItemPOQty} onChangeText={setNewItemPOQty} keyboardType="number-pad" placeholder="1" placeholderTextColor={colors.muted} style={inputStyle} />
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>Stock Qty</Text>
+                    <TextInput value={newItemStock} onChangeText={setNewItemStock} keyboardType="number-pad" placeholder="0" placeholderTextColor={colors.muted} style={inputStyle} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>Reorder Point</Text>
+                    <TextInput value={newItemReorder} onChangeText={setNewItemReorder} keyboardType="number-pad" placeholder="0" placeholderTextColor={colors.muted} style={inputStyle} />
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                  <TouchableOpacity
+                    onPress={() => setNewItemModalOpen(false)}
+                    style={{ flex: 1, paddingVertical: 9, borderWidth: 1, borderColor: colors.border, borderRadius: 8, alignItems: "center" }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleCreateNewItem}
+                    style={{ flex: 1, paddingVertical: 9, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8, alignItems: "center" }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>Add Item</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <Text className="text-gray-300 mt-2 text-sm">Name</Text>
-              <TextInput
-                value={newItemName}
-                onChangeText={setNewItemName}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">Unit</Text>
-              <TextInput
-                value={newItemUnit}
-                onChangeText={setNewItemUnit}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">Cost/Unit</Text>
-              <TextInput
-                keyboardType="decimal-pad"
-                value={newItemCost}
-                onChangeText={setNewItemCost}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">Stock Qty</Text>
-              <TextInput
-                keyboardType="number-pad"
-                value={newItemStock}
-                onChangeText={setNewItemStock}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">Reorder</Text>
-              <TextInput
-                keyboardType="number-pad"
-                value={newItemReorder}
-                onChangeText={setNewItemReorder}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">PO Qty</Text>
-              <TextInput
-                keyboardType="number-pad"
-                value={newItemPOQty}
-                onChangeText={setNewItemPOQty}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <View className="flex-row gap-2 mt-3">
-                <TouchableOpacity
-                  onPress={() => setNewItemModalOpen(false)}
-                  className="flex-1 py-2 rounded-lg border border-gray-600 items-center"
-                >
-                  <Text className="text-gray-300 text-base">Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleCreateNewItem}
-                  className="flex-1 py-2 rounded-lg bg-blue-600 border border-blue-500 items-center"
-                >
-                  <Text className="text-white text-base font-semibold">
-                    Add
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </DialogContent>
       </Dialog>
+
       <POVendorsSheet
         ref={vendorsSheetRef}
-        onUseTemplate={handleUseTemplate}
-        onSelectVendor={selectVendor}
+        onUseTemplate={(poId) => {
+          const po = purchaseOrders.find((p) => p.id === poId);
+          vendorsSheetRef.current?.close();
+          if (!po) return;
+          setLineItems(po.items);
+          setSelectedVendorId(po.vendorId);
+        }}
+        onSelectVendor={(vendorId) => {
+          setSelectedVendorId(vendorId);
+          vendorsSheetRef.current?.close();
+        }}
       />
     </>
   );

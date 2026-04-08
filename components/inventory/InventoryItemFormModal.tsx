@@ -13,9 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { InventoryItem, InventoryUnit, Vendor } from "@/lib/types";
+import { colors } from "@/lib/theme";
+import { InventoryItem, Vendor } from "@/lib/types";
 import React, { useEffect, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface InventoryItemFormModalProps {
@@ -26,7 +33,7 @@ interface InventoryItemFormModalProps {
   initialData?: InventoryItem | null;
 }
 
-export const UNIT_OPTIONS: { label: string; value: InventoryUnit }[] = [
+export const UNIT_OPTIONS: { label: string; value: string }[] = [
   { label: "Pieces (pcs)", value: "pcs" },
   { label: "Grams (g)", value: "g" },
   { label: "Kilograms (kg)", value: "kg" },
@@ -50,6 +57,23 @@ export const UNIT_OPTIONS: { label: string; value: InventoryUnit }[] = [
   { label: "Package (pkg)", value: "pkg" },
 ];
 
+const inputStyle = {
+  backgroundColor: colors.screen,
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: 8,
+  color: colors.heading,
+  fontSize: 14,
+  height: 40,
+  paddingHorizontal: 12,
+};
+
+const fieldLabel = {
+  fontSize: 12,
+  color: colors.label,
+  marginBottom: 6,
+};
+
 const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   isOpen,
   onClose,
@@ -64,10 +88,10 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   const [reorderThreshold, setReorderThreshold] = useState("0");
   const [cost, setCost] = useState("0");
   const [vendorId, setVendorId] = useState<any>();
+  const [stockUpdateReason, setStockUpdateReason] = useState("");
 
   useEffect(() => {
     if (isOpen && initialData) {
-      // Pre-fill form for editing
       setName(initialData.name);
       setCategory(initialData.category);
       setStockQuantity(String(initialData.stockQuantity));
@@ -79,8 +103,8 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
           .map((v) => ({ label: v.name, value: v.id }))
           .find((v) => v.value === initialData.vendorId)
       );
+      setStockUpdateReason("");
     } else {
-      // Reset form for adding
       setName("");
       setCategory("");
       setStockQuantity("0");
@@ -88,6 +112,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
       setReorderThreshold("0");
       setCost("0");
       setVendorId(undefined);
+      setStockUpdateReason("");
     }
   }, [initialData, isOpen, vendors]);
 
@@ -101,88 +126,408 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   const vendorOptions = vendors.map((v) => ({ label: v.name, value: v.id }));
 
   const handleSave = () => {
-    if (!name || !category || !unit) {
-      alert("Please fill all required fields.");
-      return;
+    if (initialData?.isGlobal) {
+      const currentStock = parseFloat(stockQuantity) || 0;
+      const initialStock = initialData.stockQuantity || 0;
+      const stockChanged = currentStock !== initialStock;
+
+      if (stockChanged && !stockUpdateReason.trim()) {
+        alert("Please provide a reason for the stock change.");
+        return;
+      }
+
+      onSave(
+        {
+          name: initialData.name,
+          category: initialData.category,
+          stockQuantity: currentStock,
+          unit: initialData.unit,
+          unitType: initialData.unitType,
+          reorderThreshold: parseFloat(reorderThreshold) || 0,
+          cost: parseFloat(cost) || 0,
+          vendorId: initialData.vendorId,
+          stockTrackingMode: "quantity",
+          locationId: initialData.locationId ?? null,
+          stockUpdateReason: stockUpdateReason,
+        },
+        initialData.id
+      );
+    } else {
+      if (!name || !category || !unit) {
+        alert("Please fill all required fields.");
+        return;
+      }
+
+      let unitType: "unit" | "weight" | "volume" = "unit";
+      const uVal = unit.value.toLowerCase();
+      if (["kg", "g", "lb", "lbs", "oz"].includes(uVal)) unitType = "weight";
+      if (["l", "ml", "gal", "qt", "pint"].includes(uVal)) unitType = "volume";
+
+      const currentStock = parseFloat(stockQuantity) || 0;
+      const initialStock = initialData?.stockQuantity || 0;
+      const stockChanged = currentStock !== initialStock;
+
+      onSave(
+        {
+          name,
+          category,
+          stockQuantity: currentStock,
+          unit: unit.value,
+          unitType,
+          reorderThreshold: parseFloat(reorderThreshold) || 0,
+          cost: parseFloat(cost) || 0,
+          vendorId: vendorId?.value || null,
+          stockTrackingMode: "quantity",
+          locationId: initialData?.locationId ?? null,
+          stockUpdateReason: stockChanged
+            ? stockUpdateReason || "Manual Adjustment"
+            : undefined,
+        },
+        initialData?.id
+      );
     }
-    onSave(
-      {
-        name,
-        category,
-        stockQuantity: parseFloat(stockQuantity) || 0,
-        unit: unit.value,
-        reorderThreshold: parseFloat(reorderThreshold) || 0,
-        cost: parseFloat(cost) || 0,
-        vendorId: vendorId?.value || null,
-      },
-      initialData?.id
-    );
     onClose();
   };
 
+  // Global form
+  if (initialData?.isGlobal) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent
+          className="w-[500px]"
+          style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+        >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <DialogHeader>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <DialogTitle style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+                  Edit Location Settings
+                </DialogTitle>
+                <View
+                  style={{
+                    backgroundColor: colors.info + "20",
+                    borderWidth: 1,
+                    borderColor: colors.info + "50",
+                    borderRadius: 20,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.info }}>
+                    Global
+                  </Text>
+                </View>
+              </View>
+              <View
+                style={{
+                  marginTop: 8,
+                  backgroundColor: colors.info + "10",
+                  borderWidth: 1,
+                  borderColor: colors.info + "30",
+                  borderRadius: 8,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ fontSize: 12, color: colors.info }}>
+                  This is a global item. You can only update stock and apply local overrides for
+                  cost and reorder thresholds.
+                </Text>
+              </View>
+            </DialogHeader>
+
+            <View style={{ paddingVertical: 14, gap: 12 }}>
+              {/* Read-Only Info */}
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={fieldLabel}>Item Name</Text>
+                  <View
+                    style={{
+                      padding: 10,
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      height: 40,
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, color: colors.heading }}>{initialData.name}</Text>
+                  </View>
+                </View>
+                <View style={{ width: "33%" }}>
+                  <Text style={fieldLabel}>Unit</Text>
+                  <View
+                    style={{
+                      padding: 10,
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      height: 40,
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, color: colors.heading }}>{initialData.unit}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Stock Management */}
+              <View
+                style={{
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  padding: 12,
+                  gap: 10,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                  Location Stock
+                </Text>
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>Quantity</Text>
+                    <TextInput
+                      value={stockQuantity}
+                      onChangeText={setStockQuantity}
+                      keyboardType="numeric"
+                      style={inputStyle}
+                      placeholderTextColor={colors.muted}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>Reorder Threshold</Text>
+                    <TextInput
+                      value={reorderThreshold}
+                      onChangeText={setReorderThreshold}
+                      placeholder={String(initialData.reorderThreshold)}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="numeric"
+                      style={inputStyle}
+                    />
+                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                      Override default ({initialData.reorderThreshold})
+                    </Text>
+                  </View>
+                </View>
+
+                {parseFloat(stockQuantity) !== (initialData.stockQuantity || 0) && (
+                  <View>
+                    <Text style={fieldLabel}>Reason for Change *</Text>
+                    <TextInput
+                      value={stockUpdateReason}
+                      onChangeText={setStockUpdateReason}
+                      placeholder="e.g. Received delivery, Spoilage..."
+                      placeholderTextColor={colors.muted}
+                      style={inputStyle}
+                    />
+                  </View>
+                )}
+              </View>
+
+              {/* Cost Override */}
+              <View
+                style={{
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  padding: 12,
+                  gap: 8,
+                }}
+              >
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                    Pricing
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.label }}>
+                    Base Cost: ${initialData.cost.toFixed(2)}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={fieldLabel}>Cost Override ($)</Text>
+                  <TextInput
+                    value={cost}
+                    onChangeText={setCost}
+                    placeholder="Set custom cost..."
+                    placeholderTextColor={colors.muted}
+                    keyboardType="numeric"
+                    style={inputStyle}
+                  />
+                </View>
+              </View>
+            </View>
+
+            <DialogFooter className="flex-row gap-2 mt-2">
+              <TouchableOpacity
+                onPress={onClose}
+                style={{
+                  flex: 1,
+                  paddingVertical: 9,
+                  backgroundColor: "transparent",
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSave}
+                style={{
+                  flex: 1,
+                  paddingVertical: 9,
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "50",
+                  borderRadius: 8,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+                  Save Changes
+                </Text>
+              </TouchableOpacity>
+            </DialogFooter>
+          </ScrollView>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Local form
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
-        <DialogHeader>
-          <DialogTitle className="text-white text-2xl">
-            {initialData ? "Edit" : "Add New"} Inventory Item
-          </DialogTitle>
-        </DialogHeader>
-        <View className="py-3 gap-y-3">
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Item Name
-              </Text>
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
+      <DialogContent
+        className="w-[500px]"
+        style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <DialogHeader>
+            <DialogTitle style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+              {initialData ? "Edit" : "Add New"} Inventory Item
+            </DialogTitle>
+          </DialogHeader>
+          <View style={{ paddingVertical: 12, gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Item Name</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  style={inputStyle}
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Category</Text>
+                <TextInput
+                  value={category}
+                  onChangeText={setCategory}
+                  style={inputStyle}
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
             </View>
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Category
-              </Text>
-              <TextInput
-                value={category}
-                onChangeText={setCategory}
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Stock Quantity</Text>
+                <TextInput
+                  value={stockQuantity}
+                  onChangeText={setStockQuantity}
+                  keyboardType="numeric"
+                  style={inputStyle}
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Unit</Text>
+                <Select value={unit} onValueChange={setUnit}>
+                  <SelectTrigger
+                    className="w-full"
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      height: 40,
+                      paddingHorizontal: 12,
+                    }}
+                  >
+                    <SelectValue
+                      style={{ fontSize: 14, color: colors.heading }}
+                      placeholder="Select a unit..."
+                    />
+                  </SelectTrigger>
+                  <SelectContent insets={contentInsets}>
+                    <SelectGroup>
+                      {UNIT_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} label={opt.label} value={opt.value}>
+                          <Text style={{ fontSize: 13 }}>{opt.label}</Text>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </View>
             </View>
-          </View>
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Stock Quantity
-              </Text>
-              <TextInput
-                value={stockQuantity}
-                onChangeText={setStockQuantity}
-                keyboardType="numeric"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Reorder Threshold</Text>
+                <TextInput
+                  value={reorderThreshold}
+                  onChangeText={setReorderThreshold}
+                  keyboardType="numeric"
+                  style={inputStyle}
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Cost Per Unit</Text>
+                <TextInput
+                  value={cost}
+                  onChangeText={setCost}
+                  keyboardType="numeric"
+                  style={inputStyle}
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
             </View>
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Unit
-              </Text>
-              <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
+            <View>
+              <Text style={fieldLabel}>Default Vendor</Text>
+              <Select value={vendorId} onValueChange={setVendorId}>
+                <SelectTrigger
+                  className="w-full"
+                  style={{
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    height: 40,
+                    paddingHorizontal: 12,
+                  }}
+                >
                   <SelectValue
-                    className="text-lg text-white"
-                    placeholder="Select a unit..."
+                    style={{ fontSize: 14, color: colors.heading }}
+                    placeholder="Select a vendor..."
                   />
                 </SelectTrigger>
                 <SelectContent insets={contentInsets}>
                   <SelectGroup>
-                    {UNIT_OPTIONS.map((opt) => (
-                      <SelectItem
-                        key={opt.value}
-                        label={opt.label}
-                        value={opt.value}
-                      >
-                        <Text className="text-lg">{opt.label}</Text>
+                    {vendorOptions.map((opt) => (
+                      <SelectItem key={opt.value} label={opt.label} value={opt.value}>
+                        <Text style={{ fontSize: 13 }}>{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -190,75 +535,39 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               </Select>
             </View>
           </View>
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Reorder Threshold
+          <DialogFooter className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={onClose}
+              style={{
+                flex: 1,
+                paddingVertical: 9,
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSave}
+              style={{
+                flex: 1,
+                paddingVertical: 9,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+                Save Item
               </Text>
-              <TextInput
-                value={reorderThreshold}
-                onChangeText={setReorderThreshold}
-                keyboardType="numeric"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
-            </View>
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Cost Per Unit
-              </Text>
-              <TextInput
-                value={cost}
-                onChangeText={setCost}
-                keyboardType="numeric"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
-            </View>
-          </View>
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-1.5">
-              Default Vendor
-            </Text>
-            <Select value={vendorId} onValueChange={setVendorId}>
-              <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
-                <SelectValue
-                  className="text-lg text-white"
-                  placeholder="Select a vendor..."
-                />
-              </SelectTrigger>
-              <SelectContent insets={contentInsets}>
-                <SelectGroup>
-                  {vendorOptions.map((opt) => (
-                    <SelectItem
-                      key={opt.value}
-                      label={opt.label}
-                      value={opt.value}
-                    >
-                      <Text className="text-lg">{opt.label}</Text>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </View>
-        </View>
-        <DialogFooter className="flex-row gap-2">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-gray-300">
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            className="flex-1 py-3 bg-blue-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-white">
-              Save Item
-            </Text>
-          </TouchableOpacity>
-        </DialogFooter>
+            </TouchableOpacity>
+          </DialogFooter>
+        </ScrollView>
       </DialogContent>
     </Dialog>
   );

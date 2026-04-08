@@ -1,3 +1,4 @@
+import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useState } from "react";
@@ -5,30 +6,20 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../BillItem";
 
 const ItemsReviewView = () => {
-  const {
-    activeOrderId,
-    orders,
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderDiscount,
-    activeOrderTotal,
-    activeOrderOutstandingSubtotal,
-    activeOrderOutstandingTax,
-    activeOrderOutstandingTotal,
-  } = useOrderStore();
-  const { close, setView, paymentMethod } = usePaymentStore();
+  const orderTotals = useActiveOrderTotals();
+  const activeOrderSubtotal = orderTotals?.subtotal ?? 0;
+  const activeOrderTax = orderTotals?.tax ?? 0;
+  const activeOrderDiscount = orderTotals?.discount ?? 0;
+  const activeOrderTotal = orderTotals?.total ?? 0;
+  const close = usePaymentStore((s) => s.close);
+  const setView = usePaymentStore((s) => s.setView);
+  const paymentMethod = usePaymentStore((s) => s.paymentMethod);
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = useActiveOrder();
   const items = activeOrder?.items || [];
 
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
-
-  const handleToggleExpand = (itemId: string) => {
-    setExpandedItemId(expandedItemId === itemId ? null : itemId);
-  };
-
   return (
-    <View className="bg-[#212121] p-4 rounded-2xl border border-gray-700 w-[550px]">
+    <View className="bg-panel p-4 rounded-2xl border border-gray-700 w-[550px]">
       <Text className="text-2xl font-bold text-center mb-4 text-white">
         Review Items
       </Text>
@@ -37,13 +28,12 @@ const ItemsReviewView = () => {
         contentContainerClassName="gap-y-2"
       >
         {items.map((item) => (
+          // FIXED: Removed invalid props (expandedItemId, onToggleExpand, showStatus)
+          // BillItemProps only accepts: item, isEditable
           <BillItem
             key={item.id}
             item={item}
-            expandedItemId={expandedItemId}
-            onToggleExpand={handleToggleExpand}
-            isEditable={false} // Hide the Edit/Delete functionality in this view
-            showStatus={false}
+            isEditable={false}
           />
         ))}
       </ScrollView>
@@ -80,7 +70,7 @@ const ItemsReviewView = () => {
         <View className="flex-row gap-4 mt-4">
           <TouchableOpacity
             onPress={close}
-            className="flex-1 py-3 bg-[#303030] border border-gray-600 rounded-xl items-center"
+            className="flex-1 py-3 bg-surface border border-gray-600 rounded-xl items-center"
           >
             <Text className="text-lg font-bold text-white text-center">
               Cancel
@@ -93,7 +83,7 @@ const ItemsReviewView = () => {
               else if (paymentMethod === "Split") setView("split");
               else setView("cash");
             }}
-            className="flex-1 py-3 bg-blue-600 rounded-xl items-center"
+            className="flex-1 py-3 bg-teal rounded-xl items-center"
           >
             <Text className="text-lg font-bold text-white text-center">
               Continue

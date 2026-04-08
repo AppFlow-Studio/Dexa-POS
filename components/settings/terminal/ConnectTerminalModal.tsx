@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MOCK_FOUND_TERMINALS } from "@/lib/mockData";
+import { colors, spinnerColor } from "@/lib/theme";
 import { XCircle } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
@@ -38,7 +39,7 @@ const ConnectTerminalModal = ({
       case "searching":
         return (
           <View className="items-center text-center p-6">
-            <ActivityIndicator size="large" color="#3b82f6" />
+            <ActivityIndicator size="large" color={spinnerColor} />
             <Text className="text-lg font-bold mt-3">Please wait</Text>
             <Text className="text-gray-500 mt-1 text-sm">
               Searching for available terminals...
@@ -58,7 +59,7 @@ const ConnectTerminalModal = ({
             <Text className="text-gray-500 mt-1 text-sm">
               Select a terminal to connect.
             </Text>
-            <View className="my-3 space-y-1.5">
+            <View className="my-3 gap-y-1.5">
               {MOCK_FOUND_TERMINALS.map((terminal) => (
                 <TouchableOpacity
                   key={terminal.id}
@@ -103,7 +104,7 @@ const ConnectTerminalModal = ({
       case "notFound":
         return (
           <View className="items-center text-center p-6">
-            <XCircle color="#ef4444" size={40} />
+            <XCircle color={colors.danger} size={40} />
             <Text className="text-lg font-bold mt-3">No Terminal Found</Text>
             <Text className="text-gray-500 mt-1 text-sm">
               Please recheck your terminal.
@@ -121,10 +122,10 @@ const ConnectTerminalModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-3xl overflow-hidden bg-[#11111A] w-[480px]">
+      <DialogContent className="p-0 rounded-3xl overflow-hidden bg-screen w-[480px]">
         {/* Dark Header */}
         <View className="p-3 pb-0 rounded-t-3xl">
-          <DialogTitle className="text-[#F1F1F1] text-xl font-bold text-center">
+          <DialogTitle className="text-heading text-xl font-bold text-center">
             Connect New Terminal
           </DialogTitle>
         </View>

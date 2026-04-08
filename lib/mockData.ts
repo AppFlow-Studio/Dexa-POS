@@ -7,6 +7,7 @@ import {
   AddOn,
   CartItem,
   Check,
+  CompletedShift,
   Discount,
   DrawerSummary,
   EmployeeShift,
@@ -14,13 +15,15 @@ import {
   ItemSize,
   MenuItemType,
   ModifierCategory,
-  OfflineOrder,
+  Notification,
   OnlineOrder,
   Order,
   PaymentTerminal,
   PreviousOrder,
   PrinterDevice,
   PrinterRule,
+  PTORequest,
+  Shift,
   ShiftHistoryEntry,
   ShiftStatus,
   TableType,
@@ -2047,14 +2050,137 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
   },
   {
     id: "inv_112",
-    name: "Black Tea Leaves",
-    category: "Beverages",
-    stockQuantity: 10,
+    name: "Breadcrumbs",
+    category: "Bakery",
+    stockQuantity: 12,
     unit: "lbs",
-    reorderThreshold: 4,
-    cost: 3.0,
-    vendorId: "vendor_2",
+    reorderThreshold: 5,
+    cost: 1.2,
+    vendorId: "vendor_1",
   },
+];
+
+// --- MOCK WORK HISTORY ---
+const MANAGER_ID = "emp_1759078476073_0";
+const EMPLOYEE_ID = "emp_1759078476073_1";
+const NEW_HIRE_ID = "emp_1759078476073_2";
+
+// Helper function to generate random clock-in and clock-out times
+const generateShiftTimes = (
+  baseDate: Date,
+  minHours: number,
+  maxHours: number,
+  startHour: number
+) => {
+  const date = new Date(baseDate);
+
+  // Set clock-in time (between startHour and startHour+1)
+  const clockInHour = startHour + Math.random();
+  date.setHours(
+    Math.floor(clockInHour),
+    Math.floor((clockInHour % 1) * 60),
+    0,
+    0
+  );
+  const clockIn = new Date(date);
+
+  // Calculate clock-out time based on hours worked
+  const hoursWorked = Math.random() * (maxHours - minHours) + minHours;
+  date.setHours(
+    date.getHours() + Math.floor(hoursWorked),
+    date.getMinutes() + Math.floor((hoursWorked % 1) * 60)
+  );
+  const clockOut = new Date(date);
+
+  // Add some random variation to clock-out time (±15 minutes)
+  const variation = (Math.random() - 0.5) * 30; // ±15 minutes in milliseconds
+  clockOut.setTime(clockOut.getTime() + variation * 60 * 1000);
+
+  return {
+    clockIn: clockIn.toISOString(),
+    clockOut: clockOut.toISOString(),
+    hoursWorked: hoursWorked,
+  };
+};
+
+export const MOCK_WORK_HISTORY: CompletedShift[] = [
+  // Manager (12 months of history - 240 shifts spread over 365 days)
+  ...Array.from({ length: 240 }).map((_, i) => {
+    const daysAgo = Math.floor((365 * i) / 240);
+    const baseDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+    // Managers start between 8-9 AM
+    const { clockIn, clockOut, hoursWorked } = generateShiftTimes(
+      baseDate,
+      6,
+      8,
+      8
+    );
+
+    return {
+      shiftId: `shift-manager-${i}`,
+      employeeId: MANAGER_ID,
+      date: baseDate.toISOString().split("T")[0],
+      clockIn,
+      clockOut,
+      hoursWorked: parseFloat(hoursWorked.toFixed(2)),
+      breakInitiated: "N/A",
+      breakEnded: "N/A",
+      role: "manager",
+    };
+  }),
+
+  // Employee (6 months of history - 120 shifts spread over 180 days)
+  ...Array.from({ length: 120 }).map((_, i) => {
+    const daysAgo = Math.floor((180 * i) / 120);
+    const baseDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+    // Regular employees start between 7-8 AM
+    const { clockIn, clockOut, hoursWorked } = generateShiftTimes(
+      baseDate,
+      5,
+      7,
+      7
+    );
+
+    return {
+      shiftId: `shift-employee-${i}`,
+      employeeId: EMPLOYEE_ID,
+      date: baseDate.toISOString().split("T")[0],
+      clockIn,
+      clockOut,
+      hoursWorked: parseFloat(hoursWorked.toFixed(2)),
+      breakInitiated: "N/A",
+      breakEnded: "N/A",
+      role: "employee",
+    };
+  }),
+
+  // New Hire (1 month of history - 20 shifts spread over 30 days)
+  ...Array.from({ length: 20 }).map((_, i) => {
+    const daysAgo = Math.floor((30 * i) / 20);
+    const baseDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+    // New hires start between 9-10 AM (later start for training)
+    const { clockIn, clockOut, hoursWorked } = generateShiftTimes(
+      baseDate,
+      4,
+      6,
+      9
+    );
+
+    return {
+      shiftId: `shift-newhire-${i}`,
+      employeeId: NEW_HIRE_ID,
+      date: baseDate.toISOString().split("T")[0],
+      clockIn,
+      clockOut,
+      hoursWorked: parseFloat(hoursWorked.toFixed(2)),
+      breakInitiated: "N/A",
+      breakEnded: "N/A",
+      role: "employee",
+    };
+  }),
 ];
 
 export const MOCK_MENU_ITEMS: MenuItemType[] = [
@@ -2986,6 +3112,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Not in Service", // Status doesn't really apply, but we need one
     capacity: 0,
     component: CashierStand,
+    shapeId: "cashier-stand",
     x: 50,
     y: 300,
     rotation: 0,
@@ -2997,6 +3124,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 2,
     component: TableSquare2Chair,
+    shapeId: "square-2",
     x: 40,
     y: 40,
     rotation: 0,
@@ -3008,6 +3136,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 2,
     component: TableSquare2Chair,
+    shapeId: "square-2",
     x: 160,
     y: 40,
     rotation: 0,
@@ -3019,6 +3148,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 2,
     component: TableSquare2Chair,
+    shapeId: "square-2",
     x: 280,
     y: 40,
     rotation: 0,
@@ -3030,6 +3160,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 2,
     component: TableSquare2Chair,
+    shapeId: "square-2",
     x: 400,
     y: 40,
     rotation: 0,
@@ -3042,6 +3173,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 2,
     component: TableSquare2Chair,
+    shapeId: "square-2",
     x: 600,
     y: 40,
     rotation: 0,
@@ -3053,6 +3185,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 2,
     component: TableSquare2Chair,
+    shapeId: "square-2",
     x: 720,
     y: 40,
     rotation: 0,
@@ -3065,6 +3198,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 4,
     component: TableSquare4Chair,
+    shapeId: "square-4",
     x: 600,
     y: 150,
     rotation: 0,
@@ -3076,6 +3210,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Needs Cleaning",
     capacity: 4,
     component: TableSquare4Chair,
+    shapeId: "square-4",
     x: 720,
     y: 150,
     rotation: 0,
@@ -3088,6 +3223,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Needs Cleaning",
     capacity: 4,
     component: TableSquare4Chair,
+    shapeId: "square-4",
     x: 200,
     y: 250,
     rotation: 0,
@@ -3099,6 +3235,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 4,
     component: TableSquare4Chair,
+    shapeId: "square-4",
     x: 350,
     y: 250,
     rotation: 0,
@@ -3110,6 +3247,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 4,
     component: TableSquare4Chair,
+    shapeId: "square-4",
     x: 200,
     y: 350,
     rotation: 0,
@@ -3121,6 +3259,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 4,
     component: TableSquare4Chair,
+    shapeId: "square-4",
     x: 350,
     y: 350,
     rotation: 0,
@@ -3132,6 +3271,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 8,
     component: TableSquare8Chair,
+    shapeId: "square-8",
     x: 660,
     y: 280,
     rotation: 0,
@@ -3143,6 +3283,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Needs Cleaning",
     capacity: 8,
     component: TableSquare8Chair,
+    shapeId: "square-8",
     x: 660,
     y: 380,
     rotation: 0,
@@ -3154,6 +3295,7 @@ export const MOCK_TABLES: TableType[] = [
     status: "Available",
     capacity: 8,
     component: TableSquare8Chair,
+    shapeId: "square-8",
     x: 660,
     y: 480,
     rotation: 0,
@@ -3487,15 +3629,6 @@ export const MOCK_FOUND_TERMINALS = [
   { id: "Brother-HL", name: "Brother HL-L2390DW" },
 ];
 
-export const MOCK_OFFLINE_ORDERS: OfflineOrder[] = Array(8).fill({
-  serialNo: "001",
-  orderDate: "Oct 16, 2024",
-  orderTime: "09:31 AM",
-  orderId: "#2010E10",
-  server: "Jake Carter",
-  total: 34.5,
-});
-
 export const salesData = [
   { hour: 6, today: 180, yesterday: 320 },
   { hour: 8, today: 250, yesterday: 410 },
@@ -3779,6 +3912,127 @@ export const MOCK_DRAWER_SUMMARIES: DrawerSummary[] = [
   },
 ];
 
+export const MOCK_SHIFTS: Shift[] = [
+  {
+    id: "shift-1",
+    employeeId: "emp_1759078476073_0",
+    periodId: "2",
+    date: "2025-10-13",
+    role: "Barista",
+    startTime: "10:00 AM",
+    endTime: "6:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "confirmed",
+    breakMinutes: 30,
+    managerNote: "Cover patio from 2-4 if busy",
+    expectedPace: "Moderate",
+    staffingLevel: "Fully staffed",
+  },
+  {
+    id: "shift-2",
+    employeeId: "emp_1759078476073_0",
+    periodId: "2",
+    date: "2025-10-14",
+    role: "Barista",
+    startTime: "2:00 PM",
+    endTime: "10:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "on-shift",
+    breakMinutes: 30,
+    actualClockIn: "1:58 PM",
+    expectedPace: "Busy",
+    staffingLevel: "May need help",
+  },
+  {
+    id: "shift-3",
+    employeeId: "emp_1759078476073_0",
+    periodId: "2",
+    date: "2025-10-15",
+    role: "Barista",
+    startTime: "6:00 AM",
+    endTime: "2:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "confirmed",
+    isToday: true,
+    breakMinutes: 30,
+    restRiskHours: 8,
+    expectedPace: "Calm",
+    staffingLevel: "Fully staffed",
+  },
+  {
+    id: "shift-4",
+    employeeId: "emp_1759078476073_0",
+    periodId: "2",
+    date: "2025-10-16",
+    role: "Barista",
+    startTime: "10:00 AM",
+    endTime: "6:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "pending-swap",
+    breakMinutes: 30,
+    expectedPace: "Moderate",
+    staffingLevel: "Fully staffed",
+  },
+  {
+    id: "shift-5",
+    employeeId: "emp_1759078476073_0",
+    periodId: "2",
+    date: "2025-10-17",
+    role: "Barista",
+    startTime: "10:00 AM",
+    endTime: "6:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "dropped",
+    breakMinutes: 30,
+    isOvertimeRisk: true,
+    expectedPace: "Moderate",
+    staffingLevel: "Fully staffed",
+  },
+];
+
+export const MOCK_PTO_BALANCE = {
+  available: 40,
+  accrued: 80,
+  used: 24,
+  pending: 8,
+  accrualRate: 0.0375,
+};
+
+export const MOCK_PTO_REQUESTS: PTORequest[] = [
+  {
+    id: "pto-1",
+    employeeId: "emp_1759078476073_0",
+    startDate: "2025-02-10",
+    endDate: "2025-02-12",
+    hours: 24,
+    status: "pending",
+    note: "Family vacation.",
+    submittedAt: "2025-01-10T15:20:00Z",
+  },
+  {
+    id: "pto-2",
+    employeeId: "emp_1759078476073_0",
+    startDate: "2024-12-24",
+    endDate: "2024-12-26",
+    hours: 24,
+    status: "approved",
+    note: "Holiday leave.",
+    submittedAt: "2024-11-15T09:00:00Z",
+    reviewedAt: "2024-11-16T11:30:00Z",
+  },
+  {
+    id: "pto-3",
+    employeeId: "emp_1759078476073_0",
+    startDate: "2024-11-05",
+    endDate: "2024-11-05",
+    hours: 8,
+    status: "denied",
+    note: "Personal appointment.",
+    submittedAt: "2024-11-01T14:00:00Z",
+    reviewedAt: "2024-11-02T10:00:00Z",
+  },
+];
+
 export const MOCK_EMPLOYEE_SHIFTS: EmployeeShift[] = [
   {
     id: "1",
@@ -3909,5 +4163,40 @@ export const MOCK_CUSTOMERS: Customer[] = [
     email: "jess.w@example.com",
     createdAt: new Date(),
     totalOrders: 1,
+  },
+];
+
+export const MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: "notif-1",
+    type: "swap_request",
+    message: "Your swap request for the shift on Oct 16 was approved.",
+    isRead: false,
+    timestamp: new Date("2025-10-15T10:00:00Z").toISOString(),
+    employeeId: "emp_1759078476073_0",
+  },
+  {
+    id: "notif-2",
+    type: "drop_request",
+    message: "Your drop request for the shift on Oct 17 is pending.",
+    isRead: false,
+    timestamp: new Date("2025-10-15T09:30:00Z").toISOString(),
+    employeeId: "emp_1759078476073_0",
+  },
+  {
+    id: "notif-3",
+    type: "manager_note",
+    message: "New manager note on your shift for Oct 13.",
+    isRead: true,
+    timestamp: new Date("2025-10-12T14:00:00Z").toISOString(),
+    employeeId: "emp_1759078476073_0",
+  },
+  {
+    id: "notif-4",
+    type: "pto_update",
+    message: "Your PTO request for Dec 24-26 was approved.",
+    isRead: true,
+    timestamp: new Date("2025-10-11T11:00:00Z").toISOString(),
+    employeeId: "emp_1759078476073_0",
   },
 ];

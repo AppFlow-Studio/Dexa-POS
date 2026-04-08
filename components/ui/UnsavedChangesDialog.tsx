@@ -1,12 +1,7 @@
+import { colors } from "@/lib/theme";
+import { AlertTriangle } from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./dialog";
+import { Modal, Text, TouchableOpacity, View } from "react-native";
 
 interface UnsavedChangesDialogProps {
   isOpen: boolean;
@@ -20,30 +15,46 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
   onDiscard,
 }) => {
   return (
-    <Dialog open={isOpen} onOpenChange={onCancel}>
-      <DialogContent className="bg-[#1e1e1e] border-gray-700 w-[400px] p-6 rounded-lg">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-white">
-            Unsaved Changes
-          </DialogTitle>
-          <DialogDescription className="text-base text-gray-400 mt-2">
-            You have unsaved changes. Are you sure you want to go back?
-          </DialogDescription>
-        </DialogHeader>
-        <View className="flex-row justify-end gap-4 mt-6">
-          <TouchableOpacity onPress={onCancel} className="py-2 px-4 rounded">
-            <Text className="text-blue-400 font-semibold text-base">
-              CANCEL
+    <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={{ flex: 1, backgroundColor: "#00000080", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 16, width: "100%", maxWidth: 340, borderWidth: 1, borderColor: colors.border }}>
+          {/* Icon Container */}
+          <View style={{ alignItems: "center", marginBottom: 14 }}>
+            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.warning + "20", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+              <AlertTriangle size={22} color={colors.warning} strokeWidth={2} />
+            </View>
+
+            <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading, marginBottom: 6, textAlign: "center" }}>
+              Discard Changes?
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onDiscard} className="py-2 px-4 rounded">
-            <Text className="text-red-400 font-semibold text-base">
-              DISCARD
+            <Text style={{ fontSize: 12, color: colors.label, textAlign: "center", lineHeight: 18 }}>
+              Your unsaved changes will be lost. This action cannot be undone.
             </Text>
-          </TouchableOpacity>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
+            <TouchableOpacity
+              onPress={onCancel}
+              style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 10, alignItems: "center" }}
+            >
+              <Text style={{ fontSize: 13, color: colors.label, fontWeight: "600" }}>
+                Keep Editing
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={onDiscard}
+              style={{ flex: 1, backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "50", borderRadius: 8, paddingVertical: 10, alignItems: "center" }}
+            >
+              <Text style={{ fontSize: 13, color: colors.danger, fontWeight: "600" }}>
+                Discard
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </DialogContent>
-    </Dialog>
+      </View>
+    </Modal>
   );
 };
 

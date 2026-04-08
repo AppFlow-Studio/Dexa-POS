@@ -1,172 +1,472 @@
-import { PreviousOrder } from "@/lib/types";
-import { Href, Link } from "expo-router";
-import { MoreHorizontal, Pencil, Printer, Trash2 } from "lucide-react-native";
-import React from "react";
-import { DimensionValue, Text, TouchableOpacity, View } from "react-native";
+import { colors } from "@/lib/theme";
+import { OrderProfile } from "@/lib/types";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+  AlertTriangle,
+  CheckCircle,
+  FileText,
+  Lock,
+  MoreHorizontal,
+  Printer,
+  RefreshCw,
+  RotateCcw,
+  ShoppingBag,
+  Truck,
+  Utensils,
+  XCircle,
+} from "lucide-react-native";
+import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { LayoutAnimation, Modal, Platform, Text, TouchableOpacity, UIManager, View } from "react-native";
+import ExpandedOrderPanel from "./ExpandedOrderPanel";
 
-interface PreviousOrderRowProps {
-  order: PreviousOrder;
-  onViewNotes: (order: PreviousOrder) => void;
-  onPrint: (order: PreviousOrder) => void;
-  onDelete: (order: PreviousOrder) => void;
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const statusClasses: Record<string, string> = {
-  Paid: "bg-green-100 text-green-800",
-  "In Progress": "bg-orange-100 text-orange-800",
-  Refunded: "bg-gray-200 text-gray-600",
-  "Partially Refunded": "bg-yellow-100 text-yellow-800",
-  Unpaid: "bg-red-100 text-red-800",
+interface PreviousOrderRowProps {
+  order: OrderProfile;
+  isExpanded: boolean;
+  onPress: (order: OrderProfile) => void;
+  onDoublePress: (order: OrderProfile) => void;
+  onPrint: (order: OrderProfile) => void;
+  onViewTimeline: (order: OrderProfile) => void;
+  onTipAdjust: (order: OrderProfile) => void;
+  onViewNotes: (order: OrderProfile) => void;
+  onCloseCheck?: (order: OrderProfile) => void;
+  onReopenCheck?: (order: OrderProfile) => void;
+  onRefund?: (order: OrderProfile) => void;
+  onVoid?: (order: OrderProfile) => void;
+  onContinue?: (order: OrderProfile) => void;
+}
+
+// Status → color mapping with variety
+const statusColorMap: Record<string, { color: string; bgOpacity: string }> = {
+  Paid: { color: colors.teal, bgOpacity: "25" },
+  Partial: { color: colors.warning, bgOpacity: "25" },
+  Pending: { color: colors.warning, bgOpacity: "20" },
+  Unpaid: { color: colors.danger, bgOpacity: "20" },
+  "In Progress": { color: colors.teal, bgOpacity: "25" },
+  Refunded: { color: colors.danger, bgOpacity: "25" },
+  "Partially Refunded": { color: colors.warning, bgOpacity: "20" },
 };
 
-const columnWidths: { [key: string]: DimensionValue } = {
-  serial: "8%",
-  date: "12%",
-  orderId: "10%",
-  customer: "12%",
-  paymentStatus: "10%",
-  server: "10%",
-  items: "7%",
-  type: "10%",
-  total: "8%",
-  notes: "8%",
-  actions: "5%",
+// Order type → semantic color + icon mapping
+const orderTypeColorMap: Record<string, { color: string; icon: React.ElementType }> = {
+  "Dine In":  { color: colors.teal,    icon: Utensils },
+  dine_in:    { color: colors.teal,    icon: Utensils },
+  Takeaway:   { color: colors.teal,    icon: ShoppingBag },
+  takeout:    { color: colors.teal,    icon: ShoppingBag },
+  Delivery:   { color: colors.teal,    icon: Truck },
+  delivery:   { color: colors.teal,    icon: Truck },
 };
 
-const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
+const displayTypeLabels: Record<string, string> = {
+  dine_in: "Dine In",
+  takeout: "Takeaway",
+  delivery: "Delivery",
+};
+
+const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   order,
-  onViewNotes,
+  isExpanded,
+  onPress,
+  onDoublePress,
   onPrint,
-  onDelete,
+  onViewTimeline,
+  onTipAdjust,
+  onViewNotes,
+  onCloseCheck,
+  onReopenCheck,
+  onRefund,
+  onVoid,
+  onContinue,
 }) => {
-  const orderPath = `/previous-orders/${order.orderId}`;
+  const lastPressRef = useRef<number>(0);
+  const DOUBLE_PRESS_DELAY = 400;
+
+  const handlePress = () => {
+    const now = Date.now();
+    if (now - lastPressRef.current < DOUBLE_PRESS_DELAY && lastPressRef.current !== 0) {
+      onDoublePress(order);
+      lastPressRef.current = 0;
+    } else {
+      lastPressRef.current = now;
+      setTimeout(() => {
+        if (lastPressRef.current !== 0) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          onPress(order);
+        }
+      }, DOUBLE_PRESS_DELAY);
+    }
+  };
+
+  const orderTime = order.opened_at
+    ? new Date(order.opened_at).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "-";
+
+  const totalRefunded = useMemo(
+    () =>
+      (order.payments || []).reduce(
+        (sum, p) => sum + (p.refundedAmount ?? 0),
+        0,
+      ),
+    [order.payments],
+  );
+
+  const isFullyRefunded =
+    order.order_status === "refunded" ||
+    (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0));
+
+  const status = order.paid_status || "Unpaid";
+  const statusConfig = statusColorMap[status] ?? { color: colors.label, bgOpacity: "15" };
+
+  const orderType = order.order_type || "Dine In";
+  const typeConfig = orderTypeColorMap[orderType] ?? { color: colors.teal, icon: Utensils };
+  const TypeIcon = typeConfig.icon;
+  const displayType = displayTypeLabels[orderType] || orderType;
+
+  const needsAttention = order.paid_status === "Pending";
+
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<View>(null);
+
+  const openMenu = useCallback(() => {
+    triggerRef.current?.measureInWindow((x, y, width, height) => {
+      const menuWidth = 256;
+      setMenuPos({
+        top: y + height + 8,
+        left: Math.max(8, x + width - menuWidth),
+      });
+      setMenuVisible(true);
+    });
+  }, []);
+
+  const closeMenu = useCallback(() => setMenuVisible(false), []);
+
+  const refundBadge = useMemo(() => {
+    if (totalRefunded <= 0) return null;
+    if (isFullyRefunded) {
+      return { label: "Refunded", color: colors.teal };
+    }
+    return { label: "Partial Refund", color: colors.teal };
+  }, [totalRefunded, isFullyRefunded]);
+
+  const isSettled = useMemo(() => {
+    const cardPayments = (order.payments || []).filter(
+      (p) => p.method !== "Cash" && !p.isVoided,
+    );
+    return cardPayments.length > 0 && cardPayments.every((p) => p.is_settled);
+  }, [order.payments]);
+
+  const isVoided = order.order_status === "void";
 
   return (
-    <Link href={orderPath as Href} asChild>
+    <View
+      style={{ marginBottom: 8, marginHorizontal: 8, borderRadius: 12, overflow: "hidden" }}
+    >
+      {/* Collapsed row */}
       <TouchableOpacity
         activeOpacity={0.7}
-        className="flex-row items-center p-4 border-b border-gray-700"
+        onPress={handlePress}
+        style={{
+          backgroundColor: needsAttention ? colors.warning + "08" : colors.panel,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+        }}
       >
-        <Text
-          style={{ width: columnWidths.serial }}
-          className="text-base font-semibold text-gray-300 px-1.5"
-        >
-          {order.serialNo}
-        </Text>
-        <View style={{ width: columnWidths.date }} className="px-1.5">
-          <Text className="text-lg text-white font-semibold">
-            {order.orderDate}
-          </Text>
-          <Text className="text-base text-gray-400">{order.orderTime}</Text>
-        </View>
-        <Text
-          style={{ width: columnWidths.orderId }}
-          className="text-base font-semibold text-gray-300 px-1.5"
-        >
-          {order.orderId}
-        </Text>
-        <Text
-          style={{ width: columnWidths.customer }}
-          className="text-base font-semibold text-white px-1.5"
-        >
-          {order.customer}
-        </Text>
-        <View style={{ width: columnWidths.paymentStatus }} className="px-1.5">
-          <View
-            className={`px-3 py-1.5 rounded-md  self-start ${
-              statusClasses[order.paymentStatus]
-            }`}
-          >
-            <Text
-              className={`font-bold text-base ${
-                statusClasses[order.paymentStatus]
-              }`}
-            >
-              {order.paymentStatus}
+        {/* Left: order number + meta line */}
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+              {order.display_number || order.order_number || `#${order.id.slice(-4)}`}
             </Text>
+            <Text style={{ fontSize: 11, color: colors.muted }}>{orderTime}</Text>
+            <DeliveryPlatformBadge
+              deliveryPlatform={order.delivery_platform}
+              orderSource={order.order_source}
+              size="sm"
+            />
+            {needsAttention && (
+              <AlertTriangle size={12} color={colors.warning} />
+            )}
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
+            <TypeIcon color={typeConfig.color} size={11} />
+            <Text style={{ fontSize: 11, color: typeConfig.color, fontWeight: "600" }}>
+              {displayType}
+            </Text>
+            {order.server_name ? (
+              <>
+                <Text style={{ fontSize: 11, color: colors.muted }}>·</Text>
+                <Text style={{ fontSize: 11, color: colors.label }} numberOfLines={1}>
+                  {order.server_name}
+                </Text>
+              </>
+            ) : null}
           </View>
         </View>
-        <Text
-          style={{ width: columnWidths.server }}
-          className="text-base font-semibold text-gray-300 px-1.5"
-        >
-          {order.server}
-        </Text>
-        <Text
-          style={{ width: columnWidths.items }}
-          className="text-base font-semibold text-gray-300 text-center px-1.5"
-        >
-          {order.itemCount}
-        </Text>
-        <Text
-          style={{ width: columnWidths.type }}
-          className="text-base font-semibold text-gray-300 px-1.5"
-        >
-          {order.type}
-        </Text>
-        <View style={{ width: columnWidths.total }}>
-          <Text className="text-base font-bold text-white px-1.5">
-            ${order.total.toFixed(2)}
+
+        {/* Status badges */}
+        <View style={{ alignItems: "flex-end", gap: 4 }}>
+          <View style={{
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 20,
+            backgroundColor: statusConfig.color + statusConfig.bgOpacity,
+            borderWidth: 1,
+            borderColor: statusConfig.color + "40",
+          }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: statusConfig.color }}>
+              {status}
+            </Text>
+          </View>
+          {refundBadge && (
+            <View style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 20,
+              backgroundColor: refundBadge.color + "20",
+              borderWidth: 1,
+              borderColor: refundBadge.color + "50",
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: refundBadge.color }}>
+                {refundBadge.label}
+              </Text>
+            </View>
+          )}
+          {isVoided && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 3,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 20,
+              backgroundColor: colors.danger + "20",
+              borderWidth: 1,
+              borderColor: colors.danger + "40",
+            }}>
+              <XCircle size={9} color={colors.danger} />
+              <Text style={{ fontSize: 10, fontWeight: "600", color: colors.danger }}>
+                Voided
+              </Text>
+            </View>
+          )}
+          {isSettled && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 3,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 20,
+              backgroundColor: colors.muted + "20",
+              borderWidth: 1,
+              borderColor: colors.muted + "40",
+            }}>
+              <Lock size={9} color={colors.muted} />
+              <Text style={{ fontSize: 10, fontWeight: "600", color: colors.muted }}>
+                Settled
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Price */}
+        <View style={{ alignItems: "flex-end", minWidth: 70 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+            ${(order.total_amount ?? 0).toFixed(2)}
           </Text>
-          {order.refundedAmount != null && order.refundedAmount > 0 && (
-            <Text className="text-base text-red-400">
-              -${order.refundedAmount.toFixed(2)}
+          {totalRefunded > 0 && (
+            <Text style={{ fontSize: 11, color: colors.danger }}>
+              −${totalRefunded.toFixed(2)}
             </Text>
           )}
         </View>
+
+        {/* 3-dot menu */}
         <View
-          style={{ width: columnWidths.notes }}
+          ref={triggerRef}
           onTouchStart={(e) => e.stopPropagation()}
         >
           <TouchableOpacity
-            onPress={() => onViewNotes(order)}
-            className="flex-row items-center justify-center gap-1 bg-blue-900/30 border border-blue-500 py-2 px-2 rounded-lg self-start"
+            onPress={openMenu}
+            style={{
+              padding: 6,
+              borderRadius: 8,
+              backgroundColor: colors.card,
+            }}
           >
-            <Text className="font-bold text-base text-blue-400">Notes</Text>
-            <Pencil size={18} color="#60A5FA" />
+            <MoreHorizontal color={colors.label} size={16} />
           </TouchableOpacity>
         </View>
-        <View style={{ width: columnWidths.actions }} className="items-end">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <TouchableOpacity className="p-2">
-                <MoreHorizontal color="#9CA3AF" />
-              </TouchableOpacity>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 bg-[#303030] border-gray-600">
-              <DropdownMenuItem
-                onTouchStart={(e) => e.stopPropagation()}
-                onPress={() => onViewNotes(order)}
-              >
-                <Pencil className="mr-2 h-5 w-5" color="#9CA3AF" />
-                <Text className="text-xl text-white">View Modifiers</Text>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onTouchStart={(e) => e.stopPropagation()}
-                onPress={() => onPrint(order)}
-              >
-                <Printer className="mr-2 h-5 w-5" color="#9CA3AF" />
-                <Text className="text-xl text-white">Print Receipt</Text>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onTouchStart={(e) => e.stopPropagation()}
-                onPress={() => onDelete(order)}
-              >
-                <Trash2 className="mr-2 h-5 w-5" color="#F87171" />
-                <Text className="text-xl text-red-400">Delete</Text>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </View>
       </TouchableOpacity>
-    </Link>
+
+      {/* Expanded panel */}
+      {isExpanded && (
+        <ExpandedOrderPanel
+          order={order}
+          onPrint={onPrint}
+          onViewTimeline={onViewTimeline}
+          onTipAdjust={onTipAdjust}
+          onRefund={onRefund}
+          onContinue={onContinue}
+        />
+      )}
+
+      {/* Context menu popover */}
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMenu}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={closeMenu}
+          style={{ flex: 1 }}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{
+              position: "absolute",
+              top: menuPos.top,
+              left: menuPos.left,
+              width: 220,
+              backgroundColor: colors.panel,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingVertical: 4,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.35,
+              shadowRadius: 16,
+              elevation: 20,
+            }}
+          >
+            {order.paid_status === "Paid" &&
+              order.check_status !== "Closed" &&
+              onCloseCheck && (
+                <MenuRow
+                  icon={<CheckCircle color={colors.success} size={15} />}
+                  label="Close Check"
+                  iconBg={colors.success + "15"}
+                  onPress={() => { closeMenu(); onCloseCheck(order); }}
+                />
+              )}
+            {order.check_status === "Closed" && onReopenCheck && (
+              <MenuRow
+                icon={<RefreshCw color={colors.info} size={15} />}
+                label="Reopen Check"
+                iconBg={colors.info + "15"}
+                onPress={() => { closeMenu(); onReopenCheck(order); }}
+              />
+            )}
+            {onRefund && (
+              <MenuRow
+                icon={<RotateCcw color={colors.teal} size={15} />}
+                label="Process Refund"
+                iconBg={colors.teal + "15"}
+                onPress={() => { closeMenu(); onRefund(order); }}
+              />
+            )}
+            <MenuRow
+              icon={<FileText color={colors.info} size={15} />}
+              label="View Notes"
+              iconBg={colors.info + "15"}
+              onPress={() => { closeMenu(); onViewNotes(order); }}
+            />
+            <MenuRow
+              icon={<Printer color={colors.label} size={15} />}
+              label="Print Receipt"
+              iconBg={colors.card}
+              onPress={() => { closeMenu(); onPrint(order); }}
+            />
+            {onVoid && (
+              <>
+                <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4, marginHorizontal: 12 }} />
+                <MenuRow
+                  icon={<XCircle color={colors.danger} size={15} />}
+                  label="Void Order"
+                  iconBg={colors.danger + "15"}
+                  labelColor={colors.danger}
+                  onPress={() => { closeMenu(); onVoid(order); }}
+                />
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 };
 
+const MenuRow = ({
+  icon,
+  label,
+  iconBg,
+  labelColor,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  iconBg: string;
+  labelColor?: string;
+  onPress: () => void;
+}) => (
+  <TouchableOpacity
+    activeOpacity={0.6}
+    onPress={onPress}
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginHorizontal: 4,
+      borderRadius: 8,
+    }}
+  >
+    <View style={{
+      width: 28,
+      height: 28,
+      borderRadius: 7,
+      backgroundColor: iconBg,
+      alignItems: "center",
+      justifyContent: "center",
+    }}>
+      {icon}
+    </View>
+    <Text style={{ fontSize: 13, color: labelColor ?? colors.heading, fontWeight: "500" }}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
+const PreviousOrderRow = React.memo(
+  PreviousOrderRowContent,
+  (prev, next) => {
+    return (
+      prev.order.id === next.order.id &&
+      prev.order.paid_status === next.order.paid_status &&
+      prev.order.order_status === next.order.order_status &&
+      prev.order.order_type === next.order.order_type &&
+      prev.order.total_amount === next.order.total_amount &&
+      prev.order.total_discount === next.order.total_discount &&
+      prev.order.notes === next.order.notes &&
+      prev.order.check_status === next.order.check_status &&
+      prev.order.payments === next.order.payments &&
+      prev.isExpanded === next.isExpanded &&
+      prev.onContinue === next.onContinue
+    );
+  },
+);
 export default PreviousOrderRow;

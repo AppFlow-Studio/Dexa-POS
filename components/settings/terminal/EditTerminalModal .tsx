@@ -14,7 +14,14 @@ import {
 } from "@/components/ui/select";
 import { PaymentTerminal } from "@/lib/types";
 import React, { useEffect, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface EditTerminalModalProps {
@@ -61,81 +68,85 @@ const EditTerminalModal: React.FC<EditTerminalModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-3xl overflow-hidden bg-[#11111A] max-w-lg w-full">
-        {/* Dark Header */}
-        <View className="p-3 pb-0 rounded-t-3xl">
-          <DialogTitle className="text-[#F1F1F1] text-xl font-bold text-center">
-            Edit Terminal
-          </DialogTitle>
-        </View>
-
-        {/* White Content */}
-        <View className="p-4 rounded-3xl bg-background-100 space-y-3">
-          <View>
-            <Text className="font-bold mb-1.5 text-accent-500 text-sm">
-              Terminal Name
-            </Text>
-            <TextInput
-              value={terminalName}
-              onChangeText={setTerminalName}
-              className="p-2 bg-gray-100 rounded-lg text-sm text-accent-500 h-16"
-            />
+      <DialogContent className="p-0 rounded-3xl overflow-hidden bg-screen max-w-lg w-full">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          {/* Dark Header */}
+          <View className="p-3 pb-0 rounded-t-3xl">
+            <DialogTitle className="text-heading text-xl font-bold text-center">
+              Edit Terminal
+            </DialogTitle>
           </View>
 
-          <View>
-            <Text className="font-bold mb-1.5 text-accent-500 text-sm">
-              Terminal ID
-            </Text>
-            <TextInput
-              value={terminal.id}
-              className="p-2 bg-gray-100 rounded-lg text-sm text-accent-500 h-16"
-              editable={false}
-            />
-          </View>
-
-          {/* Configuration Type Select */}
-          <View>
-            <Text className="font-bold mb-1.5 text-accent-500 text-sm">
-              Configuration Type
-            </Text>
-            <Select
-              value={configType}
-              onValueChange={(option) => option && setConfigType(option)}
-            >
-              <SelectTrigger className="w-full p-2 bg-gray-100 rounded-lg flex-row justify-between items-center">
-                <SelectValue
-                  placeholder="Select type..."
-                  className="text-sm text-accent-500"
-                />
-              </SelectTrigger>
-              <SelectContent insets={contentInsets}>
-                <SelectGroup>
-                  {CONFIG_TYPES.map((opt) => (
-                    <SelectItem
-                      key={opt.value}
-                      label={opt.label}
-                      value={opt.value}
-                    >
-                      <Text className="text-sm">{opt.label}</Text>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </View>
-
-          {/* Footer with Button */}
-          <DialogFooter className="pt-4 border-t border-gray-200">
-            <TouchableOpacity
-              onPress={onSave}
-              className="w-full py-2 bg-primary-400 rounded-lg"
-            >
-              <Text className="font-bold text-white text-center text-base">
-                Done
+          {/* White Content */}
+          <View className="p-4 rounded-3xl bg-background-100 gap-y-3">
+            <View>
+              <Text className="font-bold mb-1.5 text-accent-500 text-sm">
+                Terminal Name
               </Text>
-            </TouchableOpacity>
-          </DialogFooter>
-        </View>
+              <TextInput
+                value={terminalName}
+                onChangeText={setTerminalName}
+                className="p-2 bg-gray-100 rounded-lg text-sm text-accent-500 h-16"
+              />
+            </View>
+
+            <View>
+              <Text className="font-bold mb-1.5 text-accent-500 text-sm">
+                Terminal ID
+              </Text>
+              <TextInput
+                value={terminal.id}
+                className="p-2 bg-gray-100 rounded-lg text-sm text-accent-500 h-16"
+                editable={false}
+              />
+            </View>
+
+            {/* Configuration Type Select */}
+            <View>
+              <Text className="font-bold mb-1.5 text-accent-500 text-sm">
+                Configuration Type
+              </Text>
+              <Select
+                value={configType}
+                onValueChange={(option) => option && setConfigType(option)}
+              >
+                <SelectTrigger className="w-full p-2 bg-gray-100 rounded-lg flex-row justify-between items-center">
+                  <SelectValue
+                    placeholder="Select type..."
+                    className="text-sm text-accent-500"
+                  />
+                </SelectTrigger>
+                <SelectContent insets={contentInsets}>
+                  <SelectGroup>
+                    {CONFIG_TYPES.map((opt) => (
+                      <SelectItem
+                        key={opt.value}
+                        label={opt.label}
+                        value={opt.value}
+                      >
+                        <Text className="text-sm">{opt.label}</Text>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </View>
+
+            {/* Footer with Button */}
+            <DialogFooter className="pt-4 border-t border-gray-200">
+              <TouchableOpacity
+                onPress={onSave}
+                className="w-full py-2 bg-primary-400 rounded-lg"
+              >
+                <Text className="font-bold text-white text-center text-base">
+                  Done
+                </Text>
+              </TouchableOpacity>
+            </DialogFooter>
+          </View>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

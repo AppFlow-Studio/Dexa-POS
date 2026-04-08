@@ -7,7 +7,7 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
   const itemsToShow = order.items.slice(0, 4); // Show a maximum of 4 items
 
   return (
-    <View className="w-96 p-6 bg-[#303030] border border-gray-200 rounded-2xl mr-4">
+    <View className="w-96 p-6 bg-panel border border-gray-200 rounded-2xl mr-4">
       {/* Header */}
       <View className="flex-row justify-between items-start">
         <View>
@@ -32,7 +32,7 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
       <View className="border-b border-dashed border-white my-4" />
 
       {/* Item List */}
-      <View className="space-y-2 flex-1">
+      <View className="gap-y-2 flex-1">
         {itemsToShow.map((item, index) => (
           <Text key={index} className="text-2xl text-white">
             {item.quantity}x {item.name}

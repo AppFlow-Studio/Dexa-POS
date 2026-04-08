@@ -1,445 +1,770 @@
-import { CartItem, PaymentType, PreviousOrder } from "@/lib/types";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { Check, X } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { useToast } from '@/contexts/ToastContext'
+import { orderHistoryKeys } from '@/hooks/orders/useOrderHistory'
+import { bottomSheetTheme, colors } from '@/lib/theme'
+import { CartItem, OrderProfile, PaymentType } from '@/lib/types'
+import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetFooter,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+  BottomSheetView
+} from '@gorhom/bottom-sheet'
+import { BottomSheetDefaultFooterProps } from '@gorhom/bottom-sheet/lib/typescript/components/bottomSheetFooter/types'
+import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { useQueryClient } from '@tanstack/react-query'
+import { Check, CreditCard, DollarSign, X } from 'lucide-react-native'
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
 
 interface AdvancedRefundModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  order: PreviousOrder | null;
+  onClose: () => void
+  order: OrderProfile | null
+}
+
+export interface AdvancedRefundModalRef {
+  open: () => void
+  close: () => void
 }
 
 interface RefundItem {
-  itemId: string;
-  quantity: number;
-  reason: string;
+  itemId: string
+  quantity: number
+  reason: string
 }
 
-const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
-  isOpen,
-  onClose,
-  order,
-}) => {
-  const [refundType, setRefundType] = useState<"full" | "partial">("full");
-  const [reason, setReason] = useState("");
-  const [selectedItems, setSelectedItems] = useState<RefundItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentType>("Card");
+const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
+  AdvancedRefundModalRef,
+  AdvancedRefundModalProps
+> = ({ onClose, order }, ref) => {
+  const bottomSheetRef = useRef<BottomSheetMethods>(null)
+  const snapPoints = useMemo(() => ['95%'], [])
 
-  const { refundFullOrder, refundItems } = usePreviousOrdersStore();
+  const [refundType, setRefundType] = useState<'full' | 'partial'>('full')
+  const [reason, setReason] = useState('')
+  const [selectedItems, setSelectedItems] = useState<RefundItem[]>([])
+  const [paymentMethod, setPaymentMethod] = useState<PaymentType>('Card')
+
+  const { show } = useToast()
+  const queryClient = useQueryClient()
+  const { refundFullOrder, refundItems } = usePreviousOrdersStore()
+
+  useImperativeHandle(ref, () => ({
+    open: () => {
+      // Ensure the previous orders store has data for the refund lookup
+      usePreviousOrdersStore.getState().refreshPreviousOrders({ force: true });
+      bottomSheetRef.current?.snapToIndex(0);
+    },
+    close: () => bottomSheetRef.current?.close()
+  }))
+
+  const orderId = order?.id ?? ''
+  const orderTotal = order?.total_amount ?? 0
+
+  const refundedAmount = useMemo(
+    () =>
+      (order?.payments || []).reduce((sum, payment) => {
+        return sum + (payment.refundedAmount ?? 0)
+      }, 0),
+    [order?.payments]
+  )
+
+  const canDoFullRefund = refundedAmount < 0.01
 
   useEffect(() => {
-    // When the modal opens or the order changes, reset the local state
-    if (isOpen && order) {
-      // Determine if a full refund is still possible
-      const canDoFull = (order.refundedAmount || 0) < 0.01;
-      setRefundType(canDoFull ? "full" : "partial");
-      setReason("");
-      setSelectedItems([]);
-      setPaymentMethod("Card");
-    }
-  }, [isOpen, order]);
+    if (!order) return
 
-  if (!order) return null;
+    setRefundType(canDoFullRefund ? 'full' : 'partial')
+    setReason('')
+    setSelectedItems([])
+    setPaymentMethod('Card')
+  }, [order, canDoFullRefund])
 
   const refundableItems = useMemo(() => {
+    if (!order) return []
     return order.items.filter(
-      (item) => (item.refundedQuantity || 0) < item.quantity
-    );
-  }, [order.items]);
+      item => (item.refundedQuantity || 0) < item.quantity
+    )
+  }, [order])
 
-  // 2. The Full Refund option should only be available if the order is not partially refunded.
-  const canDoFullRefund = (order.refundedAmount || 0) < 0.01;
-
-  // Reset refundType if full refund is not possible
-  useEffect(() => {
-    if (!canDoFullRefund && refundType === "full") {
-      setRefundType("partial");
-    }
-  }, [canDoFullRefund, refundType]);
-
-  const handleFullRefund = () => {
-    if (!reason.trim()) {
-      toast.error("Please provide a reason for the refund", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
-
-    refundFullOrder(order.orderId, reason, "Cashier", paymentMethod);
-    toast.success("Full refund processed successfully", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
-    });
-    onClose();
-  };
-
-  const handlePartialRefund = () => {
-    if (selectedItems.length === 0) {
-      toast.error("Please select items to refund", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
-
-    // Validate that all selected items have reasons
-    const itemsWithReasons = selectedItems.filter((item) => item.reason.trim());
-    if (itemsWithReasons.length !== selectedItems.length) {
-      toast.error("Please provide reasons for all selected items", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
-
-    refundItems(order.orderId, selectedItems, "Cashier", paymentMethod);
-    toast.success("Partial refund processed successfully", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
-    });
-    onClose();
-  };
-
-  const toggleItemSelection = (item: CartItem) => {
-    const existingIndex = selectedItems.findIndex(
-      (item) => item.itemId === item.itemId
-    );
-
-    if (existingIndex >= 0) {
-      // Remove item
-      setSelectedItems((prev) =>
-        prev.filter((item) => item.itemId !== item.itemId)
-      );
-    } else {
-      // If not selected, add it.
-      // The quantity should default to the REMAINING refundable quantity.
-      const maxRefundableQty = item.quantity - (item.refundedQuantity || 0);
-      setSelectedItems((prev) => [
-        ...prev,
-        { itemId: item.id, quantity: maxRefundableQty, reason: "" },
-      ]);
-    }
-  };
-
-  const updateItemQuantity = (itemId: string, quantity: number) => {
-    setSelectedItems((prev) =>
-      prev.map((item) =>
-        item.itemId === itemId ? { ...item, quantity } : item
-      )
-    );
-  };
-
-  const updateItemReason = (itemId: string, reason: string) => {
-    setSelectedItems((prev) =>
-      prev.map((item) => (item.itemId === itemId ? { ...item, reason } : item))
-    );
-  };
-
-  const getSelectedItemQuantity = (itemId: string) => {
-    const item = selectedItems.find((item) => item.itemId === itemId);
-    return item?.quantity || 0;
-  };
-
-  const getSelectedItemReason = (itemId: string) => {
-    const item = selectedItems.find((item) => item.itemId === itemId);
-    return item?.reason || "";
-  };
+  const selectedMap = useMemo(() => {
+    const map = new Map<string, RefundItem>()
+    selectedItems.forEach(item => map.set(item.itemId, item))
+    return map
+  }, [selectedItems])
 
   const calculateRefundAmount = () => {
-    if (refundType === "full") {
-      return order.total;
-    }
+    if (refundType === 'full') return orderTotal
+    if (!order) return 0
 
     return selectedItems.reduce((total, selectedItem) => {
-      const item = order.items.find((i) => i.id === selectedItem.itemId);
-      return total + (item ? item.price * selectedItem.quantity : 0);
-    }, 0);
-  };
+      const item = order.items.find(i => i.id === selectedItem.itemId)
+      return total + (item ? item.price * selectedItem.quantity : 0)
+    }, 0)
+  }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Paid":
-        return "bg-green-100 text-green-800";
-      case "In Progress":
-        return "bg-orange-100 text-orange-800";
-      case "Refunded":
-        return "bg-gray-200 text-gray-600";
-      case "Partially Refunded":
-        return "bg-yellow-100 text-yellow-800";
-      default:
-        return "bg-gray-100 text-gray-800";
+  const toggleItemSelection = (item: CartItem) => {
+    const exists = selectedItems.some(selected => selected.itemId === item.id)
+
+    if (exists) {
+      setSelectedItems(prev =>
+        prev.filter(selected => selected.itemId !== item.id)
+      )
+      return
     }
-  };
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[700px] max-h-[90vh] bg-[#313131] rounded-2xl border border-gray-700 p-0">
-        <DialogHeader className="p-6 border-b border-gray-700">
-          <DialogTitle className="text-2xl font-bold text-white">
-            Process Refund
-          </DialogTitle>
-          <View className="flex-row items-center justify-between mt-1">
-            <Text className="text-lg text-gray-400">
-              Order #{order.orderId} - ${order.total.toFixed(2)}
-            </Text>
-            <View
-              className={`px-2 py-1 rounded-full ${getStatusColor(
-                order.paymentStatus
-              )}`}
-            >
-              <Text
-                className={`font-semibold text-sm ${getStatusColor(
-                  order.paymentStatus
-                )}`}
-              >
-                {order.paymentStatus}
-              </Text>
-            </View>
-          </View>
-        </DialogHeader>
+    const maxRefundableQty = item.quantity - (item.refundedQuantity || 0)
+    setSelectedItems(prev => [
+      ...prev,
+      { itemId: item.id, quantity: maxRefundableQty, reason: '' }
+    ])
+  }
 
-        <ScrollView contentContainerStyle={{ padding: 24 }}>
-          <View className="gap-y-6">
-            {/* Refund Type Section */}
-            <View>
-              <Text className="text-lg font-semibold text-gray-300 mb-2">
-                Refund Type
-              </Text>
-              <View className="flex-row gap-4">
-                <TouchableOpacity
-                  onPress={() => setRefundType("full")}
-                  disabled={!canDoFullRefund}
-                  className={`flex-1 p-4 rounded-lg border-2 ${
-                    refundType === "full"
-                      ? "border-blue-500 bg-blue-900/30"
-                      : "border-gray-600"
-                  } ${!canDoFullRefund && "opacity-50"}`}
-                >
-                  <Text
-                    className={`font-semibold text-center text-xl ${
-                      refundType === "full" ? "text-blue-400" : "text-gray-300"
-                    }`}
-                  >
-                    Full Refund
-                  </Text>
-                  <Text className="text-base text-center text-gray-400 mt-1">
-                    ${order.total.toFixed(2)}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setRefundType("partial")}
-                  className={`flex-1 p-4 rounded-lg border-2 ${
-                    refundType === "partial"
-                      ? "border-blue-500 bg-blue-900/30"
-                      : "border-gray-600"
-                  }`}
-                >
-                  <Text
-                    className={`font-semibold text-center text-xl ${
-                      refundType === "partial"
-                        ? "text-blue-400"
-                        : "text-gray-300"
-                    }`}
-                  >
-                    Partial Refund
-                  </Text>
-                  <Text className="text-base text-center text-gray-400 mt-1">
-                    Select Items
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+  const updateItemQuantity = (itemId: string, quantity: number) => {
+    setSelectedItems(prev =>
+      prev.map(item => {
+        if (item.itemId !== itemId) return item
+        return { ...item, quantity }
+      })
+    )
+  }
 
-            {/* Refund Method Section */}
-            <View>
-              <Text className="text-lg font-semibold text-gray-300 mb-2">
-                Refund Method
-              </Text>
-              <View className="flex-row gap-4">
-                {(["Card", "Cash"] as PaymentType[]).map((method) => (
-                  <TouchableOpacity
-                    key={method}
-                    onPress={() => setPaymentMethod(method)}
-                    className={`flex-1 py-4 rounded-lg border-2 ${
-                      paymentMethod === method
-                        ? "border-blue-500 bg-blue-900/30"
-                        : "border-gray-600"
-                    }`}
-                  >
-                    <Text
-                      className={`font-semibold text-center text-xl ${
-                        paymentMethod === method
-                          ? "text-blue-400"
-                          : "text-gray-300"
-                      }`}
-                    >
-                      {method}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+  const updateItemReason = (itemId: string, itemReason: string) => {
+    setSelectedItems(prev =>
+      prev.map(item => {
+        if (item.itemId !== itemId) return item
+        return { ...item, reason: itemReason }
+      })
+    )
+  }
 
-            {/* Reason for Full Refund */}
-            {refundType === "full" && (
-              <View>
-                <Text className="text-lg font-semibold text-gray-300 mb-2">
-                  Reason
-                </Text>
-                <TextInput
-                  value={reason}
-                  onChangeText={setReason}
-                  placeholder="Enter reason for the full refund..."
-                  placeholderTextColor="#6B7280"
-                  multiline
-                  className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-24"
-                />
-              </View>
-            )}
+  const handleFullRefund = async () => {
+    if (!reason.trim()) {
+      show({
+        title: 'Reason Required',
+        message: 'Please provide a reason for the full refund.',
+        type: 'error'
+      })
+      return
+    }
 
-            {/* Partial Refund Item Selection */}
-            {refundType === "partial" && (
-              <View>
-                <Text className="text-lg font-semibold text-gray-300 mb-2">
-                  Select Items to Refund
-                </Text>
-                <View className="gap-y-3">
-                  {refundableItems.map((item) => {
-                    const isSelected = selectedItems.some(
-                      (si) => si.itemId === item.id
-                    );
-                    const selectedItem = selectedItems.find(
-                      (si) => si.itemId === item.id
-                    );
-                    const maxRefundable =
-                      item.quantity - (item.refundedQuantity || 0);
+    await refundFullOrder(orderId, reason, 'Cashier', paymentMethod)
+    show({
+      title: 'Refund Successful',
+      message: 'The full refund has been processed successfully.',
+      type: 'success'
+    })
+    queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all })
+    bottomSheetRef.current?.close()
+  }
 
-                    return (
-                      <View
-                        key={item.id}
-                        className="p-4 bg-[#212121] border border-gray-600 rounded-lg gap-y-3"
-                      >
-                        <View className="flex-row items-center justify-between">
-                          <View>
-                            <Text className="font-semibold text-white text-lg">
-                              {item.name}
-                            </Text>
-                            <Text className="text-gray-400 text-base mt-1">
-                              Refundable: {maxRefundable}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => toggleItemSelection(item)}
-                            className={`w-8 h-8 rounded-md items-center justify-center border ${
-                              isSelected
-                                ? "border-red-500 bg-red-500/20"
-                                : "border-green-500 bg-green-500/20"
-                            }`}
-                          >
-                            {isSelected ? (
-                              <X color="#f87171" size={18} />
-                            ) : (
-                              <Check color="#4ade80" size={18} />
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                        {isSelected && (
-                          <View className="space-y-1.5">
-                            <View className="flex-row items-center gap-1.5">
-                              <Text className="text-lg text-gray-600">
-                                Qty:
-                              </Text>
-                              <TextInput
-                                value={getSelectedItemQuantity(
-                                  item.id
-                                ).toString()}
-                                onChangeText={(t) =>
-                                  updateItemQuantity(item.id, parseInt(t) || 0)
-                                }
-                                keyboardType="numeric"
-                                className="flex-1 p-2 border border-gray-300 rounded text-center text-lg h-16"
-                              />
-                              <Text className="text-lg text-gray-600">
-                                / {item.quantity}
-                              </Text>
-                            </View>
-                            <TextInput
-                              value={getSelectedItemReason(item.id)}
-                              onChangeText={(t) => updateItemReason(item.id, t)}
-                              placeholder="Reason..."
-                              className="w-full p-2 border border-gray-300 rounded text-base h-16"
-                            />
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
+  const handlePartialRefund = async () => {
+    if (selectedItems.length === 0) {
+      show({
+        title: 'No Items Selected',
+        message: 'Please select one or more items to process a partial refund.',
+        type: 'error'
+      })
+      return
+    }
 
-            {/* Summary Section */}
-            <View className="p-4 bg-[#212121] rounded-lg border border-gray-600">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Summary
-              </Text>
-              <View className="gap-y-1">
-                <View className="flex-row justify-between">
-                  <Text className="text-lg text-gray-400">Original Total:</Text>
-                  <Text className="text-lg font-semibold text-gray-300">
-                    ${order.total.toFixed(2)}
-                  </Text>
-                </View>
-                <View className="flex-row justify-between">
-                  <Text className="text-lg text-red-400">Refund Amount:</Text>
-                  <Text className="font-semibold text-red-400 text-xl">
-                    -${calculateRefundAmount().toFixed(2)}
-                  </Text>
-                </View>
-                <View className="flex-row justify-between border-t border-gray-600 pt-2 mt-2">
-                  <Text className="text-lg text-white">New Total:</Text>
-                  <Text className="font-semibold text-white text-xl">
-                    ${(order.total - calculateRefundAmount()).toFixed(2)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </ScrollView>
+    const itemsWithReasons = selectedItems.filter(item => item.reason.trim())
+    if (itemsWithReasons.length !== selectedItems.length) {
+      show({
+        title: 'Reason Required',
+        message: 'Please provide a reason for each item selected for refund.',
+        type: 'error'
+      })
+      return
+    }
 
-        <View className="flex-row gap-4 p-6 border-t border-gray-700">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 border border-gray-600 rounded-lg items-center"
-          >
-            <Text className="font-bold text-lg text-gray-300 text-center">
-              Cancel
-            </Text>
-          </TouchableOpacity>
+    await refundItems(orderId, selectedItems, 'Cashier', paymentMethod)
+    show({
+      title: 'Refund Successful',
+      message: 'The partial refund has been processed successfully.',
+      type: 'success'
+    })
+    queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all })
+    bottomSheetRef.current?.close()
+  }
+
+  const renderBackdrop = useMemo(
+    () => (props: any) =>
+      (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
+    []
+  )
+
+  const renderFooter = useCallback(
+    (props: BottomSheetDefaultFooterProps) => (
+      <BottomSheetFooter {...props} bottomInset={0}>
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            backgroundColor: colors.panel,
+            borderTopWidth: 1,
+            borderTopColor: colors.border
+          }}
+        >
           <TouchableOpacity
             onPress={
-              refundType === "full" ? handleFullRefund : handlePartialRefund
+              refundType === 'full' ? handleFullRefund : handlePartialRefund
             }
-            className="flex-1 py-3 bg-red-600 rounded-lg items-center"
+            style={{
+              width: '100%',
+              paddingVertical: 8,
+              backgroundColor: colors.teal,
+              borderRadius: 8,
+              alignItems: 'center'
+            }}
           >
-            <Text className="font-bold text-white text-lg text-center">
-              Process Refund
+            <Text
+              style={{ fontSize: 12, fontWeight: '700', color: colors.onSolid }}
+            >
+              PROCESS REFUND
             </Text>
           </TouchableOpacity>
         </View>
-      </DialogContent>
-    </Dialog>
-  );
-};
+      </BottomSheetFooter>
+    ),
+    [refundType]
+  )
 
-export default AdvancedRefundModal;
+  if (!order) return null
+
+  const refundAmount = calculateRefundAmount()
+
+  return (
+    <BottomSheet
+      ref={bottomSheetRef}
+      index={-1}
+      snapPoints={snapPoints}
+      enablePanDownToClose
+      backdropComponent={renderBackdrop}
+      footerComponent={renderFooter}
+      keyboardBehavior='interactive'
+      keyboardBlurBehavior='restore'
+      android_keyboardInputMode='adjustResize'
+      onClose={onClose}
+      {...bottomSheetTheme}
+    >
+      <BottomSheetView style={{ flex: 1, backgroundColor: colors.panel }}>
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingBottom: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <View>
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: '700',
+                  color: colors.heading
+                }}
+              >
+                Process Refund
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.label }}>
+                Order #{order.display_number || order.order_number || orderId} |
+                ${orderTotal.toFixed(2)}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => bottomSheetRef.current?.close()}
+              style={{
+                padding: 6,
+                backgroundColor: colors.teal + '10',
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.teal + '30'
+              }}
+            >
+              <X color={colors.teal} size={16} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <BottomSheetScrollView
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 80
+          }}
+          showsVerticalScrollIndicator
+        >
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '600',
+              color: colors.muted,
+              textTransform: 'uppercase',
+              letterSpacing: 0.6,
+              marginBottom: 6
+            }}
+          >
+            Refund Type
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+            <ChoiceButton
+              title='Full Refund'
+              subtitle={`$${orderTotal.toFixed(2)}`}
+              active={refundType === 'full'}
+              disabled={!canDoFullRefund}
+              onPress={() => setRefundType('full')}
+            />
+            <ChoiceButton
+              title='Partial'
+              subtitle='Select items'
+              active={refundType === 'partial'}
+              onPress={() => setRefundType('partial')}
+            />
+          </View>
+
+          <SectionDivider />
+
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '600',
+              color: colors.muted,
+              textTransform: 'uppercase',
+              letterSpacing: 0.6,
+              marginBottom: 6
+            }}
+          >
+            Refund Method
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+            <MethodButton
+              label='Card'
+              active={paymentMethod === 'Card'}
+              icon={
+                <CreditCard
+                  color={paymentMethod === 'Card' ? colors.teal : colors.label}
+                  size={14}
+                />
+              }
+              onPress={() => setPaymentMethod('Card')}
+            />
+            <MethodButton
+              label='Cash'
+              active={paymentMethod === 'Cash'}
+              icon={
+                <DollarSign
+                  color={paymentMethod === 'Cash' ? colors.teal : colors.label}
+                  size={14}
+                />
+              }
+              onPress={() => setPaymentMethod('Cash')}
+            />
+          </View>
+
+          <SectionDivider />
+
+          {refundType === 'full' && (
+            <>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: colors.muted,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                  marginBottom: 6
+                }}
+              >
+                Reason
+              </Text>
+              <BottomSheetTextInput
+                value={reason}
+                onChangeText={setReason}
+                placeholder='Enter reason for the refund...'
+                placeholderTextColor={colors.muted}
+                multiline
+                style={{
+                  backgroundColor: colors.screen,
+                  color: colors.heading,
+                  padding: 10,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  fontSize: 13,
+                  minHeight: 68,
+                  textAlignVertical: 'top'
+                }}
+              />
+              <SectionDivider />
+            </>
+          )}
+
+          {refundType === 'partial' && (
+            <>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: colors.muted,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                  marginBottom: 6
+                }}
+              >
+                Select Items
+              </Text>
+              <View style={{ gap: 8 }}>
+                {refundableItems.map(item => {
+                  const isSelected = selectedMap.has(item.id)
+                  const maxRefundable =
+                    item.quantity - (item.refundedQuantity || 0)
+                  const currentQty =
+                    selectedMap.get(item.id)?.quantity || maxRefundable
+                  const currentReason = selectedMap.get(item.id)?.reason || ''
+
+                  return (
+                    <View
+                      key={item.id}
+                      style={{
+                        padding: 10,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: isSelected
+                          ? colors.teal + '50'
+                          : colors.border,
+                        backgroundColor: isSelected
+                          ? colors.teal + '10'
+                          : colors.screen
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: '600',
+                              color: colors.heading
+                            }}
+                          >
+                            {item.name}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.label }}>
+                            {maxRefundable} x ${item.price?.toFixed(2)}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => toggleItemSelection(item)}
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 8,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: isSelected
+                              ? colors.danger + '15'
+                              : colors.success + '15',
+                            borderWidth: 1,
+                            borderColor: isSelected
+                              ? colors.danger + '40'
+                              : colors.success + '40'
+                          }}
+                        >
+                          {isSelected ? (
+                            <X color={colors.danger} size={14} />
+                          ) : (
+                            <Check color={colors.success} size={14} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+
+                      {isSelected && (
+                        <View style={{ marginTop: 8, gap: 6 }}>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8
+                            }}
+                          >
+                            <Text style={{ fontSize: 12, color: colors.label }}>
+                              Qty:
+                            </Text>
+                            <BottomSheetTextInput
+                              value={String(currentQty)}
+                              onChangeText={value =>
+                                updateItemQuantity(
+                                  item.id,
+                                  parseInt(value, 10) || 0
+                                )
+                              }
+                              keyboardType='numeric'
+                              style={{
+                                flex: 1,
+                                backgroundColor: colors.screen,
+                                color: colors.heading,
+                                padding: 7,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                fontSize: 12,
+                                textAlign: 'center'
+                              }}
+                            />
+                            <Text style={{ fontSize: 12, color: colors.label }}>
+                              / {maxRefundable}
+                            </Text>
+                          </View>
+
+                          <BottomSheetTextInput
+                            value={currentReason}
+                            onChangeText={value =>
+                              updateItemReason(item.id, value)
+                            }
+                            placeholder='Reason...'
+                            placeholderTextColor={colors.muted}
+                            style={{
+                              backgroundColor: colors.screen,
+                              color: colors.heading,
+                              padding: 8,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              fontSize: 12
+                            }}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  )
+                })}
+              </View>
+              <SectionDivider />
+            </>
+          )}
+
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '600',
+              color: colors.muted,
+              textTransform: 'uppercase',
+              letterSpacing: 0.6,
+              marginBottom: 6
+            }}
+          >
+            Summary
+          </Text>
+          <View
+            style={{
+              padding: 10,
+              backgroundColor: colors.screen,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                marginBottom: 4
+              }}
+            >
+              <Text style={{ fontSize: 12, color: colors.label }}>
+                Original Total
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.heading
+                }}
+              >
+                ${orderTotal.toFixed(2)}
+              </Text>
+            </View>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                marginBottom: 8
+              }}
+            >
+              <Text style={{ fontSize: 12, color: colors.danger }}>
+                Refund Amount
+              </Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: colors.danger
+                }}
+              >
+                -${refundAmount.toFixed(2)}
+              </Text>
+            </View>
+            <View
+              style={{
+                height: 1,
+                backgroundColor: colors.border,
+                marginBottom: 8
+              }}
+            />
+            <View
+              style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: colors.heading,
+                  fontWeight: '700'
+                }}
+              >
+                New Total
+              </Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: colors.heading,
+                  fontWeight: '700'
+                }}
+              >
+                ${(orderTotal - refundAmount).toFixed(2)}
+              </Text>
+            </View>
+          </View>
+        </BottomSheetScrollView>
+      </BottomSheetView>
+    </BottomSheet>
+  )
+}
+
+const ChoiceButton = ({
+  title,
+  subtitle,
+  active,
+  onPress,
+  disabled = false
+}: {
+  title: string
+  subtitle: string
+  active: boolean
+  onPress: () => void
+  disabled?: boolean
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    disabled={disabled}
+    style={{
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: active ? colors.teal + '50' : colors.border,
+      backgroundColor: active ? colors.teal + '10' : colors.screen,
+      opacity: disabled ? 0.5 : 1
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 12,
+        fontWeight: '700',
+        textAlign: 'center',
+        color: active ? colors.teal : colors.heading
+      }}
+    >
+      {title}
+    </Text>
+    <Text
+      style={{
+        fontSize: 11,
+        textAlign: 'center',
+        marginTop: 2,
+        color: active ? colors.teal : colors.label
+      }}
+    >
+      {subtitle}
+    </Text>
+  </TouchableOpacity>
+)
+
+const MethodButton = ({
+  label,
+  icon,
+  active,
+  onPress
+}: {
+  label: string
+  icon: React.ReactNode
+  active: boolean
+  onPress: () => void
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    style={{
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: active ? colors.teal + '50' : colors.border,
+      backgroundColor: active ? colors.teal + '10' : colors.screen,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6
+    }}
+  >
+    {icon}
+    <Text
+      style={{
+        fontSize: 12,
+        fontWeight: '600',
+        color: active ? colors.teal : colors.heading
+      }}
+    >
+      {label}
+    </Text>
+  </TouchableOpacity>
+)
+
+const SectionDivider = () => (
+  <View
+    style={{ height: 1, backgroundColor: colors.border, marginBottom: 12 }}
+  />
+)
+
+const AdvancedRefundModal = forwardRef(AdvancedRefundModalComponent)
+AdvancedRefundModal.displayName = 'AdvancedRefundModal'
+
+export default AdvancedRefundModal

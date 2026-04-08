@@ -1,47 +1,82 @@
 import BillSection from "@/components/bill/BillSection";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
+import CashDrawerSheet from "@/components/cash-drawer/CashDrawerSheet";
+import CashDrawerStatusBar from "@/components/cash-drawer/CashDrawerStatusBar";
+import NoSaleModal from "@/components/cash-drawer/NoSaleModal";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
-import OrderLineSection from "@/components/order/OrderLineSection";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import { Badge } from "@/components/ui/badge";
+import { useLoading } from "@/contexts/LoadingContext";
+import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { OrderService } from "@/services/orderService";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Text, View } from "react-native";
+import Animated, { SlideInLeft, SlideOutUp, LinearTransition } from "react-native-reanimated";
+
+const EMPTY_ORDERS: OrderProfile[] = [];
+const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const;
 
 const OrderProcessing = () => {
-  const {
-    activeOrderId,
-    orders,
-    setActiveOrder,
-    startNewOrder,
-    updateOrderStatus,
-    markAllItemsAsReady,
-    archiveOrder,
-  } = useOrderStore();
+  // FIXED: Use individual selectors to prevent subscribing to entire ordersById
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
+  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
+  const archiveOrder = useOrderStore((s) => s.archiveOrder);
+  const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+
+  // OPTIMIZED: Dedicated selector with useStableOrderList for referential stability
+  const reversedFilteredOrders = useOrderLineFilteredOrders(daysToShow);
 
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [isCashDrawerSheetOpen, setCashDrawerSheetOpen] = useState(false);
+  const [isNoSaleModalOpen, setNoSaleModalOpen] = useState(false);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
+  const discountSheetRef = useRef<BottomSheetMethods>(null);
 
+  // OPTIMIZED: Effect now uses getState() to avoid subscribing to all orders
   useEffect(() => {
-    // Ensure there is at least one active order. If none, create/select a global Building order.
-    const globalBuilding = orders.find(
-      (o) => o.service_location_id === null && o.order_status === "Building"
+    // Only run if activeOrderId is missing, or we need to validate it
+    // access state directly without subscription
+    const state = useOrderStore.getState();
+    const ordersById = state.ordersById;
+    const orderIds = state.orderIds;
+    const allOrders = orderIds.map((id) => ordersById[id]).filter(Boolean);
+
+    // Find drafts (O(N) search but only runs on mount/reset)
+    const emptyDraft = allOrders.find(
+      (o) =>
+        o.service_location_id === null &&
+        o.order_status === "draft" &&
+        o.items.length === 0 &&
+        o.paid_status !== "Paid",
+    );
+
+    const globalDraft = allOrders.find(
+      (o) =>
+        o.service_location_id === null &&
+        o.order_status === "draft" &&
+        o.paid_status !== "Paid",
     );
 
     if (!activeOrderId) {
-      if (globalBuilding) {
-        setActiveOrder(globalBuilding.id);
+      if (emptyDraft) {
+        setActiveOrder(emptyDraft.id);
+      } else if (globalDraft) {
+        setActiveOrder(globalDraft.id);
       } else {
         const newOrder = startNewOrder();
         setActiveOrder(newOrder.id);
@@ -49,139 +84,281 @@ const OrderProcessing = () => {
       return;
     }
 
-    // If activeOrderId exists, do not override it here. This allows "Retrieve to Pay"
-    // to set a non-global order as active without being reset by this effect.
-    const currentActive = orders.find((o) => o.id === activeOrderId);
+    // Verify current active order exists
+    const currentActive = ordersById[activeOrderId];
     if (!currentActive) {
-      if (globalBuilding) {
-        setActiveOrder(globalBuilding.id);
+      if (emptyDraft) {
+        setActiveOrder(emptyDraft.id);
+      } else if (globalDraft) {
+        setActiveOrder(globalDraft.id);
       } else {
         const newOrder = startNewOrder();
         setActiveOrder(newOrder.id);
       }
     }
-  }, [orders, activeOrderId, setActiveOrder, startNewOrder]);
+  }, [activeOrderId, setActiveOrder, startNewOrder]);
 
-  // State to hold the orders that are actually displayed
-  const filteredOrders = useMemo(() => {
-    // Show only orders that are in a "kitchen" state
-    const kitchenOrders = orders.filter(
-      (o) =>
-        (o.order_type !== "Dine In" &&
-          // Condition 1: Must be in Preparing state
-          o.order_status === "Preparing" &&
-          // Condition 2: Must have one or more items
-          o.items.length > 0) ||
-        (o.paid_status === "Unpaid" &&
-          o.order_status !== "Closed" &&
-          o.order_status !== "Building" &&
-          o.order_status !== "Voided")
-    );
-
-    return kitchenOrders;
-  }, [orders]);
-
-  const reversedFilteredOrders = useMemo(() => {
-    return filteredOrders.slice().reverse();
-  }, [filteredOrders]);
-
-  const handleViewItems = (orderId: string) => {
+  const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
     setItemsModalOpen(true);
-  };
+  }, []);
 
-  const handleMarkReady = (order: OrderProfile) => {
-    // First, mark the order as ready
-    markAllItemsAsReady(order.id);
+  const handleMarkDone = useCallback((orderId: string) => {
+    const order = useOrderStore.getState().ordersById[orderId];
+    if (!order) return;
 
-    // Then, check if it's a Takeaway order and archive it
-    if (order.order_type === "Takeaway" && order.paid_status === "Paid") {
-      // A small delay can improve UX, ensuring the user sees the status change before it disappears.
-      setTimeout(() => {
-        archiveOrder(order.id);
-      }, 500); // 0.5 second delay
+    markAllItemsAsReady(orderId);
+
+    if (order.paid_status === "Paid") {
+      archiveOrder(orderId);
+      // Toast fires from inside archiveOrder
     }
-  };
+    // If not paid: items are now "ready", awaiting payment
+  }, [markAllItemsAsReady, archiveOrder]);
 
-  const handleRetrieve = (orderId: string) => {
+  const handleRetrieve = useCallback((orderId: string) => {
     setActiveOrder(orderId);
-  };
+  }, [setActiveOrder]);
+
+  const handleReopenCheck = useCallback((orderId: string) => {
+    updateOrderCheckStatus(orderId, "Opened");
+    setActiveOrder(orderId);
+  }, [updateOrderCheckStatus, setActiveOrder]);
+
+  const { show } = useToast();
+  const { showLoading, hideLoading } = useLoading();
+
+  const handlePrintReceipt = useCallback(
+    async (order: OrderProfile) => {
+      if (!selectedStore) {
+        show({ title: "Print Error", message: "No store location selected.", type: "error" });
+        return;
+      }
+      await PrinterService.printReceipt(order, selectedStore);
+    },
+    [selectedStore, show],
+  );
+
+  const handleCloseCheck = useCallback(async () => {
+    const state = useOrderStore.getState();
+    const currentActiveOrderId = state.activeOrderId;
+    const currentActiveOrder = currentActiveOrderId ? state.ordersById[currentActiveOrderId] : null;
+
+    if (!currentActiveOrderId || !currentActiveOrder) return;
+
+    // Validate order has backend ID
+    if (!currentActiveOrder.db_order_id) {
+      show({
+        title: "Cannot Close Check",
+        message: "Order must be synced to close check",
+        type: "error",
+      });
+      return;
+    }
+
+    // Optimistic update — instant UI feedback
+    updateActiveOrderDetails({ check_status: "Closed" });
+    showLoading("Closing check...");
+
+    try {
+      const supabase = getOrderStoreSupabaseClient();
+      const { loggedInEmployee } = useEmployeeStore.getState();
+
+      if (!supabase) {
+        throw new Error("Database connection unavailable");
+      }
+
+      const result = await OrderService.closeCheck(
+        supabase,
+        currentActiveOrder.db_order_id,
+        loggedInEmployee?.profileId || null,
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to close check");
+      }
+
+      hideLoading();
+      show({
+        title: "Check Closed",
+        message: "The check has been finalized. You can now clear the table.",
+        type: "success",
+      });
+    } catch (error: any) {
+      console.error("Failed to close check:", error);
+      // Rollback optimistic update
+      updateActiveOrderDetails({ check_status: "Opened" });
+      hideLoading();
+      show({
+        title: "Failed to Close Check",
+        message: error.message || "An error occurred",
+        type: "error",
+      });
+    }
+  }, [show, showLoading, hideLoading, updateActiveOrderDetails]);
+  
+  // DEFERRED RENDERING: Progressive staged rendering via double-rAF
+  // Stage 0: Skeleton placeholders (instant first paint)
+  // Stage 1: BillSection (lighter — user sees their order first)
+  // Stage 2: MenuSection + MoreOptionsBottomSheet + FlatList data (heavier)
+  const [renderStage, setRenderStage] = useState(0);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setRenderStage(1);
+        requestAnimationFrame(() => {
+          setRenderStage(2);
+        });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const displayOrders = renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS;
+
+  const renderOrderBadge = useCallback(
+    ({ item }: { item: OrderProfile }) => (
+      <Animated.View
+        entering={SlideInLeft.duration(300).springify().damping(16)}
+        exiting={SlideOutUp.duration(200)}
+      >
+        <OrderBadge
+          order={item}
+          onMarkDone={() => handleMarkDone(item.id)}
+          onViewItems={() => handleViewItems(item.id)}
+          onRetrieve={() => handleRetrieve(item.id)}
+          onReopenCheck={() => handleReopenCheck(item.id)}
+          onPrintReceipt={() => handlePrintReceipt(item)}
+        />
+      </Animated.View>
+    ),
+    [handleMarkDone, handleViewItems, handleRetrieve, handleReopenCheck, handlePrintReceipt],
+  );
+
+  const badgeKeyExtractor = useCallback((item: OrderProfile) => item.id, []);
+
+  const handleAccordionChange = useCallback(
+    (value: string | undefined) => setIsAccordionOpen(!!value),
+    [],
+  );
+
+  const handleCloseItemsModal = useCallback(() => setItemsModalOpen(false), []);
+
+  const handleManageDrawer = useCallback(() => setCashDrawerSheetOpen(true), []);
+  const handleNoSale = useCallback(() => setNoSaleModalOpen(true), []);
 
   return (
-    <View className="flex-1 flex-col bg-[#212121]">
-      <View className="flex-1 flex-row">
-        <BillSection moreOptionsSheetRef={moreOptionsSheetRef} />
-
-        <View className="flex-1 py-4 px-2 pt-0 bg-[#212121]">
-          <Accordion
-            type="single"
-            collapsible
-            onValueChange={(value: string | undefined) =>
-              setIsAccordionOpen(!!value)
+    <View className="flex-1 flex-col bg-screen px-2 py-1">
+      {/* <CashDrawerStatusBar
+        onManagePress={handleManageDrawer}
+        onNoSalePress={handleNoSale}
+      /> */}
+      <View className="flex-1 flex-row bg-screen rounded-lg ">
+        {/* Stage 1: BillSection (lighter — user sees their order first) */}
+        {renderStage >= 1 ? (
+          <BillSection
+            moreOptionsSheetRef={
+              moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
             }
-          >
-            <AccordionItem value="orders">
-              <AccordionTrigger className="py-3">
+            discountSheetRef={
+              discountSheetRef as React.RefObject<BottomSheetMethods>
+            }
+          />
+        ) : (
+          // BillSection skeleton: matches the 380px sidebar layout
+          <View className="w-[300px] bg-screen p-4">
+            <View className="h-10 w-48 bg-panel rounded-lg mb-4" />
+            <View className="h-6 w-32 bg-panel rounded-md mb-3" />
+            <View className="h-6 w-64 bg-panel rounded-md mb-3" />
+            <View className="h-6 w-52 bg-panel rounded-md mb-3" />
+            <View className="flex-1" />
+            <View className="h-14 bg-panel rounded-xl" />
+          </View>
+        )}
+
+        <View className="flex-1 bg-screen ml-4">
+          {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
+          {renderStage >= 2 ? (
+            <MenuSection
+              headerLeft={
                 <View className="flex-row items-center gap-x-2">
-                  <Text className="text-2xl font-bold text-white">
+                  <Text className="text-lg font-semibold text-white">
                     Order Line
                   </Text>
-                  {filteredOrders?.length > 0 && (
-                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-1 h-8 w-8">
-                      <Text className="text-base font-bold text-white">
-                        {filteredOrders.length}
+                  {displayOrders?.length > 0 && (
+                    <View className="ml-1 bg-panel border border-border rounded-full px-2.5 py-0.5 items-center justify-center">
+                      <Text className="text-xs font-bold text-label">
+                        {displayOrders.length}
                       </Text>
-                    </Badge>
+                    </View>
                   )}
                 </View>
-              </AccordionTrigger>
-              <AccordionContent>
-                <OrderLineSection />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-
-          {/* Always render the OrderBadge container but control visibility */}
-          <View
-            className={
-              !isAccordionOpen && filteredOrders.length > 0
-                ? "opacity-100"
-                : "opacity-0"
-            }
-            style={
-              !isAccordionOpen && filteredOrders.length > 0
-                ? { height: "auto" }
-                : { height: 0 }
-            }
-          >
-            <FlatList
-              horizontal
-              data={reversedFilteredOrders}
-              keyExtractor={(item) => item.id}
-              className="mt-2 max-h-16" // Adjusted height
-              contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
-              showsHorizontalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <OrderBadge
-                  order={item}
-                  onMarkReady={() => handleMarkReady(item)}
-                  onViewItems={() => handleViewItems(item.id)}
-                  onRetrieve={() => handleRetrieve(item.id)}
-                />
-              )}
+              }
+              headerBelow={
+                !isAccordionOpen && displayOrders.length > 0 ? (
+                  <View className="px-3 py-1.5">
+                    <Animated.FlatList
+                      horizontal
+                      data={displayOrders}
+                      keyExtractor={badgeKeyExtractor}
+                      className="mt-1 max-h-12"
+                      contentContainerStyle={badgeContentStyle}
+                      showsHorizontalScrollIndicator={false}
+                      itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(120)}
+                      initialNumToRender={10}
+                      maxToRenderPerBatch={10}
+                      windowSize={3}
+                      renderItem={renderOrderBadge}
+                    />
+                  </View>
+                ) : null
+              }
             />
-          </View>
-
-          <MenuSection />
+          ) : (
+            // MenuSection skeleton: matches the grid layout
+            <View className="flex-1 p-4">
+              <View className="flex-row gap-x-2 mb-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <View key={i} className="h-10 w-20 bg-panel rounded-lg" />
+                ))}
+              </View>
+              <View className="flex-row flex-wrap gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                  <View key={i} className="h-24 w-28 bg-panel rounded-xl" />
+                ))}
+              </View>
+            </View>
+          )}
         </View>
       </View>
-      <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
 
+      {/* Stage 2: Defer MoreOptionsBottomSheet — starts closed (index={-1}), safe to delay */}
+      {renderStage >= 2 && (
+        <MoreOptionsBottomSheet
+          ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+          discountSheetRef={
+            discountSheetRef as React.RefObject<BottomSheetMethods>
+          }
+          onCloseCheck={handleCloseCheck}
+          onNoSale={handleNoSale}
+        />
+      )}
 
-      <OrderLineItemsModal
-        isOpen={isItemsModalOpen}
-        onClose={() => setItemsModalOpen(false)}
-        orderId={selectedOrderId}
+      {isItemsModalOpen && (
+        <OrderLineItemsModal
+          isOpen={isItemsModalOpen}
+          onClose={handleCloseItemsModal}
+          orderId={selectedOrderId}
+        />
+      )}
+
+      <CashDrawerSheet
+        isOpen={isCashDrawerSheetOpen}
+        onClose={() => setCashDrawerSheetOpen(false)}
+      />
+      <NoSaleModal
+        isOpen={isNoSaleModalOpen}
+        onClose={() => setNoSaleModalOpen(false)}
       />
     </View>
   );

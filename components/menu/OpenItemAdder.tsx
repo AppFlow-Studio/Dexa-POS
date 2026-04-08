@@ -1,25 +1,121 @@
+import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
+import { Delete } from "lucide-react-native";
+import { useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.screen,
+    padding: 16,
+    gap: 16,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.muted,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.heading,
+    height: 44,
+  },
+  priceDisplay: {
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: `${colors.teal}40`,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  priceText: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: colors.teal,
+  },
+  numpadRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  numpadBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  numpadText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: colors.heading,
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 4,
+  },
+  clearBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  addBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.teal,
+  },
+  addBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#000",
+  },
+});
 
 const OpenItemAdder = () => {
-  const { activeOrderId, addItemToActiveOrder, orders } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
+  const { show } = useToast();
 
   const [openItemName, setOpenItemName] = useState("");
   const [openItemPrice, setOpenItemPrice] = useState("");
   const [priceDisplay, setPriceDisplay] = useState("0.00");
 
   const handlePriceInput = (value: string) => {
-    // Clear all
     if (value === "clear") {
       setPriceDisplay("0.00");
       setOpenItemPrice("0.00");
       return;
     }
-
-    // Backspace behavior
     if (value === "backspace") {
       let current = priceDisplay;
       if (current === "0.00") return;
@@ -38,8 +134,6 @@ const OpenItemAdder = () => {
       }
       return;
     }
-
-    // Decimal point
     if (value === ".") {
       if (!priceDisplay.includes(".")) {
         const base = priceDisplay === "0.00" ? "0" : priceDisplay;
@@ -49,28 +143,18 @@ const OpenItemAdder = () => {
       }
       return;
     }
-
-    // Number input 0-9
     const isDigit = /^[0-9]$/.test(value);
     if (!isDigit) return;
-
-    // If starting state, replace with the digit
     if (priceDisplay === "0.00" || priceDisplay === "0") {
       const newDisplay = value === "0" ? "0" : value;
       setPriceDisplay(newDisplay);
       setOpenItemPrice(newDisplay);
       return;
     }
-
-    // Enforce max 2 decimals when a dot exists
     if (priceDisplay.includes(".")) {
-      const [whole, decimals = ""] = priceDisplay.split(".");
-      if (decimals.length >= 2) {
-        // Already at 2 decimals; do not append more
-        return;
-      }
+      const [, decimals = ""] = priceDisplay.split(".");
+      if (decimals.length >= 2) return;
     }
-
     const newDisplay = priceDisplay + value;
     setPriceDisplay(newDisplay);
     setOpenItemPrice(newDisplay);
@@ -81,147 +165,112 @@ const OpenItemAdder = () => {
     const price = parseFloat(openItemPrice);
 
     if (isNaN(price) || price <= 0) {
-      toast.error("Please enter a valid price", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
-      });
+      show({ title: "Invalid Price", message: "Please enter a valid price greater than zero.", type: "error" });
       return;
     }
 
-    // Check if the active order is closed
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
-    if (activeOrder?.order_status === "Closed") {
-      toast.error("Order is closed. Please reopen the check to add items.", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
-      });
+    const activeOrder = useOrderStore.getState().ordersById[activeOrderId ?? ""];
+    if (activeOrder?.order_status === "completed") {
+      show({ title: "Order Closed", message: "This order is closed. Please reopen the check to add items.", type: "error" });
       return;
     }
 
-    // Create a new cart item for the open item
-    const newOpenItem = {
+    const cashPrice = Math.round(price * 96) / 100;
+    addItemToActiveOrder({
       id: `open_item_${Date.now()}`,
-      itemId: `open_item_${Date.now()}`,
       menuItemId: `open_item_${Date.now()}`,
       name: itemName,
       quantity: 1,
-      originalPrice: price,
-      price: price,
-      customizations: {
-        notes: "Open Item",
-      },
+      originalPrice: cashPrice,
+      baseCashPrice: cashPrice,
+      price,
+      unitPrice: price,
+      baseCardPrice: price,
+      cashPrice,
+      customizations: { notes: "Open Item" },
       availableDiscount: undefined,
       appliedDiscount: null,
-    };
-
-    addItemToActiveOrder(newOpenItem);
-
-    toast.success(`${itemName} ${price.toFixed(2)} added`, {
-      duration: 4000,
-      position: ToastPosition.BOTTOM,
+      is_open_item: true,
+      open_item_name: itemName,
+      open_item_price: price,
+      category_name: "Open Items",
+      is_tax_exempt: false,
+      paidQuantity: 0,
+      subtotal: price,
+      cashSubtotal: cashPrice,
+      taxRate: 0,
+      taxAmount: 0,
+      cashTaxAmount: 0,
+      discount_amount: 0,
+      discount_cash_amount: 0,
     });
 
-    // Reset form
     setOpenItemName("");
     setOpenItemPrice("");
     setPriceDisplay("0.00");
   };
 
-  const NumpadButton: React.FC<{
-    value: string;
-    onPress: () => void;
-    isDestructive?: boolean;
-  }> = ({ value, onPress, isDestructive }) => (
-    <TouchableOpacity
-      onPress={onPress}
-      className={`flex-1 h-12 rounded-lg items-center justify-center ${
-        isDestructive ? "bg-red-600" : "bg-[#303030] border border-gray-600"
-      }`}
-    >
-      <Text className="text-xl font-bold text-white">{value}</Text>
-    </TouchableOpacity>
-  );
-
-  const renderNumpad = () => {
-    const numpadButtons = [
-      ["1", "2", "3"],
-      ["4", "5", "6"],
-      ["7", "8", "9"],
-      [".", "0", "backspace"],
-    ];
-
-    return (
-      <View className="gap-2">
-        {numpadButtons.map((row, rowIndex) => (
-          <View key={rowIndex} className="flex-row gap-2">
-            {row.map((btn) => (
-              <NumpadButton
-                key={btn}
-                value={btn}
-                onPress={() =>
-                  handlePriceInput(btn === "⌫" ? "backspace" : btn)
-                }
-                isDestructive={btn === "⌫"}
-              />
-            ))}
-          </View>
-        ))}
-        <View className="flex flex-row justify-between gap-x-2 w-full">
-          <TouchableOpacity
-            onPress={() => handlePriceInput("clear")}
-            className="h-14 bg-gray-600 w-1/2 rounded-lg items-center justify-center"
-          >
-            <Text className="text-lg font-medium text-white">Clear</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleAddOpenItem}
-            className="bg-blue-600 w-1/2 rounded-lg items-center justify-center"
-          >
-            <Text className="text-xl  font-bold text-white">Add Item</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
+  const numpadRows = [["1","2","3"],["4","5","6"],["7","8","9"],[".", "0", "backspace"]];
 
   return (
-    <ScrollView className="flex-1 bg-[#212121] py-4">
-      <View className="mb-4">
-        <Text className="text-xl font-semibold text-white mb-2">
-          Open Item Name
-        </Text>
-        <TextInput
-          className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-xl text-white h-16"
-          value={openItemName}
-          onChangeText={setOpenItemName}
-          placeholder="Enter item name (default: Custom)"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={{ marginBottom: 4 }}>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Custom Item</Text>
+          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Enter a name and price to add a custom item to the order</Text>
+        </View>
 
-      <View className="mb-4">
-        <Text className="text-xl font-semibold text-white mb-2">
-          Open Item Price
-        </Text>
-        <View className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 items-center">
-          <Text className="text-3xl font-bold text-white">${priceDisplay}</Text>
+        {/* Name */}
+        <View>
+          <Text style={styles.label}>Item Name</Text>
+          <TextInput
+            style={styles.input}
+            value={openItemName}
+            onChangeText={setOpenItemName}
+            placeholder="Custom item name..."
+            placeholderTextColor={colors.muted}
+          />
+        </View>
+
+        {/* Price display */}
+        <View>
+          <Text style={styles.label}>Price</Text>
+          <View style={styles.priceDisplay}>
+            <Text style={styles.priceText}>${priceDisplay}</Text>
+          </View>
+        </View>
+
+        {/* Numpad */}
+        <View style={{ gap: 8 }}>
+          {numpadRows.map((row, i) => (
+            <View key={i} style={styles.numpadRow}>
+              {row.map((btn) => (
+                <TouchableOpacity
+                  key={btn}
+                  style={styles.numpadBtn}
+                  onPress={() => handlePriceInput(btn === "backspace" ? "backspace" : btn)}
+                >
+                  {btn === "backspace"
+                    ? <Delete size={18} color={colors.muted} />
+                    : <Text style={styles.numpadText}>{btn}</Text>
+                  }
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.clearBtn} onPress={() => handlePriceInput("clear")}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.muted }}>Clear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addBtn} onPress={handleAddOpenItem}>
+              <Text style={styles.addBtnText}>Add Item</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-
-      <View className="mb-4">
-        <Text className="text-xl font-semibold text-white mb-2">
-          Enter Price
-        </Text>
-        {renderNumpad()}
-      </View>
-
-      {/* <TouchableOpacity
-        onPress={handleAddOpenItem}
-        className="bg-blue-600 rounded-lg py-4 items-center mb-6"
-      >
-        <Text className="text-xl font-bold text-white">Add Item</Text>
-      </TouchableOpacity> */}
-    </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 

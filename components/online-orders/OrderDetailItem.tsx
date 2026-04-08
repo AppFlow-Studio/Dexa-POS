@@ -9,7 +9,7 @@ const OrderDetailItem: React.FC<{ item: CartItem }> = ({ item }) => {
     : undefined;
 
   return (
-    <View className="flex-row items-start p-6 border border-gray-600 rounded-xl bg-[#212121]">
+    <View className="flex-row items-start p-6 border border-gray-600 rounded-xl bg-panel">
       {/* Image and Name */}
       <View className="flex-row items-center w-1/4">
         <Image source={imageSource} className="w-16 h-16 rounded-lg" />

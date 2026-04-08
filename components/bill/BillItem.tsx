@@ -1,238 +1,733 @@
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
-import { CartItem } from "@/lib/types";
-import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { Trash2 } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { colors } from '@/lib/theme'
+import { CartItem } from '@/lib/types'
+import { useMenuStore } from '@/stores/useMenuStore'
+import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import { useOrderStore } from '@/stores/useOrderStore'
+import {
+  useItemSyncError,
+  useItemSyncStatus
+} from '@/stores/useSyncStatusStore'
+import { AlertCircle, Banknote, Plus, Trash2 } from 'lucide-react-native'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+  withTiming
+} from 'react-native-reanimated'
+import VoidItemDialog from './VoidItemDialog'
 
 interface BillItemProps {
-  item: CartItem;
-  isEditable?: boolean;
-  expandedItemId?: string | null;
-  onToggleExpand?: (itemId: string) => void;
-  showStatus?: boolean;
+  item: CartItem
+  isEditable?: boolean
+  isActive?: boolean // Highlight when being edited in modifier panel
+  showPaidBadge?: boolean // Hide per-item paid badges when order-level badge already shows paid
 }
 
-const DELETE_BUTTON_WIDTH = 90;
+const DELETE_BUTTON_WIDTH = 90
+const INCREMENT_BUTTON_WIDTH = 90
 
-const BillItem: React.FC<BillItemProps> = ({
+function getKitchenBorderColor (kitchenStatus?: string): string | undefined {
+  switch (kitchenStatus) {
+    case 'sent':
+      return colors.orderPreparing
+    case 'preparing':
+      return colors.paymentPartialRefund
+    case 'ready':
+      return colors.orderReady
+    case 'served':
+      return colors.success
+    default:
+      return colors.teal
+  }
+}
+
+// Type for modifier structure
+interface ModifierDisplay {
+  categoryId: string
+  categoryName?: string
+  options: Array<{ id: string; name: string; price: number; isNo?: boolean }>
+}
+
+/**
+ * ModifiersList - Memoized component for rendering item modifiers
+ * PERFORMANCE: Extracted to avoid recreating nested maps on every render
+ */
+const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
+  ({ modifiers }) => (
+    <View>
+      {modifiers.map(
+        (modifier, index) =>
+          modifier.options.length > 0 && (
+            <View
+              key={`mod-${index}`}
+              className='flex-row flex-wrap items-center gap-x-1 mb-0.5'
+            >
+              {/* {modifier.categoryName && (
+              <Text style={{ fontSize: 10 }} className="text-gray-500">
+                {modifier.categoryName}:
+              </Text>
+            )} */}
+              {modifier.options.map((option, optionIndex) => (
+                <View
+                  key={`opt-${optionIndex}`}
+                  className='flex-row items-center gap-0.5'
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      color: option.isNo ? colors.danger : '#E0E0E0'
+                    }}
+                  >
+                    {option.isNo ? `NO ${option.name}` : option.name}
+                    {optionIndex < modifier.options.length - 1 ? ',' : ''}
+                  </Text>
+                  {!option.isNo && option.price > 0 && (
+                    <Text style={{ fontSize: 10 }} className='text-teal-500'>
+                      +${option.price.toFixed(2)}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          )
+      )}
+    </View>
+  ),
+  (prev, next) => {
+    // Deep comparison for modifiers array - compare actual option content
+    if (prev.modifiers.length !== next.modifiers.length) return false
+
+    for (let i = 0; i < prev.modifiers.length; i++) {
+      const prevMod = prev.modifiers[i]
+      const nextMod = next.modifiers[i]
+
+      if (prevMod.categoryId !== nextMod.categoryId) return false
+      if (prevMod.options.length !== nextMod.options.length) return false
+
+      // Compare actual option IDs, names and isNo to detect changes
+      for (let j = 0; j < prevMod.options.length; j++) {
+        if (prevMod.options[j].id !== nextMod.options[j].id) return false
+        if (prevMod.options[j].name !== nextMod.options[j].name) return false
+        if (prevMod.options[j].isNo !== nextMod.options[j].isNo) return false
+      }
+    }
+
+    return true
+  }
+)
+
+const BillItemComponent: React.FC<BillItemProps> = ({
   item,
   isEditable = false,
-  expandedItemId,
-  onToggleExpand,
-  showStatus = true,
+  isActive = false,
+  showPaidBadge = true
 }) => {
-  const { activeOrderId, removeItemFromActiveOrder } = useOrderStore();
-  const { openToEdit, openToView, openFullscreenEdit } =
-    useModifierSidebarStore();
-  const translateX = useSharedValue(0);
+  // FIXED: Use selectors instead of destructuring to avoid subscribing to entire store
+  const activeOrderId = useOrderStore(s => s.activeOrderId)
+  const removeItemFromActiveOrder = useOrderStore(
+    s => s.removeItemFromActiveOrder
+  )
+  const incrementItemQuantity = useOrderStore(s => s.incrementItemQuantity)
+  const openToView = useModifierSidebarStore(s => s.openToView)
+  const openToEdit = useModifierSidebarStore(s => s.openToEdit)
+  const isModifierActive = useModifierSidebarStore(
+    s => s.activeEditingItemId === item.id
+  )
 
-  const isExpanded = expandedItemId === item.id;
+  // Phase 7D: Sync status from dedicated store (not from item)
+  // This prevents re-renders of other components when sync status changes
+  const syncStatus = useItemSyncStatus(item.id)
+  const syncError = useItemSyncError(item.id)
+  const orderHasPayments = useOrderStore(s => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    return !!order?.payments?.some((p: any) => !p.isVoided)
+  })
 
-  const handleItemPress = () => {
-    if (onToggleExpand) {
-      onToggleExpand(item.id);
+  // PERF: Only subscribe to payments when the order actually has payments.
+  // During normal table ordering this avoids per-row subscriptions doing extra
+  // payment/refund coverage work on every order mutation.
+  const payments = useOrderStore(s => {
+    if (!orderHasPayments) return null
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    return order?.payments ?? null
+  })
+
+  const translateX = useSharedValue(0)
+  const [showVoidDialog, setShowVoidDialog] = useState(false)
+  const handleIncrementRef = useRef<() => void>(() => {})
+  const incrementThrottleRef = useRef(0)
+  const swipeActivatedRef = useRef(false)
+  // Stable refs so the worklet always calls the same function pointer
+  const markSwipeActiveRef = useRef(() => { swipeActivatedRef.current = true })
+  const resetSwipeActiveRef = useRef(() => {
+    // Delay reset so handleNotesPress runs first before the guard clears
+    setTimeout(() => { swipeActivatedRef.current = false }, 300)
+  })
+
+  // Reset animation when item becomes voided
+  useEffect(() => {
+    if (item.is_voided) {
+      translateX.value = withTiming(0)
     }
-  };
+  }, [item.is_voided])
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+    transform: [{ translateX: translateX.value }]
+  }))
 
-  // Pan gesture to reveal delete
-  const MAX_LEFT = -DELETE_BUTTON_WIDTH;
-  const pan = Gesture.Pan()
-    .onUpdate((e) => {
-      const next = Math.max(MAX_LEFT, Math.min(0, e.translationX));
-      translateX.value = next;
-    })
-    .onEnd(() => {
-      const shouldOpen = translateX.value < MAX_LEFT / 2;
-      translateX.value = withTiming(shouldOpen ? MAX_LEFT : 0);
-    })
-    .activeOffsetX([-20, 20]) // Only activate if horizontal movement exceeds 20px
-    .failOffsetY([-20, 20]); // Fail if vertical movement exceeds 20px
+  // Delete button opacity - only visible when swiping left
+  const deleteButtonStyle = useAnimatedStyle(() => ({
+    opacity:
+      translateX.value < -10
+        ? withTiming(1, { duration: 100 })
+        : withTiming(0, { duration: 100 })
+  }))
+
+  // Increment button opacity - only visible when swiping right
+  const incrementButtonStyle = useAnimatedStyle(() => ({
+    opacity:
+      translateX.value > 10
+        ? withTiming(1, { duration: 100 })
+        : withTiming(0, { duration: 100 })
+  }))
+
+  // Check if item is in draft/new state (simple delete) or in kitchen (needs void reason)
+  const isKitchenItem =
+    item.kitchen_status === 'sent' ||
+    item.kitchen_status === 'preparing' ||
+    item.kitchen_status === 'ready' ||
+    item.kitchen_status === 'served'
+
+  // Shared value so the worklet can read isKitchenItem on the UI thread
+  const isKitchenItemSV = useSharedValue(isKitchenItem)
+  isKitchenItemSV.value = isKitchenItem
+
+  // Pan gesture to reveal delete (left) or increment (right)
+  // OPTIMIZED: Memoize gesture to prevent recreation on each render
+  const MAX_LEFT = -DELETE_BUTTON_WIDTH
+  const MAX_RIGHT = INCREMENT_BUTTON_WIDTH
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .onUpdate(e => {
+          const rightLimit = isKitchenItemSV.value ? 0 : MAX_RIGHT
+          const next = Math.max(MAX_LEFT, Math.min(rightLimit, e.translationX))
+          translateX.value = next
+          if (Math.abs(next) > 5) runOnJS(markSwipeActiveRef.current)()
+        })
+        .onEnd(() => {
+          if (translateX.value > MAX_RIGHT / 2) {
+            translateX.value = withTiming(0, { duration: 150 })
+            runOnJS(handleIncrementRef.current)()
+          } else if (translateX.value < MAX_LEFT / 2) {
+            translateX.value = withTiming(MAX_LEFT)
+          } else {
+            translateX.value = withTiming(0)
+          }
+          runOnJS(resetSwipeActiveRef.current)()
+        })
+        .activeOffsetX([-20, 20])
+        .failOffsetY([-20, 20]),
+    [translateX, isKitchenItemSV]
+  )
 
   const handleDelete = () => {
-    if (activeOrderId) {
-      removeItemFromActiveOrder(item.id);
-      // Reset the position after deletion
-      translateX.value = withTiming(0);
+    if (!activeOrderId) return
+
+    if (item.isDraft || !isKitchenItem) {
+      // Draft or new item - animate back then remove
+      translateX.value = withTiming(0)
+      // Delay removal to allow animation to complete
+      setTimeout(() => {
+        removeItemFromActiveOrder(item.id)
+      }, 50)
+    } else {
+      // Kitchen item - show void reason dialog
+      setShowVoidDialog(true)
     }
-  };
+  }
+
+  const handleConfirmVoid = (reason: string) => {
+    // Reset animation first, before any state changes
+    translateX.value = withTiming(0)
+    setShowVoidDialog(false)
+
+    // Delay the void operation to allow animation to complete
+    if (activeOrderId) {
+      setTimeout(() => {
+        removeItemFromActiveOrder(item.id, reason)
+      }, 50)
+    }
+  }
+
+  const handleCancelVoid = () => {
+    setShowVoidDialog(false)
+    // Reset slide position
+    translateX.value = withTiming(0)
+  }
+
+  const handleIncrement = () => {
+    if (!activeOrderId || !isEditable || item.is_voided || isKitchenItem) return
+    const now = Date.now()
+    if (now - incrementThrottleRef.current < 400) return
+    incrementThrottleRef.current = now
+    incrementItemQuantity(item.id)
+  }
+  handleIncrementRef.current = handleIncrement
+
+  // Warm cache ahead of time so table-item modifier opens are instant on tap.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      const menuItemId = item.menuItemId
+      if (!menuItemId) return
+      const menuItem = useMenuStore.getState().getMenuItemById(menuItemId)
+      if (!menuItem || !menuItem.modifierGroupIds?.length) return
+      useModifierSidebarStore
+        .getState()
+        .preWarm(
+          menuItem,
+          item.addedFromCategoryId ?? undefined,
+          item.addedFromMenuId ?? undefined
+        )
+    }, 0)
+
+    return () => clearTimeout(handle)
+  }, [item.menuItemId, item.addedFromCategoryId, item.addedFromMenuId])
 
   const handleNotesPress = (e: any) => {
-    e.stopPropagation();
-    if (isEditable) {
-      openFullscreenEdit(item, activeOrderId);
-    } else {
-      openToView(item, activeOrderId);
-    }
-  };
+    e.stopPropagation()
+    if (swipeActivatedRef.current) return
 
-  const imageSource = item.image
-    ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-    : undefined;
+    if (isEditable && !isKitchenItem) {
+      openToEdit(item, activeOrderId)
+    } else {
+      openToView(item, activeOrderId)
+    }
+  }
+
+  // Check if item is voided (moved before paymentCoverage useMemo)
+  const isVoided = item.is_voided === true
+  const kitchenBorderColor = isVoided
+    ? undefined
+    : getKitchenBorderColor(item.kitchen_status)
+  //  console.log(kitchenBorderColor)
+  // PERF: Single memoized computation for all payment coverage data
+  // Replaces two inline IIFEs that ran O(n*m) on every render
+  const paymentCoverage = useMemo(() => {
+    if (isVoided || !payments) {
+      return {
+        isFullyPaid: false,
+        isPartiallyPaid: false,
+        isFullyRefunded: false,
+        isPartiallyRefunded: false,
+        netCoveredQty: 0,
+        refundedQty: 0,
+        methodLabel: '',
+        primaryMethod: '',
+        isSplitMethod: false,
+        hasRefundHistory: false,
+        hasRepaid: false,
+        repaidMethodLabel: ''
+      }
+    }
+
+    let coveredQty = 0
+    const methodQtyMap: Record<string, number> = {}
+
+    for (const payment of payments) {
+      if (payment.isVoided) continue
+      for (const covered of payment.itemsCovered ?? []) {
+        if (
+          covered.itemId === item.id ||
+          covered.itemId === item.db_order_item_id
+        ) {
+          coveredQty += covered.quantity
+          const m = payment.method ?? 'Unknown'
+          methodQtyMap[m] = (methodQtyMap[m] ?? 0) + covered.quantity
+        }
+      }
+    }
+
+    const refundedQty = item.refundedQuantity ?? 0
+    const netCoveredQty = coveredQty - refundedQty
+    const hasRefundHistory = refundedQty > 0
+
+    let primaryMethod = ''
+    let maxQty = 0
+    let methodCount = 0
+    for (const [method, qty] of Object.entries(methodQtyMap)) {
+      methodCount++
+      if (qty > maxQty) {
+        maxQty = qty
+        primaryMethod = method
+      }
+    }
+    const isSplitMethod = methodCount > 1
+    const methodLabel = isSplitMethod ? 'SPLIT' : primaryMethod.toUpperCase()
+
+    const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0
+    const isPartiallyRefunded = hasRefundHistory && netCoveredQty > 0
+    const isFullyPaid = netCoveredQty >= item.quantity
+    const isPartiallyPaid = netCoveredQty > 0 && netCoveredQty < item.quantity
+
+    // Repaid after refund data
+    const methods = Object.keys(methodQtyMap)
+    const repaidMethodLabel = methods.length > 1 ? 'Split' : methods[0] ?? ''
+    const hasRepaid = hasRefundHistory && isFullyPaid
+
+    return {
+      isFullyPaid,
+      isPartiallyPaid,
+      isFullyRefunded,
+      isPartiallyRefunded,
+      netCoveredQty,
+      refundedQty,
+      methodLabel,
+      primaryMethod,
+      isSplitMethod,
+      hasRefundHistory,
+      hasRepaid,
+      repaidMethodLabel
+    }
+  }, [
+    payments,
+    item.id,
+    item.db_order_item_id,
+    item.quantity,
+    item.refundedQuantity,
+    isVoided
+  ])
 
   // Check if item has any modifiers to show
   const hasModifiers =
     (item.customizations.modifiers &&
       item.customizations.modifiers.length > 0) ||
-    item.customizations.notes;
+    item.customizations.notes
+
+  const effectiveIsActive =
+    isActive || isModifierActive || item.isDraft === true
+
   return (
-    <View className="rounded-xl overflow-hidden bg-[#303030] border border-gray-600">
-      {isEditable && (
-        <View className="absolute top-0 right-1 h-full justify-center items-end self-center z-10">
+    <View
+      className={`rounded-xl overflow-hidden ${
+        effectiveIsActive
+          ? 'border-2 border-blue-400 bg-blue-500/5'
+          : isVoided
+          ? 'border bg-[#2a2020] border-red-900/50 opacity-60'
+          : ''
+      }`}
+      style={[
+        !effectiveIsActive && !isVoided
+          ? {
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderRightColor: colors.border,
+              borderTopColor: colors.border,
+              borderBottomColor: colors.border,
+              borderLeftWidth: 3,
+              borderLeftColor: kitchenBorderColor ?? colors.border,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.2,
+              shadowRadius: 2,
+              elevation: 2
+            }
+          : undefined,
+        isActive
+          ? {
+              shadowColor: colors.info,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.5,
+              shadowRadius: 8,
+              elevation: 8
+            }
+          : undefined
+      ]}
+    >
+      {isEditable && !isVoided && (
+        <Animated.View
+          style={deleteButtonStyle}
+          className='absolute top-0 right-1 h-full justify-center items-end self-center z-10'
+        >
           <TouchableOpacity
             onPress={handleDelete}
-            className="w-20 h-[85%] bg-red-500 items-center rounded-lg justify-center"
+            className='w-20 h-[85%] bg-red-500 items-center rounded-lg justify-center'
           >
-            <Trash2 color="white" size={20} />
+            <Trash2 color='white' size={20} />
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       )}
 
-      <GestureDetector gesture={pan}>
-        <Animated.View style={animatedStyle} className="bg-[#303030] z-20">
-          <TouchableOpacity onPress={handleNotesPress} activeOpacity={0.9}>
-            <View className="flex-row items-center py-2 px-2">
-              <View className="flex-1">
-                <View className="flex-row items-center">
-                  <Text className="font-semibold text-lg text-white">
+      {isEditable && !isVoided && !isKitchenItem && (
+        <Animated.View
+          style={incrementButtonStyle}
+          className='absolute top-0 left-1 h-full justify-center items-start self-center z-10'
+        >
+          <TouchableOpacity
+            onPress={handleIncrement}
+            className='w-20 h-[85%] bg-teal-600 items-center rounded-lg justify-center'
+          >
+            <Plus color='white' size={20} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
+        <Animated.View
+          style={[
+            animatedStyle,
+            !isVoided ? { backgroundColor: colors.card } : undefined
+          ]}
+          className={isVoided ? 'bg-[#2a2020]' : 'z-20'}
+        >
+          <TouchableOpacity
+            onPress={isVoided ? undefined : handleNotesPress}
+            activeOpacity={isVoided ? 1 : 0.85}
+            disabled={isVoided}
+          >
+            {/* Main row */}
+            <View className='flex-row items-center py-2 px-3 gap-2.5'>
+              {/* Quantity pill */}
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 5,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isVoided ? colors.border : colors.card
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: isVoided ? colors.muted : colors.label
+                  }}
+                >
+                  {item.quantity}
+                </Text>
+              </View>
+
+              {/* Name + badges */}
+              <View className='flex-1'>
+                <View className='flex-row items-center gap-1.5'>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      flexShrink: 1,
+                      color: isVoided ? colors.muted : colors.heading,
+                      textDecorationLine: isVoided ? 'line-through' : 'none'
+                    }}
+                    numberOfLines={1}
+                  >
                     {item.name}
                   </Text>
-                  {item.isDraft && (
-                    <View className="ml-2 px-2 py-1 bg-yellow-100 rounded-full">
-                      <Text className="text-base font-medium text-yellow-700">
-                        Draft
-                      </Text>
-                    </View>
-                  )}
-                  {showStatus &&
-                    item.kitchen_status &&
-                    item.kitchen_status !== "new" && (
-                      <View
-                        className={`ml-2 px-2 py-1 rounded-full ${
-                          item.kitchen_status === "sent"
-                            ? "bg-blue-900/30 border border-blue-500"
-                            : item.kitchen_status === "ready"
-                            ? "bg-orange-900/30 border border-orange-500"
-                            : "bg-gray-900/30 border border-gray-500"
-                        }`}
-                      >
+                  {syncStatus === 'pending' || syncStatus === 'syncing' ? (
+                    <ActivityIndicator size={10} color={colors.info} />
+                  ) : syncStatus === 'failed' ? (
+                    <AlertCircle size={13} color={colors.danger} />
+                  ) : null}
+                </View>
+
+                {/* Status badges row */}
+                {(isVoided ||
+                  paymentCoverage.isFullyRefunded ||
+                  paymentCoverage.isPartiallyRefunded ||
+                  paymentCoverage.isFullyPaid ||
+                  paymentCoverage.isPartiallyPaid) && (
+                  <View className='flex-row flex-wrap gap-1 mt-0.5'>
+                    {isVoided && (
+                      <View className='bg-red-900/60 px-1.5 py-px rounded'>
                         <Text
-                          className={`text-xs font-medium ${
-                            item.kitchen_status === "sent"
-                              ? "text-blue-400"
-                              : item.kitchen_status === "ready"
-                              ? "text-orange-400"
-                              : "text-gray-400"
-                          }`}
+                          style={{ fontSize: 9, fontWeight: '700' }}
+                          className='text-red-400'
                         >
-                          {item.kitchen_status === "sent"
-                            ? "Sent"
-                            : item.kitchen_status === "ready"
-                            ? "Ready"
-                            : item.kitchen_status}
+                          VOID
                         </Text>
                       </View>
                     )}
-                  <Text className="text-base ml-4 text-gray-300">
-                    {item.quantity} X
-                  </Text>
-                </View>
-                <View className="flex-row items-center">
-                  {/* {!item.isDraft && (
-                    <TouchableOpacity
-                      className="flex-row items-center ml-3 px-3 py-1 bg-blue-900/30 border border-blue-500 rounded-3xl"
-                    // onPress={handleNotesPress}
-                    >
-                      <Text className="text-lg font-semibold text-blue-400 mr-1">
-                        Edit
-                      </Text>
-
-                      {isExpanded ? (
-                        <ChevronUp color="#60A5FA" size={16} />
-                      ) : (
-                        <ChevronDown color="#60A5FA" size={16} />
+                    {!isVoided && paymentCoverage.isFullyRefunded && (
+                      <View className='bg-red-900/40 px-1.5 py-px rounded'>
+                        <Text
+                          style={{ fontSize: 9, fontWeight: '700' }}
+                          className='text-red-400'
+                        >
+                          REFUNDED
+                        </Text>
+                      </View>
+                    )}
+                    {!isVoided &&
+                      paymentCoverage.isPartiallyRefunded &&
+                      paymentCoverage.isFullyPaid && (
+                        <View className='bg-orange-900/40 px-1.5 py-px rounded'>
+                          <Text
+                            style={{ fontSize: 9, fontWeight: '700' }}
+                            className='text-orange-400'
+                          >
+                            {paymentCoverage.refundedQty} REFUNDED
+                          </Text>
+                        </View>
                       )}
-                    </TouchableOpacity>
-                  )} */}
-                </View>
+                    {showPaidBadge &&
+                      !isVoided &&
+                      !paymentCoverage.isFullyRefunded &&
+                      !(
+                        paymentCoverage.isPartiallyRefunded &&
+                        paymentCoverage.isFullyPaid
+                      ) &&
+                      paymentCoverage.isFullyPaid && (
+                        <View className='flex-row items-center bg-green-900/40 px-1.5 py-px rounded gap-1'>
+                          {paymentCoverage.primaryMethod === 'Cash' &&
+                            !paymentCoverage.isSplitMethod && (
+                              <Banknote size={9} color={colors.success} />
+                            )}
+                          <Text
+                            style={{ fontSize: 9, fontWeight: '700' }}
+                            className='text-green-400'
+                          >
+                            PAID {paymentCoverage.methodLabel}
+                          </Text>
+                        </View>
+                      )}
+                    {!isVoided && paymentCoverage.isPartiallyPaid && (
+                      <View className='bg-yellow-900/40 px-1.5 py-px rounded'>
+                        <Text
+                          style={{ fontSize: 9, fontWeight: '700' }}
+                          className='text-yellow-400'
+                        >
+                          {paymentCoverage.netCoveredQty}/{item.quantity} PAID
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {isVoided && item.void_reason && (
+                  <Text
+                    style={{ fontSize: 10 }}
+                    className='text-red-400/60 mt-0.5 italic'
+                  >
+                    {item.void_reason}
+                  </Text>
+                )}
+                {paymentCoverage.hasRepaid && (
+                  <Text
+                    style={{ fontSize: 9 }}
+                    className='text-gray-500 italic mt-0.5'
+                  >
+                    Refunded → Re-paid {paymentCoverage.repaidMethodLabel}
+                  </Text>
+                )}
               </View>
-              <Text className="font-semibold text-xl text-white">
+
+              {/* Price */}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: isVoided ? colors.muted : colors.teal,
+                  textDecorationLine: isVoided ? 'line-through' : 'none'
+                }}
+              >
                 ${(item.price * item.quantity).toFixed(2)}
               </Text>
             </View>
-          </TouchableOpacity>
 
-          {hasModifiers && (
-            <Animated.View className={`overflow-hidden `}>
-              <View className="px-2 border-t border-gray-600">
-                {/* Modifiers */}
-                {item.customizations.modifiers &&
-                  item.customizations.modifiers.length > 0 && (
-                    <View className=" py-1">
-                      {item.customizations.modifiers.map((modifier, index) => (
-                        <View key={index} className="ml-4">
-                          {modifier.options.length > 0 && (
-                            <View
-                              key={index}
-                              className="flex flex-row flex-wrap items-center mb-1"
-                            >
-                              <Text className="text-base font-medium text-gray-300 ">
-                                {modifier.categoryName}:
-                              </Text>
-                              {modifier.options.map((option, optionIndex) => {
-                                return (
-                                  <View
-                                    key={optionIndex}
-                                    className="flex-row justify-between items-center ml-1"
-                                  >
-                                    <Text className="text-base text-gray-200">
-                                      {option.name}
-                                      {optionIndex <
-                                        modifier.options.length - 1 && " • "}
-                                    </Text>
-                                    {option.price > 0 && (
-                                      <Text className="text-base font-medium ml-1 text-green-400">
-                                        +${option.price.toFixed(2)}{" "}
-                                        {optionIndex <
-                                          modifier.options.length - 1 && ","}
-                                      </Text>
-                                    )}
-                                  </View>
-                                );
-                              })}
-                            </View>
-                          )}
-                        </View>
-                      ))}
+            {/* Modifiers / Notes */}
+            {hasModifiers && (
+              <Animated.View className='overflow-hidden'>
+                <View
+                  className='mx-3 mb-2 px-2 py-1.5 rounded-md'
+                  style={{ backgroundColor: '#12162A' }}
+                >
+                  {item.customizations.modifiers &&
+                    item.customizations.modifiers.length > 0 && (
+                      <ModifiersList
+                        modifiers={item.customizations.modifiers}
+                      />
+                    )}
+                  {item.customizations.notes && (
+                    <View className='flex-row items-start gap-1 mt-0.5'>
+                      <Text style={{ fontSize: 10 }} className='text-gray-500'>
+                        Note:
+                      </Text>
+                      <Text
+                        style={{ fontSize: 10 }}
+                        className='text-gray-300 italic flex-1'
+                      >
+                        {item.customizations.notes}
+                      </Text>
                     </View>
                   )}
-
-                {item.customizations.notes && (
-                  <View className="py-1">
-                    <Text className="text-lg text-gray-300 mb-1">Notes:</Text>
-                    <Text className="text-lg text-gray-200 ml-2 italic">
-                      {item.customizations.notes}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </Animated.View>
-          )}
+                </View>
+              </Animated.View>
+            )}
+          </TouchableOpacity>
         </Animated.View>
       </GestureDetector>
-    </View>
-  );
-};
 
-export default BillItem;
+      {/* Void Item Dialog */}
+      <VoidItemDialog
+        isOpen={showVoidDialog}
+        itemName={item.name}
+        onConfirm={handleConfirmVoid}
+        onCancel={handleCancelVoid}
+      />
+    </View>
+  )
+}
+
+// OPTIMIZED: Memoize to prevent re-renders when parent updates
+// Phase 7D: sync_status is now in useSyncStatusStore, not on item
+// BillItem re-renders for sync status changes via its own useItemSyncStatus subscription
+const BillItem = React.memo(BillItemComponent, (prev, next) => {
+  // Return true if props are equal (skip re-render)
+  // Quick checks first
+  // Note: sync_status removed - it's now managed by useSyncStatusStore
+  if (
+    prev.item.id !== next.item.id ||
+    prev.item.quantity !== next.item.quantity ||
+    prev.item.price !== next.item.price ||
+    prev.item.is_voided !== next.item.is_voided ||
+    prev.item.void_reason !== next.item.void_reason ||
+    prev.item.paidQuantity !== next.item.paidQuantity ||
+    prev.item.refundedQuantity !== next.item.refundedQuantity ||
+    prev.item.kitchen_status !== next.item.kitchen_status ||
+    prev.item.item_status !== next.item.item_status ||
+    prev.item.isDraft !== next.item.isDraft ||
+    prev.item.customizations?.notes !== next.item.customizations?.notes ||
+    prev.isEditable !== next.isEditable ||
+    prev.isActive !== next.isActive ||
+    prev.showPaidBadge !== next.showPaidBadge
+  ) {
+    return false
+  }
+
+  // Deep compare modifiers - check actual option IDs, not just length
+  const prevModifiers = prev.item.customizations?.modifiers || []
+  const nextModifiers = next.item.customizations?.modifiers || []
+
+  if (prevModifiers.length !== nextModifiers.length) return false
+
+  for (let i = 0; i < prevModifiers.length; i++) {
+    const prevMod = prevModifiers[i]
+    const nextMod = nextModifiers[i]
+
+    if (prevMod.categoryId !== nextMod.categoryId) return false
+    if (prevMod.options.length !== nextMod.options.length) return false
+
+    // Compare actual option IDs to detect when options change
+    for (let j = 0; j < prevMod.options.length; j++) {
+      if (prevMod.options[j].id !== nextMod.options[j].id) return false
+    }
+  }
+
+  return true
+})
+
+export default BillItem

@@ -1,40 +1,132 @@
+import { colors } from "@/lib/theme";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
-import { Plus, Search } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Plus, RefreshCw, Search } from "lucide-react-native";
+import React, { useEffect, useRef } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  Easing,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface MenuHeaderProps {
   title: string;
   onAddPress: () => void;
   addButtonLabel: string;
+  disabled?: boolean;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 const MenuHeader: React.FC<MenuHeaderProps> = ({
   title,
   onAddPress,
   addButtonLabel,
+  disabled = false,
+  onRefresh,
+  isRefreshing = false,
 }) => {
-  // Get the action to open the search bottom sheet from the store
   const { openSearch } = useMenuManagementSearchStore();
 
+  const spinValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isRefreshing) {
+      const loop = Animated.loop(
+        Animated.timing(spinValue, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      );
+      loop.start();
+      return () => loop.stop();
+    } else {
+      spinValue.setValue(0);
+    }
+  }, [isRefreshing]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
   return (
-    <View className="flex-row items-center justify-between bg-[#212121] mb-4">
-      <Text className="text-2xl font-bold text-white">{title}</Text>
-      <View className="flex-row items-center gap-x-3">
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 12,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}
+    >
+      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+        {title}
+      </Text>
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {onRefresh && (
+          <TouchableOpacity
+            onPress={onRefresh}
+            disabled={isRefreshing}
+            style={{
+              padding: 6,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              opacity: isRefreshing ? 0.5 : 1,
+            }}
+          >
+            <Animated.View style={{ transform: [{ rotate: spin }] }}>
+              <RefreshCw color={colors.label} size={14} />
+            </Animated.View>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
-          onPress={openSearch} // This now opens the bottom sheet
-          className="p-3 bg-[#303030] border border-gray-600 rounded-lg"
+          onPress={openSearch}
+          style={{
+            padding: 6,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+          }}
         >
-          <Search color="#9CA3AF" size={20} />
+          <Search color={colors.label} size={14} />
         </TouchableOpacity>
 
-        {/* Add Button */}
         <TouchableOpacity
-          onPress={onAddPress}
-          className="flex-row items-center bg-blue-600 px-4 py-3 rounded-lg"
+          onPress={disabled ? undefined : onAddPress}
+          disabled={disabled}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 8,
+            backgroundColor: disabled ? colors.card : colors.teal + "20",
+            borderWidth: 1,
+            borderColor: disabled ? colors.border : colors.teal + "50",
+            opacity: disabled ? 0.5 : 1,
+          }}
         >
-          <Plus size={20} color="white" />
-          <Text className="text-base text-white font-bold ml-2">
+          <Plus size={14} color={disabled ? colors.muted : colors.teal} />
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "600",
+              color: disabled ? colors.muted : colors.teal,
+            }}
+          >
             {addButtonLabel}
           </Text>
         </TouchableOpacity>

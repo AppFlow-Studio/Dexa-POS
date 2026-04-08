@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Href, useRouter } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
 import React from "react";
@@ -28,9 +29,9 @@ const ClockInWallModal: React.FC<ClockInWallModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg p-4 rounded-2xl bg-[#303030] border border-gray-700 items-center">
+      <DialogContent className="max-w-lg p-4 rounded-2xl bg-panel border border-gray-700 items-center">
         <View className="w-16 h-16 bg-yellow-900/30 rounded-full items-center justify-center border-4 border-yellow-500/30 mb-3">
-          <AlertTriangle color="#FBBF24" size={36} />
+          <AlertTriangle color={colors.warning} size={36} />
         </View>
         <DialogHeader className="items-center">
           <DialogTitle className="text-2xl font-bold text-center text-yellow-400">
@@ -43,7 +44,7 @@ const ClockInWallModal: React.FC<ClockInWallModalProps> = ({
         <View className="flex-row gap-4 mt-3 w-full">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-3 px-6 border border-gray-600 bg-[#212121] rounded-xl items-center"
+            className="flex-1 py-3 px-6 border border-gray-600 bg-screen rounded-xl items-center"
           >
             <Text className="text-lg font-bold text-gray-300">Cancel</Text>
           </TouchableOpacity>

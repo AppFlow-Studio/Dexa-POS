@@ -5,6 +5,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Check } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import { Mail, Printer } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -36,7 +37,7 @@ const CheckDetailsModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-2xl overflow-hidden bg-[#303030] border border-gray-700 w-[550px] max-h-[90vh]">
+      <DialogContent className="p-0 rounded-2xl overflow-hidden bg-panel border border-gray-700 w-[550px] max-h-[90vh]">
         {/* Header */}
         <View className="p-6 border-b border-gray-700">
           <DialogTitle className="text-white text-2xl font-bold text-center">
@@ -87,9 +88,9 @@ const CheckDetailsModal = ({
         </ScrollView>
 
         {/* Footer with Buttons */}
-        <DialogFooter className="p-6 flex-row gap-4 border-t border-gray-700 bg-[#212121] rounded-b-2xl">
+        <DialogFooter className="p-6 flex-row gap-4 border-t border-gray-700 bg-screen rounded-b-2xl">
           <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-600 rounded-lg">
-            <Mail color="#9CA3AF" size={20} />
+            <Mail color={colors.label} size={20} />
             <Text className="text-lg font-bold text-gray-300">Send Email</Text>
           </TouchableOpacity>
           <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 bg-blue-600 rounded-lg">

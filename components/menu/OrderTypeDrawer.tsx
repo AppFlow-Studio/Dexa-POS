@@ -1,9 +1,13 @@
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useCustomerStore } from "@/stores/useCustomerStore";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
+import { formatAddress } from "@/utils/addressUtils";
 import { useRouter } from "expo-router";
 import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -27,150 +31,87 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   currentOrderType,
 }) => {
   const router = useRouter();
-  const {
-    activeOrderId,
-    updateActiveOrderDetails,
-    assignOrderToTable,
-    startNewOrder,
-    setActiveOrder,
-  } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const assignOrderToTable = useOrderStore((s) => s.assignOrderToTable);
+  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const {
     addCustomer,
     findCustomerByPhone,
     incrementOrderCount,
     searchCustomersByPhone,
   } = useCustomerStore();
-  const { layouts, updateTableStatus } = useFloorPlanStore();
+
+  // Use FloorPlanStore correctly
+  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
+  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
+  const tables = useFloorPlanStore((s) => s.tables);
+  const { show } = useToast();
 
   const { selectedTable, setSelectedTable, clearSelectedTable } =
     useDineInStore();
   const activeOrder = useOrderStore((state) =>
-    state.orders.find((order) => order.id === activeOrderId)
+    activeOrderId ? state.ordersById[activeOrderId] : undefined,
   );
 
   const { openSheet } = useCustomerSheetStore();
 
-  // Floor selection state
-  const [selectedFloor, setSelectedFloor] = useState<string | null>(null);
+  // Floor selection state.
+  // We sync selectedFloor with activeFloorPlanId roughly, or allow mismatch?
+  // If we change selectedFloor, we should update activeFloorPlanId so 'tables' updates.
+
   const [showFloorModal, setShowFloorModal] = useState(false);
+  const selectedFloor = activeFloorPlanId;
+  // We use activeFloorPlanId directly as "selected floor".
+
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
 
   const orderTypes = [
-    { value: "Dine In", label: "Dine In" },
-    { value: "Takeaway", label: "Takeaway" },
-    { value: "Delivery", label: "Delivery" },
+    // { value: "dine_in", label: "Dine In" },
+    { value: "takeout", label: "Takeaway" },
+    { value: "delivery", label: "Delivery" },
   ];
 
-  // Customer info state
-  // const [customerName, setCustomerName] = useState("");
-  // const [phoneNumber, setPhoneNumber] = useState("");
-  // const [address, setAddress] = useState("");
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
 
-  const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
-
-  // Get tables for the selected floor
-  const floorTables = useMemo(() => {
-    if (!selectedFloor) return [];
-    const layout = layouts.find((l) => l.id === selectedFloor);
-    return layout ? layout.tables : [];
-  }, [selectedFloor, layouts]);
+  // Tables are now just 'tables' from store (for active floor)
+  const floorTables = tables;
 
   // Get available tables for the selected floor
   const availableFloorTables = useMemo(() => {
-    return floorTables.filter((table) => table.status === "Available");
+    return floorTables.filter(
+      (table) => (table.session?.status || "available") === "available",
+    );
   }, [floorTables]);
-
-  // Check for existing customer when phone number changes
-  // useEffect(() => {
-  //   if (phoneNumber.length >= 3) {
-  //     const suggestions = searchCustomersByPhone(phoneNumber);
-  //     setCustomerSuggestions(suggestions);
-  //     setShowSuggestions(suggestions.length > 0);
-  //   } else {
-  //     setShowSuggestions(false);
-  //     setCustomerSuggestions([]);
-  //   }
-
-  //   if (phoneNumber.length >= 10) {
-  //     const existingCustomer = findCustomerByPhone(phoneNumber);
-  //     if (existingCustomer) {
-  //       setCustomerName(existingCustomer.name);
-  //       setAddress(existingCustomer.address || "");
-  //       setIsExistingCustomer(true);
-  //       setShowSuggestions(false);
-  //     } else {
-  //       setIsExistingCustomer(false);
-  //     }
-  //   }
-  // }, [phoneNumber, findCustomerByPhone, searchCustomersByPhone]);
-
-  // const handleSelectCustomer = (customer: any) => {
-  //   setPhoneNumber(customer.phoneNumber);
-  //   setCustomerName(customer.name);
-  //   setAddress(customer.address || "");
-  //   setIsExistingCustomer(true);
-  //   setShowSuggestions(false);
-  //   setCustomerSuggestions([]);
-
-  //   // Assign customer to order immediately
-  //   assignCustomerToOrder(customer);
-  // };
 
   const assignCustomerToOrder = (customer: any) => {
     if (activeOrderId) {
       updateActiveOrderDetails({
         customer_name: customer.name,
         customer_phone: customer.phoneNumber,
+        customer_id: customer.id,
+        customer_email: customer.email || undefined,
         delivery_address:
-          currentOrderType === "Delivery" ? customer.address : undefined,
+          currentOrderType === "delivery" ? customer.address : undefined,
       });
     }
 
     // Increment order count for existing customer
     incrementOrderCount(customer.id);
 
-    toast.success("Customer assigned to order", {
-      duration: 2000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Customer Assigned",
+      message: `${customer.name} has been successfully assigned to this order.`,
+      type: "success",
     });
   };
 
-  // const handleSaveNewCustomer = () => {
-  //   if (!customerName.trim() || !phoneNumber.trim()) {
-  //     toast.error("Please fill in name and phone number", {
-  //       duration: 3000,
-  //       position: ToastPosition.BOTTOM,
-  //     });
-  //     return;
-  //   }
-
-  //   if (currentOrderType === "Delivery" && !address.trim()) {
-  //     toast.error("Please provide delivery address", {
-  //       duration: 3000,
-  //       position: ToastPosition.BOTTOM,
-  //     });
-  //     return;
-  //   }
-
-  //   // Create new customer
-  //   const newCustomer = addCustomer({
-  //     name: customerName.trim(),
-  //     phoneNumber: phoneNumber.trim(),
-  //     address: currentOrderType === "Delivery" ? address.trim() : undefined,
-  //   });
-
-  //   // Assign customer to order
-  //   assignCustomerToOrder(newCustomer);
-
-  //   setIsExistingCustomer(true);
-  //   setShowSuggestions(false);
-  // };
-
   const handleFloorSelect = (floorId: string) => {
-    setSelectedFloor(floorId);
+    setActiveFloorPlan(floorId);
     setShowFloorModal(false);
     // Clear selected table when changing floors
     setSelectedTable(null);
@@ -184,10 +125,10 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       // Transfer existing order to the table
       assignOrderToTable(activeOrderId, selectedTable.id);
       updateActiveOrderDetails({
-        order_type: "Dine In",
+        order_type: "dine_in",
         guest_count: guestCount,
       });
-      updateTableStatus(selectedTable.id, "In Use");
+      // updateTableStatus(selectedTable.id, "In Use"); // Removed
 
       // Start a new order for the order-processing screen
       const newOrder = startNewOrder();
@@ -198,32 +139,42 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       onClose();
 
       // Navigate to the table screen
-      router.push(`/tables/${selectedTable.id}`);
+      // Navigate to the table screen with source info
+      router.push({
+        pathname: "/tables/[tableId]",
+        params: { tableId: selectedTable.id, source: "/menu" },
+      });
 
-      toast.success(`Order transferred to Table ${selectedTable.name}`, {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Order Transferred",
+        message: `The order has been successfully transferred to Table ${selectedTable.name}.`,
+        type: "success",
       });
     } else {
       // Create a new order and assign it to the table (existing flow)
       const newOrder = startNewOrder({ guestCount, tableId: selectedTable.id });
       setActiveOrder(newOrder.id);
-      updateTableStatus(selectedTable.id, "In Use");
+      // updateTableStatus(selectedTable.id, "In Use"); // Removed
 
       // Close all modals/drawers and navigate to the new table screen
       setGuestModalOpen(false);
       onClose();
 
       // Navigate to the table screen
-      router.push(`/tables/${selectedTable.id}`);
+      // Navigate to the table screen with source info
+      router.push({
+        pathname: "/tables/[tableId]",
+        params: { tableId: selectedTable.id, source: "/menu" },
+      });
     }
   };
 
-  const handleTableSelect = (table: any) => {
-    if (table.status !== "Available") {
-      toast.error(`Table ${table.name} is not available`, {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+  const handleTableSelect = (table: FloorPlanObject) => {
+    if ((table.session?.status || "available") !== "available") {
+      show({
+        title: "Table Unavailable",
+        message: `Table ${table.name} is currently occupied or unavailable.`,
+        type: "error",
       });
       return;
     }
@@ -231,11 +182,10 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     setSelectedTable(table);
     setGuestModalOpen(true);
 
-    // Just store the table selection - don't assign yet
-    // Assignment will happen when user pays or sends to kitchen
-    toast.success(`Table ${table.name} selected`, {
-      duration: 2000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Table Selected",
+      message: `Table ${table.name} has been selected. Please set the guest count.`,
+      type: "success",
     });
   };
 
@@ -243,7 +193,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const assignSelectedTableToOrder = () => {
     if (selectedTable && activeOrderId) {
       assignOrderToTable(activeOrderId, selectedTable.id);
-      updateTableStatus(selectedTable.id, "In Use");
+      // updateTableStatus(selectedTable.id, "In Use"); // Removed
       return true;
     }
     return false;
@@ -252,182 +202,146 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   if (!isVisible) return null;
   return (
     <View className="absolute inset-0 z-50">
-      <TouchableOpacity
-        className="flex-1 bg-black/50"
-        onPress={onClose}
-        activeOpacity={1}
-      />
-      <ScrollView
-        bounces={false}
-        className="absolute left-0 top-0 bottom-0 w-[85%] bg-[#303030] shadow-2xl"
-      >
-        <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
-          <Text className="text-2xl font-bold text-white">Order Type</Text>
-          <TouchableOpacity
-            onPress={onClose}
-            className="w-1/4 py-3 bg-green-600 rounded-lg items-center"
-          >
-            <Text className="text-xl font-semibold text-white">Done</Text>
+      <TouchableOpacity className="flex-1 bg-black/60" onPress={onClose} activeOpacity={1} />
+
+      <ScrollView bounces={false} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 320, backgroundColor: colors.screen }}>
+        {/* Header */}
+        <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderColor: colors.border }}>
+          <Text className="text-base font-bold" style={{ color: colors.heading }}>Order Type</Text>
+          <TouchableOpacity onPress={onClose} className="px-4 py-2 rounded-xl" style={{ backgroundColor: colors.teal }}>
+            <Text className="text-sm font-semibold" style={{ color: colors.onSolid }}>Done</Text>
           </TouchableOpacity>
         </View>
 
-        <View className="flex-1 p-4">
-          <View className="mb-4">
-            <View className="gap-y-2">
-              {orderTypes.map((orderType) => (
+        <View className="p-4 gap-y-4">
+          {/* Order type options */}
+          <View className="gap-y-2">
+            {orderTypes.map((orderType) => {
+              const isSelected = currentOrderType === orderType.value;
+              return (
                 <TouchableOpacity
                   key={orderType.value}
                   onPress={() => {
                     onOrderTypeSelect(orderType.value);
-                    if (activeOrderId) {
-                      updateActiveOrderDetails({
-                        order_type: orderType.value as any,
-                      });
-                    }
+                    if (activeOrderId) updateActiveOrderDetails({ order_type: orderType.value as any });
                   }}
-                  className="flex-row items-center p-3 rounded-lg"
+                  className="flex-row items-center px-4 py-3 rounded-xl border"
+                  style={{ backgroundColor: isSelected ? colors.teal + "20" : colors.panel, borderColor: isSelected ? colors.teal : colors.border }}
                 >
-                  <View
-                    className={`w-10 h-10 rounded-full border-2 border-gray-400 mr-3 items-center justify-center`}
-                  >
-                    {currentOrderType === orderType.value && (
-                      <View className="w-6 h-6 bg-blue-500 rounded-full" />
-                    )}
+                  <View className="w-5 h-5 rounded-full border-2 mr-3 items-center justify-center" style={{ borderColor: isSelected ? colors.teal : colors.muted }}>
+                    {isSelected && <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.teal }} />}
                   </View>
-                  <Text className="text-white font-medium text-xl">
+                  <Text className="font-medium text-base" style={{ color: isSelected ? colors.teal : colors.heading }}>
                     {orderType.label}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              );
+            })}
           </View>
-          <View className="h-[1px] bg-gray-700 w-full mx-auto" />
 
-          {(currentOrderType === "Delivery" ||
-            currentOrderType === "Take Away") && (
-            <View className="mt-4">
-              <Text className="text-white font-semibold text-2xl mb-3">
-                Customer Information
-              </Text>
+          <View className="h-px" style={{ backgroundColor: colors.border }} />
+
+          {/* Customer info */}
+          {(currentOrderType === "delivery" || currentOrderType === "takeout") && (
+            <View className="gap-y-3">
+              <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.label }}>Customer</Text>
               <TouchableOpacity
                 onPress={openSheet}
-                className="flex-row items-center p-3 border-2 border-dashed border-gray-600 rounded-lg bg-[#212121] min-h-[70px]"
+                className="flex-row items-center px-4 py-3 rounded-xl border"
+                style={{ backgroundColor: colors.panel, borderColor: colors.border }}
               >
                 {activeOrder?.customer_name ? (
                   <>
-                    <User color="#A5A5B5" size={24} />
-                    <View className="ml-3 flex-1">
-                      <Text
-                        className="text-xl font-semibold text-white"
-                        numberOfLines={1}
-                      >
-                        {activeOrder.customer_name}
-                      </Text>
+                    <View className="w-8 h-8 rounded-full items-center justify-center mr-3" style={{ backgroundColor: colors.teal + "20" }}>
+                      <User color={colors.teal} size={16} />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="font-semibold text-sm" style={{ color: colors.heading }} numberOfLines={1}>{activeOrder.customer_name}</Text>
                       {activeOrder.customer_phone && (
-                        <Text className="text-lg text-gray-400">
-                          {activeOrder.customer_phone}
-                        </Text>
+                        <Text className="text-xs mt-0.5" style={{ color: colors.label }}>{activeOrder.customer_phone}</Text>
                       )}
                     </View>
-                    <Edit3 color="#60A5FA" size={20} />
+                    <Edit3 color={colors.teal} size={16} />
                   </>
                 ) : (
                   <>
-                    <Plus color="#9CA3AF" size={20} />
-                    <Text className="text-xl font-semibold text-gray-300 ml-2">
-                      Add Customer
-                    </Text>
+                    <View className="w-8 h-8 rounded-full items-center justify-center mr-3" style={{ backgroundColor: colors.card }}>
+                      <Plus color={colors.label} size={16} />
+                    </View>
+                    <Text className="text-sm" style={{ color: colors.label }}>Add Customer</Text>
                   </>
                 )}
               </TouchableOpacity>
-              {currentOrderType === "Delivery" && (
-                <View className="mt-3">
-                  <Text className="text-gray-300 text-lg font-medium mb-1">
-                    Delivery Address
-                  </Text>
-                  <View className="w-full p-3 border border-gray-600 rounded-lg bg-[#212121] h-16 justify-center">
-                    <Text className="text-xl text-white">
-                      {activeOrder?.delivery_address || "No address set"}
-                    </Text>
-                  </View>
+
+              {currentOrderType === "delivery" && (
+                <View className="gap-y-1.5">
+                  <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.label }}>Delivery Address</Text>
+                  <AddressAutocomplete
+                    value={formatAddress(activeOrder?.delivery_address) || ""}
+                    onChangeText={(text) => {
+                      if (activeOrderId) updateActiveOrderDetails({ delivery_address: JSON.stringify({ street: text, city: "", state: "", zip: "" }) });
+                    }}
+                    onAddressSelected={(addr) => {
+                      if (activeOrderId) updateActiveOrderDetails({ delivery_address: JSON.stringify(addr) });
+                    }}
+                    placeholder="Enter delivery address"
+                    inputStyle={{ backgroundColor: colors.panel }}
+                  />
                 </View>
               )}
             </View>
           )}
 
-          {currentOrderType === "Dine In" && (
-            <View className="mt-6 flex-1">
-              <Text className="text-white font-semibold text-2xl mb-4">
-                Select Table
-              </Text>
+          {/* Dine in table selection */}
+          {currentOrderType === "dine_in" && (
+            <View className="gap-y-3">
+              <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.label }}>Select Table</Text>
 
-              {/* Floor Selection Dropdown */}
-              <View className="mb-4">
-                <Text className="text-gray-300 text-lg font-medium mb-2">
-                  Select Floor
+              <TouchableOpacity
+                onPress={() => setShowFloorModal(true)}
+                className="flex-row items-center justify-between px-4 py-3 rounded-xl border"
+                style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+              >
+                <Text className="text-sm" style={{ color: colors.heading }}>
+                  {selectedFloor ? floorPlans.find((l) => l.id === selectedFloor)?.name ?? "Select Floor" : "Select Floor"}
                 </Text>
-                <TouchableOpacity
-                  onPress={() => setShowFloorModal(true)}
-                  className="flex-row items-center justify-between p-4 bg-[#404040] border border-gray-600 rounded-lg"
-                >
-                  <Text className="text-white text-lg">
-                    {selectedFloor
-                      ? layouts.find((l) => l.id === selectedFloor)?.name ||
-                        "Select Floor"
-                      : "Select Floor"}
-                  </Text>
-                  <ChevronDown color="#9CA3AF" size={20} />
-                </TouchableOpacity>
-              </View>
+                <ChevronDown color={colors.label} size={16} />
+              </TouchableOpacity>
 
-              {/* Selected Table Info */}
               {selectedTable && (
-                <View className="mb-4 p-4 bg-green-600/20 border border-green-600 rounded-lg">
-                  <Text className="text-green-400 font-medium text-xl">
-                    ✓ Selected: {selectedTable.name}
+                <View className="px-4 py-3 rounded-xl border" style={{ backgroundColor: colors.teal + "15", borderColor: colors.teal }}>
+                  <Text className="text-sm font-semibold" style={{ color: colors.teal }}>
+                    {selectedTable.name} · {selectedTable.capacity} guests
                   </Text>
-                  <Text className="text-xl text-green-300">
-                    Capacity: {selectedTable.capacity} people
-                  </Text>
-                  <Text className="text-lg text-green-300">
-                    Floor: {layouts.find((l) => l.id === selectedFloor)?.name}
+                  <Text className="text-xs mt-0.5" style={{ color: colors.label }}>
+                    {floorPlans.find((l) => l.id === selectedFloor)?.name}
                   </Text>
                 </View>
               )}
 
-              {/* Table Layout View - Only show if floor is selected */}
               {selectedFloor && (
-                <View className="flex-1 min-h-[350px] border border-gray-600 rounded-lg">
+                <View className="rounded-xl overflow-hidden border" style={{ borderColor: colors.border, minHeight: 300 }}>
                   <TableLayoutView
-                    layoutId={selectedFloor!}
+                    layoutId={selectedFloor}
                     tables={floorTables}
                     isSelectionMode={true}
                     selectedTableId={selectedTable?.id}
                     onTableSelect={handleTableSelect}
-                    activeOrderId={activeOrderId}
                     showConnections={false}
                   />
                 </View>
               )}
 
-              {/* No floor selected message */}
               {!selectedFloor && (
-                <View className="flex-1 border border-gray-600 rounded-lg p-8 items-center justify-center">
-                  <Text className="text-gray-400 text-lg text-center">
-                    Please select a floor to view available tables
-                  </Text>
+                <View className="py-10 rounded-xl border items-center justify-center" style={{ borderColor: colors.border }}>
+                  <Text className="text-sm text-center" style={{ color: colors.muted }}>Select a floor to view tables</Text>
                 </View>
               )}
 
-              {/* No available tables message */}
               {selectedFloor && availableFloorTables.length === 0 && (
-                <View className="p-4 bg-red-600/20 border border-red-600 rounded-lg">
-                  <Text className="text-2xl text-red-400 font-medium">
-                    No available tables
-                  </Text>
-                  <Text className="text-xl text-red-300">
-                    All tables on this floor are currently in use
-                  </Text>
+                <View className="px-4 py-3 rounded-xl border" style={{ backgroundColor: colors.danger + "20", borderColor: colors.danger }}>
+                  <Text className="text-sm font-semibold" style={{ color: colors.danger }}>No available tables</Text>
+                  <Text className="text-xs mt-0.5" style={{ color: colors.label }}>All tables on this floor are occupied</Text>
                 </View>
               )}
             </View>
@@ -437,75 +351,49 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
       <GuestCountModal
         isOpen={isGuestModalOpen}
-        onClose={() => {
-          setGuestModalOpen(false);
-          clearSelectedTable(); // Deselect table if modal is cancelled
-        }}
+        onClose={() => { setGuestModalOpen(false); clearSelectedTable(); }}
         onSubmit={handleGuestCountSubmit}
       />
 
       {/* Floor Selection Modal */}
       <Dialog open={showFloorModal} onOpenChange={setShowFloorModal}>
-        <DialogContent className="bg-[#303030] border-gray-700 h-[700px] w-[700px]">
-          <View className="bg-[#303030] rounded-2xl border border-gray-600 w-full">
-            {/* Modal Header */}
-            <View className="flex-row items-center w-full justify-between p-6 border-b border-gray-600">
-              <Text className="text-xl font-bold text-white">Select Floor</Text>
-              <TouchableOpacity
-                onPress={() => setShowFloorModal(false)}
-                className="p-2"
-              >
-                <Text className="text-gray-400 text-lg">Cancel</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Floor List */}
-            <ScrollView className="h-[87%]">
-              {layouts.map((layout, index) => (
+        <DialogContent className="w-[400px] rounded-2xl p-0 overflow-hidden border" style={{ backgroundColor: colors.screen, borderColor: colors.border }}>
+          <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderColor: colors.border }}>
+            <Text className="text-base font-bold" style={{ color: colors.heading }}>Select Floor</Text>
+            <TouchableOpacity onPress={() => setShowFloorModal(false)} className="px-3 py-1.5 rounded-lg" style={{ backgroundColor: colors.card }}>
+              <Text className="text-sm" style={{ color: colors.label }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView>
+            {floorPlans.map((layout) => {
+              const isActive = selectedFloor === layout.id;
+              return (
                 <TouchableOpacity
                   key={layout.id}
                   onPress={() => handleFloorSelect(layout.id)}
-                  className={`p-4 border-b border-gray-600 last:border-b-0 ${
-                    selectedFloor === layout.id
-                      ? "bg-blue-600/20 border-l-4 border-l-blue-500"
-                      : ""
-                  }`}
+                  className="flex-row items-center justify-between px-5 py-4 border-b"
+                  style={{
+                    borderColor: colors.border,
+                    backgroundColor: isActive ? colors.teal + "20" : "transparent",
+                    borderLeftWidth: isActive ? 3 : 0,
+                    borderLeftColor: colors.teal,
+                  }}
                 >
-                  <View className="flex-row items-center justify-between">
-                    <View>
-                      <Text
-                        className={`text-lg font-semibold ${
-                          selectedFloor === layout.id
-                            ? "text-blue-400"
-                            : "text-white"
-                        }`}
-                      >
-                        {layout.name}
-                      </Text>
-                      <Text className="text-sm text-gray-400">
-                        {layout.tables.length} tables
-                      </Text>
-                      <Text className="text-sm text-gray-400">
-                        {
-                          layout.tables.filter((t) => t.status === "Available")
-                            .length
-                        }{" "}
-                        available
-                      </Text>
-                    </View>
-                    {selectedFloor === layout.id && (
-                      <View className="w-6 h-6 bg-blue-500 rounded-full items-center justify-center">
-                        <Text className="text-white text-sm font-bold">✓</Text>
-                      </View>
-                    )}
+                  <View>
+                    <Text className="text-sm font-semibold" style={{ color: isActive ? colors.teal : colors.heading }}>{layout.name}</Text>
+                    <Text className="text-xs mt-0.5" style={{ color: colors.muted }}>
+                      {isActive ? `${tables.length} tables` : "Tap to select"}
+                    </Text>
                   </View>
-                  {index !== layouts.length - 1 && (
-                    <Separator orientation="horizontal" />
+                  {isActive && (
+                    <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.teal }}>
+                      <Text className="text-xs font-bold" style={{ color: colors.onSolid }}>✓</Text>
+                    </View>
                   )}
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+              );
+            })}
+          </ScrollView>
         </DialogContent>
       </Dialog>
     </View>

@@ -1,40 +1,156 @@
+import OptimizedListImage, {
+  type ImageLoadPriority,
+} from "@/components/ui/OptimizedListImage";
+import { useToast } from "@/contexts/ToastContext";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
+import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
-import { useCustomizationStore } from "@/stores/useCustomizationStore";
-import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { Settings, Utensils } from "lucide-react-native";
-import React, { useMemo } from "react";
 import {
-  Image,
-  ImageSourcePropType,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  isMenuBlockedSync,
+  setMenuBlockedSync,
+  useModifierSidebarStore,
+} from "@/stores/useModifierSidebarStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { Utensils } from "lucide-react-native";
+import React, { useCallback, useMemo } from "react";
+import { ImageSourcePropType, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
+const styles = StyleSheet.create({
+  container: {
+    width: "19%",
+    aspectRatio: 1,
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: `${colors.teal}30`,
+    overflow: "hidden",
+  },
+  containerDisabled: {
+    opacity: 0.4,
+  },
+  containerNoImage: {
+    aspectRatio: undefined,
+    height: 64,
+  },
+  // Modifier corner triangle
+  modifierCorner: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 0,
+    height: 0,
+    borderTopWidth: 18,
+    borderLeftWidth: 18,
+    borderTopColor: colors.teal,
+    borderLeftColor: "transparent",
+    zIndex: 10,
+  },
+  // Image area
+  imageWrapper: {
+    flex: 1,
+    width: "100%",
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  placeholderContainer: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.teal}08`,
+  },
+  // Content area
+  contentContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 2,
+  },
+  nameText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.heading,
+    lineHeight: 15,
+  },
+  // Price row: card price left, cash pill right
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 1,
+  },
+  cardPrice: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.heading,
+  },
+  cardPriceCustom: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.warning,
+  },
+  cashPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: `${colors.success}18`,
+    borderWidth: 1,
+    borderColor: `${colors.success}40`,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  cashLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: `${colors.success}99`,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  cashAmount: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.success,
+  },
+  // Divider between image and content
+  divider: {
+    height: 1,
+    backgroundColor: `${colors.teal}20`,
+    marginHorizontal: 10,
+  },
+});
+
+const PlaceholderIcon = React.memo(() => (
+  <Utensils color={`${colors.label}60`} size={16} />
+));
+PlaceholderIcon.displayName = "PlaceholderIcon";
 
 interface MenuItemProps {
   item: MenuItemType;
   imageSource?: ImageSourcePropType;
+  /** From FlatList index — viewport rows load first */
+  imagePriority?: ImageLoadPriority;
   onOrderClosedCheck?: () => boolean;
   categoryId?: string;
-  getItemPriceForCategory?: (itemId: string, categoryId: string) => number;
+  menuId?: string;
 }
 
 const MenuItem: React.FC<MenuItemProps> = ({
   item,
   imageSource,
+  imagePriority = "normal",
   onOrderClosedCheck,
   categoryId,
-  getItemPriceForCategory,
+  menuId,
 }) => {
-  const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
-  const { openFullscreen } = useModifierSidebarStore();
-  const { openToAdd } = useCustomizationStore();
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
-
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const { show } = useToast();
+  const showMenuItemPrices = useSettingsStore((s) => s.showMenuItemPrices);
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
 
   const isClockedIn = useMemo(() => {
     if (!activeEmployeeId) return false;
@@ -42,138 +158,130 @@ const MenuItem: React.FC<MenuItemProps> = ({
     return session?.status === "clockedIn";
   }, [activeEmployeeId, getSession]);
 
-  // Menu items always add new items, not edit existing ones
+  const priceData = useMemo(() => {
+    const displayPrice = item.price;
+    const basePrice =
+      item.priceLevels?.level_2_location_item ??
+      item.priceLevels?.level_1_base ??
+      item.price;
+    const hasCustomPricing = displayPrice !== basePrice;
+    return { displayPrice, hasCustomPricing, basePrice };
+  }, [item]);
 
-  const handlePress = () => {
+  const hasModifiers = useMemo(
+    () => item.modifierGroupIds && item.modifierGroupIds.length > 0,
+    [item.modifierGroupIds],
+  );
+
+  const isDisabled = item.availability === false;
+
+  const handlePressIn = useCallback(() => {
+    setMenuBlockedSync(true);
+
     if (!isClockedIn) {
+      setMenuBlockedSync(false);
       showClockInWall();
       return;
     }
 
-    if (onOrderClosedCheck && onOrderClosedCheck()) {
+    if (onOrderClosedCheck?.()) {
+      setMenuBlockedSync(false);
       return;
     }
 
-    if (!activeOrder?.order_type) {
-      toast.error("Please select an Order Type", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
-    openFullscreen(item, activeOrderId, categoryId);
-  };
+    // if (!currentOrder?.order_type) {
+    //   setMenuBlockedSync(false);
+    //   show({
+    //     title: "Order Type Required",
+    //     message: "Please select an order type before adding items.",
+    //     type: "warning",
+    //   });
+    //   return;
+    // }
+
+    useModifierSidebarStore.getState().preWarm(item, categoryId, menuId);
+  }, [item, categoryId, menuId, isClockedIn, onOrderClosedCheck, showClockInWall, show]);
+
+  const handlePress = useCallback(() => {
+    if (!isMenuBlockedSync()) return;
+    const { activeOrderId } = useOrderStore.getState();
+    useModifierSidebarStore.getState().openToAdd(item, activeOrderId, categoryId, menuId);
+  }, [item, categoryId, menuId]);
+
+  const resolvedImageSource =
+    imageSource ?? resolveMenuItemImageSource(item.image);
 
   return (
     <TouchableOpacity
-      disabled={item.availability === false}
+      disabled={isDisabled}
+      onPressIn={handlePressIn}
       onPress={handlePress}
-      className={`w-[23%] rounded-[20px] ${
-        item.availability === false ? "opacity-50" : ""
-      } mb-2 bg-[#303030] border border-gray-600`}
+      style={[
+        styles.container,
+        isDisabled && styles.containerDisabled,
+        !showMenuImages && styles.containerNoImage,
+      ]}
     >
-      <View className="flex-col items-center gap-1 overflow-hidden rounded-lg flex-1 ">
-        <View className=" relative w-full h-24 flex-1 ">
-          {imageSource ? (
-            <Image
-              source={imageSource}
-              className="w-full h-24 object-cover rounded-lg "
+      {/* Modifier triangle corner */}
+      {hasModifiers && <View style={styles.modifierCorner} />}
+
+      {/* Image */}
+      {showMenuImages && (
+        <View style={styles.imageWrapper}>
+          {resolvedImageSource ? (
+            <OptimizedListImage
+              source={resolvedImageSource}
+              style={styles.image}
+              contentFit="cover"
+              priority={imagePriority}
+              recyclingKey={`${item.id}:${item.image ?? ""}`}
             />
           ) : (
-            <View className="w-full h-24 rounded-xl  items-center justify-center ">
-              <Utensils color="#9ca3af" size={24} />
+            <View style={styles.placeholderContainer}>
+              <PlaceholderIcon />
             </View>
           )}
-          <View className="absolute bottom-2 right-2">
-            {item.modifierGroupIds && item.modifierGroupIds.length > 0 && (
-              <Settings color="#60A5FA" size={24} className="" />
+        </View>
+      )}
+
+      {/* Divider */}
+      {showMenuImages && <View style={styles.divider} />}
+
+      {/* Content */}
+      <View style={styles.contentContainer}>
+        <Text style={styles.nameText} numberOfLines={2}>{item.name}</Text>
+
+        {showMenuItemPrices && (
+          <View style={styles.priceRow}>
+            <Text style={priceData.hasCustomPricing ? styles.cardPriceCustom : styles.cardPrice}>
+              ${priceData.displayPrice?.toFixed(2)}
+            </Text>
+
+            {item.cashPrice && (
+              <View style={styles.cashPill}>
+                <Text style={styles.cashAmount}>${item.cashPrice.toFixed(2)}</Text>
+              </View>
             )}
           </View>
-        </View>
-        <View className="h-[1px] bg-blue-400  self-center w-[90%]" />
-        <View className="w-full px-4 flex-1 pb-1 h-full justify-end">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-lg font-bold text-white mt-3 flex-1">
-              {item.name}
-            </Text>
-          </View>
-          <View className="flex-row  items-baseline">
-            {(() => {
-              // Get the correct price for this category
-              const displayPrice =
-                categoryId && getItemPriceForCategory
-                  ? getItemPriceForCategory(item.id, categoryId)
-                  : item.price;
-
-              const hasCustomPricing =
-                categoryId &&
-                getItemPriceForCategory &&
-                getItemPriceForCategory(item.id, categoryId) !== item.price;
-
-              return (
-                <>
-                  <Text
-                    className={`text-xl font-semibold ${
-                      hasCustomPricing ? "text-yellow-400" : "text-white"
-                    }`}
-                  >
-                    ${displayPrice.toFixed(2)}
-                  </Text>
-                  {hasCustomPricing && (
-                    <Text className="text-lg text-gray-500 ml-2 line-through">
-                      ${item.price.toFixed(2)}
-                    </Text>
-                  )}
-                  {item.cashPrice && (
-                    <Text className="text-xl text-gray-300 ml-2">
-                      Cash Price: ${item.cashPrice.toFixed(2)}
-                    </Text>
-                  )}
-                </>
-              );
-            })()}
-          </View>
-
-          {/* Stock Status Display */}
-          <View className="mt-2">
-            {(() => {
-              // Determine stock status based on item properties
-              if (item.stockQuantity !== undefined && item.stockQuantity > 0) {
-                return (
-                  <View className="flex-row items-center">
-                    <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
-                    <Text className="text-green-400 text-sm font-medium">
-                      {item.stockQuantity} in stock
-                    </Text>
-                  </View>
-                );
-              } else if (item.availability === false) {
-                return (
-                  <View className="flex-row items-center">
-                    <View className="w-2 h-2 bg-red-500 rounded-full mr-2" />
-                    <Text className="text-red-400 text-sm font-medium">
-                      Out of Stock
-                    </Text>
-                  </View>
-                );
-              } else {
-                // Default to "In Stock" for items without specific stock tracking
-                return (
-                  <View className="flex-row items-center">
-                    <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
-                    <Text className="text-green-400 text-sm font-medium">
-                      In Stock
-                    </Text>
-                  </View>
-                );
-              }
-            })()}
-          </View>
-        </View>
+        )}
       </View>
     </TouchableOpacity>
   );
 };
 
-export default MenuItem;
+export default React.memo(MenuItem, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.item.price === nextProps.item.price &&
+    prevProps.item.availability === nextProps.item.availability &&
+    prevProps.item.stockQuantity === nextProps.item.stockQuantity &&
+    prevProps.item.name === nextProps.item.name &&
+    prevProps.item.image === nextProps.item.image &&
+    prevProps.categoryId === nextProps.categoryId &&
+    prevProps.imageSource === nextProps.imageSource &&
+    prevProps.imagePriority === nextProps.imagePriority
+  );
+});

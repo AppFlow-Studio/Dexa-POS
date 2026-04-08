@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Schedule } from "@/lib/types";
 import { Clock, Plus, Trash2 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -11,16 +12,25 @@ export const TimeField: React.FC<{
   onChange: (next: string) => void;
 }> = ({ value, onChange }) => {
   const [hours, minutes] = useMemo(() => {
-    const [h = "0", m = "0"] = value?.split(":") ?? [];
-    return [parseInt(h, 10) || 0, parseInt(m, 10) || 0];
+    if (!value) return [0, 0];
+    const d = new Date(value);
+    // If invalid date (e.g. old "09:00" format during migration), fallback or parse manually
+    if (isNaN(d.getTime())) {
+      const [h = "0", m = "0"] = value.split(":") ?? [];
+      return [parseInt(h, 10) || 0, parseInt(m, 10) || 0];
+    }
+    return [d.getHours(), d.getMinutes()];
   }, [value]);
 
-  const set = (h: number, m: number) =>
-    onChange(
-      `${String((h + 24) % 24).padStart(2, "0")}:${String(
-        (m + 60) % 60
-      ).padStart(2, "0")}`
-    );
+  const set = (h: number, m: number) => {
+    let d = value ? new Date(value) : new Date();
+    if (isNaN(d.getTime())) d = new Date(); // Fallback if invalid
+    d.setHours((h + 24) % 24);
+    d.setMinutes((m + 60) % 60);
+    d.setSeconds(0);
+    d.setMilliseconds(0);
+    onChange(d.toISOString());
+  };
 
   const toAmPm = (h: number, m: number) => {
     const period = h >= 12 ? "PM" : "AM";
@@ -30,7 +40,7 @@ export const TimeField: React.FC<{
   };
 
   return (
-    <View className="flex-row items-center gap-2 p-1 bg-[#212121] border border-gray-600 rounded-lg">
+    <View className="flex-row items-center gap-2 p-1 bg-panel border border-gray-600 rounded-lg">
       <View className="flex-1 flex-row items-center justify-around">
         <TouchableOpacity
           onPress={() => set(hours === 0 ? 23 : hours - 1, minutes)}
@@ -66,7 +76,7 @@ export const TimeField: React.FC<{
           <Text className="text-white text-xl font-bold">+</Text>
         </TouchableOpacity>
       </View>
-      <View className="px-2 py-1 rounded bg-[#303030] border border-gray-700">
+      <View className="px-2 py-1 rounded bg-surface border border-gray-700">
         <Text className="text-gray-300 text-lg">{toAmPm(hours, minutes)}</Text>
       </View>
     </View>
@@ -96,7 +106,7 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
   return (
     <View className="gap-2">
       {schedules.length === 0 && (
-        <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+        <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
           <Text className="text-gray-300 text-lg">
             No schedule rules defined.
           </Text>
@@ -107,11 +117,11 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
         <TouchableOpacity
           key={rule.id}
           onPress={() => onEditPress(rule, idx)}
-          className="bg-[#303030] border rounded-lg p-3 border-gray-600"
+          className="bg-surface border rounded-lg p-3 border-gray-600"
         >
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-1.5">
-              <Clock size={16} color="#9CA3AF" />
+              <Clock size={16} color={colors.label} />
               <Text className="text-white font-semibold text-xl">
                 {rule.name || `Rule ${idx + 1}`}
               </Text>
@@ -123,11 +133,20 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
               }}
               className="p-1.5 bg-red-900/30 border border-red-500 rounded-lg"
             >
-              <Trash2 size={18} color="#F87171" />
+              <Trash2 size={18} color={colors.danger} />
             </TouchableOpacity>
           </View>
           <Text className="text-base text-gray-400 mt-1.5">
-            {rule.days.join(", ")} from {rule.startTime} to {rule.endTime}
+            {(rule.days || []).join(", ")} from{" "}
+            {new Date(rule.startTime).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}{" "}
+            to{" "}
+            {new Date(rule.endTime).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
           </Text>
         </TouchableOpacity>
       ))}

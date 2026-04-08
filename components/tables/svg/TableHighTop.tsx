@@ -1,32 +1,51 @@
-import * as React from "react";
-import Svg, { Circle, Rect } from "react-native-svg";
+import Svg, { Circle } from 'react-native-svg'
 
 interface TableHighTopProps {
-  color?: string;
-  width?: number;
-  height?: number;
+  color?: string
+  chairColor?: string
+  width?: number
+  height?: number
 }
 
 const TableHighTop = ({
-  color = "#F1F1F1",
-  width = 60,
-  height = 60,
-  ...props
+  color = '#2DD4BF',
+  width = 120,
+  height = 120
 }: TableHighTopProps) => (
-  <Svg width={width} height={height} viewBox="0 0 60 60" fill="none" {...props}>
-    {/* Table Top */}
-    <Circle cx="30" cy="30" r="28" fill={color} />
-    {/* Base to distinguish it */}
-    <Rect
-      x="25"
-      y="25"
-      width="10"
-      height="10"
-      rx="5"
+  <Svg width={width} height={height} viewBox='0 0 80 80' fill='none'>
+    {/* Table top surface */}
+    <Circle
+      cx='40'
+      cy='40'
+      r='36'
       fill={color}
-      opacity="0.6"
+      fillOpacity='0.18'
+      stroke={color}
+      strokeWidth='1.5'
+      strokeOpacity='0.8'
+    />
+    {/* Overhang ring */}
+    <Circle
+      cx='40'
+      cy='40'
+      r='28'
+      fill='none'
+      stroke={color}
+      strokeWidth='0.75'
+      strokeOpacity='0.25'
+    />
+    {/* Pedestal base */}
+    <Circle
+      cx='40'
+      cy='40'
+      r='9'
+      fill={color}
+      fillOpacity='0.22'
+      stroke={color}
+      strokeWidth='1'
+      strokeOpacity='0.5'
     />
   </Svg>
-);
+)
 
-export default TableHighTop;
+export default TableHighTop

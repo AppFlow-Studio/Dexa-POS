@@ -18,7 +18,7 @@ const RadioButton: React.FC<RadioButtonProps> = ({
       className={`flex-row justify-between items-center p-4 border rounded-lg ${
         isSelected
           ? "border-blue-500 bg-blue-50"
-          : "bg-[#303030] border-gray-600"
+          : "bg-panel border-gray-600"
       }`}
     >
       <Text

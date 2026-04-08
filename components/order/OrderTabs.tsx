@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 // Define types for props
-type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
+type TabName = "All" | "Takeaway" | "Delivery";
 
 interface Tab {
   name: TabName;
@@ -16,7 +16,7 @@ interface OrderTabsProps {
 
 const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, counts }) => {
   const [activeWindow, setActiveWindow] = useState("All");
-  const TABS: TabName[] = ["All", "Dine In", "Takeaway", "Delivery"];
+  const TABS: TabName[] = ["All", "Takeaway", "Delivery"];
 
   const handlePress = (tabName: TabName) => {
     setActiveWindow(tabName);
@@ -24,7 +24,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, counts }) => {
   };
 
   return (
-    <View className="bg-[#303030] border border-gray-700 p-1 rounded-xl flex-row self-start">
+    <View className="bg-surface border border-gray-700 p-1 rounded-xl flex-row self-start">
       {TABS.map((tab) => {
         const isActive = activeWindow === tab;
         const tabCount = counts[tab];
@@ -33,7 +33,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, counts }) => {
             key={tab}
             onPress={() => handlePress(tab)}
             className={`py-2 px-4 rounded-lg flex-row items-center ${
-              isActive ? "bg-[#212121]" : ""
+              isActive ? "bg-panel" : ""
             }`}
           >
             <Text

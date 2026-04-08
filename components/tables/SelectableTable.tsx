@@ -1,4 +1,5 @@
 import { TableType } from "@/lib/types";
+import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -18,13 +19,6 @@ interface SelectableTableProps {
   activeOrderId?: string | null;
 }
 
-const STATUS_COLORS: Record<TableType["status"], string> = {
-  Available: "#10B981", // Green
-  "In Use": "#3B82F6", // Blue
-  "Needs Cleaning": "#EF4444", // Red,
-  "Not in Service": "#6B7280", // Gray
-};
-
 const SelectableTable: React.FC<SelectableTableProps> = ({
   table,
   isSelected,
@@ -38,15 +32,6 @@ const SelectableTable: React.FC<SelectableTableProps> = ({
   const translateY = useSharedValue(table.y);
 
   const handleTablePress = () => {
-    // if (table.status !== "Available") {
-    //     toast.error(`Table ${table.name} is not available`, {
-    //         duration: 3000,
-    //         position: ToastPosition.BOTTOM,
-    //     });
-    //     return;
-    // }
-
-    // Call the onSelect callback - let parent handle the assignment
     onSelect(table);
   };
 
@@ -110,7 +95,7 @@ const SelectableTable: React.FC<SelectableTableProps> = ({
               : `border-gray-300 bg-white`
           }`}
           style={{
-            shadowColor: "#000",
+            shadowColor: colors.screen,
             shadowOffset: {
               width: 0,
               height: 2,
@@ -125,8 +110,8 @@ const SelectableTable: React.FC<SelectableTableProps> = ({
             className="absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-white"
             style={{
               backgroundColor: isSelected
-                ? "#3B82F6"
-                : STATUS_COLORS[table.status],
+                ? colors.info
+                : TABLE_STATUS_COLORS[table.status],
             }}
           />
 

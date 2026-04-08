@@ -1,3 +1,5 @@
+import { colors } from "@/lib/theme";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Tag, X } from "lucide-react-native";
 import React from "react";
@@ -10,9 +12,9 @@ interface DiscountSectionProps {
 const DiscountSection: React.FC<DiscountSectionProps> = ({
   onOpenDiscounts,
 }) => {
-  const { activeOrderId, orders, removeCheckDiscount } = useOrderStore();
-
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const removeCheckDiscount = useOrderStore((s) => s.removeCheckDiscount);
+  const activeOrder = useActiveOrder();
   const appliedDiscount = activeOrder?.checkDiscount;
 
   const handleRemoveDiscount = () => {
@@ -22,7 +24,7 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
   };
 
   return (
-    <View className="bg-[#212121]">
+    <View className="bg-panel">
       {appliedDiscount ? (
         // If a discount IS applied, show the discount label and a remove button
         <View
@@ -39,7 +41,7 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
             onPress={handleRemoveDiscount}
             className="p-1.5 bg-blue-600/30 rounded-full"
           >
-            <X color="#60A5FA" size={20} />
+            <X color={colors.info} size={20} />
           </TouchableOpacity>
         </View>
       ) : (
@@ -49,9 +51,9 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
           className="flex-row items-center"
           style={{ elevation: 2, height: 44 }}
         >
-          <View className="bg-[#303030] border border-gray-600 rounded-xl flex-row py-1 px-2 items-center">
+          <View className="bg-surface border border-gray-600 rounded-xl flex-row py-1 px-2 items-center">
             <View className="p-1.5 rounded-md mr-1.5">
-              <Tag color="#9CA3AF" size={20} />
+              <Tag color={colors.label} size={20} />
             </View>
             <Text className="font-bold text-base text-gray-300">Discounts</Text>
           </View>

@@ -1,14 +1,27 @@
 import { ComponentType } from "react";
+import type { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
+import type {
+  OrderRefundItemRecord,
+  ReversalRecord,
+} from "@/types/refunds";
+import { TABLE_SHAPES } from "./table-shapes";
+
+// Re-export refund types
+export type { ReversalRecord, OrderRefundItemRecord };
 
 // --- INVENTORY TYPES ---
 export type InventoryUnit = "bottle" | "pcs" | "lbs" | "bag" | "qt";
 
+export type InventoryUnitType = "unit" | "weight" | "volume";
+
 export interface Vendor {
   id: string;
   name: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
+  contactName: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  website: string | null;
   description?: string;
 }
 
@@ -16,11 +29,17 @@ export interface InventoryItem {
   id: string;
   name: string;
   category: string;
+  description?: string | null;
+  image?: string | null;
   stockQuantity: number;
-  unit: InventoryUnit;
+  unit: string; // e.g. "kg", "pcs" (display unit)
+  unitType: InventoryUnitType; // "unit", "weight", "volume"
   reorderThreshold: number;
   cost: number; // Cost per unit
   vendorId: string | null;
+  locationId: string | null; // null = Global
+  isGlobal?: boolean; // derived helper
+  stockUpdateReason?: string; // for stock updates
   // Stock tracking mode: in/out toggles or explicit quantity tracking
   stockTrackingMode?: "in_stock" | "out_of_stock" | "quantity";
 }
@@ -119,8 +138,30 @@ export interface Discount {
   id: string;
   label: string;
   subLabel?: string;
-  value: number; // e.g., 0.15 for 15%
-  type: "percentage";
+  value: number; // e.g., 0.15 for 15% or fixed dollar amount
+  type: "percentage" | "fixed";
+}
+
+// === ORDER DISCOUNT TYPES (backend-aligned) ===
+export type DiscountType = "percentage" | "fixed_amount";
+export type DiscountSource = "preset" | "open" | "promo_code" | "loyalty";
+
+export interface OrderAppliedDiscount {
+  local_id: string;
+  order_discount_id?: string; // Backend order_discounts.id after sync
+  discount_id: string | null;
+  discount_name?: string; // Display name for the discount
+  discount_type: DiscountType;
+  discount_value: number;
+  source: DiscountSource;
+  calculated_amount: number;
+  pre_discount_subtotal: number;
+  applied_by_staff_profiles_id: string | null;
+  approved_by_staff_profiles_id?: string | null;
+  applied_at: string;
+  applied_to_item_ids?: string[];
+  sync_status?: "pending" | "synced" | "failed";
+  sync_error?: string | null;
 }
 
 export interface ItemSize {
@@ -141,6 +182,7 @@ export interface ModifierOption {
   price: number;
   isAvailable?: boolean; // For items that are "86'd" (unavailable)
   isDefault?: boolean; // For default selected options
+  recipe?: RecipeItem[];
 }
 
 export interface ModifierCategory {
@@ -151,11 +193,34 @@ export interface ModifierCategory {
   maxSelections?: number; // For multiple selection with limits
   description?: string; // e.g., "Choose any", "Included up to 3; extras +$0.25 each"
   options: ModifierOption[];
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id?: string | null;
+  location_name?: string;
+  items?: MenuItemType[];
 }
 
 export interface ExtendedModifierGroup extends ModifierCategory {
   items: MenuItemType[]; // Array of menu items that use this modifier group
 }
+
+// Price level data from backend - represents the 5-level pricing cascade
+export interface PriceLevels {
+  level_1_base: number;
+  level_2_location_item: number | null;
+  level_2_modifier: number | null;
+  level_2_modifier_type: string | null;
+  level_3_category: number | null;
+  level_4_location_category: number | null;
+  level_5_location_menu: number | null;
+}
+
+// Source of the effective price - which level won the cascade
+export type PriceSource =
+  | "base"
+  | "location_item"
+  | "category"
+  | "location_category"
+  | "location_menu";
 
 export interface MenuItemType {
   id: string;
@@ -173,13 +238,25 @@ export interface MenuItemType {
   allergens?: string[];
   cardBgColor?: string;
   availability?: boolean; // New field for availability status
-  customPricing?: CustomPricing[]; // New field for custom pricing
+  customPricing?: CustomPricing[]; // Legacy field - being replaced by priceLevels
+  // Menu-specific price overrides (Level 5)
+  // Map<MenuID, Price>
+  menuPriceOverrides?: Record<string, number>;
+  // Category-specific price overrides (Level 4)
+  // Map<CategoryID, Price>
+  categoryPriceOverrides?: Record<string, number>;
   recipe?: RecipeItem[];
   // Optional stock tracking directly on menu items (for items not built from recipes)
   stockQuantity?: number;
   reorderThreshold?: number;
   // Stock tracking mode: "in_stock", "out_of_stock", or "quantity"
   stockTrackingMode?: "in_stock" | "out_of_stock" | "quantity";
+  // NEW: Backend pricing metadata
+  priceLevels?: PriceLevels;
+  priceSource?: PriceSource;
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id?: string | null;
+  displayOrder?: number;
 }
 
 export interface CustomPricing {
@@ -199,10 +276,27 @@ export interface Menu {
   name: string;
   description?: string;
   isActive: boolean;
-  categories: string[]; // Array of category names
+  displayOrder?: number;
+  categories: Category[]; // Changed to array of full Category objects (Tree Structure)
   schedules?: Schedule[];
   createdAt: string;
   updatedAt: string;
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id?: string | null;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  isActive: boolean;
+  order: number;
+  displayOrder?: number;
+  createdAt: string;
+  schedules?: Schedule[];
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id?: string | null;
+  location_name?: string; // Display name of the owning location
+  items?: MenuItemType[]; // Nested items for Tree Structure
 }
 
 export interface Schedule {
@@ -235,6 +329,8 @@ export interface TableType {
   capacity: number;
   // Instead of 'shape', we now reference the SVG component directly
   component: ComponentType<any>;
+  shapeId: keyof typeof TABLE_SHAPES;
+
   order?: TableOrder | null;
   x: number;
   y: number;
@@ -264,18 +360,37 @@ export type DeliveryPartner =
 export interface CartItem {
   id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string; // The original ID from the menu data
+  db_order_item_id?: string; // Backend order_item_id after sync (for update/void RPC calls)
+  locationExclusiveItemId?: string; // Optional location-exclusive item ID
+  // Open item support
+  is_open_item?: boolean;
+  open_item_name?: string;
+  open_item_price?: number;
   name: string;
+  category_name?: string; // Category for backend sync
   quantity: number;
-  // Tracks how many of the quantity have been fully paid. Defaults to 0.
-  paidQuantity?: number;
+  // Payment tracking
+  paidQuantity: number; // How many units paid for
+  paymentId?: string; // Which payment covered this
+
   // Per-item preparation status tracking for table workflow
-  item_status?: "Preparing" | "Ready" | "Served";
+  // Per-item preparation status tracking for table workflow
+  // Supports both legacy (PascalCase) and backend (lowercase) values
+  item_status?:
+    | "Preparing"
+    | "Ready"
+    | "Served"
+    | "preparing"
+    | "ready"
+    | "served";
   // Kitchen send status - tracks whether item has been sent to kitchen
-  kitchen_status?: "new" | "sent" | "ready" | "served";
+  kitchen_status?: "new" | "sent" | "preparing" | "ready" | "served";
   // Indicates if this item is a draft (not yet confirmed)
   isDraft?: boolean;
   originalPrice: number;
   price: number; // Final price after size/add-ons
+  unitPrice: number; // Base Price before modifiers and add-ons
+  cashPrice: number;
   image?: string; // Image filename is a top-level property
   customizations: {
     size?: ItemSize;
@@ -287,6 +402,7 @@ export interface CartItem {
         id: string;
         name: string;
         price: number;
+        isNo?: boolean;
       }[];
     }[];
     notes?: string;
@@ -294,6 +410,41 @@ export interface CartItem {
   availableDiscount?: Discount;
   appliedDiscount?: Discount | null;
   refundedQuantity?: number;
+  refundedAmount?: number;
+  // Tax fields for per-item tax calculation
+  tax_category?: string | null; // e.g., "standard", "alcohol"
+  is_tax_exempt?: boolean;
+  // Voided item tracking
+  is_voided?: boolean;
+  void_reason?: string;
+  // Sync status tracking for resilient backend sync
+  sync_status?: "pending" | "syncing" | "synced" | "failed";
+  sync_error?: string;
+  sync_retry_count?: number;
+  // NEW: Context for price level tracking - which category/menu was this item added from
+  addedFromCategoryId?: string | null;
+  addedFromMenuId?: string | null;
+
+  // Pre-calculated (synced from backend or calculated locally)
+  subtotal: number; // price * quantity (or discounted subtotal if discount applied)
+  cashSubtotal: number; // cashPrice * quantity (or discounted if discount applied)
+  taxRate: number; // Tax rate % captured at add time
+  taxAmount: number; // subtotal * taxRate
+  cashTaxAmount: number; // cashSubtotal * taxRate
+
+  // Distributed discount from order-level/check discounts (synced from backend)
+  discount_amount?: number; // Card pricing discount distributed to this item
+  discount_cash_amount?: number; // Cash pricing discount distributed to this item
+
+  // Actual Base Prices With no Modifiers
+  baseCardPrice: number;
+  baseCashPrice: number;
+
+  // Course management (for multi-course dining)
+  courseNumber?: number; // Which course this item belongs to (1, 2, 3, etc.)
+
+  // Seat management (for per-seat ordering)
+  seatNumber?: number | null; // Which seat (1..N), null = shared/unassigned
 }
 
 export interface OnlineOrder {
@@ -326,18 +477,43 @@ export interface PreviousOrder {
   serialNo: string;
   orderDate: string; // e.g., "Oct 16, 2024"
   orderTime: string; // e.g., "09:31 AM"
+  timestamp: string; // ISO timestamp for filtering/sorting (e.g., "2026-01-13T23:56:00.000Z")
   orderId: string;
+  display_number: string;
   paymentStatus: PaymentStatus;
   customer: string;
   server: string;
+  opened_at: string;
+  closed_at: string;
+  sent_to_kitchen_at: string;
+  last_activity_at: string;
   itemCount: number;
+  amount_paid: number;
+  amount_due: number;
+  cash_amount_due: number;
   type: OrderType;
   total: number;
+  tax?: number; // Tax amount for bill display
   items: CartItem[]; // The detailed list of items for the notes modal
+  notes?: string; // Order-level notes (customer requests, special instructions)
+  payments?: OrderProfile["payments"]; // Add payments array
   // Refund tracking fields
   refunded?: boolean;
+  voided?: boolean;
   refundedAmount?: number;
   originalTotal?: number;
+  service_location_id?: string;
+  service_location_name?: string;
+  // Station tracking for view_scope awareness
+  station_id?: string | null;
+  station_name?: string | null;
+  // Check management
+  checkStatus?: "Opened" | "Closed";
+  db_order_id?: string; // For RPC calls
+  order_source?: string | null;
+  delivery_platform?: string | null;
+  reversals?: ReversalRecord[];
+  order_refund_items?: OrderRefundItemRecord[];
 }
 
 export type InventoryItemStatus =
@@ -360,6 +536,116 @@ export interface UserProfile {
   profileImageUrl?: string; // e.g., 'tom_hardy.png'
 }
 
+export interface Shift {
+  id: string;
+  periodId: string;
+  date: string; // ISO format: "YYYY-MM-DD"
+  role: Role;
+  startTime: string; // ISO 8601 format: "YYYY-MM-DDTHH:mm:ss.sssZ"
+  endTime: string; // ISO 8601 format: "YYYY-MM-DDTHH:mm:ss.sssZ"
+  location?: string;
+  status?:
+    | "confirmed"
+    | "pending-drop"
+    | "pending-swap"
+    | "dropped"
+    | "on-shift"
+    | "open";
+  breakMinutes?: number;
+  actualClockIn?: string; // "HH:mm"
+  actualClockOut?: string; // "HH:mm"
+  isToday?: boolean;
+  managerNote?: string;
+  restRiskHours?: number;
+  expectedPace?: "Calm" | "Moderate" | "Busy";
+  staffingLevel?: "Fully staffed" | "May need help";
+  isOvertimeRisk?: boolean;
+  // Properties from manager's view
+  employeeId: string | null;
+  requiredCount?: number;
+  locked?: boolean;
+}
+
+export interface SchedulePeriod {
+  id: string;
+  name: string;
+  startDate: string; // ISO date
+  endDate: string; // ISO date
+  status: "draft" | "active" | "completed" | "draft-edit";
+  shifts: Shift[]; // Nested shifts
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  isScheduled?: boolean;
+  type: "period"; // Explicit discriminator
+  originalScheduleId?: string;
+}
+
+export interface WeeklySchedule {
+  id: string;
+  name: string; // e.g., "Week of Nov 10-16, 2025"
+  startDate: string; // ISO date
+  endDate: string; // ISO date (always 7 days after startDate)
+  status: "draft" | "active" | "completed" | "draft-edit"; // Assuming similar statuses
+  shifts: Shift[]; // Nested shifts
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  type: "weekly"; // Explicit discriminator
+  originalScheduleId?: string;
+}
+
+export interface ConflictInfo {
+  hasConflict: boolean;
+  conflictingPeriods: SchedulePeriod[];
+}
+
+export interface PTORequest {
+  id: string;
+  employeeId: string;
+  startDate: string; // ISO format: "YYYY-MM-DD"
+  endDate: string; // ISO format: "YYYY-MM-DD"
+  hours: number;
+  status: "approved" | "denied" | "pending";
+  note?: string;
+  submittedAt: string; // ISO string
+  reviewedAt?: string; // ISO string
+  approverId?: string;
+  denialReason?: string;
+  revertedShifts?: Shift[];
+}
+
+export interface ShiftRequest {
+  id: string;
+  ownerId: string; // The employee who initiated the request.
+  type: "drop" | "swap";
+  status:
+    | "pending"
+    | "approved"
+    | "denied"
+    | "picked-up"
+    | "completed"
+    | "pending-peer"
+    | "pending-manager"
+    | "canceled";
+  submittedAt: string; // ISO string
+  shift: Shift; // Kept for drop requests
+  note?: string;
+  reason?: string;
+  approverId?: string;
+  denialReason?: string;
+  revertedShift?: Shift;
+  // For drop requests
+  pickedUpBy?: string;
+  pickedUpAt?: string;
+  // For swap requests (new fields)
+  myShiftId?: string; // The ID of the shift being offered by the initiator.
+  peerId?: string; // The employee ID of the peer being requested to swap with.
+  peerShiftId?: string; // The ID of the shift being offered in return by the peer.
+  revertedMyShift?: Shift;
+  revertedPeerShift?: Shift;
+}
+
 export interface ShiftStatus {
   status: "Clocked In" | "Clocked Out";
   duration: string;
@@ -368,6 +654,7 @@ export interface ShiftStatus {
 
 export interface ShiftHistoryEntry {
   id: string;
+  employeeId: string;
   date: string;
   clockIn: string;
   breakInitiated: string;
@@ -375,6 +662,22 @@ export interface ShiftHistoryEntry {
   clockOut: string;
   duration: string;
   role: string;
+}
+
+export interface PTOAccrualEntry {
+  date: string;
+  hoursWorked: number;
+  ptoEarned: number;
+  accrualRateUsed: number;
+  shiftId: string;
+  employeeId: string;
+}
+
+export interface CompletedShift {
+  shiftId: string;
+  employeeId: string;
+  date: string;
+  hoursWorked: number;
 }
 
 export interface PrinterDevice {
@@ -401,15 +704,6 @@ export interface PaymentTerminal {
   batteryLevel: number; // e.g., 85
 }
 
-export interface OfflineOrder {
-  serialNo: string;
-  orderDate: string;
-  orderTime: string;
-  orderId: string;
-  server: string;
-  total: number;
-}
-
 export interface TrackedOrderItem {
   name: string;
   quantity: number;
@@ -428,32 +722,184 @@ export interface TrackedOrder {
 
 export type PaymentType = "Card" | "Cash" | "Split";
 
+/**
+ * Item coverage detail for a payment.
+ * Tracks which items and quantities were covered by this payment.
+ */
+export interface OrderPaymentItemCoverage {
+  itemId: string; // db_order_item_id
+  itemName: string; // For UI display
+  quantity: number; // Units paid
+  unitPrice: number; // Price per unit used
+  subtotal: number; // quantity * unitPrice
+}
+
+export interface OrderPaymentTransactionDetails {
+  terminalType?: string;
+  authorizationCode?: string;
+  cardType?: string;
+  last4?: string;
+  transactionId?: string;
+  amountTendered?: number;
+  changeGiven?: number;
+  isCashPriced?: boolean;
+  splitLabel?: string;
+  isCashPayment?: boolean;
+  isCash?: boolean;
+  // Full Dejavoo response details (sanitized, no First4/BIN/IPosToken)
+  dejavooTransaction?: DejavooSaleTransactionResponse;
+  // Full Castles response JSONB (from buildCastlesTerminalResponse)
+  castlesTransaction?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export type SplitPaymentPath = "split-by-item" | "split-evenly" | "split-custom-amount" | "pay-for-items";
+
+export const SPLIT_PATH_LABELS: Record<SplitPaymentPath, string> = {
+  "split-by-item": "Split by Item",
+  "split-evenly": "Split Evenly",
+  "split-custom-amount": "Custom Amount",
+  "pay-for-items": "Pay for Items",
+};
+
+/**
+ * Payment record for UI consumption with enhanced item coverage tracking.
+ * Used in OrderProfile.payments array.
+ */
+export interface OrderProfilePayment {
+  // Core identifiers
+  id: string;
+  db_payment_id?: string; // Backend ID for void operations
+  localId?: string; // Local ID for offline/sync tracking
+
+  // Payment basics
+  amount: number;
+  method: PaymentType;
+  tip_amount: number;
+  total_collected: number; // amount + tip_amount
+
+  // Card details (when applicable)
+  cardBrand?: string;
+  last4?: string;
+
+  // Cash details (when applicable)
+  amountTendered?: number;
+  changeGiven?: number;
+  isCashPriced?: boolean;
+  cashSavings?: number; // original_amount - amount (discount received)
+
+  // Portions (for detailed breakdown)
+  subtotal_portion?: number;
+  tax_portion?: number;
+  discount_portion?: number;
+
+  // Split payment info
+  splitInfo?: {
+    portionIndex: number;
+    totalPortions: number;
+    isLastPortion: boolean;
+  };
+
+  // Item coverage with quantity tracking
+  itemsCovered: OrderPaymentItemCoverage[];
+
+  // Status and timestamps
+  status: "pending" | "authorized" | "captured" | "voided" | "refunded";
+  timestamp: string;
+
+  // Pre-auth fields (populated when status === 'authorized')
+  isPreAuth?: boolean;
+  preAuthAmount?: number;
+  preAuthRrn?: string;
+  preAuthStan?: string; // Castles only
+  preAuthAuthCode?: string;
+  preAuthReferenceId?: string;
+  preAuthTerminalType?: 'dejavoo' | 'castles';
+
+  // Void tracking
+  isVoided: boolean;
+  voidReason?: string;
+  voidedAt?: string;
+  refundedAmount?: number;
+  refundedAt?: string;
+  reference_id?: string;
+
+  // Return/refund tracking fields
+  isReturned?: boolean;
+  returnedAt?: string;
+  returnedBy?: string;
+  returnAmount?: number;
+  returnRrn?: string;
+  returnAuthCode?: string;
+  returnReferenceId?: string;
+  returnNumber?: string;
+  returnReason?: string;
+
+  // Tip adjustment tracking
+  original_tip_amount?: number;
+  tip_adjusted_at?: string;
+  tip_adjusted_by?: string;
+
+  // Settlement tracking
+  is_settled?: boolean;
+  settled_at?: string;
+  settled_batch_number?: string;
+
+  // Sync status (for offline-first reliability)
+  sync_status?: "synced" | "pending" | "failed";
+  sync_error?: string;
+  sync_attempt_count?: number;
+  transactionDetails?: OrderPaymentTransactionDetails;
+}
+
 export interface OrderProfile {
   id: string; // The unique ID for this order (e.g., "order_1755...")
+  customer_id?: string; // The ID of the customer associated with this order ( For analytics Tracking trigger)
+  // Backend sync fields (populated after first backend sync)
+  db_order_id?: string; // UUID from Supabase
+  order_number?: string; // Backend order number "ORD-YYYYMMDD-XXXX"
+  display_number?: string; // "#0042"
+  sync_status?: "pending" | "synced" | "failed"; // Backend sync status
 
   // Link to the physical location. Crucially, this is `string | null`.
-  // If it's `null`, it's not a dine-in order.
+  // If it's `null', it's not a dine-in order.
   service_location_id: string | null;
+  // Table name cached at order creation time (for display without floor plan dependency)
+  service_location_name?: string;
+
+  // Session tracking - bidirectional relationship with table sessions
+  session_id?: string; // Backend session UUID (for dine-in orders)
+  local_session_id?: string; // Local session ID (for offline reconciliation)
 
   // The current lifecycle stage of the order.
+  // Supports both legacy (PascalCase) and new backend (lowercase) values
+  // Supports only backend values now
   order_status:
-    | "Open"
-    | "Closed"
-    | "Cancelled"
-    | "Preparing"
-    | "Ready"
-    | "Served"
-    | "Building"
-    | "Voided";
+    | "draft"
+    | "pending"
+    | "sent_to_kitchen"
+    | "preparing"
+    | "ready"
+    | "completed"
+    | "cancelled"
+    | "refunded"
+    | "void";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";
 
   // The type of fulfillment for this order.
-  order_type?: "Dine In" | "Takeaway" | "Delivery";
+  // Supports both legacy and backend values
+  order_type?:
+    | "Dine In"
+    | "Takeaway"
+    | "Delivery"
+    | "dine_in"
+    | "takeout"
+    | "delivery";
 
   // Payment status for the order
-  paid_status: "Paid" | "Pending" | "Unpaid";
+  paid_status: "Paid" | "Partial" | "Pending" | "Unpaid" | "Refunded";
 
   // The actual items in the order. This is the "cart".
   items: CartItem[];
@@ -461,21 +907,47 @@ export interface OrderProfile {
   // Timestamps for tracking order lifecycle
   opened_at: string | null; // ISO String format is recommended
   closed_at?: string; // Optional, set when the order is closed
+  sent_to_kitchen_at?: string; // When order was sent to kitchen
+  last_activity_at?: string; // Track last activity for draft cleanup
 
   // Final calculated values, set upon closing the order
   total_amount?: number;
+  total_cash_amount?: number;
   total_tax?: number;
   total_discount?: number;
+
+  // Payment tracking - synced from backend
+  amount_paid?: number; // Total amount paid so far
+  amount_due?: number; // Remaining amount due (CARD price - source of truth)
+  cash_amount_due?: number; // Cash price equivalent (for showing cash discount option)
 
   // Additional optional details
   guest_count?: number;
   customer_name?: string;
   customer_phone?: string;
+  customer_email?: string;
   delivery_address?: string;
   server_name?: string;
   checkDiscount?: Discount | null;
+  applied_discounts?: OrderAppliedDiscount[];
   paymentMethod?: PaymentType; // Example usage
-  payments?: { amount: number; method: PaymentType }[]; // Example usage
+  payments?: OrderProfilePayment[]; // Payment records with full details
+  split_payment_path?: SplitPaymentPath | null; // Locks split method after first partial split payment
+  notes?: string; // Order-level notes (customer requests, special instructions)
+  reversals?: ReversalRecord[];
+  order_refund_items?: OrderRefundItemRecord[];
+
+  // === STATION TRACKING ===
+  station_id?: string | null; // Station that created this order
+  _sourceStationId?: string | null; // Original creating station ID (for display)
+  _sourceStationName?: string | null; // Original creating station name (for display)
+
+  // === ORDER SOURCE ===
+  order_source?: string | null; // "pos" | "online" | null
+  delivery_platform?: string | null; // "uber_eats" | "grubhub" | "doordash" | "food_panda" | null
+
+  // === SYNC VERSION (for optimistic concurrency) ===
+  sync_version?: number; // Backend sync version for conflict detection
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";
@@ -561,3 +1033,94 @@ export interface SpecialHours {
   open: string;
   close: string;
 }
+
+export interface Notification {
+  id: string;
+  type:
+    | "swap_request"
+    | "drop_request"
+    | "manager_note"
+    | "pto_update"
+    | "shift_reminder"
+    | "shift_updated"
+    | "shift_assigned"
+    | "schedule_published"
+    | "drop_request_approved"
+    | "drop_request_denied"
+    | "pto_request_approved"
+    | "pto_request_denied"
+    | "swap_request_received"
+    | "swap_request_peer_accepted"
+    | "swap_request_peer_denied"
+    | "swap_approved"
+    | "swap_denied";
+  message: string;
+  isRead: boolean;
+  timestamp: string; // ISO string
+  relatedShiftId?: string;
+  relatedRequestId?: string; // New field for request-related notifications
+  employeeId: string;
+  payload?: Record<string, any>; // Optional payload for additional data
+}
+
+export type Role =
+  | "Cashier"
+  | "Barista"
+  | "Line Cook"
+  | "Prep"
+  | "Supervisor"
+  | "Manager";
+
+// Role codes from Supabase location_members for employee authentication
+export type MerchantRole =
+  | "merchant.cashier"
+  | "merchant.manager"
+  | "merchant.admin"
+  | "merchant.owner";
+
+// --- SCHEDULE TEMPLATE TYPES ---
+
+export interface TemplateShift {
+  tempId: string;
+  employeeId: string | null;
+  dayOfWeek: number; // 0 = Sunday, 6 = Saturday
+  role: Role;
+  startTime: string; // ISO string with a placeholder date, e.g., "1970-01-01T09:00:00.000Z"
+  endTime: string; // ISO string with a placeholder date, e.g., "1970-01-01T17:00:00.000Z"
+  notes?: string;
+  breakMinutes?: number;
+  expectedPace?: "Calm" | "Moderate" | "Busy";
+  staffingLevel?: "Fully staffed" | "May need help";
+}
+
+export const PREDEFINED_TAGS = [
+  "weekday",
+  "weekend",
+  "holiday",
+  "peak",
+  "slow",
+  "morning",
+  "evening",
+] as const;
+
+export interface ScheduleTemplate {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  shifts: TemplateShift[];
+  lastUsed: Date;
+  isActiveForScheduling?: boolean;
+}
+
+export interface WaitlistEntry {
+  id: string;
+  name: string;
+  partySize: number;
+  arrivalTime: Date;
+  quotedTime: number; // minutes
+  notes?: string;
+  phone?: string;
+}
+
+export type ApplyMode = "merge" | "replace-all" | "fill-gaps";

@@ -1,28 +1,47 @@
-import { ALL_MODIFIER_GROUPS, MOCK_MENU_ITEMS } from "@/lib/mockData";
 import {
+  Category,
   CustomPricing,
   Menu,
   MenuItemType,
   ModifierCategory,
   Schedule,
 } from "@/lib/types";
+import {
+  MenuItemIngredientSync,
+  MenuWithCategories,
+  ModifierIngredientSync,
+  PosSyncData,
+  PosSyncState,
+} from "@/types/menu";
 import { create } from "zustand";
 
-export interface Category {
-  id: string;
-  name: string;
-  isActive: boolean;
-  order: number;
-  createdAt: string;
-  schedules?: Schedule[];
-}
+// Re-export Category for components that import it from here
+export type { Category } from "@/lib/types";
 
 interface MenuState {
-  // Core menu data
+  // ============================================================
+  // SYNC STATE - Data from API
+  // ============================================================
+  posSyncData: PosSyncData | null;
+  syncState: PosSyncState;
+
+  // ============================================================
+  // DERIVED/LOCAL STATE - For backward compatibility
+  // These are populated from posSyncData or used for local CRUD
+  // ============================================================
   menuItems: MenuItemType[];
   categories: Category[];
   menus: Menu[];
   modifierGroups: ModifierCategory[];
+
+  // ============================================================
+  // O(1) LOOKUP MAPS - For instant data access
+  // ============================================================
+  menuItemsById: Record<string, MenuItemType>;
+  categoriesById: Record<string, Category>;
+  categoriesByName: Record<string, Category>;
+  menusById: Record<string, Menu>;
+  modifierGroupsById: Record<string, ModifierCategory>;
 
   // Global scheduling toggle
   isMenuSchedulingEnabled: boolean;
@@ -33,14 +52,46 @@ interface MenuState {
   temporaryActiveMenus: string[]; // IDs of menus unlocked by PIN
   temporaryActiveCategories: string[]; // Names of categories unlocked by PIN
 
-  // CRUD Operations for Items
+  // Last selected menu (persisted to avoid blank state on launch)
+  lastSelectedMenuId: string | null;
+  setLastSelectedMenuId: (id: string | null) => void;
+
+  // ============================================================
+  // SYNC ACTIONS
+  // ============================================================
+  setMenuData: (data: PosSyncData) => void;
+  setSyncState: (state: Partial<PosSyncState>) => void;
+  clearMenuData: () => void;
+
+  // ============================================================
+  // GETTERS - Derive data from posSyncData
+  // ============================================================
+  getMenusFromSync: () => MenuWithCategories[];
+  getAllMenuItems: () => MenuItemType[];
+  getAllCategories: () => Category[];
+
+  // ============================================================
+  // O(1) GETTERS - Instant lookups from Maps
+  // ============================================================
+  getMenuItemById: (id: string) => MenuItemType | undefined;
+  getCategoryById: (id: string) => Category | undefined;
+  getCategoryByName: (name: string) => Category | undefined;
+  getMenuById: (id: string) => Menu | undefined;
+  getModifierGroupById: (id: string) => ModifierCategory | undefined;
+  getModifierGroupsByIds: (ids: string[]) => ModifierCategory[];
+
+  // ============================================================
+  // CRUD Operations for Items (Optimistic/Local)
+  // ============================================================
   addMenuItem: (item: Omit<MenuItemType, "id">) => void;
   updateMenuItem: (id: string, updates: Partial<MenuItemType>) => void;
   deleteMenuItem: (id: string) => void;
   toggleItemAvailability: (id: string) => void;
 
   // CRUD Operations for Categories
-  addCategory: (category: Omit<Category, "id" | "createdAt">) => void;
+  addCategory: (
+    category: Omit<Category, "id" | "createdAt"> & { id?: string }
+  ) => void;
   updateCategory: (id: string, updates: Partial<Category>) => void;
   deleteCategory: (id: string) => void;
   toggleCategoryActive: (id: string) => void;
@@ -56,15 +107,24 @@ interface MenuState {
   getItemsInCategory: (categoryName: string) => MenuItemType[];
 
   // CRUD Operations for Menus
-  addMenu: (menu: Omit<Menu, "id" | "createdAt" | "updatedAt">) => void;
+  addMenu: (
+    menu: Omit<Menu, "id" | "createdAt" | "updatedAt"> & { id?: string }
+  ) => void;
   updateMenu: (id: string, updates: Partial<Menu>) => void;
   deleteMenu: (id: string) => void;
   toggleMenuActive: (id: string) => void;
   reorderMenus: (fromIndex: number, toIndex: number) => void;
+  reorderCategoryItems: (
+    categoryId: string,
+    fromIndex: number,
+    toIndex: number
+  ) => void;
   getMenuItems: (menuId: string) => MenuItemType[];
 
   // CRUD Operations for Modifier Groups
-  addModifierGroup: (modifierGroup: Omit<ModifierCategory, "id">) => void;
+  addModifierGroup: (
+    modifierGroup: Omit<ModifierCategory, "id"> & { id?: string }
+  ) => void;
   updateModifierGroup: (id: string, updates: Partial<ModifierCategory>) => void;
   deleteModifierGroup: (id: string) => void;
   getModifierGroup: (id: string) => ModifierCategory | undefined;
@@ -75,10 +135,12 @@ interface MenuState {
   isMenuAvailableNow: (id: string, at?: Date) => boolean;
   isCategoryAvailableNow: (name: string, at?: Date) => boolean;
   setMenuSchedulingEnabled: (isEnabled: boolean) => void;
+
   // MENU STOCK (optional per-menu-item)
   decreaseMenuItemStock: (itemId: string, quantity: number) => void;
   increaseMenuItemStock: (itemId: string, quantity: number) => void;
   getLowStockMenuItems: () => MenuItemType[];
+
   // Stock tracking mode helpers
   getMenuItemStockTrackingMode: (
     itemId: string
@@ -89,6 +151,7 @@ interface MenuState {
     stockQuantity?: number,
     reorderThreshold?: number
   ) => void;
+
   // Custom Pricing Operations
   addCustomPricing: (
     itemId: string,
@@ -101,7 +164,18 @@ interface MenuState {
   ) => void;
   deleteCustomPricing: (itemId: string, pricingId: string) => void;
   toggleCustomPricingActive: (itemId: string, pricingId: string) => void;
-  getItemPriceForCategory: (itemId: string, categoryId: string) => number;
+
+  // Optimistic update after backend price edit
+  updateItemPriceOptimistic: (
+    itemId: string,
+    newPrice: number,
+    context: {
+      categoryId: string | null;
+      menuId: string | null;
+      cashPrice?: number | null;
+      availability?: boolean;
+    }
+  ) => void;
 
   // Category schedule info helper
   getCategoryScheduleInfo: (
@@ -116,6 +190,30 @@ interface MenuState {
   addTemporaryMenuAccess: (menuName: string) => void;
   addTemporaryCategoryAccess: (categoryName: string) => void;
   clearTemporaryAccess: () => void; // Call this on logout
+
+  // Merge standalone entities (categories, items, modifiers, menus)
+  mergeStandaloneData: (data: {
+    categories?: any[];
+    items?: any[];
+    modifierGroups?: any[];
+    menus?: any[];
+    menu_item_ingredients?: any[];
+    modifier_group_item_ingredients?: any[];
+  }) => void;
+
+  // Update recipes for existing items
+  mergeRecipeData: (data: {
+    menuRecipes: {
+      menu_item_id: string;
+      inventory_item_id: string;
+      quantity: number;
+    }[];
+    modifierRecipes: {
+      modifier_group_item_id: string;
+      inventory_item_id: string;
+      quantity: number;
+    }[];
+  }) => void;
 }
 
 // Helper function to generate unique IDs
@@ -131,69 +229,490 @@ const generateMenuId = () => `menu_${menuId++}`;
 let modifierGroupId = 300;
 const generateModifierGroupId = () => `mod_${modifierGroupId++}`;
 
-// Initial categories from existing menu items
-const getInitialCategories = (): Category[] => {
-  // Flatten all categories from items (since category is now an array)
-  const allCategories = MOCK_MENU_ITEMS.flatMap((item) =>
-    Array.isArray(item.category) ? item.category : [item.category]
-  );
-  const uniqueCategories = Array.from(new Set(allCategories));
-  return uniqueCategories.map((categoryName, index) => ({
-    id: generateCategoryId(),
-    name: categoryName,
-    isActive: true,
-    order: index + 1,
-    createdAt: new Date().toISOString(),
-    schedules: [],
-  }));
-};
+// ============================================================
+// TRANSFORM FUNCTIONS: Convert API types to legacy types
+// ============================================================
 
-// Initial menus
-const getInitialMenus = (): Menu[] => {
-  return [
-    {
-      id: generateMenuId(),
-      name: "Main Menu",
-      description: "Our complete dining experience",
-      isActive: true,
-      categories: ["Appetizers", "Main Course", "Dessert"],
-      schedules: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: generateMenuId(),
-      name: "Lunch Specials",
-      description: "Quick and delicious lunch options",
-      isActive: true,
-      categories: ["Main Course", "Sides"],
-      schedules: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ];
-};
+// [Legacy transform functions removed]
 
-export const useMenuStore = create<MenuState>((set, get) => {
-  // Initial state from mock data
-  const initialCategories = getInitialCategories();
-  const initialMenus = getInitialMenus();
-  const initialModifierGroups = ALL_MODIFIER_GROUPS;
+/**
+ * Transform nested items from all menus to flat MenuItemType[] format
+ */
+const transformMenuItemsFromSync = (
+  syncMenus: MenuWithCategories[] | undefined | null,
+  menuItemIngredients: MenuItemIngredientSync[] = []
+): {
+  menus: Menu[];
+  categories: Category[];
+  menuItems: MenuItemType[];
+  menuItemsById: Record<string, MenuItemType>;
+} => {
+  if (!syncMenus || !Array.isArray(syncMenus))
+    return { menus: [], categories: [], menuItems: [], menuItemsById: {} };
+
+  // Helper map for ingredients
+  const ingredientsMap = new Map<
+    string,
+    { inventoryItemId: string; quantity: number }[]
+  >();
+  menuItemIngredients.forEach((ing) => {
+    let list = ingredientsMap.get(ing.menu_item_id);
+    if (!list) {
+      list = [];
+      ingredientsMap.set(ing.menu_item_id, list);
+    }
+    list.push({
+      inventoryItemId: ing.inventory_item_id,
+      quantity: ing.quantity,
+    });
+  });
+
+  const globalItemMap = new Map<string, MenuItemType>();
+
+  // Helper to map Sync Item to Internal Item
+  // This uses the "effective_price" which is ALREADY computed for the specific context by the backend
+  const mapSyncItem = (
+    syncItem: any,
+    context: { menuId?: string; categoryId?: string }
+  ): MenuItemType => {
+    const dbItem = syncItem.menu_item || syncItem; // Handle both wrapper and direct item
+
+    return {
+      id: dbItem.id,
+      name: dbItem.name,
+      description: dbItem.description ?? undefined,
+      // CRITICAL: specific price for this context
+      price: dbItem.effective_price,
+      cashPrice: dbItem.effective_cash_price ?? undefined,
+      image: dbItem.image ?? undefined,
+      meal: (dbItem.meal_types ?? []) as MenuItemType["meal"],
+      category: (dbItem.categories || []).map((c: any) => c.name || c), // Fallback if categories logic differs
+      allergens: dbItem.allergens ?? undefined,
+      cardBgColor: dbItem.card_bg_color ?? undefined,
+      availability: dbItem.effective_availability,
+      stockQuantity: dbItem.current_stock ?? undefined,
+      stockTrackingMode: dbItem.stock_tracking_mode,
+      modifierGroupIds: (dbItem.modifier_groups || []).map((mg: any) => mg.id),
+      priceLevels: dbItem.price_levels,
+      priceSource: dbItem.price_source as MenuItemType["priceSource"],
+      location_id: dbItem.location_id,
+      // Map display order from the join table (syncItem) if available, or fallback
+      displayOrder: syncItem.display_order ?? dbItem.display_order,
+      // Map override fields for reference (though effective_price is what matters)
+      menuPriceOverrides: context.menuId
+        ? { [context.menuId]: dbItem.effective_price }
+        : undefined,
+      categoryPriceOverrides: context.categoryId
+        ? { [context.categoryId]: dbItem.effective_price }
+        : undefined,
+      recipe: ingredientsMap.get(dbItem.id),
+    };
+  };
+
+  // 1. Build the Menu Tree (Menu -> Category -> Item)
+  const menus: Menu[] = syncMenus
+    .map((menu) => {
+      const categories: Category[] = (menu.categories || []).map((catEntry) => {
+        // Map items specifically for this menu/category context
+        const items = (catEntry.items || [])
+          .sort((a, b) => {
+            // Website Logic: Missing display_order goes to the BOTTOM
+            const aOrder = a.display_order ?? 999999;
+            const bOrder = b.display_order ?? 999999;
+            const orderDiff = aOrder - bOrder;
+            if (orderDiff !== 0) return orderDiff;
+            // Fallback to name if order is missing or equal
+            const nameA = a.menu_item?.name || "";
+            const nameB = b.menu_item?.name || "";
+            return nameA.localeCompare(nameB);
+          })
+          .map((itemEntry) =>
+            mapSyncItem(itemEntry, {
+              menuId: menu.id,
+              categoryId: catEntry.category_id,
+            })
+          );
+
+        return {
+          id: catEntry.category.id, // Use actual Category ID
+          name: catEntry.category.name,
+          isActive: catEntry.is_active,
+          order: catEntry.display_order,
+          createdAt: new Date().toISOString(),
+          location_id: catEntry.category.location_id,
+          location_name: undefined, // Could map if available
+          items: items, // NESTED ITEMS specific to this context
+        };
+      });
+
+      return {
+        id: menu.id,
+        name: menu.name,
+        description: menu.description || undefined,
+        isActive: menu.is_active,
+        displayOrder: menu.display_order ?? undefined,
+        categories: categories.sort((a, b) => {
+          // Website Logic: Missing order goes to the BOTTOM
+          const aOrder = a.displayOrder ?? a.order ?? 999999;
+          const bOrder = b.displayOrder ?? b.order ?? 999999;
+          const orderDiff = aOrder - bOrder;
+          if (orderDiff !== 0) return orderDiff;
+          return a.name.localeCompare(b.name);
+        }), // Full Category Objects, sorted
+        schedules: (menu.schedules || []).flatMap((s) => {
+          if (!s.schedule.is_active || !s.schedule.time_slots?.length) return [];
+
+          // API day_of_week: 0=Monday..6=Sunday → JS getDay(): 0=Sunday..6=Saturday
+          const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          const apiDayToJsDay = (apiDay: number): number => (apiDay + 1) % 7;
+
+          // Group time slots by start/end time to create Schedule objects
+          const timeSlotGroups = new Map<string, { startTime: string; endTime: string; days: Set<string> }>();
+
+          s.schedule.time_slots.forEach((ts: any) => {
+            const startTime = ts.start_time || "00:00:00";
+            const endTime = ts.end_time || "23:59:59";
+            const key = `${startTime}-${endTime}`;
+
+            if (!timeSlotGroups.has(key)) {
+              timeSlotGroups.set(key, { startTime, endTime, days: new Set() });
+            }
+            const jsDay = apiDayToJsDay(ts.day_of_week);
+            timeSlotGroups.get(key)!.days.add(dayNames[jsDay]);
+          });
+
+          return Array.from(timeSlotGroups.values()).map((group) => ({
+            id: `${s.id}-${group.startTime}-${group.endTime}`,
+            name: s.schedule.name,
+            startTime: group.startTime,
+            endTime: group.endTime,
+            days: Array.from(group.days),
+            isActive: s.schedule.is_active,
+          }));
+        }),
+        createdAt: menu.created_at,
+        updatedAt: menu.updated_at,
+        location_id: menu.location_id,
+      };
+    })
+    .sort((a, b) => {
+      // Website Logic: Missing display_order goes to the BOTTOM (Infinity/999999)
+      const aOrder = a.displayOrder ?? 999999;
+      const bOrder = b.displayOrder ?? 999999;
+      const orderDiff = aOrder - bOrder;
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
+
+  // 2. Build Global Item Map (for "Item Library"/Inventory view)
+  // We perform a second pass or extract from a specific "All Items" list if available
+  // Assuming syncMenus covers all items is risky if there are orphan items.
+  // Ideally, `pos_sync_data` has a top-level `items` array. checking types/menu.ts... it does NOT.
+  // So we collect all unique items encountered in menus + categories.
+
+  // Actually, wait. The user might want an "Item Library" that is distinct from menus.
+  // But for now, let's populate the global map from the menu tree to ensure consistency.
+  menus.forEach((menu) => {
+    menu.categories.forEach((cat) => {
+      (cat.items || []).forEach((item) => {
+        const existing = globalItemMap.get(item.id);
+        if (!existing) {
+          const basePrice =
+            item.priceLevels?.level_2_location_item ??
+            item.priceLevels?.level_1_base ??
+            item.price;
+
+          globalItemMap.set(item.id, {
+            ...item,
+            price: basePrice,
+            category: [cat.name],
+            menuPriceOverrides: undefined,
+            categoryPriceOverrides: undefined,
+          });
+        } else {
+          // Item already seen in another category — accumulate category name
+          const cats = Array.isArray(existing.category) ? existing.category : [];
+          if (!cats.includes(cat.name)) {
+            existing.category = [...cats, cat.name];
+          }
+        }
+      });
+    });
+  });
+
+  // 3. Extract Categories (Unique List)
+  const categoryMap = new Map<string, Category>();
+  menus.forEach((menu) => {
+    menu.categories.forEach((cat) => {
+      if (!categoryMap.has(cat.id)) {
+        categoryMap.set(cat.id, { ...cat, items: undefined }); // Store categories flat without items for generic management
+      }
+    });
+  });
 
   return {
-    menuItems: MOCK_MENU_ITEMS,
-    categories: initialCategories,
-    menus: initialMenus,
-    modifierGroups: initialModifierGroups,
+    menus,
+    categories: Array.from(categoryMap.values()),
+    menuItems: Array.from(globalItemMap.values()),
+    menuItemsById: Object.fromEntries(globalItemMap),
+  };
+};
+
+/**
+ * Transform modifier groups from all menu items to flat ModifierCategory[] format
+ */
+const transformModifierGroupsFromSync = (
+  syncMenus: MenuWithCategories[] | undefined | null,
+  modifierIngredients: ModifierIngredientSync[] = []
+): ModifierCategory[] => {
+  if (!syncMenus || !Array.isArray(syncMenus)) return [];
+
+  const ingredientsMap = new Map<
+    string,
+    { inventoryItemId: string; quantity: number }[]
+  >();
+  modifierIngredients.forEach((ing) => {
+    let list = ingredientsMap.get(ing.modifier_group_item_id);
+    if (!list) {
+      list = [];
+      ingredientsMap.set(ing.modifier_group_item_id, list);
+    }
+    list.push({
+      inventoryItemId: ing.inventory_item_id,
+      quantity: ing.quantity,
+    });
+  });
+
+  const modifierMap = new Map<string, ModifierCategory>();
+
+  syncMenus.forEach((menu) => {
+    (menu.categories || []).forEach((catEntry) => {
+      (catEntry.items || []).forEach((catItem) => {
+        const menuItem = catItem.menu_item;
+        if (!menuItem) return;
+
+        (menuItem.modifier_groups || []).forEach((mg) => {
+          if (!modifierMap.has(mg.id)) {
+            // Map API structure to legacy ModifierCategory format
+            modifierMap.set(mg.id, {
+              id: mg.id,
+              name: mg.name,
+              // Map is_required + min/max_selections to legacy type/selectionType
+              type: mg.is_required ? "required" : "optional",
+              selectionType: mg.max_selections === 1 ? "single" : "multiple",
+              maxSelections: mg.max_selections,
+              description: undefined, // API doesn't have description in this format
+              // Map items (API) to options (legacy)
+              options: (mg.items || []).map((opt) => ({
+                id: opt.id,
+                name: opt.name,
+                price: opt.price_modifier, // API uses price_modifier
+                isAvailable: opt.is_active,
+                isDefault: false, // API doesn't have this
+                recipe: ingredientsMap.get(opt.id),
+              })),
+            });
+          }
+        });
+      });
+    });
+  });
+
+  return Array.from(modifierMap.values());
+};
+
+// ============================================================
+// STORE CREATION
+// ============================================================
+
+export const useMenuStore = create<MenuState>((set, get) => {
+  return {
+    // ============================================================
+    // SYNC STATE - Initially empty, populated by API
+    // ============================================================
+    posSyncData: null,
+    syncState: {
+      isLoading: false,
+      isError: false,
+      error: null,
+      lastSyncedAt: null,
+    },
+
+    // ============================================================
+    // DERIVED/LOCAL STATE - Start empty, populated from sync
+    // ============================================================
+    menuItems: [],
+    categories: [],
+    menus: [],
+    modifierGroups: [],
+
+    // ============================================================
+    // O(1) LOOKUP MAPS - Start empty, built on sync
+    // ============================================================
+    menuItemsById: {},
+    categoriesById: {},
+    categoriesByName: {},
+    menusById: {},
+    modifierGroupsById: {},
+
     isMenuSchedulingEnabled: true,
     menuCategoryOverrides: {},
     temporaryActiveMenus: [],
     temporaryActiveCategories: [],
-    // // CRUD Operations
+
+    // Last selected menu (persisted to avoid blank state)
+    lastSelectedMenuId: null,
+    setLastSelectedMenuId: (id) => set({ lastSelectedMenuId: id }),
+
+    // ============================================================
+    // SYNC ACTIONS
+    // ============================================================
+    setMenuData: (data: PosSyncData) => {
+      // 1. Transform Menus, Categories, and Items (Tree Structure)
+      const { menus, categories, menuItems, menuItemsById } =
+        transformMenuItemsFromSync(
+          data.menus,
+          data.menu_item_ingredients as MenuItemIngredientSync[]
+        );
+
+      // 2. Transform Modifier Groups
+      const modifierGroups = transformModifierGroupsFromSync(
+        data.menus,
+        data.modifier_group_item_ingredients as ModifierIngredientSync[]
+      );
+
+      // 3. Build O(1) lookup Maps
+      const categoriesById: Record<string, Category> = {};
+      const categoriesByName: Record<string, Category> = {};
+      for (const cat of categories) {
+        categoriesById[cat.id] = cat;
+        categoriesByName[cat.name] = cat;
+      }
+
+      const menusById: Record<string, Menu> = {};
+      for (const menu of menus) {
+        menusById[menu.id] = menu;
+      }
+
+      const modifierGroupsById: Record<string, ModifierCategory> = {};
+      for (const mg of modifierGroups) {
+        modifierGroupsById[mg.id] = mg;
+      }
+
+      set({
+        posSyncData: data,
+        menus,
+        categories,
+        menuItems,
+        modifierGroups,
+        // O(1) lookup Maps
+        menuItemsById,
+        categoriesById,
+        categoriesByName,
+        menusById,
+        modifierGroupsById,
+        syncState: {
+          isLoading: false,
+          isError: false,
+          error: null,
+          lastSyncedAt: data.synced_at,
+        },
+      });
+
+      // Clear stale precomputed modifier cache so newly synced modifiers are picked up
+      // Lazy require to avoid circular import: useMenuStore ↔ useModifierSidebarStore
+      const { clearModifierPreWarmCache } = require("./useModifierSidebarStore");
+      clearModifierPreWarmCache();
+
+      console.log("Menu data set from sync:", {
+        menusCount: menus.length,
+        categoriesCount: categories.length,
+        menuItemsCount: menuItems.length,
+        modifierGroupsCount: modifierGroups.length,
+      });
+    },
+
+    setSyncState: (state: Partial<PosSyncState>) => {
+      set((current) => ({
+        syncState: { ...current.syncState, ...state },
+      }));
+    },
+
+    clearMenuData: () => {
+      set({
+        posSyncData: null,
+        menus: [],
+        categories: [],
+        menuItems: [],
+        modifierGroups: [],
+        // Clear O(1) lookup Maps
+        menuItemsById: {},
+        categoriesById: {},
+        categoriesByName: {},
+        menusById: {},
+        modifierGroupsById: {},
+        syncState: {
+          isLoading: false,
+          isError: false,
+          error: null,
+          lastSyncedAt: null,
+        },
+      });
+    },
+
+    // ============================================================
+    // GETTERS
+    // ============================================================
+    getMenusFromSync: () => {
+      return get().posSyncData?.menus ?? [];
+    },
+
+    getAllMenuItems: () => {
+      return get().menuItems;
+    },
+
+    getAllCategories: () => {
+      return get().categories;
+    },
+
+    // ============================================================
+    // O(1) GETTERS - Instant lookups from Maps
+    // ============================================================
+    getMenuItemById: (id: string) => {
+      return get().menuItemsById[id];
+    },
+
+    getCategoryById: (id: string) => {
+      return get().categoriesById[id];
+    },
+
+    getCategoryByName: (name: string) => {
+      return get().categoriesByName[name];
+    },
+
+    getMenuById: (id: string) => {
+      return get().menusById[id];
+    },
+
+    getModifierGroupById: (id: string) => {
+      return get().modifierGroupsById[id];
+    },
+
+    getModifierGroupsByIds: (ids: string[]) => {
+      const map = get().modifierGroupsById;
+      return ids
+        .map((id) => map[id])
+        .filter((mg): mg is ModifierCategory => mg !== undefined);
+    },
+
+    // ============================================================
+    // CRUD Operations (Optimistic/Local)
+    // ============================================================
     addMenuItem: (itemData) => {
       const newItem: MenuItemType = {
         ...itemData,
-        id: generateId(),
+        // Use provided ID (from backend) if available, otherwise generate local ID
+        id: (itemData as any).id || generateId(),
         // Default to "in_stock" mode (availability: true) unless explicitly set
         availability:
           itemData.availability !== undefined ? itemData.availability : true,
@@ -203,25 +722,41 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
       set((state) => ({
         menuItems: [...state.menuItems, newItem],
+        // Keep O(1) Map in sync
+        menuItemsById: { ...state.menuItemsById, [newItem.id]: newItem },
       }));
 
       // console.log("Menu item added:", newItem);
     },
 
     updateMenuItem: (id, updates) => {
-      set((state) => ({
-        menuItems: state.menuItems.map((item) =>
-          item.id === id ? { ...item, ...updates } : item
-        ),
-      }));
+      set((state) => {
+        const updatedItem = state.menuItemsById[id]
+          ? { ...state.menuItemsById[id], ...updates }
+          : undefined;
+        return {
+          menuItems: state.menuItems.map((item) =>
+            item.id === id ? { ...item, ...updates } : item
+          ),
+          // Keep O(1) Map in sync
+          menuItemsById: updatedItem
+            ? { ...state.menuItemsById, [id]: updatedItem }
+            : state.menuItemsById,
+        };
+      });
 
       // console.log("Menu item updated:", id, updates);
     },
 
     deleteMenuItem: (id) => {
-      set((state) => ({
-        menuItems: state.menuItems.filter((item) => item.id !== id),
-      }));
+      set((state) => {
+        const { [id]: removed, ...restMenuItemsById } = state.menuItemsById;
+        return {
+          menuItems: state.menuItems.filter((item) => item.id !== id),
+          // Keep O(1) Map in sync
+          menuItemsById: restMenuItemsById,
+        };
+      });
 
       console.log("Menu item deleted:", id);
     },
@@ -229,7 +764,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     toggleItemAvailability: (id) => {
       set((state) => ({
         menuItems: state.menuItems.map((item) =>
-          item.id === id ? { ...item, availability: !item.availability } : item
+          item.id === id ? { ...item, availability: item.availability === false ? true : false } : item
         ),
       }));
 
@@ -240,31 +775,81 @@ export const useMenuStore = create<MenuState>((set, get) => {
     addCategory: (categoryData) => {
       const newCategory: Category = {
         ...categoryData,
-        id: generateCategoryId(),
+        id: (categoryData as any).id || generateCategoryId(),
         createdAt: new Date().toISOString(),
       };
 
       set((state) => ({
         categories: [...state.categories, newCategory],
+        // Keep O(1) Maps in sync
+        categoriesById: {
+          ...state.categoriesById,
+          [newCategory.id]: newCategory,
+        },
+        categoriesByName: {
+          ...state.categoriesByName,
+          [newCategory.name]: newCategory,
+        },
       }));
 
       console.log("Category added:", newCategory);
     },
 
     updateCategory: (id, updates) => {
-      set((state) => ({
-        categories: state.categories.map((category) =>
-          category.id === id ? { ...category, ...updates } : category
-        ),
-      }));
+      set((state) => {
+        const existingCat = state.categoriesById[id];
+        const updatedCategory = existingCat
+          ? { ...existingCat, ...updates }
+          : undefined;
+
+        // Handle name change - remove old name from categoriesByName
+        let newCategoriesByName = { ...state.categoriesByName };
+        if (
+          updatedCategory &&
+          updates.name &&
+          existingCat.name !== updates.name
+        ) {
+          delete newCategoriesByName[existingCat.name];
+          newCategoriesByName[updates.name] = updatedCategory;
+        } else if (updatedCategory) {
+          newCategoriesByName[updatedCategory.name] = updatedCategory;
+        }
+
+        return {
+          categories: state.categories.map((category) =>
+            category.id === id ? { ...category, ...updates } : category
+          ),
+          // Keep O(1) Maps in sync
+          categoriesById: updatedCategory
+            ? { ...state.categoriesById, [id]: updatedCategory }
+            : state.categoriesById,
+          categoriesByName: newCategoriesByName,
+        };
+      });
 
       console.log("Category updated:", id, updates);
     },
 
     deleteCategory: (id) => {
-      set((state) => ({
-        categories: state.categories.filter((category) => category.id !== id),
-      }));
+      set((state) => {
+        const categoryToRemove = state.categoriesById[id];
+        const { [id]: removedById, ...restCategoriesById } =
+          state.categoriesById;
+        const newCategoriesByName = categoryToRemove
+          ? Object.fromEntries(
+              Object.entries(state.categoriesByName).filter(
+                ([name]) => name !== categoryToRemove.name
+              )
+            )
+          : state.categoriesByName;
+
+        return {
+          categories: state.categories.filter((category) => category.id !== id),
+          // Keep O(1) Maps in sync
+          categoriesById: restCategoriesById,
+          categoriesByName: newCategoriesByName,
+        };
+      });
 
       console.log("Category deleted:", id);
     },
@@ -322,7 +907,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
       // if category isn't part of the menu, treat as inactive for that menu
       const menu = state.menus.find((m) => m.id === menuId);
-      if (!menu || !menu.categories.includes(category.name)) return false;
+      if (!menu || !menu.categories.some((c) => c.id === category.id))
+        return false;
 
       const override = state.menuCategoryOverrides[menuId]?.[categoryId];
       // undefined means no override -> active; false means explicitly off
@@ -401,36 +987,114 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
     // CRUD Operations for Menus
     addMenu: (menuData) => {
+      const state = get();
+
+      // Transform category names (strings) to full Category objects
+      // The form passes strings, but the store needs objects
+      const fullCategories = (menuData.categories || []).map(
+        (catInput: any) => {
+          if (typeof catInput === "string") {
+            // Look up by name
+            const foundCat = state.categoriesByName[catInput];
+            // If not found locally (rare), create a temporary stub or skip
+            // Ideally we accept that we might not have it yet if it's brand new?
+            // But add-menu flow ensures categories exist before selecting.
+            return (
+              foundCat || {
+                id: `temp_${Math.random()}`,
+                name: catInput,
+                isActive: true,
+                items: [],
+                order: 0,
+                schedules: [],
+              }
+            );
+          }
+          return catInput;
+        }
+      );
+
       const newMenu: Menu = {
         ...menuData,
-        id: generateMenuId(),
+        id: (menuData as any).id || generateMenuId(),
+        categories: fullCategories,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        // Ensure location_id is passed through from menuData
+        location_id: menuData.location_id,
       };
 
       set((state) => ({
         menus: [...state.menus, newMenu],
+        // Keep O(1) Map in sync
+        menusById: { ...state.menusById, [newMenu.id]: newMenu },
       }));
 
-      console.log("Menu added:", newMenu);
+      console.log("Menu added with transformed categories:", newMenu);
     },
 
     updateMenu: (id, updates) => {
-      set((state) => ({
-        menus: state.menus.map((menu) =>
-          menu.id === id
-            ? { ...menu, ...updates, updatedAt: new Date().toISOString() }
-            : menu
-        ),
-      }));
+      set((state) => {
+        // Transform category names (strings) to full Category objects if present in updates
+        let updatedCategories = undefined;
+        if (updates.categories) {
+          updatedCategories = (updates.categories as any[]).map(
+            (catInput: any) => {
+              if (typeof catInput === "string") {
+                // Look up by name
+                const foundCat = state.categoriesByName[catInput];
+                return (
+                  foundCat || {
+                    id: `temp_${Math.random()}`,
+                    name: catInput,
+                    isActive: true,
+                    items: [],
+                    order: 0,
+                    schedules: [],
+                  }
+                );
+              }
+              return catInput;
+            }
+          );
+        }
 
-      console.log("Menu updated:", id, updates);
+        const finalUpdates = {
+          ...updates,
+          ...(updatedCategories ? { categories: updatedCategories } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+
+        const updatedMenu = state.menusById[id]
+          ? {
+              ...state.menusById[id],
+              ...finalUpdates,
+            }
+          : undefined;
+
+        return {
+          menus: state.menus.map((menu) =>
+            menu.id === id ? { ...menu, ...finalUpdates } : menu
+          ),
+          // Keep O(1) Map in sync
+          menusById: updatedMenu
+            ? { ...state.menusById, [id]: updatedMenu }
+            : state.menusById,
+        };
+      });
+
+      console.log("Menu updated with transformed categories:", id);
     },
 
     deleteMenu: (id) => {
-      set((state) => ({
-        menus: state.menus.filter((menu) => menu.id !== id),
-      }));
+      set((state) => {
+        const { [id]: removed, ...restMenusById } = state.menusById;
+        return {
+          menus: state.menus.filter((menu) => menu.id !== id),
+          // Keep O(1) Map in sync
+          menusById: restMenusById,
+        };
+      });
 
       console.log("Menu deleted:", id);
     },
@@ -454,6 +1118,46 @@ export const useMenuStore = create<MenuState>((set, get) => {
       });
     },
 
+    reorderCategoryItems: (
+      categoryId: string,
+      fromIndex: number,
+      toIndex: number
+    ) => {
+      set((state) => {
+        // Deep update: Find the category in ALL menus and reorder items
+        // Since categories are shared across menus, reordering items in a Category usually affects that Category everywhere
+        // (unless it's a menu-specific override, BUT `category_items` is the table, which is per-category).
+        // `reorderCategoryItems` RPC updates `category_items` display_order.
+        // So we should update the item order in EVERY menu instance that contains this category.
+
+        const newMenus = state.menus.map((menu) => {
+          const catIndex = menu.categories.findIndex(
+            (c) => c.id === categoryId
+          );
+          if (catIndex === -1) return menu;
+
+          const category = menu.categories[catIndex];
+          if (!category.items) return menu;
+
+          const newItems = [...category.items];
+          const [movedItem] = newItems.splice(fromIndex, 1);
+          newItems.splice(toIndex, 0, movedItem);
+
+          const newCategories = [...menu.categories];
+          newCategories[catIndex] = {
+            ...category,
+            items: newItems,
+          };
+
+          return { ...menu, categories: newCategories };
+        });
+
+        // Also update the global categories map if we track items there (we don't currently, they are undefined)
+
+        return { menus: newMenus };
+      });
+    },
+
     getMenuItems: (menuId: string): MenuItemType[] => {
       const state = useMenuStore.getState();
       const menu = state.menus.find((m) => m.id === menuId);
@@ -466,9 +1170,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
           : item.category
           ? [item.category]
           : [];
-        return menu.categories.some((categoryName) =>
-          itemCategories.includes(categoryName)
-        );
+        return menu.categories.some((cat) => itemCategories.includes(cat.name));
       });
     },
 
@@ -476,66 +1178,86 @@ export const useMenuStore = create<MenuState>((set, get) => {
     addModifierGroup: (modifierGroupData) => {
       const newModifierGroup: ModifierCategory = {
         ...modifierGroupData,
-        id: generateModifierGroupId(),
+        id: (modifierGroupData as any).id || generateModifierGroupId(),
       };
 
       set((state) => ({
         modifierGroups: [...state.modifierGroups, newModifierGroup],
+        // Keep O(1) Map in sync
+        modifierGroupsById: {
+          ...state.modifierGroupsById,
+          [newModifierGroup.id]: newModifierGroup,
+        },
       }));
 
       console.log("Modifier group added:", newModifierGroup);
     },
 
     updateModifierGroup: (id, updates) => {
-      set((state) => ({
-        modifierGroups: state.modifierGroups.map((modifierGroup) =>
-          modifierGroup.id === id
-            ? { ...modifierGroup, ...updates }
-            : modifierGroup
-        ),
-      }));
+      set((state) => {
+        const updatedModifierGroup = state.modifierGroupsById[id]
+          ? { ...state.modifierGroupsById[id], ...updates }
+          : undefined;
+        return {
+          modifierGroups: state.modifierGroups.map((modifierGroup) =>
+            modifierGroup.id === id
+              ? { ...modifierGroup, ...updates }
+              : modifierGroup
+          ),
+          // Keep O(1) Map in sync
+          modifierGroupsById: updatedModifierGroup
+            ? { ...state.modifierGroupsById, [id]: updatedModifierGroup }
+            : state.modifierGroupsById,
+        };
+      });
 
       console.log("Modifier group updated:", id, updates);
     },
 
     deleteModifierGroup: (id) => {
-      set((state) => ({
-        // Remove the modifier group from the central registry
-        modifierGroups: state.modifierGroups.filter(
-          (modifierGroup) => modifierGroup.id !== id
-        ),
-        // Cascade remove the ID reference from all menu items
-        menuItems: state.menuItems.map((item) => {
-          // Check if the item has any modifier group IDs to begin with
+      set((state) => {
+        const { [id]: removed, ...restModifierGroupsById } =
+          state.modifierGroupsById;
+
+        // Also update menuItemsById for any items that reference this modifier group
+        const updatedMenuItemsById = { ...state.menuItemsById };
+        const updatedMenuItems = state.menuItems.map((item) => {
           if (!item.modifierGroupIds || item.modifierGroupIds.length === 0) {
             return item;
           }
 
-          // Filter out the deleted ID
           const filteredIds = item.modifierGroupIds.filter(
             (modId) => modId !== id
           );
 
-          // Only create a new item object if a change was actually made
           if (filteredIds.length !== item.modifierGroupIds.length) {
-            return {
-              ...item,
-              modifierGroupIds: filteredIds,
-            };
+            const updatedItem = { ...item, modifierGroupIds: filteredIds };
+            updatedMenuItemsById[item.id] = updatedItem;
+            return updatedItem;
           }
 
           return item;
-        }),
-      }));
+        });
+
+        return {
+          // Remove the modifier group from the central registry
+          modifierGroups: state.modifierGroups.filter(
+            (modifierGroup) => modifierGroup.id !== id
+          ),
+          // Keep O(1) Map in sync
+          modifierGroupsById: restModifierGroupsById,
+          // Cascade remove the ID reference from all menu items
+          menuItems: updatedMenuItems,
+          menuItemsById: updatedMenuItemsById,
+        };
+      });
 
       console.log("Modifier group deleted (with cascade):", id);
     },
 
     getModifierGroup: (id: string): ModifierCategory | undefined => {
-      const state = useMenuStore.getState();
-      return state.modifierGroups.find(
-        (modifierGroup) => modifierGroup.id === id
-      );
+      // Use O(1) lookup instead of .find()
+      return useMenuStore.getState().modifierGroupsById[id];
     },
 
     // Scheduling
@@ -708,23 +1430,87 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }));
     },
 
-    getItemPriceForCategory: (itemId, categoryId) => {
-      const item = get().menuItems.find(
-        (item) => item.id === itemId.split("|")[0]
-      );
-      if (!item) return 0;
+    // NEW: Optimistic update after backend price edit
+    updateItemPriceOptimistic: (itemId, newPrice, context) => {
+      set((state) => {
+        let updatedMenuItems = state.menuItems;
+        const updatedMenuItemsById = { ...state.menuItemsById };
 
-      // Check for custom pricing for this category
-      if (item.customPricing) {
-        const customPricing = item.customPricing.find(
-          (pricing) => pricing.categoryId === categoryId && pricing.isActive
-        );
-        if (customPricing) {
-          return customPricing.price;
+        // Build partial update object
+        const itemUpdates: Partial<MenuItemType> = { price: newPrice };
+        if (context.cashPrice !== undefined) {
+          itemUpdates.cashPrice = context.cashPrice ?? undefined;
         }
-      }
-      // Return default price if no custom pricing found
-      return item.price;
+        if (context.availability !== undefined) {
+          itemUpdates.availability = context.availability;
+        }
+
+        // 1. Update Global Item (Library) if Level 2 (No Context)
+        if (!context.menuId && !context.categoryId) {
+          const item = state.menuItemsById[itemId];
+          if (item) {
+            const updatedItem = { ...item, ...itemUpdates };
+            // Also update base price / level_2
+            if (updatedItem.priceLevels) {
+              updatedItem.priceLevels = {
+                ...updatedItem.priceLevels,
+                level_2_location_item: newPrice,
+              };
+            }
+
+            updatedMenuItems = state.menuItems.map((i) =>
+              i.id === itemId ? updatedItem : i
+            );
+            updatedMenuItemsById[itemId] = updatedItem;
+          }
+        }
+
+        // Always sync availability to menuItems/menuItemsById regardless of context level
+        if (context.availability !== undefined) {
+          const item = updatedMenuItemsById[itemId] ?? state.menuItemsById[itemId];
+          if (item) {
+            const updatedItem = { ...item, availability: context.availability };
+            updatedMenuItems = (updatedMenuItems === state.menuItems ? state.menuItems : updatedMenuItems).map((i) =>
+              i.id === itemId ? updatedItem : i
+            );
+            updatedMenuItemsById[itemId] = updatedItem;
+          }
+        }
+
+        // 2. Update Tree Instances (Menu -> Category -> Item)
+        const updatedMenus = state.menus.map((menu) => {
+          if (context.menuId && menu.id !== context.menuId) return menu;
+
+          const updatedCategories = menu.categories.map((cat) => {
+            if (context.categoryId && cat.id !== context.categoryId) return cat;
+            if (!cat.items) return cat;
+
+            const updatedItems = cat.items.map((item) => {
+              if (item.id === itemId) {
+                return { ...item, ...itemUpdates };
+              }
+              return item;
+            });
+
+            if (updatedItems === cat.items) return cat;
+            return { ...cat, items: updatedItems };
+          });
+
+          if (updatedCategories === menu.categories) return menu;
+          return { ...menu, categories: updatedCategories };
+        });
+
+        return {
+          menuItems: updatedMenuItems,
+          menuItemsById: updatedMenuItemsById,
+          menus: updatedMenus,
+        };
+      });
+
+      console.log(
+        `[useMenuStore] Optimistically updated price for item ${itemId} to ${newPrice}`,
+        context
+      );
     },
 
     getLowStockMenuItems: () => {
@@ -807,10 +1593,10 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
       // If multiple windows today, return the first window as timeframe (or join)
       const formatTime = (t: string) => {
-        const [h, m] = t.split(":").map(Number);
-        const d = new Date();
-        d.setHours(h, m || 0, 0, 0);
-        return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        return new Date(t).toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        });
       };
       let timeframe: string | null = null;
       if (availableToday) {
@@ -841,6 +1627,362 @@ export const useMenuStore = create<MenuState>((set, get) => {
     clearTemporaryAccess: () => {
       set({ temporaryActiveMenus: [], temporaryActiveCategories: [] });
     },
+
+    // Merge standalone entities (categories, items, modifiers not in any menu)
+    mergeStandaloneData: (data) => {
+      set((state) => {
+        const newCategories = [...state.categories];
+        const newCategoriesById = { ...state.categoriesById };
+        const newCategoriesByName = { ...state.categoriesByName };
+
+        const newMenuItems = [...state.menuItems];
+        const newMenuItemsById = { ...state.menuItemsById };
+
+        const newModifierGroups = [...state.modifierGroups];
+        const newModifierGroupsById = { ...state.modifierGroupsById };
+
+        // Merge standalone categories AND their nested items
+        // First map ingredients if provided
+        const menuItemIngredientsMap = new Map<string, any[]>();
+        if (data.menu_item_ingredients) {
+          data.menu_item_ingredients.forEach((ing: any) => {
+            if (!menuItemIngredientsMap.has(ing.menu_item_id)) {
+              menuItemIngredientsMap.set(ing.menu_item_id, []);
+            }
+            menuItemIngredientsMap.get(ing.menu_item_id)?.push({
+              inventoryItemId: ing.inventory_item_id,
+              quantity: ing.quantity,
+            });
+          });
+        }
+
+        const modifierIngredientsMap = new Map<string, any[]>();
+        if (data.modifier_group_item_ingredients) {
+          data.modifier_group_item_ingredients.forEach((ing: any) => {
+            if (!modifierIngredientsMap.has(ing.modifier_group_item_id)) {
+              modifierIngredientsMap.set(ing.modifier_group_item_id, []);
+            }
+            modifierIngredientsMap.get(ing.modifier_group_item_id)?.push({
+              inventoryItemId: ing.inventory_item_id,
+              quantity: ing.quantity,
+            });
+          });
+        }
+
+        if (data.categories) {
+          for (const cat of data.categories) {
+            // Skip category if already exists, but still process its items below
+            if (!newCategoriesById[cat.id]) {
+              const mappedCategory: Category = {
+                id: cat.id,
+                name: cat.name,
+                isActive: cat.is_active ?? true,
+                order: cat.item_count ?? 0,
+                createdAt: new Date().toISOString(),
+                schedules: [],
+                location_id: cat.location_id,
+                location_name: cat.location_name ?? undefined,
+              };
+
+              newCategories.push(mappedCategory);
+              newCategoriesById[cat.id] = mappedCategory;
+              newCategoriesByName[cat.name] = mappedCategory;
+            }
+
+            // Extract items from this category's items array
+            const categoryItems = cat.items || [];
+            for (const catItem of categoryItems) {
+              const menuItem = catItem.menu_item;
+              if (!menuItem) continue;
+
+              const itemId = menuItem.id || catItem.menu_item_id;
+
+              // If item already exists, add this category name to its categories
+              if (newMenuItemsById[itemId]) {
+                const existingItem = newMenuItemsById[itemId];
+                const existingCategories = Array.isArray(existingItem.category)
+                  ? existingItem.category
+                  : existingItem.category
+                  ? [existingItem.category]
+                  : [];
+
+                // Add category name if not already present
+                if (!existingCategories.includes(cat.name)) {
+                  existingItem.category = [...existingCategories, cat.name];
+                }
+
+                // Patch location_id if missing
+                if (!existingItem.location_id && (menuItem as any).location_id) {
+                  existingItem.location_id = (menuItem as any).location_id;
+                }
+              } else {
+                // New item - create with this category name
+                const mappedItem: MenuItemType = {
+                  id: itemId,
+                  name: menuItem.name,
+                  description: (menuItem as any).description ?? undefined,
+                  price: menuItem.effective_price ?? 0,
+                  cashPrice: menuItem.effective_cash_price ?? undefined,
+                  availability: menuItem.effective_availability ?? true,
+                  category: [cat.name], // Start with this category
+                  meal: (menuItem as any).meal_types ?? [],
+                  stockTrackingMode:
+                    ((menuItem as any)
+                      .stock_tracking_mode as MenuItemType["stockTrackingMode"]) ??
+                    "in_stock",
+                  location_id: (menuItem as any).location_id ?? null,
+                  recipe: menuItemIngredientsMap.get(itemId), // Attach recipe
+                };
+
+                newMenuItems.push(mappedItem);
+                newMenuItemsById[itemId] = mappedItem;
+              }
+            }
+          }
+        }
+
+        // Merge standalone items
+        if (data.items) {
+          for (const item of data.items) {
+            // Update existing item with location_id if missing (category items may lack this field)
+            if (newMenuItemsById[item.id]) {
+              const existing = newMenuItemsById[item.id];
+              if (existing.location_id === null && item.location_id !== null) {
+                existing.location_id = item.location_id;
+              }
+              continue;
+            }
+
+            // Map category names from the item
+            const categoryNames = (item.categories || []).map(
+              (c: { name: string }) => c.name
+            );
+
+            const mappedItem: MenuItemType = {
+              id: item.id,
+              name: item.name,
+              description: item.description ?? undefined,
+              price: item.effective_price ?? item.base_price ?? 0,
+              cashPrice:
+                item.effective_cash_price ?? item.base_cash_price ?? undefined,
+              availability: item.effective_availability ?? true,
+              category: categoryNames,
+              meal: (item as any).meal_types ?? [],
+              stockTrackingMode:
+                (item.stock_tracking_mode as MenuItemType["stockTrackingMode"]) ??
+                "in_stock",
+              location_id: item.location_id ?? null,
+              recipe: menuItemIngredientsMap.get(item.id), // Attach recipe
+            };
+
+            newMenuItems.push(mappedItem);
+            newMenuItemsById[item.id] = mappedItem;
+          }
+        }
+
+        // Merge standalone modifier groups
+        if (data.modifierGroups) {
+          for (const mg of data.modifierGroups) {
+            // Skip if already exists
+            if (newModifierGroupsById[mg.id]) continue;
+
+            const mappedModifier: ModifierCategory = {
+              id: mg.id,
+              name: mg.name,
+              description: mg.description ?? undefined,
+              type: mg.is_required ? "required" : "optional",
+              selectionType: mg.max_selections === 1 ? "single" : "multiple",
+              maxSelections: mg.max_selections ?? undefined,
+              options: (mg.modifier_group_items || []).map((opt: any) => ({
+                id: opt.id,
+                name: opt.name,
+                price: opt.price_modifier ?? 0,
+                isAvailable: opt.is_active ?? true,
+                isDefault: opt.is_default ?? false,
+                recipe: modifierIngredientsMap.get(opt.id), // Attach recipe
+              })),
+              location_id: mg.location_id,
+              location_name: mg.location_name?.name,
+              items: (mg.menu_item_modifier_groups || []).map((mimg: any) => ({
+                id: mimg.menu_item.id,
+                name: mimg.menu_item.name,
+                price: mimg.menu_item.price,
+                image: mimg.menu_item.image,
+                availability: mimg.menu_item.availability ?? true,
+                category: [], // Minimal data needed for display
+                meal: [],
+              })),
+            };
+
+            newModifierGroups.push(mappedModifier);
+            newModifierGroupsById[mg.id] = mappedModifier;
+          }
+        }
+
+        // Merge standalone menus (includes inactive menus not in main sync)
+        if (data.menus) {
+          const newMenus = [...state.menus];
+          const newMenusById = { ...state.menusById };
+
+          for (const menu of data.menus) {
+            // Skip if already exists (was in main sync)
+            if (newMenusById[menu.id]) continue;
+
+            // Map menu_categories to actual Category objects from store
+            const menuCategories = (menu.menu_categories || [])
+              .map(
+                (mc: {
+                  category_id: string;
+                  display_order: number | null;
+                  is_active: boolean;
+                }) => {
+                  const category = newCategoriesById[mc.category_id];
+                  if (!category) return null;
+                  return {
+                    ...category,
+                    isActive: mc.is_active,
+                    order: mc.display_order ?? category.order,
+                  };
+                }
+              )
+              .filter(Boolean) as Category[];
+
+            const mappedMenu: Menu = {
+              id: menu.id,
+              name: menu.name,
+              description: menu.description ?? "",
+              isActive: menu.is_active ?? true,
+              categories: menuCategories, // Now populated with actual categories!
+              schedules: [],
+              createdAt: menu.created_at ?? new Date().toISOString(),
+              updatedAt: menu.created_at ?? new Date().toISOString(),
+              location_id: menu.location_id ?? null,
+            };
+
+            newMenus.push(mappedMenu);
+            newMenusById[menu.id] = mappedMenu;
+          }
+
+          return {
+            categories: newCategories,
+            categoriesById: newCategoriesById,
+            categoriesByName: newCategoriesByName,
+            menuItems: newMenuItems,
+            menuItemsById: newMenuItemsById,
+            modifierGroups: newModifierGroups,
+            modifierGroupsById: newModifierGroupsById,
+            menus: newMenus,
+            menusById: newMenusById,
+          };
+        }
+
+        return {
+          categories: newCategories,
+          categoriesById: newCategoriesById,
+          categoriesByName: newCategoriesByName,
+          menuItems: newMenuItems,
+          menuItemsById: newMenuItemsById,
+          modifierGroups: newModifierGroups,
+          modifierGroupsById: newModifierGroupsById,
+        };
+      });
+    },
+
+    mergeRecipeData: (data) => {
+      set((state) => {
+        // 1. Create Lookup Maps
+        const menuRecipeMap = new Map<
+          string,
+          { inventoryItemId: string; quantity: number }[]
+        >();
+        if (data.menuRecipes) {
+          data.menuRecipes.forEach((r) => {
+            if (!menuRecipeMap.has(r.menu_item_id)) {
+              menuRecipeMap.set(r.menu_item_id, []);
+            }
+            menuRecipeMap.get(r.menu_item_id)?.push({
+              inventoryItemId: r.inventory_item_id,
+              quantity: r.quantity,
+            });
+          });
+        }
+
+        const modRecipeMap = new Map<
+          string,
+          { inventoryItemId: string; quantity: number }[]
+        >();
+        if (data.modifierRecipes) {
+          data.modifierRecipes.forEach((r) => {
+            if (!modRecipeMap.has(r.modifier_group_item_id)) {
+              modRecipeMap.set(r.modifier_group_item_id, []);
+            }
+            modRecipeMap.get(r.modifier_group_item_id)?.push({
+              inventoryItemId: r.inventory_item_id,
+              quantity: r.quantity,
+            });
+          });
+        }
+
+        // 2. Update Menu Items
+        let menuItemsChanged = false;
+        const newMenuItems = state.menuItems.map((item) => {
+          const recipe = menuRecipeMap.get(item.id);
+          if (recipe) {
+            menuItemsChanged = true;
+            return { ...item, recipe };
+          }
+          return item;
+        });
+
+        const newMenuItemsById = { ...state.menuItemsById };
+        if (menuItemsChanged) {
+          newMenuItems.forEach((item) => {
+            newMenuItemsById[item.id] = item;
+          });
+        }
+
+        // 3. Update Modifier Groups
+        let modifierGroupsChanged = false;
+        const newModifierGroups = state.modifierGroups.map((mg) => {
+          let optionsChanged = false;
+          const newOptions = mg.options.map((opt) => {
+            const recipe = modRecipeMap.get(opt.id);
+            if (recipe) {
+              optionsChanged = true;
+              return { ...opt, recipe };
+            }
+            return opt;
+          });
+
+          if (optionsChanged) {
+            modifierGroupsChanged = true;
+            return { ...mg, options: newOptions };
+          }
+          return mg;
+        });
+
+        const newModifierGroupsById = { ...state.modifierGroupsById };
+        if (modifierGroupsChanged) {
+          newModifierGroups.forEach((mg) => {
+            newModifierGroupsById[mg.id] = mg;
+          });
+        }
+
+        console.log("DEBUG: mergeRecipeData complete", {
+          menuItemsChanged,
+          modifierGroupsChanged,
+          menuRecipesMapped: menuRecipeMap.size,
+          modRecipesMapped: modRecipeMap.size,
+        });
+
+        return {
+          menuItems: newMenuItems,
+          menuItemsById: newMenuItemsById,
+          modifierGroups: newModifierGroups,
+          modifierGroupsById: newModifierGroupsById,
+        };
+      });
+    },
   };
 });
 
@@ -851,17 +1993,54 @@ function isNowInAnySchedule(schedules: Schedule[], at?: Date): boolean {
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const day = dayNames[now.getDay()];
   const minutes = now.getHours() * 60 + now.getMinutes();
+  
+  // Helper to parse time string (HH:MM:SS or HH:MM format) to minutes since midnight
+  const parseTimeToMinutes = (timeStr: string): number => {
+    if (!timeStr) return 0;
+    
+    // Handle ISO date strings (if timeStr contains 'T' or is a full ISO date)
+    if (timeStr.includes("T") || timeStr.includes("-")) {
+      const date = new Date(timeStr);
+      if (!isNaN(date.getTime())) {
+        return date.getHours() * 60 + date.getMinutes();
+      }
+    }
+    
+    // Handle HH:MM:SS or HH:MM format
+    const parts = timeStr.split(":");
+    if (parts.length >= 2) {
+      const hours = parseInt(parts[0], 10) || 0;
+      const mins = parseInt(parts[1], 10) || 0;
+      return hours * 60 + mins;
+    }
+    
+    return 0;
+  };
+  
   return schedules.some((rule) => {
     if (!rule.isActive) return false;
+    if (!rule.days || rule.days.length === 0) return false;
     if (!rule.days.includes(day)) return false;
-    const [sh, sm] = rule.startTime.split(":").map(Number);
-    const [eh, em] = rule.endTime.split(":").map(Number);
-    const startM = sh * 60 + (sm || 0);
-    const endM = eh * 60 + (em || 0);
-    if (endM >= startM) {
+
+    // Parse time strings to minutes since midnight
+    const startM = parseTimeToMinutes(rule.startTime);
+    let endM = parseTimeToMinutes(rule.endTime);
+
+    // Handle crossing midnight (e.g. 2 AM < 10 PM)
+    // If endM is less than startM, we assume it's next day, so add 24h
+    if (endM < startM) {
+      endM += 24 * 60;
+    }
+
+    // Check if current time falls within the schedule
+    if (endM >= 1440) {
+      // It's an overnight shift (e.g. 22:00 to 26:00/02:00)
+      // We are in it if we are >= start (today) OR < end (today)
+      const visibleEndM = endM % 1440;
+      return minutes >= startM || minutes < visibleEndM;
+    } else {
+      // Normal day shift
       return minutes >= startM && minutes < endM;
     }
-    // overnight window case
-    return minutes >= startM || minutes < endM;
   });
 }

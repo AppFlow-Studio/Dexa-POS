@@ -23,7 +23,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   const ordersToShow = isFocused ? orders : orders.slice(0, 3);
 
   return (
-    <View className="flex-1 flex-col bg-[#303030] rounded-xl overflow-hidden border border-gray-700">
+    <View className="flex-1 flex-col bg-surface rounded-xl overflow-hidden border border-gray-700">
       <TouchableOpacity
         onPress={onHeaderPress}
         style={{ backgroundColor: color }}

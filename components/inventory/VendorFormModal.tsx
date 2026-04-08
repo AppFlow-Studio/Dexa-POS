@@ -5,9 +5,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { colors } from "@/lib/theme";
 import { Vendor } from "@/lib/types";
 import React, { useEffect, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface VendorFormModalProps {
   isOpen: boolean;
@@ -15,6 +23,26 @@ interface VendorFormModalProps {
   onSave: (data: Omit<Vendor, "id">, id?: string) => void;
   initialData?: Vendor | null;
 }
+
+const inputStyle = {
+  backgroundColor: colors.screen,
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: 8,
+  color: colors.heading,
+  fontSize: 14,
+  height: 40,
+  paddingHorizontal: 12,
+};
+
+const fieldLabel = {
+  fontSize: 11,
+  fontWeight: "600" as const,
+  color: colors.muted,
+  textTransform: "uppercase" as const,
+  letterSpacing: 0.5,
+  marginBottom: 6,
+};
 
 const VendorFormModal: React.FC<VendorFormModalProps> = ({
   isOpen,
@@ -27,6 +55,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [desc, setDesc] = useState("");
+
   useEffect(() => {
     if (isOpen && initialData) {
       setName(initialData.name);
@@ -57,84 +86,118 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[500px]">
-        <DialogHeader>
-          <DialogTitle className="text-white text-xl">
-            {initialData ? "Edit" : "Add New"} Vendor
-          </DialogTitle>
-        </DialogHeader>
-        <View className="py-4 gap-y-4">
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-2">
-              Vendor Name
-            </Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
-            />
+      <DialogContent
+        className="w-[480px]"
+        style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <DialogHeader>
+            <DialogTitle style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+              {initialData ? "Edit" : "Add New"} Vendor
+            </DialogTitle>
+          </DialogHeader>
+
+          <View style={{ paddingVertical: 14, gap: 10 }}>
+            {/* Row 1: Name + Contact */}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Vendor Name *</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. Fresh Farms Co."
+                  placeholderTextColor={colors.muted}
+                  style={inputStyle}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Contact Person *</Text>
+                <TextInput
+                  value={contactPerson}
+                  onChangeText={setContactPerson}
+                  placeholder="e.g. John Smith"
+                  placeholderTextColor={colors.muted}
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+
+            {/* Row 2: Email + Phone */}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Email Address</Text>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  placeholder="email@vendor.com"
+                  placeholderTextColor={colors.muted}
+                  style={inputStyle}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={fieldLabel}>Phone Number</Text>
+                <TextInput
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  placeholder="+1 (555) 000-0000"
+                  placeholderTextColor={colors.muted}
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+
+            {/* Description */}
+            <View>
+              <Text style={fieldLabel}>Description</Text>
+              <TextInput
+                value={desc}
+                onChangeText={setDesc}
+                placeholder="Optional notes about this vendor..."
+                placeholderTextColor={colors.muted}
+                style={[inputStyle, { height: 72, paddingTop: 10, textAlignVertical: "top" }]}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
           </View>
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-2">
-              Contact Person
-            </Text>
-            <TextInput
-              value={contactPerson}
-              onChangeText={setContactPerson}
-              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
-            />
-          </View>
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-2">
-              Email Address
-            </Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
-            />
-          </View>
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-2">
-              Phone Number
-            </Text>
-            <TextInput
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
-            />
-          </View>
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-2">
-              Description
-            </Text>
-            <TextInput
-              value={desc}
-              onChangeText={setDesc}
-              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
-            />
-          </View>
-        </View>
-        <DialogFooter className="flex-row gap-3">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-2 bg-[#212121] border border-gray-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-gray-300">
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            className="flex-1 py-2 bg-blue-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-white">
-              Save Vendor
-            </Text>
-          </TouchableOpacity>
-        </DialogFooter>
+
+          <DialogFooter className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={onClose}
+              style={{
+                flex: 1,
+                paddingVertical: 9,
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSave}
+              style={{
+                flex: 1,
+                paddingVertical: 9,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+                Save Vendor
+              </Text>
+            </TouchableOpacity>
+          </DialogFooter>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

@@ -1,45 +1,16 @@
-import { CartItem } from "@/lib/types";
-import { useOrderStore } from "@/stores/useOrderStore";
-import React, { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
-import BillSummary from "./BillSummary";
-import DiscountOverlay from "./DiscountOverlay";
-import DiscountSection from "./DiscountSection";
-import OrderDetails from "./OrderDetails";
-import Totals from "./Totals";
-
-const TableBillSectionContent = ({
-  cart,
-  currentCourse,
-  itemCourseMap,
-  sentCourses,
-}: {
-  cart: CartItem[];
-  currentCourse?: number;
-  itemCourseMap?: Record<string, number>;
-  sentCourses?: Record<number, boolean>;
-}) => {
-  // State for managing expanded item
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
-
-  const handleToggleExpand = (itemId: string) => {
-    setExpandedItemId(expandedItemId === itemId ? null : itemId);
-  };
-
-  return (
-    <>
-      <BillSummary
-        cart={cart}
-        expandedItemId={expandedItemId}
-        onToggleExpand={handleToggleExpand}
-        currentCourse={currentCourse}
-        itemCourseMap={itemCourseMap}
-        sentCourses={sentCourses}
-      />
-      <Totals cart={cart} />
-    </>
-  );
-};
+import { colors } from '@/lib/theme'
+import { OrderProfile } from '@/lib/types'
+import { useOrderStore } from '@/stores/useOrderStore'
+import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { Send, X } from 'lucide-react-native'
+import React, { useRef } from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
+import BottomActionBar from './BottomActionBar'
+import CourseAccordion from './CourseAccordion'
+import DiscountBottomSheet from './DiscountBottomSheet'
+import PricingBreakdownSheet from './PricingBreakdownSheet'
+import SeatAccordion from './SeatAccordion'
+import SeatCourseAccordion from './SeatCourseAccordion'
 
 const TableBillSection = ({
   showOrderDetails = true,
@@ -47,149 +18,263 @@ const TableBillSection = ({
   sentCourses,
   currentCourse,
   onSelectCourse,
+  onPressStartNewCourse,
+  onDoubleTapCourse,
+  activeOrder: passedActiveOrder,
+  onOpenServerSheet,
+  onPressMore,
+  onPressTotal,
+  onPressReopenCheck,
+  onPressCloseCheck,
+  onPressClearTable,
+  totalDisplayAmount,
+  pricingSheetRef,
+  onClosePricingSheet,
+  onPressProceedToPayment,
+  setCurrentCourse,
+  isFullyPaid,
+  // Seating props
+  itemSeatMap,
+  activeSeat,
+  seatCount,
+  onSelectSeat,
+  enablePerSeatOrdering = false,
+  enableCoursing = true,
+  // Course action props
+  onRushCourse,
+  onPrioritizeCourse,
+  onResendCourse,
+  onPressSendAllToKitchen
 }: {
-  showOrderDetails?: boolean;
-  itemCourseMap?: Record<string, number>;
-  sentCourses?: Record<number, boolean>;
-  currentCourse?: number;
-  onSelectCourse?: (course: number) => void;
+  showOrderDetails?: boolean
+  itemCourseMap?: Record<string, number>
+  sentCourses?: Record<number, boolean>
+  currentCourse?: number
+  onSelectCourse?: (course: number | null) => void
+  onPressStartNewCourse: () => void
+  onDoubleTapCourse: (courseId: number) => void
+  activeOrder?: OrderProfile
+  onOpenServerSheet?: () => void
+  onPressMore: () => void
+  onPressTotal: () => void
+  onPressReopenCheck: () => void
+  onPressCloseCheck: () => void
+  onPressClearTable: () => void
+  totalDisplayAmount: number
+  pricingSheetRef: React.RefObject<BottomSheetMethods>
+  onClosePricingSheet: () => void
+  onPressProceedToPayment: () => void
+  setCurrentCourse: (course: number) => void
+  isFullyPaid?: boolean
+  // Seating props
+  itemSeatMap?: Record<string, number | null>
+  activeSeat?: number | null
+  seatCount?: number
+  onSelectSeat?: (seat: number | null) => void
+  enablePerSeatOrdering?: boolean
+  enableCoursing?: boolean
+  // Course action props
+  onRushCourse?: (courseId: number) => void
+  onPrioritizeCourse?: (courseId: number) => void
+  onResendCourse?: (courseId: number) => void
+  onPressSendAllToKitchen?: () => void
 }) => {
-  const { activeOrderId, orders } = useOrderStore();
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const cart = activeOrder?.items || [];
+  const removeCheckDiscount = useOrderStore(state => state.removeCheckDiscount)
+  const discountSheetRef = useRef<BottomSheetMethods>(null)
 
-  const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
+  const activeOrder = passedActiveOrder
 
-  const handleOpenDiscounts = () => {
-    setDiscountOverlayVisible(true);
-  };
+  // Derived check discount
+  const appliedDiscount = activeOrder?.checkDiscount
 
-  const handleCloseDiscounts = () => {
-    setDiscountOverlayVisible(false);
-  };
-
-  // Build coursing summary (course -> count, sent status)
-  const courseSummary = React.useMemo(() => {
-    const summary: Record<number, number> = {};
-    cart.forEach((i) => {
-      const course = itemCourseMap?.[i.id] ?? 1;
-      summary[course] = (summary[course] || 0) + i.quantity;
-    });
-    // Ensure current course is visible even if it has zero items yet
-    if (currentCourse !== undefined && summary[currentCourse] === undefined) {
-      summary[currentCourse] = 0;
+  // Handler to remove discount
+  const handleRemoveDiscount = () => {
+    if (activeOrder?.id) {
+      removeCheckDiscount(activeOrder.id)
     }
-    return summary;
-  }, [cart, itemCourseMap, currentCourse]);
+  }
+
+  // Determine which accordion to render
+  const renderAccordion = () => {
+    if (enablePerSeatOrdering && enableCoursing) {
+      // Both enabled: seat -> course nesting
+      return (
+        <SeatCourseAccordion
+          activeOrder={activeOrder}
+          itemSeatMap={itemSeatMap}
+          itemCourseMap={itemCourseMap}
+          sentCourses={sentCourses}
+          currentCourse={currentCourse}
+          activeSeat={activeSeat}
+          seatCount={seatCount ?? 2}
+          onSelectSeat={onSelectSeat}
+          onSelectCourse={onSelectCourse}
+          onPressStartNewCourse={onPressStartNewCourse}
+          onDoubleTapCourse={onDoubleTapCourse}
+          onRushCourse={onRushCourse}
+          onPrioritizeCourse={onPrioritizeCourse}
+          onResendCourse={onResendCourse}
+          enableCoursing={enableCoursing}
+        />
+      )
+    }
+
+    if (enablePerSeatOrdering) {
+      // Seat only
+      return (
+        <SeatAccordion
+          activeOrder={activeOrder}
+          itemSeatMap={itemSeatMap}
+          activeSeat={activeSeat}
+          seatCount={seatCount ?? 2}
+          onSelectSeat={onSelectSeat}
+        />
+      )
+    }
+
+    // Course only or neither (existing behavior)
+    return (
+      <CourseAccordion
+        activeOrder={activeOrder}
+        itemCourseMap={itemCourseMap}
+        sentCourses={sentCourses}
+        currentCourse={currentCourse}
+        onSelectCourse={onSelectCourse}
+        onPressStartNewCourse={onPressStartNewCourse}
+        onDoubleTapCourse={onDoubleTapCourse}
+        onOpenServerSheet={onOpenServerSheet}
+        onRushCourse={onRushCourse}
+        onPrioritizeCourse={onPrioritizeCourse}
+        onResendCourse={onResendCourse}
+        enableCoursing={enableCoursing}
+      />
+    )
+  }
 
   return (
     <>
-      <View className="max-w-lg bg-[#303030] flex-1">
-        {showOrderDetails && <OrderDetails />}
+      <View className='max-w-lg  flex-1 flex-col'>
+        {renderAccordion()}
 
-        {/* Coursing Summary */}
-        <ScrollView horizontal={true} className="max-h-16">
-          {Object.keys(courseSummary).length > 0 && (
-            <View className="px-3 py-2 border-b border-gray-700 flex-row items-center justify-between">
-              <View className="flex-row flex-wrap gap-2">
-                {Object.entries(courseSummary)
-                  .sort(([a], [b]) => Number(a) - Number(b))
-                  .map(([course, count]) => {
-                    const sent = !!sentCourses?.[Number(course)];
-                    const isActive = Number(course) === (currentCourse ?? 0);
-
-                    // Get items in this course to check their kitchen status
-                    const itemsInCourse = cart.filter(
-                      (item) =>
-                        (itemCourseMap?.[item.id] ?? 1) === Number(course)
-                    );
-
-                    // Check if all items in course are sent to kitchen
-                    const allItemsSent =
-                      itemsInCourse.length > 0 &&
-                      itemsInCourse.every(
-                        (item) =>
-                          item.kitchen_status === "sent" ||
-                          item.kitchen_status === "ready" ||
-                          item.kitchen_status === "served"
-                      );
-
-                    // Check if any items are ready
-                    const anyItemsReady = itemsInCourse.some(
-                      (item) =>
-                        item.kitchen_status === "ready" ||
-                        item.kitchen_status === "served"
-                    );
-
-                    return (
-                      <View
-                        key={course}
-                        className={`px-2.5 py-1.5 rounded-lg flex-row items-center gap-2 ${
-                          sent || allItemsSent
-                            ? "bg-green-900/30 border border-green-500"
-                            : anyItemsReady
-                            ? "bg-yellow-900/30 border border-yellow-500"
-                            : isActive
-                            ? "bg-blue-900/30 border border-blue-500"
-                            : "bg-[#212121] border border-gray-700"
-                        }`}
-                      >
-                        <View
-                          className={`w-2.5 h-2.5 rounded-lg ${
-                            sent || allItemsSent
-                              ? "bg-green-500"
-                              : anyItemsReady
-                              ? "bg-yellow-500"
-                              : "bg-gray-500"
-                          }`}
-                        />
-                        <Text className="text-base font-semibold text-white">
-                          Course {course}
-                        </Text>
-                        <View className="w-1" />
-                        <Text className="text-base font-semibold text-gray-300">
-                          x{count}
-                        </Text>
-                        {sent || allItemsSent ? (
-                          <Text className="text-base font-bold text-green-400 ml-1.5">
-                            Sent
-                          </Text>
-                        ) : anyItemsReady ? (
-                          <Text className="text-base font-bold text-yellow-400 ml-1.5">
-                            In Progress
-                          </Text>
-                        ) : (
-                          <Text
-                            onPress={() =>
-                              onSelectCourse && onSelectCourse(Number(course))
-                            }
-                            className="text-base font-bold text-blue-400 ml-1.5"
-                          >
-                            Select
-                          </Text>
-                        )}
-                      </View>
-                    );
-                  })}
-              </View>
+        {/* --- INLINED ACTIVE DISCOUNT INDICATOR --- */}
+        {appliedDiscount && (
+          <View className='px-4 pb-2'>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                height: 36,
+                backgroundColor: colors.info + '15',
+                borderWidth: 1,
+                borderColor: colors.info + '40',
+                borderRadius: 8,
+                gap: 8
+              }}
+            >
+              <Text
+                style={{ fontSize: 12, fontWeight: '600', color: colors.info }}
+              >
+                {appliedDiscount.label}
+              </Text>
+              <TouchableOpacity
+                onPress={handleRemoveDiscount}
+                style={{ padding: 4 }}
+              >
+                <X color={colors.info} size={14} />
+              </TouchableOpacity>
             </View>
-          )}
-        </ScrollView>
+          </View>
+        )}
 
-        <TableBillSectionContent
-          cart={cart}
-          currentCourse={currentCourse}
-          itemCourseMap={itemCourseMap}
-          sentCourses={sentCourses}
+        {onPressSendAllToKitchen && activeOrder?.items?.some(i => !i.kitchen_status || i.kitchen_status === 'new') && (
+          <View style={{ paddingHorizontal: 10, paddingBottom: 6 }}>
+            <TouchableOpacity
+              onPress={onPressSendAllToKitchen}
+              activeOpacity={0.8}
+              style={{
+                height: 34,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + '55',
+                backgroundColor: colors.teal + '14',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6
+              }}
+            >
+              <Send size={13} color={colors.teal} />
+              <Text
+                style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}
+              >
+                Send All to Kitchen
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <BottomActionBar
+          activeOrder={activeOrder}
+          onPressMore={onPressMore}
+          onPressTotal={onPressTotal}
+          onPressReopenCheck={onPressReopenCheck}
+          onPressCloseCheck={onPressCloseCheck}
+          onPressClearTable={onPressClearTable}
+          totalDisplayAmount={totalDisplayAmount}
+          onPressDiscount={() => discountSheetRef.current?.expand()}
+          isFullyPaid={isFullyPaid}
+          paymentCount={activeOrder?.payments?.length ?? 0}
         />
-        <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
-        <DiscountOverlay
-          isVisible={isDiscountOverlayVisible}
-          onClose={handleCloseDiscounts}
+
+        <PricingBreakdownSheet
+          ref={pricingSheetRef}
+          onClose={onClosePricingSheet}
+          onPressProceedToPayment={onPressProceedToPayment}
+          totalDisplayAmount={totalDisplayAmount}
+          hasPayments={(activeOrder?.payments?.length ?? 0) > 0}
+        />
+        <DiscountBottomSheet
+          ref={discountSheetRef}
+          onClose={() => discountSheetRef.current?.close()}
         />
       </View>
     </>
-  );
-};
+  )
+}
 
-export default TableBillSection;
+export default React.memo(TableBillSection, (prev, next) => {
+  // Only re-render when structurally meaningful props change
+  // kitchen_status changes on items are handled by CourseAccordion/BillItem directly
+  if (prev.totalDisplayAmount !== next.totalDisplayAmount) return false
+  if (prev.isFullyPaid !== next.isFullyPaid) return false
+  if (prev.currentCourse !== next.currentCourse) return false
+  if (prev.enableCoursing !== next.enableCoursing) return false
+  if (prev.enablePerSeatOrdering !== next.enablePerSeatOrdering) return false
+  if (prev.activeSeat !== next.activeSeat) return false
+  if (prev.seatCount !== next.seatCount) return false
+  if (prev.activeOrder?.id !== next.activeOrder?.id) return false
+  if (prev.activeOrder?.paid_status !== next.activeOrder?.paid_status) return false
+  if (prev.activeOrder?.check_status !== next.activeOrder?.check_status) return false
+  if (prev.activeOrder?.checkDiscount !== next.activeOrder?.checkDiscount) return false
+  if ((prev.activeOrder?.items?.length ?? 0) !== (next.activeOrder?.items?.length ?? 0)) return false
+  const prevHasUnsent = prev.activeOrder?.items?.some(i => !i.kitchen_status || i.kitchen_status === 'new') ?? false
+  const nextHasUnsent = next.activeOrder?.items?.some(i => !i.kitchen_status || i.kitchen_status === 'new') ?? false
+  if (prevHasUnsent !== nextHasUnsent) return false
+  if ((prev.activeOrder?.payments?.length ?? 0) !== (next.activeOrder?.payments?.length ?? 0)) return false
+  if (prev.sentCourses !== next.sentCourses) return false
+  if (prev.itemCourseMap !== next.itemCourseMap) return false
+  if (prev.itemSeatMap !== next.itemSeatMap) return false
+  // Callbacks — these should be stable useCallbacks from parent
+  if (prev.onPressMore !== next.onPressMore) return false
+  if (prev.onPressTotal !== next.onPressTotal) return false
+  if (prev.onPressClearTable !== next.onPressClearTable) return false
+  if (prev.onPressCloseCheck !== next.onPressCloseCheck) return false
+  if (prev.onPressReopenCheck !== next.onPressReopenCheck) return false
+  if (prev.onDoubleTapCourse !== next.onDoubleTapCourse) return false
+  if (prev.onOpenServerSheet !== next.onOpenServerSheet) return false
+  if (prev.onPressSendAllToKitchen !== next.onPressSendAllToKitchen) return false
+  return true
+})

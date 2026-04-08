@@ -6,7 +6,7 @@ const UpdateStockForm = ({ onCancel, onSave }: any) => {
   const [quantity, setQuantity] = useState(1);
 
   return (
-    <View className="space-y-6">
+    <View className="gap-y-6">
       <View className="bg-gray-100 p-1 rounded-xl flex-row">
         <TouchableOpacity
           onPress={() => setTab("in")}

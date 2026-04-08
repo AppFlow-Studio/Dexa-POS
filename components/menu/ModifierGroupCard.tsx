@@ -1,5 +1,6 @@
+import { colors } from "@/lib/theme";
 import { ExtendedModifierGroup } from "@/lib/types";
-import { Settings } from "lucide-react-native";
+import { Pencil } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -13,7 +14,7 @@ export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
   onEdit,
 }) => {
   return (
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3">
+    <View className="bg-surface rounded-lg border border-gray-700 p-4 mb-3">
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
           <Text className="text-xl font-semibold text-white">
@@ -23,14 +24,14 @@ export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
             className={`px-2.5 py-1 rounded-full ${
               modifierGroup.type === "required"
                 ? "bg-red-900/30 border border-red-500"
-                : "bg-blue-900/30 border border-blue-500"
+                : "bg-teal/10 border border-teal"
             }`}
           >
             <Text
               className={`text-sm font-medium ${
                 modifierGroup.type === "required"
                   ? "text-red-400"
-                  : "text-blue-400"
+                  : "text-teal"
               }`}
             >
               {modifierGroup.type === "required" ? "Required" : "Optional"}
@@ -46,9 +47,9 @@ export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
         <View className="flex-row items-center">
           <TouchableOpacity
             onPress={onEdit}
-            className="p-2 bg-[#212121] rounded border border-gray-600"
+            className="p-2 bg-panel rounded border border-gray-600"
           >
-            <Settings size={20} color="#9CA3AF" />
+            <Pencil size={16} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>

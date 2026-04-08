@@ -1,5 +1,7 @@
-import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
+import { colors } from "@/lib/theme";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import { Clock, LogOut } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -10,29 +12,33 @@ interface BreakModalProps {
   isOpen: boolean;
   onEndBreak: () => void;
 }
-const BREAK_DURATION_MS = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
   const router = useRouter();
+  const breakDurationMinutes = useStoreSettingsStore((s) => s.breakDurationMinutes);
+  const isBreakAndSwitchEnabled = useStoreSettingsStore((s) => s.isBreakAndSwitchEnabled);
+  const BREAK_DURATION_MS = breakDurationMinutes * 60 * 1000;
   const [timeLeft, setTimeLeft] = useState(BREAK_DURATION_MS);
 
-  const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
-  // Get the functions and state needed from the timeclock store
+  // Get the functions and state needed from the unified timeclock store
   const { startBreak, activeEmployeeId, getSession } = useTimeclockStore();
+  const persistedBreakStartTime = useTimeclockStore((state) => state.breakStartTime);
 
   // Get the specific session for the currently active employee
   const activeSession = useMemo(() => {
     if (!activeEmployeeId) return null;
     return getSession(activeEmployeeId);
-  }, [activeEmployeeId, getSession, isOpen]); // Rerun when isOpen changes
+  }, [activeEmployeeId, getSession, isOpen]);
 
-  const breakStartTime = activeSession?.breakStartTime;
-  // --- END OF CORRECTION ---
+  // Use persisted break start time if available, otherwise from session
+  const breakStartTime = persistedBreakStartTime
+    ? new Date(persistedBreakStartTime)
+    : activeSession?.breakStartTime;
 
   // This handler is now correct. It calls the store action which handles the logic.
   const handleSwitchAccount = () => {
     startBreak();
-    router.replace("/pin-login");
+    replaceRoute('(auth)', 'pin-login');
   };
 
   useEffect(() => {
@@ -48,7 +54,7 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [isOpen, breakStartTime, onEndBreak]);
+  }, [isOpen, breakStartTime, onEndBreak, BREAK_DURATION_MS]);
 
   const formatTime = (ms: number) => {
     const minutes = String(Math.floor((ms / 1000 / 60) % 60)).padStart(2, "0");
@@ -58,9 +64,9 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
 
   return (
     <Dialog open={isOpen}>
-      <DialogContent className="max-w-md p-6 rounded-2xl items-center text-center bg-[#303030] border-gray-700 w-[550px]">
+      <DialogContent className="max-w-md p-6 rounded-2xl items-center text-center bg-surface border-gray-700 w-[550px]">
         <View className="w-16 h-16 items-center justify-center bg-blue-900/30 rounded-full border-4 border-blue-500/30">
-          <Clock color="#60A5FA" size={32} />
+          <Clock color={colors.info} size={32} />
         </View>
         <Text className="text-3xl font-bold text-white mt-4">On Break</Text>
         <Text className="text-4xl font-bold text-white my-2">

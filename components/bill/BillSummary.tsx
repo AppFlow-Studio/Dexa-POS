@@ -1,7 +1,8 @@
 import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
+import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-reanimated";
 import BillItem from "./BillItem";
 
 interface BillSummaryProps {
@@ -13,7 +14,7 @@ interface BillSummaryProps {
   sentCourses?: Record<number, boolean>;
 }
 
-const BillSummary: React.FC<BillSummaryProps> = ({
+const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   cart,
   expandedItemId,
   onToggleExpand,
@@ -27,30 +28,109 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   // 2. useEffect to scroll to bottom when cart items change
   useEffect(() => {
     if (cart.length > 0) {
-      // Use setTimeout to ensure the layout has updated before scrolling
-      setTimeout(() => {
+      // OPTIMIZED: Use requestAnimationFrame instead of 100ms setTimeout
+      // This waits for the next frame (16ms max) instead of fixed 100ms delay
+      requestAnimationFrame(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      });
     }
   }, [cart.length]);
 
-  const { activeOrderId, orders } = useOrderStore();
+  // PERF: Subscribe to primitives only - prevents re-render on unrelated order mutations
+  const displayNumber = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.display_number ?? order?.order_number ?? null;
+  });
+  const paidStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.paid_status ?? null;
+  });
+  const orderStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.order_status ?? null;
+  });
+  const checkStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.check_status ?? null;
+  });
+  const hasRefunds = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return (order?.payments ?? []).some((p: any) => (p.refundedAmount ?? 0) > 0);
+  });
+  const isSplitPayment = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    const payments = (order?.payments ?? []).filter((p: any) => !p.isVoided);
+    return payments.length > 1;
+  });
 
-  // Get the active order to display status badges
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  // OPTIMIZED: Pre-compute grouped courses outside render for O(1) lookup
+  const groupedCourses = useMemo(() => {
+    const grouped: Record<number, CartItem[]> = {};
+    cart.forEach((item) => {
+      const course = itemCourseMap?.[item.id] ?? 1;
+      if (!grouped[course]) grouped[course] = [];
+      grouped[course].push(item);
+    });
+    return Object.keys(grouped)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map((course) => ({ course, items: grouped[course] }));
+  }, [cart, itemCourseMap]);
+
   return (
-    <View className="flex-1 bg-[#212121]">
-
-      <View className=" px-6 h-full">
-        <View className="flex-row items-center justify-between mb-2">
-          <View className="flex-col items-start justify-start">
-            <Text className="text-gray-400 text-base font-medium mb-1">
-              {activeOrderId}
+    <View className="flex-1 bg-background">
+      <View className=" px-4 h-full">
+        <View className="mb-1 mt-2">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center flex-wrap gap-1.5">
+              <Text className="text-gray-400 text-sm font-medium">
+                {displayNumber || "New Order"}
+              </Text>
+              {paidStatus === "Paid" && (
+                <View className="bg-teal-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-teal-400 text-[10px] font-bold">PAID</Text>
+                </View>
+              )}
+              {paidStatus === "Partial" && (
+                <View className="bg-yellow-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-yellow-400 text-[10px] font-bold">PARTIAL</Text>
+                </View>
+              )}
+              {paidStatus === "Unpaid" && orderStatus !== "draft" && (
+                <View className="bg-red-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-red-400 text-[10px] font-bold">UNPAID</Text>
+                </View>
+              )}
+              {checkStatus === "Closed" && (
+                <View className="bg-gray-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-gray-400 text-[10px] font-bold">CLOSED</Text>
+                </View>
+              )}
+              {isSplitPayment && (
+                <View className="bg-teal-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-teal-400 text-[10px] font-bold">SPLIT</Text>
+                </View>
+              )}
+              {paidStatus === "Paid" && hasRefunds && (
+                <View className="bg-amber-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-amber-400 text-[10px] font-bold">REFUNDS</Text>
+                </View>
+              )}
+              {orderStatus === "preparing" && (
+                <View className="bg-teal-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-teal-400 text-[10px] font-bold">PREPARING</Text>
+                </View>
+              )}
+              {orderStatus === "ready" && (
+                <View className="bg-green-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-green-400 text-[10px] font-bold">READY</Text>
+                </View>
+              )}
+            </View>
+            <Text className="text-xs text-teal-400 font-medium">
+              {cart.length} {cart.length === 1 ? "Item" : "Items"}
             </Text>
-            <Text className="text-3xl font-bold text-white">Cart</Text>
-            <View className="h-1 w-16 bg-blue-600 rounded-full mt-2" />
           </View>
-          <Text className="text-lg text-gray-300">{cart.length} Items</Text>
         </View>
         <View className="flex-1 h-full w-full">
           <ScrollView
@@ -60,151 +140,38 @@ const BillSummary: React.FC<BillSummaryProps> = ({
             nestedScrollEnabled={true}
           >
             {cart.length > 0 ? (
-              (() => {
-                const grouped: Record<number, CartItem[]> = {};
-                cart.forEach((item) => {
-                  const course = itemCourseMap?.[item.id] ?? 1;
-                  if (!grouped[course]) grouped[course] = [];
-                  grouped[course].push(item);
-                });
-                const courses = Object.keys(grouped)
-                  .map((c) => Number(c))
-                  .sort((a, b) => a - b);
-
-                return (
-                  <View>
-                    {courses.map((course) => {
-                      const isSent = !!sentCourses?.[course];
-                      const isActive =
-                        currentCourse !== undefined && course === currentCourse;
-                      return (
-                        <View key={`course-${course}`} className="mb-3">
-                          <View className="flex-row items-center justify-between">
-                            <View
-                              className={`self-start px-2 py-1 rounded-full mb-2 ${
-                                isSent
-                                  ? "bg-green-900/30 border border-green-500"
-                                  : isActive
-                                  ? "bg-blue-900/30 border border-blue-500"
-                                  : "bg-[#303030] border border-gray-700"
-                              }`}
-                            >
-                              <Text
-                                className={`text-xs font-semibold ${
-                                  isSent
-                                    ? "text-green-400"
-                                    : isActive
-                                    ? "text-blue-400"
-                                    : "text-gray-300"
-                                }`}
-                              >
-                                Course {course}
-                                {isSent ? " • Sent" : ""}
-                              </Text>
-                            </View>
-                            {/* Status Badges */}
-                            {activeOrder && (
-                              <View className="flex-row gap-2 ml-2">
-                                {/* Paid Status Badge */}
-                                <View
-                                  className={`px-2 py-1 rounded-full ${
-                                    activeOrder.paid_status === "Paid"
-                                      ? "bg-green-900/30 border border-green-500"
-                                      : activeOrder.paid_status === "Pending"
-                                      ? "bg-yellow-900/30 border border-yellow-500"
-                                      : "bg-red-900/30 border border-red-500"
-                                  }`}
-                                >
-                                  <Text
-                                    className={`text-xs font-semibold ${
-                                      activeOrder.paid_status === "Paid"
-                                        ? "text-green-400"
-                                        : activeOrder.paid_status === "Pending"
-                                        ? "text-yellow-400"
-                                        : "text-red-400"
-                                    }`}
-                                  >
-                                    {activeOrder.paid_status}
-                                  </Text>
-                                </View>
-
-                                {/* Order Status Badge */}
-                                <View
-                                  className={`px-2 py-1 rounded-full ${
-                                    activeOrder.order_status === "Building"
-                                      ? "bg-blue-900/30 border border-blue-500"
-                                      : activeOrder.order_status === "Preparing"
-                                      ? "bg-orange-900/30 border border-orange-500"
-                                      : activeOrder.order_status === "Ready"
-                                      ? "bg-green-900/30 border border-green-500"
-                                      : "bg-gray-900/30 border border-gray-500"
-                                  }`}
-                                >
-                                  <Text
-                                    className={`text-xs font-semibold ${
-                                      activeOrder.order_status === "Building"
-                                        ? "text-blue-400"
-                                        : activeOrder.order_status ===
-                                          "Preparing"
-                                        ? "text-orange-400"
-                                        : activeOrder.order_status === "Ready"
-                                        ? "text-green-400"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
-                                    {activeOrder.order_status}
-                                  </Text>
-                                </View>
-
-                                {/* Check Status Badge */}
-                                <View
-                                  className={`px-2 py-1 rounded-full ${
-                                    activeOrder.check_status === "Opened"
-                                      ? "bg-purple-900/30 border border-purple-500"
-                                      : "bg-gray-900/30 border border-gray-500"
-                                  }`}
-                                >
-                                  <Text
-                                    className={`text-xs font-semibold ${
-                                      activeOrder.check_status === "Opened"
-                                        ? "text-purple-400"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
-                                    {activeOrder.check_status}
-                                  </Text>
-                                </View>
-                              </View>
-                            )}
-                          </View>
-                          {grouped[course].map((item, index) => {
-                            const highlight = isActive;
-                            return (
-                              <View
-                                key={`${item.id}-${index}`}
-                                className={`rounded-xl mb-1.5 ${
-                                  highlight ? "border border-blue-500" : ""
-                                }`}
-
-                              >
-                                <BillItem
-                                  item={item}
-                                  isEditable={true}
-                                  expandedItemId={expandedItemId}
-                                  onToggleExpand={onToggleExpand}
-                                />
-                              </View>
-                            );
-                          })}
-                        </View>
-                      );
-                    })}
-                  </View>
-                );
-              })()
+              <View>
+                {groupedCourses.map(({ course, items }) => {
+                  const isCourseActive =
+                    currentCourse !== undefined && course === currentCourse;
+                  return (
+                    <View key={`course-${course}`} className="mb-3">
+                      {items.map((item, index) => {
+                        return (
+                          <Animated.View
+                            key={item.id}
+                            entering={FadeInDown.duration(200)}
+                            exiting={FadeOutUp.duration(150)}
+                            layout={LinearTransition.duration(200)}
+                            className={`rounded-xl mb-1 ${
+                              isCourseActive ? "border border-blue-500" : ""
+                            }`}
+                          >
+                            <BillItem
+                              item={item}
+                              isEditable={true}
+                              showPaidBadge={paidStatus !== "Paid"}
+                            />
+                          </Animated.View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
+              </View>
             ) : (
               <View className="h-full items-center justify-center">
-                <Text className="text-xl text-gray-400">Cart is empty.</Text>
+                <Text className="text-xl text-gray-400">Order is empty.</Text>
               </View>
             )}
           </ScrollView>
@@ -213,5 +180,17 @@ const BillSummary: React.FC<BillSummaryProps> = ({
     </View>
   );
 };
+
+// OPTIMIZED: Memoize to prevent re-renders when parent updates
+const BillSummary = React.memo(BillSummaryComponent, (prev, next) => {
+  // Return true if props are equal (skip re-render)
+  return (
+    prev.cart === next.cart &&
+    prev.expandedItemId === next.expandedItemId &&
+    prev.currentCourse === next.currentCourse &&
+    prev.itemCourseMap === next.itemCourseMap &&
+    prev.sentCourses === next.sentCourses
+  );
+});
 
 export default BillSummary;

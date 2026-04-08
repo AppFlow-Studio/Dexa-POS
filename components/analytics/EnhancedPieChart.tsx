@@ -177,14 +177,14 @@ const EnhancedPieChart: React.FC<EnhancedPieChartProps> = ({
 
     if (!data || data.length === 0) {
         return (
-            <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+            <View className="h-[300px] w-full bg-panel rounded-2xl border border-border items-center justify-center">
                 <Text className="text-gray-400 text-lg">No data available</Text>
             </View>
         );
     }
 
     return (
-        <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 p-4">
+        <View className="h-[300px] w-full bg-panel rounded-2xl border border-border p-4">
             <GestureDetector gesture={gesture}>
                 <Canvas style={{ width: size, height: size, alignSelf: 'center' }}>
                     {/* Render non-selected slices first */}
@@ -242,7 +242,7 @@ const EnhancedPieChart: React.FC<EnhancedPieChartProps> = ({
                         zIndex: 1000,
                     }}
                 >
-                    <View className="bg-gray-800 border border-gray-600 rounded-lg p-3 items-center">
+                    <View className="bg-gray-800 border border-border rounded-lg p-3 items-center">
                         <Text className="text-white font-semibold text-base text-center">
                             {slices[selectedSlice].label}
                         </Text>
@@ -299,7 +299,7 @@ const EnhancedPieChart: React.FC<EnhancedPieChartProps> = ({
             {/* Tooltip for selected slice */}
             {selectedSlice !== null && tooltipVisible && tooltipData && (
                 <View
-                    className="absolute bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-lg"
+                    className="absolute bg-gray-800 border border-border rounded-lg p-3 shadow-lg"
                     style={{
                         left: Math.min(tooltipData.x, screenWidth - 200),
                         top: Math.max(tooltipData.y - 80, 10),

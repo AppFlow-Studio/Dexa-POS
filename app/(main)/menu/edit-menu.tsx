@@ -1,159 +1,184 @@
-import ScheduleEditor from "@/components/menu/ScheduleEditor";
-import ScheduleRuleModal from "@/components/menu/ScheduleRuleModal";
-import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
-import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
-import { Schedule } from "@/lib/types";
+import MenuForm from "@/components/menu/MenuForm";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
+import React, { useMemo, useState } from "react";
+import { View } from "react-native";
 
 const EditMenuScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { menus, categories, updateMenu, deleteMenu, getItemsInCategory } =
-    useMenuStore();
+  const menus = useMenuStore((s) => s.menus);
+  const updateMenu = useMenuStore((s) => s.updateMenu);
+  const deleteMenu = useMenuStore((s) => s.deleteMenu);
+  const categoriesByName = useMenuStore((s) => s.categoriesByName);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const supabase = useSupabaseClient();
+  const { show } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const existing = useMemo(() => menus.find((m) => m.id === id), [id, menus]);
-  const allCategoryNames = categories
-    .map((c) => c.name)
-    .sort((a, b) => a.localeCompare(b));
 
-  const [name, setName] = useState(existing?.name || "");
-  const [description, setDescription] = useState(existing?.description || "");
-  const [isActive, setIsActive] = useState(existing?.isActive ?? true);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    existing?.categories || []
-  );
-  const [schedules, setSchedules] = useState(existing?.schedules ?? []);
-  const [expandedCategories, setExpandedCategories] = useState<
-    Record<string, boolean>
-  >({});
-  // --- State for the new modal ---
-  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [editingRule, setEditingRule] = useState<Omit<
-    Schedule,
-    "id" | "isActive"
-  > | null>(null);
-  const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
-  const hasSavedRef = useRef(false);
+  // Check if this is a global menu (not local to this store)
+  const isGlobalMenu =
+    existing?.location_id === null || existing?.location_id === undefined;
+  const isLocalMenu = existing?.location_id === selectedStore?.id;
 
-  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
-    hasChanges && !hasSavedRef.current
-  );
+  if (existing && (isGlobalMenu || !isLocalMenu)) {
+    return <GlobalItemScreen type="Menu" />
+  }
 
-  useEffect(() => {
-    if (!existing) return;
-    const nameChanged = existing.name !== name;
-    const descChanged = existing.description !== description;
-    const activeChanged = existing.isActive !== isActive;
-    const catsChanged =
-      JSON.stringify(existing.categories.sort()) !==
-      JSON.stringify(selectedCategories.sort());
-    const schedulesChanged =
-      JSON.stringify(existing.schedules) !== JSON.stringify(schedules);
+  const handleSubmit = async (data: any): Promise<boolean> => {
+    if (!existing) return false;
+    setIsSaving(true);
+    try {
+      // Update in backend
+      const { error } = await MenuService.updateMenu(supabase, existing.id, {
+        name: data.name,
+        description: data.description,
+        isActive: data.isActive,
+      });
 
-    setHasChanges(
-      nameChanged ||
-        descChanged ||
-        activeChanged ||
-        catsChanged ||
-        schedulesChanged
-    );
-  }, [name, description, isActive, selectedCategories, schedules, existing]);
-
-  const handleAddPress = () => {
-    setEditingRule(null);
-    setEditingRuleIndex(null);
-    setIsScheduleModalOpen(true);
-  };
-
-  const handleEditPress = (rule: Schedule, index: number) => {
-    setEditingRule(rule);
-    setEditingRuleIndex(index);
-    setIsScheduleModalOpen(true);
-  };
-
-  const handleSaveSchedule = (ruleData: Omit<Schedule, "id" | "isActive">) => {
-    if (editingRuleIndex !== null) {
-      // Editing existing rule
-      const updatedSchedules = [...schedules];
-      updatedSchedules[editingRuleIndex] = {
-        ...schedules[editingRuleIndex],
-        ...ruleData,
-      };
-      setSchedules(updatedSchedules);
-    } else {
-      // Adding new rule
-      const newRule: Schedule = {
-        id: `sch_${Date.now()}`,
-        isActive: true,
-        ...ruleData,
-      };
-      setSchedules([...schedules, newRule]);
-    }
-  };
-
-  const toggleCategory = (cat: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
-    );
-  };
-
-  const handleSave = () => {
-    if (!existing) return;
-    if (!name.trim()) {
-      Alert.alert("Validation", "Name is required");
-      return;
-    }
-
-    updateMenu(existing.id, {
-      name: name.trim(),
-      description: description.trim() || undefined,
-      isActive,
-      categories: selectedCategories,
-      schedules,
-    });
-    hasSavedRef.current = true;
-
-    // Use a timeout to ensure state propagation before navigation
-    setTimeout(() => {
-      if (router.canGoBack()) {
-        router.replace({ pathname: "/menu", params: { tab: "menus" } });
+      if (error) {
+        console.error("Failed to update menu:", error);
+        show({
+          title: "Error",
+          message: error.message || "Failed to update menu. Please try again.",
+          type: "error",
+        });
+        return false;
       }
-    }, 100);
+
+      // Sync Categories
+      // 1. Calculate diff
+      const existingCategoryNames = existing.categories.map((c) => c.name);
+      const newCategoryNames = data.categories as string[];
+
+      const addedCategories = newCategoryNames.filter(
+        (name) => !existingCategoryNames.includes(name)
+      );
+      const removedCategories = existingCategoryNames.filter(
+        (name) => !newCategoryNames.includes(name)
+      );
+
+      // 2. Handle Additions
+      for (const catName of addedCategories) {
+        const category = categoriesByName[catName];
+        if (category) {
+          const { error: addError } = await MenuService.addCategoryToMenu(
+            supabase,
+            {
+              menuId: existing.id,
+              categoryId: category.id,
+              merchantId: selectedStore?.merchant_id || "",
+              displayOrder: 0, // Default order
+            }
+          );
+          if (addError) {
+            console.error(`Failed to add category ${catName}:`, addError);
+            // We continue to try adding others, but could alert the user
+            show({
+              title: "Warning",
+              message: `Failed to add category "${catName}".`,
+              type: "error",
+            });
+          }
+        }
+      }
+
+      // 3. Handle Removals
+      for (const catName of removedCategories) {
+        // Find ID from existing menu categories
+        const category = existing.categories.find((c) => c.name === catName);
+        if (category) {
+          const { error: removeError } =
+            await MenuService.removeCategoryFromMenu(
+              supabase,
+              existing.id,
+              category.id
+            );
+          if (removeError) {
+            console.error(`Failed to remove category ${catName}:`, removeError);
+            show({
+              title: "Warning",
+              message: `Failed to remove category "${catName}".`,
+              type: "error",
+            });
+          }
+        }
+      }
+
+      // Update local store for immediate UI feedback
+      updateMenu(existing.id, {
+        name: data.name,
+        description: data.description,
+        isActive: data.isActive,
+        categories: data.categories,
+        schedules: data.schedules,
+      });
+
+      show({
+        title: "Menu Updated",
+        message: `Successfully updated "${data.name}".`,
+        type: "success",
+      });
+      return true;
+    } catch (error) {
+      console.error(error);
+      show({
+        title: "Error",
+        message: "An unexpected error occurred. Please try again.",
+        type: "error",
+      });
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = () => {
     if (!existing) return;
-    Alert.alert("Delete Menu", `Delete "${existing.name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          deleteMenu(existing.id);
-          router.replace({ pathname: "/menu", params: { tab: "menus" } });
-        },
-      },
-    ]);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!existing) return;
+
+    // Delete from backend
+    const { error } = await MenuService.deleteMenu(supabase, existing.id);
+    if (error) {
+      show({
+        title: "Error",
+        message: error.message || "Failed to delete menu.",
+        type: "error",
+      });
+      setShowDeleteModal(false);
+      return;
+    }
+
+    // Delete from local store
+    deleteMenu(existing.id);
+    show({
+      title: "Menu Deleted",
+      message: `Menu "${existing.name}" has been deleted.`,
+      type: "success",
+    });
+    setShowDeleteModal(false);
+    router.replace({ pathname: "/menu", params: { tab: "menus" } });
   };
 
   if (!existing) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+      <View className="flex-1 bg-panel items-center justify-center p-4">
         <Text className="text-xl text-white">Menu not found.</Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-3 px-4 py-2 bg-[#303030] rounded border border-gray-600"
+          className="mt-3 px-4 py-2 bg-surface rounded border border-gray-600"
         >
           <Text className="text-lg text-gray-300">Go Back</Text>
         </TouchableOpacity>
@@ -162,193 +187,25 @@ const EditMenuScreen: React.FC = () => {
   }
 
   return (
-    <View className="flex-1 bg-[#212121]">
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="flex-row items-center"
-        >
-          <ArrowLeft size={20} color="#9CA3AF" />
-          <Text className="text-xl text-white font-medium ml-1.5">Back</Text>
-        </TouchableOpacity>
-        <View className="flex-row gap-2">
-          <TouchableOpacity
-            onPress={handleDelete}
-            className="px-4 py-2 rounded-lg border border-red-500 bg-red-900/30"
-          >
-            <Text className="text-xl text-red-400">Delete</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            className="px-4 py-2 rounded-lg bg-blue-600"
-          >
-            <Text className="text-xl text-white">Save</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView className="flex-1 p-4">
-        <Text className="text-2xl font-bold text-white mb-4">Edit Menu</Text>
-
-        <View className="mb-4">
-          <Text className="text-xl font-semibold text-white mb-2">Name</Text>
-          <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-            value={name}
-            onChangeText={setName}
-            placeholder="Menu name"
-            placeholderTextColor="#9CA3AF"
-          />
-        </View>
-
-        <View className="mb-4">
-          <Text className="text-xl font-semibold text-white mb-2">
-            Description
-          </Text>
-          <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Optional description"
-            placeholderTextColor="#9CA3AF"
-          />
-        </View>
-
-        <View className="mb-4">
-          <Text className="text-xl font-semibold text-white mb-2">
-            Categories
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {allCategoryNames.map((cat) => {
-              const selected = selectedCategories.includes(cat);
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => toggleCategory(cat)}
-                  className={`px-3 py-2 rounded-lg border ${
-                    selected
-                      ? "bg-blue-600 border-blue-500"
-                      : "bg-[#303030] border-gray-600"
-                  }`}
-                >
-                  <Text
-                    className={`text-lg ${
-                      selected ? "text-white" : "text-gray-300"
-                    }`}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {selectedCategories.length > 0 && (
-            <View className="mt-3 gap-3">
-              {selectedCategories
-                .sort((a, b) => a.localeCompare(b))
-                .map((cat) => {
-                  const isExpanded = !!expandedCategories[cat];
-                  const items = getItemsInCategory(cat);
-                  return (
-                    <View
-                      key={cat}
-                      className="bg-[#303030] rounded-lg border border-gray-700"
-                    >
-                      <TouchableOpacity
-                        onPress={() =>
-                          setExpandedCategories((prev) => ({
-                            ...prev,
-                            [cat]: !isExpanded,
-                          }))
-                        }
-                        className="flex-row items-center justify-between p-3"
-                      >
-                        <View className="flex-row items-center gap-2">
-                          <Text className="text-xl text-white font-medium">
-                            {cat}
-                          </Text>
-                          <View className="bg-blue-900/30 border border-blue-500 px-2.5 py-1.5 rounded-full">
-                            <Text className="text-lg text-blue-400">
-                              {items.length} items
-                            </Text>
-                          </View>
-                        </View>
-                        <Text className="text-lg text-gray-300">
-                          {isExpanded ? "Hide" : "Show"}
-                        </Text>
-                      </TouchableOpacity>
-                      {isExpanded && (
-                        <View className="border-t border-gray-700 p-3 gap-2">
-                          {items.length === 0 ? (
-                            <Text className="text-lg text-gray-400">
-                              No items in this category.
-                            </Text>
-                          ) : (
-                            <View className="gap-2 flex flex-row flex-wrap">
-                              {items.map((item) => (
-                                <View
-                                  key={item.id}
-                                  className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-2"
-                                >
-                                  <Text className="text-lg text-white">
-                                    {item.name}
-                                  </Text>
-                                  <Text className="text-lg text-gray-300 ml-2">
-                                    ${item.price.toFixed(2)}
-                                  </Text>
-                                </View>
-                              ))}
-                            </View>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
-            </View>
-          )}
-        </View>
-
-        <View className="mb-4">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-xl font-semibold text-white">Schedules</Text>
-            <TouchableOpacity
-              onPress={() => setIsActive(!isActive)}
-              className={`px-3 py-2 rounded-lg border ${
-                isActive
-                  ? "bg-green-900/30 border-green-500"
-                  : "bg-red-900/30 border-red-500"
-              }`}
-            >
-              <Text
-                className={`text-lg ${
-                  isActive ? "text-green-400" : "text-red-400"
-                }`}
-              >
-                {isActive ? "Master: On" : "Master: Off"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <ScheduleEditor
-            value={schedules}
-            onChange={setSchedules}
-            onAddPress={handleAddPress}
-            onEditPress={handleEditPress}
-          />
-        </View>
-      </ScrollView>
-
-      <ScheduleRuleModal
-        isOpen={isScheduleModalOpen}
-        onClose={() => setIsScheduleModalOpen(false)}
-        onSave={handleSaveSchedule}
-        initialData={editingRule}
-        existingSchedules={schedules}
+    <View className="flex-1 bg-panel">
+      <MenuForm
+        initialData={existing}
+        onSubmit={handleSubmit}
+        isSaving={isSaving}
+        title="Edit Menu"
+        submitButtonLabel="Save Changes"
+        onDelete={handleDelete}
       />
-      <UnsavedChangesDialog
-        isOpen={isDialogVisible}
-        onCancel={handleCancel}
-        onDiscard={handleDiscard}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Delete Menu"
+        description={`Are you sure you want to delete '${existing?.name}'?`}
+        confirmText="Delete"
+        variant="destructive"
       />
     </View>
   );

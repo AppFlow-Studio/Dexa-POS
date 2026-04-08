@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Menu, Schedule } from "@/lib/types";
 import { Category } from "@/stores/useMenuStore";
 import { router } from "expo-router";
@@ -10,7 +11,8 @@ interface ScheduleCardProps {
 }
 
 // Helper to format days for display
-const formatDays = (days: string[]): string => {
+const formatDays = (days: string[] | undefined | null): string => {
+  if (!days || !Array.isArray(days)) return "";
   if (days.length === 7) return "Every Day";
   if (days.length === 5 && days.includes("Mon") && days.includes("Fri"))
     return "Weekdays";
@@ -29,7 +31,7 @@ export const ScheduleCard: React.FC<ScheduleCardProps> = ({ item }) => {
   };
 
   return (
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3">
+    <View className="bg-surface rounded-lg border border-gray-700 p-4 mb-3">
       <View className="flex-row justify-between items-center">
         <View>
           <Text className="text-xs font-semibold text-purple-400 mb-0.5">
@@ -39,13 +41,13 @@ export const ScheduleCard: React.FC<ScheduleCardProps> = ({ item }) => {
         </View>
         <TouchableOpacity
           onPress={handleEdit}
-          className="p-2 bg-[#212121] rounded border border-gray-600"
+          className="p-2 bg-panel rounded border border-gray-600"
         >
-          <Settings size={20} color="#9CA3AF" />
+          <Settings size={20} color={colors.label} />
         </TouchableOpacity>
       </View>
 
-      <View className="mt-3 space-y-1.5">
+      <View className="mt-3 gap-y-1.5">
         {(item.schedules?.length ?? 0) === 0 ? (
           <Text className="text-base text-gray-400 py-2">
             Always available (no schedule rules)
@@ -54,7 +56,7 @@ export const ScheduleCard: React.FC<ScheduleCardProps> = ({ item }) => {
           item.schedules?.map((schedule: Schedule, index: number) => (
             <View
               key={index}
-              className="p-2 bg-[#212121] rounded-md border border-gray-600"
+              className="p-2 bg-panel rounded-md border border-gray-600"
             >
               <Text className="text-base font-semibold text-gray-300">
                 {formatDays(schedule.days)}: {schedule.startTime} -{" "}

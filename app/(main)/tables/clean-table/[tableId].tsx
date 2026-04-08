@@ -1,80 +1,95 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const CleanTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
-  const { layouts, updateTableStatus } = useFloorPlanStore();
+  const tables = useFloorPlanStore((s) => s.tables);
+  const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
 
-  const { table, allTablesInGroup, displayNames } = useMemo(() => {
-    if (!tableId)
-      return { table: null, allTablesInGroup: [], displayNames: "N/A" };
+  const { table, allTablesInGroup, displayNames, sessionId } = useMemo(() => {
+    if (!tableId || typeof tableId !== "string")
+      return {
+        table: null,
+        allTablesInGroup: [],
+        displayNames: "N/A",
+        sessionId: null,
+      };
 
-    const allTables = layouts.flatMap((l) => l.tables);
-    const foundTable = allTables.find((t) => t.id === tableId);
+    const foundTable = tables.find((t) => t.id === tableId);
 
     if (!foundTable) {
-      return { table: null, allTablesInGroup: [], displayNames: "N/A" };
+      return {
+        table: null,
+        allTablesInGroup: [],
+        displayNames: "N/A",
+        sessionId: null,
+      };
     }
 
-    // Determine the primary table and all associated tables
+    // Determine the session and associated tables
     let primaryTable = foundTable;
-    if (!foundTable.isPrimary && foundTable.mergedWith) {
-      const primary = allTables.find(
-        (t) => t.isPrimary && t.mergedWith?.includes(foundTable.id)
-      );
-      if (primary) primaryTable = primary;
-    }
+    const session = foundTable.session;
 
-    const groupIds = [primaryTable.id, ...(primaryTable.mergedWith || [])];
-    const groupTables = allTables.filter((t) => groupIds.includes(t.id));
+    // If we have a session with merged tables, find all of them
+    let groupTables = [foundTable];
+    if (session?.merged_tables && session.merged_tables.length > 0) {
+      groupTables = tables.filter((t) => session.merged_tables?.includes(t.id));
+    }
 
     // Create the display name
-    const primaryName = primaryTable.name;
-    const secondaryNames = groupTables
-      .filter((t) => !t.isPrimary)
-      .map((t) => t.name)
-      .join(", ");
+    // For merged tables, usually one is the 'anchor' or we list all.
+    // The previous logic distinguished 'primary'. Now we stick to the Session logic.
+    // We can just list all names.
+    const names = groupTables.map((t) => t.name).join(", ");
 
-    const finalDisplayName = secondaryNames
-      ? `${primaryName} (Merged with ${secondaryNames})`
-      : primaryName;
+    // Total capacity
+    // const totalCapacity = groupTables.reduce((acc, t) => acc + (t.capacity || 0), 0);
 
     return {
       table: foundTable,
       allTablesInGroup: groupTables,
-      displayNames: finalDisplayName,
+      displayNames: names,
+      sessionId: session?.id,
     };
-  }, [layouts, tableId]);
+  }, [tables, tableId]);
 
-  const handleCleanTable = () => {
-    if (allTablesInGroup.length > 0) {
-      // Update the status for every table in the group
-      allTablesInGroup.forEach((t) => {
-        updateTableStatus(t.id, "Available");
-      });
-      router.back(); // Go back to the floor plan
+  const handleCleanTable = async () => {
+    if (tableId && typeof tableId === "string") {
+      try {
+        await dispatchAction({
+          type: "FINISH_CLEANING",
+          tableId: tableId,
+        });
+        router.replace("/tables");
+      } catch (error) {
+        console.error("Failed to clean table:", error);
+      }
+    } else if (table) {
+      console.warn("No session found for table to clean");
+      router.replace("/tables");
     }
   };
 
   if (!table) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#212121]">
+      <View className="flex-1 items-center justify-center bg-screen">
         <Text className="text-2xl text-white">Table not found.</Text>
       </View>
     );
   }
 
   const totalCapacity = allTablesInGroup.reduce(
-    (acc, t) => acc + t.capacity,
-    0
+    (acc, t) => acc + (t.capacity || 0),
+    0,
   );
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       {/* --- Main Content Area --- */}
       <View className="flex-1 items-center p-4">
         <View className="w-full max-w-4xl">
@@ -89,7 +104,7 @@ const CleanTableScreen = () => {
           </View>
 
           {/* Info Banner - NOW DISPLAYS MERGED INFO */}
-          <View className="flex-row items-center p-4 bg-[#303030] rounded-lg my-4">
+          <View className="flex-row items-center p-4 bg-panel rounded-lg my-4">
             <Info color="#f97316" size={20} />
             <Text className="ml-2 font-semibold text-lg text-white">
               Tables: {displayNames} (Capacity: {totalCapacity})
@@ -99,8 +114,8 @@ const CleanTableScreen = () => {
           {/* Action Buttons */}
           <View className="flex-row gap-4">
             <TouchableOpacity
-              onPress={() => router.back()}
-              className="flex-1 py-4 border border-gray-600 rounded-lg items-center bg-[#303030]"
+              onPress={() => router.replace("/tables")}
+              className="flex-1 py-4 border border-gray-600 rounded-lg items-center bg-panel"
             >
               <Text className="text-lg font-bold text-white">Cancel</Text>
             </TouchableOpacity>

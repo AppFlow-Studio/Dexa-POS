@@ -6,6 +6,7 @@ import { ThemedView } from "@/components/ThemedView";
 
 export default function NotFoundScreen() {
   const pathname = usePathname();
+  console.log("path not found", pathname);
 
   return (
     <>

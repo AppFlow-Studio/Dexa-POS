@@ -6,8 +6,11 @@
       "@/*": [
         "./*",
       ],
-      "~/*": ["./*"]  
-    }
+      "~/*": [
+        "./*"
+      ]
+    },
+    "jsx": "react-jsx" // or "react", "preserve", "react-native" depending on your project
   },
   "include": [
     "**/*.ts",

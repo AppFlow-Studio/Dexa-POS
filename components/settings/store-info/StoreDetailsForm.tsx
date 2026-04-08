@@ -1,5 +1,12 @@
+import { colors } from "@/lib/theme";
 import React from "react";
-import { Text, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 interface StoreDetails {
   storeName: string;
@@ -40,10 +47,10 @@ const FormField = ({
       editable={isEditable}
       className={`h-14 p-3 rounded-lg border text-lg ${
         isEditable
-          ? "bg-[#212121] border-gray-600 text-white"
+          ? "bg-screen border-gray-600 text-white"
           : "bg-gray-800 border-gray-700 text-gray-400"
       }`}
-      placeholderTextColor="#6B7280"
+      placeholderTextColor={colors.muted}
     />
   </View>
 );
@@ -59,7 +66,10 @@ const StoreDetailsForm: React.FC<StoreDetailsFormProps> = ({
   isEditable,
 }) => {
   return (
-    <View className="gap-y-4">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="gap-y-4"
+    >
       <FormRow>
         <FormField
           label="Store Name"
@@ -126,7 +136,7 @@ const StoreDetailsForm: React.FC<StoreDetailsFormProps> = ({
           isEditable={isEditable}
         />
       </FormRow>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

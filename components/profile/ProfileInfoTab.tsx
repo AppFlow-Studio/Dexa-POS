@@ -1,12 +1,65 @@
 import { MOCK_USER_PROFILE } from "@/lib/mockData";
+import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { Calendar, MapPin, User, Users, Globe } from "lucide-react-native";
 import React from "react";
-import { Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
-const DetailRow = ({ label, value }: { label: string; value: string }) => (
-  <View className="mb-3">
-    <Text className="text-lg text-accent-100 mb-0.5">{label}</Text>
-    <Text className="text-xl font-medium text-accent-100">{value}</Text>
+const Field = ({
+  icon,
+  label,
+  value,
+  last,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  last?: boolean;
+}) => (
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderBottomWidth: last ? 0 : 1,
+      borderBottomColor: colors.border,
+      gap: 12,
+    }}
+  >
+    <View
+      style={{
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        backgroundColor: colors.teal + "15",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {icon}
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: "600",
+          color: colors.muted,
+          textTransform: "uppercase",
+          letterSpacing: 0.8,
+          marginBottom: 2,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{ fontSize: 13, fontWeight: "500", color: colors.heading }}
+        numberOfLines={2}
+      >
+        {value || "—"}
+      </Text>
+    </View>
   </View>
 );
 
@@ -15,6 +68,7 @@ const ProfileInfoTab = () => {
   const emp =
     employees.find((e) => e.id === activeEmployeeId) ||
     employees.find((e) => e.shiftStatus === "clocked_in");
+
   const user = emp
     ? {
         fullName: emp.fullName,
@@ -26,14 +80,61 @@ const ProfileInfoTab = () => {
         address: emp.address || "—",
       }
     : MOCK_USER_PROFILE;
+
   return (
-    <View className="space-y-4">
-      <DetailRow label="Full Name" value={user.fullName} />
-      <DetailRow label="Date of birth" value={user.dob} />
-      <DetailRow label="Gender" value={user.gender} />
-      <DetailRow label="Country" value={user.country} />
-      <DetailRow label="Address" value={user.address} />
-    </View>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24, paddingHorizontal: 16, paddingTop: 16 }}>
+      {/* Section header */}
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: "700",
+          color: colors.muted,
+          textTransform: "uppercase",
+          letterSpacing: 1,
+          marginBottom: 10,
+        }}
+      >
+        Personal Details
+      </Text>
+
+      {/* Card */}
+      <View
+        style={{
+          backgroundColor: colors.card,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: "hidden",
+        }}
+      >
+        <Field
+          icon={<User size={15} color={colors.teal} />}
+          label="Full Name"
+          value={user.fullName}
+        />
+        <Field
+          icon={<Calendar size={15} color={colors.teal} />}
+          label="Date of Birth"
+          value={user.dob}
+        />
+        <Field
+          icon={<Users size={15} color={colors.teal} />}
+          label="Gender"
+          value={user.gender}
+        />
+        <Field
+          icon={<Globe size={15} color={colors.teal} />}
+          label="Country"
+          value={user.country}
+        />
+        <Field
+          icon={<MapPin size={15} color={colors.teal} />}
+          label="Address"
+          value={user.address}
+          last
+        />
+      </View>
+    </ScrollView>
   );
 };
 

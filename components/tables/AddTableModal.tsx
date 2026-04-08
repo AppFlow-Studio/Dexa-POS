@@ -1,8 +1,11 @@
+import { colors } from "@/lib/theme";
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import React, { useState } from "react";
 import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   ScrollView,
   Text,
   TextInput,
@@ -50,7 +53,7 @@ const ShapeButton = ({
     className={`p-3 border-2 rounded-xl items-center justify-center w-[250px] h-[130px] ${
       isSelected
         ? "border-blue-500 bg-blue-500/10"
-        : "border-gray-700 bg-[#212121]"
+        : "border-gray-700 bg-panel"
     }`}
   >
     <ShapeComponent color={isSelected ? "#3b82f6" : "#9CA3AF"} height={60} />
@@ -75,15 +78,16 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
     keyof typeof TABLE_SHAPES
   >(SHAPE_OPTIONS[0].id as keyof typeof TABLE_SHAPES);
 
-  const { layouts, activeLayoutId } = useFloorPlanStore();
-  const activeLayout = layouts.find((layout) => layout.id === activeLayoutId);
-  const tablesInCurrentLayout = activeLayout?.tables || [];
+  const { tables } = useFloorPlanStore();
+  const { show } = useToast();
+  const tablesInCurrentLayout = tables;
 
   const handleAddPress = () => {
     if (!name || !selectedShapeId) {
-      toast.error("Please enter a name and select a shape.", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Missing Information",
+        message: "Please provide a name for the object and select a shape.",
+        type: "error",
       });
       return;
     }
@@ -93,9 +97,10 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
     );
 
     if (nameExists) {
-      toast.error(`An object named "${name}" already exists in this layout.`, {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Duplicate Name",
+        message: `An object named "${name}" already exists. Please choose a unique name.`,
+        type: "error",
       });
       return;
     }
@@ -108,77 +113,83 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[620px] p-8 rounded-2xl bg-[#2a2a2a] border border-gray-700">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-white">
-            Add New Object
-          </DialogTitle>
-          <DialogDescription className="text-base text-gray-400 mt-1">
-            Enter a name and choose a shape to add to the floor plan.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="w-[620px] p-8 rounded-2xl bg-surface border border-gray-700">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-white">
+              Add New Object
+            </DialogTitle>
+            <DialogDescription className="text-base text-gray-400 mt-1">
+              Enter a name and choose a shape to add to the floor plan.
+            </DialogDescription>
+          </DialogHeader>
 
-        <View className="gap-y-6 py-4">
-          {/* Name Input Section */}
-          <View>
-            <Text className="text-base font-medium text-gray-300 mb-2">
-              Object Name
-            </Text>
-            <View className="gap-y-3 py-3">
-              <View>
-                <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                  Table Name
-                </Text>
-                <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="e.g., T-24 or Main Bar"
-                  placeholderTextColor="#6B7280"
-                  className="p-4 bg-[#1e1e1e] border border-gray-600 rounded-lg text-lg text-white h-14"
-                />
-              </View>
+          <View className="gap-y-6 py-4">
+            {/* Name Input Section */}
+            <View>
+              <Text className="text-base font-medium text-gray-300 mb-2">
+                Object Name
+              </Text>
+              <View className="gap-y-3 py-3">
+                <View>
+                  <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                    Table Name
+                  </Text>
+                  <TextInput
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="e.g., T-24 or Main Bar"
+                    placeholderTextColor="#6B7280"
+                    className="p-4 bg-panel border border-gray-600 rounded-lg text-lg text-white h-14"
+                  />
+                </View>
 
-              {/* Shape Selection Section with Vertical Scroll */}
-              <View>
-                <Text className="text-base font-medium text-gray-300 mb-2">
-                  Select Shape
-                </Text>
-                <ScrollView style={{ maxHeight: 290 }}>
-                  <View className="flex-row flex-wrap gap-4 justify-center">
-                    {SHAPE_OPTIONS.map(
-                      ({ id, label, component: ShapeComponent }) => (
-                        <ShapeButton
-                          key={id}
-                          id={id}
-                          label={label}
-                          ShapeComponent={ShapeComponent}
-                          isSelected={selectedShapeId === id}
-                          onPress={() =>
-                            setSelectedShapeId(id as keyof typeof TABLE_SHAPES)
-                          }
-                        />
-                      )
-                    )}
-                  </View>
-                </ScrollView>
+                {/* Shape Selection Section with Vertical Scroll */}
+                <View>
+                  <Text className="text-base font-medium text-gray-300 mb-2">
+                    Select Shape
+                  </Text>
+                  <ScrollView style={{ maxHeight: 290 }}>
+                    <View className="flex-row flex-wrap gap-4 justify-center">
+                      {SHAPE_OPTIONS.map(
+                        ({ id, label, component: ShapeComponent }) => (
+                          <ShapeButton
+                            key={id}
+                            id={id}
+                            label={label}
+                            ShapeComponent={ShapeComponent}
+                            isSelected={selectedShapeId === id}
+                            onPress={() =>
+                              setSelectedShapeId(
+                                id as keyof typeof TABLE_SHAPES
+                              )
+                            }
+                          />
+                        )
+                      )}
+                    </View>
+                  </ScrollView>
+                </View>
               </View>
             </View>
           </View>
-        </View>
-        <DialogFooter className="flex-row gap-4 pt-4 border-t border-gray-700">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 bg-gray-700 rounded-lg items-center"
-          >
-            <Text className="text-base font-bold text-gray-300">Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleAddPress}
-            className="flex-1 bg-blue-600 py-3 rounded-lg items-center"
-          >
-            <Text className="text-white text-base font-bold">Add Object</Text>
-          </TouchableOpacity>
-        </DialogFooter>
+          <DialogFooter className="flex-row gap-4 pt-4 border-t border-gray-700">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 py-3 bg-gray-700 rounded-lg items-center"
+            >
+              <Text className="text-base font-bold text-gray-300">Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleAddPress}
+              className="flex-1 bg-blue-600 py-3 rounded-lg items-center"
+            >
+              <Text className="text-white text-base font-bold">Add Object</Text>
+            </TouchableOpacity>
+          </DialogFooter>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

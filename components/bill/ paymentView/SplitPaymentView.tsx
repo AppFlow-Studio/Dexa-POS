@@ -1,10 +1,18 @@
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
+import { colors } from "@/lib/theme";
+import { getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import React, { useEffect, useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 import { CartItem } from "@/lib/types";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Minus } from "lucide-react-native";
 import { ScrollView } from "react-native-gesture-handler";
 type SplitOption = "Split Evenly" | "Split by Item" | "Custom Amount";
@@ -26,10 +34,15 @@ interface Split {
 const SplitPaymentView = () => {
   const { activeOrderId, orders, activeOrderOutstandingTotal } =
     useOrderStore();
-  const { close, setView } = usePaymentStore();
+  const close = usePaymentStore((s) => s.close);
+  const setView = usePaymentStore((s) => s.setView);
+  const { show } = useToast();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const originalItems = activeOrder?.items || [];
+  // Filter out voided items - they should not be included in splits
+  const originalItems = (activeOrder?.items || []).filter(
+    (item) => !item.is_voided
+  );
 
   // --- State Management ---
   const [splitOption, setSplitOption] = useState<SplitOption>("Split Evenly");
@@ -69,23 +82,31 @@ const SplitPaymentView = () => {
     splits.map((s) => s.items.map((i) => i.cartItem.id + i.quantity))
   );
 
+  // Recalculate split amounts when items change (for "Split by Item" mode)
+  // Uses getItemEffectiveSubtotal to include discounts from backend or local state
   useEffect(() => {
     if (splitOption === "Split by Item") {
       setSplits((currentSplits) =>
         currentSplits.map((split) => {
-          const splitSubtotal = split.items.reduce(
-            (acc, splitItem) =>
-              acc + splitItem.cartItem.price * splitItem.quantity,
-            0
-          );
+          // Calculate the effective subtotal (post-discount) for items in this split
+          // For SplitItem, we need to create a temp CartItem with the split quantity
+          const splitSubtotal = split.items.reduce((acc, splitItem) => {
+            // Create a temporary item with the split quantity to calculate effective subtotal
+            const tempItem = { ...splitItem.cartItem, quantity: splitItem.quantity };
+            return acc + getItemEffectiveSubtotal(tempItem);
+          }, 0);
 
-          const proportionOfTotal =
-            activeOrderSubtotal > 0 ? splitSubtotal / activeOrderSubtotal : 0;
+          // Calculate tax on the post-discount subtotal
+          // Use item's taxRate if available, otherwise use a default
+          const splitTax = split.items.reduce((acc, splitItem) => {
+            const tempItem = { ...splitItem.cartItem, quantity: splitItem.quantity };
+            const itemSubtotal = getItemEffectiveSubtotal(tempItem);
+            const taxRate = splitItem.cartItem.taxRate || 0;
+            return acc + (itemSubtotal * taxRate / 100);
+          }, 0);
 
-          const splitTax = activeOrderTax * proportionOfTotal;
-          const splitDiscount = activeOrderDiscount * proportionOfTotal;
-
-          const newAmount = splitSubtotal + splitTax - splitDiscount;
+          // Calculate the final amount (subtotal already has discount removed, no need to subtract again)
+          const newAmount = Math.round((splitSubtotal + splitTax) * 100) / 100;
 
           if (split.amount !== newAmount) {
             return { ...split, amount: newAmount };
@@ -94,49 +115,7 @@ const SplitPaymentView = () => {
         })
       );
     }
-  }, [
-    itemDependency,
-    splitOption,
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderDiscount,
-  ]);
-
-  useEffect(() => {
-    if (splitOption === "Split by Item") {
-      setSplits((currentSplits) =>
-        currentSplits.map((split) => {
-          // Calculate the subtotal for just the items in this split
-          const splitSubtotal = split.items.reduce(
-            (acc, item) => acc + item.price * item.quantity,
-            0
-          );
-
-          // Determine this split's proportion of the total order subtotal
-          const proportionOfTotal =
-            activeOrderSubtotal > 0 ? splitSubtotal / activeOrderSubtotal : 0;
-
-          // Calculate the proportional tax and discount for this split
-          const splitTax = activeOrderTax * proportionOfTotal;
-          const splitDiscount = activeOrderDiscount * proportionOfTotal;
-
-          // Calculate the final amount for this split
-          const newAmount = splitSubtotal + splitTax - splitDiscount;
-
-          if (split.amount !== newAmount) {
-            return { ...split, amount: newAmount };
-          }
-          return split;
-        })
-      );
-    }
-  }, [
-    itemDependency,
-    splitOption,
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderDiscount,
-  ]);
+  }, [itemDependency, splitOption]);
 
   const totalPaid = splits.reduce((acc, split) => acc + split.amount, 0);
   const remainingBalance = activeOrderOutstandingTotal - totalPaid;
@@ -217,9 +196,12 @@ const SplitPaymentView = () => {
   };
 
   const handleRemoveSplit = (splitToRemove: Split) => {
-    // Don't allow removing the last split
     if (splits.length <= 1) {
-      alert("Cannot remove the last split.");
+      show({
+        title: "Action Restricted",
+        message: "You cannot remove the last remaining split.",
+        type: "warning",
+      });
       return;
     }
 
@@ -277,8 +259,11 @@ const SplitPaymentView = () => {
         0
       );
       if (totalSplitAmount > activeOrderOutstandingTotal + 0.001) {
-        toast.error("split total cannot exceed the outstanding amount.", {
-          position: ToastPosition.BOTTOM,
+        show({
+          title: "Amount Exceeded",
+          message:
+            "The total split amount cannot exceed the outstanding balance.",
+          type: "error",
         });
         return;
       }
@@ -299,10 +284,16 @@ const SplitPaymentView = () => {
                 <TouchableOpacity
                   key={num}
                   onPress={() => setNumberOfPeople(num)}
-                  className={`w-14 h-14 rounded-lg border items-center justify-center ${numberOfPeople === num ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
+                  className={`w-14 h-14 rounded-lg border items-center justify-center ${
+                    numberOfPeople === num
+                      ? "border-teal bg-teal/10"
+                      : "border-gray-600"
+                  }`}
                 >
                   <Text
-                    className={`text-xl font-semibold ${numberOfPeople === num ? "text-blue-400" : "text-gray-300"}`}
+                    className={`text-xl font-semibold ${
+                      numberOfPeople === num ? "text-teal" : "text-gray-300"
+                    }`}
                   >
                     {num}
                   </Text>
@@ -352,10 +343,10 @@ const SplitPaymentView = () => {
               {splits.map((split) => (
                 <View
                   key={split.id}
-                  className="p-3 bg-[#212121] border border-gray-700 rounded-lg"
+                  className="p-3 bg-panel border border-gray-700 rounded-lg"
                 >
                   <View className="flex-row justify-between items-center mb-2">
-                    <Text className="text-xl font-bold text-blue-400 mb-2">
+                    <Text className="text-xl font-bold text-teal mb-2">
                       Split {split.id} - ${split.amount.toFixed(2)}
                     </Text>
                     {splits.length > 1 && (
@@ -363,7 +354,7 @@ const SplitPaymentView = () => {
                         onPress={() => handleRemoveSplit(split)}
                         className="p-2 bg-red-900/30 rounded-full"
                       >
-                        <Minus color="#ef4444" size={20} />
+                        <Minus color={colors.danger} size={20} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -406,12 +397,12 @@ const SplitPaymentView = () => {
             {splits.map((split, index) => (
               <View
                 key={split.id}
-                className="flex-row items-center justify-between p-3 bg-[#212121] border border-gray-700 rounded-lg"
+                className="flex-row items-center justify-between p-3 bg-panel border border-gray-700 rounded-lg"
               >
-                <Text className="text-xl font-bold text-blue-400 w-24">
+                <Text className="text-xl font-bold text-teal w-24">
                   Split {index + 1}
                 </Text>
-                <View className="flex-1 flex-row items-center bg-[#303030] rounded-md px-2 border border-gray-600">
+                <View className="flex-1 flex-row items-center bg-surface rounded-md px-2 border border-gray-600">
                   <Text className="font-bold text-xl text-gray-400">$</Text>
                   <TextInput
                     className="flex-1 p-2 text-xl font-semibold text-right text-white h-16"
@@ -420,7 +411,7 @@ const SplitPaymentView = () => {
                       handleCustomAmountChange(split.id, text)
                     }
                     placeholder="0.00"
-                    placeholderTextColor="#6B7280"
+                    placeholderTextColor={colors.muted}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -429,7 +420,7 @@ const SplitPaymentView = () => {
                     onPress={() => handleRemoveSplit(split)}
                     className="p-2 ml-2"
                   >
-                    <Minus color="#ef4444" size={20} />
+                    <Minus color={colors.danger} size={20} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -450,7 +441,10 @@ const SplitPaymentView = () => {
   };
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="rounded-2xl overflow-hidden bg-panel border border-gray-700 w-[550px]"
+    >
       {/* Dark Header */}
       <View className="p-4">
         <Text className="text-2xl text-white font-bold text-center">
@@ -459,7 +453,7 @@ const SplitPaymentView = () => {
       </View>
 
       {/* Dark Content */}
-      <View className="p-4 bg-[#303030] rounded-b-2xl">
+      <View className="p-4 bg-surface rounded-b-2xl">
         <ScrollView
           className="max-h-[800px]"
           showsVerticalScrollIndicator={false}
@@ -490,10 +484,16 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={opt}
                     onPress={() => setSplitOption(opt)}
-                    className={`flex-1 py-3 rounded-xl border ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
+                    className={`flex-1 py-3 rounded-xl border ${
+                      isSelected
+                        ? "border-teal bg-teal/10"
+                        : "border-gray-600"
+                    }`}
                   >
                     <Text
-                      className={`text-lg font-semibold text-center ${isSelected ? "text-blue-400" : "text-gray-300"}`}
+                      className={`text-lg font-semibold text-center ${
+                        isSelected ? "text-teal" : "text-gray-300"
+                      }`}
                     >
                       {opt}
                     </Text>
@@ -510,7 +510,7 @@ const SplitPaymentView = () => {
             {splits.map((split) => (
               <View
                 key={split.id}
-                className="flex-row items-center p-2 bg-[#212121] border border-gray-700 rounded-lg"
+                className="flex-row items-center p-2 bg-panel border border-gray-700 rounded-lg"
               >
                 <Text className="text-xl font-semibold text-white w-28">
                   Split {split.id}:
@@ -523,20 +523,36 @@ const SplitPaymentView = () => {
                 <View className="flex-row gap-3 items-center ml-4">
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Card")}
-                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Card" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
+                    className={`py-2 px-4 rounded-lg border ${
+                      split.paymentType === "Card"
+                        ? "border-teal bg-teal"
+                        : "border-gray-600"
+                    }`}
                   >
                     <Text
-                      className={`text-lg font-semibold ${split.paymentType === "Card" ? "text-white" : "text-gray-300"}`}
+                      className={`text-lg font-semibold ${
+                        split.paymentType === "Card"
+                          ? "text-white"
+                          : "text-gray-300"
+                      }`}
                     >
                       Card
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Cash")}
-                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Cash" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
+                    className={`py-2 px-4 rounded-lg border ${
+                      split.paymentType === "Cash"
+                        ? "border-teal bg-teal"
+                        : "border-gray-600"
+                    }`}
                   >
                     <Text
-                      className={`text-lg font-semibold ${split.paymentType === "Cash" ? "text-white" : "text-gray-300"}`}
+                      className={`text-lg font-semibold ${
+                        split.paymentType === "Cash"
+                          ? "text-white"
+                          : "text-gray-300"
+                      }`}
                     >
                       Cash
                     </Text>
@@ -548,13 +564,21 @@ const SplitPaymentView = () => {
 
           {/* Remaining Balance */}
           <View
-            className={`flex-row justify-between items-center mt-4 p-3 rounded-lg ${Math.abs(remainingBalance) < 0.01 ? "bg-green-900/30" : "bg-red-900/30"}`}
+            className={`flex-row justify-between items-center mt-4 p-3 rounded-lg ${
+              Math.abs(remainingBalance) < 0.01
+                ? "bg-green-900/30"
+                : "bg-red-900/30"
+            }`}
           >
             <Text className="text-lg font-semibold text-white">
               Remaining Balance
             </Text>
             <Text
-              className={`text-2xl font-bold ${Math.abs(remainingBalance) < 0.01 ? "text-green-400" : "text-red-400"}`}
+              className={`text-2xl font-bold ${
+                Math.abs(remainingBalance) < 0.01
+                  ? "text-green-400"
+                  : "text-red-400"
+              }`}
             >
               ${remainingBalance.toFixed(2)}
             </Text>
@@ -564,14 +588,18 @@ const SplitPaymentView = () => {
           <View className="flex-row gap-4 mt-4 border-t border-gray-700 pt-4">
             <TouchableOpacity
               onPress={close}
-              className="flex-1 py-3 bg-[#303030] border border-gray-600 rounded-xl items-center"
+              className="flex-1 py-3 bg-surface border border-gray-600 rounded-xl items-center"
             >
               <Text className="text-lg font-bold text-white">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleNext}
               disabled={Math.abs(remainingBalance) > 0.01}
-              className={`flex-1 py-3 rounded-xl items-center ${Math.abs(remainingBalance) > 0.01 ? "bg-gray-500" : "bg-blue-600"}`}
+              className={`flex-1 py-3 rounded-xl items-center ${
+                Math.abs(remainingBalance) > 0.01
+                  ? "bg-gray-500"
+                  : "bg-teal"
+              }`}
             >
               <Text className="text-lg font-bold text-white">
                 Confirm & Pay
@@ -580,7 +608,7 @@ const SplitPaymentView = () => {
           </View>
         </ScrollView>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

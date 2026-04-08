@@ -1,436 +1,930 @@
-import { TableType } from "@/lib/types";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useMenuStore } from "@/stores/useMenuStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { CheckCircle, Clock, Send } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import ReceiptModal from '@/components/receipts/ReceiptModal'
+import { useToast } from '@/contexts/ToastContext'
+import { useTableDuration } from '@/hooks/useTableDuration'
+import { colors } from '@/lib/theme'
+import { OrderProfile } from '@/lib/types'
+import {
+  useOrderByAnyId,
+  useOrderTotals
+} from '@/stores/selectors/orderSelectors'
+import { useCoursingStore } from '@/stores/useCoursingStore'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useOrderStore } from '@/stores/useOrderStore'
+import { useReservationStore } from '@/stores/useReservationStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import { FloorPlanObject } from '@/types/db-floor-plan-types'
+import {
+  BrushCleaning,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Pencil,
+  Send
+} from 'lucide-react-native'
+import React, { useMemo, useState } from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   Easing,
   FadeIn,
   FadeOut,
-  Layout,
-} from "react-native-reanimated";
-import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
+  Layout
+} from 'react-native-reanimated'
+import ConfirmationModal from '../settings/reset-application/ConfirmationModal'
+import { type PaymentStatus } from './PaymentStatusBadge'
 
-// --- Helper Functions and Sub-Components remain unchanged ---
+// --- Helper Functions ---
 const formatDuration = (milliseconds: number): string => {
-  if (isNaN(milliseconds) || milliseconds < 0) return "0m";
-  const totalSeconds = Math.floor(milliseconds / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
-    2,
-    "0"
-  );
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-};
+  if (isNaN(milliseconds) || milliseconds < 0) return '0m'
+  const totalMinutes = Math.floor(milliseconds / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (hours > 0) {
+    return `${hours}hr ${minutes}m`
+  }
+  return `${minutes}m`
+}
+
+const getStatusAccentColor = (status: string, isOvertime: boolean): string => {
+  if (isOvertime) return colors.tableOvertime
+  switch (status.toLowerCase()) {
+    case 'available':
+      return colors.tableAvailable
+    case 'seated':
+      return colors.tableSeated
+    case 'ordered':
+      return colors.tableOrdered
+    case 'served':
+      return colors.tableServed
+    case 'check_presented':
+      return colors.tableCheckPresented
+    case 'paid':
+      return colors.tablePaid
+    case 'cleaning':
+      return colors.tableCleaning
+    case 'blocked':
+    case 'not_in_service':
+      return colors.tableNotInService
+    default:
+      return colors.tableInUse
+  }
+}
+
 const StatusIndicator = ({
   status,
-  isOvertime,
+  tableId,
+  isOvertime
 }: {
-  status: TableType["status"];
-  isOvertime: boolean;
+  status: string
+  tableId?: string
+  isOvertime: boolean
 }) => {
-  const color = isOvertime
-    ? "bg-yellow-500"
-    : status === "Available"
-    ? "bg-green-500"
-    : status === "In Use"
-    ? "bg-blue-500"
-    : "bg-red-500";
-  return <View className={`w-3 h-3 rounded-full ${color}`} />;
-};
+  // Get the session directly from the store to ensure we have the latest status
+  const sessionStatus = tableId
+    ? useTableSessionStore(s => s.sessions[tableId])?.status
+    : undefined
+  const finalStatus = sessionStatus || status
+  const normalizedStatus = finalStatus?.toLowerCase() || 'available'
+
+  // Map to theme colors from theme-colors.js
+  let color: string
+  if (isOvertime) {
+    color = colors.warning
+  } else {
+    switch (normalizedStatus) {
+      case 'available':
+        color = colors.tableAvailable
+        break
+      case 'seated':
+        color = colors.tableSeated
+        break
+      case 'ordered':
+        color = colors.tableOrdered
+        break
+      case 'served':
+        color = colors.tableServed
+        break
+      case 'check_presented':
+        color = colors.tableCheckPresented
+        break
+      case 'paid':
+        color = colors.tablePaid
+        break
+      case 'cleaning':
+        color = colors.tableCleaning
+        break
+      case 'blocked':
+      case 'not_in_service':
+        color = colors.tableNotInService
+        break
+      default:
+        color = colors.tableInUse
+    }
+  }
+
+  return (
+    <View
+      style={{
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: color
+      }}
+    />
+  )
+}
+
 const QuickActionButton: React.FC<{
-  onPress: () => void;
-  label: string;
-  variant?: "primary" | "secondary" | "destructive";
-  disabled?: boolean;
-}> = ({ onPress, label, variant = "secondary", disabled = false }) => {
-  const baseStyle = "px-3 py-2 rounded-lg flex-row items-center gap-1";
-  const variantStyle =
-    variant === "primary"
-      ? "bg-blue-600"
-      : variant === "destructive"
-      ? "bg-red-600"
-      : "bg-gray-600";
-  const disabledStyle = disabled ? "opacity-50" : "";
+  onPress: () => void
+  label: string
+  variant?: 'primary' | 'secondary' | 'destructive'
+  disabled?: boolean
+}> = ({ onPress, label, variant = 'secondary', disabled = false }) => {
+  const bg =
+    variant === 'primary'
+      ? colors.teal + '20'
+      : variant === 'destructive'
+      ? colors.danger + '15'
+      : colors.card
+  const border =
+    variant === 'primary'
+      ? colors.teal + '50'
+      : variant === 'destructive'
+      ? colors.danger + '30'
+      : colors.border
+  const textColor =
+    variant === 'primary'
+      ? colors.teal
+      : variant === 'destructive'
+      ? colors.danger
+      : colors.label
+
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      className={`${baseStyle} ${variantStyle} ${disabledStyle}`}
+      style={{
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 7,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: bg,
+        borderWidth: 1,
+        borderColor: border,
+        opacity: disabled ? 0.5 : 1
+      }}
     >
-      {label.startsWith("Send") && <Send size={14} color="white" />}
-      <Text className="text-white font-semibold text-sm">{label}</Text>
+      {label.startsWith('Send') && <Send size={11} color={textColor} />}
+      {label === 'Open Order' && <Pencil size={11} color={textColor} />}
+      <Text style={{ fontSize: 11, fontWeight: '600', color: textColor }}>
+        {label}
+      </Text>
     </TouchableOpacity>
-  );
-};
+  )
+}
 
-const useTableData = (table: TableType, activeLayoutId: string | null) => {
-  const { orders } = useOrderStore();
-  const { layouts } = useFloorPlanStore();
-  const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
+const useTableData = (table: FloorPlanObject) => {
+  const tablesById = useFloorPlanStore(s => s.tablesById)
+
+  // Get session order ID for payment calculations — reactive via useOrderByAnyId
+  const sessionOrderId = table.session?.order_id || null
+  const resolvedOrder = useOrderByAnyId(sessionOrderId)
+  const orderIdForPayments = resolvedOrder?.id || null
+
+  // Get payment-aware totals for this order
+  const orderTotals = useOrderTotals(orderIdForPayments)
+
+  // table.session?.merged_tables -> array of strings (IDs)
 
   return useMemo(() => {
-    // If table is not in use, don't fetch order data.
-    if (table.status !== "In Use") {
+    const status = table.session?.status || 'available'
+    const normalizedStatus = status.toLowerCase()
+
+    // If table is not in use (conceptually), don't fetch order data.
+    // 'available', 'reserved', 'blocked', 'not_in_service' -> not active order
+    if (
+      normalizedStatus === 'available' ||
+      normalizedStatus === 'reserved' ||
+      normalizedStatus === 'blocked' ||
+      normalizedStatus === 'not_in_service'
+    ) {
       return {
         isMerged: false,
         primaryTableId: table.id,
         displayName: table.name,
-        status: table.status,
+        status: status,
         guestCount: 0,
+        subtotal: 0,
+        tax: 0,
         total: 0,
+        amountDue: 0,
+        amountPaid: 0,
+        paidStatus: 'Unpaid' as PaymentStatus,
         seatedTime: null,
-        server: "N/A",
-        orders: [],
-      };
+        server: 'N/A',
+        orders: []
+      }
     }
 
-    const isMergedPrimary =
-      table.isPrimary && (table.mergedWith?.length ?? 0) > 0;
+    // Check for merged tables
+    const mergedIds = table.session?.merged_tables || []
+    const isMerged = mergedIds.length > 0
 
-    if (!isMergedPrimary && !table.mergedWith?.length) {
-      const order = orders.find(
-        (o) => o.service_location_id === table.id && o.order_status !== "Voided"
-      );
+    // For merged tables, they all share the same session_id and order_id
+    // So we just need to check the current table's session
+    const sessionOrderId = table.session?.order_id
+
+    // If no session or no order_id, return empty orders (seated but not ordered yet)
+    if (!table.session || !sessionOrderId) {
       return {
         isMerged: false,
         primaryTableId: table.id,
         displayName: table.name,
-        status: table.status,
-        guestCount: order?.guest_count || 0,
-        total:
-          order?.items.reduce(
-            (sum, item) => sum + item.price * item.quantity,
-            0
-          ) || 0,
-        seatedTime: order?.opened_at ? new Date(order.opened_at) : null,
-        server: order?.server_name || "N/A",
-        orders: order ? [order] : [],
-      };
+        status: status,
+        guestCount: table.session?.party_size || 0,
+        subtotal: 0,
+        tax: 0,
+        total: 0,
+        amountDue: 0,
+        amountPaid: 0,
+        paidStatus: 'Unpaid' as PaymentStatus,
+        seatedTime: table.session?.seated_at
+          ? new Date(table.session.seated_at)
+          : null,
+        server: 'N/A',
+        orders: []
+      }
     }
 
-    const primary = table.isPrimary
-      ? table
-      : allTables.find((t) => t.isPrimary && t.mergedWith?.includes(table.id));
-    if (!primary) return null;
+    // Reactive lookup via useOrderByAnyId (checks ordersById + dbOrderIdIndex)
+    let order: OrderProfile | undefined = resolvedOrder ?? undefined
 
-    const groupIds = [primary.id, ...(primary.mergedWith || [])];
-    const groupTables = allTables.filter((t) => groupIds.includes(t.id));
-    const groupOrders = orders.filter(
-      (o) => o.service_location_id && groupIds.includes(o.service_location_id)
-    );
-    const earliestSeated = groupOrders.reduce((earliest, o) => {
-      if (!o.opened_at) return earliest;
-      const seated = new Date(o.opened_at).getTime();
-      return seated < earliest ? seated : earliest;
-    }, Infinity);
+    // Get merged table names for display — O(1) per lookup via tablesById
+    const uniqueGroupIds = Array.from(new Set([table.id, ...mergedIds]))
+    const groupTables = uniqueGroupIds.map(id => tablesById[id]).filter(Boolean)
 
-    const servers = [
-      ...new Set(groupOrders.map((o) => o.server_name).filter(Boolean)),
-    ];
-    const hostServer =
-      orders.find((o) => o.service_location_id === primary.id)?.server_name ||
-      servers[0];
-    const assistServers = servers.filter((s) => s !== hostServer);
-    let serverDisplay = hostServer || "N/A";
-    if (assistServers.length > 0) {
-      serverDisplay = `Host: ${hostServer} / Assist: ${assistServers.join(
-        ", "
-      )}`;
+    // If order not found in store or is voided, return empty (might need backend fetch)
+    if (!order || order.order_status === 'void') {
+      return {
+        isMerged: isMerged,
+        primaryTableId: table.id,
+        displayName: isMerged
+          ? `${table.name} + ${groupTables
+              .filter(t => t.id !== table.id)
+              .map(t => t.name)
+              .join(', ')}`
+          : table.name,
+        status: status,
+        guestCount: table.session?.party_size || 0,
+        subtotal: 0,
+        tax: 0,
+        total: 0,
+        amountDue: 0,
+        amountPaid: 0,
+        paidStatus: 'Unpaid' as PaymentStatus,
+        seatedTime: table.session?.seated_at
+          ? new Date(table.session.seated_at)
+          : null,
+        server: 'N/A',
+        orders: []
+      }
+    }
+
+    // Found order - merged tables share the same order, so return single order in array
+    const groupOrders = [order]
+
+    // console.log(`[TableListItem] groupOrders ${table.name}`, groupOrders.length);
+
+    // Calculate display values from the single order
+    const seatedTime = order.opened_at ? new Date(order.opened_at) : null
+    const serverDisplay = order.server_name || 'N/A'
+
+    // Use payment-aware totals from orderTotals selector
+    // Falls back to simple calculation if selector not available
+    const subtotal =
+      orderTotals?.subtotal ??
+      order.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    const tax =
+      orderTotals?.tax ??
+      order.items.reduce((sum, item) => sum + (item.taxAmount || 0), 0)
+    const total = orderTotals?.total ?? order.total_amount ?? subtotal + tax
+
+    // Payment information (Phase 3: Fine Dining Table Management)
+    const amountDue = orderTotals?.amountDue ?? total
+    const amountPaid = order.amount_paid ?? 0
+
+    // Determine payment status
+    let paidStatus: PaymentStatus = 'Unpaid'
+    if (amountPaid >= total && total > 0) {
+      paidStatus = 'Paid'
+    } else if (amountPaid > 0) {
+      paidStatus = 'Partial'
+    } else if (order.payments?.some(p => p.sync_status === 'pending')) {
+      paidStatus = 'Pending'
     }
 
     return {
-      isMerged: true,
-      primaryTableId: primary.id,
-      displayName: `${groupTables.map((t) => t.name).join(" + ")}`,
-      status: "In Use" as const,
-      guestCount: groupOrders.reduce((sum, o) => sum + (o.guest_count || 0), 0),
-      total: groupOrders.reduce(
-        (sum, o) =>
-          sum +
-          o.items.reduce((itemSum, i) => itemSum + i.price * i.quantity, 0),
-        0
-      ),
-      seatedTime: earliestSeated === Infinity ? null : new Date(earliestSeated),
+      isMerged: isMerged,
+      primaryTableId: table.id,
+      displayName: isMerged
+        ? `${table.name} + ${groupTables
+            .filter(t => t.id !== table.id)
+            .map(t => t.name)
+            .join(', ')}`
+        : table.name,
+      status: status,
+      guestCount: order.guest_count || table.session?.party_size || 0,
+      subtotal,
+      tax,
+      total,
+      amountDue,
+      amountPaid,
+      paidStatus,
+      seatedTime:
+        seatedTime ||
+        (table.session?.seated_at ? new Date(table.session.seated_at) : null),
       server: serverDisplay,
-      orders: groupOrders,
-    };
-  }, [table, orders, allTables]);
-};
+      orders: groupOrders
+    }
+  }, [table, resolvedOrder, tablesById, orderTotals])
+}
 
 const ExpandedView: React.FC<{
-  tableData: NonNullable<ReturnType<typeof useTableData>>;
-  onNavigateToOrder: () => void;
-  onToggleExpand: () => void;
-}> = ({ tableData, onNavigateToOrder, onToggleExpand }) => {
-  const { layouts, updateTableStatus } = useFloorPlanStore();
-  const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
-  const { menuItems } = useMenuStore();
-  const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
-
-  const getCategoryForItem = (itemId: string) => {
-    const menuItem = menuItems.find((mi) => mi.id === itemId);
-    return menuItem?.category?.[0] || "Miscellaneous";
-  };
+  tableData: NonNullable<ReturnType<typeof useTableData>>
+  onNavigateToOrder: () => void
+  onToggleExpand: () => void
+  table: FloorPlanObject
+}> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
+  const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
+  const dispatchAction = useTableSessionStore(s => s.dispatchAction)
+  const archiveOrder = useOrderStore(s => s.archiveOrder)
+  const deleteOrder = useOrderStore(s => s.deleteOrder)
+  const coursingByOrderId = useCoursingStore(s => s.byOrderId)
+  const { show } = useToast()
+  const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false)
+  const [isReceiptOpen, setReceiptOpen] = useState(false)
+  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
 
   const groupedItems = useMemo(() => {
     const groups: Record<
-      string,
-      { orderId: string; items: (typeof tableData.orders)[0]["items"] }
-    > = {};
-    tableData.orders.forEach((order) => {
-      order.items.forEach((item) => {
-        const category = getCategoryForItem(item.menuItemId);
-        if (!groups[category])
-          groups[category] = { orderId: order.id, items: [] };
-        groups[category].items.push(item);
-      });
-    });
-    return groups;
-  }, [tableData.orders, menuItems]);
+      number,
+      { orderId: string; items: typeof tableData.orders[0]['items'] }
+    > = {}
+    tableData.orders.forEach(order => {
+      const itemCourseMap = coursingByOrderId[order.id]?.itemCourseMap || {}
 
-  const handleCloseTable = () => {
-    if (!tableData) return;
+      order.items.forEach(item => {
+        const courseNumber = itemCourseMap[item.id] ?? item.courseNumber ?? 1
+        if (!groups[courseNumber])
+          groups[courseNumber] = { orderId: order.id, items: [] }
+        groups[courseNumber].items.push(item)
+      })
+    })
+    return groups
+  }, [tableData.orders, coursingByOrderId])
 
-    // Get all tables belonging to this group
-    const allTables = layouts.flatMap((l) => l.tables);
-    const primaryTable = allTables.find(
-      (t) => t.id === tableData.primaryTableId
-    );
-    const groupTableIds = primaryTable
-      ? [primaryTable.id, ...(primaryTable.mergedWith || [])]
-      : [tableData.primaryTableId];
+  const handleCloseTable = async () => {
+    if (!tableData) return
+
+    if (!table.session?.id) {
+      show({
+        title: 'Error',
+        message: 'No active session found.',
+        type: 'error'
+      })
+      return
+    }
+    const sessionId = table.session.id
 
     if (tableData.orders.length === 0) {
-      groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
-      onToggleExpand();
-      return;
+      await updateSessionStatus(sessionId, 'available')
+      onToggleExpand()
+      return
     }
 
     const allOrdersArePaid = tableData.orders.every(
-      (o) => o.paid_status === "Paid"
-    );
+      o => o.paid_status === 'Paid'
+    )
 
     if (allOrdersArePaid) {
-      const allItemsInGroupAreReady = tableData.orders.every((order) =>
+      const allItemsInGroupAreReady = tableData.orders.every(order =>
         order.items.every(
-          (item) =>
-            item.item_status === "Ready" || item.item_status === "Served"
+          item => item.item_status === 'Ready' || item.item_status === 'Served'
         )
-      );
+      )
 
       if (allItemsInGroupAreReady) {
-        tableData.orders.forEach((order) => archiveOrder(order.id));
-        groupTableIds.forEach((id) => updateTableStatus(id, "Needs Cleaning"));
-        toast.success(`Tables ${tableData.displayName} marked for cleaning.`, {
-          position: ToastPosition.BOTTOM,
-        });
+        // Use dispatch for CLEAR_TABLE — handles archive + cleaning transition
+        for (const order of tableData.orders) {
+          await dispatchAction({
+            type: 'CLEAR_TABLE',
+            tableId: table.id,
+            orderId: order.id
+          })
+        }
+        show({
+          title: 'Tables Cleared',
+          message: `Tables ${tableData.displayName} are now marked for cleaning.`,
+          type: 'success'
+        })
       } else {
-        toast.error("Cannot clear tables: Not all items are ready.", {
-          position: ToastPosition.BOTTOM,
-        });
+        show({
+          title: 'Action Restricted',
+          message:
+            "Cannot clear tables until all items are marked as 'Ready' or 'Served'.",
+          type: 'error'
+        })
       }
     } else {
-      const groupHasAnyItems = tableData.orders.some((o) => o.items.length > 0);
+      const groupHasAnyItems = tableData.orders.some(o => o.items.length > 0)
       if (groupHasAnyItems) {
-        setVoidConfirmOpen(true);
+        setVoidConfirmOpen(true)
       } else {
-        tableData.orders.forEach((order) => deleteOrder(order.id));
-        groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
+        tableData.orders.forEach(order => deleteOrder(order.id))
+        await updateSessionStatus(sessionId, 'available')
       }
     }
-  };
+  }
 
-  const onConfirmVoid = () => {
-    if (!tableData) return;
-    const allTables = layouts.flatMap((l) => l.tables);
-    const primaryTable = allTables.find(
-      (t) => t.id === tableData.primaryTableId
-    );
-    const groupTableIds = primaryTable
-      ? [primaryTable.id, ...(primaryTable.mergedWith || [])]
-      : [tableData.primaryTableId];
+  const onConfirmVoid = async () => {
+    if (!tableData || !table.session?.id) return
 
-    tableData.orders.forEach((order) => voidOrder(order.id));
-    groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
-    setVoidConfirmOpen(false);
-    onToggleExpand();
-  };
+    // Use dispatch for VOID_ORDER — includes inventory deduction (fixes bug)
+    for (const order of tableData.orders) {
+      await dispatchAction({
+        type: 'VOID_ORDER',
+        tableId: table.id,
+        orderId: order.id,
+        dbOrderId: order.db_order_id
+      })
+    }
+    if (table.session?.id) {
+      await useReservationStore
+        .getState()
+        .completeReservationForSession(table.session.id)
+    }
+    setVoidConfirmOpen(false)
+    onToggleExpand()
+  }
+
+  const hasItems = Object.keys(groupedItems).length > 0
 
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(100)}
-      className="mt-3 pl-6"
+      style={{
+        marginTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        paddingTop: 10,
+        backgroundColor: colors.screen,
+        borderRadius: 8,
+        padding: 10,
+        overflow: 'visible'
+      }}
     >
-      <View className="flex-row items-center gap-4 mb-3">
-        <Text className="text-sm text-gray-300">
-          Server: {tableData.server}
-        </Text>
-        <Text className="text-sm text-gray-300">
-          Seated:{" "}
-          {tableData.seatedTime?.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
+      {/* Seated time */}
+      {tableData.seatedTime && (
+        <Text
+          style={{
+            fontSize: 10,
+            color: colors.muted,
+            marginBottom: 8,
+            letterSpacing: 0.4
+          }}
+        >
+          SEATED AT{' '}
+          {tableData.seatedTime.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
           })}
         </Text>
-      </View>
+      )}
 
-      <View className="mb-4 pr-2">
-        {Object.entries(groupedItems).map(([category, { items }]) => (
-          <View key={category} className="mb-2">
-            <Text className="text-base font-semibold text-blue-400 mb-1">
-              {category}
-            </Text>
-            {items.map((item) => (
-              <View key={item.id} className="flex-row items-center ml-2">
-                <Text className="text-base text-gray-300">
-                  {item.quantity}x {item.name}
+      {/* Items by course */}
+      {hasItems && (
+        <View style={{ marginBottom: 10 }}>
+          {Object.entries(groupedItems)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([courseNumber, { items }]) => (
+              <View key={courseNumber} style={{ marginBottom: 8 }}>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '600',
+                    color: colors.muted,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.8,
+                    marginBottom: 5
+                  }}
+                >
+                  Course {courseNumber}
                 </Text>
-                <View className="ml-2">
-                  {(item.item_status === "Ready" ||
-                    item.item_status === "Served") && (
-                    <CheckCircle size={14} color="#22C55E" />
-                  )}
-                  {(item.kitchen_status === "sent" ||
-                    item.item_status === "Preparing") && (
-                    <Clock size={14} color="#F59E0B" />
-                  )}
-                </View>
+                {items.map(item => (
+                  <View
+                    key={item.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 3,
+                      paddingHorizontal: 8,
+                      borderRadius: 5,
+                      backgroundColor: colors.card,
+                      marginBottom: 2
+                    }}
+                  >
+                    <Text
+                      style={{ fontSize: 12, color: colors.label, flex: 1 }}
+                    >
+                      <Text
+                        style={{ fontWeight: '600', color: colors.heading }}
+                      >
+                        {item.quantity}x
+                      </Text>{' '}
+                      {item.name}
+                    </Text>
+                    <View style={{ marginLeft: 8 }}>
+                      {(item.item_status === 'Ready' ||
+                        item.item_status === 'Served') && (
+                        <CheckCircle size={13} color={colors.success} />
+                      )}
+                      {(item.kitchen_status === 'sent' ||
+                        item.item_status === 'Preparing') && (
+                        <Clock size={13} color={colors.warning} />
+                      )}
+                    </View>
+                  </View>
+                ))}
               </View>
             ))}
+        </View>
+      )}
+
+      {/* Totals */}
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          paddingTop: 8,
+          marginBottom: 10,
+          gap: 4
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Subtotal</Text>
+          <Text style={{ fontSize: 11, color: colors.label }}>
+            ${tableData.subtotal?.toFixed(2)}
+          </Text>
+        </View>
+
+        {tableData.amountPaid > 0 && (
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+          >
+            <Text style={{ fontSize: 11, color: colors.teal }}>Paid</Text>
+            <Text style={{ fontSize: 11, color: colors.teal }}>
+              ${tableData.amountPaid.toFixed(2)}
+              {(() => {
+                const payments = tableData.orders[0]?.payments
+                if (!payments || payments.length === 0) return ''
+                if (payments.length === 1)
+                  return ` · ${payments[0].method.toLowerCase()}`
+                return ` · ${payments.length} payments`
+              })()}
+            </Text>
           </View>
-        ))}
-        <View className="border-t border-gray-700 mt-2 pt-2 pr-2 flex-row justify-between">
-          <Text className="text-base font-bold text-white">Total</Text>
-          <Text className="text-base font-bold text-white">
+        )}
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Remaining</Text>
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '600',
+              color: tableData.amountDue <= 0 ? colors.success : colors.label
+            }}
+          >
+            ${tableData.amountDue.toFixed(2)}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginTop: 2,
+            paddingTop: 6,
+            borderTopWidth: 1,
+            borderTopColor: colors.border
+          }}
+        >
+          <Text
+            style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+          >
+            Total
+          </Text>
+          <Text
+            style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+          >
             ${tableData.total?.toFixed(2)}
           </Text>
         </View>
       </View>
 
-      <View className="flex-row items-center gap-2">
+      {/* Action buttons */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          flexWrap: 'wrap'
+        }}
+      >
         <QuickActionButton
-          label="Open Table"
+          label='Open Order'
           onPress={onNavigateToOrder}
-          variant="primary"
+          variant='primary'
         />
-        <QuickActionButton label="Print Bill" onPress={() => {}} />
         <QuickActionButton
-          label="Close Table"
+          label='Print Bill'
+          onPress={() => setReceiptOpen(true)}
+        />
+        <QuickActionButton
+          label='Close Table'
           onPress={handleCloseTable}
-          variant="destructive"
+          variant='destructive'
         />
       </View>
+
       <ConfirmationModal
         isOpen={isVoidConfirmOpen}
         onClose={() => setVoidConfirmOpen(false)}
         onConfirm={onConfirmVoid}
-        title="Void This Order?"
+        title='Void This Order?'
         description={`No payment has been made. Do you want to void the order for ${tableData.displayName}? This cannot be undone.`}
-        confirmText="Yes, Void Order"
-        variant="destructive"
+        confirmText='Yes, Void Order'
+        variant='destructive'
       />
+      {tableData.orders[0] && (
+        <ReceiptModal
+          isOpen={isReceiptOpen}
+          onClose={() => setReceiptOpen(false)}
+          order={tableData.orders[0]}
+          location={selectedStore}
+          onPrint={() => {
+            // TODO: Integrate with thermal printer
+            console.log('Print receipt for order:', tableData.orders[0]?.id)
+            setReceiptOpen(false)
+          }}
+        />
+      )}
     </Animated.View>
-  );
-};
+  )
+}
 
 const TableListItem: React.FC<{
-  table: TableType;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-  onNavigateToOrder: () => void;
-  activeLayoutId: string | null;
-  handleTablePress: (table: TableType) => void;
+  table: FloorPlanObject
+  isExpanded: boolean
+  onToggleExpand?: () => void
+  onNavigateToOrder: () => void
+  // activeLayoutId removed/unused in new logic
+  handleTablePress: (table: FloorPlanObject) => void
 }> = ({
   table,
   isExpanded,
-  onToggleExpand,
+  onToggleExpand = () => {},
   onNavigateToOrder,
-  activeLayoutId,
-  handleTablePress,
+  handleTablePress
 }) => {
-  const tableData = useTableData(table, activeLayoutId);
-  const [isOvertime, setIsOvertime] = useState(false);
-  const [duration, setDuration] = useState("");
-  const { defaultSittingTimeMinutes } = useSettingsStore();
+  const tableData = useTableData(table)
 
-  useEffect(() => {
-    if (tableData?.status !== "In Use" || !tableData.seatedTime) {
-      setIsOvertime(false);
-      setDuration("");
-      return;
-    }
-    const update = () => {
-      const diffMs = new Date().getTime() - tableData.seatedTime!.getTime();
-      setDuration(formatDuration(diffMs));
-      setIsOvertime(Math.floor(diffMs / 60000) > defaultSittingTimeMinutes);
-    };
-    update();
-    const timer = setInterval(update, 1000);
-    return () => clearInterval(timer);
-  }, [tableData, defaultSittingTimeMinutes]);
+  const isActiveStatus = useMemo(() => {
+    const status = tableData?.status?.toLowerCase()
+    return (
+      status === 'seated' ||
+      status === 'ordered' ||
+      status === 'served' ||
+      status === 'check_presented' ||
+      status === 'paying' ||
+      status === 'paid' ||
+      status === 'in use'
+    )
+  }, [tableData?.status])
+
+  const { duration: rawDuration, isOvertime } = useTableDuration(
+    tableData?.seatedTime?.toISOString() ?? null,
+    isActiveStatus && !!tableData?.seatedTime
+  )
+
+  const duration = useMemo(() => {
+    if (!isActiveStatus || !tableData?.seatedTime) return ''
+    const diffMs = Date.now() - tableData.seatedTime.getTime()
+    return formatDuration(diffMs)
+  }, [isActiveStatus, tableData?.seatedTime, rawDuration])
 
   const handlePress = () => {
-    if (table.status === "In Use") {
-      onToggleExpand();
+    const status = tableData?.status?.toLowerCase()
+    // If seated/active -> toggle expand
+    if (
+      status === 'seated' ||
+      status === 'ordered' ||
+      status === 'served' ||
+      status === 'in use' ||
+      status === 'check_presented' ||
+      status === 'paying' ||
+      status === 'paid'
+    ) {
+      onToggleExpand()
     } else {
-      handleTablePress(table);
+      handleTablePress(table)
     }
-  };
+  }
 
-  if (!tableData) return null;
+  if (!tableData) return null
+
+  const normalizedStatus = tableData.status.toLowerCase()
+  const showActiveDetails =
+    normalizedStatus !== 'available' &&
+    normalizedStatus !== 'reserved' &&
+    normalizedStatus !== 'cleaning' &&
+    normalizedStatus !== 'closing'
+
+  const ChevronIcon = isExpanded ? ChevronUp : ChevronDown
+  const accentColor = getStatusAccentColor(tableData.status, isOvertime)
+
+  const metaParts: string[] = []
+  if (showActiveDetails && tableData.server && tableData.server !== 'N/A') {
+    metaParts.push(tableData.server)
+  }
+  if (showActiveDetails && tableData.guestCount > 0) {
+    metaParts.push(
+      `${tableData.guestCount} guest${tableData.guestCount !== 1 ? 's' : ''}`
+    )
+  }
+  const metaLine = metaParts.join('  ·  ')
 
   return (
     <Animated.View
       layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-      className="border-b border-gray-700 overflow-hidden"
+      style={{ marginBottom: 4, overflow: isExpanded ? 'visible' : 'hidden' }}
     >
       <TouchableOpacity
         onPress={handlePress}
-        className={`p-3 ${isExpanded ? "bg-blue-900/20" : "bg-transparent"}`}
+        activeOpacity={0.8}
+        style={{
+          borderRadius: 8,
+          backgroundColor: isExpanded ? colors.teal + '08' : colors.panel,
+          borderWidth: 1,
+          borderColor: isExpanded ? colors.teal + '40' : colors.border,
+          borderLeftWidth: 3,
+          borderLeftColor: accentColor,
+          overflow: isExpanded ? 'visible' : 'hidden'
+        }}
       >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3 flex-1">
-            <StatusIndicator
-              status={tableData.status}
-              isOvertime={isOvertime}
-            />
+        {/* Collapsed row */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 5,
+            paddingHorizontal: 8,
+            gap: 6
+          }}
+        >
+          {/* Status dot */}
+          <StatusIndicator
+            status={tableData.status}
+            tableId={table.id}
+            isOvertime={isOvertime}
+          />
+
+          {/* Name + meta */}
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text
-              className="text-lg font-semibold text-white"
+              style={{ fontSize: 12, fontWeight: '700', color: colors.heading }}
               numberOfLines={1}
             >
               {tableData.displayName}
             </Text>
+            {metaLine ? (
+              <Text
+                style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                numberOfLines={1}
+              >
+                {metaLine}
+              </Text>
+            ) : null}
           </View>
-          {tableData.status === "In Use" && (
-            <>
-              <Text className="text-base text-gray-300 w-20 text-center">
-                {duration}
+
+          {/* Right side */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {/* Available label */}
+            {normalizedStatus === 'available' && (
+              <Text
+                style={{
+                  fontSize: 10,
+                  color: colors.success,
+                  fontWeight: '600'
+                }}
+              >
+                Available
               </Text>
-              <Text className="text-base text-gray-300 w-24 text-center">
-                {tableData.guestCount} Guests
-              </Text>
-              <Text className="text-base font-bold text-white w-24 text-right">
-                ${tableData.total?.toFixed(2) || "0.00"}
-              </Text>
-            </>
-          )}
+            )}
+
+            {/* Cleaning label */}
+            {(normalizedStatus === 'cleaning' ||
+              normalizedStatus === 'closing') && (
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+              >
+                <BrushCleaning size={11} color={colors.muted} />
+                <Text style={{ fontSize: 10, color: colors.muted }}>
+                  Cleaning
+                </Text>
+              </View>
+            )}
+
+            {/* Total + duration stack */}
+            {showActiveDetails && (
+              <View
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: 48,
+                  gap: 2
+                }}
+              >
+                {tableData.total > 0 && (
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: colors.heading,
+                      textAlign: 'center'
+                    }}
+                  >
+                    ${tableData.total.toFixed(2)}
+                  </Text>
+                )}
+
+                {duration ? (
+                  <View
+                    style={{
+                      paddingHorizontal: 5,
+                      paddingVertical: 1,
+                      borderRadius: 20,
+                      backgroundColor: isOvertime
+                        ? colors.warning + '15'
+                        : colors.teal + '15',
+                      borderWidth: 1,
+                      borderColor: isOvertime
+                        ? colors.warning + '30'
+                        : colors.teal + '30'
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 9,
+                        fontWeight: '600',
+                        color: isOvertime ? colors.warning : colors.teal,
+                        textAlign: 'center'
+                      }}
+                    >
+                      {duration}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+
+            {/* Chevron */}
+            {showActiveDetails && (
+              <ChevronIcon size={12} color={colors.muted} />
+            )}
+          </View>
         </View>
-        {isExpanded && tableData.status === "In Use" && (
-          <ExpandedView
-            tableData={tableData}
-            onToggleExpand={onToggleExpand}
-            onNavigateToOrder={onNavigateToOrder}
-          />
+
+        {/* Expanded detail view */}
+        {isExpanded && showActiveDetails && (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+            <ExpandedView
+              tableData={tableData}
+              table={table}
+              onToggleExpand={onToggleExpand}
+              onNavigateToOrder={onNavigateToOrder}
+            />
+          </View>
         )}
       </TouchableOpacity>
     </Animated.View>
-  );
-};
+  )
+}
 
-export default TableListItem;
+export default React.memo(TableListItem)

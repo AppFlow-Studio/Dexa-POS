@@ -1,6 +1,7 @@
+import { colors } from "@/lib/theme";
 import { Menu } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { Eye, EyeOff, GripVertical, Settings } from "lucide-react-native";
+import { Eye, EyeOff, GripVertical, Pencil } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -15,13 +16,13 @@ export const DraggableMenu: React.FC<DraggableMenuProps> = ({
   onToggleActive,
   onEdit,
 }) => {
-  const { toggleMenuCategoryActive } = useMenuStore();
+  const toggleMenuCategoryActive = useMenuStore((s) => s.toggleMenuCategoryActive);
 
   return (
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3">
+    <View className="bg-surface rounded-lg border border-gray-700 p-4 mb-3">
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
-          <GripVertical size={20} color="#9CA3AF" />
+          <GripVertical size={20} color={colors.label} />
           <Text className="text-xl font-semibold text-white">{menu.name}</Text>
           <View
             className={`px-2.5 py-1 rounded-full ${
@@ -49,20 +50,20 @@ export const DraggableMenu: React.FC<DraggableMenuProps> = ({
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={() => onToggleActive(menu.id)}
-            className="p-2 bg-[#212121] rounded border border-gray-600"
+            className="p-2 bg-panel rounded border border-gray-600"
           >
             {menu.isActive ? (
-              <Eye size={20} color="#10B981" />
+              <Eye size={20} color={colors.success} />
             ) : (
-              <EyeOff size={20} color="#EF4444" />
+              <EyeOff size={20} color={colors.danger} />
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={onEdit}
-            className="p-2 bg-[#212121] rounded border border-gray-600"
+            className="p-2 bg-panel rounded border border-gray-600"
           >
-            <Settings size={20} color="#9CA3AF" />
+            <Pencil size={16} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>
