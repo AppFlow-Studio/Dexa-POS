@@ -337,7 +337,8 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
             PrinterService.printKitchenTickets(
               order,
               nonVoidedItems,
-              selectedStore
+              selectedStore,
+              { forceGroupBySeat: true }
             )
           }
         })
