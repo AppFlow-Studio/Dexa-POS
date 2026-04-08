@@ -50,9 +50,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.38)'
   },
   card: {
-    width: '95%',
-    height: '95%',
-    borderRadius: 12,
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
     overflow: 'hidden',
     elevation: 8,
     shadowColor: '#000',

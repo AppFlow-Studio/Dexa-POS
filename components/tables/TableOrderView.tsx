@@ -38,7 +38,7 @@ import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { ArrowLeft, CreditCard } from 'lucide-react-native'
+import { CreditCard } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { Portal as Teleport } from 'react-native-teleport'
@@ -1038,19 +1038,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   return (
     <View style={{ flex: 1 }} className='bg-screen'>
       {/* Header bar */}
-      <View
-        style={{ backgroundColor: colors.screen }}
-        className='flex-row items-center px-2 pt-2 pb-1'
-      >
-        <TouchableOpacity
-          onPress={onClose}
-          className='p-1.5 rounded-lg bg-teal-500/10'
+      {enablePerSeatOrdering && (
+        <View
+          style={{ backgroundColor: colors.screen }}
+          className='flex-row items-center px-2 pt-2 pb-1'
         >
-          <ArrowLeft color={colors.teal} size={18} />
-        </TouchableOpacity>
-
-        {enablePerSeatOrdering && (
-          <View style={{ flex: 1, marginLeft: 4 }}>
+          <View style={{ flex: 1 }}>
             <SeatSelector
               seatCount={seatingHook.seatCount}
               activeSeat={seatingHook.activeSeat}
@@ -1060,8 +1053,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               canRemoveSeat={seatingHook.seatCount > 1}
             />
           </View>
-        )}
-      </View>
+        </View>
+      )}
 
       {isOvertime && (
         <View className='p-2 bg-yellow-500 items-center'>
