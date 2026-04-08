@@ -494,19 +494,16 @@ const BillSectionContent = ({
 
           <TouchableOpacity
             className={`flex-1 py-1.5 px-2 flex-row items-center justify-center gap-1.5 rounded-lg border ${
-              newItemsCount === 0 || hasDraftItems || (isOnline && hasPendingSyncs) ? "opacity-40" : ""
+              newItemsCount === 0 || hasDraftItems ? "opacity-40" : ""
             }`}
             style={{
-              backgroundColor: newItemsCount === 0 || hasDraftItems || (isOnline && hasPendingSyncs) ? colors.panel : colors.card,
+              backgroundColor: newItemsCount === 0 || hasDraftItems ? colors.panel : colors.card,
               borderColor: colors.border,
             }}
-            disabled={newItemsCount === 0 || hasDraftItems || (isOnline && hasPendingSyncs)}
+            disabled={newItemsCount === 0 || hasDraftItems}
             onPress={handleSendToKitchen}
             activeOpacity={1}
           >
-            {isOnline && hasPendingSyncs ? (
-              <ActivityIndicator size={10} color={colors.teal} />
-            ) : null}
             <Text className="text-center text-xs font-semibold text-white">
               Send to Kitchen
             </Text>

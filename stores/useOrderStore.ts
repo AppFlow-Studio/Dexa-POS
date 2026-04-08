@@ -5944,34 +5944,46 @@ export const useOrderStore = create<OrderState>()(
               return
             }
 
-            // 2. Update quantity on DB — the broadcast trigger fires automatically,
-            //    so the KDS sees the new quantity without any extra send-to-kitchen call.
-            OrderService.updateOrderItemQuantity(supabase, dbItemId, newQuantity)
-              .then(response => {
-                if (response.data?.success) {
-                  get().applyBackendItemData(itemId, {
-                    quantity: response.data.quantity,
-                    card_subtotal: response.data.card_subtotal,
-                    card_tax_amount: response.data.card_tax_amount,
-                    unit_price: response.data.unit_price,
-                    cash_unit_price: response.data.cash_unit_price,
-                    cash_subtotal: response.data.cash_subtotal,
-                    cash_tax_amount: response.data.cash_tax_amount,
-                    discount_amount: response.data.discount_amount,
-                    discount_cash_amount: response.data.discount_cash_amount,
-                    sync_version: response.data.sync_version
-                  })
-                }
-              })
-              .catch(async err => {
-                console.error('[incrementItemQuantity] sync failed:', err)
-                await queueOperation({
-                  type: 'update_item_quantity',
-                  params: { orderItemId: dbItemId, quantity: newQuantity },
-                  localOrderId: activeOrderId,
-                  localItemId: itemId
+            // 2. Update quantity on DB — register as a pending sync operation so
+            //    sendNewItemsToKitchen waits for this to complete before broadcasting
+            //    kitchen status. This prevents the KDS from receiving stale quantity
+            //    when the user increments and immediately sends to kitchen.
+            useSyncStatusStore.getState().setSyncStatus(itemId, 'pending')
+            const quantityUpdatePromise: Promise<boolean> =
+              OrderService.updateOrderItemQuantity(supabase, dbItemId, newQuantity)
+                .then(response => {
+                  if (response.data?.success) {
+                    get().applyBackendItemData(itemId, {
+                      quantity: response.data.quantity,
+                      card_subtotal: response.data.card_subtotal,
+                      card_tax_amount: response.data.card_tax_amount,
+                      unit_price: response.data.unit_price,
+                      cash_unit_price: response.data.cash_unit_price,
+                      cash_subtotal: response.data.cash_subtotal,
+                      cash_tax_amount: response.data.cash_tax_amount,
+                      discount_amount: response.data.discount_amount,
+                      discount_cash_amount: response.data.discount_cash_amount,
+                      sync_version: response.data.sync_version
+                    })
+                  }
+                  useSyncStatusStore.getState().setSyncStatus(itemId, 'synced')
+                  return true
                 })
-              })
+                .catch(async err => {
+                  console.error('[incrementItemQuantity] sync failed:', err)
+                  useSyncStatusStore.getState().setSyncStatus(itemId, 'synced') // unblock kitchen send
+                  await queueOperation({
+                    type: 'update_item_quantity',
+                    params: { orderItemId: dbItemId, quantity: newQuantity },
+                    localOrderId: activeOrderId,
+                    localItemId: itemId
+                  })
+                  return false
+                })
+                .finally(() => {
+                  get().unregisterSyncOperation(itemId)
+                })
+            get().registerSyncOperation(itemId, quantityUpdatePromise)
           },
 
           confirmDraftItem: itemId => {
@@ -8644,10 +8656,24 @@ export const useOrderStore = create<OrderState>()(
 
             // No need to manually update `orders` array - the subscription will handle it.
 
+            // Show toast immediately — local state is already updated, UI is responsive.
+            toastService.show({
+              title: 'Items Sent',
+              message: `${newItems.length} new item${
+                newItems.length > 1 ? 's' : ''
+              } sent to the kitchen.`,
+              type: 'success'
+            })
+
             // ================================================================
             // OFFLINE-FIRST: Queue or sync backend operation
             // ================================================================
-            // Local state is already updated above - now handle backend sync
+            // Local state is already updated above - now handle backend sync.
+            // Wait for any in-flight quantity updates (e.g. from incrementItemQuantity)
+            // to complete before broadcasting kitchen status, so the KDS receives
+            // the correct quantity.
+            await get().waitForPendingSyncs(activeOrderId)
+
             const supabase = getOrderStoreSupabaseClient()
             const isOnlineNow = getIsOnline()
 
@@ -8787,14 +8813,6 @@ export const useOrderStore = create<OrderState>()(
                 activeOrderId
               )
             }
-
-            toastService.show({
-              title: 'Items Sent',
-              message: `${newItems.length} new item${
-                newItems.length > 1 ? 's' : ''
-              } sent to the kitchen.`,
-              type: 'success'
-            })
           },
 
           sendNewItemsToKitchenForOrder: async (orderId: string) => {
