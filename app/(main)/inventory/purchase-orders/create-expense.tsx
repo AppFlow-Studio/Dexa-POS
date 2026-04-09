@@ -145,26 +145,30 @@ const CreateExternalExpenseScreen = () => {
     show({ title: "Item Created", message: `'${newItemName.trim()}' created and added.`, type: "success" });
   };
 
-  const handleCreateExpense = () => {
+  const handleCreateExpense = async () => {
     if (expenseItems.length === 0) { show({ title: "Empty Expense", message: "Add at least one item.", type: "error" }); return; }
     if (!selectedEmployeeId) { show({ title: "No Employee", message: "Select the employee who made the purchase.", type: "error" }); return; }
     const emp = employees.find((e) => e.id === selectedEmployeeId);
     if (!emp) return;
     const relatedPO = selectedPOId ? purchaseOrders.find((po) => po.id === selectedPOId) : null;
-    addExternalExpense({
-      totalAmount,
-      purchasedByEmployeeId: selectedEmployeeId,
-      purchasedByEmployeeName: emp.fullName,
-      purchasedAt: new Date().toISOString(),
-      items: expenseItems,
-      notes: expenseNotes.trim() || undefined,
-      relatedPOId: selectedPOId || undefined,
-      relatedPONumber: relatedPO?.poNumber || undefined,
-      storeName: storeName.trim() || undefined,
-      storeLocation: storeLocation.trim() || undefined,
-    });
-    show({ title: "Expense Created", message: `Expense with ${expenseItems.length} items created.`, type: "success" });
-    router.back();
+    try {
+      await addExternalExpense({
+        totalAmount,
+        purchasedByEmployeeId: selectedEmployeeId,
+        purchasedByEmployeeName: emp.fullName,
+        purchasedAt: new Date().toISOString(),
+        items: expenseItems,
+        notes: expenseNotes.trim() || undefined,
+        relatedPOId: selectedPOId || undefined,
+        relatedPONumber: relatedPO?.poNumber || undefined,
+        storeName: storeName.trim() || undefined,
+        storeLocation: storeLocation.trim() || undefined,
+      });
+      show({ title: "Expense Created", message: `Expense with ${expenseItems.length} items created.`, type: "success" });
+      router.back();
+    } catch {
+      show({ title: "Create Failed", message: "Failed to create external expense.", type: "error" });
+    }
   };
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);

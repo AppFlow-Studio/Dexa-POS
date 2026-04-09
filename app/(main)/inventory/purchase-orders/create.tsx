@@ -132,18 +132,26 @@ const CreatePurchaseOrderScreen = () => {
     setLineItems((prev) => prev.map((li) => li.inventoryItemId === itemId ? { ...li, quantity: isNaN(n) ? 0 : n } : li));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedVendorId || lineItems.length === 0) { alert("Please select a vendor and add at least one item."); return; }
     const emp = employees.find((e) => e.id === selectedEmployeeId);
-    createPurchaseOrder({ vendorId: selectedVendorId, status: "Draft", items: lineItems, createdByEmployeeId: selectedEmployeeId || undefined, createdByEmployeeName: emp?.fullName });
-    router.back();
+    try {
+      await createPurchaseOrder({ vendorId: selectedVendorId, status: "Draft", items: lineItems, createdByEmployeeId: selectedEmployeeId || undefined, createdByEmployeeName: emp?.fullName });
+      router.back();
+    } catch {
+      alert("Failed to save draft purchase order.");
+    }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedVendorId || lineItems.length === 0) { alert("Please select a vendor and add at least one item."); return; }
     const emp = employees.find((e) => e.id === selectedEmployeeId);
-    createPurchaseOrder({ vendorId: selectedVendorId, status: "Pending Delivery", items: lineItems, createdByEmployeeId: selectedEmployeeId || undefined, createdByEmployeeName: emp?.fullName });
-    router.back();
+    try {
+      await createPurchaseOrder({ vendorId: selectedVendorId, status: "Pending Delivery", items: lineItems, createdByEmployeeId: selectedEmployeeId || undefined, createdByEmployeeName: emp?.fullName });
+      router.back();
+    } catch {
+      alert("Failed to submit purchase order.");
+    }
   };
 
   const renderHeader = () => (

@@ -259,7 +259,7 @@ const AddExpenseModule = ({ openSignal }: Props) => {
     setEditingUnitPrice('')
   }
 
-  const createExpense = () => {
+  const createExpense = async () => {
     if (expenseItems.length === 0) {
       setResultModal({
         type: 'error',
@@ -289,7 +289,7 @@ const AddExpenseModule = ({ openSignal }: Props) => {
     }
 
     try {
-      addExternalExpense({
+      await addExternalExpense({
         totalAmount,
         purchasedByEmployeeId: selectedEmployeeId,
         purchasedByEmployeeName: employee.fullName,
