@@ -83,6 +83,56 @@ const getReservationTimeMs = (
   return null
 }
 
+const ReservationBadge = React.memo(({
+  label,
+  urgent,
+}: {
+  label: string
+  urgent: boolean
+}) => {
+  const opacity = useSharedValue(1)
+
+  useEffect(() => {
+    const duration = urgent ? 800 : 1200
+    const minOpacity = urgent ? 0.3 : 0.5
+    opacity.value = withRepeat(
+      withSequence(withTiming(minOpacity, { duration }), withTiming(1, { duration })),
+      -1
+    )
+  }, [urgent])
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }))
+
+  const badgeColor = urgent ? colors.danger : colors.warning
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          bottom: 4,
+          right: 4,
+          paddingHorizontal: 5,
+          paddingVertical: 3,
+          borderRadius: 6,
+          backgroundColor: badgeColor + '40',
+          borderWidth: 1.5,
+          borderColor: badgeColor,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        animStyle,
+      ]}
+    >
+      <Text style={{ color: badgeColor, fontSize: 8, fontWeight: '800', letterSpacing: 0.3 }}>
+        {label}
+      </Text>
+    </Animated.View>
+  )
+})
+
 /**
  * Isolated pulsing border overlay — runs entirely on UI thread via Reanimated.
  * No JS-thread setInterval/setState, eliminating ~20 JS calls/sec per attention table.
@@ -504,30 +554,33 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const orderTotals = useOrderTotals(effectiveOrder?.id ?? null)
   const orderTotal = orderTotals?.total ?? 0
 
-  const reservationCountdownLabel = useMemo(() => {
-    if (liveSession) return null
-
+  const { reservationCountdownLabel, isReservedSoon, isOccupiedWithReservationSoon, isReservationUrgent } = useMemo(() => {
     const nextReservation = liveNextReservation
-      ? {
-          date: liveNextReservation.reservation_date,
-          time: liveNextReservation.reservation_time
-        }
+      ? { date: liveNextReservation.reservation_date, time: liveNextReservation.reservation_time }
       : null
 
-    if (!nextReservation) return null
+    if (!nextReservation) return { reservationCountdownLabel: null, isReservedSoon: false, isOccupiedWithReservationSoon: false, isReservationUrgent: false }
 
     const reservationTimeMs = getReservationTimeMs(nextReservation)
     if (reservationTimeMs == null || !Number.isFinite(reservationTimeMs))
-      return null
+      return { reservationCountdownLabel: null, isReservedSoon: false, isOccupiedWithReservationSoon: false, isReservationUrgent: false }
 
     const diffMs = reservationTimeMs - Date.now()
-    if (diffMs <= 0 || diffMs > 30 * 60 * 1000) return null
+    if (diffMs <= 0 || diffMs > 30 * 60 * 1000)
+      return { reservationCountdownLabel: null, isReservedSoon: false, isOccupiedWithReservationSoon: false, isReservationUrgent: false }
 
     const minutesLeft = Math.max(1, Math.ceil(diffMs / 60000))
-    return `Reserved in ${minutesLeft}m`
-  }, [tick, liveSession, liveNextReservation])
+    const label = liveSession ? `Res in ${minutesLeft}m` : `Reserved in ${minutesLeft}m`
+    const occupied = !!liveSession
+    const urgent = minutesLeft < 10
 
-  const isReservedSoon = !!reservationCountdownLabel
+    return {
+      reservationCountdownLabel: label,
+      isReservedSoon: !occupied,
+      isOccupiedWithReservationSoon: occupied,
+      isReservationUrgent: urgent,
+    }
+  }, [tick, liveSession, liveNextReservation])
 
   // Determine table color status from DB-synced session status only (skip local-only intermediates)
   const sessionStatus = liveSession?.status
@@ -541,7 +594,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const tableColor = isOvertime
     ? TABLE_STATUS_COLORS.Overtime
     : isReservedSoon
-    ? colors.info // blue for reserved soon
+    ? colors.info
     : TABLE_STATUS_COLORS[tableStatus] || TABLE_STATUS_COLORS.available
 
   const textFit = useMemo(() => {
@@ -600,10 +653,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const reservationLabel = useMemo(() => {
     if (!reservationCountdownLabel) return null
-    if (!textFit.compactMeta) return reservationCountdownLabel
     const mins = reservationCountdownLabel.match(/(\d+)m/)?.[1]
-    return mins ? `R ${mins}m` : 'Reserved'
-  }, [reservationCountdownLabel, textFit.compactMeta])
+    if (textFit.compactMeta || isOccupiedWithReservationSoon) {
+      return mins ? `R ${mins}m` : 'R'
+    }
+    return reservationCountdownLabel
+  }, [reservationCountdownLabel, textFit.compactMeta, isOccupiedWithReservationSoon])
 
   const isOccupiedStatus =
     tableStatus === 'seating' ||
@@ -728,7 +783,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 </Text>
               )}
 
-            {isTableType && reservationLabel && (
+            {isTableType && reservationLabel && !isOccupiedWithReservationSoon && (
               <Text
                 style={{
                   color: tableColor + 'CC',
@@ -832,28 +887,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           )}
 
           {/* Reservation badge */}
-          {isReservedSoon && (
-            <View
-              style={{
-                position: 'absolute',
-                bottom: 4,
-                right: 4,
-                width: 14,
-                height: 14,
-                borderRadius: 4,
-                backgroundColor: colors.info + '30',
-                borderWidth: 1,
-                borderColor: colors.info + '80',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <Text
-                style={{ color: colors.info, fontSize: 7, fontWeight: '800' }}
-              >
-                R
-              </Text>
-            </View>
+          {(isReservedSoon || isOccupiedWithReservationSoon) && (
+            <ReservationBadge
+              label={reservationCountdownLabel?.match(/(\d+)m/)?.[1] ? `R ${reservationCountdownLabel.match(/(\d+)m/)?.[1]}m` : 'R'}
+              urgent={isReservationUrgent}
+            />
           )}
 
           {/* Tab (pre-auth) badge */}
