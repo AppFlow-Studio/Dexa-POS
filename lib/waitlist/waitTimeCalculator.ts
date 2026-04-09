@@ -1,28 +1,41 @@
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
 
-/**
- * Represents table metrics for wait time calculation
- */
 interface TableMetric {
   table_id: string
   avg_turn_time: number
   avg_covers: number
-  recent_accuracy_factor: number // 0.8 to 1.2 based on historical accuracy
+  recent_accuracy_factor: number
 }
 
 /**
- * Enhanced wait time calculator based on real operational data:
- * 1. Tables about to free up (check_presented or paid status)
- * 2. Average turn time from table_metrics per table
- * 3. Parties ahead in queue with similar size requirements
- * 4. Historical accuracy data to improve future estimates
+ * Status buckets:
+ *
+ * OPEN now       — no session | available | cleaning
+ * CLOSING soon   — check_presented | paying | paid | closing   (~5 min remaining)
+ * OCCUPIED       — seating | ordering | ordered | served       (estimate from seated_at)
+ * UNUSABLE       — reserved | blocked | not_in_service         (skip entirely)
  */
+
+type TableBucket = 'open' | 'closing' | 'occupied' | 'unusable'
+
+function getBucket (table: FloorPlanObject): TableBucket {
+  const status = table.session?.status
+  if (!status || status === 'available' || status === 'cleaning') return 'open'
+  if (status === 'check_presented' || status === 'paying' || status === 'paid' || status === 'closing') return 'closing'
+  if (status === 'reserved' || status === 'blocked' || status === 'not_in_service') return 'unusable'
+  // seating | ordering | ordered | served
+  return 'occupied'
+}
+
 export class WaitTimeCalculator {
   private tables: FloorPlanObject[]
   private waitlist: WaitlistEntry[]
   private tableMetrics: Map<string, TableMetric>
-  private DEFAULT_TURN_TIME = 60 // minutes
-  private DEFAULT_BASE_WAIT = 15 // minutes
+
+  /** Default full dining turn if no per-table config or metrics exist */
+  private DEFAULT_TURN_TIME = 60
+  /** Minutes to clean + seat after a table frees up */
+  private TURNOVER_BUFFER = 5
 
   constructor (
     tables: FloorPlanObject[],
@@ -35,257 +48,151 @@ export class WaitTimeCalculator {
   }
 
   /**
-   * Calculate wait time for a party of given size with enhanced logic.
-   * @param partySize  number of guests
-   * @param queueDepth number of parties already waiting ahead (default 0)
-   * @param locationId for future table_metrics lookup
-   * @returns { waitTime: number, estimatedReadyAt: Date, confidence: 'high'|'medium'|'low' }
+   * Core algorithm:
+   *
+   * 1. Find all tables that CAN seat this party (capacity >= partySize, not unusable).
+   * 2. Build a sorted "release timeline" — a list of (minutesUntilFree) for each
+   *    usable table, sorted ascending.
+   *    - open tables     → 0 min
+   *    - closing tables  → TURNOVER_BUFFER (they're leaving now)
+   *    - occupied tables → max(0, turnTime - minutesSeated) + TURNOVER_BUFFER
+   * 3. Count parties in the waitlist ahead of this one that also need a similar table.
+   * 4. The estimated wait = release time of the (partiesAhead + 1)th slot.
+   *    If there are enough slots available before this party, wait = 0.
    */
   calculateWaitTimeEnhanced (
     partySize: number,
     queueDepth: number = 0,
-    locationId?: string
+    _locationId?: string
   ): {
     waitTime: number
     estimatedReadyAt: Date
     confidence: 'high' | 'medium' | 'low'
   } {
-    const suitableTables = this.getSuitableTablesForSize(partySize)
+    // All tables that physically fit this party and aren't out of service
+    const usableTables = this.tables.filter(t => {
+      if (t.category !== 'table' && t.category !== 'booth') return false
+      if (getBucket(t) === 'unusable') return false
+      // Accept tables with no capacity set (assume they fit) or capacity >= partySize
+      const cap = t.capacity ?? Infinity
+      return cap >= partySize
+    })
 
-    // Separate tables by status
-    const availableTables = suitableTables.filter(t => !t.session)
-    const aboutToFreeUpTables = suitableTables.filter(
-      t =>
-        t.session &&
-        (t.session.status === 'check_presented' || t.session.status === 'paid')
-    )
-    const occupiedOtherTables = suitableTables.filter(
-      t =>
-        t.session &&
-        t.session.status !== 'check_presented' &&
-        t.session.status !== 'paid'
-    )
+    if (usableTables.length === 0) {
+      // No suitable tables in the venue at all
+      const waitTime = this.DEFAULT_TURN_TIME
+      return {
+        waitTime,
+        estimatedReadyAt: new Date(Date.now() + waitTime * 60_000),
+        confidence: 'low',
+      }
+    }
 
-    // Count parties ahead with similar size (±2 people)
-    const partiesAheadSimilarSize = this.waitlist.filter(
-      w =>
-        w.status === 'waiting' &&
-        w.party_size >= partySize - 2 &&
-        w.party_size <= partySize + 2
-    ).length
+    // Build release timeline — minutes until each table is ready for the next party
+    const releaseTimes: number[] = usableTables
+      .map(t => {
+        const bucket = getBucket(t)
+        if (bucket === 'open') return 0
+        if (bucket === 'closing') return this.TURNOVER_BUFFER
+        // occupied — estimate remaining seated time + buffer
+        return this.estimateRemainingTime(t) + this.TURNOVER_BUFFER
+      })
+      .sort((a, b) => a - b) // ascending: soonest-free first
 
-    const totalWaitingAhead = this.waitlist.filter(
-      w => w.status === 'waiting'
-    ).length
+    // How many parties are ahead in the waitlist that also need a similar table?
+    // Use the full waitlist queue position (queueDepth if provided, else count from store)
+    const partiesAhead = queueDepth > 0
+      ? queueDepth
+      : this.waitlist.filter(w => w.status === 'waiting' || w.status === 'notified').length
 
-    // Calculate wait time based on availability
+    // The slot this party needs is index = partiesAhead (0-based)
+    // e.g. 0 parties ahead → needs slot [0] (first free table)
+    //      2 parties ahead → needs slot [2] (third free table)
     let waitTime: number
-    let confidence: 'high' | 'medium' | 'low' = 'medium'
+    let confidence: 'high' | 'medium' | 'low'
 
-    if (availableTables.length > queueDepth) {
-      // Tables available now
-      waitTime = 5 // Just prep time
-      confidence = 'high'
-    } else if (
-      availableTables.length === 0 &&
-      aboutToFreeUpTables.length === 0 &&
-      occupiedOtherTables.length === 0
-    ) {
-      // No suitable tables at all
-      waitTime =
-        this.DEFAULT_BASE_WAIT + totalWaitingAhead * this.DEFAULT_TURN_TIME
-      confidence = 'low'
-    } else if (aboutToFreeUpTables.length > 0) {
-      // Tables about to free up — much shorter wait
-      const timeToFreeUp = this.calculateTimeToFreeTables(aboutToFreeUpTables)
-      const partiesAbsorbedByAboutToFree = Math.min(
-        aboutToFreeUpTables.length,
-        queueDepth - availableTables.length
-      )
-      const partiesStillAhead = Math.max(
-        0,
-        queueDepth - availableTables.length - partiesAbsorbedByAboutToFree
-      )
-
-      const additionalTurns = Math.ceil(
-        partiesStillAhead / Math.max(1, suitableTables.length)
-      )
-      const avgTurnTime = this.getAverageTurnTime(suitableTables)
-
-      waitTime = timeToFreeUp + additionalTurns * avgTurnTime
-      confidence = 'high'
+    if (partiesAhead < releaseTimes.length) {
+      // There is a table slot for this party
+      waitTime = releaseTimes[partiesAhead]
+      confidence = waitTime === 0 ? 'high' : 'medium'
     } else {
-      // Only other occupied tables — standard queue calculation
-      const avgTurnTime = this.getAverageTurnTime(suitableTables)
-      const partiesAbsorbedByAvailable = availableTables.length
-      const partiesStillAhead = queueDepth - partiesAbsorbedByAvailable
-
-      const slotIndex =
-        partiesStillAhead % Math.max(1, occupiedOtherTables.length)
-      const remainingOnNext = this.estimateRemainingTime(
-        occupiedOtherTables[slotIndex]
-      )
-      const cyclesNeeded = Math.floor(
-        partiesStillAhead / Math.max(1, occupiedOtherTables.length)
-      )
-
-      waitTime = remainingOnNext + cyclesNeeded * avgTurnTime
-      confidence = 'medium'
+      // More parties ahead than available table slots — need to project forward
+      // Estimate how many full turn cycles are needed beyond the last known slot
+      const avgTurnTime = this.getAverageTurnTime(usableTables)
+      const lastSlotTime = releaseTimes[releaseTimes.length - 1]
+      const extraParties = partiesAhead - releaseTimes.length + 1
+      const extraCycles = Math.ceil(extraParties / usableTables.length)
+      waitTime = lastSlotTime + extraCycles * (avgTurnTime + this.TURNOVER_BUFFER)
+      confidence = 'low'
     }
 
-    // Apply party size multiplier (larger parties typically need longer to order/eat)
-    waitTime = Math.round(
-      Math.max(this.DEFAULT_BASE_WAIT, waitTime) *
-        this.getSizeMultiplier(partySize)
-    )
-
-    // Apply historical accuracy factor if available
+    // Apply historical accuracy factor if we have metrics
     if (this.tableMetrics.size > 0) {
-      const accuracyFactor = this.calculateAccuracyFactor()
-      waitTime = Math.round(waitTime * accuracyFactor)
+      waitTime = Math.round(waitTime * this.calculateAccuracyFactor())
     }
 
-    // Calculate estimated ready time
-    const now = new Date()
-    const estimatedReadyAt = new Date(now.getTime() + waitTime * 60000)
+    // Round to nearest 5 for display (feels more honest than false precision)
+    if (waitTime > 0) {
+      waitTime = Math.ceil(waitTime / 5) * 5
+    }
 
-    return { waitTime, estimatedReadyAt, confidence }
+    return {
+      waitTime,
+      estimatedReadyAt: new Date(Date.now() + waitTime * 60_000),
+      confidence,
+    }
   }
 
-  /**
-   * Backward compatible method for existing code
-   */
   calculateWaitTime (partySize: number, queueDepth: number = 0): number {
-    const { waitTime } = this.calculateWaitTimeEnhanced(partySize, queueDepth)
-    return waitTime
+    return this.calculateWaitTimeEnhanced(partySize, queueDepth).waitTime
   }
 
-  /**
-   * Calculate how long until about-to-free tables are ready
-   */
-  private calculateTimeToFreeTables (tables: FloorPlanObject[]): number {
-    let minTime = Infinity
-
-    for (const table of tables) {
-      if (!table.session?.seated_at) continue
-
-      const seatedMinutes = Math.floor(
-        (Date.now() - new Date(table.session.seated_at).getTime()) / 60000
-      )
-      const turnTime = table.default_turn_time || this.DEFAULT_TURN_TIME
-      const remaining = Math.max(0, turnTime - seatedMinutes)
-
-      minTime = Math.min(minTime, remaining)
-    }
-
-    return minTime === Infinity ? this.DEFAULT_BASE_WAIT : Math.ceil(minTime)
-  }
+  // ── Private helpers ──────────────────────────────────────────
 
   /**
-   * All tables (available or occupied) that fit the party size.
-   */
-  private getSuitableTablesForSize (partySize: number): FloorPlanObject[] {
-    return this.tables.filter(
-      t =>
-        (t.category === 'table' || t.category === 'booth') &&
-        (t.capacity || 0) >= partySize &&
-        (t.capacity || 0) <= partySize * 2
-    )
-  }
-
-  /**
-   * Average turn time using table metrics, configured values, or default.
-   */
-  private getAverageTurnTime (tables?: FloorPlanObject[]): number {
-    const tablesToCheck = tables || this.tables
-
-    // First, try to get average from table_metrics
-    const metricsAvg = this.getAverageTurnTimeFromMetrics()
-    if (metricsAvg > 0) return metricsAvg
-
-    // Fall back to configured table values
-    const configured = tablesToCheck
-      .map(t => t.default_turn_time)
-      .filter((v): v is number => !!v)
-
-    if (configured.length === 0) return this.DEFAULT_TURN_TIME
-    return Math.round(configured.reduce((a, b) => a + b, 0) / configured.length)
-  }
-
-  /**
-   * Get average turn time from table_metrics map
-   */
-  private getAverageTurnTimeFromMetrics (): number {
-    if (this.tableMetrics.size === 0) return 0
-
-    const avgTurns = Array.from(this.tableMetrics.values()).map(
-      m => m.avg_turn_time
-    )
-    if (avgTurns.length === 0) return 0
-
-    return Math.round(avgTurns.reduce((a, b) => a + b, 0) / avgTurns.length)
-  }
-
-  /**
-   * Calculate accuracy factor based on historical quoted vs actual wait times
-   */
-  private calculateAccuracyFactor (): number {
-    if (this.tableMetrics.size === 0) return 1.0
-
-    const factors = Array.from(this.tableMetrics.values()).map(
-      m => m.recent_accuracy_factor
-    )
-    if (factors.length === 0) return 1.0
-
-    const avgFactor = factors.reduce((a, b) => a + b, 0) / factors.length
-
-    // Clamp between 0.8 and 1.2 to avoid extreme adjustments
-    return Math.max(0.8, Math.min(1.2, avgFactor))
-  }
-
-  /**
-   * Estimate minutes remaining in the current session for a single table.
+   * Minutes remaining in the current session for an occupied table.
+   * Uses per-table metrics > per-table config > global default.
    */
   private estimateRemainingTime (table: FloorPlanObject): number {
-    if (!table.session?.seated_at) return this.DEFAULT_BASE_WAIT
+    if (!table.session?.seated_at) return this.DEFAULT_TURN_TIME / 2
 
     const seatedMinutes = Math.floor(
-      (Date.now() - new Date(table.session.seated_at).getTime()) / 60000
+      (Date.now() - new Date(table.session.seated_at).getTime()) / 60_000
     )
-
-    // Check if we have specific metrics for this table
-    const tableMetric = this.tableMetrics.get(table.id)
-    const turnTime =
-      tableMetric?.avg_turn_time ||
-      table.default_turn_time ||
-      this.DEFAULT_TURN_TIME
+    const metric = this.tableMetrics.get(table.id)
+    const turnTime = metric?.avg_turn_time ?? table.default_turn_time ?? this.DEFAULT_TURN_TIME
 
     return Math.max(0, turnTime - seatedMinutes)
   }
 
-  /**
-   * Larger parties wait longer for suitable tables.
-   */
-  private getSizeMultiplier (partySize: number): number {
-    if (partySize <= 2) return 0.85
-    if (partySize <= 4) return 1.0
-    if (partySize <= 6) return 1.15
-    return 1.3
+  private getAverageTurnTime (tables: FloorPlanObject[]): number {
+    // Prefer table_metrics average
+    if (this.tableMetrics.size > 0) {
+      const vals = Array.from(this.tableMetrics.values()).map(m => m.avg_turn_time)
+      if (vals.length > 0) return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+    }
+    // Fall back to per-table config
+    const configured = tables.map(t => t.default_turn_time).filter((v): v is number => v != null)
+    if (configured.length > 0) return Math.round(configured.reduce((a, b) => a + b, 0) / configured.length)
+    return this.DEFAULT_TURN_TIME
   }
 
-  /**
-   * Get available table recommendations for a party size.
-   */
+  private calculateAccuracyFactor (): number {
+    const factors = Array.from(this.tableMetrics.values()).map(m => m.recent_accuracy_factor)
+    if (factors.length === 0) return 1.0
+    const avg = factors.reduce((a, b) => a + b, 0) / factors.length
+    return Math.max(0.8, Math.min(1.2, avg))
+  }
+
   getRecommendedTables (partySize: number): FloorPlanObject[] {
     return this.tables
-      .filter(
-        t =>
-          !t.session &&
-          (t.category === 'table' || t.category === 'booth') &&
-          (t.capacity || 0) >= partySize &&
-          (t.capacity || 0) <= partySize * 2
-      )
-      .sort((a, b) => (a.capacity || 0) - (b.capacity || 0))
+      .filter(t => {
+        if (t.category !== 'table' && t.category !== 'booth') return false
+        if (getBucket(t) !== 'open') return false
+        const cap = t.capacity ?? Infinity
+        return cap >= partySize
+      })
+      .sort((a, b) => (a.capacity ?? 999) - (b.capacity ?? 999))
   }
 }
 
