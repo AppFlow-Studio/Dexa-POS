@@ -233,25 +233,18 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const { supabase } = get();
     if (!supabase) return;
 
-    // 1. Create/Upsert Item (Ignoring stock)
     const { stockQuantity, ...itemDetails } = itemData;
-    const newItem = await InventoryService.upsertInventoryItem(
+    await InventoryService.upsertInventoryItem(
       supabase,
-      itemDetails as any, // Cast to handle optional fields mismatch if any
+      itemDetails as any,
       locationId
     );
 
-    // 2. Set Initial Stock locally only (skip DB log to avoid constraint issues)
-    if (newItem && stockQuantity > 0) {
-      newItem.stockQuantity = stockQuantity;
-    }
-
-    // Update local
-    if (newItem) {
-      set((state) => ({
-        inventoryItems: [newItem, ...state.inventoryItems],
-      }));
-    }
+    // Re-fetch to get the real item back with correct shape
+    await get().fetchInventoryItems(locationId);
+    // Invalidate TanStack query cache so PosSyncProvider also sees fresh data
+    const { queryClient } = require('@/contexts/TanstackProvider') as typeof import('@/contexts/TanstackProvider');
+    queryClient.invalidateQueries({ queryKey: ['inventory_sync', locationId] });
   },
 
   updateInventoryItem: async (itemId, updates, locationId) => {
@@ -272,7 +265,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     try {
       const { stockQuantity, stockUpdateReason, ...otherUpdates } = updates;
 
-      // Handle Global Item Updates (Location Settings)
       if (item.isGlobal) {
         await InventoryService.updateGlobalItemLocationSettings(
           supabase,
@@ -293,32 +285,28 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
                 : undefined,
           }
         );
-        return;
+      } else {
+        if (Object.keys(otherUpdates).length > 0) {
+          const merged = { ...item, ...otherUpdates };
+          await InventoryService.upsertInventoryItem(supabase, merged as any, locationId);
+        }
+
+        if (stockQuantity !== undefined && stockQuantity !== item.stockQuantity) {
+          const { error: stockError } = await supabase
+            .from("inventory_items")
+            .update({ current_stock: stockQuantity })
+            .eq("id", itemId);
+          if (stockError) throw stockError;
+        }
       }
 
-      // Handle Local Item Updates (Full Update)
-      // 1. Update other properties if any
-      if (Object.keys(otherUpdates).length > 0) {
-        const merged = { ...item, ...otherUpdates };
-        await InventoryService.upsertInventoryItem(
-          supabase,
-          merged as any, // Cast to handle optional fields
-          locationId
-        );
-      }
-
-      // 2. Update stock if provided - update item record directly
-      if (stockQuantity !== undefined && stockQuantity !== item.stockQuantity) {
-        const { error: stockError } = await supabase
-          .from("inventory_items")
-          .update({ current_stock: stockQuantity })
-          .eq("id", itemId);
-
-        if (stockError) throw stockError;
-      }
+      // Re-fetch to sync real state
+      await get().fetchInventoryItems(locationId);
+      const { queryClient } = require('@/contexts/TanstackProvider') as typeof import('@/contexts/TanstackProvider');
+      queryClient.invalidateQueries({ queryKey: ['inventory_sync', locationId] });
     } catch (e) {
       console.error(e);
-      set({ inventoryItems: oldItems }); // Revert
+      set({ inventoryItems: oldItems });
       throw e;
     }
   },
