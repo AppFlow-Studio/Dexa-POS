@@ -189,7 +189,7 @@ const TableBillSection = ({
           </View>
         )}
 
-        {!!activeOrder?.items?.length && onPressSendAllToKitchen && (
+        {onPressSendAllToKitchen && activeOrder?.items?.some(i => !i.kitchen_status || i.kitchen_status === 'new') && (
           <View style={{ paddingHorizontal: 10, paddingBottom: 6 }}>
             <TouchableOpacity
               onPress={onPressSendAllToKitchen}
@@ -260,6 +260,9 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prev.activeOrder?.check_status !== next.activeOrder?.check_status) return false
   if (prev.activeOrder?.checkDiscount !== next.activeOrder?.checkDiscount) return false
   if ((prev.activeOrder?.items?.length ?? 0) !== (next.activeOrder?.items?.length ?? 0)) return false
+  const prevHasUnsent = prev.activeOrder?.items?.some(i => !i.kitchen_status || i.kitchen_status === 'new') ?? false
+  const nextHasUnsent = next.activeOrder?.items?.some(i => !i.kitchen_status || i.kitchen_status === 'new') ?? false
+  if (prevHasUnsent !== nextHasUnsent) return false
   if ((prev.activeOrder?.payments?.length ?? 0) !== (next.activeOrder?.payments?.length ?? 0)) return false
   if (prev.sentCourses !== next.sentCourses) return false
   if (prev.itemCourseMap !== next.itemCourseMap) return false

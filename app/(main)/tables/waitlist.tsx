@@ -2,13 +2,20 @@ import ConfirmationModal from '@/components/settings/reset-application/Confirmat
 import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
-import { colors } from '@/lib/theme'
+import { bottomSheetTheme, colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetFlatList,
+  BottomSheetTextInput,
+  BottomSheetView
+} from '@gorhom/bottom-sheet'
 import { useRouter } from 'expo-router'
 import {
   AlertCircle,
@@ -23,19 +30,11 @@ import {
   Users,
   X
 } from 'lucide-react-native'
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
-  SafeAreaView,
   Text,
   TouchableOpacity,
   View
@@ -45,25 +44,89 @@ import Animated, {
   useSharedValue,
   withTiming
 } from 'react-native-reanimated'
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetFlatList,
-  BottomSheetView
-} from '@gorhom/bottom-sheet'
-import { bottomSheetTheme } from '@/lib/theme'
-import { BottomSheetTextInput } from '@gorhom/bottom-sheet'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function getElapsedMinutes(createdAt: string): number {
+function getElapsedMinutes (createdAt: string): number {
   return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000)
 }
 
-function formatElapsed(minutes: number): string {
+function formatElapsed (minutes: number): string {
   if (minutes < 60) return `${minutes}m`
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
   return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+/**
+ * Estimate wait time for a new party based on live table data.
+ *
+ * Algorithm:
+ * 1. If a table that fits the party is already available → 0 min wait
+ * 2. Otherwise find occupied tables that fit the party, sorted by time remaining
+ * 3. Each party already in the waitlist ahead of us that also needs a similar
+ *    table adds one table-turn of time (defaultSittingTimeMinutes)
+ * 4. Round up to nearest 5 min and add a 5-min buffer for seating/cleaning
+ */
+function estimateWaitMinutes (
+  partySize: number,
+  tables: FloorPlanObject[],
+  waitlist: WaitlistEntry[],
+  defaultSittingMinutes: number
+): number {
+  const MIN_SITTING = Math.max(defaultSittingMinutes, 15)
+
+  // Tables that can seat this party (no capacity = assume it fits)
+  const suitableTables = tables.filter(
+    t =>
+      (t.category === 'table' || t.category === 'booth') &&
+      (!t.capacity || t.capacity >= partySize)
+  )
+
+  // Available right now = no session, or session status is available/cleaning
+  const availableNow = suitableTables.filter(
+    t =>
+      !t.session ||
+      t.session.status === 'available' ||
+      t.session.status === 'cleaning'
+  )
+
+  // Active waitlist parties ahead of this one
+  const partiesAhead = waitlist.filter(
+    w => w.status === 'waiting' || w.status === 'notified'
+  ).length
+
+  if (availableNow.length > partiesAhead) {
+    // Enough available tables for everyone ahead + this party → seat immediately
+    return 0
+  }
+
+  // Find occupied tables and their remaining time
+  const occupiedTimes = suitableTables
+    .filter(
+      t => t.session && t.session.status !== 'available' && t.session.seated_at
+    )
+    .map(t => {
+      const elapsedMins = Math.floor(
+        (Date.now() - new Date(t.session!.seated_at).getTime()) / 60_000
+      )
+      return Math.max(0, MIN_SITTING - elapsedMins)
+    })
+    .sort((a, b) => a - b)
+
+  if (occupiedTimes.length === 0) {
+    // No occupied suitable tables either — use default as fallback
+    return MIN_SITTING
+  }
+
+  // Tables needed = partiesAhead - availableNow + 1 (this party)
+  const tablesNeeded = partiesAhead - availableNow.length + 1
+  const targetIndex = Math.min(tablesNeeded - 1, occupiedTimes.length - 1)
+  const rawWait = occupiedTimes[targetIndex] + 5 // +5 min seating/cleaning buffer
+
+  // Round up to nearest 5
+  return Math.ceil(rawWait / 5) * 5
 }
 
 // ── WaitlistCard ──────────────────────────────────────────────
@@ -75,119 +138,141 @@ const WaitlistCard: React.FC<{
   onSeat: () => void
   onNotify: () => void
   onDelete: () => void
-}> = React.memo(({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
-  const tick = useTableTimerTick()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const elapsed = useMemo(() => getElapsedMinutes(entry.created_at), [entry.created_at, tick])
-  const isOverdue = elapsed > entry.quoted_wait_minutes
+}> = React.memo(
+  ({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
+    const tick = useTableTimerTick()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const elapsed = useMemo(
+      () => getElapsedMinutes(entry.created_at),
+      [entry.created_at, tick]
+    )
+    const isOverdue = elapsed > entry.quoted_wait_minutes
 
-  const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
-  if (expandedHeight.value !== (isExpanded ? 1 : 0)) {
-    expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
-  }
-  const expandedStyle = useAnimatedStyle(() => ({
-    opacity: expandedHeight.value,
-    maxHeight: expandedHeight.value * 300,
-    overflow: 'hidden'
-  }))
+    const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
+    if (expandedHeight.value !== (isExpanded ? 1 : 0)) {
+      expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
+    }
+    const expandedStyle = useAnimatedStyle(() => ({
+      opacity: expandedHeight.value,
+      maxHeight: expandedHeight.value * 300,
+      overflow: 'hidden'
+    }))
 
-  return (
-    <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
-      <Pressable onPress={onToggle} className='flex-row items-center px-4 py-3'>
-        <View
-          className={`w-12 h-12 rounded-full items-center justify-center ${
-            isOverdue ? 'bg-red-900/60' : 'bg-teal/20'
-          }`}
+    return (
+      <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
+        <Pressable
+          onPress={onToggle}
+          className='flex-row items-center px-4 py-3'
         >
-          <Text className={`text-sm font-bold ${isOverdue ? 'text-red-400' : 'text-teal'}`}>
-            {formatElapsed(elapsed)}
-          </Text>
-        </View>
-
-        <View className='flex-1 ml-3 min-w-0'>
-          <Text className='text-white font-semibold text-base' numberOfLines={1}>
-            {entry.party_name}
-          </Text>
-          <View className='flex-row items-center mt-0.5'>
-            <Users size={12} color={colors.muted} />
-            <Text className='text-muted text-sm ml-1'>
-              {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
+          <View
+            className={`w-12 h-12 rounded-full items-center justify-center ${
+              isOverdue ? 'bg-red-900/60' : 'bg-teal/20'
+            }`}
+          >
+            <Text
+              className={`text-sm font-bold ${
+                isOverdue ? 'text-red-400' : 'text-teal'
+              }`}
+            >
+              {formatElapsed(elapsed)}
             </Text>
           </View>
-          {(entry.notification_failures ?? 0) > 0 && (
-            <View className='self-start mt-1 px-2 py-0.5 rounded bg-red-600 border border-red-500'>
-              <Text className='text-white text-xs font-bold'>
-                SMS FAIL {entry.notification_failures}
-              </Text>
-            </View>
-          )}
-        </View>
 
-        {isExpanded ? (
-          <ChevronUp size={20} color={colors.label} />
-        ) : (
-          <ChevronDown size={20} color={colors.label} />
-        )}
-      </Pressable>
-
-      <Animated.View style={expandedStyle}>
-        <View className='px-4 pb-4 border-t border-border'>
-          <View className='mt-3 gap-2'>
-            {entry.phone ? (
-              <View className='flex-row items-center'>
-                <Phone size={14} color={colors.label} />
-                <Text className='text-label text-sm ml-2'>{entry.phone}</Text>
-              </View>
-            ) : null}
-            {entry.notes ? (
-              <View className='flex-row items-start'>
-                <StickyNote size={14} color={colors.label} style={{ marginTop: 2 }} />
-                <Text className='text-label text-sm ml-2 italic flex-1'>{entry.notes}</Text>
-              </View>
-            ) : null}
-            <View className='flex-row items-center'>
-              <Clock size={14} color={colors.label} />
-              <Text className='text-label text-sm ml-2'>
-                Quoted: {entry.quoted_wait_minutes} min
+          <View className='flex-1 ml-3 min-w-0'>
+            <Text
+              className='text-white font-semibold text-base'
+              numberOfLines={1}
+            >
+              {entry.party_name}
+            </Text>
+            <View className='flex-row items-center mt-0.5'>
+              <Users size={12} color={colors.muted} />
+              <Text className='text-muted text-sm ml-1'>
+                {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
               </Text>
             </View>
             {(entry.notification_failures ?? 0) > 0 && (
-              <View className='flex-row items-center gap-2 px-2.5 py-2 rounded-lg bg-red-600 border border-red-500'>
-                <AlertCircle size={14} color='white' />
-                <Text className='text-white text-sm flex-1 font-semibold'>
-                  SMS failed {entry.notification_failures}x — call guest verbally
+              <View className='self-start mt-1 px-2 py-0.5 rounded bg-red-600 border border-red-500'>
+                <Text className='text-white text-xs font-bold'>
+                  SMS FAIL {entry.notification_failures}
                 </Text>
               </View>
             )}
           </View>
 
-          <View className='flex-row items-center gap-3 mt-4'>
-            <TouchableOpacity
-              onPress={onSeat}
-              className='flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg bg-teal'
-            >
-              <Check size={16} color='white' />
-              <Text className='text-white font-semibold'>Seat</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onNotify}
-              className='flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg border border-border'
-            >
-              <Bell size={16} color={colors.label} />
-              <Text className='text-label font-semibold'>Notify</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onDelete}
-              className='w-11 h-11 items-center justify-center rounded-lg bg-red-900/30'
-            >
-              <X size={18} color={colors.danger} />
-            </TouchableOpacity>
+          {isExpanded ? (
+            <ChevronUp size={20} color={colors.label} />
+          ) : (
+            <ChevronDown size={20} color={colors.label} />
+          )}
+        </Pressable>
+
+        <Animated.View style={expandedStyle}>
+          <View className='px-4 pb-4 border-t border-border'>
+            <View className='mt-3 gap-2'>
+              {entry.phone ? (
+                <View className='flex-row items-center'>
+                  <Phone size={14} color={colors.label} />
+                  <Text className='text-label text-sm ml-2'>{entry.phone}</Text>
+                </View>
+              ) : null}
+              {entry.notes ? (
+                <View className='flex-row items-start'>
+                  <StickyNote
+                    size={14}
+                    color={colors.label}
+                    style={{ marginTop: 2 }}
+                  />
+                  <Text className='text-label text-sm ml-2 italic flex-1'>
+                    {entry.notes}
+                  </Text>
+                </View>
+              ) : null}
+              <View className='flex-row items-center'>
+                <Clock size={14} color={colors.label} />
+                <Text className='text-label text-sm ml-2'>
+                  Quoted: {entry.quoted_wait_minutes} min
+                </Text>
+              </View>
+              {(entry.notification_failures ?? 0) > 0 && (
+                <View className='flex-row items-center gap-2 px-2.5 py-2 rounded-lg bg-red-600 border border-red-500'>
+                  <AlertCircle size={14} color='white' />
+                  <Text className='text-white text-sm flex-1 font-semibold'>
+                    SMS failed {entry.notification_failures}x — call guest
+                    verbally
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View className='flex-row items-center gap-3 mt-4'>
+              <TouchableOpacity
+                onPress={onSeat}
+                className='flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg bg-teal'
+              >
+                <Check size={16} color='white' />
+                <Text className='text-white font-semibold'>Seat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onNotify}
+                className='flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg border border-border'
+              >
+                <Bell size={16} color={colors.label} />
+                <Text className='text-label font-semibold'>Notify</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onDelete}
+                className='w-11 h-11 items-center justify-center rounded-lg bg-red-900/30'
+              >
+                <X size={18} color={colors.danger} />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Animated.View>
-    </View>
-  )
-})
+        </Animated.View>
+      </View>
+    )
+  }
+)
 
 // ── AddEntryForm ──────────────────────────────────────────────
 
@@ -201,12 +286,39 @@ const AddEntryForm: React.FC<{
   }) => void
   onCancel: () => void
   isLoading: boolean
-}> = ({ onSubmit, onCancel, isLoading }) => {
+  waitlist: WaitlistEntry[]
+}> = ({ onSubmit, onCancel, isLoading, waitlist }) => {
+  const tables = useFloorPlanStore(s => s.tables)
+  const defaultSittingMinutes = useLocationConfigStore(
+    s => s.config.dining.defaultSittingTimeMinutes || 60
+  )
+
   const [name, setName] = useState('')
   const [partySize, setPartySize] = useState('')
-  const [quotedTime, setQuotedTime] = useState('15')
+  const [quotedTime, setQuotedTime] = useState('')
+  const [quotedTimeEdited, setQuotedTimeEdited] = useState(false)
   const [notes, setNotes] = useState('')
   const [phone, setPhone] = useState('')
+
+  // Auto-estimate wait time whenever party size changes (unless host manually edited it)
+  const estimatedWait = useMemo(() => {
+    const size = parseInt(partySize || '2', 10)
+    if (!size || size < 1) return null
+    const est = estimateWaitMinutes(
+      size,
+      tables,
+      waitlist,
+      defaultSittingMinutes
+    )
+    return est
+  }, [partySize, tables, waitlist, defaultSittingMinutes])
+
+  useEffect(() => {
+    if (quotedTimeEdited) return
+    if (estimatedWait !== null) {
+      setQuotedTime(String(Math.max(estimatedWait, 5)))
+    }
+  }, [estimatedWait, quotedTimeEdited])
 
   const handleSubmit = () => {
     onSubmit({
@@ -218,7 +330,8 @@ const AddEntryForm: React.FC<{
     })
     setName('')
     setPartySize('')
-    setQuotedTime('15')
+    setQuotedTime('')
+    setQuotedTimeEdited(false)
     setNotes('')
     setPhone('')
   }
@@ -236,7 +349,9 @@ const AddEntryForm: React.FC<{
   return (
     <View className='px-4 pt-2 pb-6 gap-4'>
       <View>
-        <Text className='text-label text-sm mb-1.5 font-medium'>Guest Name</Text>
+        <Text className='text-label text-sm mb-1.5 font-medium'>
+          Guest Name
+        </Text>
         <BottomSheetTextInput
           value={name}
           onChangeText={setName}
@@ -247,7 +362,9 @@ const AddEntryForm: React.FC<{
       </View>
       <View className='flex-row gap-3'>
         <View className='flex-1'>
-          <Text className='text-label text-sm mb-1.5 font-medium'>Party Size</Text>
+          <Text className='text-label text-sm mb-1.5 font-medium'>
+            Party Size
+          </Text>
           <BottomSheetTextInput
             value={partySize}
             onChangeText={setPartySize}
@@ -258,19 +375,37 @@ const AddEntryForm: React.FC<{
           />
         </View>
         <View className='flex-1'>
-          <Text className='text-label text-sm mb-1.5 font-medium'>Quoted Wait (min)</Text>
+          <View className='flex-row items-center justify-between mb-1.5'>
+            <Text className='text-label text-sm font-medium'>Wait (min)</Text>
+            {!quotedTimeEdited && estimatedWait !== null && (
+              <Text style={{ fontSize: 10, color: colors.teal }}>
+                auto-estimated
+              </Text>
+            )}
+          </View>
           <BottomSheetTextInput
             value={quotedTime}
-            onChangeText={setQuotedTime}
-            placeholder='15'
+            onChangeText={v => {
+              setQuotedTime(v)
+              setQuotedTimeEdited(true)
+            }}
+            placeholder={
+              estimatedWait !== null ? String(Math.max(estimatedWait, 5)) : '15'
+            }
             placeholderTextColor={colors.muted}
             keyboardType='number-pad'
-            style={inputStyle}
+            style={[
+              inputStyle,
+              !quotedTimeEdited &&
+                estimatedWait !== null && { borderColor: colors.teal + '80' }
+            ]}
           />
         </View>
       </View>
       <View>
-        <Text className='text-label text-sm mb-1.5 font-medium'>Phone (optional)</Text>
+        <Text className='text-label text-sm mb-1.5 font-medium'>
+          Phone (optional)
+        </Text>
         <BottomSheetTextInput
           value={phone}
           onChangeText={setPhone}
@@ -281,7 +416,9 @@ const AddEntryForm: React.FC<{
         />
       </View>
       <View>
-        <Text className='text-label text-sm mb-1.5 font-medium'>Notes (optional)</Text>
+        <Text className='text-label text-sm mb-1.5 font-medium'>
+          Notes (optional)
+        </Text>
         <BottomSheetTextInput
           value={notes}
           onChangeText={setNotes}
@@ -339,7 +476,10 @@ const TablePickerModal: React.FC<{
   )
 
   const recommendedTables = useMemo(
-    () => availableTables.filter(t => (t.capacity || 0) >= (entry?.party_size || 0)),
+    () =>
+      availableTables.filter(
+        t => (t.capacity || 0) >= (entry?.party_size || 0)
+      ),
     [availableTables, entry]
   )
 
@@ -383,8 +523,12 @@ const TablePickerModal: React.FC<{
             </Text>
             <Text className='text-muted text-base text-center mb-6'>
               Party of {entry?.party_size} at{' '}
-              <Text className='text-white font-semibold'>{pendingTable.name}</Text>
-              {pendingTable.capacity ? ` (capacity ${pendingTable.capacity})` : ''}
+              <Text className='text-white font-semibold'>
+                {pendingTable.name}
+              </Text>
+              {pendingTable.capacity
+                ? ` (capacity ${pendingTable.capacity})`
+                : ''}
             </Text>
             <View className='flex-row gap-3 w-full px-4'>
               <TouchableOpacity
@@ -408,7 +552,8 @@ const TablePickerModal: React.FC<{
               Seat {entry?.party_name}
             </Text>
             <Text className='text-muted text-sm mb-4'>
-              Party of {entry?.party_size} — Quoted {entry?.quoted_wait_minutes}m
+              Party of {entry?.party_size} — Quoted {entry?.quoted_wait_minutes}
+              m
             </Text>
             <Text className='text-teal font-semibold text-xs uppercase tracking-wider mb-3'>
               Available Tables
@@ -422,8 +567,12 @@ const TablePickerModal: React.FC<{
                   className='bg-card p-4 rounded-xl mb-2.5 flex-row justify-between items-center border border-border'
                 >
                   <View>
-                    <Text className='text-white text-base font-semibold'>{item.name}</Text>
-                    <Text className='text-muted text-sm'>Capacity: {item.capacity}</Text>
+                    <Text className='text-white text-base font-semibold'>
+                      {item.name}
+                    </Text>
+                    <Text className='text-muted text-sm'>
+                      Capacity: {item.capacity}
+                    </Text>
                   </View>
                   <View className='bg-teal px-4 py-2 rounded-lg'>
                     <Text className='text-white font-semibold'>Seat</Text>
@@ -448,7 +597,7 @@ const TablePickerModal: React.FC<{
 
 // ── Main Screen ───────────────────────────────────────────────
 
-export default function WaitlistScreen() {
+export default function WaitlistScreen () {
   const router = useRouter()
   const { show } = useToast()
 
@@ -456,7 +605,9 @@ export default function WaitlistScreen() {
   const isLoading = useWaitlistStore(s => s.isLoading)
   const fetchWaitlist = useWaitlistStore(s => s.fetchWaitlist)
   const addToWaitlistAsync = useWaitlistStore(s => s.addToWaitlistAsync)
-  const removeFromWaitlistAsync = useWaitlistStore(s => s.removeFromWaitlistAsync)
+  const removeFromWaitlistAsync = useWaitlistStore(
+    s => s.removeFromWaitlistAsync
+  )
   const seatFromWaitlistAsync = useWaitlistStore(s => s.seatFromWaitlistAsync)
   const startNewOrder = useOrderStore(s => s.startNewOrder)
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
@@ -510,7 +661,13 @@ export default function WaitlistScreen() {
       setTablePickerOpen(false)
       setSelectedEntry(null)
     },
-    [selectedEntry, seatFromWaitlistAsync, startNewOrder, setActiveOrder, router]
+    [
+      selectedEntry,
+      seatFromWaitlistAsync,
+      startNewOrder,
+      setActiveOrder,
+      router
+    ]
   )
 
   const handleNotify = useCallback(
@@ -548,7 +705,11 @@ export default function WaitlistScreen() {
             })
           }
         } else if (result.sms) {
-          show({ title: 'Notified', message: `SMS sent to ${entry.party_name}`, type: 'success' })
+          show({
+            title: 'Notified',
+            message: `SMS sent to ${entry.party_name}`,
+            type: 'success'
+          })
         } else if (result.reason === 'no_valid_phone') {
           show({
             title: 'Invalid Phone Number',
@@ -569,7 +730,9 @@ export default function WaitlistScreen() {
       } catch (err: any) {
         show({
           title: 'Could Not Notify',
-          message: err.message || `Failed to notify ${entry.party_name}. Please try again.`,
+          message:
+            err.message ||
+            `Failed to notify ${entry.party_name}. Please try again.`,
           type: 'error'
         })
       }
@@ -657,6 +820,7 @@ export default function WaitlistScreen() {
           onSubmit={handleAddEntry}
           onCancel={() => setViewMode('list')}
           isLoading={isLoading}
+          waitlist={waitlist}
         />
       ) : isLoading && waitlist.length === 0 ? (
         <View className='flex-1 items-center justify-center py-12'>
@@ -674,7 +838,9 @@ export default function WaitlistScreen() {
         <View className='flex-1 items-center justify-center py-12'>
           <Clock size={48} color={colors.muted} />
           <Text className='text-muted text-lg mt-4'>No parties waiting</Text>
-          <Text className='text-muted text-sm mt-1'>Tap the + to add someone</Text>
+          <Text className='text-muted text-sm mt-1'>
+            Tap the + to add someone
+          </Text>
         </View>
       )}
 
@@ -690,16 +856,16 @@ export default function WaitlistScreen() {
       <ConfirmationModal
         isOpen={!!itemToDelete}
         title='Remove from Waitlist'
-        message={`Remove ${itemToDelete?.party_name} from the waitlist?`}
+        description={`Remove ${itemToDelete?.party_name} from the waitlist?`}
         confirmText='Remove'
-        confirmStyle='destructive'
         onConfirm={confirmDelete}
-        onCancel={() => setItemToDelete(null)}
+        onClose={() => setItemToDelete(null)}
       />
 
       {/* Notice Modal */}
       {notice && (
         <AppNoticeModal
+          visible={!!notice}
           title={notice.title}
           description={notice.description}
           variant={notice.variant}

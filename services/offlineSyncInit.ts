@@ -2039,12 +2039,34 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   : ""),
             );
 
-            // If zero items resolved, retry later — don't update order status yet
+            // If zero items resolved via ID map, try falling back to live store:
+            // the items may have already synced and their local→db mapping was
+            // never written to the resolveItemId map (race condition). Look up
+            // db_order_item_id directly from ordersById for any matching local IDs.
             if (resolvedItemIds.length === 0) {
-              console.log(
-                `[OfflineSync:send_to_kitchen] No items resolved yet, will retry`,
+              const storeOrders = _getOrderStore().getState().ordersById;
+              const liveOrder = Object.values(storeOrders).find(
+                (o) => o.db_order_id === resolvedOrderId,
               );
-              return false;
+              if (liveOrder) {
+                for (const localItemId of unresolvedLocalItemIds) {
+                  const liveItem = liveOrder.items.find(
+                    (i: any) => i.id === localItemId && i.db_order_item_id,
+                  );
+                  if (liveItem?.db_order_item_id) {
+                    resolvedItemIds.push(liveItem.db_order_item_id);
+                  }
+                }
+              }
+              // If still zero after live store fallback, items aren't synced yet — retry
+              if (resolvedItemIds.length === 0) {
+                console.log(
+                  `[OfflineSync:send_to_kitchen] No items resolved yet, will retry`,
+                );
+                return false;
+              }
+              // Resolved via live store — clear unresolved list so we don't re-queue them
+              unresolvedLocalItemIds = [];
             }
           }
 

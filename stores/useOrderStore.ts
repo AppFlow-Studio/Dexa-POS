@@ -1321,6 +1321,21 @@ const addItemToBackend = async (
           addResult.order_item_id &&
           !hasPendingSiblings
         ) {
+          // Reconcile quantity before kitchen send (same as regular item path)
+          const localQuantity = postSyncItem.quantity
+          const syncedQuantity = item.quantity
+          if (localQuantity !== syncedQuantity) {
+            try {
+              await OrderService.updateOrderItemQuantity(
+                supabase,
+                addResult.order_item_id,
+                localQuantity
+              )
+            } catch (err) {
+              console.warn('[addItemToBackend] Open item quantity reconciliation failed:', err)
+            }
+          }
+
           // Collect ALL fired items for this order (not just this one)
           const allDbItemIds = (postSyncOrder?.items ?? [])
             .filter(i => i.kitchen_status === kitchenSentStatus && i.db_order_item_id)
@@ -1329,6 +1344,15 @@ const addItemToBackend = async (
             `[addItemToBackend] Last item synced, batch-sending ${allDbItemIds.length} items to kitchen`
           )
           try {
+            // Update order status first (draft → sent_to_kitchen) before setting
+            // item statuses — the DB constraint rejects sent_to_kitchen_at on draft orders.
+            if (dbOrderId) {
+              await OrderService.updateOrderStatus(
+                supabase,
+                dbOrderId,
+                getOrderSentStatus()
+              )
+            }
             await OrderService.bulkUpdateOrderItemStatus(
               supabase,
               allDbItemIds,
@@ -1599,11 +1623,38 @@ const addItemToBackend = async (
       const hasPendingSiblings2 = useOrderStore
         .getState()
         .hasPendingSyncs(resolveOrderKey())
+      console.log(
+        `[RetroKitchen] item=${item.id} kitchen_status=${postSyncItem?.kitchen_status} expected=${kitchenSentStatus2} hasPendingSiblings=${hasPendingSiblings2} db_id=${addResult.order_item_id}`
+      )
       if (
         postSyncItem?.kitchen_status === kitchenSentStatus2 &&
         addResult.order_item_id &&
         !hasPendingSiblings2
       ) {
+        // Before sending to kitchen, reconcile quantity: the user may have
+        // incremented this item while it was syncing (no db_order_item_id yet),
+        // so those increments were queued in offlineSyncService instead of sent
+        // to the DB. The item was just created with the original quantity. We
+        // must update the DB to the current local quantity NOW, before the
+        // kitchen broadcast fires, so the KDS receives the correct quantity.
+        const localQuantity = postSyncItem.quantity
+        const syncedQuantity = item.quantity // snapshot quantity used at add time
+        if (localQuantity !== syncedQuantity) {
+          if (__DEV__)
+            console.log(
+              `[addItemToBackend] Quantity drift detected (local=${localQuantity} vs synced=${syncedQuantity}), reconciling before kitchen send`
+            )
+          try {
+            await OrderService.updateOrderItemQuantity(
+              supabase,
+              addResult.order_item_id,
+              localQuantity
+            )
+          } catch (err) {
+            console.warn('[addItemToBackend] Quantity reconciliation failed:', err)
+          }
+        }
+
         // Collect ALL fired items for this order (not just this one)
         const allDbItemIds2 = (postSyncOrder?.items ?? [])
           .filter(i => i.kitchen_status === kitchenSentStatus2 && i.db_order_item_id)
@@ -1613,6 +1664,17 @@ const addItemToBackend = async (
             `[addItemToBackend] Last item synced, batch-sending ${allDbItemIds2.length} items to kitchen`
           )
         try {
+          // Must update order status BEFORE bulk-updating item statuses.
+          // The order was created as 'draft' in the backend; bulkUpdateOrderItemStatus
+          // sets sent_to_kitchen_at on the order which is rejected if still draft
+          // (valid_status_transitions constraint). Update order status first (idempotent).
+          if (dbOrderId) {
+            await OrderService.updateOrderStatus(
+              supabase,
+              dbOrderId,
+              getOrderSentStatus()
+            )
+          }
           await OrderService.bulkUpdateOrderItemStatus(
             supabase,
             allDbItemIds2,
@@ -3069,10 +3131,16 @@ export const useOrderStore = create<OrderState>()(
             // PERFORMANCE FIX: Skip broadcast processing while user has pending local changes
             // This prevents cascading re-renders during rapid item additions
             // Timeout after 15s to prevent permanent blocking if item sync fails
+            // NOTE: Only block if the user is still *adding* items (kitchen_status null/'new').
+            // Once all new items have been sent to kitchen, the block must not apply — the
+            // backend's order status transition (draft→sent_to_kitchen) needs to propagate.
             if (isOwnStationOrder && localOrder) {
               // Use .some() for the common no-pending-items path (short-circuits, no allocation)
               const hasPendingItems = localOrder.items.some(
-                item => !item.db_order_item_id && !item.isDraft
+                item =>
+                  !item.db_order_item_id &&
+                  !item.isDraft &&
+                  (!item.kitchen_status || item.kitchen_status === 'new')
               )
               if (hasPendingItems) {
                 if (!pendingItemsBlockStart[dbOrderId]) {
@@ -3080,7 +3148,10 @@ export const useOrderStore = create<OrderState>()(
                 }
                 // Only allocate filtered array when we need the count for timeout calc
                 const pendingCount = localOrder.items.filter(
-                  item => !item.db_order_item_id && !item.isDraft
+                  item =>
+                    !item.db_order_item_id &&
+                    !item.isDraft &&
+                    (!item.kitchen_status || item.kitchen_status === 'new')
                 ).length
                 const dynamicTimeout = getPendingItemsBlockTimeout(pendingCount)
                 if (
@@ -3314,9 +3385,18 @@ export const useOrderStore = create<OrderState>()(
                                 KITCHEN_STATUS_RANK[
                                   broadcastItem.kitchen_status ?? 'new'
                                 ] ?? 0
+                              // Preserve local quantity if a quantity sync is in-flight.
+                              // The broadcast may arrive before updateOrderItemQuantity
+                              // completes, carrying the old quantity from the DB.
+                              const hasPendingQuantitySync =
+                                useSyncStatusStore.getState().itemSyncStatus.get(localItem.id) === 'pending' ||
+                                useSyncStatusStore.getState().itemSyncStatus.get(localItem.id) === 'syncing'
                               return {
                                 ...broadcastItem,
                                 id: localItem.id, // Keep local ID
+                                ...(hasPendingQuantitySync
+                                  ? { quantity: localItem.quantity }
+                                  : {}),
                                 ...(localKRank > broadcastKRank
                                   ? {
                                       kitchen_status: localItem.kitchen_status,
@@ -3533,9 +3613,24 @@ export const useOrderStore = create<OrderState>()(
                     // Coalesced invalidation — batches rapid broadcast updates
                     scheduleCalculationCacheInvalidation()
 
-                    // Full sync if status changed,
+                    // Full sync if status changed and backend is AHEAD of local.
+                    // Skip if local is already ahead (e.g. local=sent_to_kitchen, backend=draft
+                    // during retroactive kitchen send) — the full fetch would overwrite
+                    // optimistic kitchen_status with stale backend data.
                     if (localOrder.order_status !== backendOrder.status) {
-                      get()._debouncedOrderRefresh(dbOrderId)
+                      const ORDER_STATUS_RANK: Record<string, number> = {
+                        draft: 0,
+                        sent_to_kitchen: 1,
+                        preparing: 1,
+                        ready: 2,
+                        closed: 3,
+                        void: 4
+                      }
+                      const localRank = ORDER_STATUS_RANK[localOrder.order_status ?? ''] ?? 0
+                      const backendRank = ORDER_STATUS_RANK[backendOrder.status ?? ''] ?? 0
+                      if (backendRank >= localRank) {
+                        get()._debouncedOrderRefresh(dbOrderId)
+                      }
                     }
                   }
                   break
@@ -4326,41 +4421,65 @@ export const useOrderStore = create<OrderState>()(
             const syncStore = useSyncStatusStore.getState()
             return order.items.some(item => {
               if (item.isDraft) return false
+              // Item still being added to backend (no db_order_item_id yet)
+              if (!item.db_order_item_id) return true
               const status = syncStore.itemSyncStatus.get(item.id)
               return status === 'pending' || status === 'syncing'
             })
           },
 
           waitForPendingSyncs: async (orderId: string) => {
-            const { ordersById } = get()
-            const order = ordersById[orderId]
-            if (!order) return
+            const TIMEOUT_MS = 15000
+            const POLL_INTERVAL_MS = 100
+            const start = Date.now()
 
-            // Phase 7D: Get item IDs with pending sync status from sync store
-            const syncStore = useSyncStatusStore.getState()
-            const pendingItemIds = order.items
-              .filter(item => {
+            // Wait until every non-draft item in the order has a db_order_item_id
+            // (meaning addItemToBackend has completed for it) AND no item has a
+            // pending/syncing status in useSyncStatusStore (for quantity updates etc).
+            // Also awaits any promises registered via registerSyncOperation.
+            while (true) {
+              const order = get().ordersById[orderId]
+              if (!order) return
+
+              const syncStore = useSyncStatusStore.getState()
+
+              // Check 1: any item missing db_order_item_id (still being added to backend)
+              const hasUnsynced = order.items.some(
+                item => !item.isDraft && !item.db_order_item_id
+              )
+
+              // Check 2: any item with pending/syncing status (quantity updates etc)
+              const hasPendingStatus = order.items.some(item => {
                 if (item.isDraft) return false
                 const status = syncStore.itemSyncStatus.get(item.id)
                 return status === 'pending' || status === 'syncing'
               })
-              .map(item => item.id)
 
-            // Wait for all pending sync operations
-            const promises: Promise<boolean>[] = []
-            for (const itemId of pendingItemIds) {
-              const promise = pendingSyncOperations.get(itemId)
-              if (promise) {
-                promises.push(promise)
+              // Check 3: any registered promise still in-flight
+              const registeredPromises: Promise<boolean>[] = []
+              for (const item of order.items) {
+                const p = pendingSyncOperations.get(item.id)
+                if (p) registeredPromises.push(p)
               }
-            }
 
-            if (promises.length > 0) {
-              console.log(
-                `[SyncBarrier] Waiting for ${promises.length} pending sync operations...`
-              )
-              await Promise.all(promises)
-              console.log('[SyncBarrier] All sync operations completed')
+              if (!hasUnsynced && !hasPendingStatus && registeredPromises.length === 0) {
+                return // All clear
+              }
+
+              if (Date.now() - start >= TIMEOUT_MS) {
+                console.warn('[SyncBarrier] Timeout waiting for item syncs — proceeding anyway')
+                return
+              }
+
+              // Await registered promises if any, otherwise poll
+              if (registeredPromises.length > 0) {
+                await Promise.race([
+                  Promise.all(registeredPromises),
+                  new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+                ])
+              } else {
+                await new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+              }
             }
           },
 
@@ -5944,9 +6063,22 @@ export const useOrderStore = create<OrderState>()(
               return
             }
 
-            // 2. Update quantity on DB — the broadcast trigger fires automatically,
-            //    so the KDS sees the new quantity without any extra send-to-kitchen call.
-            OrderService.updateOrderItemQuantity(supabase, dbItemId, newQuantity)
+            // 2. Update quantity on DB — chain onto any existing in-flight promise
+            //    for this item so rapid increments are serialized and the final
+            //    quantity (as seen in local state) is always what gets sent.
+            //    Chaining prevents the 2nd call from racing the 1st and sending
+            //    a stale value, and prevents registerSyncOperation from losing
+            //    the 1st promise (which would break waitForPendingSyncs).
+            useSyncStatusStore.getState().setSyncStatus(itemId, 'pending')
+            const existingPromise = pendingSyncOperations.get(itemId) ?? Promise.resolve(true)
+            const quantityUpdatePromise: Promise<boolean> = existingPromise
+              .then(() => {
+                // Re-read quantity from store — a later increment may have raised it further
+                const latestOrder = get().ordersById[activeOrderId]
+                const latestItem = latestOrder?.items.find(i => i.id === itemId)
+                const latestQuantity = latestItem?.quantity ?? newQuantity
+                return OrderService.updateOrderItemQuantity(supabase, dbItemId, latestQuantity)
+              })
               .then(response => {
                 if (response.data?.success) {
                   get().applyBackendItemData(itemId, {
@@ -5962,16 +6094,26 @@ export const useOrderStore = create<OrderState>()(
                     sync_version: response.data.sync_version
                   })
                 }
+                // Set synced AFTER applyBackendItemData so waitForPendingSyncs
+                // only unblocks once the quantity is fully written to state.
+                useSyncStatusStore.getState().setSyncStatus(itemId, 'synced')
+                return true
               })
               .catch(async err => {
                 console.error('[incrementItemQuantity] sync failed:', err)
+                useSyncStatusStore.getState().setSyncStatus(itemId, 'synced') // unblock kitchen send
                 await queueOperation({
                   type: 'update_item_quantity',
                   params: { orderItemId: dbItemId, quantity: newQuantity },
                   localOrderId: activeOrderId,
                   localItemId: itemId
                 })
+                return false
               })
+              .finally(() => {
+                get().unregisterSyncOperation(itemId)
+              })
+            get().registerSyncOperation(itemId, quantityUpdatePromise)
           },
 
           confirmDraftItem: itemId => {
@@ -8629,6 +8771,11 @@ export const useOrderStore = create<OrderState>()(
               })
             ]
 
+            // Capture backend-facing draft status BEFORE mutating local state —
+            // the local set() below changes order_status from 'draft' to 'sent_to_kitchen'
+            // so freshOrder.order_status after the await would be wrong for this decision.
+            const wasBackendDraft = currentOrder.order_status === 'draft'
+
             // O(1) update via ordersById
             set(state => {
               const order = state.ordersById[activeOrderId]
@@ -8644,28 +8791,73 @@ export const useOrderStore = create<OrderState>()(
 
             // No need to manually update `orders` array - the subscription will handle it.
 
+            // Show toast immediately — local state is already updated, UI is responsive.
+            toastService.show({
+              title: 'Items Sent',
+              message: `${newItems.length} new item${
+                newItems.length > 1 ? 's' : ''
+              } sent to the kitchen.`,
+              type: 'success'
+            })
+
             // ================================================================
             // OFFLINE-FIRST: Queue or sync backend operation
             // ================================================================
-            // Local state is already updated above - now handle backend sync
+            // Local state is already updated above - now handle backend sync.
+            // Wait for any in-flight quantity updates (e.g. from incrementItemQuantity)
+            // to complete before broadcasting kitchen status, so the KDS receives
+            // the correct quantity.
+            await get().waitForPendingSyncs(activeOrderId)
+
+            // Re-read fresh state after the await — quantity syncs and item syncs
+            // may have updated ordersById (assigned db_order_item_ids, new quantities)
+            // during the wait. Using stale snapshot data here causes data loss.
+            const freshOrder = get().ordersById[activeOrderId]
+            if (!freshOrder) return
+
+            // Resolve which items are being sent by matching local IDs captured before the await.
+            // Exclude items that went through the retroactive kitchen-send path in addItemToBackend:
+            // those had no db_order_item_id at press-time, got it during the wait, and
+            // addItemToBackend already called bulkUpdateOrderItemStatus for them.
+            const sentLocalIds = new Set(newItems.map(item => item.id))
+            const hadDbIdAtPressTime = new Set(
+              newItems.filter(item => !!item.db_order_item_id).map(item => item.id)
+            )
+            console.log(
+              `[SendKitchen] After wait: sentLocalIds=${sentLocalIds.size} hadDbIdAtPressTime=${hadDbIdAtPressTime.size} freshItems=${freshOrder.items.length}`
+            )
+            const freshSentItems = freshOrder.items.filter(item => {
+              if (!sentLocalIds.has(item.id)) return false
+              // If item had no db_order_item_id when Send was pressed, the retroactive
+              // path in addItemToBackend already sent it to kitchen — skip it here.
+              if (!hadDbIdAtPressTime.has(item.id)) return false
+              return true
+            })
+            console.log(
+              `[SendKitchen] freshSentItems=${freshSentItems.length} (items with db_id at press time)`
+            )
+
             const supabase = getOrderStoreSupabaseClient()
             const isOnlineNow = getIsOnline()
 
             // Get local item IDs for queuing (will be resolved to db_order_item_ids during sync)
-            const localItemIds = newItems.map(item => item.id)
+            const localItemIds = freshSentItems.map(item => item.id)
 
-            if (isOnlineNow && supabase && currentOrder.db_order_id) {
+            if (isOnlineNow && supabase && freshOrder.db_order_id) {
               // Online + order synced: sync immediately
-              const dbItemIds = newItems
+              const dbItemIds = freshSentItems
                 .map(item => item.db_order_item_id)
                 .filter((id): id is string => !!id)
 
-              const isDraft = currentOrder.order_status === 'draft'
-              const backendStatus = isDraft ? getOrderSentStatus() : 'preparing'
+              const backendStatus = wasBackendDraft ? getOrderSentStatus() : 'preparing'
 
               const hasPending = get().hasPendingSyncs(activeOrderId)
 
-              if (hasPending || (dbItemIds.length === 0 && newItems.length > 0)) {
+              if (freshSentItems.length === 0) {
+                // All items were handled by the retroactive path in addItemToBackend
+                // (they had no db_order_item_id at press-time and were sent during sync).
+                // Nothing left to do here.
+              } else if (hasPending || (dbItemIds.length === 0 && freshSentItems.length > 0)) {
                 // Items still syncing — defer to addItemToBackend retroactive path
                 // which will batch-send once all items are synced.
                 console.log(
@@ -8677,13 +8869,13 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderId
                 )
               } else if (dbItemIds.length > 0) {
-                if (isDraft) {
+                if (wasBackendDraft) {
                   // Draft order: must update order status FIRST (draft -> sent_to_kitchen/preparing)
                   // before bulk_update_order_item_status can set sent_to_kitchen_at on the order
                   // (valid_status_transitions constraint rejects sent_to_kitchen_at on draft orders)
                   OrderService.updateOrderStatus(
                     supabase,
-                    currentOrder.db_order_id!,
+                    freshOrder.db_order_id!,
                     getOrderSentStatus()
                   )
                     .then(({ error }) => {
@@ -8750,7 +8942,7 @@ export const useOrderStore = create<OrderState>()(
                       }
                       // Update order status (bulk_update already auto-transitions, but ensure correct status)
                       return supabase.rpc('update_order_status', {
-                        p_order_id: currentOrder.db_order_id,
+                        p_order_id: freshOrder.db_order_id,
                         p_new_status: backendStatus
                       })
                     })
@@ -8787,14 +8979,6 @@ export const useOrderStore = create<OrderState>()(
                 activeOrderId
               )
             }
-
-            toastService.show({
-              title: 'Items Sent',
-              message: `${newItems.length} new item${
-                newItems.length > 1 ? 's' : ''
-              } sent to the kitchen.`,
-              type: 'success'
-            })
           },
 
           sendNewItemsToKitchenForOrder: async (orderId: string) => {
