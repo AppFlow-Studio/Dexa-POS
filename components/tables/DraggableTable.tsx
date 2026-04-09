@@ -4,6 +4,7 @@ import {
   registerTablePosition,
   unregisterTablePosition
 } from '@/lib/tablePositionRegistry'
+import { findWallCornerSnap, getWallEdgeFlags, WallEdgeFlags } from '@/lib/wallCornerSnap'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useOrderByAnyId, useOrderTotals } from '@/stores/selectors/orderSelectors'
@@ -15,7 +16,7 @@ import { useReservationStore } from '@/stores/useReservationStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { BrushCleaning } from 'lucide-react-native'
-import React, { useEffect, useMemo } from 'react'
+import React, { useCallback, useEffect, useMemo } from 'react'
 import { Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
@@ -238,6 +239,26 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Type check: only table/booth categories are interactive in normal view
   const isTableType = table.category === 'table' || table.category === 'booth'
+  const isWall = table.shape_id === 'wall-section'
+
+  // Stable key that changes whenever any wall's geometry changes — used to invalidate
+  // edge flags without subscribing to a new array reference every render.
+  const wallGeometryKey = useFloorPlanStore(s =>
+    isWall
+      ? s.tables
+          .filter(t => t.shape_id === 'wall-section')
+          .map(t => `${t.id}:${t.x},${t.y},${t.width},${t.height},${t.rotation}`)
+          .join('|')
+      : ''
+  )
+
+  const wallEdgeFlags: WallEdgeFlags = useMemo(() => {
+    if (!isWall) return { hideTop: false, hideRight: false, hideBottom: false, hideLeft: false }
+    const allWalls = useFloorPlanStore.getState().tables.filter(t => t.shape_id === 'wall-section')
+    return getWallEdgeFlags(table, allWalls)
+  // wallGeometryKey is a stable string that changes only when wall geometry changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWall, wallGeometryKey])
 
   // --- COMPUTE EFFECTIVE DIMENSIONS ---
   const effectiveWidth = table.width ?? shapeDef?.width ?? 100
@@ -458,7 +479,31 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return () => unregisterTablePosition(table.id)
   }, [table.id])
 
-  const GRID_SIZE = 20
+  const GRID_SIZE = 5
+
+  // Called on JS thread at drag end: resolve final snapped position and persist.
+  const finalizeDrop = useCallback(
+    (rawX: number, rawY: number, rot: number) => {
+      let finalX: number
+      let finalY: number
+
+      if (isWall) {
+        // Walls: try corner snap first, fall back to grid
+        const snap = findWallCornerSnap(rawX, rawY, effectiveWidth, effectiveHeight, rot, table.id)
+        finalX = snap ? snap.x : Math.round(rawX / GRID_SIZE) * GRID_SIZE
+        finalY = snap ? snap.y : Math.round(rawY / GRID_SIZE) * GRID_SIZE
+      } else {
+        finalX = Math.round(rawX / GRID_SIZE) * GRID_SIZE
+        finalY = Math.round(rawY / GRID_SIZE) * GRID_SIZE
+      }
+
+      translateX.value = finalX
+      translateY.value = finalY
+      updateTablePosition(table.id, finalX, finalY, rot)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isWall, effectiveWidth, effectiveHeight, table.id]
+  )
 
   const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
@@ -471,20 +516,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       dragContext.value = { x: translateX.value, y: translateY.value }
     })
     .onUpdate(event => {
-      // Snap to grid while dragging — object locks to nearest cell as you move
-      const rawX = dragContext.value.x + event.translationX / canvasScale.value
-      const rawY = dragContext.value.y + event.translationY / canvasScale.value
-      translateX.value = Math.round(rawX / GRID_SIZE) * GRID_SIZE
-      translateY.value = Math.round(rawY / GRID_SIZE) * GRID_SIZE
+      // Free drag — follows finger exactly, no grid stutter
+      translateX.value = dragContext.value.x + event.translationX / canvasScale.value
+      translateY.value = dragContext.value.y + event.translationY / canvasScale.value
     })
     .onEnd(() => {
-      // Already snapped — persist final position
-      runOnJS(updateTablePosition)(
-        table.id,
-        translateX.value,
-        translateY.value,
-        rotation.value
-      )
+      // Snap to grid (or wall corner for walls) only on release
+      runOnJS(finalizeDrop)(translateX.value, translateY.value, rotation.value)
     })
 
   // Rotation gesture: disabled in favor of UI buttons in PropertiesPanel
@@ -529,27 +567,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ? tapGesture
     : Gesture.Race(longPressGesture, tapGesture)
 
-  const animatedStyle = useAnimatedStyle(() => {
-    const hasAttention = attentionShared.value
-    const showStaticBorder = !hasAttention && isSelected
-
-    return {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      transform: [
-        { translateX: translateX.value },
-        { translateY: translateY.value },
-        { rotate: `${rotation.value}deg` },
-        { scale: entryScale.value * pulseScale.value }
-      ],
-      opacity: entryOpacity.value,
-      borderWidth: showStaticBorder ? 2 : 0,
-      borderColor: isSelected ? colors.info : 'transparent',
-      borderRadius: 18,
-      padding: showStaticBorder ? 4 : 0
-    }
-  })
+  const animatedStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { rotate: `${rotation.value}deg` },
+      { scale: entryScale.value * pulseScale.value }
+    ],
+    opacity: entryOpacity.value
+  }))
 
   const orderTotals = useOrderTotals(effectiveOrder?.id ?? null)
   const orderTotal = orderTotals?.total ?? 0
@@ -715,6 +744,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             <TableComponent
               color={isTableType ? tableColor : colors.label}
               {...(isTableType && { chairColor: tableColor })}
+              {...(table.shape_id === 'label-text' && { label: table.name })}
+              {...(isWall && wallEdgeFlags)}
               width={effectiveWidth}
               height={effectiveHeight}
             />
@@ -728,6 +759,23 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               }}
             />
           )}
+          {/* Selection border — absolutely positioned so it never affects layout/size */}
+          {isSelected && (
+            <View
+              pointerEvents='none'
+              style={{
+                position: 'absolute',
+                top: -3,
+                left: -3,
+                right: -3,
+                bottom: -3,
+                borderWidth: 2,
+                borderColor: colors.info,
+                borderRadius: 18,
+              }}
+            />
+          )}
+
           <View
             pointerEvents='none'
             style={{
