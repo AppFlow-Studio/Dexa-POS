@@ -2,20 +2,20 @@
 
 export {
   type DeviceCapabilities,
-  type DeviceChangeResult,
   detectDeviceCapabilities,
   detectAndStoreCapabilities,
   updateStationCapabilities,
-  handleDeviceChangeIfNeeded,
-  ensureBuiltinPrinterProvisioned,
-  ensureDejavooPrinterProvisioned,
-  verifyDejavooPrinter,
-  provisionStarPrinter,
-  verifyStarPrinter,
   getCachedCapabilities,
   setCachedCapabilities,
   invalidateCache,
 } from "./deviceDetection";
+
+export {
+  addStarPrinter,
+  addBuiltinPrinter,
+  addDejavooPrinter,
+  testPrinterConnection,
+} from "./printerProvisioning";
 
 export {
   startHeartbeat,
