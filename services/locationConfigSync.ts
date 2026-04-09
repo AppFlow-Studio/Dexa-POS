@@ -16,7 +16,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useKDSStore } from '@/stores/useKDSStore'
-import type { ConfigNamespace } from '@/types/locationConfig'
+import type { ConfigNamespace, LocationPosConfig } from '@/types/locationConfig'
+import { DEFAULT_POS_CONFIG } from '@/types/locationConfig'
 
 const LOG_TAG = '[LocationConfigSync]'
 
@@ -183,6 +184,11 @@ async function _fetchAndHydrate(supabase: SupabaseClient, locationId: string) {
     useLocationConfigStore.getState().hydrateConfig(locationId, config)
     console.log(`${LOG_TAG} Hydrated config for location ${locationId}`)
 
+    // Backfill: if any namespace in the DB is missing fields that have defaults,
+    // write the complete merged config back so the DB is fully populated.
+    // This is a one-time heal — subsequent updates are partial and that's fine.
+    _backfillMissingDefaults(supabase, locationId, config)
+
     // Sync resolved workflowMode to selectedStore for backward compat
     const resolvedMode = useLocationConfigStore.getState().config.kds.workflowMode
     const current = useStoreSettingsStore.getState().selectedStore
@@ -194,6 +200,51 @@ async function _fetchAndHydrate(supabase: SupabaseClient, locationId: string) {
     }
   } catch (err) {
     console.error(`${LOG_TAG} Failed to hydrate config:`, err)
+  }
+}
+
+/**
+ * Backfill missing default fields into the DB.
+ * If a namespace exists in the DB but is missing fields that have defaults,
+ * write the full merged config back so the DB is complete.
+ * Uses the RPC (deep merge) so it won't overwrite existing values.
+ */
+async function _backfillMissingDefaults(
+  supabase: SupabaseClient,
+  locationId: string,
+  dbConfig: Record<string, any>
+) {
+  const namespaces: ConfigNamespace[] = [
+    'dining', 'kds', 'printing', 'cashDrawer',
+    'onlineOrdering', 'tips', 'preAuth', 'waitlist', 'payment',
+    'notifications',
+  ]
+
+  for (const ns of namespaces) {
+    const dbNamespace = dbConfig[ns]
+    const defaults = DEFAULT_POS_CONFIG[ns] as unknown as Record<string, unknown>
+    if (!defaults) continue
+
+    // Find fields present in defaults but missing from DB
+    const missingFields: Record<string, unknown> = {}
+    for (const key of Object.keys(defaults)) {
+      if (!dbNamespace || dbNamespace[key] === undefined) {
+        missingFields[key] = defaults[key]
+      }
+    }
+
+    if (Object.keys(missingFields).length > 0) {
+      console.log(`${LOG_TAG} Backfilling ${Object.keys(missingFields).length} missing defaults for ${ns}:`, Object.keys(missingFields))
+      try {
+        await supabase.rpc('update_location_pos_config', {
+          p_location_id: locationId,
+          p_namespace: ns,
+          p_config: missingFields,
+        })
+      } catch (err) {
+        console.warn(`${LOG_TAG} Backfill failed for ${ns}:`, err)
+      }
+    }
   }
 }
 

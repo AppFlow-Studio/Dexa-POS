@@ -253,6 +253,11 @@ const DevicesConnectionsScreen = () => {
   }>({});
   const [isSavingPrinter, setIsSavingPrinter] = useState(false);
 
+  // Receipt / Kitchen picker state
+  const [showReceiptPicker, setShowReceiptPicker] = useState(false);
+  const [showKitchenPicker, setShowKitchenPicker] = useState(false);
+  const [pendingReceiptId, setPendingReceiptId] = useState<string | "none">("none");
+
   // Discovery UI state
   const [scanSecondsRemaining, setScanSecondsRemaining] = useState<number | null>(null);
   const [starScanError, setStarScanError] = useState<string | null>(null);
@@ -634,6 +639,60 @@ const DevicesConnectionsScreen = () => {
         },
       },
     ]);
+  };
+
+  // ---------------------------------------------------------------------------
+  // RECEIPT / KITCHEN ASSIGNMENT
+  // ---------------------------------------------------------------------------
+
+  const receiptPrinter = scopedPrinters.find((p) => p.isActive && p.isDefaultReceipt) ?? null;
+  const kitchenPrinters = scopedPrinters.filter((p) =>
+    p.isActive && (p.printerRole === "kitchen" || p.printerRole === "bar" || p.isDefaultKitchen)
+  );
+  const receiptCandidates = scopedPrinters.filter((p) => p.isActive && p.printerRole !== "label");
+  const kitchenCandidates = scopedPrinters.filter((p) =>
+    p.isActive && !kitchenPrinters.some((k) => k.id === p.id)
+  );
+
+  const openReceiptPicker = () => {
+    setPendingReceiptId(receiptPrinter?.id ?? "none");
+    setShowReceiptPicker(true);
+  };
+
+  const handleApplyReceiptSelection = async () => {
+    setShowReceiptPicker(false);
+    try {
+      // Unset previous default receipt
+      if (receiptPrinter && (pendingReceiptId === "none" || pendingReceiptId !== receiptPrinter.id)) {
+        await updatePrinterConfig(receiptPrinter.id, { isDefaultReceipt: false });
+      }
+      // Set new default receipt
+      if (pendingReceiptId !== "none") {
+        await updatePrinterConfig(pendingReceiptId, { isDefaultReceipt: true });
+      }
+      if (selectedStore?.id) await fetchPrinters(selectedStore.id);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to update receipt printer");
+    }
+  };
+
+  const handleAssignKitchenPrinter = async (printerId: string) => {
+    setShowKitchenPicker(false);
+    try {
+      await updatePrinterConfig(printerId, { isDefaultKitchen: true });
+      if (selectedStore?.id) await fetchPrinters(selectedStore.id);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to assign kitchen printer");
+    }
+  };
+
+  const handleRemoveKitchenPrinter = async (printerId: string) => {
+    try {
+      await updatePrinterConfig(printerId, { isDefaultKitchen: false });
+      if (selectedStore?.id) await fetchPrinters(selectedStore.id);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to remove kitchen printer");
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -1102,16 +1161,16 @@ const DevicesConnectionsScreen = () => {
         </View>
 
         {/* ================================================================ */}
-        {/* SECTION 3 — CONFIGURED PRINTERS */}
+        {/* SECTION 3 — PRINTER CONFIGURATION */}
         {/* ================================================================ */}
         <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
-          <SectionHeader title="Configured Printers" icon={<Printer size={20} color={colors.teal} />} expanded={expandedSections.printers} onToggle={() => toggleSection("printers")}
+          <SectionHeader title="Printer Configuration" icon={<Printer size={20} color={colors.teal} />} expanded={expandedSections.printers} onToggle={() => toggleSection("printers")}
             rightContent={totalActive > 0 ? <View style={{ backgroundColor: colors.teal + "20", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 }}><Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal }}>{onlineCount}/{totalActive}</Text></View> : undefined}
           />
           {expandedSections.printers && (
             <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
               {/* Scope toggle */}
-              <View style={{ flexDirection: "row", marginBottom: 10, gap: 6 }}>
+              <View style={{ flexDirection: "row", marginBottom: 14, gap: 6 }}>
                 {(["station", "location"] as const).map((scope) => (
                   <TouchableOpacity key={scope} onPress={() => setPrinterScope(scope)} style={{
                     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1,
@@ -1123,151 +1182,172 @@ const DevicesConnectionsScreen = () => {
                 ))}
               </View>
 
-              {scopedPrinters.length === 0 ? (
-                <View style={{ alignItems: "center", paddingVertical: 20 }}>
-                  <Printer size={32} color={colors.muted} />
-                  <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>No printers configured</Text>
-                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>Check Discovered Devices below to add printers</Text>
-                </View>
-              ) : (
-                scopedPrinters.map((printer) => {
-                  const role = getRoleBadge(printer.printerRole);
-                  const statusColor = getPrinterStatusColor(printer);
-                  const statusLabel = getPrinterStatusLabel(printer);
-                  const isEditing = editingPrinterId === printer.id;
+              {/* ── RECEIPT PRINTING ── */}
+              <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Receipt Printing</Text>
 
-                  return (
-                    <View key={printer.id} style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: printer.isActive ? colors.border : colors.border + "60", marginBottom: 8, opacity: printer.isActive ? 1 : 0.65 }}>
-                      <View style={{ paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center" }}>
-                        <View style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
-                          <Printer size={14} color={colors.teal} />
-                        </View>
-                        <View style={{ flex: 1, marginRight: 8 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }} numberOfLines={1}>{printer.printerName}</Text>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: statusColor + "20", borderWidth: 1, borderColor: statusColor + "50", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 20 }}>
-                              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: statusColor }} />
-                              <Text style={{ fontSize: 10, fontWeight: "600", color: statusColor }}>{statusLabel}</Text>
-                            </View>
-                          </View>
-                          <Text style={{ fontSize: 10, color: colors.label, marginTop: 2 }} numberOfLines={1}>{printer.networkAddress || printer.connectionType.toUpperCase()} · {getTypeBadge(printer.printerType)}</Text>
-                        </View>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <View style={{ backgroundColor: role.bg, borderWidth: 1, borderColor: role.text + "60", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: "600", color: role.text }}>{role.label}</Text>
-                          </View>
-                          {printer.printerRole === "receipt" && printer.isDefaultKitchen && (
-                            <View style={{ backgroundColor: colors.teal + "12", borderWidth: 1, borderColor: colors.teal + "40", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                              <Text style={{ fontSize: 9, fontWeight: "600", color: colors.teal }}>+Kitchen</Text>
+              {receiptPrinter ? (() => {
+                const statusColor = getPrinterStatusColor(receiptPrinter);
+                const isEditing = editingPrinterId === receiptPrinter.id;
+                return (
+                  <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.success + "40", marginBottom: 12 }}>
+                    <View style={{ paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center" }}>
+                      <View style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: colors.success + "15", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                        <CheckCircle2 size={14} color={colors.success} />
+                      </View>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }} numberOfLines={1}>{receiptPrinter.printerName}</Text>
+                        <Text style={{ fontSize: 10, color: colors.label, marginTop: 2 }} numberOfLines={1}>
+                          {receiptPrinter.networkAddress ? `LAN (${receiptPrinter.networkAddress})` : receiptPrinter.connectionType.toUpperCase()} · {getTypeBadge(receiptPrinter.printerType)}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <TouchableOpacity onPress={() => handleTestPrint(receiptPrinter)} disabled={testPrintingId === receiptPrinter.id} style={{ padding: 5, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "40", borderRadius: 7 }}>
+                          {testPrintingId === receiptPrinter.id ? <ActivityIndicator size="small" color={colors.teal} /> : <Printer size={12} color={colors.teal} />}
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={openReceiptPicker}>
+                          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Change</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    {/* Tap to configure */}
+                    {!isEditing && (
+                      <TouchableOpacity onPress={() => { setEditingPrinterId(receiptPrinter.id); setDraftPrinterEdits({}); }} style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+                        <Text style={{ fontSize: 10, color: colors.teal, textAlign: "center" }}>Tap to configure</Text>
+                      </TouchableOpacity>
+                    )}
+                    {/* Inline edit panel */}
+                    {isEditing && (() => {
+                      const draftRole = draftPrinterEdits.printerRole ?? receiptPrinter.printerRole;
+                      const draftDefaultReceipt = draftPrinterEdits.isDefaultReceipt ?? receiptPrinter.isDefaultReceipt;
+                      const draftDefaultKitchen = draftPrinterEdits.isDefaultKitchen ?? receiptPrinter.isDefaultKitchen;
+                      const draftActive = draftPrinterEdits.isActive ?? receiptPrinter.isActive;
+                      return (
+                        <View style={{ marginHorizontal: 12, marginBottom: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+                          {draftRole !== "label" && (
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
+                              <View>
+                                <Text style={{ fontSize: 12, color: colors.heading }}>Also Prints Kitchen Tickets</Text>
+                                <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>This printer will also receive kitchen orders</Text>
+                              </View>
+                              <Switch checked={draftDefaultKitchen} onCheckedChange={(v) => setDraftPrinterEdits((prev) => ({ ...prev, isDefaultKitchen: v }))} />
                             </View>
                           )}
-                          {(printer.printerRole === "kitchen" || printer.printerRole === "bar") && printer.isDefaultReceipt && (
-                            <View style={{ backgroundColor: colors.teal + "12", borderWidth: 1, borderColor: colors.teal + "40", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                              <Text style={{ fontSize: 9, fontWeight: "600", color: colors.teal }}>+Receipt</Text>
-                            </View>
-                          )}
-                          {!printer.isConnected && (
-                            <TouchableOpacity onPress={() => handleRetryConnection(printer)} disabled={retryingPrinterId === printer.id} style={{ padding: 5, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "40", borderRadius: 7 }}>
-                              {retryingPrinterId === printer.id ? <ActivityIndicator size="small" color={colors.teal} /> : <RefreshCw size={12} color={colors.teal} />}
+                          {draftDefaultKitchen && (
+                            <TouchableOpacity onPress={() => setRoutingModalPrinter(receiptPrinter)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                <Route size={14} color={colors.teal} />
+                                <Text style={{ fontSize: 12, color: colors.heading }}>Configure Routing</Text>
+                              </View>
+                              <Text style={{ fontSize: 11, color: colors.teal }}>Edit</Text>
                             </TouchableOpacity>
                           )}
-                          <TouchableOpacity onPress={() => handleTestPrint(printer)} disabled={testPrintingId === printer.id} style={{ padding: 5, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "40", borderRadius: 7 }}>
-                            {testPrintingId === printer.id ? <ActivityIndicator size="small" color={colors.teal} /> : <Printer size={12} color={colors.teal} />}
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-
-                      {/* Inline edit when tapped — simplified: role + defaults + active toggle + save/delete */}
-                      {isEditing && (() => {
-                        const draftRole = draftPrinterEdits.printerRole ?? printer.printerRole;
-                        const draftDefaultReceipt = draftPrinterEdits.isDefaultReceipt ?? printer.isDefaultReceipt;
-                        const draftDefaultKitchen = draftPrinterEdits.isDefaultKitchen ?? printer.isDefaultKitchen;
-                        const draftActive = draftPrinterEdits.isActive ?? printer.isActive;
-                        return (
-                          <View style={{ marginHorizontal: 12, marginBottom: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
-                            <Text style={{ fontSize: 10, fontWeight: "600", color: colors.muted, textTransform: "uppercase", marginBottom: 8 }}>Printer Role</Text>
-                            <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
-                              {(["receipt", "kitchen", "bar", "label"] as const).map((r) => (
-                                <TouchableOpacity key={r} onPress={() => setDraftPrinterEdits((prev) => {
-                                  const next: typeof prev = { ...prev, printerRole: r };
-                                  // Auto-set the matching toggle when primary role changes
-                                  if (r === "receipt") {
-                                    next.isDefaultReceipt = true;
-                                  } else if (r === "kitchen" || r === "bar") {
-                                    next.isDefaultKitchen = true;
-                                  } else if (r === "label") {
-                                    next.isDefaultReceipt = false;
-                                    next.isDefaultKitchen = false;
-                                  }
-                                  return next;
-                                })} style={{
-                                  flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center",
-                                  backgroundColor: draftRole === r ? colors.teal + "20" : "transparent",
-                                  borderWidth: 1, borderColor: draftRole === r ? colors.teal + "60" : colors.border,
-                                }}>
-                                  <Text style={{ fontSize: 12, fontWeight: "600", color: draftRole === r ? colors.teal : colors.label }}>{getRoleBadge(r).label}</Text>
-                                </TouchableOpacity>
-                              ))}
-                            </View>
-
-                            {draftRole !== "label" && (
-                              <>
-                                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
-                                  <View>
-                                    <Text style={{ fontSize: 12, color: colors.heading }}>Prints Receipts</Text>
-                                    <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>This printer will print customer receipts</Text>
-                                  </View>
-                                  <Switch checked={draftDefaultReceipt} onCheckedChange={(v) => setDraftPrinterEdits((prev) => ({ ...prev, isDefaultReceipt: v }))} />
-                                </View>
-                                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
-                                  <View>
-                                    <Text style={{ fontSize: 12, color: colors.heading }}>Prints Kitchen Tickets</Text>
-                                    <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>This printer will receive kitchen orders</Text>
-                                  </View>
-                                  <Switch checked={draftDefaultKitchen} onCheckedChange={(v) => setDraftPrinterEdits((prev) => ({ ...prev, isDefaultKitchen: v }))} />
-                                </View>
-                                {draftDefaultKitchen && (
-                                  <TouchableOpacity onPress={() => setRoutingModalPrinter(printer)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
-                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                                      <Route size={14} color={colors.teal} />
-                                      <Text style={{ fontSize: 12, color: colors.heading }}>Configure Routing</Text>
-                                    </View>
-                                    <Text style={{ fontSize: 11, color: colors.teal }}>Edit</Text>
-                                  </TouchableOpacity>
-                                )}
-                              </>
-                            )}
-
-                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 12 }}>
-                              <Text style={{ fontSize: 12, color: colors.heading }}>Printer Active</Text>
-                              <Switch checked={draftActive} onCheckedChange={(v) => setDraftPrinterEdits((prev) => ({ ...prev, isActive: v }))} />
-                            </View>
-
-                            <View style={{ flexDirection: "row", gap: 8 }}>
-                              <TouchableOpacity onPress={() => handleSavePrinterEdits(printer.id)} disabled={isSavingPrinter} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50" }}>
-                                {isSavingPrinter ? <ActivityIndicator size="small" color={colors.teal} /> : <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Save</Text>}
-                              </TouchableOpacity>
-                              <TouchableOpacity onPress={() => { setEditingPrinterId(null); setDraftPrinterEdits({}); }} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", borderWidth: 1, borderColor: colors.border }}>
-                                <Text style={{ fontSize: 12, color: colors.muted }}>Cancel</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity onPress={() => handleDeletePrinter(printer)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, alignItems: "center", backgroundColor: colors.danger + "15", borderWidth: 1, borderColor: colors.danger + "40" }}>
-                                <Trash2 size={14} color={colors.danger} />
-                              </TouchableOpacity>
-                            </View>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 12 }}>
+                            <Text style={{ fontSize: 12, color: colors.heading }}>Printer Active</Text>
+                            <Switch checked={draftActive} onCheckedChange={(v) => setDraftPrinterEdits((prev) => ({ ...prev, isActive: v }))} />
                           </View>
-                        );
-                      })()}
-
-                      {/* Tap to expand config */}
-                      {!isEditing && (
-                        <TouchableOpacity onPress={() => { setEditingPrinterId(printer.id); setDraftPrinterEdits({}); }} style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-                          <Text style={{ fontSize: 10, color: colors.teal, textAlign: "center" }}>Tap to configure</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  );
-                })
+                          <View style={{ flexDirection: "row", gap: 8 }}>
+                            <TouchableOpacity onPress={() => handleSavePrinterEdits(receiptPrinter.id)} disabled={isSavingPrinter} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50" }}>
+                              {isSavingPrinter ? <ActivityIndicator size="small" color={colors.teal} /> : <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Save</Text>}
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => { setEditingPrinterId(null); setDraftPrinterEdits({}); }} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", borderWidth: 1, borderColor: colors.border }}>
+                              <Text style={{ fontSize: 12, color: colors.muted }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeletePrinter(receiptPrinter)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, alignItems: "center", backgroundColor: colors.danger + "15", borderWidth: 1, borderColor: colors.danger + "40" }}>
+                              <Trash2 size={14} color={colors.danger} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })()}
+                  </View>
+                );
+              })() : (
+                <TouchableOpacity onPress={openReceiptPicker} style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderStyle: "dashed", paddingVertical: 14, marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <Plus size={16} color={colors.teal} />
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Assign Receipt Printer</Text>
+                </TouchableOpacity>
               )}
+
+              {/* ── ORDER / KITCHEN / KDS ── */}
+              <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8, marginTop: 4 }}>Order / Kitchen / KDS</Text>
+
+              {kitchenPrinters.map((printer) => {
+                const statusColor = getPrinterStatusColor(printer);
+                const statusLabel = getPrinterStatusLabel(printer);
+                const isEditing = editingPrinterId === printer.id;
+                return (
+                  <View key={printer.id} style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
+                    <View style={{ paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center" }}>
+                      <View style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                        <Printer size={14} color={colors.teal} />
+                      </View>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }} numberOfLines={1}>{printer.printerName}</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: statusColor + "20", borderWidth: 1, borderColor: statusColor + "50", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 20 }}>
+                            <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: statusColor }} />
+                            <Text style={{ fontSize: 10, fontWeight: "600", color: statusColor }}>{statusLabel}</Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 10, color: colors.label, marginTop: 2 }} numberOfLines={1}>
+                          {printer.networkAddress ? `LAN (${printer.networkAddress})` : printer.connectionType.toUpperCase()} · {getTypeBadge(printer.printerType)}
+                          {printer.isDefaultReceipt ? " · Also Receipt" : ""}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <TouchableOpacity onPress={() => handleTestPrint(printer)} disabled={testPrintingId === printer.id} style={{ padding: 5, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "40", borderRadius: 7 }}>
+                          {testPrintingId === printer.id ? <ActivityIndicator size="small" color={colors.teal} /> : <Printer size={12} color={colors.teal} />}
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleRemoveKitchenPrinter(printer.id)} style={{ padding: 5, backgroundColor: colors.danger + "10", borderWidth: 1, borderColor: colors.danger + "30", borderRadius: 7 }}>
+                          <Minus size={12} color={colors.danger} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    {/* Tap to configure */}
+                    {!isEditing && (
+                      <TouchableOpacity onPress={() => { setEditingPrinterId(printer.id); setDraftPrinterEdits({}); }} style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+                        <Text style={{ fontSize: 10, color: colors.teal, textAlign: "center" }}>Tap to configure</Text>
+                      </TouchableOpacity>
+                    )}
+                    {/* Inline edit panel */}
+                    {isEditing && (() => {
+                      const draftDefaultKitchen = draftPrinterEdits.isDefaultKitchen ?? printer.isDefaultKitchen;
+                      const draftActive = draftPrinterEdits.isActive ?? printer.isActive;
+                      return (
+                        <View style={{ marginHorizontal: 12, marginBottom: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+                          <TouchableOpacity onPress={() => setRoutingModalPrinter(printer)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                              <Route size={14} color={colors.teal} />
+                              <Text style={{ fontSize: 12, color: colors.heading }}>Configure Routing</Text>
+                            </View>
+                            <Text style={{ fontSize: 11, color: colors.teal }}>Edit</Text>
+                          </TouchableOpacity>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 12 }}>
+                            <Text style={{ fontSize: 12, color: colors.heading }}>Printer Active</Text>
+                            <Switch checked={draftActive} onCheckedChange={(v) => setDraftPrinterEdits((prev) => ({ ...prev, isActive: v }))} />
+                          </View>
+                          <View style={{ flexDirection: "row", gap: 8 }}>
+                            <TouchableOpacity onPress={() => handleSavePrinterEdits(printer.id)} disabled={isSavingPrinter} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50" }}>
+                              {isSavingPrinter ? <ActivityIndicator size="small" color={colors.teal} /> : <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Save</Text>}
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => { setEditingPrinterId(null); setDraftPrinterEdits({}); }} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", borderWidth: 1, borderColor: colors.border }}>
+                              <Text style={{ fontSize: 12, color: colors.muted }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeletePrinter(printer)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, alignItems: "center", backgroundColor: colors.danger + "15", borderWidth: 1, borderColor: colors.danger + "40" }}>
+                              <Trash2 size={14} color={colors.danger} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })()}
+                  </View>
+                );
+              })}
+
+              <TouchableOpacity onPress={() => setShowKitchenPicker(true)} style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderStyle: "dashed", paddingVertical: 14, marginBottom: 4, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <Plus size={16} color={colors.teal} />
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Assign Order/Kitchen Printer or KDS</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -1414,6 +1494,99 @@ const DevicesConnectionsScreen = () => {
       {routingModalPrinter && (
         <PrinterRoutingModal visible={!!routingModalPrinter} onClose={() => setRoutingModalPrinter(null)} printer={routingModalPrinter} />
       )}
+
+      {/* Receipt Printer Picker Modal */}
+      <Modal visible={showReceiptPicker} transparent animationType="fade" onRequestClose={() => setShowReceiptPicker(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width: 380, maxHeight: "70%", backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+            {/* Header */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <TouchableOpacity onPress={() => setShowReceiptPicker(false)}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.danger }}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Select Printer</Text>
+              <TouchableOpacity onPress={handleApplyReceiptSelection}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal }}>Done</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+              <Text style={{ fontSize: 10, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Select Receipt Printer (Max 1)</Text>
+
+              {/* No Printer option */}
+              <TouchableOpacity onPress={() => setPendingReceiptId("none")} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, marginBottom: 6, backgroundColor: pendingReceiptId === "none" ? colors.teal + "10" : "transparent", borderWidth: 1, borderColor: pendingReceiptId === "none" ? colors.teal + "40" : colors.border }}>
+                <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: pendingReceiptId === "none" ? colors.teal : colors.muted, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                  {pendingReceiptId === "none" && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.teal }} />}
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>No Printer</Text>
+              </TouchableOpacity>
+
+              {/* Printer options */}
+              {receiptCandidates.map((p) => {
+                const selected = pendingReceiptId === p.id;
+                return (
+                  <TouchableOpacity key={p.id} onPress={() => setPendingReceiptId(p.id)} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, marginBottom: 6, backgroundColor: selected ? colors.teal + "10" : "transparent", borderWidth: 1, borderColor: selected ? colors.teal + "40" : colors.border }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: selected ? colors.teal : colors.muted, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                      {selected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.teal }} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{p.printerName}</Text>
+                      <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                        {p.networkAddress ? `LAN (${p.networkAddress})` : p.connectionType.toUpperCase()}
+                        {p.isDefaultKitchen ? " · Kitchen" : ""}
+                      </Text>
+                    </View>
+                    <Printer size={16} color={colors.muted} />
+                  </TouchableOpacity>
+                );
+              })}
+
+              {receiptCandidates.length === 0 && (
+                <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", paddingVertical: 16 }}>No printers available. Add printers from Discovered Devices.</Text>
+              )}
+
+              <Text style={{ fontSize: 10, color: colors.muted, marginTop: 8, marginBottom: 4 }}>Label printers cannot be selected for receipt printing.</Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Kitchen Printer Picker Modal */}
+      <Modal visible={showKitchenPicker} transparent animationType="fade" onRequestClose={() => setShowKitchenPicker(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width: 380, maxHeight: "70%", backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+            {/* Header */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading, flex: 1, textAlign: "center" }}>Assign Kitchen Printer</Text>
+              <TouchableOpacity onPress={() => setShowKitchenPicker(false)} style={{ position: "absolute", right: 16 }}>
+                <X size={18} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+              {kitchenCandidates.length === 0 ? (
+                <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", paddingVertical: 20 }}>All printers are already assigned to kitchen.</Text>
+              ) : (
+                kitchenCandidates.map((p) => (
+                  <TouchableOpacity key={p.id} onPress={() => handleAssignKitchenPrinter(p.id)} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, marginBottom: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                    <View style={{ width: 30, height: 30, borderRadius: 7, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                      <Printer size={14} color={colors.teal} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{p.printerName}</Text>
+                      <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                        {p.networkAddress ? `LAN (${p.networkAddress})` : p.connectionType.toUpperCase()} · {getTypeBadge(p.printerType)}
+                        {p.isDefaultReceipt ? " · Receipt Printer" : ""}
+                      </Text>
+                    </View>
+                    <Plus size={16} color={colors.teal} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Alert Modal */}
       <Modal visible={!!alertModal} transparent animationType="fade" onRequestClose={() => setAlertModal(null)}>

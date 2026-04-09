@@ -178,14 +178,11 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 printGray = printDensity
             })
 
-            // addTextColumns/addDividingLine produce invisible output on C20Pro —
-            // query pixel width only to compute accurate charsPerLine for char-padding.
-            val pixelWidth = try { vp.getValidWidth() } catch (e: Exception) {
-                Log.w(TAG, "getValidWidth() failed: ${e.message}"); 0
-            }
-            // Each char ≈ VP_FONT_SIZE/2 pixels wide in the monospace thermal font.
-            val charsPerLine = if (pixelWidth > 0) pixelWidth / (VP_FONT_SIZE / 2) else 0
-            Log.d(TAG, "VectorPrinter pixelWidth=${pixelWidth}px, charsPerLine=$charsPerLine")
+            // addTextColumns/addDividingLine produce invisible output on C20Pro.
+            // two_column uses dual-addText (LEFT + RIGHT) — no char-width guessing.
+            // dividers still need a char count; query pixelWidth for that.
+            val pixelWidth = try { vp.getValidWidth() } catch (_: Exception) { 0 }
+            Log.d(TAG, "VectorPrinter: pixelWidth=${pixelWidth}px")
 
             // Set default format
             resetVectorFormatCache()
@@ -200,7 +197,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 if (node.optString("type") == "cut") {
                     needsCut = true
                 } else {
-                    renderNodeVector(vp, simplePrinter, node, charsPerLine)
+                    renderNodeVector(vp, simplePrinter, node, pixelWidth)
                 }
             }
 
@@ -249,7 +246,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    private fun renderNodeVector(vp: VectorPrinter, simplePrinter: Printer, node: JSONObject, charsPerLine: Int) {
+    private fun renderNodeVector(vp: VectorPrinter, simplePrinter: Printer, node: JSONObject, pixelWidth: Int) {
         val nodeType = node.optString("type", "unknown")
         try {
             when (nodeType) {
@@ -266,27 +263,45 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 "two_column" -> {
-                    val left = sanitizeForLandi(node.getString("left"))
+                    val rawLeft = sanitizeForLandi(node.getString("left"))
                     val right = sanitizeForLandi(node.getString("right"))
                     applyVectorFormat(vp, node.optJSONObject("format"))
-                    // Use measured charsPerLine if available, otherwise template's lineWidth
-                    val lineWidth = if (charsPerLine > 0) charsPerLine else node.optInt("lineWidth", 32)
-                    val pad = lineWidth - left.length - right.length
-                    val line = if (pad > 0) left + " ".repeat(pad) + right else "$left $right"
-                    vp.addText(line + "\n", Align.LEFT, 0)
+                    // Template cl() pre-pads centered labels with 3+ leading spaces.
+                    // Detect this and use native Align.CENTER instead of space-padding.
+                    val trimmed = rawLeft.trimStart()
+                    val wasCentered = rawLeft.length - trimmed.length >= 3
+                    val leftAlign = if (wasCentered) Align.CENTER else Align.LEFT
+                    // Dual-addText: left text on current line (no \n), right text RIGHT-aligned (\n to advance).
+                    vp.addText(trimmed, leftAlign, 0)
+                    vp.addText(right + "\n", Align.RIGHT, 0)
                 }
 
                 "divider" -> {
                     setVectorFormat(vp, false, 1.0f, 1.0f)
-                    val lineWidth = if (charsPerLine > 0) charsPerLine else node.getInt("lineWidth")
                     val style = node.getString("style")
-                    val separator = when (style) {
-                        "solid" -> "-".repeat(lineWidth)
-                        "dotted" -> "- ".repeat(lineWidth / 2).take(lineWidth)
-                        "double" -> "=".repeat(lineWidth)
-                        else -> "-".repeat(lineWidth)
+                    if (pixelWidth > 0) {
+                        // Use addDividingLine pixel-based — renders a thin graphical line
+                        // across the full printable width, no char-count guessing needed.
+                        val lineSpace = if (style == "double") 3 else 1
+                        try {
+                            vp.addDividingLine(lineSpace, 0)
+                        } catch (e: Exception) {
+                            // Fallback to char-based if addDividingLine crashes
+                            Log.w(TAG, "addDividingLine failed, using char fallback: ${e.message}")
+                            val lineWidth = node.getInt("lineWidth")
+                            val ch = if (style == "double") "=" else "-"
+                            vp.addText(ch.repeat(lineWidth) + "\n", Align.LEFT, 0)
+                        }
+                    } else {
+                        val lineWidth = node.getInt("lineWidth")
+                        val separator = when (style) {
+                            "solid" -> "-".repeat(lineWidth)
+                            "dotted" -> "- ".repeat(lineWidth / 2).take(lineWidth)
+                            "double" -> "=".repeat(lineWidth)
+                            else -> "-".repeat(lineWidth)
+                        }
+                        vp.addText(separator + "\n", Align.LEFT, 0)
                     }
-                    vp.addText(separator + "\n", Align.LEFT, 0)
                 }
 
                 "empty_line" -> {
