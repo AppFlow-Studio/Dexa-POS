@@ -1014,11 +1014,16 @@ const VendorScreen = () => {
     addVendor,
     updateVendor,
     deleteVendor,
+    fetchVendors,
     inventoryItems,
     purchaseOrders
   } = useInventoryStore()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const merchantId = selectedStore?.merchant_id ?? ''
+
+  useEffect(() => {
+    if (merchantId) fetchVendors(merchantId)
+  }, [merchantId])
   const router = useRouter()
 
   const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null)

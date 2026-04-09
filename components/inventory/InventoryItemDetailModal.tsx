@@ -294,9 +294,51 @@ const InventoryItemDetailModal: React.FC<{
                   </View>
                 )}
 
-                <View>
+                <View style={{ marginBottom: 6 }}>
                   <Text style={{ ...fieldLabel, marginBottom: 3 }}>SKU</Text>
                   <TextInput value={editForm.sku} onChangeText={(t) => setEditForm((p) => ({ ...p, sku: t }))} editable={isEditing} style={{ ...inputStyle(isEditing), height: 38 }} placeholder="SKU or barcode" placeholderTextColor={colors.muted} />
+                </View>
+
+                <View>
+                  <Text style={{ ...fieldLabel, marginBottom: 4 }}>Vendor</Text>
+                  {isEditing ? (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                      <TouchableOpacity
+                        onPress={() => setEditForm((p) => ({ ...p, defaultVendor: "" }))}
+                        style={{
+                          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1,
+                          backgroundColor: !editForm.defaultVendor ? colors.teal + "20" : "transparent",
+                          borderColor: !editForm.defaultVendor ? colors.teal + "50" : colors.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: !editForm.defaultVendor ? colors.teal : colors.label, fontWeight: !editForm.defaultVendor ? "600" : "400" }}>
+                          None
+                        </Text>
+                      </TouchableOpacity>
+                      {vendors.map((v) => {
+                        const isActive = editForm.defaultVendor === v.id;
+                        return (
+                          <TouchableOpacity
+                            key={v.id}
+                            onPress={() => setEditForm((p) => ({ ...p, defaultVendor: v.id }))}
+                            style={{
+                              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1,
+                              backgroundColor: isActive ? colors.teal + "20" : "transparent",
+                              borderColor: isActive ? colors.teal + "50" : colors.border,
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, color: isActive ? colors.teal : colors.label, fontWeight: isActive ? "600" : "400" }}>
+                              {v.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 12, color: editForm.defaultVendor ? colors.heading : colors.muted }}>
+                      {editForm.defaultVendor ? (vendors.find(v => v.id === editForm.defaultVendor)?.name ?? "Unknown") : "No vendor"}
+                    </Text>
+                  )}
                 </View>
               </View>
             </ScrollView>

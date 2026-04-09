@@ -36,11 +36,31 @@ export const useInventorySync = (locationId: string | null) => {
         throw itemsError;
       }
 
-      // Fetch vendors separately
-      const { data: vendorsData, error: vendorsError } = await supabase
-        .from("vendors")
-        .select("id, name, contact_name, email, phone, address_line1, city, state, zip_code, location_id, merchant_id")
+      // Fetch vendor_id mapping from inventory_items (RPC doesn't return it)
+      const { data: itemVendorRows } = await supabase
+        .from("inventory_items")
+        .select("id, vendor_id")
         .eq("is_active", true);
+
+      const vendorIdMap: Record<string, string | null> = {};
+      for (const row of itemVendorRows ?? []) {
+        vendorIdMap[row.id] = row.vendor_id ?? null;
+      }
+
+      // Fetch vendors for this location's merchant
+      const { data: locationRow } = await supabase
+        .from("locations")
+        .select("merchant_id")
+        .eq("id", locationId)
+        .single();
+
+      const { data: vendorsData, error: vendorsError } = locationRow
+        ? await supabase
+            .from("vendors")
+            .select("id, name, contact_name, email, phone, address_line1, city, state, zip_code")
+            .eq("merchant_id", locationRow.merchant_id)
+            .eq("is_active", true)
+        : { data: [], error: null };
 
       if (vendorsError) {
         console.warn("Vendors fetch error:", vendorsError);
@@ -59,7 +79,7 @@ export const useInventorySync = (locationId: string | null) => {
         unitType: i.unit_type as InventoryUnitType,
         reorderThreshold: i.effective_reorder_point ?? i.reorder_point ?? 0,
         cost: i.effective_cost ?? 0,
-        vendorId: null,
+        vendorId: vendorIdMap[i.id] ?? null,
         locationId: locationId,
         isGlobal: false,
         stockTrackingMode: "quantity" as const,

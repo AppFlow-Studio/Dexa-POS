@@ -26,6 +26,7 @@ interface InventoryState {
     vendors: Vendor[];
   }) => void; // Called by sync loop
   fetchInventoryItems: (locationId: string) => Promise<void>;
+  fetchVendors: (merchantId: string) => Promise<void>;
 
   // Async Actions (Call Backend + Optimistic Update)
   addVendor: (
@@ -141,11 +142,37 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       stockTrackingMode: 'quantity' as const,
     }));
 
-    // Also fetch vendors
-    const { data: vendorsData } = await supabase
-      .from('vendors')
-      .select('id, name, contact_name, email, phone, address_line1, city, state')
+    // Fetch vendor_id mapping
+    const { data: itemVendorRows } = await supabase
+      .from('inventory_items')
+      .select('id, vendor_id')
       .eq('is_active', true);
+
+    const vendorIdMap: Record<string, string | null> = {};
+    for (const row of itemVendorRows ?? []) {
+      vendorIdMap[row.id] = row.vendor_id ?? null;
+    }
+
+    // Re-map vendorId onto items
+    const itemsWithVendor = inventoryItems.map(i => ({
+      ...i,
+      vendorId: vendorIdMap[i.id] ?? null,
+    }));
+
+    // Fetch vendors filtered by merchant
+    const { data: locationRow } = await supabase
+      .from('locations')
+      .select('merchant_id')
+      .eq('id', locationId)
+      .single();
+
+    const { data: vendorsData } = locationRow
+      ? await supabase
+          .from('vendors')
+          .select('id, name, contact_name, email, phone, address_line1, city, state, zip_code')
+          .eq('merchant_id', locationRow.merchant_id)
+          .eq('is_active', true)
+      : { data: [] };
 
     const vendors: Vendor[] = (vendorsData ?? []).map((v: any) => ({
       id: v.id,
@@ -158,56 +185,82 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       description: '',
     }));
 
-    set({ inventoryItems, vendors });
+    set({ inventoryItems: itemsWithVendor, vendors });
+  },
+
+  fetchVendors: async (merchantId) => {
+    const { supabase } = get();
+    if (!supabase || !merchantId) return;
+
+    const { data, error } = await supabase
+      .from('vendors')
+      .select('id, name, contact_name, email, phone, address_line1, city, state, zip_code')
+      .eq('merchant_id', merchantId)
+      .eq('is_active', true);
+
+    if (error) {
+      console.error('[InventoryStore] fetchVendors error:', error);
+      return;
+    }
+
+    const vendors: Vendor[] = (data ?? []).map((v: any) => ({
+      id: v.id,
+      name: v.name,
+      contactName: v.contact_name ?? '',
+      email: v.email ?? null,
+      phone: v.phone ?? null,
+      address: [v.address_line1, v.city, v.state].filter(Boolean).join(', ') || null,
+      website: null,
+      description: '',
+    }));
+
+    set({ vendors });
   },
 
   addVendor: async (vendorData, merchantId) => {
     const { supabase } = get();
-    if (!supabase) return;
+    if (!supabase || !merchantId) return;
 
-    // Optimistic Update? Or wait? Let's wait for basic safety, then update local.
-    const newVendor = await InventoryService.upsertVendor(
-      supabase,
-      { ...vendorData },
-      merchantId
-    );
-    // If sync is fast, we might not need this, but let's append for instant feedback
-    // However, the ID comes from DB (although passed as null).
-    // The upsert returns the row.
-    // If we assume newVendor has the real ID:
-    if (newVendor) {
-      set((state) => ({ vendors: [newVendor, ...state.vendors] }));
+    const { error } = await supabase.from('vendors').insert({
+      merchant_id: merchantId,
+      name: vendorData.name,
+      contact_name: vendorData.contactName || null,
+      email: vendorData.email || null,
+      phone: vendorData.phone || null,
+      address_line1: vendorData.address || null,
+      is_active: true,
+    });
+
+    if (error) {
+      console.error('[InventoryStore] addVendor error:', error);
+      throw error;
     }
+
+    await get().fetchVendors(merchantId);
   },
 
   updateVendor: async (vendorId, updates) => {
-    const { supabase, vendors } = get();
+    const { supabase } = get();
     if (!supabase) return;
 
-    // Optimistic
-    const oldVendors = vendors;
+    // Optimistic update for instant UI feedback
     set((state) => ({
       vendors: state.vendors.map((v) =>
         v.id === vendorId ? { ...v, ...updates } : v
       ),
     }));
 
-    try {
-      await InventoryService.upsertVendor(
-        supabase,
-        { ...updates, id: vendorId }, // existing ID
-        "" // Merchant ID not strictly needed for update if RLS is good, but function requires it.
-        // Wait, app_upsert_vendor signature requires p_merchant_id.
-        // We might need to store merchant_id in the store or pass it.
-        // For now, let's pass a dummy or fix the service to handle it.
-        // The RPC likely uses p_merchant_id for insert only or verification.
-        // But let's assume valid ID.
-        // Actually, for UPDATE, we should pass the same merchant_id or fetch it.
-      );
-    } catch (e) {
-      console.error(e);
-      set({ vendors: oldVendors }); // Revert
-      throw e;
+    const { error } = await supabase.from('vendors').update({
+      name: updates.name,
+      contact_name: updates.contactName || null,
+      email: updates.email || null,
+      phone: updates.phone || null,
+      address_line1: updates.address || null,
+    }).eq('id', vendorId);
+
+    if (error) {
+      console.error('[InventoryStore] updateVendor error:', error);
+      throw error;
     }
   },
 
@@ -215,17 +268,20 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const { supabase, vendors } = get();
     if (!supabase) return;
 
-    const oldVendors = vendors;
+    // Optimistic removal
     set((state) => ({
       vendors: state.vendors.filter((v) => v.id !== vendorId),
     }));
 
-    try {
-      await InventoryService.deleteVendor(supabase, vendorId);
-    } catch (e) {
-      console.error(e);
-      set({ vendors: oldVendors });
-      throw e;
+    const { error } = await supabase
+      .from('vendors')
+      .update({ is_active: false })
+      .eq('id', vendorId);
+
+    if (error) {
+      console.error('[InventoryStore] deleteVendor error:', error);
+      set({ vendors }); // revert
+      throw error;
     }
   },
 
@@ -234,11 +290,20 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     if (!supabase) return;
 
     const { stockQuantity, ...itemDetails } = itemData;
-    await InventoryService.upsertInventoryItem(
+    const newItem = await InventoryService.upsertInventoryItem(
       supabase,
       itemDetails as any,
       locationId
     );
+
+    // The RPC doesn't support vendor_id — patch it directly after creation
+    const newItemId = newItem?.id ?? newItem;
+    if (newItemId && itemData.vendorId) {
+      await supabase
+        .from('inventory_items')
+        .update({ vendor_id: itemData.vendorId })
+        .eq('id', newItemId);
+    }
 
     // Re-fetch to get the real item back with correct shape
     await get().fetchInventoryItems(locationId);
@@ -289,6 +354,14 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         if (Object.keys(otherUpdates).length > 0) {
           const merged = { ...item, ...otherUpdates };
           await InventoryService.upsertInventoryItem(supabase, merged as any, locationId);
+        }
+
+        // Patch vendor_id directly since the RPC doesn't support it
+        if ('vendorId' in updates) {
+          await supabase
+            .from('inventory_items')
+            .update({ vendor_id: updates.vendorId ?? null })
+            .eq('id', itemId);
         }
 
         if (stockQuantity !== undefined && stockQuantity !== item.stockQuantity) {
