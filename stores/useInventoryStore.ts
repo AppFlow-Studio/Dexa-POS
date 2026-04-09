@@ -25,6 +25,7 @@ interface InventoryState {
     items: InventoryItem[];
     vendors: Vendor[];
   }) => void; // Called by sync loop
+  fetchInventoryItems: (locationId: string) => Promise<void>;
 
   // Async Actions (Call Backend + Optimistic Update)
   addVendor: (
@@ -105,6 +106,59 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
   setInventoryData: ({ items, vendors }) => {
     set({ inventoryItems: items, vendors: vendors });
+  },
+
+  fetchInventoryItems: async (locationId) => {
+    const { supabase } = get();
+    if (!supabase) return;
+
+    const { data, error } = await supabase.rpc('get_pos_inventory_sync', {
+      p_location_id: locationId,
+    });
+
+    if (error) {
+      console.error('[InventoryStore] fetchInventoryItems error:', error);
+      return;
+    }
+
+    // RPC returns a flat JSON array of inventory rows
+    const rows = (data as any[]) ?? [];
+
+    const inventoryItems: InventoryItem[] = rows.map((i: any) => ({
+      id: i.id,
+      name: i.name,
+      category: '',
+      description: null,
+      image: null,
+      stockQuantity: i.stock_quantity ?? 0,
+      unit: i.unit_type,
+      unitType: i.unit_type,
+      reorderThreshold: i.effective_reorder_point ?? i.reorder_point ?? 0,
+      cost: i.effective_cost ?? 0,
+      vendorId: null,
+      locationId,
+      isGlobal: false,
+      stockTrackingMode: 'quantity' as const,
+    }));
+
+    // Also fetch vendors
+    const { data: vendorsData } = await supabase
+      .from('vendors')
+      .select('id, name, contact_name, email, phone, address_line1, city, state')
+      .eq('is_active', true);
+
+    const vendors: Vendor[] = (vendorsData ?? []).map((v: any) => ({
+      id: v.id,
+      name: v.name,
+      contactName: v.contact_name ?? '',
+      email: v.email ?? null,
+      phone: v.phone ?? null,
+      address: [v.address_line1, v.city, v.state].filter(Boolean).join(', ') || null,
+      website: null,
+      description: '',
+    }));
+
+    set({ inventoryItems, vendors });
   },
 
   addVendor: async (vendorData, merchantId) => {
