@@ -62,14 +62,18 @@ const OrderProcessing = () => {
         o.service_location_id === null &&
         o.order_status === "draft" &&
         o.items.length === 0 &&
-        o.paid_status !== "Paid",
+        o.paid_status !== "Paid" &&
+        !o.customer_name &&
+        !o.customer_id,
     );
 
     const globalDraft = allOrders.find(
       (o) =>
         o.service_location_id === null &&
         o.order_status === "draft" &&
-        o.paid_status !== "Paid",
+        o.paid_status !== "Paid" &&
+        !o.customer_name &&
+        !o.customer_id,
     );
 
     if (!activeOrderId) {
