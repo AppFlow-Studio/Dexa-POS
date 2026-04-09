@@ -26,12 +26,13 @@ interface InventoryState {
     vendors: Vendor[];
   }) => void; // Called by sync loop
   fetchInventoryItems: (locationId: string) => Promise<void>;
-  fetchVendors: (merchantId: string) => Promise<void>;
+  fetchVendors: (locationId: string) => Promise<void>;
 
   // Async Actions (Call Backend + Optimistic Update)
   addVendor: (
     vendorData: Omit<Vendor, "id">,
-    merchantId: string
+    merchantId: string,
+    locationId: string
   ) => Promise<void>;
   updateVendor: (
     vendorId: string,
@@ -159,20 +160,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       vendorId: vendorIdMap[i.id] ?? null,
     }));
 
-    // Fetch vendors filtered by merchant
-    const { data: locationRow } = await supabase
-      .from('locations')
-      .select('merchant_id')
-      .eq('id', locationId)
-      .single();
-
-    const { data: vendorsData } = locationRow
-      ? await supabase
-          .from('vendors')
-          .select('id, name, contact_name, email, phone, address_line1, city, state, zip_code')
-          .eq('merchant_id', locationRow.merchant_id)
-          .eq('is_active', true)
-      : { data: [] };
+    const { data: vendorsData } = await supabase
+      .from('vendors')
+      .select('id, name, contact_name, email, phone, address_line1, city, state, zip_code')
+      .eq('location_id', locationId)
+      .eq('is_active', true);
 
     const vendors: Vendor[] = (vendorsData ?? []).map((v: any) => ({
       id: v.id,
@@ -188,14 +180,14 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set({ inventoryItems: itemsWithVendor, vendors });
   },
 
-  fetchVendors: async (merchantId) => {
+  fetchVendors: async (locationId) => {
     const { supabase } = get();
-    if (!supabase || !merchantId) return;
+    if (!supabase || !locationId) return;
 
     const { data, error } = await supabase
       .from('vendors')
       .select('id, name, contact_name, email, phone, address_line1, city, state, zip_code')
-      .eq('merchant_id', merchantId)
+      .eq('location_id', locationId)
       .eq('is_active', true);
 
     if (error) {
@@ -217,12 +209,13 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set({ vendors });
   },
 
-  addVendor: async (vendorData, merchantId) => {
+  addVendor: async (vendorData, merchantId, locationId) => {
     const { supabase } = get();
     if (!supabase || !merchantId) return;
 
     const { error } = await supabase.from('vendors').insert({
       merchant_id: merchantId,
+      location_id: locationId,
       name: vendorData.name,
       contact_name: vendorData.contactName || null,
       email: vendorData.email || null,
@@ -236,7 +229,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       throw error;
     }
 
-    await get().fetchVendors(merchantId);
+    await get().fetchVendors(locationId);
   },
 
   updateVendor: async (vendorId, updates) => {

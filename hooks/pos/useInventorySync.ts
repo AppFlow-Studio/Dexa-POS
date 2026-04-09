@@ -47,20 +47,12 @@ export const useInventorySync = (locationId: string | null) => {
         vendorIdMap[row.id] = row.vendor_id ?? null;
       }
 
-      // Fetch vendors for this location's merchant
-      const { data: locationRow } = await supabase
-        .from("locations")
-        .select("merchant_id")
-        .eq("id", locationId)
-        .single();
-
-      const { data: vendorsData, error: vendorsError } = locationRow
-        ? await supabase
-            .from("vendors")
-            .select("id, name, contact_name, email, phone, address_line1, city, state, zip_code")
-            .eq("merchant_id", locationRow.merchant_id)
-            .eq("is_active", true)
-        : { data: [], error: null };
+      // Fetch vendors scoped to the active location
+      const { data: vendorsData, error: vendorsError } = await supabase
+        .from("vendors")
+        .select("id, name, contact_name, email, phone, address_line1, city, state, zip_code")
+        .eq("location_id", locationId)
+        .eq("is_active", true);
 
       if (vendorsError) {
         console.warn("Vendors fetch error:", vendorsError);
