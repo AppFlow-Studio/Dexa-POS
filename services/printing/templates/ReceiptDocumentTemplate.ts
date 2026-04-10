@@ -3,292 +3,177 @@ import { ReceiptItemData, ReceiptTemplateData } from "@/types/printer";
 import { formatCurrency } from "@/utils/currency";
 import { sanitizeForPrint } from "../utils/sanitizeText";
 
-/**
- * Build format that scales down magnification to fit content on one line.
- * Priority: doubleWidth+doubleHeight → doubleHeight only → normal bold.
- */
-function scaledFormat(
-  text: string,
-  lineWidth: number,
-  desired: { doubleWidth?: boolean; doubleHeight?: boolean; inverted?: boolean },
-): PrintTextFormat {
-  const base: PrintTextFormat = { bold: true };
-  if (desired.inverted) base.inverted = true;
+const BOLD: PrintTextFormat = { bold: true };
+// Bold + doubleWidth — wider chars for the TOTAL header to create visual hierarchy.
+// On Landi VectorPrinter: bold=true (native weight) + scaleX=2.0 (wider).
+const BOLD_DW: PrintTextFormat = { bold: true, doubleWidth: true };
+// 2x size for order number — visually prominent on all printers.
+// Star: fitFormat() auto-reduces if overflow. Dejavoo: maps to <LG>. Landi: scaleX/Y=2.0.
+const ORDER_NUM: PrintTextFormat = { bold: true, doubleHeight: true, doubleWidth: true };
 
-  if (desired.doubleWidth && text.length <= Math.floor(lineWidth / 2)) {
-    return { ...base, doubleHeight: desired.doubleHeight, doubleWidth: true };
-  }
-  if (desired.doubleHeight && text.length <= lineWidth) {
-    return { ...base, doubleHeight: true };
-  }
-  return base;
+function isDineIn(orderType: string | undefined): boolean {
+  if (!orderType) return true;
+  const lower = orderType.toLowerCase().replace(/[\s_-]+/g, "");
+  return lower === "dinein" || lower === "dinein";
 }
 
 /**
- * Builds a PrintDocument for a receipt.
- * Layout matches the sales receipt mockup with conditional flags from templateConfig.
+ * Builds a receipt document optimized for both Star and Landi printers.
  *
- * Visual hierarchy: bold is reserved for headers, item lines, totals, and key labels.
- * Secondary/informational text (modifiers, notes, subtotals, payment details, footer meta)
- * uses regular weight for contrast.
+ * Bold formatting baseline with doubleHeight/doubleWidth only for the order number.
+ * Landi receipts stay compact while the order number stands out at 2x size.
+ * Star gets visible bold emphasis via weight 700 + stroke.
+ *
+ * Layout: Header → Order# → Type/Table → Items → Totals → Grand Total →
+ *         Tip Line → Payments → Bottom Metadata → Footer
  */
 export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   const w = data.maxCharsPerLine || 32;
   const nodes: PrintNode[] = [];
   const cfg = data.templateConfig;
 
-  // ── Logo ──
+  // ── A. Store Header ──
   if (cfg?.showLogo !== false && data.logoBase64) {
     nodes.push({ type: "image", base64Png: data.logoBase64 });
-    nodes.push({ type: "empty_line" });
   }
-
-  // ── Store Header ──
-  const storeName = sanitizeForPrint(data.storeName);
-  nodes.push({
-    type: "text_line",
-    content: storeName,
-    align: "center",
-    format: scaledFormat(storeName, w, { doubleHeight: true }),
-  });
-
+  nodes.push({ type: "text_line", content: sanitizeForPrint(data.storeName), align: "center", format: BOLD });
   if (data.storeAddress) {
-    nodes.push({ type: "text_line", content: sanitizeForPrint(data.storeAddress), align: "center", format: { bold: true } });
+    nodes.push({ type: "text_line", content: sanitizeForPrint(data.storeAddress), align: "center" });
   }
   if (data.storePhone) {
-    nodes.push({ type: "text_line", content: sanitizeForPrint(data.storePhone), align: "center", format: { bold: true } });
+    nodes.push({ type: "text_line", content: sanitizeForPrint(data.storePhone), align: "center" });
   }
-
-  // ── Header message (from template) ──
   if (data.headerMessage) {
-    nodes.push({ type: "text_line", content: sanitizeForPrint(data.headerMessage), align: "center", format: { bold: true } });
+    nodes.push({ type: "text_line", content: sanitizeForPrint(data.headerMessage), align: "center" });
   }
+  nodes.push({ type: "empty_line" });
 
-  nodes.push({ type: "divider", style: "solid", lineWidth: w });
-
-  // ── Prominent Order Number ──
-  const orderNumText = `${data.orderNumber} `;
+  // ── B. Order Number (centered, 2x size for prominence) ──
   nodes.push({
     type: "text_line",
-    content: orderNumText,
+    content: data.orderNumber,
     align: "center",
-    format: scaledFormat(orderNumText, w, { doubleHeight: true, doubleWidth: true, inverted: true }),
+    format: ORDER_NUM,
   });
-  nodes.push({ type: "divider", style: "solid", lineWidth: w });
 
-  // ── Order Info ──
-  // Combined order type + table on one line
+  // ── C. Order Type + Table (centered, bold) ──
   if (cfg?.showOrderType !== false) {
     const typeLine = data.tableName
       ? `${sanitizeForPrint(data.orderType)} - ${sanitizeForPrint(data.tableName)}`
       : sanitizeForPrint(data.orderType);
-    nodes.push({ type: "text_line", content: typeLine, format: { bold: true } });
+    nodes.push({ type: "text_line", content: typeLine, align: "center", format: BOLD });
   }
 
-  if (data.customerName) {
-    nodes.push({
-      type: "two_column",
-      left: "Customer:",
-      right: sanitizeForPrint(data.customerName),
-      lineWidth: w,
-      format: { bold: true },
-    });
-  }
-  if (cfg?.showServerName !== false && data.serverName) {
-    nodes.push({ type: "text_line", content: `Server: ${sanitizeForPrint(data.serverName)}`, format: { bold: true } });
-  }
-
-  // Date + Time line
-  nodes.push({
-    type: "two_column",
-    left: data.orderDate,
-    right: data.orderTime,
-    lineWidth: w,
-    format: { bold: true },
-  });
-
+  // ── D. Items ──
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
 
-  // ── Items ──
-  if (cfg?.groupBySeat) {
+  const useSeatGrouping = cfg?.groupBySeat && isDineIn(data.orderType);
+  if (useSeatGrouping) {
     pushReceiptItemsGroupedBySeat(nodes, data.items, w, cfg);
   } else {
     pushReceiptItemsFlat(nodes, data.items, w, cfg);
   }
 
-  // ── Totals ──
-  nodes.push({ type: "divider", style: "solid", lineWidth: w });
-  nodes.push({ type: "text_line", content: "TOTALS", align: "center", format: { bold: true } });
-  nodes.push({ type: "divider", style: "solid", lineWidth: w });
+  // ── E. Totals (centered labels, price right) ──
+  // centerLabel pads the left side so the label sits roughly centered
+  // between the left edge and the price, while two_column keeps the price flush-right.
+  const cl = (label: string, priceLen: number) => {
+    const gap = w - label.length - priceLen;
+    if (gap <= 2) return label;
+    return " ".repeat(Math.floor(gap / 2)) + label;
+  };
 
-  // Subtotal/tax/discount/tip — regular weight for contrast with totals
-  nodes.push({
-    type: "two_column",
-    left: "Subtotal",
-    right: formatCurrency(data.subtotal),
-    lineWidth: w,
-    format: { bold: true, doubleHeight: true },
-  });
-
+  nodes.push({ type: "divider", style: "solid", lineWidth: w });
+  const subtotalPrice = formatCurrency(data.subtotal);
+  nodes.push({ type: "two_column", left: cl("Subtotal", subtotalPrice.length), right: subtotalPrice, lineWidth: w });
   if (data.tax > 0) {
     const taxLabel =
       cfg?.showTaxBreakdown !== false && data.taxRate
         ? `Tax (${(data.taxRate * 100).toFixed(2)}%)`
         : "Tax";
-    nodes.push({
-      type: "two_column",
-      left: taxLabel,
-      right: formatCurrency(data.tax),
-      lineWidth: w,
-      format: { bold: true, doubleHeight: true },
-    });
+    const taxPrice = formatCurrency(data.tax);
+    nodes.push({ type: "two_column", left: cl(taxLabel, taxPrice.length), right: taxPrice, lineWidth: w });
   }
   if (data.discount > 0) {
-    nodes.push({
-      type: "two_column",
-      left: "Discount",
-      right: `-${formatCurrency(data.discount)}`,
-      lineWidth: w,
-      format: { bold: true, doubleHeight: true },
-    });
+    const discountPrice = `-${formatCurrency(data.discount)}`;
+    nodes.push({ type: "two_column", left: cl("Discount", discountPrice.length), right: discountPrice, lineWidth: w });
   }
   if (data.tip > 0) {
-    nodes.push({
-      type: "two_column",
-      left: "Tip",
-      right: formatCurrency(data.tip),
-      lineWidth: w,
-      format: { bold: true, doubleHeight: true },
-    });
+    const tipPrice = formatCurrency(data.tip);
+    nodes.push({ type: "two_column", left: cl("Tip", tipPrice.length), right: tipPrice, lineWidth: w });
   }
 
+  // ── F. Grand Total ──
+  nodes.push({ type: "divider", style: "double", lineWidth: w });
+  nodes.push({ type: "text_line", content: "TOTAL", format: BOLD_DW });
+  const hasDualPricing = data.cashTotal !== undefined && data.cashTotal !== data.total;
+  if (hasDualPricing) {
+    const cardPrice = formatCurrency(data.total);
+    const cashPrice = formatCurrency(data.cashTotal!);
+    nodes.push({ type: "two_column", left: cl("Card Total", cardPrice.length), right: cardPrice, lineWidth: w, format: BOLD });
+    nodes.push({ type: "two_column", left: cl("Cash Total", cashPrice.length), right: cashPrice, lineWidth: w, format: BOLD });
+  } else {
+    const totalPrice = formatCurrency(data.total);
+    nodes.push({ type: "two_column", left: cl("Total", totalPrice.length), right: totalPrice, lineWidth: w, format: BOLD });
+  }
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
-  const cardTotalLine = `Card Total  ${formatCurrency(data.total)}`;
-  nodes.push({
-    type: "two_column",
-    left: "Card Total",
-    right: formatCurrency(data.total),
-    lineWidth: w,
-    format: scaledFormat(cardTotalLine, w, { doubleHeight: true }),
-  });
 
-  // Cash total (only if different from card total)
-  if (data.cashTotal !== undefined && data.cashTotal !== data.total) {
-    const cashTotalLine = `Cash Total  ${formatCurrency(data.cashTotal)}`;
-    nodes.push({
-      type: "two_column",
-      left: "Cash Total",
-      right: formatCurrency(data.cashTotal),
-      lineWidth: w,
-      format: scaledFormat(cashTotalLine, w, { doubleHeight: true }),
-    });
-  }
-
-  // ── Tip line (blank for customer to fill in) ──
+  // ── G. Tip Line ──
   if (cfg?.showTipLine !== false) {
+    nodes.push({ type: "two_column", left: "Tip:", right: "________", lineWidth: w });
+    nodes.push({ type: "two_column", left: "Total w/ Tip:", right: "________", lineWidth: w, format: BOLD });
     nodes.push({ type: "divider", style: "solid", lineWidth: w });
-    nodes.push({
-      type: "two_column",
-      left: "Tip:",
-      right: "________",
-      lineWidth: w,
-      format: { bold: true },
-    });
-    const tipTotalLine = "Total w/ Tip:  ________";
-    nodes.push({
-      type: "two_column",
-      left: "Total w/ Tip:",
-      right: "________",
-      lineWidth: w,
-      format: scaledFormat(tipTotalLine, w, { doubleHeight: true }),
-    });
   }
 
-  // ── Payments ──
+  // ── H. Payments ──
   if (data.payments.length > 0) {
-    nodes.push({ type: "divider", style: "solid", lineWidth: w });
-
     for (const payment of data.payments) {
-      nodes.push({
-        type: "two_column",
-        left: `Paid: ${payment.method}`,
-        right: formatCurrency(payment.amount),
-        lineWidth: w,
-        format: { bold: true },
-      });
-      // Payment detail lines — regular weight for contrast
+      nodes.push({ type: "two_column", left: `Paid: ${payment.method}`, right: formatCurrency(payment.amount), lineWidth: w, format: BOLD });
       if (payment.last4) {
-        const cardLine = payment.cardBrand
-          ? `  ${payment.cardBrand} ending in ${payment.last4}`
-          : `  ${payment.method} ending in ${payment.last4}`;
-        nodes.push({ type: "text_line", content: cardLine });
+        const card = payment.cardBrand ? `${payment.cardBrand} *${payment.last4}` : `*${payment.last4}`;
+        nodes.push({ type: "text_line", content: `  ${card}` });
       }
       if (payment.authCode) {
-        nodes.push({ type: "two_column", left: "  Auth #", right: payment.authCode, lineWidth: w });
+        nodes.push({ type: "text_line", content: `  Auth: ${payment.authCode}` });
       }
       if (payment.rrn) {
-        nodes.push({ type: "two_column", left: "  Ref (RRN)", right: payment.rrn, lineWidth: w });
+        nodes.push({ type: "text_line", content: `  Ref: ${payment.rrn}` });
       }
     }
-
     if (data.amountPaid && data.amountPaid > 0) {
-      nodes.push({ type: "divider", style: "solid", lineWidth: w });
-      nodes.push({
-        type: "two_column",
-        left: "Amount Paid",
-        right: formatCurrency(data.amountPaid),
-        lineWidth: w,
-        format: { bold: true },
-      });
+      nodes.push({ type: "two_column", left: "Amount Paid", right: formatCurrency(data.amountPaid), lineWidth: w });
     }
     if (data.amountDue && data.amountDue > 0) {
-      nodes.push({
-        type: "two_column",
-        left: "Amount Due",
-        right: formatCurrency(data.amountDue),
-        lineWidth: w,
-        format: { bold: true },
-      });
+      nodes.push({ type: "two_column", left: "Amount Due", right: formatCurrency(data.amountDue), lineWidth: w, format: BOLD });
     }
   }
 
-  // ── Order Details Footer — regular weight ──
+  // ── I. Bottom Metadata ──
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
-
-  if (data.backendOrderNumber) {
-    nodes.push({ type: "two_column", left: "Order #", right: sanitizeForPrint(data.backendOrderNumber), lineWidth: w });
-  } else {
-    nodes.push({ type: "two_column", left: "Order #", right: sanitizeForPrint(data.orderNumber), lineWidth: w });
-  }
-  nodes.push({ type: "two_column", left: "Ordered", right: `${data.orderDate}, ${data.orderTime}`, lineWidth: w });
-  if (data.printDate && data.printTime) {
-    nodes.push({ type: "two_column", left: "Printed", right: `${data.printDate}, ${data.printTime}`, lineWidth: w });
-  }
-  if (data.serverName) {
-    nodes.push({ type: "two_column", left: "Server", right: sanitizeForPrint(data.serverName), lineWidth: w });
+  if (cfg?.showServerName !== false && data.serverName) {
+    nodes.push({ type: "two_column", left: "Server:", right: sanitizeForPrint(data.serverName), lineWidth: w });
   }
   if (data.customerName) {
-    nodes.push({ type: "two_column", left: "Customer", right: sanitizeForPrint(data.customerName), lineWidth: w });
+    nodes.push({ type: "two_column", left: "Customer:", right: sanitizeForPrint(data.customerName), lineWidth: w });
+  }
+  nodes.push({ type: "two_column", left: "Date:", right: `${data.orderDate} ${data.orderTime}`, lineWidth: w });
+  if (data.printDate && data.printTime) {
+    nodes.push({ type: "text_line", content: `Printed: ${data.printDate}, ${data.printTime}`, align: "center" });
   }
 
-  nodes.push({ type: "text_line", content: "Customer Copy", align: "center", format: { bold: true } });
-
-  // ── Footer ──
+  // ── J. Footer ──
   if (data.footerMessage) {
-    nodes.push({ type: "divider", style: "solid", lineWidth: w });
-    nodes.push({ type: "text_line", content: sanitizeForPrint(data.footerMessage), align: "center", format: { bold: true } });
+    nodes.push({ type: "text_line", content: sanitizeForPrint(data.footerMessage), align: "center" });
   }
-
-  // ── Barcode ──
   if (cfg?.showBarcode !== false && data.orderNumber) {
     nodes.push({ type: "barcode", data: data.orderNumber });
   }
-
-  // ── QR Code ──
   if (cfg?.showQrCode !== false && data.orderNumber) {
     nodes.push({ type: "qr_code", data: data.orderNumber, size: 6 });
   }
 
+  // ── K. Feed + Cut ──
+  nodes.push({ type: "feed", lines: 4 });
   nodes.push({ type: "cut" });
 
   return { nodes, maxCharsPerLine: w };
@@ -314,24 +199,19 @@ function pushReceiptSingleItem(
     itemName = itemName.slice(0, maxNameLen);
   }
 
-  nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true, doubleHeight: true } });
+  nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: BOLD });
 
-  // Modifiers (conditional) — regular weight for contrast
   if (cfg?.showItemModifiers !== false) {
     for (const mod of item.modifiers) {
-      const isNo = !!mod.isNo;
-      const prefix = isNo ? "-" : "+";
+      const prefix = mod.isNo ? "- NO " : "+ ";
       const modName = sanitizeForPrint(mod.name);
-      const modLine = isNo
-        ? `  ${prefix} NO ${modName}`
-        : mod.price > 0
-          ? `  ${prefix} ${modName} (${formatCurrency(mod.price)})`
-          : `  ${prefix} ${modName}`;
+      const modLine = mod.isNo || mod.price <= 0
+        ? `  ${prefix}${modName}`
+        : `  ${prefix}${modName} (${formatCurrency(mod.price)})`;
       nodes.push({ type: "text_line", content: modLine });
     }
   }
 
-  // Notes — regular weight
   if (item.notes) {
     nodes.push({ type: "text_line", content: `  Note: ${sanitizeForPrint(item.notes)}` });
   }
@@ -363,6 +243,15 @@ function pushReceiptItemsGroupedBySeat(
     groups.get(seat)!.push(item);
   }
 
+  // If all items are in one group (e.g. all SHARED), skip the header
+  if (groups.size === 1) {
+    const items = [...groups.values()][0];
+    for (const item of items) {
+      pushReceiptSingleItem(nodes, item, w, cfg);
+    }
+    return;
+  }
+
   let isFirst = true;
   for (const [seat, seatItems] of groups) {
     if (!isFirst) {
@@ -370,13 +259,7 @@ function pushReceiptItemsGroupedBySeat(
     }
     isFirst = false;
 
-    nodes.push({
-      type: "text_line",
-      content: `-- ${seat} --`,
-      align: "center",
-      format: { bold: true },
-    });
-    nodes.push({ type: "divider", style: "solid", lineWidth: w });
+    nodes.push({ type: "text_line", content: `-- ${seat} --`, align: "center", format: BOLD });
 
     for (const item of seatItems) {
       pushReceiptSingleItem(nodes, item, w, cfg);

@@ -197,23 +197,16 @@ export const usePrinterStore = create<PrinterStoreState>()(
         }
 
         try {
-          // If setting as default receipt, clear other defaults at same location
-          if (updates.isDefaultReceipt === true) {
+          // If setting as default receipt, clear other defaults at same station (max 1 receipt printer)
+          if (updates.isDefaultReceipt === true && printer.stationId) {
             await supabase
               .from("printers")
               .update({ is_default_receipt: false })
-              .eq("location_id", printer.locationId)
+              .eq("station_id", printer.stationId)
               .neq("id", printerId);
           }
 
-          // If setting as default kitchen, clear other defaults at same location
-          if (updates.isDefaultKitchen === true) {
-            await supabase
-              .from("printers")
-              .update({ is_default_kitchen: false })
-              .eq("location_id", printer.locationId)
-              .neq("id", printerId);
-          }
+          // isDefaultKitchen: multiple kitchen printers allowed — no clearing
 
           // Map camelCase to snake_case DB columns
           const dbUpdates: Record<string, unknown> = {};
@@ -276,13 +269,11 @@ export const usePrinterStore = create<PrinterStoreState>()(
                 if (updates.supportsLogo !== undefined) p.supportsLogo = updates.supportsLogo;
                 if (updates.graphicsOnly !== undefined) p.graphicsOnly = updates.graphicsOnly;
               } else {
-                // Clear default flags on other printers if we just claimed them
-                if (updates.isDefaultReceipt === true && p.locationId === printer.locationId) {
+                // Clear default receipt on other printers at same station (max 1 receipt printer)
+                if (updates.isDefaultReceipt === true && printer.stationId && p.stationId === printer.stationId) {
                   p.isDefaultReceipt = false;
                 }
-                if (updates.isDefaultKitchen === true && p.locationId === printer.locationId) {
-                  p.isDefaultKitchen = false;
-                }
+                // isDefaultKitchen: multiple allowed — no clearing
               }
             }
           });

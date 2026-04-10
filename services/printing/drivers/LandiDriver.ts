@@ -63,9 +63,14 @@ export class LandiDriver implements PrinterDriver {
 
   async openCashDrawer(): Promise<void> {
     if (!this.connected) {
-      throw new Error("Landi printer not initialized");
+      // Try to re-initialize — cash drawer might be requested before a print job
+      console.warn("[LandiDriver] Not connected, attempting init for cash drawer...");
+      await this.initialize({} as any);
     }
-    await openLandiCashDrawer();
+    const success = await openLandiCashDrawer();
+    if (!success) {
+      throw new Error("Cash drawer kick returned false");
+    }
   }
 
   async disconnect(): Promise<void> {
