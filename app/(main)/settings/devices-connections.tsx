@@ -212,9 +212,13 @@ const DevicesConnectionsScreen = () => {
   const toggleSection = (s: keyof typeof expandedSections) =>
     setExpandedSections((prev) => ({ ...prev, [s]: !prev[s] }));
 
-  // Device capabilities
+  // Device capabilities — seed from cache immediately, then refresh in background on mount
   const [capabilities, setCapabilities] = useState<DeviceCapabilities | null>(getCachedCapabilities);
   const [isRefreshingCaps, setIsRefreshingCaps] = useState(false);
+
+  useEffect(() => {
+    detectDeviceCapabilities().then(setCapabilities).catch(() => {});
+  }, []);
 
   // Terminal UI state
   const [showTerminalPicker, setShowTerminalPicker] = useState(false);
@@ -283,6 +287,7 @@ const DevicesConnectionsScreen = () => {
       loadTerminals(selectedStore.id);
     }
   }, [selectedStore?.id]);
+
 
   // Hydrate station terminal with IP/port from full terminal record
   useEffect(() => {
@@ -578,6 +583,18 @@ const DevicesConnectionsScreen = () => {
     }
     return p.connectionType !== "builtin" || p.stationId === selectedStation?.id;
   });
+
+  // Auto-provision built-in Landi printer if hardware is present but no DB row exists.
+  // Runs silently so the built-in is always available on Landi devices even after deletion.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!capabilities?.hasBuiltinPrinter) return;
+    if (!selectedStation || !selectedStore) return;
+    if (scopedPrinters.some((p) => p.printerType === "builtin_landi" && p.isActive)) return;
+    addBuiltinPrinter(supabase, selectedStation.id, selectedStore.id, selectedStore.merchant_id, capabilities)
+      .then((id) => { if (id && selectedStore.id) fetchPrinters(selectedStore.id); })
+      .catch((e) => console.warn("[DevicesConnections] Auto-provision built-in failed:", e));
+  }, [capabilities?.hasBuiltinPrinter, selectedStation?.id, selectedStore?.id, scopedPrinters.length]);
 
   const handleRetryConnection = async (printer: PrinterConfig) => {
     setRetryingPrinterId(printer.id);

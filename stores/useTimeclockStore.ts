@@ -17,6 +17,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
+import { useLocationConfigStore } from "./useLocationConfigStore";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
 
 // ============================================================================
@@ -189,7 +190,7 @@ export const useTimeclockStore = create<TimeclockState>()(
 
       startBreak: () => {
         const { activeEmployeeId, sessions } = get();
-        const { isBreakAndSwitchEnabled } = useStoreSettingsStore.getState();
+        const isBreakAndSwitchEnabled = useLocationConfigStore.getState().config.timeclock.breakAndSwitchEnabled;
 
         if (!activeEmployeeId || !sessions[activeEmployeeId]) return;
 

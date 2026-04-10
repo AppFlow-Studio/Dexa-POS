@@ -128,6 +128,18 @@ export async function addBuiltinPrinter(
   merchantId: string,
   capabilities: DeviceCapabilities,
 ): Promise<string | null> {
+  // Check if another active non-builtin printer already owns the default receipt role.
+  // If so, the built-in should NOT steal that role — it's a fallback, not the primary.
+  const { data: existingDefaults } = await supabase
+    .from("printers")
+    .select("id")
+    .eq("location_id", locationId)
+    .eq("is_default_receipt", true)
+    .eq("is_active", true)
+    .neq("connection_type", "builtin")
+    .limit(1);
+  const anotherPrinterIsDefault = (existingDefaults?.length ?? 0) > 0;
+
   // Check if a builtin row already exists for this station
   const { data: existing } = await supabase
     .from("printers")
@@ -138,7 +150,7 @@ export async function addBuiltinPrinter(
 
   if (existing?.length) {
     if (!existing[0].is_active) {
-      // Reactivate deactivated row
+      // Reactivate deactivated row. Only take default receipt if nothing else holds it.
       await supabase
         .from("printers")
         .update({
@@ -146,16 +158,16 @@ export async function addBuiltinPrinter(
           printer_model: capabilities.model,
           is_active: true,
           is_connected: false,
-          is_default_receipt: true,
+          is_default_receipt: !anotherPrinterIsDefault,
         })
         .eq("id", existing[0].id);
-      console.log(`${TAG} Reactivated builtin printer:`, existing[0].id);
+      console.log(`${TAG} Reactivated builtin printer:`, existing[0].id, `default_receipt=${!anotherPrinterIsDefault}`);
     }
     usePrinterStore.getState().fetchPrinters(locationId);
     return existing[0].id;
   }
 
-  // Insert new builtin row with 58mm/32-char defaults
+  // Insert new builtin row. Only set as default receipt if no other printer holds that role.
   const { data: inserted, error } = await supabase
     .from("printers")
     .insert({
@@ -171,7 +183,7 @@ export async function addBuiltinPrinter(
       supports_qr_code: true,
       supports_barcode: false,
       supports_logo: false,
-      is_default_receipt: true,
+      is_default_receipt: !anotherPrinterIsDefault,
       is_active: true,
       is_connected: false,
       location_id: locationId,

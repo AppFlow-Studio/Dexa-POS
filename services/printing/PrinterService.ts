@@ -958,7 +958,8 @@ function buildReceiptTemplateData (
       'Thank you for your purchase!',
     headerMessage: template.headerText ?? undefined,
     maxCharsPerLine: printer.graphicsOnly
-      ? Math.min(printer.maxCharsPerLine, 32)
+      // ? Math.min(printer.maxCharsPerLine, 32)
+      ? 48
       : printer.maxCharsPerLine,
     taxRate: weightedTaxRate / 100, // Convert from 8.875 to 0.08875
     templateConfig: template,

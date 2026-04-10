@@ -57,10 +57,6 @@ export interface StoreSettings {
     }
   }
 
-  // Employee Settings
-  isBreakAndSwitchEnabled: boolean
-  breakDurationMinutes: number // Break duration in minutes
-
   // Online Ordering Settings
   onlineOrderingEnabled: boolean
   onlinePauseReason: string | null
@@ -159,7 +155,6 @@ interface StoreSettingsState extends StoreSettings {
     field: K,
     value: StoreSettings[K]
   ) => void
-  setIsBreakAndSwitchEnabled: (isEnabled: boolean) => void
   setPtoAccrualRate: (rate: number) => void // New action
   setTargetLaborPercent: (percent: number) => void
   // Generic update for nested objects like prepTimeAdjustments
@@ -183,9 +178,6 @@ interface StoreSettingsState extends StoreSettings {
 
   // Tax rates actions
   setTaxRates: (rates: TaxRate[]) => void
-
-  // Break duration action
-  setBreakDurationMinutes: (minutes: number) => void
 
   // Station session actions
   setSelectedStation: (station: SelectedStation) => void
@@ -226,9 +218,6 @@ const initialData: StoreSettings = {
       backToBack: true
     }
   },
-
-  isBreakAndSwitchEnabled: true, // Enabled by default
-  breakDurationMinutes: 30, // Default 30 minute breaks
 
   // Online Ordering Defaults
   onlineOrderingEnabled: true,
@@ -342,23 +331,6 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         })
       },
 
-      setIsBreakAndSwitchEnabled: (isEnabled: boolean) => {
-        set(state => {
-          const changedFields = new Set(state.changedFields)
-          if (state.initialState?.isBreakAndSwitchEnabled === isEnabled) {
-            changedFields.delete('isBreakAndSwitchEnabled')
-          } else {
-            changedFields.add('isBreakAndSwitchEnabled')
-          }
-          return {
-            ...state,
-            isBreakAndSwitchEnabled: isEnabled,
-            changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
-      },
-
       setPtoAccrualRate: (rate: number) => {
         set(state => {
           const changedFields = new Set(state.changedFields)
@@ -387,23 +359,6 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
           return {
             ...state,
             targetLaborPercent: percent,
-            changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
-      },
-
-      setBreakDurationMinutes: (minutes: number) => {
-        set(state => {
-          const changedFields = new Set(state.changedFields)
-          if (state.initialState?.breakDurationMinutes === minutes) {
-            changedFields.delete('breakDurationMinutes')
-          } else {
-            changedFields.add('breakDurationMinutes')
-          }
-          return {
-            ...state,
-            breakDurationMinutes: minutes,
             changedFields,
             isDirty: changedFields.size > 0
           }
@@ -582,7 +537,6 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         minimumPtoNoticeDays: state.minimumPtoNoticeDays,
         targetLaborPercent: state.targetLaborPercent,
         scheduling: state.scheduling,
-        isBreakAndSwitchEnabled: state.isBreakAndSwitchEnabled,
         onlineOrderingEnabled: state.onlineOrderingEnabled,
         onlinePauseReason: state.onlinePauseReason,
         autoResumeTime: state.autoResumeTime,
