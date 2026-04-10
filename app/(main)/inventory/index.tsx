@@ -26,7 +26,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 /* =========================
@@ -300,10 +300,17 @@ const InventoryScreen = () => {
     addInventoryItem,
     updateInventoryItem,
     deleteInventoryItem,
+    fetchInventoryItems,
     vendors,
   } = useInventoryStore();
 
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+
+  useEffect(() => {
+    if (selectedStore?.id) {
+      fetchInventoryItems(selectedStore.id);
+    }
+  }, [selectedStore?.id]);
 
   const lowStockItems = getLowStockItems();
   const addItemSheetRef = React.useRef<BottomSheet>(null);

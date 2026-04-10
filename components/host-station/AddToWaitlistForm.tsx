@@ -1,12 +1,12 @@
 import { colors } from '@/lib/theme'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import { AlertCircle, ChevronDown, Clock, Mail, Minus, Phone, Plus, StickyNote, Users, UserCircle } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Modal,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -70,6 +70,7 @@ const DropdownModal = ({
 
 export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, onCancel, isLoading }) => {
   const tables = useFloorPlanStore(s => s.tables)
+  const waitlist = useWaitlistStore(s => s.waitlist)
 
   const [partyName, setPartyName] = useState('')
   const [partySize, setPartySize] = useState(2)
@@ -88,12 +89,13 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
 
   useEffect(() => {
     if (tables.length === 0) return
-    const calculator = new WaitTimeCalculator(tables)
-    const { waitTime, estimatedReadyAt: calculated } = calculator.calculateWaitTimeEnhanced(partySize)
+    const activeAhead = waitlist.filter(w => w.status === 'waiting' || w.status === 'notified').length
+    const calculator = new WaitTimeCalculator(tables, waitlist)
+    const { waitTime, estimatedReadyAt: calculated } = calculator.calculateWaitTimeEnhanced(partySize, activeAhead)
     setAutoCalculatedWait(waitTime)
     setEstimatedReadyAt(calculated)
     if (!isWaitOverridden) setQuotedWait(String(waitTime))
-  }, [partySize, tables, isWaitOverridden])
+  }, [partySize, tables, waitlist, isWaitOverridden])
 
   useEffect(() => {
     if (errors.length > 0) setErrors([])
@@ -133,11 +135,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
   const hasName = partyName.trim().length > 0
 
   return (
-    <ScrollView
-      contentContainerStyle={{ paddingBottom: 16, paddingHorizontal: 14, paddingTop: 4 }}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps='handled'
-    >
+    <View style={{ paddingBottom: 16, paddingHorizontal: 14, paddingTop: 10 }}>
       {/* Errors */}
       {errors.length > 0 && (
         <View style={{ marginBottom: 12, padding: 10, borderRadius: 8, backgroundColor: colors.danger + '12', borderWidth: 1, borderColor: colors.danger + '40' }}>
@@ -171,8 +169,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
         {/* Party size stepper */}
         <View style={{ flex: 1 }}>
-          <Text style={labelStyle}>Party Size *</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', height: 40 }}>
+          <View style={{ height: 14, justifyContent: 'center', marginBottom: 5 }}>
+            <Text style={{ ...labelStyle, marginBottom: 0 }}>Party Size *</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', height: 38 }}>
             <TouchableOpacity
               onPress={() => adjustPartySize(-1)}
               style={{ width: 36, height: '100%', alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: colors.border }}
@@ -181,7 +181,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
             </TouchableOpacity>
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
               <Users size={12} color={colors.muted} />
-              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.heading }}>{partySize}</Text>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.heading, lineHeight: 20 }}>{partySize}</Text>
             </View>
             <TouchableOpacity
               onPress={() => adjustPartySize(1)}
@@ -194,20 +194,20 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
 
         {/* Wait time */}
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5, height: 14 }}>
             <Text style={{ ...labelStyle, marginBottom: 0 }}>Wait (min)</Text>
             {autoCalculatedWait !== null && !isWaitOverridden && (
-              <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '40' }}>
+              <View style={{ paddingHorizontal: 5, borderRadius: 4, backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '40', height: 14, justifyContent: 'center' }}>
                 <Text style={{ color: colors.teal, fontSize: 8, fontWeight: '700' }}>AUTO</Text>
               </View>
             )}
             {isWaitOverridden && (
-              <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: colors.warning + '18', borderWidth: 1, borderColor: colors.warning + '40' }}>
+              <View style={{ paddingHorizontal: 5, borderRadius: 4, backgroundColor: colors.warning + '18', borderWidth: 1, borderColor: colors.warning + '40', height: 14, justifyContent: 'center' }}>
                 <Text style={{ color: colors.warning, fontSize: 8, fontWeight: '700' }}>CUSTOM</Text>
               </View>
             )}
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: isWaitOverridden ? colors.warning + '60' : colors.border, paddingHorizontal: 10, gap: 6, height: 40 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: isWaitOverridden ? colors.warning + '60' : colors.border, paddingHorizontal: 10, gap: 6, height: 38 }}>
             <Clock size={13} color={isWaitOverridden ? colors.warning : colors.muted} />
             <TextInput
               value={quotedWait}
@@ -215,7 +215,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
               placeholderTextColor={colors.muted}
               keyboardType='number-pad'
               maxLength={3}
-              style={{ flex: 1, fontSize: 16, fontWeight: '800', color: isWaitOverridden ? colors.warning : colors.heading }}
+              style={{ flex: 1, fontSize: 16, fontWeight: '800', color: isWaitOverridden ? colors.warning : colors.heading, padding: 0, lineHeight: 20 }}
             />
             <Text style={{ color: colors.muted, fontSize: 11 }}>min</Text>
           </View>
@@ -319,7 +319,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
 
       <DropdownModal visible={showSeatingDropdown} onClose={() => setShowSeatingDropdown(false)} title='Seating Preference' options={SEATING_PREFERENCES} selected={seatingPreference} onSelect={setSeatingPreference} />
       <DropdownModal visible={showSectionDropdown} onClose={() => setShowSectionDropdown(false)} title='Preferred Section' options={SECTIONS} selected={preferredSection} onSelect={setPreferredSection} />
-    </ScrollView>
+    </View>
   )
 }
 

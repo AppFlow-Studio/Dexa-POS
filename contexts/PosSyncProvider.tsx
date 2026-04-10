@@ -339,6 +339,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const setInventorySupabase = useInventoryStore(
     (state) => state.setSupabaseClient,
   );
+  const fetchPurchaseOrders = useInventoryStore(
+    (state) => state.fetchPurchaseOrders,
+  );
 
   useEffect(() => {
     if (supabase) {
@@ -385,6 +388,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, [inventoryData]);
   // --- END INVENTORY SYNC ---
+
+  useEffect(() => {
+    if (!isKDS && selectedStore?.id) {
+      fetchPurchaseOrders(selectedStore.id);
+    }
+  }, [fetchPurchaseOrders, isKDS, selectedStore?.id]);
 
   // Update menu store when sync data changes
   useEffect(() => {

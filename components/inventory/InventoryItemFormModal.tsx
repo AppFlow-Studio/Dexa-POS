@@ -145,7 +145,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
           unitType: initialData.unitType,
           reorderThreshold: parseFloat(reorderThreshold) || 0,
           cost: parseFloat(cost) || 0,
-          vendorId: initialData.vendorId,
+          vendorId: vendorId?.value ?? initialData.vendorId,
           stockTrackingMode: "quantity",
           locationId: initialData.locationId ?? null,
           stockUpdateReason: stockUpdateReason,
@@ -361,6 +361,38 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                   />
                 </View>
               </View>
+            </View>
+
+            {/* Vendor */}
+            <View style={{ marginBottom: 4 }}>
+              <Text style={fieldLabel}>Vendor</Text>
+              <Select value={vendorId} onValueChange={setVendorId}>
+                <SelectTrigger
+                  className="w-full"
+                  style={{
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    height: 40,
+                    paddingHorizontal: 12,
+                  }}
+                >
+                  <SelectValue
+                    style={{ fontSize: 14, color: colors.heading }}
+                    placeholder="Select a vendor..."
+                  />
+                </SelectTrigger>
+                <SelectContent insets={contentInsets}>
+                  <SelectGroup>
+                    {vendorOptions.map((opt) => (
+                      <SelectItem key={opt.value} label={opt.label} value={opt.value}>
+                        <Text style={{ fontSize: 13 }}>{opt.label}</Text>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </View>
 
             <DialogFooter className="flex-row gap-2 mt-2">

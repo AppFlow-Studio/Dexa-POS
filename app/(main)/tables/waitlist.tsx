@@ -1,5 +1,8 @@
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
+import { AddWaitlistModal } from '@/components/host-station/AddWaitlistModal'
 import AppNoticeModal from '@/components/ui/AppNoticeModal'
+import { TableSelectionSheet } from '@/components/host-station/TableSelectionSheet'
+import { WaitlistCard } from '@/components/tables/waitlist-shared'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { bottomSheetTheme, colors } from '@/lib/theme'
@@ -18,17 +21,9 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet'
 import { useRouter } from 'expo-router'
 import {
-  AlertCircle,
-  Bell,
-  Check,
-  ChevronDown,
-  ChevronUp,
   Clock,
-  Phone,
-  StickyNote,
   UserPlus,
-  Users,
-  X
+  X,
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -37,7 +32,7 @@ import {
   Pressable,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -613,7 +608,7 @@ export default function WaitlistScreen () {
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
 
-  const [viewMode, setViewMode] = useState<'list' | 'add'>('list')
+  const [showAddModal, setShowAddModal] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selectedEntry, setSelectedEntry] = useState<WaitlistEntry | null>(null)
   const [isTablePickerOpen, setTablePickerOpen] = useState(false)
@@ -639,27 +634,32 @@ export default function WaitlistScreen () {
     setTablePickerOpen(true)
   }, [])
 
-  const handleSelectTable = useCallback(
-    async (table: FloorPlanObject) => {
-      if (!selectedEntry) return
+  const tables = useFloorPlanStore(s => s.tables)
 
-      const result = await seatFromWaitlistAsync(selectedEntry.id, [table.id])
+  const handleSelectTable = useCallback(
+    async (tableIds: string[]) => {
+      if (!selectedEntry || tableIds.length === 0) return
+      const tableId = tableIds[0]
+      const entry = selectedEntry
+
+      // Close modal immediately so loading never appears behind it
+      setTablePickerOpen(false)
+      setSelectedEntry(null)
+
+      const result = await seatFromWaitlistAsync(entry.id, tableIds)
 
       if (result?.order_id) {
         setActiveOrder(result.order_id)
       } else {
         const newOrder = startNewOrder({
-          guestCount: selectedEntry.party_size,
-          tableId: table.id
+          guestCount: entry.party_size,
+          tableId,
         })
         setActiveOrder(newOrder.id)
       }
 
-      // Navigate to tables overview and auto-open the table modal overlay
-      usePendingTableOverlay.getState().setPendingTableId(table.id)
+      usePendingTableOverlay.getState().setPendingTableId(tableId)
       router.push('/tables')
-      setTablePickerOpen(false)
-      setSelectedEntry(null)
     },
     [
       selectedEntry,
@@ -678,15 +678,13 @@ export default function WaitlistScreen () {
         setNotice({
           title: 'No Phone Number',
           description: `Please call out "${entry.party_name}" — no phone on file`,
-          variant: 'warning'
+          variant: 'warning',
         })
         return
       }
 
       try {
-        const result = await useWaitlistStore
-          .getState()
-          .notifyWaitlistPartyAsync(entry.id)
+        const result = await useWaitlistStore.getState().notifyWaitlistPartyAsync(entry.id)
 
         if (!result.success) {
           if (result.error === 'sms_failed') {
@@ -695,13 +693,13 @@ export default function WaitlistScreen () {
               description:
                 result.message ||
                 'Could not send SMS. Failure logged. Please notify guest verbally.',
-              variant: 'error'
+              variant: 'error',
             })
           } else {
             setNotice({
               title: 'Could Not Notify',
               description: result.error || 'Failed to notify party',
-              variant: 'error'
+              variant: 'error',
             })
           }
         } else if (result.sms) {
@@ -714,13 +712,13 @@ export default function WaitlistScreen () {
           show({
             title: 'Invalid Phone Number',
             message: `Could not send SMS — invalid number on file. Please notify ${entry.party_name} verbally.`,
-            type: 'warning'
+            type: 'warning',
           })
         } else {
           show({
             title: 'Party Notified',
             message: `${entry.party_name} has been notified`,
-            type: 'success'
+            type: 'success',
           })
         }
 
@@ -748,23 +746,20 @@ export default function WaitlistScreen () {
   }, [itemToDelete, removeFromWaitlistAsync])
 
   const handleAddEntry = useCallback(
-    async (data: {
-      name: string
-      partySize: number
-      quotedTime: number
-      notes: string
-      phone?: string
-    }) => {
+    async (data: { party_name: string; party_size: number; phone?: string; email?: string; seating_preference?: string; preferred_section?: string; notes?: string; quoted_wait_minutes?: number }) => {
       if (!selectedStore?.id) return
       await addToWaitlistAsync({
         locationId: selectedStore.id,
-        p_party_name: data.name,
-        p_party_size: data.partySize,
-        p_quoted_wait_minutes: data.quotedTime,
+        p_party_name: data.party_name,
+        p_party_size: data.party_size,
+        p_phone: data.phone,
+        p_email: data.email,
+        p_seating_preference: data.seating_preference,
+        p_preferred_section: data.preferred_section,
         p_notes: data.notes,
-        p_phone: data.phone
+        p_quoted_wait_minutes: data.quoted_wait_minutes,
       })
-      setViewMode('list')
+      setShowAddModal(false)
     },
     [selectedStore?.id, addToWaitlistAsync]
   )
@@ -801,28 +796,15 @@ export default function WaitlistScreen () {
           </View>
         </View>
         <TouchableOpacity
-          onPress={() => setViewMode(m => (m === 'list' ? 'add' : 'list'))}
-          className={`w-10 h-10 rounded-full items-center justify-center ${
-            viewMode === 'add' ? 'bg-red-900/30' : 'bg-teal/20'
-          }`}
+          onPress={() => setShowAddModal(true)}
+          className='w-10 h-10 rounded-full items-center justify-center bg-teal/20'
         >
-          {viewMode === 'add' ? (
-            <X size={20} color={colors.danger} />
-          ) : (
-            <UserPlus size={20} color={colors.teal} />
-          )}
+          <UserPlus size={20} color={colors.teal} />
         </TouchableOpacity>
       </View>
 
       {/* Content */}
-      {viewMode === 'add' ? (
-        <AddEntryForm
-          onSubmit={handleAddEntry}
-          onCancel={() => setViewMode('list')}
-          isLoading={isLoading}
-          waitlist={waitlist}
-        />
-      ) : isLoading && waitlist.length === 0 ? (
+      {isLoading && waitlist.length === 0 ? (
         <View className='flex-1 items-center justify-center py-12'>
           <ActivityIndicator size='large' color={colors.teal} />
           <Text className='text-muted mt-3'>Loading waitlist...</Text>
@@ -844,12 +826,20 @@ export default function WaitlistScreen () {
         </View>
       )}
 
-      {/* Table Picker Sub-Sheet */}
-      <TablePickerModal
+      <AddWaitlistModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSubmit={handleAddEntry}
+        isLoading={isLoading}
+      />
+
+      {/* Table Picker */}
+      <TableSelectionSheet
         isOpen={isTablePickerOpen}
         onClose={() => setTablePickerOpen(false)}
         onSelectTable={handleSelectTable}
         entry={selectedEntry}
+        tables={tables}
       />
 
       {/* Delete Confirmation */}

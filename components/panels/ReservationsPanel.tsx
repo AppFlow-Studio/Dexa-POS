@@ -1154,9 +1154,13 @@ const AddReservationModal: React.FC<{
                                   borderWidth: 1,
                                   backgroundColor: active
                                     ? colors.teal + '20'
+                                    : t.occupied
+                                    ? colors.warning + '10'
                                     : colors.panel,
                                   borderColor: active
                                     ? colors.teal + '60'
+                                    : t.occupied
+                                    ? colors.warning + '40'
                                     : colors.border,
                                   alignItems: 'center'
                                 }}
@@ -1165,7 +1169,11 @@ const AddReservationModal: React.FC<{
                                   style={{
                                     fontSize: 12,
                                     fontWeight: '700',
-                                    color: active ? colors.teal : colors.label
+                                    color: active
+                                      ? colors.teal
+                                      : t.occupied
+                                      ? colors.warning
+                                      : colors.label
                                   }}
                                 >
                                   {t.name}
@@ -1763,12 +1771,21 @@ const ReservationsPanel: React.FC = () => {
     message: ''
   })
 
-  // Available tables (no active session, category = table/booth)
+  // All selectable tables — show occupied too (reservation is for a future time)
+  // Only exclude permanently unusable tables
   const availableTables = useMemo(
     () =>
       tables
-        .filter(t => !t.session && ['table', 'booth'].includes(t.category))
-        .map(t => ({ id: t.id, name: t.name }))
+        .filter(t =>
+          ['table', 'booth'].includes(t.category) &&
+          t.session?.status !== 'blocked' &&
+          t.session?.status !== 'not_in_service'
+        )
+        .map(t => ({
+          id: t.id,
+          name: t.name,
+          occupied: !!t.session && t.session.status !== 'available' && t.session.status !== 'cleaning',
+        }))
         .sort((a, b) =>
           a.name.localeCompare(b.name, undefined, { numeric: true })
         ),

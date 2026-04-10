@@ -225,14 +225,22 @@ const PurchaseOrdersScreen = () => {
     )
   }, [vendors, vendorPickerQuery])
 
-  const handleRemoveExpense = (expenseId: string) => {
+  const handleRemoveExpense = async (expenseId: string) => {
     const e = externalExpenses.find(x => x.id === expenseId)
-    removeExternalExpense(expenseId)
-    show({
-      title: 'Expense Removed',
-      message: `Expense ${e?.expenseNumber || ''} removed.`,
-      type: 'success'
-    })
+    try {
+      await removeExternalExpense(expenseId)
+      show({
+        title: 'Expense Removed',
+        message: `Expense ${e?.expenseNumber || ''} removed.`,
+        type: 'success'
+      })
+    } catch {
+      show({
+        title: 'Remove Failed',
+        message: `Could not remove expense ${e?.expenseNumber || ''}.`,
+        type: 'error'
+      })
+    }
   }
 
   const filtered = useMemo(() => {
@@ -1020,14 +1028,22 @@ const PurchaseOrdersScreen = () => {
         <ConfirmationModal
           isOpen={!!poToDelete}
           onClose={() => setPoToDelete(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
             if (poToDelete) {
-              deletePurchaseOrder(poToDelete.id)
-              show({
-                title: 'PO Deleted',
-                message: `"${poToDelete.poNumber}" deleted.`,
-                type: 'success'
-              })
+              try {
+                await deletePurchaseOrder(poToDelete.id)
+                show({
+                  title: 'PO Deleted',
+                  message: `"${poToDelete.poNumber}" deleted.`,
+                  type: 'success'
+                })
+              } catch {
+                show({
+                  title: 'Delete Failed',
+                  message: `Could not delete "${poToDelete.poNumber}".`,
+                  type: 'error'
+                })
+              }
             }
             setPoToDelete(null)
           }}
