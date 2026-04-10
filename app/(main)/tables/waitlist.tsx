@@ -1,8 +1,7 @@
-import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { AddWaitlistModal } from '@/components/host-station/AddWaitlistModal'
-import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { TableSelectionSheet } from '@/components/host-station/TableSelectionSheet'
-import { WaitlistCard } from '@/components/tables/waitlist-shared'
+import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
+import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { bottomSheetTheme, colors } from '@/lib/theme'
@@ -21,9 +20,17 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet'
 import { useRouter } from 'expo-router'
 import {
+  AlertCircle,
+  Bell,
+  Check,
+  ChevronDown,
+  ChevronUp,
   Clock,
+  Phone,
+  StickyNote,
   UserPlus,
-  X,
+  Users,
+  X
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -32,7 +39,7 @@ import {
   Pressable,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -653,7 +660,7 @@ export default function WaitlistScreen () {
       } else {
         const newOrder = startNewOrder({
           guestCount: entry.party_size,
-          tableId,
+          tableId
         })
         setActiveOrder(newOrder.id)
       }
@@ -678,13 +685,15 @@ export default function WaitlistScreen () {
         setNotice({
           title: 'No Phone Number',
           description: `Please call out "${entry.party_name}" — no phone on file`,
-          variant: 'warning',
+          variant: 'warning'
         })
         return
       }
 
       try {
-        const result = await useWaitlistStore.getState().notifyWaitlistPartyAsync(entry.id)
+        const result = await useWaitlistStore
+          .getState()
+          .notifyWaitlistPartyAsync(entry.id)
 
         if (!result.success) {
           if (result.error === 'sms_failed') {
@@ -693,13 +702,13 @@ export default function WaitlistScreen () {
               description:
                 result.message ||
                 'Could not send SMS. Failure logged. Please notify guest verbally.',
-              variant: 'error',
+              variant: 'error'
             })
           } else {
             setNotice({
               title: 'Could Not Notify',
               description: result.error || 'Failed to notify party',
-              variant: 'error',
+              variant: 'error'
             })
           }
         } else if (result.sms) {
@@ -712,13 +721,13 @@ export default function WaitlistScreen () {
           show({
             title: 'Invalid Phone Number',
             message: `Could not send SMS — invalid number on file. Please notify ${entry.party_name} verbally.`,
-            type: 'warning',
+            type: 'warning'
           })
         } else {
           show({
             title: 'Party Notified',
             message: `${entry.party_name} has been notified`,
-            type: 'success',
+            type: 'success'
           })
         }
 
@@ -746,7 +755,16 @@ export default function WaitlistScreen () {
   }, [itemToDelete, removeFromWaitlistAsync])
 
   const handleAddEntry = useCallback(
-    async (data: { party_name: string; party_size: number; phone?: string; email?: string; seating_preference?: string; preferred_section?: string; notes?: string; quoted_wait_minutes?: number }) => {
+    async (data: {
+      party_name: string
+      party_size: number
+      phone?: string
+      email?: string
+      seating_preference?: string
+      preferred_section?: string
+      notes?: string
+      quoted_wait_minutes?: number
+    }) => {
       if (!selectedStore?.id) return
       await addToWaitlistAsync({
         locationId: selectedStore.id,
@@ -757,7 +775,7 @@ export default function WaitlistScreen () {
         p_seating_preference: data.seating_preference,
         p_preferred_section: data.preferred_section,
         p_notes: data.notes,
-        p_quoted_wait_minutes: data.quoted_wait_minutes,
+        p_quoted_wait_minutes: data.quoted_wait_minutes
       })
       setShowAddModal(false)
     },
