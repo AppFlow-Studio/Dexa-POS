@@ -205,33 +205,42 @@ export const PrinterService = {
         (p.supportsCashDrawerKick || p.printerType === 'star_micronics')
     )
 
-    // Priority: connected default receipt > any default receipt > connected any > first available
-    const printer =
-      drawerPrinters.find(p => p.isDefaultReceipt && p.isConnected) ??
-      drawerPrinters.find(p => p.isDefaultReceipt) ??
-      drawerPrinters.find(p => p.isConnected) ??
-      drawerPrinters[0]
-
-    if (!printer) {
+    if (drawerPrinters.length === 0) {
       console.warn('[PrinterService] No printer with cash drawer support')
       return false
     }
 
-    try {
-      console.log(
-        '[PrinterService] Opening cash drawer for printer:',
-        printer.networkAddress
-      )
-      const driver = getDriver(printer)
-      if (!driver.isConnected()) {
-        await driver.initialize(printer)
+    // Sort by priority: Star Micronics first (has real DK port), then connected default receipt, etc.
+    const sorted = [
+      ...drawerPrinters.filter(p => p.printerType === 'star_micronics' && p.isConnected),
+      ...drawerPrinters.filter(p => p.printerType === 'star_micronics' && !p.isConnected),
+      ...drawerPrinters.filter(p => p.printerType !== 'star_micronics' && p.isDefaultReceipt && p.isConnected),
+      ...drawerPrinters.filter(p => p.printerType !== 'star_micronics' && p.isDefaultReceipt && !p.isConnected),
+      ...drawerPrinters.filter(p => p.printerType !== 'star_micronics' && !p.isDefaultReceipt),
+    ]
+    // Deduplicate (a printer may match multiple filters)
+    const candidates = [...new Map(sorted.map(p => [p.id, p])).values()]
+
+    // Try each candidate — if one fails, fall back to next
+    for (const printer of candidates) {
+      try {
+        console.log(
+          `[PrinterService] Opening cash drawer via ${printer.printerType} (${printer.printerName}, addr=${printer.networkAddress ?? 'builtin'})`
+        )
+        const driver = getDriver(printer)
+        if (!driver.isConnected()) {
+          await driver.initialize(printer)
+        }
+        await driver.openCashDrawer()
+        return true
+      } catch (e) {
+        console.warn(`[PrinterService] Cash drawer failed on ${printer.printerName}:`, e)
+        // Continue to next candidate
       }
-      await driver.openCashDrawer()
-      return true
-    } catch (e) {
-      console.error('[PrinterService] Cash drawer failed:', e)
-      return false
     }
+
+    console.error('[PrinterService] All cash drawer candidates failed')
+    return false
   },
 
   /**

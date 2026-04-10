@@ -56,8 +56,8 @@ export async function openLandiCashDrawer(): Promise<boolean> {
   try {
     return await LandiPrinterModule.openCashDrawer();
   } catch (e) {
-    console.warn("[LandiPrinter] Cash drawer failed:", e);
-    return false;
+    console.error("[LandiPrinter] Cash drawer failed:", e);
+    throw e; // Propagate so callers know it failed
   }
 }
 

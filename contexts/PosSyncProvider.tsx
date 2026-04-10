@@ -34,8 +34,6 @@ import { setKDSSupabaseClient, useKDSStore } from "@/stores/useKDSStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import {
   detectAndStoreCapabilities,
-  handleDeviceChangeIfNeeded,
-  ensureBuiltinPrinterProvisioned,
   startHeartbeat,
   stopHeartbeat,
   startTerminalHealthCheck,
@@ -117,23 +115,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     // };
   }, [supabase]);
 
-  // Device detection, builtin printer provisioning & heartbeat lifecycle
+  // Device detection & heartbeat lifecycle
   useEffect(() => {
     if (supabase && selectedStation?.id && selectedStore?.id) {
       detectAndStoreCapabilities(supabase, selectedStation.id)
-        .then(async (capabilities) => {
-          // Detect device swaps and migrate stale built-in printers
-          await handleDeviceChangeIfNeeded(supabase, selectedStation.id, selectedStore.id, capabilities);
-
-          // Auto-provision a printer row for built-in printers (no-op if already exists)
-          await ensureBuiltinPrinterProvisioned(
-            supabase,
-            selectedStation.id,
-            selectedStore.id,
-            selectedStore.merchant_id,
-            capabilities,
-          );
-
+        .then(async () => {
           // Fetch printers into local store so PrinterService can route jobs
           await usePrinterStore.getState().fetchPrinters(selectedStore.id);
         })
