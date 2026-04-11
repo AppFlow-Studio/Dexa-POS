@@ -586,15 +586,16 @@ export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
           o.order_type !== "dine_in" &&
           o.order_status !== "void" &&
           o.order_status !== "completed" &&
-          o.check_status !== "Closed" &&
           o.items.length > 0 &&
           (
             // Draft orders: only show own-station ones
             (isDraft && isOwnStation) ||
             // Active non-draft orders
             (!isDraft && (
+              // Still being prepared: always show regardless of payment/check status
               (o.order_status === "preparing" || o.order_status === "sent_to_kitchen") ||
-              (o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial") ||
+              // Not yet paid and check not closed
+              (o.check_status !== "Closed" && (o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial")) ||
               (o.order_status === "ready" && o.paid_status === "Paid")
             ))
           )

@@ -10222,8 +10222,8 @@ export const useOrderStore = create<OrderState>()(
                       method: (p.payment_method === 'card'
                         ? 'Card'
                         : 'Cash') as PaymentType,
-                      cardBrand: p.card_brand,
-                      last4: p.card_last4,
+                      cardBrand: p.card_type,
+                      last4: p.card_last_four,
                       tip_amount: p.tip_amount || 0,
                       total_collected: p.amount + (p.tip_amount || 0),
                       itemsCovered: (p.item_ids || []).map(
