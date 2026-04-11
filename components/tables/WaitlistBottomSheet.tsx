@@ -74,9 +74,9 @@ const WaitlistCard: React.FC<{
   const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
 
   // Sync shared value when isExpanded changes
-  if (expandedHeight.value !== (isExpanded ? 1 : 0)) {
+  useEffect(() => {
     expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
-  }
+  }, [isExpanded])
 
   const expandedStyle = useAnimatedStyle(() => ({
     opacity: expandedHeight.value,

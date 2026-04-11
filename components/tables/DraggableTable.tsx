@@ -23,7 +23,6 @@ import Animated, {
   interpolateColor,
   runOnJS,
   SharedValue,
-  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -448,31 +447,20 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const newMerged = !!(
     liveSession?.merged_tables && liveSession.merged_tables.length > 0
   )
-  if (isMergedShared.value !== newMerged) {
-    isMergedShared.value = newMerged
-  }
   const newAttention = liveSession?.needs_attention ?? false
-  if (attentionShared.value !== newAttention) {
+  useEffect(() => {
+    isMergedShared.value = newMerged
+  }, [newMerged])
+  useEffect(() => {
     attentionShared.value = newAttention
-  }
+  }, [newAttention])
 
   // --- SYNC WITH UNDO/REDO ---
-  useAnimatedReaction(
-    () => ({ x: table.x, y: table.y, r: table.rotation }),
-    (current, prev) => {
-      if (
-        !prev ||
-        current.x !== prev.x ||
-        current.y !== prev.y ||
-        current.r !== prev.r
-      ) {
-        translateX.value = current.x
-        translateY.value = current.y
-        rotation.value = current.r || 0
-      }
-    },
-    [table.x, table.y, table.rotation]
-  )
+  useEffect(() => {
+    translateX.value = table.x
+    translateY.value = table.y
+    rotation.value = table.rotation || 0
+  }, [table.x, table.y, table.rotation])
 
   useEffect(() => {
     registerTablePosition(table.id, translateX, translateY)

@@ -5,6 +5,7 @@ import { MenuItemType } from "@/lib/types";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useAuth } from "@clerk/clerk-expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import React, { useState } from "react";
@@ -17,6 +18,7 @@ const EditMenuItemScreen: React.FC = () => {
   const categories = useMenuStore((s) => s.categories);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
+  const { getToken } = useAuth();
   const { show } = useToast();
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
@@ -51,13 +53,29 @@ const EditMenuItemScreen: React.FC = () => {
   ): Promise<boolean> => {
     setIsSaving(true);
     try {
+      // Upload image to CDN if a new image was picked (base64 string)
+      let imageUrl = data.image;
+      if (data.image && !data.image.startsWith('http')) {
+        try {
+          imageUrl = await MenuService.uploadMenuImage(supabase, {
+            merchantId: selectedStore!.merchant_id,
+            base64: data.image,
+            getToken,
+          });
+        } catch (uploadErr) {
+          console.error('Image upload failed:', uploadErr);
+          show({ title: 'Image Upload Failed', message: 'Could not upload image. Item will be saved without it.', type: 'error' });
+          imageUrl = itemToEdit.image; // keep existing image on failure
+        }
+      }
+
       // Update in backend first
       const { error } = await MenuService.updateMenuItem(supabase, itemId, {
         name: data.name,
         description: data.description,
         price: data.price,
         cashPrice: data.cashPrice,
-        image: data.image,
+        image: imageUrl,
         mealTypes: data.meal as ("Lunch" | "Dinner" | "Brunch" | "Specials")[],
         allergens: data.allergens,
         availability: data.availability,

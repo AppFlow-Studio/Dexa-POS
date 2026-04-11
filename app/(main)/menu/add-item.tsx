@@ -5,6 +5,7 @@ import { MenuItemType } from "@/lib/types";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useAuth } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, View } from "react-native";
@@ -14,6 +15,7 @@ const AddMenuItemScreen: React.FC = () => {
   const categories = useMenuStore((s) => s.categories);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
+  const { getToken } = useAuth();
   const { show } = useToast();
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
@@ -31,6 +33,22 @@ const AddMenuItemScreen: React.FC = () => {
 
       const merchantId = selectedStore.merchant_id;
 
+      // Upload image to CDN if a new image was picked (base64 string)
+      let imageUrl = data.image;
+      if (data.image && !data.image.startsWith('http')) {
+        try {
+          imageUrl = await MenuService.uploadMenuImage(supabase, {
+            merchantId,
+            base64: data.image,
+            getToken,
+          });
+        } catch (uploadErr) {
+          console.error('Image upload failed:', uploadErr);
+          show({ title: 'Image Upload Failed', message: 'Could not upload image. Item will be saved without it.', type: 'error' });
+          imageUrl = undefined;
+        }
+      }
+
       // Create menu item in backend
       const { data: createdItem, error } = await MenuService.createMenuItem(
         supabase,
@@ -41,7 +59,7 @@ const AddMenuItemScreen: React.FC = () => {
           description: data.description,
           price: data.price,
           cashPrice: data.cashPrice,
-          image: data.image,
+          image: imageUrl,
           mealTypes: data.meal,
           allergens: data.allergens || [],
           availability: data.availability,
@@ -97,6 +115,7 @@ const AddMenuItemScreen: React.FC = () => {
           await MenuService.assignModifierToItem(supabase, {
             menuItemId: createdItem.id,
             modifierGroupId: modifierId,
+            merchantId,
             displayOrder: i,
           });
         }
