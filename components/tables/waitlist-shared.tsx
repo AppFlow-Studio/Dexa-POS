@@ -116,9 +116,9 @@ export const WaitlistCard: React.FC<{
   const isOverdue = elapsed > entry.quoted_wait_minutes
 
   const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
-  if (expandedHeight.value !== (isExpanded ? 1 : 0)) {
+  useEffect(() => {
     expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
-  }
+  }, [isExpanded])
   const expandedStyle = useAnimatedStyle(() => ({
     opacity: expandedHeight.value,
     maxHeight: expandedHeight.value * 300,
