@@ -614,6 +614,7 @@ export class MenuService {
     params: {
       menuItemId: string;
       modifierGroupId: string;
+      merchantId: string;
       displayOrder?: number;
     }
   ): Promise<{ data: any; error: any }> {
@@ -622,6 +623,7 @@ export class MenuService {
       .insert({
         menu_item_id: params.menuItemId,
         modifier_group_id: params.modifierGroupId,
+        merchant_id: params.merchantId,
         display_order: params.displayOrder ?? 0,
       })
       .select()

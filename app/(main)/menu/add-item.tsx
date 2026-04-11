@@ -97,6 +97,7 @@ const AddMenuItemScreen: React.FC = () => {
           await MenuService.assignModifierToItem(supabase, {
             menuItemId: createdItem.id,
             modifierGroupId: modifierId,
+            merchantId,
             displayOrder: i,
           });
         }
