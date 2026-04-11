@@ -1,7 +1,7 @@
 // services/appUpdater.ts
+import * as Application from 'expo-application';
 import * as FileSystem from 'expo-file-system';
 import { startActivityAsync } from 'expo-intent-launcher';
-import Constants from 'expo-constants';
 
 const VERSION_MANIFEST_URL = 'https://dexa-pos-uploads.b-cdn.net/releases/version.json';
 
@@ -35,6 +35,7 @@ function isValidManifest(obj: unknown): obj is VersionManifest {
 }
 
 export async function checkForNativeUpdate(): Promise<VersionManifest | null> {
+  if (__DEV__) return null;
   try {
     const res = await fetch(VERSION_MANIFEST_URL);
     if (!res.ok) return null;
@@ -42,7 +43,7 @@ export async function checkForNativeUpdate(): Promise<VersionManifest | null> {
     const raw: unknown = await res.json();
     if (!isValidManifest(raw)) return null;
 
-    const currentBuild = Constants.expoConfig?.android?.versionCode ?? 0;
+    const currentBuild = Number(Application.nativeBuildVersion ?? 0);
     return raw.buildNumber > currentBuild ? raw : null;
   } catch {
     return null; // offline or malformed — fail silently

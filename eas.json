@@ -12,7 +12,8 @@
     "preview": {
       "distribution": "internal",
       "developmentClient": false,
-      "channel": "preview"
+      "channel": "preview",
+      "autoIncrement": true
     },
     "production": {
       "autoIncrement": true,

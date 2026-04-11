@@ -12,9 +12,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.temurappflowstudios.dexapos",
-      "runtimeVersion": {
-        "policy": "appVersion"
-      }
+      "runtimeVersion": "1.0.3"
     },
     "android": {
       "adaptiveIcon": {
@@ -75,7 +73,10 @@
     },
     "owner": "appflow-studios",
     "updates": {
-      "url": "https://u.expo.dev/b0e0ce4a-6ad2-4ad5-9a23-47131c7f3bc2"
+      "url": "https://u.expo.dev/b0e0ce4a-6ad2-4ad5-9a23-47131c7f3bc2",
+      "enabled": true,
+      "checkOnLaunch": "ALWAYS",
+      "fallbackToCacheTimeout": 0
     }
   }
 }
