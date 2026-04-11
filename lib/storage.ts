@@ -83,6 +83,15 @@ export function flushAllPendingWrites(): void {
 }
 
 /**
+ * Flush a single pending debounced write immediately.
+ * Call this right after a critical store mutation (e.g. CFD pairing commit)
+ * when you need durability before a navigation or app kill.
+ */
+export function flushPendingWrite(name: string): void {
+  debouncedWriters[name]?.flush();
+}
+
+/**
  * Zustand-compatible storage adapter for general storage.
  * Use with: createJSONStorage(() => mmkvStorage)
  */

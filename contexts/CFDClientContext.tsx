@@ -5,7 +5,7 @@ interface CFDClientActions {
   sendPhoneNumber: (phone: string) => void
   sendLoyaltySkip: () => void
   sendLoyaltyJoin: () => void
-  reconnect: () => void
+  reconnect: (options?: { manual?: boolean }) => void
   disconnect: () => void
 }
 

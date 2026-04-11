@@ -26,6 +26,7 @@ export default function CFDDisplayScreen () {
 
   const tapCountRef = useRef(0)
   const lastTapTimeRef = useRef(0)
+  const isNavigatingRef = useRef(false)
 
   const showAdminMenu = useCallback(() => {
     Alert.alert('CFD Settings', 'Select an option:', [
@@ -60,14 +61,38 @@ export default function CFDDisplayScreen () {
     }
   }, [showAdminMenu])
 
-  // Redirect to pairing if not paired
+  // Redirect to pairing if not paired.
+  // Use a ref guard so we never fire router.replace twice during a transition
+  // (e.g. clearPairing + re-render + effect dispatch). Reset the guard when
+  // pairing comes back so a subsequent unpair still navigates.
   useEffect(() => {
-    if (!isPaired) {
+    if (!isPaired && !isNavigatingRef.current) {
+      isNavigatingRef.current = true
       router.replace('/(cfd)/cfd-pairing')
+    } else if (isPaired) {
+      isNavigatingRef.current = false
     }
   }, [isPaired])
 
-  if (!isPaired) return null
+  // Explicit fallback view (not `return null`) so the screen never goes blank
+  // while navigation is in flight. Prevents the white-screen amplification
+  // seen during the display ↔ pairing ping-pong.
+  if (!isPaired) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.screen,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12
+        }}
+      >
+        <Loader size={32} color={colors.teal} />
+        <Text style={{ fontSize: 13, color: colors.label }}>Redirecting…</Text>
+      </View>
+    )
+  }
 
   // Disconnected state
   if (connectionStatus === 'disconnected') {
@@ -128,7 +153,7 @@ export default function CFDDisplayScreen () {
 
           <View style={{ gap: 8, width: '100%', maxWidth: 280 }}>
             <Pressable
-              onPress={reconnect}
+              onPress={() => reconnect({ manual: true })}
               style={{
                 backgroundColor: colors.teal + '20',
                 borderWidth: 1,

@@ -9,6 +9,7 @@ import com.sdksuite.omnidriver.aidl.printer.ASCSize
 import com.sdksuite.omnidriver.aidl.printer.Align
 import com.sdksuite.omnidriver.aidl.printer.ECLevel
 import com.sdksuite.omnidriver.aidl.printer.InitOption
+import com.sdksuite.omnidriver.aidl.printer.StrokeStyle
 import com.sdksuite.omnidriver.aidl.printer.TextFormat
 import com.sdksuite.omnidriver.api.CashBox
 import com.sdksuite.omnidriver.api.KeyConst
@@ -28,8 +29,34 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         const val DEFAULT_PRINT_DENSITY = 3
         const val MIN_DENSITY = 1
         const val MAX_DENSITY = 8
+
         // VectorPrinter font size — 28px baseline for 203dpi thermal.
         const val VP_FONT_SIZE = 28
+
+        // ── SIMPLE PRINTER FALLBACK CPL (NOT used by VectorPrinter path) ──────
+        // These only apply if VectorPrinter fails to init and we fall back to
+        // the legacy Printer API. The VectorPrinter path uses addTextColumns()
+        // with pixel-based column weights and does NOT read these values.
+        // ──────────────────────────────────────────────────────────────────────
+        const val NORMAL_CPL     = 46
+        const val BOLD_CPL       = 46
+        const val DIVIDER_CPL    = 46
+        const val DOUBLE_DIV_CPL = 32
+
+        // ── VECTOR PRINTER COLUMN WEIGHTS ─────────────────────────────────────
+        // addTextColumns takes proportional weights (like CSS flexbox). These
+        // divide the printable width into columns. Same weights across rows =
+        // pixel-perfect vertical alignment.
+        //
+        // Two-column (items / metadata / totals):  [LABEL 70% | PRICE 30%]
+        // Three-column (subtotal / tax):           [SPACER 30% | LABEL 40% | PRICE 30%]
+        // ──────────────────────────────────────────────────────────────────────
+        val TWO_COL_WEIGHTS   = intArrayOf(7, 3)
+        val META_COL_WEIGHTS = intArrayOf(4, 6)
+        val THREE_COL_WEIGHTS = intArrayOf(3, 4, 3)
+
+        // Vertical margin in pixels above/below a dividing line.
+        const val DIVIDER_MARGIN_PX = 32
     }
 
     override fun getName(): String = NAME
@@ -65,7 +92,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             driver.init(object : OmniConnection {
                 override fun onConnected() {
                     try {
-                        // Close previous handles if exists (e.g. re-init after error)
                         try { printer?.closeDevice() } catch (_: Exception) {}
                         try { vectorPrinter?.closeDevice() } catch (_: Exception) {}
 
@@ -73,7 +99,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                         printer!!.openDevice(0)
                         applyDensity(printer!!)
 
-                        // Acquire VectorPrinter for rich text formatting (native bold).
                         try {
                             vectorPrinter = driver.getVectorPrinter(Bundle())
                             Log.d(TAG, "VectorPrinter acquired — native bold available")
@@ -86,7 +111,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                             cashBox = driver.getCashBox(Bundle())
                             Log.d(TAG, "CashBox acquired: ${cashBox != null}")
                         } catch (e: Exception) {
-                            Log.w(TAG, "getCashBox() failed (non-fatal, cash drawer unavailable): ${e.javaClass.simpleName}: ${e.message}")
+                            Log.w(TAG, "getCashBox() failed (non-fatal): ${e.javaClass.simpleName}: ${e.message}")
                             cashBox = null
                         }
                         isInitialized = true
@@ -124,7 +149,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     fun getPrinterStatus(promise: Promise) {
         try {
             val p = requirePrinter(promise) ?: return
-
             val status = p.getStatus()
             val result = Arguments.createMap().apply {
                 putBoolean("isOnline", status == STATUS_OK)
@@ -135,7 +159,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                     putString("errorMessage", "Printer error (status: $status)")
                 }
             }
-
             promise.resolve(result)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get printer status: ${e.message}")
@@ -168,27 +191,20 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     private fun printWithVector(vp: VectorPrinter, simplePrinter: Printer, nodes: org.json.JSONArray, promise: Promise) {
         try {
-            // Fresh device cycle
             try { vp.closeDevice() } catch (_: Exception) {}
             vp.openDevice(0)
 
-            // Init with tight line spacing and print density
             vp.init(InitOption().apply {
                 lineSpace = 0
                 printGray = printDensity
             })
 
-            // addTextColumns/addDividingLine produce invisible output on C20Pro.
-            // two_column uses dual-addText (LEFT + RIGHT) — no char-width guessing.
-            // dividers still need a char count; query pixelWidth for that.
             val pixelWidth = try { vp.getValidWidth() } catch (_: Exception) { 0 }
-            Log.d(TAG, "VectorPrinter: pixelWidth=${pixelWidth}px")
+            Log.d(TAG, "VectorPrinter: pixelWidth=$pixelWidth, using addTextColumns for alignment")
 
-            // Set default format
             resetVectorFormatCache()
             setVectorFormat(vp, false, 1.0f, 1.0f)
 
-            // Track whether a cut node was encountered — must fire AFTER startPrint completes.
             var needsCut = false
 
             Log.d(TAG, "VectorPrinter: ${nodes.length()} nodes, rendering...")
@@ -197,7 +213,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 if (node.optString("type") == "cut") {
                     needsCut = true
                 } else {
-                    renderNodeVector(vp, simplePrinter, node, pixelWidth)
+                    renderNodeVector(vp, simplePrinter, node)
                 }
             }
 
@@ -241,12 +257,11 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             })
         } catch (e: Exception) {
             Log.w(TAG, "VectorPrinter path failed, falling back to simple Printer: ${e.message}")
-            // Fallback to simple Printer
             printWithSimple(simplePrinter, nodes, promise)
         }
     }
 
-    private fun renderNodeVector(vp: VectorPrinter, simplePrinter: Printer, node: JSONObject, pixelWidth: Int) {
+    private fun renderNodeVector(vp: VectorPrinter, simplePrinter: Printer, node: JSONObject) {
         val nodeType = node.optString("type", "unknown")
         try {
             when (nodeType) {
@@ -263,44 +278,62 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 "two_column" -> {
-                    val rawLeft = sanitizeForLandi(node.getString("left"))
+                    val left = sanitizeForLandi(node.getString("left")).trimStart()
                     val right = sanitizeForLandi(node.getString("right"))
-                    applyVectorFormat(vp, node.optJSONObject("format"))
-                    // Template cl() pre-pads centered labels with 3+ leading spaces.
-                    // Detect this and use native Align.CENTER instead of space-padding.
-                    val trimmed = rawLeft.trimStart()
-                    val wasCentered = rawLeft.length - trimmed.length >= 3
-                    val leftAlign = if (wasCentered) Align.CENTER else Align.LEFT
-                    // Dual-addText: left text on current line (no \n), right text RIGHT-aligned (\n to advance).
-                    vp.addText(trimmed, leftAlign, 0)
-                    vp.addText(right + "\n", Align.RIGHT, 0)
+                    val fmt = node.optJSONObject("format")
+                    val isBold = fmt?.optBoolean("bold", false) == true
+                    val isDH = fmt?.optBoolean("doubleHeight", false) == true
+                    val isDW = fmt?.optBoolean("doubleWidth", false) == true
+                    val labelAlign = node.optString("labelAlign", "left")
+
+                    val scaleX = if (isDW) 2.0f else 1.0f
+                    val scaleY = if (isDH) 2.0f else 1.0f
+
+                    // Apply row format ONCE before the column call — the 3-arg overload
+                    // of addTextColumns uses the currently-set format for all columns.
+                    setVectorFormat(vp, isBold, scaleX, scaleY)
+
+                    Log.d(TAG, "two_col: align=$labelAlign bold=$isBold left='$left' right='$right'")
+
+                    if (labelAlign == "mid") {
+                        // [spacer 30% | label LEFT 40% | price RIGHT 30%]
+                        vp.addTextColumns(
+                            arrayOf(" ", left, right),
+                            THREE_COL_WEIGHTS,
+                            intArrayOf(Align.LEFT, Align.LEFT, Align.RIGHT)
+                        )
+                    } else if (labelAlign == "meta") {
+                        // [label LEFT 40% | value RIGHT 60%] — wide value column for long dates
+                        vp.addTextColumns(
+                            arrayOf(left, right),
+                            META_COL_WEIGHTS,
+                            intArrayOf(Align.LEFT, Align.RIGHT)
+                        )
+                    } else {
+                        // [label LEFT 70% | price RIGHT 30%]
+                        vp.addTextColumns(
+                            arrayOf(left, right),
+                            TWO_COL_WEIGHTS,
+                            intArrayOf(Align.LEFT, Align.RIGHT)
+                        )
+                    }
                 }
 
                 "divider" -> {
                     setVectorFormat(vp, false, 1.0f, 1.0f)
                     val style = node.getString("style")
-                    if (pixelWidth > 0) {
-                        // Use addDividingLine pixel-based — renders a thin graphical line
-                        // across the full printable width, no char-count guessing needed.
-                        val lineSpace = if (style == "double") 3 else 1
-                        try {
-                            vp.addDividingLine(lineSpace, 0)
-                        } catch (e: Exception) {
-                            // Fallback to char-based if addDividingLine crashes
-                            Log.w(TAG, "addDividingLine failed, using char fallback: ${e.message}")
-                            val lineWidth = node.getInt("lineWidth")
-                            val ch = if (style == "double") "=" else "-"
-                            vp.addText(ch.repeat(lineWidth) + "\n", Align.LEFT, 0)
-                        }
+                    val weight = node.optString("weight", "normal")
+                    val strokeStyle = when (style) {
+                        "dotted" -> StrokeStyle.DOT
+                        "dashed" -> StrokeStyle.DASH
+                        else     -> StrokeStyle.LINE
+                    }
+                    if (weight == "bold") {
+                        // Two lines close together = visually thick section separator
+                        vp.addDividingLine(StrokeStyle.LINE, 6)
+                        vp.addDividingLine(StrokeStyle.LINE, 6)
                     } else {
-                        val lineWidth = node.getInt("lineWidth")
-                        val separator = when (style) {
-                            "solid" -> "-".repeat(lineWidth)
-                            "dotted" -> "- ".repeat(lineWidth / 2).take(lineWidth)
-                            "double" -> "=".repeat(lineWidth)
-                            else -> "-".repeat(lineWidth)
-                        }
-                        vp.addText(separator + "\n", Align.LEFT, 0)
+                        vp.addDividingLine(strokeStyle, DIVIDER_MARGIN_PX)
                     }
                 }
 
@@ -310,8 +343,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
                 "feed" -> {
                     val lines = node.getInt("lines")
-                    // addText newlines give text-height spacing (VP_FONT_SIZE px each)
-                    // vs feedLine which may feed dot-lines (~1px each)
                     vp.addText("\n".repeat(lines), Align.LEFT, 0)
                 }
 
@@ -319,13 +350,11 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                     setVectorFormat(vp, false, 1.0f, 1.0f)
                     val data = node.getString("data")
                     val size = node.optInt("size", 8)
-                    // VectorPrinter addQrCode has extra byte[] param (pass null for default encoding)
                     vp.addQrCode(size, ECLevel.M, data, ByteArray(0), Align.CENTER, 0)
                     vp.feedLine(1)
                 }
 
                 "cut" -> {
-                    // Handled after startPrint() — should not reach here.
                     Log.w(TAG, "cut node reached renderNodeVector — ignored (deferred to post-print)")
                 }
 
@@ -362,25 +391,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         setVectorFormat(vp, bold, scaleX, scaleY)
     }
 
-    /**
-     * Build a standalone TextFormat for per-column use in addTextColumns().
-     * Does NOT call setFormat() — the SDK applies the format per-column.
-     */
-    private fun buildTextFormat(formatObj: JSONObject?): TextFormat {
-        return TextFormat().apply {
-            fontSize = VP_FONT_SIZE
-            if (formatObj != null) {
-                isBold = formatObj.optBoolean("bold", false)
-                if (formatObj.optBoolean("doubleWidth", false)) scaleX = 2.0f
-                if (formatObj.optBoolean("doubleHeight", false)) scaleY = 2.0f
-            }
-        }
-    }
-
-    /**
-     * Only call vp.setFormat() when the requested format differs from the last call.
-     * TextFormat includes native bold — no need for size/scale hacks.
-     */
     private fun setVectorFormat(vp: VectorPrinter, bold: Boolean, scaleX: Float, scaleY: Float) {
         if (bold == lastBold && scaleX == lastScaleX && scaleY == lastScaleY) return
         vp.setFormat(TextFormat().apply {
@@ -403,7 +413,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     // ==================== SIMPLE PRINTER PATH (fallback) ====================
 
     private fun printWithSimple(p: Printer, nodes: org.json.JSONArray, promise: Promise) {
-        // Fresh device cycle
         try { p.closeDevice() } catch (_: Exception) {}
         p.openDevice(0)
         applyDensity(p)
@@ -458,26 +467,26 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 "two_column" -> {
-                    applySimpleFormat(p, node.optJSONObject("format"))
-                    val left = sanitizeForLandi(node.getString("left"))
+                    val left = sanitizeForLandi(node.getString("left")).trimStart()
                     val right = sanitizeForLandi(node.getString("right"))
-                    val lineWidth = node.optInt("lineWidth", 32)
-                    val padding = lineWidth - left.length - right.length
-                    val line = if (padding > 0) {
-                        left + " ".repeat(padding) + right
-                    } else {
-                        left + " " + right
-                    }
+                    val fmt = node.optJSONObject("format")
+                    val isBold = fmt?.optBoolean("bold", false) == true
+                    applySimpleFormat(p, fmt)
+                    val lineWidth = if (isBold) BOLD_CPL else NORMAL_CPL
+                    val pad = lineWidth - left.length - right.length
+                    val line = if (pad > 0) left + " ".repeat(pad) + right else "$left $right"
+                    Log.d(TAG, "two_col(simple): bold=$isBold lw=$lineWidth left='$left' right='$right' pad=$pad")
                     p.addText(line + "\n", Align.LEFT, 0)
                 }
 
                 "divider" -> {
-                    val lineWidth = node.getInt("lineWidth")
+                    val lineWidth = node.optInt("lineWidth", DIVIDER_CPL)
                     val style = node.getString("style")
-                    val separator = when (style) {
-                        "solid" -> "-".repeat(lineWidth)
-                        "dotted" -> "- ".repeat(lineWidth / 2).take(lineWidth)
-                        "double" -> "=".repeat(lineWidth)
+                    val weight = node.optString("weight", "normal")
+                    val separator = when {
+                        weight == "bold" -> "=".repeat(lineWidth)
+                        style == "dotted" -> "- ".repeat(lineWidth / 2).take(lineWidth)
+                        style == "double" -> "=".repeat(DOUBLE_DIV_CPL)
                         else -> "-".repeat(lineWidth)
                     }
                     p.addText(separator + "\n", Align.LEFT, 0)
@@ -529,10 +538,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    /**
-     * Simple Printer fallback: bold uses DOT32x12 (33% taller chars, visually heavier)
-     * since the simple API has no native bold weight support.
-     */
     private fun applySimpleFormat(p: Printer, formatObj: JSONObject?) {
         if (formatObj == null) {
             setFormatIfChanged(p, ASCSize.DOT24x12, ASCScale.SC1x1)
@@ -550,7 +555,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             else -> ASCScale.SC1x1
         }
 
-        // bold alone: use DOT32x12 for visually heavier text (33% taller, not 100%)
         val size = if (bold && !doubleH && !doubleW) ASCSize.DOT32x12 else ASCSize.DOT24x12
 
         setFormatIfChanged(p, size, scale)
@@ -594,7 +598,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 return
             }
 
-            // Attempt 1: Use existing CashBox reference
             if (cashBox != null) {
                 try {
                     cashBox!!.openBox()
@@ -603,11 +606,10 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                     return
                 } catch (e: Exception) {
                     Log.w(TAG, "CashBox.openBox() failed (stale reference?): ${e.javaClass.simpleName}: ${e.message}")
-                    cashBox = null // Clear stale reference
+                    cashBox = null
                 }
             }
 
-            // Attempt 2: Re-acquire CashBox from OmniDriver and retry
             Log.d(TAG, "Re-acquiring CashBox from OmniDriver...")
             try {
                 val driver = OmniDriver.me(reactContext)
@@ -625,7 +627,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 cashBox = null
             }
 
-            // Attempt 3: Reflection fallback on Printer (unlikely to exist, but last resort)
             val p = printer
             if (p != null) {
                 try {
@@ -650,13 +651,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     // ==================== SHARED UTILITIES ====================
 
-    /**
-     * Replace characters that the LANDI thermal head renders incorrectly
-     * (boxes, garbage bytes, or streaks). Narrow no-break space and other
-     * Unicode space variants are known offenders. Typographic quotes and
-     * em-dashes also map to single-byte ASCII equivalents to avoid
-     * multi-byte encoding corruption.
-     */
     private fun sanitizeForLandi(s: String): String {
         if (s.isEmpty()) return s
         val sb = StringBuilder(s.length)
@@ -679,10 +673,6 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         return sb.toString()
     }
 
-    /**
-     * Only emit setFormat() when the requested size/scale differs from the
-     * last call. Avoids buffer flush gaps on the thermal head.
-     */
     private fun setFormatIfChanged(p: Printer, size: Int, scale: Int) {
         if (size == lastAppliedSize && scale == lastAppliedScale) return
         p.setFormat(Bundle().apply {

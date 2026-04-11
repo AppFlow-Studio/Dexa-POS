@@ -49,7 +49,22 @@ import { AppState, Platform, Text, View } from 'react-native'
 import { SystemBars } from 'react-native-edge-to-edge'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+// app/_layout.tsx — check for update on launch
+import * as Updates from 'expo-updates';
+import AppUpdateModal from '@/components/AppUpdateModal';
+import { checkForNativeUpdate, type VersionManifest } from '@/services/appUpdater';
 
+async function checkForUpdate() {
+  try {
+    const update = await Updates.checkForUpdateAsync();
+    if (update.isAvailable) {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync(); // silent restart
+    }
+  } catch (e) {
+    // offline — no problem, skip
+  }
+}
 // IMPORTANT: Must be called once at module level for OAuth to work correctly
 WebBrowser.maybeCompleteAuthSession()
 
@@ -123,6 +138,7 @@ export default function RootLayout () {
   const isPinModalOpen = usePinOverrideStore(s => s.isPinModalOpen)
   const isNoPrinterModalVisible = useNoPrinterModalStore(s => s.visible)
   const isCustomizationOpen = useCustomizationStore(s => s.isOpen)
+  const [nativeUpdateManifest, setNativeUpdateManifest] = React.useState<VersionManifest | null>(null)
 
   // Store the navigation container ref for cross-group navigation
   const navigationRef = useNavigationContainerRef()
@@ -134,7 +150,11 @@ export default function RootLayout () {
   React.useEffect(() => {
     if (Platform.OS === 'android') {
       NavigationBar.setVisibilityAsync('hidden').catch(() => {})
+      checkForNativeUpdate().then(manifest => {
+        if (manifest) setNativeUpdateManifest(manifest)
+      })
     }
+    checkForUpdate()
   }, [])
 
   useIsomorphicLayoutEffect(() => {
@@ -274,6 +294,14 @@ export default function RootLayout () {
                                 {isPOSMode && <CustomerSheet />}
                                 {isPOSMode && isNoPrinterModalVisible && (
                                   <NoPrinterModal />
+                                )}
+                                {nativeUpdateManifest && (
+                                  <AppUpdateModal
+                                    visible={true}
+                                    manifest={nativeUpdateManifest}
+                                    onSkip={() => setNativeUpdateManifest(null)}
+                                    onInstallComplete={() => setNativeUpdateManifest(null)}
+                                  />
                                 )}
                                 <Toasts
                                   defaultStyle={{

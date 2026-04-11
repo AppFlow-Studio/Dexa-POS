@@ -298,6 +298,10 @@ export const CASTLES_SETTLEMENT_TIMEOUT_MS = 300_000;
 
 /** Success code: 8-character "00000000" per CastlesPay spec */
 export const CASTLES_SUCCESS_CODE = '00000000';
+/** Fixed txnPosTxnId for non-transactional getData calls (spec §3.1) */
+export const CASTLES_DIAGNOSTICS_TXN_ID = '000001';
+/** Synthetic txnReturnCode injected when a TCP error prevents the device from responding */
+export const CASTLES_CLIENT_ERROR_CODE = 'CLIENT_ERROR';
 
 /** Castles txnReturnCode → human-readable description */
 export const CASTLES_RETURN_CODES: Record<string, string> = {

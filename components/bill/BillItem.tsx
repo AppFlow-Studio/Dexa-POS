@@ -1,8 +1,11 @@
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
+import { PrinterService } from '@/services/printing/PrinterService'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
   useItemSyncError,
   useItemSyncStatus
@@ -259,6 +262,18 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     if (activeOrderId) {
       setTimeout(() => {
         removeItemFromActiveOrder(item.id, reason)
+
+        // Print void kitchen ticket if the setting is on
+        const printingConfig = useLocationConfigStore.getState().config.printing
+        if (printingConfig.printVoidTickets) {
+          const order = useOrderStore.getState().ordersById[activeOrderId]
+          const selectedStore = useStoreSettingsStore.getState().selectedStore
+          if (order && selectedStore) {
+            PrinterService.printVoidTicket(order, [item], selectedStore).catch(err => {
+              console.warn('[BillItem] printVoidTicket failed:', err)
+            })
+          }
+        }
       }, 50)
     }
   }

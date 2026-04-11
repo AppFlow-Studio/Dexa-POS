@@ -1,6 +1,6 @@
 import { Switch } from "@/components/ui/switch";
 import { colors } from "@/lib/theme";
-import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import {
   Check,
   ChevronDown,
@@ -19,13 +19,13 @@ import {
 } from "react-native";
 
 const PaymentSystemsScreen = () => {
-  // Zustand store
-  const {
-    dualPricing,
-    setDualPricing,
-    textToPayEnabled,
-    updateDiningSettings,
-  } = useSettingsStore();
+  const dualPricingEnabled = useLocationConfigStore(s => s.config.payment.dualPricingEnabled);
+  const dualPricingCashDiscountPercent = useLocationConfigStore(s => s.config.payment.dualPricingCashDiscountPercent);
+  const textToPayEnabled = useLocationConfigStore(s => s.config.payment.textToPayEnabled);
+  const updateConfig = useLocationConfigStore(s => s.updateConfig);
+
+  // Local state for the discount text input (allows partial edits like "4.")
+  const [discountText, setDiscountText] = useState(dualPricingCashDiscountPercent.toString());
 
   // Local UI state
   const [textToPayTestSent, setTextToPayTestSent] = useState(false);
@@ -93,7 +93,7 @@ const PaymentSystemsScreen = () => {
 
   const cardTotal =
     parseFloat(calculatorAmount || "0") *
-    (1 + parseFloat(dualPricing.discount || "0") / 100);
+    (1 + dualPricingCashDiscountPercent / 100);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: 14, paddingVertical: 10 }}>
@@ -122,19 +122,23 @@ const PaymentSystemsScreen = () => {
                   <Text style={{ color: colors.muted, fontSize: 13 }}>Show separate cash & card prices</Text>
                 </View>
                 <Switch
-                  checked={dualPricing.enabled}
-                  onCheckedChange={(v) => setDualPricing({ enabled: v })}
+                  checked={dualPricingEnabled}
+                  onCheckedChange={(v) => updateConfig('payment', { dualPricingEnabled: v })}
                 />
               </View>
 
-              {dualPricing.enabled && (
+              {dualPricingEnabled && (
                 <>
                   <View style={{ marginBottom: 16 }}>
                     <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 8 }}>Cash Discount Percentage</Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                       <TextInput
-                        value={dualPricing.discount}
-                        onChangeText={(v) => setDualPricing({ discount: v })}
+                        value={discountText}
+                        onChangeText={(v) => {
+                          setDiscountText(v);
+                          const parsed = parseFloat(v);
+                          if (!isNaN(parsed)) updateConfig('payment', { dualPricingCashDiscountPercent: parsed });
+                        }}
                         keyboardType="decimal-pad"
                         placeholder="4.0"
                         placeholderTextColor={colors.muted}
@@ -205,9 +209,7 @@ const PaymentSystemsScreen = () => {
                 </View>
                 <Switch
                   checked={textToPayEnabled}
-                  onCheckedChange={(v) =>
-                    updateDiningSettings({ textToPayEnabled: v })
-                  }
+                  onCheckedChange={(v) => updateConfig('payment', { textToPayEnabled: v })}
                 />
               </View>
 

@@ -241,6 +241,9 @@ export interface ReceiptTemplateData {
   // Print metadata
   printDate?: string;  // Date string when receipt was printed
   printTime?: string;  // Time string when receipt was printed
+
+  // Copy label printed at the bottom of the receipt
+  copyLabel?: string;  // e.g. "Customer Copy" | "Merchant Copy"
 }
 
 export interface ReceiptItemData {

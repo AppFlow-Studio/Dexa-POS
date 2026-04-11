@@ -5,7 +5,15 @@ import { PrinterConfig, PrinterRoutingConfig } from "@/types/printer";
 
 /**
  * Finds the default receipt printer for a location/station.
- * Prefers connected printers. Returns null if no default receipt printer is set.
+ *
+ * Priority order:
+ *   1. isDefaultReceipt + isConnected + non-builtin  (e.g. Star set as default)
+ *   2. isDefaultReceipt + isConnected + builtin       (Landi fallback when Star offline)
+ *   3. isDefaultReceipt + non-builtin                 (Star set, not yet connected)
+ *   4. isDefaultReceipt + builtin                     (Landi only option)
+ *
+ * Builtin printers are always treated as lower priority than network printers
+ * so that explicitly assigning a Star as the receipt printer is respected.
  */
 export function getReceiptPrinter(
   locationId: string,
@@ -24,18 +32,24 @@ export function getReceiptPrinter(
     `[PrintRouter] getReceiptPrinter: locationId=${locationId}, candidates=${activePrinters.length}`,
   );
 
-  // Station-specific default (prefer connected)
+  const isBuiltin = (p: PrinterConfig) => p.connectionType === "builtin";
+
+  const pick = (candidates: PrinterConfig[]): PrinterConfig | undefined =>
+    // Prefer non-builtin (network/Star) over builtin (Landi) within any tier
+    candidates.find((p) => p.isDefaultReceipt && p.isConnected && !isBuiltin(p)) ??
+    candidates.find((p) => p.isDefaultReceipt && p.isConnected) ??
+    candidates.find((p) => p.isDefaultReceipt && !isBuiltin(p)) ??
+    candidates.find((p) => p.isDefaultReceipt);
+
+  // Station-specific default first
   if (stationId) {
-    const stationPrinter =
-      activePrinters.find((p) => p.stationId === stationId && p.isDefaultReceipt && p.isConnected) ??
-      activePrinters.find((p) => p.stationId === stationId && p.isDefaultReceipt);
+    const stationPrinters = activePrinters.filter((p) => p.stationId === stationId);
+    const stationPrinter = pick(stationPrinters);
     if (stationPrinter) return stationPrinter;
   }
 
-  // Location default (prefer connected)
-  const defaultPrinter =
-    activePrinters.find((p) => p.isDefaultReceipt && p.isConnected) ??
-    activePrinters.find((p) => p.isDefaultReceipt);
+  // Location-wide default
+  const defaultPrinter = pick(activePrinters);
   if (defaultPrinter) return defaultPrinter;
 
   // No default receipt printer set → return null (triggers "set default" modal)

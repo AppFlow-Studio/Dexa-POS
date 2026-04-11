@@ -1,5 +1,6 @@
 import { colors } from "@/lib/theme";
 import { getDeadLetterCount, getPendingCount } from "@/services/offlineSyncService";
+import Constants from "expo-constants";
 import { usePathname, useRouter } from "expo-router";
 import {
   Banknote,
@@ -9,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Clock,
   Clover,
   CreditCard,
   DollarSign,
@@ -79,6 +81,7 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
     title: "Staff Management",
     items: [
       { id: "staff-pins", label: "Staff PINs", icon: Users, route: "/settings/staff-pins" },
+      { id: "staff-timeclock", label: "Staff Timeclock", icon: Clock, route: "/settings/staff-timeclock" },
     ],
   },
 ];
@@ -247,8 +250,8 @@ const SidebarNavigation = () => {
       {/* Footer */}
       <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
         <View style={{ backgroundColor: colors.card, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center" }}>Version 2.4.1</Text>
-          <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center", marginTop: 2, opacity: 0.7 }}>© 2025 DEXA Systems</Text>
+          <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center" }}>Version {Constants.expoConfig?.version ?? "—"}</Text>
+          <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center", marginTop: 2, opacity: 0.7 }}>© 2026 DEXA POS</Text>
         </View>
       </View>
     </View>

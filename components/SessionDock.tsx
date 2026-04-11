@@ -4,6 +4,7 @@ import { getDeviceId } from "@/lib/deviceId";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { replaceRoute } from "@/lib/rootNavigation";
@@ -86,7 +87,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const { sessions, activeEmployeeId, endBreak, startBreak } =
     useTimeclockStore();
   const { employees, signOut } = useEmployeeStore();
-  const isBreakAndSwitchEnabled = useStoreSettingsStore((s) => s.isBreakAndSwitchEnabled);
+  const isBreakAndSwitchEnabled = useLocationConfigStore((s) => s.config.timeclock.breakAndSwitchEnabled);
   const { markAllAsRead } = useNotificationStore();
   const router = useRouter();
   const { show } = useToast();

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Dexa-POS",
     "slug": "dexa-pos",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "landscape",
     "icon": "./assets/images/dexalogo.png",
     "scheme": "dexapos",
@@ -11,7 +11,10 @@
     "jsEngine": "hermes",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.temurappflowstudios.dexapos"
+      "bundleIdentifier": "com.temurappflowstudios.dexapos",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,7 +23,14 @@
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "pan",
-      "package": "com.temurappflowstudios.dexapos"
+      "package": "com.temurappflowstudios.dexapos",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "runtimeVersion": "1.0.3"
     },
     "web": {
       "bundler": "metro",
@@ -63,6 +73,9 @@
         "projectId": "b0e0ce4a-6ad2-4ad5-9a23-47131c7f3bc2"
       }
     },
-    "owner": "appflow-studios"
+    "owner": "appflow-studios",
+    "updates": {
+      "url": "https://u.expo.dev/b0e0ce4a-6ad2-4ad5-9a23-47131c7f3bc2"
+    }
   }
 }

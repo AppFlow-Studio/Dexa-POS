@@ -57,10 +57,6 @@ export interface StoreSettings {
     }
   }
 
-  // Employee Settings
-  isBreakAndSwitchEnabled: boolean
-  breakDurationMinutes: number // Break duration in minutes
-
   // Online Ordering Settings
   onlineOrderingEnabled: boolean
   onlinePauseReason: string | null
@@ -149,6 +145,9 @@ export interface StoreSettings {
 
   // Tips settings
   openDrawerOnTip: boolean
+
+  // Manager override for schedule-restricted menus/categories
+  managerOverrideTimeoutMinutes: 0 | 5 | 15 | 30 | 60
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -159,7 +158,6 @@ interface StoreSettingsState extends StoreSettings {
     field: K,
     value: StoreSettings[K]
   ) => void
-  setIsBreakAndSwitchEnabled: (isEnabled: boolean) => void
   setPtoAccrualRate: (rate: number) => void // New action
   setTargetLaborPercent: (percent: number) => void
   // Generic update for nested objects like prepTimeAdjustments
@@ -183,9 +181,6 @@ interface StoreSettingsState extends StoreSettings {
 
   // Tax rates actions
   setTaxRates: (rates: TaxRate[]) => void
-
-  // Break duration action
-  setBreakDurationMinutes: (minutes: number) => void
 
   // Station session actions
   setSelectedStation: (station: SelectedStation) => void
@@ -226,9 +221,6 @@ const initialData: StoreSettings = {
       backToBack: true
     }
   },
-
-  isBreakAndSwitchEnabled: true, // Enabled by default
-  breakDurationMinutes: 30, // Default 30 minute breaks
 
   // Online Ordering Defaults
   onlineOrderingEnabled: true,
@@ -312,6 +304,9 @@ const initialData: StoreSettings = {
 
   // Tips settings
   openDrawerOnTip: false,
+
+  // Manager override
+  managerOverrideTimeoutMinutes: 0,
 }
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -336,23 +331,6 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
           return {
             ...state,
             [field]: value,
-            changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
-      },
-
-      setIsBreakAndSwitchEnabled: (isEnabled: boolean) => {
-        set(state => {
-          const changedFields = new Set(state.changedFields)
-          if (state.initialState?.isBreakAndSwitchEnabled === isEnabled) {
-            changedFields.delete('isBreakAndSwitchEnabled')
-          } else {
-            changedFields.add('isBreakAndSwitchEnabled')
-          }
-          return {
-            ...state,
-            isBreakAndSwitchEnabled: isEnabled,
             changedFields,
             isDirty: changedFields.size > 0
           }
@@ -387,23 +365,6 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
           return {
             ...state,
             targetLaborPercent: percent,
-            changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
-      },
-
-      setBreakDurationMinutes: (minutes: number) => {
-        set(state => {
-          const changedFields = new Set(state.changedFields)
-          if (state.initialState?.breakDurationMinutes === minutes) {
-            changedFields.delete('breakDurationMinutes')
-          } else {
-            changedFields.add('breakDurationMinutes')
-          }
-          return {
-            ...state,
-            breakDurationMinutes: minutes,
             changedFields,
             isDirty: changedFields.size > 0
           }
@@ -582,7 +543,6 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         minimumPtoNoticeDays: state.minimumPtoNoticeDays,
         targetLaborPercent: state.targetLaborPercent,
         scheduling: state.scheduling,
-        isBreakAndSwitchEnabled: state.isBreakAndSwitchEnabled,
         onlineOrderingEnabled: state.onlineOrderingEnabled,
         onlinePauseReason: state.onlinePauseReason,
         autoResumeTime: state.autoResumeTime,
@@ -633,6 +593,8 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         preAuthSettings: state.preAuthSettings,
         // Tips settings
         openDrawerOnTip: state.openDrawerOnTip,
+        // Manager override
+        managerOverrideTimeoutMinutes: state.managerOverrideTimeoutMinutes,
       })
     }
   )

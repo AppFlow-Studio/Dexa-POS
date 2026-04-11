@@ -1,6 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { Check, ChevronDown, ChevronUp, List } from 'lucide-react-native'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { Check, ChevronDown, ChevronUp, List, Lock } from 'lucide-react-native'
 import React, { useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
@@ -21,12 +22,23 @@ const DAY_OPTIONS = [
   }
 ]
 
+const OVERRIDE_TIMEOUT_OPTIONS: { value: 0 | 5 | 15 | 30 | 60; label: string; description: string }[] = [
+  { value: 0,  label: 'Always Require PIN',   description: 'PIN required every time a locked menu or category is accessed' },
+  { value: 5,  label: 'Stay Unlocked 5 min',  description: 'One PIN entry unlocks for 5 minutes' },
+  { value: 15, label: 'Stay Unlocked 15 min', description: 'One PIN entry unlocks for 15 minutes' },
+  { value: 30, label: 'Stay Unlocked 30 min', description: 'One PIN entry unlocks for 30 minutes' },
+  { value: 60, label: 'Stay Unlocked 1 hour', description: 'One PIN entry unlocks for 60 minutes' },
+]
+
 const OrderLineSettingsScreen = () => {
   const orderLineSettings = useSettingsStore(s => s.orderLineSettings)
   const setOrderLineSettings = useSettingsStore(s => s.setOrderLineSettings)
+  const managerOverrideTimeoutMinutes = useStoreSettingsStore(s => s.managerOverrideTimeoutMinutes)
+  const updateField = useStoreSettingsStore(s => s.updateField)
 
   const [expandedSections, setExpandedSections] = useState({
-    visibility: true
+    visibility: true,
+    managerOverride: true,
   })
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -205,6 +217,65 @@ const OrderLineSettingsScreen = () => {
             </View>
           )}
         </View>
+
+        {/* ── Manager Override Timeout ───────────────────────────────────── */}
+        <View
+          style={{
+            marginTop: 16,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+            backgroundColor: colors.panel,
+          }}
+        >
+          {renderSectionHeader(
+            'Manager Override Timeout',
+            <Lock size={14} color={colors.teal} />,
+            'managerOverride',
+          )}
+          {expandedSections.managerOverride && (
+            <View style={{ padding: 12, gap: 6 }}>
+              <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4, paddingHorizontal: 2 }}>
+                After a manager enters their PIN to unlock a schedule-restricted menu or category, how long should it remain accessible without re-entering the PIN?
+              </Text>
+              {OVERRIDE_TIMEOUT_OPTIONS.map(option => {
+                const isSelected = managerOverrideTimeoutMinutes === option.value
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    onPress={() => updateField('managerOverrideTimeoutMinutes', option.value)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 10,
+                      paddingVertical: 9,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      backgroundColor: isSelected ? colors.teal + '10' : colors.screen,
+                      borderColor: isSelected ? colors.teal + '50' : colors.border,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: isSelected ? colors.teal : colors.heading }}>
+                        {option.label}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                        {option.description}
+                      </Text>
+                    </View>
+                    {isSelected && (
+                      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center', marginLeft: 10 }}>
+                        <Check size={13} color={colors.onSolid} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          )}
+        </View>
+
       </ScrollView>
     </View>
   )

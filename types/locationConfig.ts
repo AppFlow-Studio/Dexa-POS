@@ -52,6 +52,9 @@ export interface PrintingConfig {
   autoPrintKitchenTickets: boolean
   autoPrintReceipt: boolean
   autoPrintVoidReceipt: boolean
+  printVoidTickets: boolean
+  printMerchantCopy: boolean
+  printCustomerCopy: boolean
 }
 
 export interface CashDrawerConfig {
@@ -114,6 +117,17 @@ export interface PaymentConfig {
   splitByAmount: boolean
   splitByItem: boolean
   splitEvenly: boolean
+  dualPricingEnabled: boolean
+  dualPricingCashDiscountPercent: number
+  textToPayEnabled: boolean
+}
+
+export interface TimeclockConfig {
+  breakAndSwitchEnabled: boolean
+  breakDurationMinutes: number
+  clockInRequirePin: boolean
+  preventEarlyClockIn: boolean
+  preventOpenOrdersClockOut: boolean
 }
 
 export interface NotificationsConfig {
@@ -141,6 +155,7 @@ export interface LocationPosConfig {
   waitlist: WaitlistConfig
   payment: PaymentConfig
   notifications: NotificationsConfig
+  timeclock: TimeclockConfig
 }
 
 /** All valid namespace keys */
@@ -187,6 +202,9 @@ export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {
   autoPrintKitchenTickets: true,
   autoPrintReceipt: false,
   autoPrintVoidReceipt: true,
+  printVoidTickets: true,
+  printMerchantCopy: false,
+  printCustomerCopy: true,
 }
 
 export const DEFAULT_CASH_DRAWER_CONFIG: CashDrawerConfig = {
@@ -249,6 +267,17 @@ export const DEFAULT_PAYMENT_CONFIG: PaymentConfig = {
   splitByAmount: true,
   splitByItem: true,
   splitEvenly: true,
+  dualPricingEnabled: false,
+  dualPricingCashDiscountPercent: 4.0,
+  textToPayEnabled: false,
+}
+
+export const DEFAULT_TIMECLOCK_CONFIG: TimeclockConfig = {
+  breakAndSwitchEnabled: true,
+  breakDurationMinutes: 30,
+  clockInRequirePin: true,
+  preventEarlyClockIn: true,
+  preventOpenOrdersClockOut: true,
 }
 
 export const DEFAULT_NOTIFICATIONS_CONFIG: NotificationsConfig = {
@@ -272,4 +301,5 @@ export const DEFAULT_POS_CONFIG: LocationPosConfig = {
   waitlist: DEFAULT_WAITLIST_CONFIG,
   payment: DEFAULT_PAYMENT_CONFIG,
   notifications: DEFAULT_NOTIFICATIONS_CONFIG,
+  timeclock: DEFAULT_TIMECLOCK_CONFIG,
 }

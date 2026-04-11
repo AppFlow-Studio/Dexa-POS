@@ -1,7 +1,9 @@
 import { AddWaitlistModal } from '@/components/host-station/AddWaitlistModal'
 import { TableSelectionSheet } from '@/components/host-station/TableSelectionSheet'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
+
 import AppNoticeModal from '@/components/ui/AppNoticeModal'
+
 import { useToast } from '@/contexts/ToastContext'
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { bottomSheetTheme, colors } from '@/lib/theme'
@@ -30,7 +32,7 @@ import {
   StickyNote,
   UserPlus,
   Users,
-  X
+  X,
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -39,7 +41,7 @@ import {
   Pressable,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -659,8 +661,8 @@ export default function WaitlistScreen () {
         setActiveOrder(result.order_id)
       } else {
         const newOrder = startNewOrder({
-          guestCount: entry.party_size,
-          tableId
+          guestCount: selectedEntry.party_size,
+          tableId: tableId
         })
         setActiveOrder(newOrder.id)
       }
@@ -685,15 +687,13 @@ export default function WaitlistScreen () {
         setNotice({
           title: 'No Phone Number',
           description: `Please call out "${entry.party_name}" — no phone on file`,
-          variant: 'warning'
+          variant: 'warning',
         })
         return
       }
 
       try {
-        const result = await useWaitlistStore
-          .getState()
-          .notifyWaitlistPartyAsync(entry.id)
+        const result = await useWaitlistStore.getState().notifyWaitlistPartyAsync(entry.id)
 
         if (!result.success) {
           if (result.error === 'sms_failed') {
@@ -702,13 +702,13 @@ export default function WaitlistScreen () {
               description:
                 result.message ||
                 'Could not send SMS. Failure logged. Please notify guest verbally.',
-              variant: 'error'
+              variant: 'error',
             })
           } else {
             setNotice({
               title: 'Could Not Notify',
               description: result.error || 'Failed to notify party',
-              variant: 'error'
+              variant: 'error',
             })
           }
         } else if (result.sms) {
@@ -721,13 +721,13 @@ export default function WaitlistScreen () {
           show({
             title: 'Invalid Phone Number',
             message: `Could not send SMS — invalid number on file. Please notify ${entry.party_name} verbally.`,
-            type: 'warning'
+            type: 'warning',
           })
         } else {
           show({
             title: 'Party Notified',
             message: `${entry.party_name} has been notified`,
-            type: 'success'
+            type: 'success',
           })
         }
 
@@ -755,29 +755,29 @@ export default function WaitlistScreen () {
   }, [itemToDelete, removeFromWaitlistAsync])
 
   const handleAddEntry = useCallback(
-    async (data: {
-      party_name: string
-      party_size: number
+    (data: {
+      name: string
+      partySize: number
+      quotedTime: number
+      notes: string
       phone?: string
       email?: string
       seating_preference?: string
       preferred_section?: string
-      notes?: string
-      quoted_wait_minutes?: number
     }) => {
       if (!selectedStore?.id) return
-      await addToWaitlistAsync({
+      addToWaitlistAsync({
         locationId: selectedStore.id,
-        p_party_name: data.party_name,
-        p_party_size: data.party_size,
+        p_party_name: data.name,
+        p_party_size: data.partySize,
         p_phone: data.phone,
         p_email: data.email,
         p_seating_preference: data.seating_preference,
         p_preferred_section: data.preferred_section,
-        p_notes: data.notes,
-        p_quoted_wait_minutes: data.quoted_wait_minutes
+        p_notes: data.notes
+      }).then(() => {
+        setShowAddModal(false)
       })
-      setShowAddModal(false)
     },
     [selectedStore?.id, addToWaitlistAsync]
   )

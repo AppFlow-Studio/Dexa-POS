@@ -1,6 +1,6 @@
 // stores/useCFDClientStore.ts
 // CFD client-mode Zustand store (when this device acts as a customer-facing display)
-import { mmkvStorage } from '@/lib/storage'
+import { flushPendingWrite, mmkvStorage } from '@/lib/storage'
 import type {
   CFDPairingData,
   CFDPayload,
@@ -118,14 +118,19 @@ export const useCFDClientStore = create<CFDClientStore>()(
       paymentMethod: null,
 
       // Actions
-      setPairing: data =>
+      setPairing: data => {
         set({
           isPaired: true,
           connection: data,
           screenState: 'idle'
-        }),
+        })
+        // Flush the debounced persist write immediately so pairing is durable
+        // before we navigate. Prevents losing pairing if the app is killed in
+        // the 300ms window after the QR scan commits.
+        flushPendingWrite('cfd-client-store')
+      },
 
-      clearPairing: () =>
+      clearPairing: () => {
         set({
           isPaired: false,
           connection: null,
@@ -133,7 +138,9 @@ export const useCFDClientStore = create<CFDClientStore>()(
           screenState: 'pairing',
           items: [],
           branding: null
-        }),
+        })
+        flushPendingWrite('cfd-client-store')
+      },
 
       setConnectionStatus: status => set({ connectionStatus: status }),
 

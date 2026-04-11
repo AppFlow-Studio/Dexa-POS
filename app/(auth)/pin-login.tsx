@@ -9,14 +9,11 @@ import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
 import { v4 as uuidv4 } from "uuid";
 import { getDeviceName } from "@/lib/deviceName";
-import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
+import { EmployeeProfile, useEmployeeStore, STATION_IN_USE_AUTH_ERROR } from "@/stores/useEmployeeStore";
 import { MerchantRole } from "@/lib/types";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { PosStaffLoginResponse } from "@/types/station";
-import * as Application from "expo-application";
-import * as Device from "expo-device";
-import * as Network from "expo-network";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
@@ -28,33 +25,14 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
+import {
+  usePinSignIn,
+  getDeviceInfo,
+  sanitizeIpAddress,
+  sendKickBroadcast,
+} from "@/hooks/usePinSignIn";
 
 const MAX_PIN_LENGTH = 4;
-// Helper function to validate and clean IP address
-const sanitizeIpAddress = (ip: string | null | undefined): string | null => {
-  if (!ip || ip.trim() === '') return null;
-  
-  // Basic IPv4 validation (optional but good practice)
-  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
-  
-  const trimmed = ip.trim();
-  if (ipv4Regex.test(trimmed) || ipv6Regex.test(trimmed)) {
-    return trimmed;
-  }
-  
-  return null; // Invalid format, send null instead of crashing DB
-};
-
-const getDeviceInfo = async () => {
-  const ip = await Network.getIpAddressAsync().catch(() => null);
-  return {
-    ip_address: ip !== '' ? ip : null,
-    app_version: Application.nativeApplicationVersion,
-    os_version: `${Device.osName} ${Device.osVersion}`,
-    hardware_model: Device.modelName,
-  };
-};
 
 const PinLoginScreen = () => {
   const router = useRouter();
@@ -66,10 +44,25 @@ const PinLoginScreen = () => {
   > | null>(null);
   const supabase = useSupabaseClient();
 
-  // Clear PIN when screen comes into focus
+  // Clear PIN when screen comes into focus; also handle rollback feedback from background RPC
   useFocusEffect(
     useCallback(() => {
       setPin("");
+      const err = useEmployeeStore.getState().pendingAuthError;
+      if (err) {
+        if (err === STATION_IN_USE_AUTH_ERROR) {
+          showDialog(
+            'Take Over Station?',
+            'Another employee is signed in on this station. Enter your PIN again to take over.',
+            'warning',
+            { showTakeover: false },
+          );
+        } else {
+          triggerShakeAnimation();
+          showDialog('Sign In Failed', err, 'error');
+        }
+        useEmployeeStore.getState().setPendingAuthError(null);
+      }
     }, []),
   );
 
@@ -96,6 +89,7 @@ const PinLoginScreen = () => {
   const { isOnline } = useNetworkStatus();
 
   const timeClock = useTimeClock();
+  const { performOptimisticSignIn } = usePinSignIn();
 
   const canSubmit = useMemo(
     () =>
@@ -225,31 +219,13 @@ const PinLoginScreen = () => {
         setStationSessionId(response.session.session_id);
       }
 
-      // Send broadcast kick notification to the kicked device
-      // This is Layer 1 of the kick system - instant, no RLS dependency
+      // Send broadcast kick notification to the kicked device (Layer 1)
       if (response.session?.kicked_previous && response.session?.kicked_device_id) {
-        const kickedDeviceId = response.session.kicked_device_id;
-        console.log(`[Takeover] Broadcasting kick to device: ${kickedDeviceId}`);
-        try {
-          const kickChannel = supabase.channel(`station-kick:${kickedDeviceId}`);
-          await kickChannel.send({
-            type: "broadcast",
-            event: "kick",
-            payload: {
-              device_id: kickedDeviceId,
-              session_id: response.session.session_id,
-              kicked_by: response.staff?.display_name || "Unknown",
-              reason: "Taken over",
-              station_id: selectedStation.id,
-            },
-          });
-          // Clean up the temporary channel after sending
-          supabase.removeChannel(kickChannel);
-          console.log("[Takeover] Broadcast kick sent successfully");
-        } catch (broadcastErr) {
-          // Non-critical - other kick layers will catch it
-          console.warn("[Takeover] Broadcast kick failed (non-critical):", broadcastErr);
-        }
+        await sendKickBroadcast(supabase, response.session.kicked_device_id, {
+          session_id: response.session.session_id,
+          kicked_by: response.staff?.display_name || "Unknown",
+          station_id: selectedStation.id,
+        });
       }
 
       let employee: EmployeeProfile | null = null;
@@ -364,67 +340,39 @@ const PinLoginScreen = () => {
       return;
     }
 
-    // ── OFFLINE PATH ─────────────────────────────────────────────────────────
-    if (!isOnline) {
-      const employee = findEmployeeByPin(pin);
-      if (!employee) {
+    // ── FAST PATH: optimistic sign-in (works online AND offline, cache hit) ──
+    const result = await performOptimisticSignIn({
+      pin,
+      selectedStore,
+      selectedStation,
+      deviceId,
+      cachedDeviceInfo,
+      forceTakeover: forceTakeover === "true",
+    });
+
+    if (result.outcome === "navigating") {
+      setPin("");
+      return;
+    }
+
+    // ── CACHE MISS: employees not loaded (first startup / empty cache) ────────
+    if (result.outcome === "cache_miss") {
+      if (!isOnline) {
         triggerShakeAnimation();
         showDialog("Sign In Failed", "Incorrect PIN. Please try again.", "error");
         setPin("");
         return;
       }
-
-      showLoading("Signing in offline...");
-
-      const existingSession = getSession(employee.id);
-      if (!existingSession) {
-        employeeClockIn(employee.id);
-        timeclockClockIn(employee.id);
-      }
-      setActiveSession(employee);
-
-      queueAction({
-        id: uuidv4(),
-        type: "sign_in",
-        pinCode: pin,
-        locationId: selectedStore.id,
-        timestamp: new Date().toISOString(),
-        deviceId,
-      });
-
-      hideLoading();
-      setPin("");
-      const isKDS = selectedStation?.station_type === "kds";
-      replaceRoute("(main)", isKDS ? "kds" : "home");
-      return;
+      // Fall through to blocking online flow below
     }
-    // ── END OFFLINE PATH ──────────────────────────────────────────────────────
 
+    // ── BLOCKING ONLINE FLOW (cache miss + online) ────────────────────────────
     showLoading("Signing in...");
 
     try {
       const deviceName = getDeviceName();
       const info = cachedDeviceInfo ?? await getDeviceInfo();
 
-      // Call the new combined RPC for station + clock in
-      console.log("Calling pos_staff_login with:", {
-        p_location_id: selectedStore.id,
-        p_pin_code: pin,
-        p_station_id: selectedStation.id,
-        p_device_id: deviceId,
-        p_device_name: deviceName,
-        p_auto_clock_in: true,
-        p_force_takeover: forceTakeover === "true",
-        p_ip_address: sanitizeIpAddress(info.ip_address),
-        p_app_version: info.app_version,
-        p_os_version: info.os_version,
-        p_hardware_model: info.hardware_model,
-      });
-      if (navigator.onLine) {
-        console.log('Internet connection is available');
-      } else {
-        console.log('Internet connection is not available');
-      }
       const { data, error } = await supabase.rpc("pos_staff_login_v2", {
         p_location_id: selectedStore.id,
         p_pin_code: pin,
@@ -439,8 +387,6 @@ const PinLoginScreen = () => {
         p_hardware_model: info.hardware_model,
       });
 
-      console.log("pos_staff_login response:", data, error);
-
       if (error) throw error;
 
       const response = data as PosStaffLoginResponse;
@@ -449,7 +395,6 @@ const PinLoginScreen = () => {
         hideLoading();
 
         if (response.error_code === "STATION_IN_USE") {
-          // Store the PIN for potential takeover
           setPendingTakeoverPin(pin);
           showDialog(
             "Take Over Station?",
@@ -476,51 +421,28 @@ const PinLoginScreen = () => {
         return;
       }
 
-      // Store session ID for later logout
       if (response.session?.session_id) {
-        console.log(
-          "📝 Setting stationSessionId:",
-          response.session.session_id,
-        );
         setStationSessionId(response.session.session_id);
       }
 
-      // Send broadcast kick notification to the kicked device (Layer 1)
       if (response.session?.kicked_previous && response.session?.kicked_device_id) {
-        const kickedDeviceId = response.session.kicked_device_id;
-        console.log(`[Login] Broadcasting kick to device: ${kickedDeviceId}`);
-        try {
-          const kickChannel = supabase.channel(`station-kick:${kickedDeviceId}`);
-          await kickChannel.send({
-            type: "broadcast",
-            event: "kick",
-            payload: {
-              device_id: kickedDeviceId,
-              session_id: response.session.session_id,
-              kicked_by: response.staff?.display_name || "Unknown",
-              reason: "Taken over",
-              station_id: selectedStation.id,
-            },
-          });
-          supabase.removeChannel(kickChannel);
-          console.log("[Login] Broadcast kick sent successfully");
-        } catch (broadcastErr) {
-          console.warn("[Login] Broadcast kick failed (non-critical):", broadcastErr);
-        }
+        await sendKickBroadcast(supabase, response.session.kicked_device_id, {
+          session_id: response.session.session_id,
+          kicked_by: response.staff?.display_name || "Unknown",
+          station_id: selectedStation.id,
+        });
       }
 
       let employee: EmployeeProfile | null = null;
 
-      // Get employee from local store using staff profile ID
       if (response.staff?.staff_profile_id) {
-        employee =
-          getEmployeeByStaffId(response.staff.staff_profile_id) || null;
+        employee = getEmployeeByStaffId(response.staff.staff_profile_id) || null;
       }
 
       // If not found locally, re-sync employees and retry
       if (!employee && response.staff?.staff_profile_id && selectedStore?.id) {
         console.log("Employee not found locally, re-syncing...");
-        const { data } = await supabase
+        const { data: membersData } = await supabase
           .from("location_members")
           .select(`
             id, pin_code, pin_plain, role_code, staff_profile_id,
@@ -529,8 +451,8 @@ const PinLoginScreen = () => {
           .eq("location_id", selectedStore.id)
           .eq("is_active", true);
 
-        if (data?.length) {
-          const mappedEmployees: EmployeeProfile[] = data.map((row: any) => {
+        if (membersData?.length) {
+          const mappedEmployees: EmployeeProfile[] = membersData.map((row: any) => {
             const profile = row.staff_profiles;
             const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
             return {
@@ -554,7 +476,6 @@ const PinLoginScreen = () => {
       }
 
       if (employee) {
-        // Sync local session state
         const existingSession = getSession(employee.id);
         if (!existingSession) {
           employeeClockIn(employee.id);
@@ -564,15 +485,6 @@ const PinLoginScreen = () => {
       }
 
       hideLoading();
-
-      if (!employee) {
-        // Staff found in database but not synced locally - still allow login
-        console.warn(
-          "Staff profile not found locally:",
-          response.staff?.staff_profile_id,
-        );
-      }
-
       setPin("");
       const isKDS = selectedStation?.station_type === "kds";
       replaceRoute('(main)', isKDS ? 'kds' : 'home');
@@ -607,18 +519,11 @@ const PinLoginScreen = () => {
       return;
     }
 
-    showLoading("Clocking in...");
-
     try {
-      // Use server for clock in (handles both online and offline via the hook)
+      // useTimeClock updates state optimistically; success/error toasts handled by the hook
       await timeClock.clockIn(pin, selectedStore.id, deviceId);
-      // Success toast is handled by the hook
-      hideLoading();
       setPin("");
-    } catch (error: any) {
-      hideLoading();
-      // Toast notification is already shown by the useTimeClock hook
-      // Just shake and clear PIN for visual feedback
+    } catch {
       triggerShakeAnimation();
       setPin("");
     }
@@ -636,18 +541,11 @@ const PinLoginScreen = () => {
       return;
     }
 
-    showLoading("Clocking out...");
-
     try {
-      // Use server for clock out (handles both online and offline via the hook)
+      // useTimeClock updates state optimistically; success/error toasts handled by the hook
       await timeClock.clockOut(pin, selectedStore.id, deviceId);
-      // Success toast is handled by the hook
-      hideLoading();
       setPin("");
-    } catch (error: any) {
-      hideLoading();
-      // Toast notification is already shown by the useTimeClock hook
-      // Just shake and clear PIN for visual feedback
+    } catch {
       triggerShakeAnimation();
       setPin("");
     }
