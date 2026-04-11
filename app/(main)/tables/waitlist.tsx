@@ -1,4 +1,4 @@
-import { AddWaitlistModal } from '@/components/host-station/AddWaitlistModal'
+import { AddWaitlistModal, AddWaitlistPayload } from '@/components/host-station/AddWaitlistModal'
 import { TableSelectionSheet } from '@/components/host-station/TableSelectionSheet'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 
@@ -755,29 +755,21 @@ export default function WaitlistScreen () {
   }, [itemToDelete, removeFromWaitlistAsync])
 
   const handleAddEntry = useCallback(
-    (data: {
-      name: string
-      partySize: number
-      quotedTime: number
-      notes: string
-      phone?: string
-      email?: string
-      seating_preference?: string
-      preferred_section?: string
-    }) => {
+    async (data: AddWaitlistPayload) => {
       if (!selectedStore?.id) return
-      addToWaitlistAsync({
+      await addToWaitlistAsync({
         locationId: selectedStore.id,
-        p_party_name: data.name,
-        p_party_size: data.partySize,
+        p_party_name: data.party_name,
+        p_party_size: data.party_size,
         p_phone: data.phone,
         p_email: data.email,
         p_seating_preference: data.seating_preference,
         p_preferred_section: data.preferred_section,
-        p_notes: data.notes
-      }).then(() => {
-        setShowAddModal(false)
+        p_notes: data.notes,
+        p_quoted_wait_minutes: data.quoted_wait_minutes,
+        p_estimated_ready_at: data.estimated_ready_at,
       })
+      setShowAddModal(false)
     },
     [selectedStore?.id, addToWaitlistAsync]
   )
