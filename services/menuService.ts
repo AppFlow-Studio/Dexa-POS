@@ -492,6 +492,34 @@ export class MenuService {
   // ============================================================
 
   /**
+   * Upload a menu item image to Bunny CDN via the cdn-upload edge function.
+   * Returns the CDN URL on success, or throws on failure.
+   */
+  static async uploadMenuImage(
+    client: SupabaseClient,
+    params: {
+      merchantId: string;
+      base64: string;
+      getToken: () => Promise<string | null>;
+    }
+  ): Promise<string> {
+    const token = await params.getToken()
+    const { data, error } = await client.functions.invoke('cdn-upload', {
+      body: {
+        scope: 'merchant',
+        merchantId: params.merchantId,
+        category: 'menu-images',
+        fileName: `menu_item_${Date.now()}.jpg`,
+        fileBase64: params.base64,
+        contentType: 'image/jpeg',
+      },
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (error || !data?.cdnUrl) throw error ?? new Error('No CDN URL returned')
+    return data.cdnUrl as string
+  }
+
+  /**
    * Create a new menu item
    */
   static async createMenuItem(
@@ -614,6 +642,7 @@ export class MenuService {
     params: {
       menuItemId: string;
       modifierGroupId: string;
+      merchantId: string;
       displayOrder?: number;
     }
   ): Promise<{ data: any; error: any }> {
@@ -622,6 +651,7 @@ export class MenuService {
       .insert({
         menu_item_id: params.menuItemId,
         modifier_group_id: params.modifierGroupId,
+        merchant_id: params.merchantId,
         display_order: params.displayOrder ?? 0,
       })
       .select()

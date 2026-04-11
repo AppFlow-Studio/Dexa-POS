@@ -4,7 +4,7 @@ import React, { useCallback } from 'react'
 import { Modal, Platform, Text, TouchableOpacity, View, KeyboardAvoidingView, ScrollView } from 'react-native'
 import AddToWaitlistForm from './AddToWaitlistForm'
 
-type AddWaitlistPayload = {
+export type AddWaitlistPayload = {
   party_name: string
   party_size: number
   phone?: string
@@ -13,12 +13,13 @@ type AddWaitlistPayload = {
   preferred_section?: string
   notes?: string
   quoted_wait_minutes?: number
+  estimated_ready_at?: string
 }
 
 interface AddWaitlistModalProps {
   visible: boolean
   onClose: () => void
-  onSubmit: (data: AddWaitlistPayload) => void
+  onSubmit: (data: AddWaitlistPayload) => Promise<void> | void
   isLoading: boolean
 }
 

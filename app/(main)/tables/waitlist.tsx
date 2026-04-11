@@ -1,7 +1,9 @@
-import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
-import { AddWaitlistModal } from '@/components/host-station/AddWaitlistModal'
-import AppNoticeModal from '@/components/ui/AppNoticeModal'
+import { AddWaitlistModal, AddWaitlistPayload } from '@/components/host-station/AddWaitlistModal'
 import { TableSelectionSheet } from '@/components/host-station/TableSelectionSheet'
+import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
+
+import AppNoticeModal from '@/components/ui/AppNoticeModal'
+
 import { useToast } from '@/contexts/ToastContext'
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { bottomSheetTheme, colors } from '@/lib/theme'
@@ -151,9 +153,9 @@ const WaitlistCard: React.FC<{
     const isOverdue = elapsed > entry.quoted_wait_minutes
 
     const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
-    if (expandedHeight.value !== (isExpanded ? 1 : 0)) {
+    useEffect(() => {
       expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
-    }
+    }, [isExpanded])
     const expandedStyle = useAnimatedStyle(() => ({
       opacity: expandedHeight.value,
       maxHeight: expandedHeight.value * 300,
@@ -659,8 +661,8 @@ export default function WaitlistScreen () {
         setActiveOrder(result.order_id)
       } else {
         const newOrder = startNewOrder({
-          guestCount: entry.party_size,
-          tableId,
+          guestCount: selectedEntry.party_size,
+          tableId: tableId
         })
         setActiveOrder(newOrder.id)
       }
@@ -753,7 +755,7 @@ export default function WaitlistScreen () {
   }, [itemToDelete, removeFromWaitlistAsync])
 
   const handleAddEntry = useCallback(
-    async (data: { party_name: string; party_size: number; phone?: string; email?: string; seating_preference?: string; preferred_section?: string; notes?: string; quoted_wait_minutes?: number }) => {
+    async (data: AddWaitlistPayload) => {
       if (!selectedStore?.id) return
       await addToWaitlistAsync({
         locationId: selectedStore.id,
@@ -765,6 +767,7 @@ export default function WaitlistScreen () {
         p_preferred_section: data.preferred_section,
         p_notes: data.notes,
         p_quoted_wait_minutes: data.quoted_wait_minutes,
+        p_estimated_ready_at: data.estimated_ready_at,
       })
       setShowAddModal(false)
     },
