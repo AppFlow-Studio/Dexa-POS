@@ -64,10 +64,29 @@ export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
   // 3. Void the order locally + triggers void_order RPC which closes the backend session
   orderState.voidOrder(orderId);
 
-  // 3b. Print void-order receipt (customer-facing) — non-blocking
   const printingConfig = useLocationConfigStore.getState().config.printing;
+  const selectedStore = useStoreSettingsStore.getState().selectedStore;
+
+  // 3b. Print void kitchen tickets for kitchen-sent items — non-blocking
+  if (printingConfig?.printVoidTickets && selectedStore) {
+    const kitchenItems = order.items.filter(
+      (it) =>
+        it.kitchen_status === "sent" ||
+        it.kitchen_status === "preparing" ||
+        it.kitchen_status === "ready" ||
+        it.kitchen_status === "served"
+    );
+    if (kitchenItems.length > 0) {
+      PrinterService.printVoidTicket(order, kitchenItems, selectedStore).catch(
+        (err) => {
+          console.warn("[voidOrderEffect] printVoidTicket failed:", err);
+        }
+      );
+    }
+  }
+
+  // 3c. Print void-order receipt (customer-facing) — non-blocking
   if (printingConfig?.autoPrintVoidReceipt) {
-    const selectedStore = useStoreSettingsStore.getState().selectedStore;
     const locationId = selectedStore?.id ?? "";
     if (locationId) {
       try {

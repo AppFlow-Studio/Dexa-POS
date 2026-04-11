@@ -212,7 +212,6 @@ export default function NotificationsScreen () {
 
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.screen }}>
-      <SidebarNavigation />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}

@@ -52,6 +52,9 @@ export interface PrintingConfig {
   autoPrintKitchenTickets: boolean
   autoPrintReceipt: boolean
   autoPrintVoidReceipt: boolean
+  printVoidTickets: boolean
+  printMerchantCopy: boolean
+  printCustomerCopy: boolean
 }
 
 export interface CashDrawerConfig {
@@ -199,6 +202,9 @@ export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {
   autoPrintKitchenTickets: true,
   autoPrintReceipt: false,
   autoPrintVoidReceipt: true,
+  printVoidTickets: true,
+  printMerchantCopy: false,
+  printCustomerCopy: true,
 }
 
 export const DEFAULT_CASH_DRAWER_CONFIG: CashDrawerConfig = {

@@ -263,6 +263,10 @@ export class CastlesService {
     this._onStatusNotification = callback;
   }
 
+  getOnStatusNotification(): CastlesStatusCallback | null {
+    return this._onStatusNotification;
+  }
+
   // ── Tuning setters ──
   setSkipReturn2Idle(skip: boolean): void { this._skipReturn2Idle = skip; }
   setPostConnectDelay(ms: number): void { this._postConnectDelayMs = ms; }

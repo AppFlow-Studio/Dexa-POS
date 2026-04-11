@@ -2,6 +2,11 @@ import { secureMMKVStorage } from "@/lib/storage";
 import { MerchantRole } from "@/lib/types";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { v4 as uuidv4 } from "uuid";
+
+/** Sentinel value stored in pendingAuthError to signal STATION_IN_USE (not a user-visible message). */
+export const STATION_IN_USE_AUTH_ERROR = "STATION_IN_USE" as const;
+
 export interface EmployeeProfile {
   id: string; // location_members.id
   profileId: string; // staff_profiles.id
@@ -22,12 +27,35 @@ export interface EmployeeProfile {
   baseWage?: number;
 }
 
+export interface PendingStationLogin {
+  id: string;
+  pin: string;
+  locationId: string;
+  stationId: string;
+  deviceId: string;
+  timestamp: string;
+  retryCount: number;
+}
+
 interface EmployeeState {
   employees: EmployeeProfile[];
   activeEmployeeId: string | null;
   loggedInEmployee: EmployeeProfile | null;
   isLoading: boolean;
   error: string | null;
+
+  // In-flight sign-in tracking (in-memory only, NOT persisted)
+  pendingSignInEmployeeId: string | null;
+  /** True when beginOptimisticSignIn started a new clock-in (so rollback should undo it). */
+  pendingSignInStartedClockIn: boolean;
+  pendingAuthError: string | null;
+
+  // Offline queue for station logins (persisted)
+  pendingStationLogins: PendingStationLogin[];
+  isStationLoginSyncing: boolean;
+
+  // Ready flag: true when employees[] is populated from MMKV or fresh sync
+  isEmployeesReady: boolean;
 
   // Actions
   setEmployees: (employees: EmployeeProfile[]) => void;
@@ -45,6 +73,17 @@ interface EmployeeState {
   ) => Promise<{ ok: true } | { ok: false; reason: "invalid_pin" }>;
   signOut: () => void;
 
+  // Optimistic sign-in flow
+  beginOptimisticSignIn: (employee: EmployeeProfile, hasExistingSession: boolean) => void;
+  commitSignIn: (sessionId?: string) => void;
+  rollbackSignIn: () => void;
+  setPendingAuthError: (error: string | null) => void;
+
+  // Station login queue
+  queueStationLogin: (params: { pin: string; locationId: string; stationId: string; deviceId: string }) => void;
+  removeStationLoginFromQueue: (id: string) => void;
+  setStationLoginSyncing: (syncing: boolean) => void;
+
   // Helpers
   getEmployeeById: (id: string) => EmployeeProfile | undefined;
   getEmployeeByStaffId: (staffId: string) => EmployeeProfile | undefined;
@@ -60,6 +99,12 @@ export const useEmployeeStore = create<EmployeeState>()(
       loggedInEmployee: null,
       isLoading: false,
       error: null,
+      pendingSignInEmployeeId: null,
+      pendingSignInStartedClockIn: false,
+      pendingAuthError: null,
+      pendingStationLogins: [],
+      isStationLoginSyncing: false,
+      isEmployeesReady: false,
 
       getEmployeeById: (id) => get().employees.find((e) => e.id === id),
 
@@ -80,13 +125,11 @@ export const useEmployeeStore = create<EmployeeState>()(
 
       getEmployeeByStaffId: (staffId: string) => {
         console.log("getEmployeeByStaffId", staffId);
-        // console.log("employees", get().employees);
-
         console.log("staffId", get().employees.find((e) => e.profileId === staffId));
         return get().employees.find((e) => e.profileId === staffId);
       },
 
-      setEmployees: (employees) => set({ employees }),
+      setEmployees: (employees) => set({ employees, isEmployeesReady: employees.length > 0 }),
 
       setSyncState: ({ isLoading, error }) => set({ isLoading, error }),
 
@@ -166,14 +209,89 @@ export const useEmployeeStore = create<EmployeeState>()(
         const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
         useTimeclockStore.getState().setActiveEmployee(null);
       },
+
+      // ── Optimistic sign-in flow ───────────────────────────────────────────────
+
+      beginOptimisticSignIn: (employee, hasExistingSession) => {
+        // Guard: if another sign-in is already in-flight, roll it back first
+        const current = get();
+        if (current.pendingSignInEmployeeId) {
+          current.rollbackSignIn();
+        }
+        const startedClockIn = !hasExistingSession;
+        set({ pendingSignInEmployeeId: employee.id, pendingSignInStartedClockIn: startedClockIn });
+        get().setActiveSession(employee);
+        if (startedClockIn) {
+          get().clockIn(employee.id);
+          const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
+          useTimeclockStore.getState().clockIn(employee.id);
+        }
+      },
+
+      commitSignIn: (sessionId) => {
+        set({ pendingSignInEmployeeId: null, pendingSignInStartedClockIn: false });
+        if (sessionId) {
+          const { useStoreSettingsStore } = require("./useStoreSettingsStore") as { useStoreSettingsStore: typeof import("./useStoreSettingsStore").useStoreSettingsStore };
+          useStoreSettingsStore.getState().setStationSessionId(sessionId);
+        }
+      },
+
+      rollbackSignIn: () => {
+        const { pendingSignInEmployeeId, pendingSignInStartedClockIn } = get();
+        if (!pendingSignInEmployeeId) return;
+        get().signOut();
+        get().clockOut(pendingSignInEmployeeId);
+        // Only undo the timeclock session if WE started it (avoid false PTO accrual
+        // if the employee was already clocked in before the optimistic sign-in)
+        if (pendingSignInStartedClockIn) {
+          const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
+          useTimeclockStore.getState().clockOut(pendingSignInEmployeeId);
+        }
+        set({ pendingSignInEmployeeId: null, pendingSignInStartedClockIn: false });
+      },
+
+      setPendingAuthError: (error) => set({ pendingAuthError: error }),
+
+      // ── Station login queue ───────────────────────────────────────────────────
+
+      queueStationLogin: (params) => {
+        set((state) => ({
+          pendingStationLogins: [
+            ...state.pendingStationLogins,
+            {
+              id: uuidv4(),
+              pin: params.pin,
+              locationId: params.locationId,
+              stationId: params.stationId,
+              deviceId: params.deviceId,
+              timestamp: new Date().toISOString(),
+              retryCount: 0,
+            },
+          ],
+        }));
+      },
+
+      removeStationLoginFromQueue: (id) => {
+        set((state) => ({
+          pendingStationLogins: state.pendingStationLogins.filter((l) => l.id !== id),
+        }));
+      },
+
+      setStationLoginSyncing: (syncing) => set({ isStationLoginSyncing: syncing }),
     }),
     {
       name: "dexa-employee-storage",
       storage: createJSONStorage(() => secureMMKVStorage),
       partialize: (state) => ({
         employees: state.employees,
+        pendingStationLogins: state.pendingStationLogins,
         // Do NOT persist loggedInEmployee - require fresh login on app restart
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state && state.employees.length > 0) {
+          state.isEmployeesReady = true;
+        }
+      },
     }
   )
 );

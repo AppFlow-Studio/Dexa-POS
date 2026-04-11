@@ -23,14 +23,14 @@ const PinButton = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    activeOpacity={0.7}
+    activeOpacity={0.6}
     style={{
-      width: 90,
-      height: 56,
+      width: 80,
+      height: 64,
       backgroundColor: isAction ? colors.screen : colors.card,
-      borderWidth: 1,
+      borderWidth: isAction ? 0 : 1,
       borderColor: colors.border,
-      borderRadius: 10,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center'
     }}

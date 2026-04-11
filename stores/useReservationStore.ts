@@ -298,27 +298,45 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
 
   seatReservation: async (reservationId, tableIds) => {
     try {
-      const { data, error } = await FloorPlanService.seatReservation(
-        getClient(),
-        reservationId,
-        tableIds
-      )
-      if (error) throw error
+      const reservation = get().reservations.find(r => r.id === reservationId)
+      if (!reservation) throw new Error('Reservation not found')
+      if (!tableIds || tableIds.length === 0) throw new Error('No tables provided')
 
+      const { useTableSessionStore } =
+        require('./useTableSessionStore') as typeof import('./useTableSessionStore')
+
+      // Use seatGuests (same as waitlist) so the order is created locally with
+      // the currently logged-in employee as the server.
+      const result = await useTableSessionStore.getState().seatGuests({
+        tableIds,
+        partySize: reservation.party_size,
+        guestName: reservation.party_name,
+        guestPhone: reservation.phone ?? undefined,
+        reservationId,
+        createOrder: true,
+      })
+
+      // Mark reservation as seated and update local state
       set(state => ({
         reservations: state.reservations.filter(r => r.id !== reservationId),
-        reservationBySessionId: data?.session_id
+        reservationBySessionId: result.sessionId
           ? {
               ...state.reservationBySessionId,
-              [data.session_id]: reservationId
+              [result.sessionId]: reservationId
             }
           : state.reservationBySessionId
       }))
 
-      // Ensure table/session UI reflects seated state right after seating.
-      await getFloorPlanStore().getState().loadFloorPlanStatus()
+      // Also update reservation status in DB
+      await FloorPlanService.updateReservationStatus(
+        getClient(),
+        reservationId,
+        'seated'
+      )
 
-      return data
+      return result.sessionId
+        ? { session_id: result.sessionId, order_id: result.orderId }
+        : null
     } catch (err: any) {
       console.error('Failed to seat reservation:', err)
       return null

@@ -4,6 +4,7 @@ import {
 } from '@/lib/order-calculator'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile } from '@/lib/types'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { usePrintQueueStore } from '@/stores/usePrintQueueStore'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useReceiptTemplateStore } from '@/stores/useReceiptTemplateStore'
@@ -70,16 +71,33 @@ export const PrinterService = {
       return false
     }
 
-    const templateData = buildReceiptTemplateData(order, location, printer)
-    const job = createJobForPrinter(
-      printer,
-      templateData,
-      'receipt',
-      'normal',
-      order.id,
-      'receipt'
-    )
-    usePrintQueueStore.getState().enqueue(job)
+    const { printMerchantCopy, printCustomerCopy } =
+      useLocationConfigStore.getState().config.printing
+
+    // Build copy labels to print. Fallback to customer copy if both are off.
+    const copies: string[] = []
+    if (printMerchantCopy) copies.push('Merchant Copy')
+    if (printCustomerCopy) copies.push('Customer Copy')
+    if (copies.length === 0) copies.push('Customer Copy')
+
+    const baseData = buildReceiptTemplateData(order, location, printer)
+
+    for (const label of copies) {
+      const templateData: ReceiptTemplateData = {
+        ...baseData,
+        copyLabel: copies.length > 1 ? label : (baseData.copyLabel ?? label),
+      }
+      const job = createJobForPrinter(
+        printer,
+        templateData,
+        'receipt',
+        'normal',
+        order.id,
+        'receipt'
+      )
+      usePrintQueueStore.getState().enqueue(job)
+    }
+
     this.ensureProcessing()
     return true
   },

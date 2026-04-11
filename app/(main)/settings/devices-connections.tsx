@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Constants from "expo-constants";
+import AppUpdateModal from "@/components/AppUpdateModal";
+import { checkForNativeUpdate, type VersionManifest } from "@/services/appUpdater";
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -208,7 +212,31 @@ const DevicesConnectionsScreen = () => {
     terminal: true,
     printers: true,
     discovered: false,
+    appUpdates: false,
   });
+
+  // App Updates state
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [nativeUpdateManifest, setNativeUpdateManifest] = useState<VersionManifest | null>(null);
+  const currentVersion = Constants.expoConfig?.version ?? "—";
+
+  const handleCheckForUpdate = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const manifest = await checkForNativeUpdate();
+      setLastChecked(new Date());
+      if (manifest) {
+        setNativeUpdateManifest(manifest);
+      } else {
+        toastService.show({ title: "Up to Date", message: `Version ${currentVersion} is the latest.`, type: "success" });
+      }
+    } catch {
+      toastService.show({ title: "Check Failed", message: "Could not reach update server.", type: "error" });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
   const toggleSection = (s: keyof typeof expandedSections) =>
     setExpandedSections((prev) => ({ ...prev, [s]: !prev[s] }));
 
@@ -1504,8 +1532,70 @@ const DevicesConnectionsScreen = () => {
           )}
         </View>
 
+        {/* ------------------------------------------------------------------ */}
+        {/* APP UPDATES SECTION                                                 */}
+        {/* ------------------------------------------------------------------ */}
+        {Platform.OS === "android" && (
+          <View style={{ marginTop: 16, borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+            <SectionHeader
+              title="App Updates"
+              icon={<RefreshCw size={16} color={colors.teal} />}
+              expanded={expandedSections.appUpdates}
+              onToggle={() => toggleSection("appUpdates")}
+            />
+            {expandedSections.appUpdates && (
+              <View style={{ backgroundColor: colors.card, padding: 14, gap: 12 }}>
+                {/* Version row */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 12, color: colors.label }}>Current Version</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading, fontFamily: "monospace" }}>{currentVersion}</Text>
+                </View>
+
+                {/* Last checked row */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 12, color: colors.label }}>Last Checked</Text>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                    {lastChecked ? lastChecked.toLocaleTimeString() : "—"}
+                  </Text>
+                </View>
+
+                {/* Check button */}
+                <TouchableOpacity
+                  onPress={handleCheckForUpdate}
+                  disabled={isCheckingUpdate}
+                  style={{
+                    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+                    paddingVertical: 10, borderRadius: 8,
+                    backgroundColor: colors.teal + "20",
+                    borderWidth: 1, borderColor: colors.teal + "50",
+                    opacity: isCheckingUpdate ? 0.6 : 1,
+                  }}
+                >
+                  {isCheckingUpdate
+                    ? <ActivityIndicator size="small" color={colors.teal} />
+                    : <RefreshCw size={14} color={colors.teal} />
+                  }
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+                    {isCheckingUpdate ? "Checking…" : "Check for Updates"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Native APK Update Modal */}
+      {nativeUpdateManifest && (
+        <AppUpdateModal
+          visible={true}
+          manifest={nativeUpdateManifest}
+          onSkip={() => setNativeUpdateManifest(null)}
+          onInstallComplete={() => setNativeUpdateManifest(null)}
+        />
+      )}
 
       {/* Routing Modal */}
       {routingModalPrinter && (

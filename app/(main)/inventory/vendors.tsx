@@ -395,27 +395,6 @@ const VendorSidebar: React.FC<{
                     </Text>
                   </View>
                 ) : null}
-                {vendor.website ? (
-                  <View>
-                    <Text
-                      style={{
-                        fontSize: 8,
-                        fontWeight: '700',
-                        color: colors.muted,
-                        letterSpacing: 1,
-                        marginBottom: 3
-                      }}
-                    >
-                      WEBSITE
-                    </Text>
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontSize: 12, color: colors.teal }}
-                    >
-                      {vendor.website}
-                    </Text>
-                  </View>
-                ) : null}
               </View>
 
               <View
@@ -1014,11 +993,18 @@ const VendorScreen = () => {
     addVendor,
     updateVendor,
     deleteVendor,
+    fetchVendors,
     inventoryItems,
     purchaseOrders
   } = useInventoryStore()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const merchantId = selectedStore?.merchant_id ?? ''
+
+  const locationId = selectedStore?.id ?? ''
+
+  useEffect(() => {
+    if (locationId) fetchVendors(locationId)
+  }, [locationId])
   const router = useRouter()
 
   const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null)
@@ -1107,7 +1093,7 @@ const VendorScreen = () => {
     if (id) {
       updateVendor(id, data)
     } else {
-      addVendor(data, merchantId)
+      addVendor(data, merchantId, locationId)
     }
   }
 

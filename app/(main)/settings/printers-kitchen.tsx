@@ -35,8 +35,6 @@ import { Switch } from "~/components/ui/switch";
 type PrinterTab = "receipt" | "order" | "kds";
 
 interface ReceiptSettings {
-  merchantCopies: number;
-  customerCopies: number;
   showLogo: boolean;
   showTaxBreakdown: boolean;
   showItemizedList: boolean;
@@ -48,7 +46,6 @@ interface ReceiptSettings {
 interface KitchenTicketSettings {
   autoFire: boolean;
   autoFireDelay: number;
-  printVoidTickets: boolean;
   showGuestCount: boolean;
   showModifiers: boolean;
   showCourseNumber: boolean;
@@ -146,6 +143,9 @@ const PrintersKitchenScreen = () => {
   const kdsAutoFireDelayMinutes = kdsConfig.autoFireDelayMinutes;
   const autoPrintKitchenTickets = printingConfig.autoPrintKitchenTickets;
   const autoPrintReceipt = printingConfig.autoPrintReceipt;
+  const printMerchantCopy = printingConfig.printMerchantCopy;
+  const printCustomerCopy = printingConfig.printCustomerCopy;
+  const printVoidTickets = printingConfig.printVoidTickets;
   // Shim for existing updateField calls
   const updateField = (field: string, value: any) => {
     const KDS_MAP: Record<string, string> = {
@@ -233,8 +233,6 @@ const PrintersKitchenScreen = () => {
 
   // Receipt settings state
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>({
-    merchantCopies: 1,
-    customerCopies: 1,
     showLogo: true,
     showTaxBreakdown: true,
     showItemizedList: true,
@@ -247,7 +245,6 @@ const PrintersKitchenScreen = () => {
   const [kitchenSettings, setKitchenSettings] = useState<KitchenTicketSettings>({
     autoFire: true,
     autoFireDelay: 0,
-    printVoidTickets: true,
     showGuestCount: true,
     showModifiers: true,
     showCourseNumber: false,
@@ -308,6 +305,20 @@ const PrintersKitchenScreen = () => {
         {/* ============================================================== */}
         {activeTab === "receipt" && (
           <View>
+            <SectionHeader title="Copy Settings" />
+            <ToggleRow
+              label="Print Merchant Copy"
+              subtitle="Retains a copy for your records"
+              value={printMerchantCopy}
+              onToggle={(v) => _updateConfig('printing', { printMerchantCopy: v })}
+            />
+            <ToggleRow
+              label="Print Customer Copy"
+              subtitle="Gives a copy to the guest"
+              value={printCustomerCopy}
+              onToggle={(v) => _updateConfig('printing', { printCustomerCopy: v })}
+            />
+
             <SectionHeader title="Receipt Options" />
             <ToggleRow
               label="Show Tax Breakdown"
@@ -413,8 +424,8 @@ const PrintersKitchenScreen = () => {
             )}
             <ToggleRow
               label="Print Void Tickets"
-              value={kitchenSettings.printVoidTickets}
-              onToggle={() => setKitchenSettings((prev) => ({ ...prev, printVoidTickets: !prev.printVoidTickets }))}
+              value={printVoidTickets}
+              onToggle={(v) => _updateConfig('printing', { printVoidTickets: v })}
             />
             <ToggleRow
               label="Show Guest Count"

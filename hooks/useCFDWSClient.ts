@@ -3,6 +3,7 @@
 import { replaceRoute } from '@/lib/rootNavigation'
 import { useCFDClientStore } from '@/stores/useCFDClientStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useToastStore } from '@/stores/useToastStore'
 import type {
   CFDMessage,
   CFDPayload,
@@ -48,7 +49,7 @@ export function useCFDWSClient () {
     pingTimer.current = undefined
   }, [])
 
-  const connect = useCallback(() => {
+  const connect = useCallback((options?: { manual?: boolean }) => {
     // Cancel any pending reconnect timer first
     clearTimeout(reconnectTimer.current)
     reconnectTimer.current = undefined
@@ -58,6 +59,12 @@ export function useCFDWSClient () {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
     if (isConnecting.current) return
 
+    // Manual retry: reset backoff so the user sees an immediate attempt
+    // and subsequent passive reconnects don't inherit a stale large delay.
+    if (options?.manual) {
+      retryCount.current = 0
+    }
+
     // Validate pairing data before attempting connection
     const isValidIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(connection.ip ?? '')
     const isValidPort =
@@ -66,6 +73,12 @@ export function useCFDWSClient () {
       connection.port < 65536
     if (!isValidIp || !isValidPort) {
       console.error('[CFD Client] Invalid pairing data, clearing')
+      useToastStore.getState().show({
+        type: 'error',
+        title: 'CFD Pairing Invalid',
+        message:
+          'Saved pairing data is corrupted. Please re-scan the QR code.'
+      })
       useCFDClientStore.getState().clearPairing()
       return
     }
@@ -81,7 +94,24 @@ export function useCFDWSClient () {
 
     setConnectionStatus('connecting')
 
-    const ws = new WebSocket(`ws://${connection.ip}:${connection.port}`)
+    // new WebSocket() can throw synchronously on Android for certain
+    // malformed hosts / device network errors. Without a try/catch the
+    // error bubbles through React and we get a white screen.
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(`ws://${connection.ip}:${connection.port}`)
+    } catch (e) {
+      console.error('[CFD Client] WebSocket constructor threw:', e)
+      isConnecting.current = false
+      setConnectionStatus('disconnected')
+      const nextDelay =
+        retryCount.current === 0
+          ? 500
+          : Math.min(500 * Math.pow(2, retryCount.current - 1), 5000)
+      retryCount.current += 1
+      reconnectTimer.current = setTimeout(() => connect(), nextDelay)
+      return
+    }
 
     // Timeout stuck CONNECTING sockets
     const connectTimeout = setTimeout(() => {

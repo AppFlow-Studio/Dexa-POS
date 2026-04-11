@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Lock,
   Logs,
   PackagePlus,
   Search,
@@ -130,7 +131,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
   const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
 
-  const { requestPinOverride } = usePinOverrideStore();
+  const { requestPinOverride, isUnlocked } = usePinOverrideStore();
+  const addTemporaryMenuAccess = useMenuStore((s) => s.addTemporaryMenuAccess);
 
   // OPTIMIZED: Use computed selector to get only order_type, avoiding re-renders on item changes
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
@@ -301,10 +303,15 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       setActiveMeal(menuName);
       setActiveCategory(menu.categories[0]?.name || "");
       setIsMenuDialogOpen(false);
-      // Persist the selection for next launch
+      setLastSelectedMenuId(menu.id);
+    } else if (isUnlocked()) {
+      // Manager session active — bypass PIN and grant directly
+      addTemporaryMenuAccess(menuName);
+      setActiveMeal(menuName);
+      setActiveCategory(menu.categories[0]?.name || "");
+      setIsMenuDialogOpen(false);
       setLastSelectedMenuId(menu.id);
     } else {
-      // Request override
       requestPinOverride({ type: "select_menu", payload: { menuName } });
     }
   };
@@ -489,12 +496,19 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                       <TouchableOpacity
                         key={menu.id}
                         onPress={() => handleMenuSelect(menu.name)}
-                        className={`p-4 rounded-xl border ${
-                          !isAvailable ? "opacity-40" : ""
-                        }`}
+                        className="p-4 rounded-xl border"
                         style={{
-                          backgroundColor: isSelected ? colors.teal + "20" : colors.panel,
-                          borderColor: isSelected ? colors.teal : colors.border,
+                          backgroundColor: isSelected
+                            ? colors.teal + "20"
+                            : !isAvailable
+                            ? colors.screen
+                            : colors.panel,
+                          borderColor: isSelected
+                            ? colors.teal
+                            : !isAvailable
+                            ? colors.border
+                            : colors.border,
+                          opacity: !isAvailable ? 0.75 : 1,
                         }}
                       >
                         <View className="flex-row justify-between items-center">
@@ -502,7 +516,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             {menu.name}
                           </Text>
                           <View className="flex-row items-center gap-2">
-                            {isScheduled && <Clock size={14} color={colors.label} />}
+                            {isScheduled && !isAvailable && (
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.border + "60", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 }}>
+                                <Lock size={11} color={colors.muted} />
+                                <Text style={{ fontSize: 10, color: colors.muted }}>Schedule</Text>
+                              </View>
+                            )}
+                            {isScheduled && isAvailable && <Clock size={14} color={colors.label} />}
                             {isSelected && <CheckCircle2 size={16} color={colors.teal} />}
                           </View>
                         </View>

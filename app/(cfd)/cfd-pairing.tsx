@@ -6,7 +6,7 @@ import type { CFDPairingData } from "@/types/cfd.types";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
 import { QrCode, Wifi } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Pressable,
   Text,
@@ -19,46 +19,115 @@ type PairingTab = "qr" | "manual";
 export default function CFDPairingScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [manualIp, setManualIp] = useState("");
-  const [scanning, setScanning] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PairingTab>("qr");
 
+  // Synchronous guard against double-fire from expo-camera. `onBarcodeScanned`
+  // can fire multiple frames before a React re-render rebinds the prop, so
+  // a useState-based guard reads a stale closure and lets the second fire
+  // through. A ref is synchronously consistent.
+  const hasScannedRef = useRef(false);
+  // Guards the success-path navigation effect so we never fire router.replace
+  // twice (inline + effect) for the same pairing event.
+  const hasNavigatedRef = useRef(false);
+
   const { isPaired, setPairing } = useCFDClientStore();
 
-  // Redirect if already paired
+  // Single source of truth for post-pair navigation. We DO NOT call
+  // router.replace inline in handleBarCodeScanned / handleManualConnect —
+  // setPairing flips isPaired, which triggers this effect. Two replace() calls
+  // to the same route back-to-back can leave expo-router in a stuck navigator
+  // state and present as a white screen.
   useEffect(() => {
-    if (isPaired) {
-      requestAnimationFrame(() => {
-        router.replace("/(cfd)/cfd-display");
-      });
+    if (isPaired && !hasNavigatedRef.current) {
+      hasNavigatedRef.current = true;
+      router.replace("/(cfd)/cfd-display");
     }
   }, [isPaired]);
 
+  const resetScanner = (delayMs = 2500) => {
+    setTimeout(() => {
+      hasScannedRef.current = false;
+      setIsProcessing(false);
+      setError(null);
+    }, delayMs);
+  };
+
   const handleBarCodeScanned = ({ data }: { data: string }) => {
-    if (!scanning) return;
-    setScanning(false);
+    if (hasScannedRef.current) return;
+    hasScannedRef.current = true;
+    setIsProcessing(true);
 
     try {
-      const pairingData: CFDPairingData = JSON.parse(data);
-      if (!pairingData.ip || !pairingData.port || !pairingData.stationId) {
-        throw new Error("Invalid QR code");
+      const parsed = JSON.parse(data);
+      if (typeof parsed !== "object" || parsed === null) {
+        throw new Error("QR code payload is not a valid object");
       }
+
+      // Strict, full-shape validation with explicit type coercion so a
+      // string-encoded port (common from some QR generators) doesn't silently
+      // flow to the WS hook, which strictly expects a number.
+      const ip = typeof parsed.ip === "string" ? parsed.ip.trim() : "";
+      const portRaw = parsed.port;
+      const port =
+        typeof portRaw === "number"
+          ? portRaw
+          : typeof portRaw === "string"
+            ? parseInt(portRaw, 10)
+            : NaN;
+      const stationId =
+        typeof parsed.stationId === "string" ? parsed.stationId.trim() : "";
+      const stationName =
+        typeof parsed.stationName === "string" ? parsed.stationName.trim() : "";
+      const locationId =
+        typeof parsed.locationId === "string" ? parsed.locationId.trim() : "";
+      const locationName =
+        typeof parsed.locationName === "string"
+          ? parsed.locationName.trim()
+          : "";
+
+      const missing: string[] = [];
+      if (!ip) missing.push("ip");
+      if (!Number.isFinite(port) || port <= 0 || port >= 65536)
+        missing.push("port");
+      if (!stationId) missing.push("stationId");
+      if (!stationName) missing.push("stationName");
+      if (!locationId) missing.push("locationId");
+      if (!locationName) missing.push("locationName");
+
+      if (missing.length > 0) {
+        throw new Error(
+          `QR code is missing station details (${missing.join(", ")}).`
+        );
+      }
+
+      const pairingData: CFDPairingData = {
+        ip,
+        port,
+        stationId,
+        stationName,
+        locationId,
+        locationName,
+      };
       setPairing(pairingData);
-      router.replace("/(cfd)/cfd-display");
-    } catch (e) {
-      setError("Invalid QR code. Please try again.");
-      setTimeout(() => {
-        setScanning(true);
-        setError(null);
-      }, 2000);
+      // Navigation handled by the useEffect above (single source of truth).
+    } catch (e: any) {
+      const message =
+        typeof e?.message === "string" && e.message.length > 0
+          ? e.message
+          : "Invalid QR code. Please try again.";
+      setError(message);
+      resetScanner();
     }
   };
 
   const handleManualConnect = () => {
-    const [ip, portStr] = manualIp.split(":");
+    const [ipRaw, portStr] = manualIp.split(":");
+    const ip = ipRaw?.trim() ?? "";
     const port = parseInt(portStr, 10);
 
-    if (!ip || isNaN(port)) {
+    if (!ip || !Number.isFinite(port) || port <= 0 || port >= 65536) {
       setError("Invalid format. Use IP:PORT (e.g., 192.168.1.100:8080)");
       return;
     }
@@ -71,13 +140,12 @@ export default function CFDPairingScreen() {
       locationId: "manual",
       locationName: "Restaurant",
     });
-
-    router.replace("/(cfd)/cfd-display");
+    // Navigation handled by the useEffect watching isPaired.
   };
 
   const handleExitCFDMode = () => {
     useStoreSettingsStore.getState().exitCFDMode();
-    replaceRoute('(auth)', 'store-select');
+    replaceRoute('(auth)', 'station-select');
   };
 
   return (
@@ -172,14 +240,14 @@ export default function CFDPairingScreen() {
                   style={{ flex: 1 }}
                   facing="back"
                   barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                  onBarcodeScanned={scanning ? handleBarCodeScanned : undefined}
+                  onBarcodeScanned={handleBarCodeScanned}
                 />
                 <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
                   <View style={{ width: 160, height: 160, borderWidth: 2, borderColor: colors.teal, borderRadius: 8 }} />
                 </View>
               </View>
               <Text style={{ fontSize: 12, color: colors.label, textAlign: 'center' }}>
-                {scanning ? "Position QR code in frame" : "Processing..."}
+                {isProcessing ? "Processing..." : "Position QR code in frame"}
               </Text>
             </>
           )}

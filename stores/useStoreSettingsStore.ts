@@ -145,6 +145,9 @@ export interface StoreSettings {
 
   // Tips settings
   openDrawerOnTip: boolean
+
+  // Manager override for schedule-restricted menus/categories
+  managerOverrideTimeoutMinutes: 0 | 5 | 15 | 30 | 60
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -301,6 +304,9 @@ const initialData: StoreSettings = {
 
   // Tips settings
   openDrawerOnTip: false,
+
+  // Manager override
+  managerOverrideTimeoutMinutes: 0,
 }
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -587,6 +593,8 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         preAuthSettings: state.preAuthSettings,
         // Tips settings
         openDrawerOnTip: state.openDrawerOnTip,
+        // Manager override
+        managerOverrideTimeoutMinutes: state.managerOverrideTimeoutMinutes,
       })
     }
   )

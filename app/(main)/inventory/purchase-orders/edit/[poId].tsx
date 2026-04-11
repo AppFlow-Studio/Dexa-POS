@@ -59,13 +59,17 @@ const EditPurchaseOrderScreen = () => {
     );
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedVendorId || lineItems.length === 0 || !poId) return;
-    updatePurchaseOrder(poId as string, {
-      vendorId: selectedVendorId,
-      items: lineItems,
-    });
-    router.back();
+    try {
+      await updatePurchaseOrder(poId as string, {
+        vendorId: selectedVendorId,
+        items: lineItems,
+      });
+      router.back();
+    } catch {
+      alert("Failed to update purchase order.");
+    }
   };
 
   const insets = useSafeAreaInsets();

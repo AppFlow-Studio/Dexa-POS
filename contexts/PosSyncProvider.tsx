@@ -1,3 +1,4 @@
+import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useInventorySync } from "@/hooks/pos/useInventorySync";
 import { usePreviousOrdersBootstrap } from "@/hooks/pos/usePreviousOrdersBootstrap";
 import { useOrdersQuery, orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
@@ -339,6 +340,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const setInventorySupabase = useInventoryStore(
     (state) => state.setSupabaseClient,
   );
+  const fetchPurchaseOrders = useInventoryStore(
+    (state) => state.fetchPurchaseOrders,
+  );
 
   useEffect(() => {
     if (supabase) {
@@ -385,6 +389,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, [inventoryData]);
   // --- END INVENTORY SYNC ---
+
+  useEffect(() => {
+    if (!isKDS && selectedStore?.id) {
+      fetchPurchaseOrders(selectedStore.id);
+    }
+  }, [fetchPurchaseOrders, isKDS, selectedStore?.id]);
 
   // Update menu store when sync data changes
   useEffect(() => {
@@ -499,25 +509,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   }, [selectedStore?.id]);
 
   useEffect(() => {
-    if (selectedStore?.id) {
-      syncEmployees(selectedStore.id);
+    if (selectedStore?.id && !isKDS) {
+      // Clear potentially stale floor plan data before fresh sync
+      useFloorPlanStore.setState({
+        tables: [],
+        lastSyncAt: null,
+      });
 
-      if (!isKDS) {
-        // Clear potentially stale floor plan data before fresh sync
-        useFloorPlanStore.setState({
-          tables: [],
-          lastSyncAt: null,
-        });
-
-        syncFloorPlans(selectedStore.id);
-        syncTaxRates(selectedStore.id);
-        useReceiptTemplateStore.getState().fetchTemplates(selectedStore.id);
-      }
-
-      // Orders are now initialized via useOrdersQuery hook (archive layer)
-      // which auto-fetches when locationId changes
+      syncFloorPlans(selectedStore.id);
+      syncTaxRates(selectedStore.id);
+      useReceiptTemplateStore.getState().fetchTemplates(selectedStore.id);
     }
-  }, [selectedStore?.id, isKDS, syncEmployees, syncFloorPlans, syncTaxRates]);
+  }, [selectedStore?.id, isKDS, syncFloorPlans, syncTaxRates]);
 
   // App state listener - reconnect realtime and refresh stale data when app becomes active
   // KDS screen handles its own 120s polling fallback, so skip POS reconnect logic
@@ -579,6 +582,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
     return cleanup;
   }, [selectedStore?.id, supabase]);
+
+  // Background queue processor for station logins queued during offline sign-in
+  useStationLoginSync();
 
   return <>{children}</>;
 }

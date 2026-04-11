@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAuth } from "@clerk/clerk-expo";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -26,6 +27,7 @@ type ScreenState = "idle" | "confirming" | "settling" | "results";
 export default function EndOfDaySettlementScreen() {
   const router = useRouter();
   const supabase = useSupabaseClient();
+  const { userId } = useAuth();
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
@@ -40,29 +42,35 @@ export default function EndOfDaySettlementScreen() {
   const terminalHost = terminal?.ip_address;
   const terminalPort = terminal?.port ?? CASTLES_DEFAULT_PORT;
 
-  // Load unsettled payment stats
-  useEffect(() => {
-    if (!terminal?.id) return;
+  const loadStats = useCallback(() => {
+    if (!terminal?.id || !selectedStore?.id || !selectedStore?.merchant_id) return;
     setStatsLoading(true);
-    getUnsettledPaymentStats(supabase, terminal.id)
+    getUnsettledPaymentStats({
+      supabase,
+      merchantId: selectedStore.merchant_id,
+      locationId: selectedStore.id,
+      terminalId: terminal.id,
+    })
       .then(setUnsettledStats)
       .finally(() => setStatsLoading(false));
-  }, [terminal?.id]);
+  }, [terminal?.id, selectedStore?.id, selectedStore?.merchant_id, supabase]);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   const handleSettle = useCallback(async () => {
-    if (!terminal?.id || !terminalHost || !selectedStore?.id) return;
+    if (!terminal?.id || !terminalHost || !selectedStore?.id || !selectedStore?.merchant_id) return;
 
     setState("settling");
     setStatusMessage("Starting settlement...");
 
     try {
-      const today = new Date().toISOString().split("T")[0];
       const output = await runSettlement({
         terminalId: terminal.id,
+        merchantId: selectedStore.merchant_id,
+        initiatedBy: userId ?? "unknown",
         terminalHost,
         terminalPort,
         locationId: selectedStore.id,
-        businessDate: today,
         supabase,
         onStatus: setStatusMessage,
       });
@@ -74,6 +82,8 @@ export default function EndOfDaySettlementScreen() {
       setResult({
         success: false,
         partialSuccess: false,
+        shouldRetry: false,
+        requiresSupport: false,
         hosts: [],
         error: message,
       });
@@ -139,13 +149,7 @@ export default function EndOfDaySettlementScreen() {
             onRetry={() => {
               setResult(null);
               setState("idle");
-              // Refresh stats
-              if (terminal?.id) {
-                setStatsLoading(true);
-                getUnsettledPaymentStats(supabase, terminal.id)
-                  .then(setUnsettledStats)
-                  .finally(() => setStatsLoading(false));
-              }
+              loadStats();
             }}
           />
         ) : null}
@@ -167,8 +171,33 @@ function IdleView({
   onSettle: () => void;
   disabled: boolean;
 }) {
+  const isSettleDisabled = disabled || (stats?.count ?? 0) === 0;
+
   return (
     <View className="gap-4">
+      {/* Stuck batch warning */}
+      {stats?.hasStuckBatch ? (
+        <View className="rounded-xl border border-amber-700 bg-amber-900/20 p-4">
+          <Text className="text-sm font-semibold text-amber-200 mb-1">Previous Settlement Incomplete</Text>
+          <Text className="text-xs text-amber-300">
+            A prior settlement attempt is in a "{stats.stuckBatchStatus}" state.
+            Tapping Settle will start a new attempt — the previous batch will be resolved automatically.
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Multi-day unsettled warning */}
+      {(stats?.daySpan ?? 0) > 1 ? (
+        <View className="rounded-xl border border-blue-700 bg-blue-900/20 p-4">
+          <Text className="text-sm font-semibold text-blue-200 mb-1">
+            {stats!.daySpan} Days of Unsettled Transactions
+          </Text>
+          <Text className="text-xs text-blue-300">
+            Oldest: {stats!.oldestDate} · Newest: {stats!.newestDate}
+          </Text>
+        </View>
+      ) : null}
+
       <View className="rounded-xl border border-gray-700 bg-zinc-900/40 p-4">
         <Text className="text-sm font-semibold text-white">Unsettled Payments</Text>
         {statsLoading ? (
@@ -180,7 +209,17 @@ function IdleView({
               <Text className="font-semibold text-white">{stats.count}</Text>
             </View>
             <View className="flex-row justify-between">
-              <Text className="text-zinc-300">Total amount</Text>
+              <Text className="text-zinc-300">Sales</Text>
+              <Text className="font-semibold text-white">${stats.grossAmount.toFixed(2)}</Text>
+            </View>
+            {stats.tipAmount > 0 ? (
+              <View className="flex-row justify-between">
+                <Text className="text-zinc-300">Tips</Text>
+                <Text className="font-semibold text-white">${stats.tipAmount.toFixed(2)}</Text>
+              </View>
+            ) : null}
+            <View className="flex-row justify-between border-t border-gray-700 pt-2 mt-1">
+              <Text className="text-zinc-300">Total</Text>
               <Text className="font-semibold text-white">${stats.totalAmount.toFixed(2)}</Text>
             </View>
           </View>
@@ -201,18 +240,10 @@ function IdleView({
 
       <TouchableOpacity
         onPress={onSettle}
-        disabled={disabled || (stats?.count ?? 0) === 0}
-        className={`rounded-xl py-4 items-center ${
-          disabled || (stats?.count ?? 0) === 0
-            ? "bg-zinc-800"
-            : "bg-purple-600"
-        }`}
+        disabled={isSettleDisabled}
+        className={`rounded-xl py-4 items-center ${isSettleDisabled ? "bg-zinc-800" : "bg-purple-600"}`}
       >
-        <Text
-          className={`text-base font-bold ${
-            disabled || (stats?.count ?? 0) === 0 ? "text-zinc-500" : "text-white"
-          }`}
-        >
+        <Text className={`text-base font-bold ${isSettleDisabled ? "text-zinc-500" : "text-white"}`}>
           Settle Terminal
         </Text>
       </TouchableOpacity>
@@ -304,6 +335,31 @@ function ResultsView({
         </View>
       ) : null}
 
+      {result.shouldRetry ? (
+        <View className="rounded-xl border border-amber-700 bg-amber-900/20 p-3">
+          <Text className="text-sm font-semibold text-amber-200 mb-1">Retry Required (E000002A)</Text>
+          <Text className="text-xs text-amber-300">
+            The terminal requested a retry with a new transaction ID. Tap Retry to attempt settlement again.
+          </Text>
+        </View>
+      ) : null}
+
+      {result.requiresSupport ? (
+        <View className="rounded-xl border border-amber-700 bg-amber-900/20 p-3">
+          <Text className="text-sm font-semibold text-amber-200 mb-1">Partial Settlement</Text>
+          {(result.settledAcquirers?.length ?? 0) > 0 ? (
+            <Text className="text-xs text-amber-300 mb-1">
+              Settled: {result.settledAcquirers!.join(", ")}
+            </Text>
+          ) : null}
+          {(result.failedAcquirers?.length ?? 0) > 0 ? (
+            <Text className="text-xs text-amber-300">
+              Failed: {result.failedAcquirers!.map((f) => f.acquirer).join(", ")} — contact your payment processor.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* Per-host breakdown */}
       {result.hosts.length > 0 ? (
         <View className="gap-3">
@@ -316,7 +372,7 @@ function ResultsView({
 
       {/* Actions */}
       <View className="flex-row gap-3 mt-4">
-        {(!result.success && !result.partialSuccess) || result.dbWriteFailed ? (
+        {((!result.success && !result.partialSuccess) || result.dbWriteFailed || result.shouldRetry) ? (
           <TouchableOpacity
             onPress={onRetry}
             className="flex-1 rounded-xl border border-gray-600 py-3 items-center"
