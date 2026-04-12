@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import DatePillRow, { type DatePillDef } from "@/components/menu/DatePillRow";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
@@ -29,6 +30,7 @@ import {
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -243,17 +245,55 @@ const PreviousOrdersScreen = () => {
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
   const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync();
 
+  // Date window
+  const dateWindowLabel = usePreviousOrdersStore((s) => s.dateWindow?.label ?? 'today');
+  const setDateWindow = usePreviousOrdersStore((s) => s.setDateWindow);
+  const handleDatePillSelect = useCallback((pill: DatePillDef) => {
+    const { startDate, endDate } = pill.getDateRange();
+    setDateWindow({ startDate, endDate, label: pill.windowLabel });
+  }, [setDateWindow]);
+
   // ─── Store-based data layer (mirrors PreviousOrdersSection pattern) ───
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
+  const dbOrderIdIndex = useOrderStore((s) => s.dbOrderIdIndex);
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
+  const loadMoreOrders = usePreviousOrdersStore((s) => s.loadMoreOrders);
+  const isLoadingMore = usePreviousOrdersStore((s) => s._isLoadingMore);
+  const hasMore = usePreviousOrdersStore((s) => s._hasMore);
+
+  const handleLoadMore = useCallback(() => {
+    if (hasMore && !isLoadingMore) void loadMoreOrders();
+  }, [hasMore, isLoadingMore, loadMoreOrders]);
 
   // Combine active orders + history orders with dedup (same as PreviousOrdersSection)
   const allOrders: OrderProfile[] = useMemo(() => {
-    const activeOrders = Object.values(ordersById).filter(
-      (o: OrderProfile) =>
-        o.order_status !== "draft" ||
-        (o.order_status === "draft" && o.items.length > 0),
-    );
+    // Only include active + working set + own-station non-final orders.
+    // Do NOT scan all orderIds — useOrderStore has 800+ stale "ready" orders.
+    const finalStatuses = new Set(['completed', 'void', 'cancelled', 'voided']);
+    const liveIds = new Set<string>();
+    if (activeOrderId) liveIds.add(activeOrderId);
+    for (const wsId of (workingSetOrderIds || [])) {
+      const localId = dbOrderIdIndex[wsId] || wsId;
+      liveIds.add(localId);
+    }
+    for (const id of orderIds) {
+      if (liveIds.has(id)) continue;
+      const o = ordersById[id];
+      if (!o) continue;
+      if (o.station_id !== currentStationId) continue; // own station only
+      if (finalStatuses.has(o.order_status ?? '')) continue;
+      if (o.order_status === 'draft' && o.items.length === 0) continue;
+      liveIds.add(id);
+    }
+    const activeOrders: OrderProfile[] = [];
+    for (const id of liveIds) {
+      const o = ordersById[id];
+      if (o) activeOrders.push(o);
+    }
 
     const activeIds = new Set(activeOrders.map((o) => o.id));
     const activeDbIds = new Set(
@@ -566,6 +606,11 @@ const PreviousOrdersScreen = () => {
       className="flex-1"
     >
       <View className="flex-1 p-4 bg-screen">
+        {/* ─── Date Pills ─────────────────────────────── */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <DatePillRow activeLabel={dateWindowLabel} onSelect={handleDatePillSelect} />
+        </View>
+
         {/* ─── Toolbar ─────────────────────────────────── */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
           {/* Search bar */}
@@ -686,6 +731,15 @@ const PreviousOrdersScreen = () => {
             maxToRenderPerBatch={10}
             windowSize={5}
             removeClippedSubviews={true}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.3}
+            ListFooterComponent={
+              isLoadingMore ? (
+                <View style={{ paddingVertical: 16, alignItems: "center" }}>
+                  <ActivityIndicator size="small" color={colors.teal} />
+                </View>
+              ) : null
+            }
           />
 
           {/* New Orders Banner */}

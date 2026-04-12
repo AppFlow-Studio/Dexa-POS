@@ -2731,6 +2731,23 @@ const createDebouncedOrderRefresh = (get: () => OrderState) => {
   }
 }
 
+/** Merge transaction details, preserving local terminal response when broadcast is missing it */
+function mergeTransactionDetails(
+  local?: OrderPaymentTransactionDetails,
+  broadcast?: OrderPaymentTransactionDetails
+): OrderPaymentTransactionDetails | undefined {
+  if (!local && !broadcast) return undefined
+  if (!local) return broadcast
+  if (!broadcast) return local
+  return {
+    ...local,
+    ...broadcast,
+    // Preserve full terminal responses from local if broadcast is missing them
+    castlesTransaction: broadcast.castlesTransaction ?? local.castlesTransaction,
+    dejavooTransaction: broadcast.dejavooTransaction ?? local.dejavooTransaction,
+  }
+}
+
 /**
  * Merges broadcast payments (with correct itemsCovered from covers_items)
  * with local payments, preserving any pending local payments that haven't
@@ -2771,7 +2788,18 @@ function mergePayments (
     ) {
       return lp // Local is more advanced — preserve it
     }
-    return bp // Broadcast is same or more advanced
+    // Broadcast is same or more advanced — but preserve terminal details from local
+    if (lp) {
+      return {
+        ...bp,
+        last4: bp.last4 ?? lp.last4,
+        cardBrand: bp.cardBrand ?? lp.cardBrand,
+        amountTendered: bp.amountTendered ?? lp.amountTendered,
+        changeGiven: bp.changeGiven ?? lp.changeGiven,
+        transactionDetails: mergeTransactionDetails(lp.transactionDetails, bp.transactionDetails),
+      }
+    }
+    return bp
   })
 
   // Keep local payments NOT in broadcast
@@ -3255,6 +3283,7 @@ export const useOrderStore = create<OrderState>()(
                           ...backendOrder,
                           sync_version: backendOrder.sync_version ?? 0,
                           total_amount: backendOrder.card_total,
+                          total_cash_amount: backendOrder.cash_total ?? undefined,
                           amount_paid: backendOrder.amount_paid,
                           order_status: backendOrder.status,
                           paid_status: mapPaymentStatus(
@@ -3550,6 +3579,9 @@ export const useOrderStore = create<OrderState>()(
                                 // Card totals (default display)
                                 total_amount: backendOrder.card_total,
                                 total_tax: backendOrder.card_tax_amount,
+                                // Cash total from backend — needed for accurate
+                                // cashSavings calculation in addPaymentToOrder
+                                total_cash_amount: backendOrder.cash_total ?? undefined,
 
                                 // Timestamps
                                 sent_to_kitchen_at:
@@ -3599,6 +3631,7 @@ export const useOrderStore = create<OrderState>()(
                                 localOrder.check_status ||
                                 'Opened',
                           total_amount: backendOrder.card_total,
+                          total_cash_amount: backendOrder.cash_total ?? undefined,
                           total_tax: backendOrder.card_tax_amount,
                           sent_to_kitchen_at:
                             backendOrder.sent_to_kitchen_at ||
@@ -7435,6 +7468,41 @@ export const useOrderStore = create<OrderState>()(
                   (ratio * (cardOutstanding - cashOutstanding)).toFixed(2)
                 )
               }
+
+              // FALLBACK 1: Backend-synced amount_due / cash_amount_due ratio
+              // These fields are set from the backend and preserved through
+              // recalculations (recalculateOrder lines 11264-11271 keep backend
+              // values). Unlike total_cash_amount which gets overwritten by
+              // the frontend calculator, amount_due/cash_amount_due are stable.
+              if (cashSavingsValue == null || cashSavingsValue <= 0) {
+                const cardDue = order.amount_due
+                const cashDue = order.cash_amount_due
+                if (
+                  cardDue != null &&
+                  cashDue != null &&
+                  cashDue > 0 &&
+                  cardDue > cashDue
+                ) {
+                  cashSavingsValue = parseFloat(
+                    (amount * (cardDue / cashDue - 1)).toFixed(2)
+                  )
+                }
+              }
+
+              // FALLBACK 2: Store's dual_pricing_percentage
+              // Last resort for offline or before first backend sync.
+              // Approximate — backend sync corrects via deriveCashSavings.
+              if (cashSavingsValue == null || cashSavingsValue <= 0) {
+                const dualPricingPct =
+                  useStoreSettingsStore.getState().selectedStore
+                    ?.dual_pricing_percentage
+                if (dualPricingPct != null && dualPricingPct > 0) {
+                  const rate = dualPricingPct / 100
+                  cashSavingsValue = parseFloat(
+                    ((amount * rate) / (1 - rate)).toFixed(2)
+                  )
+                }
+              }
             }
 
             // --- Mark items as paid FIRST, then derive itemsCovered from actual deltas ---
@@ -7710,7 +7778,10 @@ export const useOrderStore = create<OrderState>()(
                 })
               : undefined
 
-            const syncSuccess = await syncPaymentToBackend(
+            // Fire-and-forget: sync to backend in background
+            // Local optimistic state is already applied above — show success immediately
+            // syncPaymentToBackend handles failures internally (queues for retry, reverts on exception)
+            syncPaymentToBackend(
               order,
               {
                 amount,
@@ -7726,9 +7797,11 @@ export const useOrderStore = create<OrderState>()(
                 forceCardPricing // Force card pricing for custom amount payments
               },
               rollbackState // Previous state for rollback on failure
-            )
+            ).catch(err => {
+              console.error('[addPaymentToOrder] Background sync failed:', err)
+            })
 
-            return syncSuccess
+            return true
           },
 
           markOrderAsPaid: (orderId: string) => {
@@ -10358,16 +10431,23 @@ export const useOrderStore = create<OrderState>()(
                         dbItem.discount_amount ??
                         0,
                       // Required base prices (for recalculation)
+                      // Use base_card_price/base_cash_price (without modifiers)
+                      // so calculateItemEffective*Price can add modifiers correctly.
+                      // Falls back to unit_price/cash_price for older items that
+                      // lack the base columns — in that case modifiers will be
+                      // double-counted, but calculate_order_totals_fast on the
+                      // backend remains authoritative.
                       baseCardPrice: dbItem.is_open_item
-                        ? dbItem.open_item_price || 0
-                        : dbItem.unit_price || 0,
+                        ? (dbItem.open_item_price || 0)
+                        : ((dbItem as any).base_card_price ?? dbItem.unit_price ?? 0),
                       baseCashPrice:
-                        dbItem.cash_price ||
+                        (dbItem as any).base_cash_price ??
+                        (dbItem.cash_price ||
                         dbItem.cash_unit_price ||
                         (dbItem.is_open_item
                           ? dbItem.open_item_price
                           : dbItem.unit_price) ||
-                        0
+                        0)
                     })) || []
 
                 const allItems = [...syncedItems, ...newItemsFromDb]

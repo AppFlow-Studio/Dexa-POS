@@ -902,21 +902,29 @@ function buildReceiptTemplateData (
     .map(p => {
       const td = p.transactionDetails
       const dejavoo = td?.dejavooTransaction
-      const castles = td?.castlesTransaction as
+      // Handle both nesting levels: local payments store full terminal response
+      // ({ terminal_vendor, castles_transaction, raw_castles_response }),
+      // backend-synced payments store just the inner castles_transaction object
+      const castlesRaw = td?.castlesTransaction as Record<string, any> | undefined
+      const castles = (castlesRaw?.castles_transaction ?? castlesRaw) as
         | Record<string, string>
         | undefined
 
       return {
         method: getPaymentMethodName(p.method),
         amount: p.amount,
-        last4: p.last4,
+        last4: p.last4 ?? td?.last4 ?? castles?.cardLast4,
         cardBrand:
           p.cardBrand ?? td?.cardType ?? dejavoo?.cardType ?? castles?.cardType,
         authCode:
           td?.authorizationCode ?? dejavoo?.authCode ?? castles?.approvalCode,
-        rrn: dejavoo?.rrn ?? castles?.rrn,
+        rrn: td?.rrn ?? dejavoo?.rrn ?? castles?.rrn,
         entryMode:
-          dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode
+          dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode,
+        aid: castles?.cardAID ?? (td as Record<string, any>)?.cardAID,
+        tipAmount: p.tip_amount || undefined,
+        amountTendered: p.amountTendered ?? td?.amountTendered,
+        changeGiven: p.changeGiven ?? td?.changeGiven,
       }
     })
 

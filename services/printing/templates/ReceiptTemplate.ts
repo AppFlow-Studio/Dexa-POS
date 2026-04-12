@@ -161,6 +161,9 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
       b.bold(true);
       b.twoColumnRow(`Paid: ${payment.method}`, formatCurrency(payment.amount), w);
       b.bold(false);
+      if (payment.tipAmount && payment.tipAmount > 0) {
+        b.twoColumnRow("  Tip", formatCurrency(payment.tipAmount), w);
+      }
       if (payment.last4) {
         const cardLine = payment.cardBrand
           ? `  ${payment.cardBrand} ending in ${payment.last4}`
@@ -178,6 +181,15 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
         b.bold(true);
         b.twoColumnRow("  Ref (RRN)", payment.rrn, w);
         b.bold(false);
+      }
+      if (payment.aid) {
+        b.twoColumnRow("  AID", payment.aid, w);
+      }
+      if (payment.amountTendered != null && payment.amountTendered > 0) {
+        b.twoColumnRow("  Tendered", formatCurrency(payment.amountTendered), w);
+      }
+      if (payment.changeGiven != null && payment.changeGiven > 0) {
+        b.twoColumnRow("  Change", formatCurrency(payment.changeGiven), w);
       }
     }
 

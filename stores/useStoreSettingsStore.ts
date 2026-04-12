@@ -21,11 +21,13 @@ export interface SelectedLocation {
   postal_code: string
   country: string
   timezone: string
+  business_day_start_hour?: number  // 0-23, default 0 (midnight rollover)
   is_active: boolean
   is_accepting_orders: boolean
   kds_workflow_mode?: '2-step' | '3-step'
   pricing_strategy?: string | null
   dual_pricing_percentage?: number | null
+  use_merchant_pricing_defaults?: boolean
   public_metadata?: Record<string, any> | null
   business_hours: Record<
     string,
@@ -466,10 +468,20 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         if (!current?.id) return;
         const { data } = await supabase
           .from('locations')
-          .select('*')
+          .select('*, merchants!merchant_id(pricing_strategy, dual_pricing_percentage)')
           .eq('id', current.id)
           .single();
-        if (data) set({ selectedStore: data as SelectedLocation });
+        if (data) {
+          const merchant = (data as any).merchants;
+          const resolved = { ...data } as any;
+          delete resolved.merchants;
+          // Resolve effective pricing: merchant defaults unless location overrides
+          if (data.use_merchant_pricing_defaults && merchant) {
+            resolved.pricing_strategy = merchant.pricing_strategy;
+            resolved.dual_pricing_percentage = parseFloat(merchant.dual_pricing_percentage);
+          }
+          set({ selectedStore: resolved as SelectedLocation });
+        }
       },
 
       setOrganizationLogoUrl: (url: string | null) => {

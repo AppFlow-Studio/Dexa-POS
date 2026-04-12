@@ -524,7 +524,9 @@ export class CastlesService {
             txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
           });
 
-          await this._tryReturn2Idle();
+          // Defer return2Idle — don't block the payment result for up to 8s
+          // The terminal will dismiss its result screen asynchronously
+          this._deferReturn2Idle();
           return {
             success: isApproved,
             raw,
@@ -534,6 +536,7 @@ export class CastlesService {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error("[CastlesService] processSale error:", message);
+          // Error path: force return2Idle synchronously (reconnect + reset)
           await this._forceReturn2Idle();
           return {
             success: false,
@@ -986,6 +989,22 @@ export class CastlesService {
   // ============================================================
   // TERMINAL RECOVERY
   // ============================================================
+
+  /**
+   * Schedule return2Idle to run AFTER the current mutex-exclusive block releases.
+   * This avoids blocking the caller (e.g. processSale) for up to 8s while the
+   * terminal dismisses its result screen. The deferred call re-acquires the mutex
+   * so it won't conflict with subsequent commands.
+   */
+  private _deferReturn2Idle(): void {
+    queueMicrotask(() => {
+      this._mutex.runExclusive(async () => {
+        await this._tryReturn2Idle();
+      }).catch(err => {
+        console.warn('[CastlesService] Deferred return2Idle failed:', err);
+      });
+    });
+  }
 
   /**
    * Send return2Idle on the EXISTING transport (situation 1 per spec §3.8).

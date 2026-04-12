@@ -459,6 +459,8 @@ const CardPaymentView = () => {
                 cardType: castlesTx?.cardType,
                 last4: castlesLast4,
                 transactionId: referenceId,
+                rrn: castlesTx?.rrn,
+                cardAID: castlesTx?.cardAID,
                 castlesTransaction: result.terminalResponse
               },
               amountOverride: totalToPay

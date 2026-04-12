@@ -347,6 +347,7 @@ export const CLEARABLE_SYNC_KEYS = [
   "order_items_cache",
   "offline_orders",
   "offline_id_registry",
+  // today_orders:* keys are cleared per-location via todayOrdersCache.clearLocation()
 ] as const;
 
 /**

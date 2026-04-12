@@ -11,6 +11,7 @@ import { clearCacheData } from "@/lib/storage";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { todayOrdersCache } from "@/stores/todayOrdersCache";
 
 export interface CacheClearResult {
   success: boolean;
@@ -148,7 +149,13 @@ export function clearLocationData(): void {
 
   queryClient.clear();
 
-  console.log("[clearLocationData] Cleared orders, employees, and query cache (preserved unsynced)");
+  // Clear today's orders MMKV cache for this location
+  const locationId = orderState.currentLocationId;
+  if (locationId) {
+    todayOrdersCache.clearLocation(locationId);
+  }
+
+  console.log("[clearLocationData] Cleared orders, employees, query cache, and order cache (preserved unsynced)");
 }
 
 /**

@@ -215,8 +215,8 @@ export async function recordDrawerOperation(
     receiptPrinted: params.receiptPrinted,
   });
 
-  // Then persist to backend
-  const { error } = await supabase.from("cash_drawer_operations").insert({
+  // Persist to backend — run INSERT and session UPDATE in parallel
+  const insertPromise = supabase.from("cash_drawer_operations").insert({
     id: opId,
     cash_drawer_id: params.cashDrawerId,
     session_id: params.sessionId,
@@ -231,8 +231,17 @@ export async function recordDrawerOperation(
     approved_by: params.approvedBy || null,
   });
 
-  if (error) {
-    console.error("[CashDrawer] Failed to record operation, queuing offline:", error);
+  const updatePromise = !isNoEffectOperation(params.operationType)
+    ? supabase
+        .from("cash_drawer_sessions")
+        .update({ expected_cash: balanceAfter })
+        .eq("id", params.sessionId)
+    : Promise.resolve({ error: null });
+
+  const [insertResult] = await Promise.all([insertPromise, updatePromise]);
+
+  if (insertResult.error) {
+    console.error("[CashDrawer] Failed to record operation, queuing offline:", insertResult.error);
     // Queue for offline sync
     try {
       const { queueOperation } = require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
@@ -257,15 +266,7 @@ export async function recordDrawerOperation(
     } catch (queueError) {
       console.error("[CashDrawer] Failed to queue offline operation:", queueError);
     }
-    return { success: false, error: error.message };
-  }
-
-  // Update session expected_cash
-  if (!isNoEffectOperation(params.operationType)) {
-    await supabase
-      .from("cash_drawer_sessions")
-      .update({ expected_cash: balanceAfter })
-      .eq("id", params.sessionId);
+    return { success: false, error: insertResult.error.message };
   }
 
   return { success: true };

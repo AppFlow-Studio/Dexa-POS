@@ -574,6 +574,14 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         lineWidth: w,
         format: BOLD,
       });
+      if (payment.tipAmount && payment.tipAmount > 0) {
+        nodes.push({
+          type: "two_column",
+          left: "  Tip",
+          right: safeCurrency(payment.tipAmount),
+          lineWidth: w,
+        });
+      }
       if (payment.last4) {
         const card = payment.cardBrand
           ? `${sanitizeForPrint(payment.cardBrand)} *${payment.last4}`
@@ -590,6 +598,28 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         nodes.push({
           type: "text_line",
           content: truncate(`  Ref: ${payment.rrn}`, w),
+        });
+      }
+      if (payment.aid) {
+        nodes.push({
+          type: "text_line",
+          content: truncate(`  AID: ${payment.aid}`, w),
+        });
+      }
+      if (payment.amountTendered != null && payment.amountTendered > 0) {
+        nodes.push({
+          type: "two_column",
+          left: "  Tendered",
+          right: safeCurrency(payment.amountTendered),
+          lineWidth: w,
+        });
+      }
+      if (payment.changeGiven != null && payment.changeGiven > 0) {
+        nodes.push({
+          type: "two_column",
+          left: "  Change",
+          right: safeCurrency(payment.changeGiven),
+          lineWidth: w,
         });
       }
     }

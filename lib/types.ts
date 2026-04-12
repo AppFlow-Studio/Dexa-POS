@@ -746,6 +746,11 @@ export interface OrderPaymentTransactionDetails {
   splitLabel?: string;
   isCashPayment?: boolean;
   isCash?: boolean;
+  rrn?: string;
+  batchNumber?: string;
+  invoiceNumber?: string;
+  entryMode?: string;
+  referenceId?: string;
   // Full Dejavoo response details (sanitized, no First4/BIN/IPosToken)
   dejavooTransaction?: DejavooSaleTransactionResponse;
   // Full Castles response JSONB (from buildCastlesTerminalResponse)

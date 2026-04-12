@@ -162,19 +162,23 @@ export async function openTab(
     });
 
     // 4. Auto-send to kitchen after successful auth hold
+    // Respect KDS workflow mode (2-step skips "sent_to_kitchen" → goes straight to "preparing")
     if (order.order_status === "draft") {
+      const { getOrderSentStatus, getKitchenSentStatus } = require("@/lib/kitchenStatusUtils");
+      const orderStatus = getOrderSentStatus();
+      const kitchenStatus = getKitchenSentStatus();
       const now = new Date().toISOString();
 
       // Update local state: order status + item kitchen statuses
       store.patchOrder(orderId, {
-        order_status: "sent_to_kitchen",
+        order_status: orderStatus,
         sent_to_kitchen_at: order.sent_to_kitchen_at || now,
         check_status: "Opened",
         items: order.items.map((item) => ({
           ...item,
           kitchen_status:
             !item.kitchen_status || item.kitchen_status === "new"
-              ? ("sent" as const)
+              ? (kitchenStatus as "sent" | "preparing")
               : item.kitchen_status,
           item_status: !item.item_status
             ? ("Preparing" as const)
@@ -188,7 +192,7 @@ export async function openTab(
         OrderService.updateOrderStatus(
           supabase,
           order.db_order_id,
-          "sent_to_kitchen",
+          orderStatus,
         )
           .then(({ error }: { error: any }) => {
             if (
@@ -206,7 +210,7 @@ export async function openTab(
               OrderService.bulkUpdateOrderItemStatus(
                 supabase,
                 dbItemIds,
-                "sent",
+                kitchenStatus,
               ).catch((err: Error) =>
                 console.error(
                   "[PreAuthService] Item status sync failed:",

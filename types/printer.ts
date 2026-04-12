@@ -265,6 +265,10 @@ export interface ReceiptPaymentData {
   authCode?: string;     // Authorization/approval code
   rrn?: string;          // Retrieval Reference Number
   entryMode?: string;    // "chip", "swipe", "contactless", "manual"
+  aid?: string;              // Card Application ID (AID) from terminal
+  tipAmount?: number;        // Tip amount (shown separately so amount is clearly pre-tip)
+  amountTendered?: number;   // Cash amount customer handed over
+  changeGiven?: number;      // Change returned to customer
 }
 
 export interface KitchenTicketData {

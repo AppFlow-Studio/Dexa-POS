@@ -45,6 +45,7 @@ import { toastService } from "@/lib/toastService";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import {
@@ -653,11 +654,12 @@ const DevicesConnectionsScreen = () => {
   // PRINTER HANDLERS
   // ---------------------------------------------------------------------------
 
+  // Printers are location-level resources. Network printers (Star) are always visible.
+  // Builtin printers are station-specific (they're physically on that device).
   const scopedPrinters = storedPrinters.filter((p) => {
-    if (printerScope === "station") {
-      return p.stationId === selectedStation?.id || p.stationId === null;
-    }
-    return p.connectionType !== "builtin" || p.stationId === selectedStation?.id;
+    if (p.connectionType === "network") return true;
+    if (p.connectionType === "builtin") return p.stationId === selectedStation?.id;
+    return true;
   });
 
   // Auto-provision built-in Landi printer if hardware is present but no DB row exists.
@@ -738,7 +740,12 @@ const DevicesConnectionsScreen = () => {
   // RECEIPT / KITCHEN ASSIGNMENT
   // ---------------------------------------------------------------------------
 
-  const receiptPrinter = scopedPrinters.find((p) => p.isActive && p.isDefaultReceipt) ?? null;
+  // Receipt printer: station-level assignment stored in MMKV (per-device)
+  const defaultReceiptPrinterId = useSettingsStore((s) => s.defaultReceiptPrinterId);
+  const setDefaultReceiptPrinterId = useSettingsStore((s) => s.setDefaultReceiptPrinterId);
+  const receiptPrinter = defaultReceiptPrinterId
+    ? scopedPrinters.find((p) => p.id === defaultReceiptPrinterId && p.isActive) ?? null
+    : null;
   const kitchenPrinters = scopedPrinters.filter((p) =>
     p.isActive && (p.printerRole === "kitchen" || p.printerRole === "bar" || p.isDefaultKitchen)
   );
@@ -755,15 +762,8 @@ const DevicesConnectionsScreen = () => {
   const handleApplyReceiptSelection = async () => {
     setShowReceiptPicker(false);
     try {
-      // Unset previous default receipt
-      if (receiptPrinter && (pendingReceiptId === "none" || pendingReceiptId !== receiptPrinter.id)) {
-        await updatePrinterConfig(receiptPrinter.id, { isDefaultReceipt: false });
-      }
-      // Set new default receipt
-      if (pendingReceiptId !== "none") {
-        await updatePrinterConfig(pendingReceiptId, { isDefaultReceipt: true });
-      }
-      if (selectedStore?.id) await fetchPrinters(selectedStore.id);
+      // Station-level receipt assignment — stored locally in MMKV
+      setDefaultReceiptPrinterId(pendingReceiptId === "none" ? null : pendingReceiptId);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to update receipt printer");
     }
@@ -847,8 +847,9 @@ const DevicesConnectionsScreen = () => {
     const ip = manualIp.trim();
     if (!ip || !selectedStation || !selectedStore) return;
     if (!isValidIpv4(ip)) { setManualIpError("Invalid IP format."); return; }
+    // Printer already exists at location — no need to add again, just assign in receipt picker
     if (storedPrinters.some((p) => p.printerType === "star_micronics" && p.networkAddress === ip)) {
-      setManualIpError("Printer with this IP already configured."); return;
+      setManualIpError("Printer already available at this location. Use the receipt picker to assign it."); return;
     }
 
     setIsProbing(true);
@@ -1514,10 +1515,11 @@ const DevicesConnectionsScreen = () => {
 
               {/* Star printers from scan */}
               {discoveredStarPrinters.map((discovered) => {
-                const alreadyAdded = storedPrinters.some((p) => p.printerType === "star_micronics" && p.networkAddress === discovered.ipAddress);
+                const existingPrinter = storedPrinters.find((p) => p.printerType === "star_micronics" && p.networkAddress === discovered.ipAddress);
+                const alreadyAdded = !!existingPrinter;
                 const isProvisioning = provisioningStarIp === discovered.ipAddress;
                 return (
-                  <View key={discovered.ipAddress} style={{ backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: alreadyAdded ? colors.success + "40" : colors.border, padding: 12, marginBottom: 8, opacity: alreadyAdded ? 0.6 : 1 }}>
+                  <View key={discovered.ipAddress} style={{ backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: alreadyAdded ? colors.success + "40" : colors.border, padding: 12, marginBottom: 8 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
                         <View style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center" }}>
@@ -1530,7 +1532,7 @@ const DevicesConnectionsScreen = () => {
                       </View>
                       {alreadyAdded ? (
                         <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.success + "15" }}>
-                          <Text style={{ fontSize: 10, color: colors.success, fontWeight: "600" }}>Added</Text>
+                          <Text style={{ fontSize: 10, color: colors.success, fontWeight: "600" }}>Available</Text>
                         </View>
                       ) : isProvisioning ? (
                         <ActivityIndicator size="small" color={colors.teal} />

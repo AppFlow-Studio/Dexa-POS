@@ -124,8 +124,8 @@ const StoreSelectScreen = () => {
 
   const { data: queryResult, isLoading, error } = useQuery({
     queryKey: ["locations", userId],
-    queryFn: async (): Promise<{ locations: Location[]; orgLogoUrl: string | null }> => {
-      if (!userId) return { locations: [], orgLogoUrl: null };
+    queryFn: async (): Promise<{ locations: Location[]; orgLogoUrl: string | null; merchantPricing: { pricing_strategy: string; dual_pricing_percentage: number } | null }> => {
+      if (!userId) return { locations: [], orgLogoUrl: null, merchantPricing: null };
 
       const { data: userData, error: userError } = await supabase
         .from("users")
@@ -138,16 +138,16 @@ const StoreSelectScreen = () => {
       const orgLogoUrl = userData?.members?.[0]?.organizations?.imageURL ?? null;
       const clerkOrgId = userData?.members?.[0]?.organizations?.id;
 
-      if (!clerkOrgId) return { locations: [], orgLogoUrl };
+      if (!clerkOrgId) return { locations: [], orgLogoUrl, merchantPricing: null };
 
       const { data: merchant, error: merchantError } = await supabase
         .from("merchants")
-        .select("id")
+        .select("id, pricing_strategy, dual_pricing_percentage")
         .eq("clerk_org_id", clerkOrgId)
         .single();
 
       if (merchantError) throw merchantError;
-      if (!merchant) return { locations: [], orgLogoUrl };
+      if (!merchant) return { locations: [], orgLogoUrl, merchantPricing: null };
 
       const { data: locationsData, error: locationsError } = await supabase
         .from("locations")
@@ -157,13 +157,18 @@ const StoreSelectScreen = () => {
 
       if (locationsError) throw locationsError;
 
-      return { locations: (locationsData as Location[]) || [], orgLogoUrl };
+      return {
+        locations: (locationsData as Location[]) || [],
+        orgLogoUrl,
+        merchantPricing: { pricing_strategy: merchant.pricing_strategy, dual_pricing_percentage: merchant.dual_pricing_percentage },
+      };
     },
     enabled: !!userId,
   });
 
   const locations = queryResult?.locations;
   const orgLogoUrl = queryResult?.orgLogoUrl ?? null;
+  const merchantPricing = queryResult?.merchantPricing ?? null;
 
   useEffect(() => {
     if (locations && locations.length > 0 && !selectedStoreId) {
@@ -178,7 +183,15 @@ const StoreSelectScreen = () => {
     if (!selectedStoreId || !locations) return;
     if (currentStoreId && currentStoreId !== selectedStoreId) clearLocationData();
     const storeToSave = locations.find((l) => l.id === selectedStoreId);
-    if (storeToSave) setSelectedStore(storeToSave as SelectedLocation);
+    if (storeToSave) {
+      const resolved = { ...storeToSave } as any;
+      // Resolve effective pricing: merchant defaults unless location overrides
+      if (resolved.use_merchant_pricing_defaults && merchantPricing) {
+        resolved.pricing_strategy = merchantPricing.pricing_strategy;
+        resolved.dual_pricing_percentage = parseFloat(merchantPricing.dual_pricing_percentage);
+      }
+      setSelectedStore(resolved as SelectedLocation);
+    }
     setOrganizationLogoUrl(orgLogoUrl);
     router.replace("/station-select");
   };

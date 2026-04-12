@@ -149,11 +149,11 @@ export function round2(num: number): number {
 // }
 export function calculateItemEffectiveCashPrice(item: CartItem): number {
   let effectivePrice = new Decimal(item.baseCashPrice ?? item.cashPrice ?? item.unitPrice ?? 0);
-  
+
   if (item.customizations?.size?.priceModifier) {
     effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier);
   }
-  
+
   if (item.customizations?.modifiers) {
     for (const modifierGroup of item.customizations.modifiers) {
       for (const option of modifierGroup.options) {
@@ -161,7 +161,7 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
       }
     }
   }
-  
+
   return effectivePrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 }
 
@@ -220,13 +220,11 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
 // Use Decimal for modifier calculations too
 export function calculateItemEffectiveCardPrice(item: CartItem): number {
   let effectivePrice = new Decimal(item.baseCardPrice ?? item.unitPrice ?? 0);
-  // Hot-path log removed for perf
-  // Size modifier
+
   if (item.customizations?.size?.priceModifier) {
     effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier);
   }
-  
-  // All modifier options
+
   if (item.customizations?.modifiers) {
     for (const modifierGroup of item.customizations.modifiers) {
       for (const option of modifierGroup.options) {
@@ -234,7 +232,7 @@ export function calculateItemEffectiveCardPrice(item: CartItem): number {
       }
     }
   }
-  
+
   return effectivePrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 }
 
