@@ -1,534 +1,683 @@
-import FilterControls from '@/components/analytics/FilterControls'
-import GiftedChartsSalesTrendChart from '@/components/analytics/GiftedChartsSalesTrendChart'
-import KpiTooltip from '@/components/analytics/KpiTooltip'
-import WaitTimeAccuracyCard from '@/components/analytics/WaitTimeAccuracyCard'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
 import { useAnalyticsStore } from '@/stores/useAnalyticsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useRouter } from 'expo-router'
 import {
-  BarChart3,
+  AlertCircle,
+  ArrowDownLeft,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  CreditCard,
   DollarSign,
   Hash,
-  Package,
-  PieChart,
-  Plus,
-  ShoppingCart,
+  RefreshCw,
   ShoppingBag,
+  Table2,
   TrendingUp,
-  Users
+  Users,
+  X,
 } from 'lucide-react-native'
-import React, { useEffect } from 'react'
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import React, { useCallback, useEffect, useState } from 'react'
+import { BarChart, PieChart } from 'react-native-gifted-charts'
+import {
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native'
 
-interface ReportCardProps {
-  title: string
-  description: string
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+const fmt$ = (v: number) =>
+  v >= 10000 ? `$${(v / 1000).toFixed(1)}k` : v >= 1000 ? `$${(v / 1000).toFixed(2)}k` : `$${v.toFixed(2)}`
+
+const fmtFull$ = (v: number) =>
+  `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+const fmtLabel = (s: string) =>
+  s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
+// Chart colors — varied palette for pie slices
+const CHART_COLORS = [
+  '#2DD4BF', // teal
+  '#60A5FA', // blue
+  '#34D399', // green
+  '#FBBF24', // amber
+  '#F87171', // red
+  '#A78BFA', // purple
+  '#FB923C', // orange
+]
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+interface StatCardProps {
   icon: React.ReactNode
-  onPress: () => void
+  label: string
+  value: string
+  sub?: string
 }
-
-const ReportCard: React.FC<ReportCardProps> = ({
-  title,
-  description,
-  icon,
-  onPress
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={{
-      backgroundColor: colors.panel,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 8,
-      width: '48.5%'
-    }}
-    activeOpacity={0.8}
-  >
-    <View className='flex-row items-center mb-2'>
-      <View
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          backgroundColor: colors.teal + '15',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginRight: 10
-        }}
-      >
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub }) => (
+  <View style={{
+    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 12,
+    borderTopWidth: 2,
+    borderTopColor: colors.teal,
+    overflow: 'hidden',
+  }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 10, fontWeight: '600', color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 5 }}>{label}</Text>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading, lineHeight: 24 }} numberOfLines={1}>{value}</Text>
+        {sub ? <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>{sub}</Text> : null}
+      </View>
+      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}>
         {icon}
       </View>
-      <View className='flex-1'>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
-          {title}
-        </Text>
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-          {description}
-        </Text>
-      </View>
     </View>
-  </TouchableOpacity>
+  </View>
 )
 
-const AnalyticsDashboardScreen = () => {
-  const router = useRouter()
-  const supabaseClient = useSupabaseClient()
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const {
-    savedCustomReports,
-    currentReportData,
-    isLoading,
-    error,
-    fetchReportData,
-    filters,
-    forceRefresh
-  } = useAnalyticsStore()
+// ─── Section card ─────────────────────────────────────────────────────────────
 
-  const currentLocationId = selectedStore?.id || ''
+const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
+  <View style={{
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 12,
+  }}>
+    <View style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      backgroundColor: colors.panel,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    }}>
+      <View style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: colors.teal + '18', alignItems: 'center', justifyContent: 'center' }}>
+        {icon}
+      </View>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>{title}</Text>
+    </View>
+    <View style={{ padding: 12 }}>{children}</View>
+  </View>
+)
 
-  const dateRangeStartIso = filters?.dateRange?.start
-    ? new Date(filters.dateRange.start).toISOString()
-    : undefined
-  const dateRangeEndIso = filters?.dateRange?.end
-    ? new Date(filters.dateRange.end).toISOString()
-    : undefined
+// ─── Inner panel (sub-box inside a section) ───────────────────────────────────
 
-  // Helper function to generate smart date range titles
-  const getDateRangeTitle = (baseTitle: string) => {
-    if (
-      !currentReportData?.salesTrends ||
-      currentReportData.salesTrends.length === 0
-    ) {
-      return baseTitle
-    }
+const Panel: React.FC<{ label?: string; children: React.ReactNode; style?: any }> = ({ label, children, style }) => (
+  <View style={[{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 }, style]}>
+    {label ? (
+      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{label}</Text>
+    ) : null}
+    {children}
+  </View>
+)
 
-    const dates = currentReportData.salesTrends.map(
-      trend => new Date(trend.date)
-    )
-    const startDate = new Date(Math.min(...dates.map(d => d.getTime())))
-    const endDate = new Date(Math.max(...dates.map(d => d.getTime())))
+// ─── Donut chart box ──────────────────────────────────────────────────────────
 
-    const startYear = startDate.getFullYear()
-    const endYear = endDate.getFullYear()
+interface DonutBoxProps {
+  pieData: { value: number; color: string; label: string; sub: string }[]
+  centerValue: string
+  centerLabel: string
+  bgColor: string
+}
+const DonutBox: React.FC<DonutBoxProps> = ({ pieData, centerValue, centerLabel, bgColor }) => (
+  <View style={{
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 200,
+  }}>
+    <PieChart
+      data={pieData}
+      donut
+      radius={80}
+      innerRadius={54}
+      innerCircleColor={bgColor}
+      strokeColor={bgColor}
+      strokeWidth={3}
+      centerLabelComponent={() => (
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading }}>{centerValue}</Text>
+          <Text style={{ fontSize: 10, color: colors.muted }}>{centerLabel}</Text>
+        </View>
+      )}
+    />
+    {/* Legend below */}
+    <View style={{ marginTop: 12, width: '100%', gap: 6 }}>
+      {pieData.map((item) => (
+        <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.color }} />
+            <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
+          </View>
+          <Text style={{ fontSize: 11, fontWeight: '600', color: colors.heading }}>{item.sub}</Text>
+        </View>
+      ))}
+    </View>
+  </View>
+)
 
-    if (startYear === endYear) {
-      return `${baseTitle} - ${startYear}`
-    } else {
-      return `${baseTitle} - ${startYear} - ${endYear}`
-    }
-  }
+// ─── Date presets ─────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    // Load overview data on mount
-    fetchReportData({ type: 'overview' })
-  }, [])
-
-  const preBuiltReports = [
-    {
-      id: 'sales-summary',
-      title: 'Sales Summary',
-      description: 'Overview of total sales, orders, and key metrics',
-      icon: <TrendingUp color={colors.teal} size={16} />,
-      chartType: 'line'
-    },
-    {
-      id: 'item-sales',
-      title: 'Item Sales',
-      description: 'Best selling items and sales performance',
-      icon: <ShoppingCart color={colors.teal} size={16} />,
-      chartType: 'pie'
-    },
-    {
-      id: 'sales-by-hour',
-      title: 'Sales by Hour',
-      description: 'Peak hours and hourly sales patterns',
-      icon: <Calendar color={colors.teal} size={16} />,
-      chartType: 'line'
-    },
-    {
-      id: 'sales-by-employee',
-      title: 'Sales by Employee',
-      description: 'Individual employee performance metrics',
-      icon: <Users color={colors.teal} size={16} />,
-      chartType: 'pie'
-    },
-    {
-      id: 'discounts',
-      title: 'Discounts',
-      description: 'Discount usage and impact on revenue',
-      icon: <PieChart color={colors.teal} size={16} />,
-      chartType: 'line'
-    },
-    {
-      id: 'payments',
-      title: 'Payments',
-      description: 'Payment methods and transaction analysis',
-      icon: <Package color={colors.teal} size={16} />,
-      chartType: 'pie'
-    },
-    {
-      id: 'revenue-by-category',
-      title: 'Revenue by Category',
-      description: 'Revenue breakdown by menu categories',
-      icon: <PieChart color={colors.teal} size={16} />,
-      chartType: 'pie'
-    },
-    {
-      id: 'items-sold-by-category',
-      title: 'Items Sold by Category',
-      description: 'Number of items sold per menu category',
-      icon: <BarChart3 color={colors.teal} size={16} />,
-      chartType: 'pie'
-    },
-    {
-      id: 'category-performance',
-      title: 'Category Performance',
-      description: 'Comprehensive category analysis with revenue and volume',
-      icon: <TrendingUp color={colors.teal} size={16} />,
-      chartType: 'bar'
-    }
+const makePresets = () => {
+  const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }
+  const eod = () => { const d = new Date(); d.setHours(23, 59, 59, 999); return d }
+  return [
+    { label: 'Today', getRange: () => ({ start: today(), end: eod() }) },
+    { label: 'Yesterday', getRange: () => { const s = today(); s.setDate(s.getDate() - 1); const e = new Date(s); e.setHours(23, 59, 59, 999); return { start: s, end: e } } },
+    { label: 'This Week', getRange: () => { const s = today(); s.setDate(s.getDate() - s.getDay()); return { start: s, end: eod() } } },
+    { label: 'Last 7 Days', getRange: () => { const s = today(); s.setDate(s.getDate() - 6); return { start: s, end: eod() } } },
+    { label: 'This Month', getRange: () => { const s = today(); s.setDate(1); return { start: s, end: eod() } } },
+    { label: 'Last 30 Days', getRange: () => { const s = today(); s.setDate(s.getDate() - 29); return { start: s, end: eod() } } },
   ]
+}
 
-  const handleReportPress = (reportId: string, chartType?: string) => {
-    router.push({
-      pathname: '/analytics/report-view',
-      params: {
-        reportType: reportId,
-        chartType: chartType || 'bar'
-      }
-    })
+// ─── Mini calendar ────────────────────────────────────────────────────────────
+
+const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+interface MiniCalendarProps {
+  value: Date
+  onChange: (d: Date) => void
+  minDate?: Date
+  maxDate?: Date
+}
+
+const MiniCalendar: React.FC<MiniCalendarProps> = ({ value, onChange, minDate, maxDate }) => {
+  const [cursor, setCursor] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1))
+
+  // Keep cursor in sync when value changes (e.g. modal reopens with different date)
+  useEffect(() => {
+    setCursor(new Date(value.getFullYear(), value.getMonth(), 1))
+  }, [value.getFullYear(), value.getMonth()])
+
+  const year = cursor.getFullYear()
+  const month = cursor.getMonth()
+  const firstDow = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+  const prev = () => setCursor(new Date(year, month - 1, 1))
+  const next = () => setCursor(new Date(year, month + 1, 1))
+
+  const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
+  // pad to full rows
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  return (
+    <View style={{ backgroundColor: colors.screen, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border }}>
+      {/* Month nav */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <TouchableOpacity onPress={prev} style={{ padding: 4 }} activeOpacity={0.7}>
+          <ChevronLeft size={16} color={colors.teal} />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>{MONTHS[month]} {year}</Text>
+        <TouchableOpacity onPress={next} style={{ padding: 4 }} activeOpacity={0.7}>
+          <ChevronRight size={16} color={colors.teal} />
+        </TouchableOpacity>
+      </View>
+      {/* Day headers */}
+      <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+        {DAYS.map(d => (
+          <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '600', color: colors.muted }}>{d}</Text>
+        ))}
+      </View>
+      {/* Grid */}
+      {Array.from({ length: cells.length / 7 }, (_, row) => (
+        <View key={row} style={{ flexDirection: 'row' }}>
+          {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
+            if (!day) return <View key={col} style={{ flex: 1, height: 32 }} />
+            const cellDate = new Date(year, month, day)
+            const isSelected = value.getDate() === day && value.getMonth() === month && value.getFullYear() === year
+            const isDisabled =
+              (minDate ? cellDate < new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate()) : false) ||
+              (maxDate ? cellDate > new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate()) : false)
+            return (
+              <TouchableOpacity
+                key={col}
+                onPress={() => !isDisabled && onChange(cellDate)}
+                activeOpacity={isDisabled ? 1 : 0.7}
+                style={{ flex: 1, height: 32, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <View style={{
+                  width: 26, height: 26, borderRadius: 13,
+                  backgroundColor: isSelected ? colors.teal : 'transparent',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{
+                    fontSize: 12,
+                    fontWeight: isSelected ? '700' : '400',
+                    color: isSelected ? colors.onSolid : isDisabled ? colors.muted : colors.heading,
+                  }}>{day}</Text>
+                </View>
+              </TouchableOpacity>
+            )
+          })}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
+const AnalyticsDashboardScreen = () => {
+  const supabase = useSupabaseClient()
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore)
+  const locationId = selectedStore?.id || ''
+  const { filters, activePresetLabel, data, isLoading, error, setDateRange, fetchData } = useAnalyticsStore()
+
+  const [showDateModal, setShowDateModal] = useState(false)
+  const [tempStart, setTempStart] = useState(filters.dateRange.start)
+  const [tempEnd, setTempEnd] = useState(filters.dateRange.end)
+  const [activePicker, setActivePicker] = useState<'from' | 'to' | null>(null)
+
+  const presets = makePresets()
+
+  const load = useCallback(() => { fetchData(supabase, locationId) }, [supabase, locationId, filters.dateRange])
+  useEffect(() => { load() }, [filters.dateRange, locationId])
+
+  const applyCustomRange = () => {
+    const start = new Date(tempStart); start.setHours(0, 0, 0, 0)
+    const end = new Date(tempEnd); end.setHours(23, 59, 59, 999)
+    setDateRange({ start, end })
+    setActivePicker(null)
+    setShowDateModal(false)
   }
 
-  const handleCustomReportPress = (report: any) => {
-    router.push({
-      pathname: '/analytics/report-view',
-      params: {
-        customReport: JSON.stringify(report)
-      }
-    })
-  }
-
-  const handleCreateCustomReport = () => {
-    router.push('/analytics/custom-report-builder')
+  const fmtDateRange = () => {
+    const s = filters.dateRange.start
+    const e = filters.dateRange.end
+    if (s.toDateString() === e.toDateString())
+      return s.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
   }
 
   return (
-    <View className='flex-1 bg-screen'>
-      <ScrollView contentContainerStyle={{ padding: 14 }}>
-        {/* Header */}
-        <View className='mb-4'>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading, marginBottom: 2 }}>
-            Analytics & Reports
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.label }}>
-            Analyze your business performance with detailed reports
-          </Text>
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
+
+      {/* ── Header ───────────────────────────────────────────────── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
+        <View>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Analytics</Text>
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{selectedStore?.name || 'All Locations'}</Text>
         </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => { setTempStart(new Date(filters.dateRange.start)); setTempEnd(new Date(filters.dateRange.end)); setActivePicker(null); setShowDateModal(true) }}
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '40', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 6 }}
+            activeOpacity={0.8}
+          >
+            <Calendar size={13} color={colors.teal} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{fmtDateRange()}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={load} style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 7 }} activeOpacity={0.8}>
+            {isLoading ? <ActivityIndicator size={14} color={colors.teal} /> : <RefreshCw size={14} color={colors.label} />}
+          </TouchableOpacity>
+        </View>
+      </View>
 
-        {/* Filter Controls */}
-        <FilterControls />
+      {/* ── Body ─────────────────────────────────────────────────── */}
+      <ScrollView contentContainerStyle={{ padding: 14 }} showsVerticalScrollIndicator={false}>
 
-        {/* Debug Button */}
-        <TouchableOpacity
-          onPress={() => {
-            console.log('🔄 Debug: Force refreshing analytics...')
-            forceRefresh()
-          }}
-          style={{
-            marginTop: 8,
-            backgroundColor: 'transparent',
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 8,
-            paddingHorizontal: 10,
-            paddingVertical: 5,
-            alignSelf: 'flex-start'
-          }}
-        >
-          <Text style={{ color: colors.muted, fontSize: 11 }}>
-            Force Refresh
-          </Text>
-        </TouchableOpacity>
-
-        {/* KPI Cards */}
-        {isLoading && !currentReportData && (
-          <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
-              Key Performance Indicators
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {[0, 1, 2, 3].map(i => (
-                <View key={i} style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, height: 90 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.card, marginBottom: 10 }} />
-                  <View style={{ width: '60%', height: 14, borderRadius: 6, backgroundColor: colors.card, marginBottom: 6 }} />
-                  <View style={{ width: '40%', height: 10, borderRadius: 4, backgroundColor: colors.card }} />
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-        {currentReportData && (
-          <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
-              Key Performance Indicators
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {/* Gross Margin */}
-              <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
-                    <TrendingUp size={14} color={colors.teal} />
-                  </View>
-                  <KpiTooltip definition='Percentage of revenue remaining after subtracting cost of goods sold' />
-                </View>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>{currentReportData.kpis.grossMargin.toFixed(1)}%</Text>
-                <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Gross Margin</Text>
-              </View>
-
-              {/* Total Revenue */}
-              <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
-                    <DollarSign size={14} color={colors.teal} />
-                  </View>
-                  <KpiTooltip definition='Total sales revenue for the selected period' />
-                </View>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>${currentReportData.kpis.totalRevenue.toFixed(0)}</Text>
-                <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Total Revenue</Text>
-              </View>
-
-              {/* Avg Order Value */}
-              <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
-                    <ShoppingBag size={14} color={colors.teal} />
-                  </View>
-                  <KpiTooltip definition='Average value per order' />
-                </View>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>${currentReportData.kpis.averageOrderValue.toFixed(2)}</Text>
-                <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Avg Order Value</Text>
-              </View>
-
-              {/* Total Orders */}
-              <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
-                    <Hash size={14} color={colors.teal} />
-                  </View>
-                  <KpiTooltip definition='Total number of orders placed' />
-                </View>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>{currentReportData.kpis.totalOrders}</Text>
-                <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Total Orders</Text>
-              </View>
-            </View>
+        {error && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '30', borderRadius: 10, padding: 10, marginBottom: 12 }}>
+            <AlertCircle size={14} color={colors.danger} />
+            <Text style={{ fontSize: 12, color: colors.danger, flex: 1 }}>{error}</Text>
           </View>
         )}
 
-        {/* Sales Trend Chart */}
-        {isLoading && !currentReportData && (
-          <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>Sales Trend</Text>
-            <View style={{ height: 220, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color={colors.teal} size="small" />
-              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>Loading chart...</Text>
-            </View>
-          </View>
-        )}
-        {currentReportData && (
-          <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
-              Sales Trend
-            </Text>
-            {/* <ReportChart
-              data={currentReportData.chartData}
-              chartType="line"
-              title={getDateRangeTitle("Revenue Over Time")}
-            /> */}
-            <GiftedChartsSalesTrendChart />
+        {isLoading && !data && (
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
+            <ActivityIndicator color={colors.teal} size="large" />
+            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 12 }}>Loading analytics...</Text>
           </View>
         )}
 
-        {/* Fast & Slow Movers */}
-        {currentReportData && (
-          <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
-              Inventory Analysis
-            </Text>
-            <View className='flex-row gap-3'>
-              <View className='flex-1'>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                  Top 5 Fast Movers
-                </Text>
-                <View
-                  style={{
-                    backgroundColor: colors.panel,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 12,
-                    padding: 12
-                  }}
-                >
-                  {currentReportData.inventoryAnalysis.fastMovers.map(
-                    (item, index) => (
-                      <View
-                        key={index}
-                        className='flex-row justify-between items-center py-2 border-b border-border last:border-b-0'
-                      >
-                        <Text style={{ fontSize: 12, color: colors.heading, flex: 1 }}>
-                          {item.itemName}
-                        </Text>
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
-                          {item.totalSold}
-                        </Text>
+        {data && (
+          <>
+            {/* ════ ORDERS ══════════════════════════════════════════ */}
+            <SectionCard title="Orders" icon={<ShoppingBag size={14} color={colors.teal} />}>
+
+              {/* Stats row + pie chart box side by side */}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+
+                {/* Left: stats stacked */}
+                <View style={{ flex: 1, gap: 8 }}>
+                  {/* KPI row */}
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <StatCard icon={<Hash size={14} color={colors.teal} />} label="Total Orders" value={String(data.orders.totalOrders)} sub={`${data.orders.completedOrders} paid`} />
+                    <StatCard icon={<DollarSign size={14} color={colors.teal} />} label="Revenue" value={fmt$(data.orders.totalRevenue)} sub={fmtFull$(data.orders.totalRevenue)} />
+                    <StatCard icon={<TrendingUp size={14} color={colors.teal} />} label="Avg Order" value={fmt$(data.orders.averageOrderValue)} />
+                    <StatCard icon={<ArrowDownLeft size={14} color={colors.teal} />} label="Discounts" value={fmt$(data.orders.totalDiscounts)} />
+                  </View>
+
+                  {/* Status + tax/tips row */}
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {/* Order statuses */}
+                    <Panel style={{ flex: 1, flexDirection: undefined }}>
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Status</Text>
+                      <View style={{ gap: 6 }}>
+                        {[
+                          { label: 'Paid', count: data.orders.completedOrders, color: colors.teal },
+                          { label: 'Voided', count: data.orders.voidedOrders, color: colors.danger },
+                          { label: 'Cancelled', count: data.orders.cancelledOrders, color: colors.warning },
+                        ].map((item) => {
+                          const total = data.orders.totalOrders || 1
+                          const pct = Math.round((item.count / total) * 100)
+                          return (
+                            <View key={item.label}>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: item.color }} />
+                                  <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>{item.count}</Text>
+                                  <Text style={{ fontSize: 10, color: colors.muted }}>{pct}%</Text>
+                                </View>
+                              </View>
+                              <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
+                                <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: item.color, borderRadius: 3, opacity: 0.8 }} />
+                              </View>
+                            </View>
+                          )
+                        })}
                       </View>
-                    )
+                    </Panel>
+
+                    {/* Tax + Tips */}
+                    <Panel style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Collected</Text>
+                      <View style={{ gap: 4 }}>
+                        {[
+                          { label: 'Tax', value: fmtFull$(data.orders.totalTax) },
+                          { label: 'Tips', value: fmtFull$(data.orders.totalTips) },
+                        ].map((item) => (
+                          <View key={item.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{item.value}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </Panel>
+                  </View>
+                </View>
+
+                {/* Right: donut chart box */}
+                {data.orders.ordersByType.length > 0 && (() => {
+                  const pieData = data.orders.ordersByType.map((row, i) => ({
+                    value: row.count,
+                    color: CHART_COLORS[i % CHART_COLORS.length],
+                    label: fmtLabel(row.type),
+                    sub: `${row.count} · ${fmtFull$(row.revenue)}`,
+                  }))
+                  return (
+                    <DonutBox
+                      pieData={pieData}
+                      centerValue={String(data.orders.totalOrders)}
+                      centerLabel="orders"
+                      bgColor={colors.panel}
+                    />
+                  )
+                })()}
+              </View>
+            </SectionCard>
+
+            {/* ════ PAYMENTS ════════════════════════════════════════ */}
+            <SectionCard title="Payments" icon={<CreditCard size={14} color={colors.teal} />}>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+
+                {/* Left: stats */}
+                <View style={{ flex: 1, gap: 8 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <StatCard icon={<DollarSign size={14} color={colors.teal} />} label="Collected" value={fmt$(data.payments.totalAmount)} sub={`${data.payments.totalPayments} txns`} />
+                    <StatCard icon={<ArrowDownLeft size={14} color={colors.teal} />} label="Refunds" value={String(data.payments.refundCount)} sub={data.payments.refundCount > 0 ? fmtFull$(data.payments.refundAmount) : 'None'} />
+                  </View>
+
+                  {/* Method rows */}
+                  {data.payments.byMethod.length > 0 && (
+                    <Panel label="Breakdown">
+                      {data.payments.byMethod.map((row, i) => {
+                        const total = data.payments.totalAmount || 1
+                        const pct = Math.round((row.amount / total) * 100)
+                        return (
+                          <View key={row.method} style={{ marginBottom: i < data.payments.byMethod.length - 1 ? 8 : 0 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
+                              <Text style={{ fontSize: 12, color: colors.heading }}>{fmtLabel(row.method)}</Text>
+                              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{fmtFull$(row.amount)}</Text>
+                            </View>
+                            <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
+                              <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length], borderRadius: 3 }} />
+                            </View>
+                          </View>
+                        )
+                      })}
+                    </Panel>
                   )}
                 </View>
+
+                {/* Right: donut chart */}
+                {data.payments.byMethod.length > 0 && (() => {
+                  const pieData = data.payments.byMethod.map((row, i) => ({
+                    value: row.amount,
+                    color: CHART_COLORS[i % CHART_COLORS.length],
+                    label: fmtLabel(row.method),
+                    sub: fmtFull$(row.amount),
+                  }))
+                  return (
+                    <DonutBox
+                      pieData={pieData}
+                      centerValue={String(data.payments.totalPayments)}
+                      centerLabel="txns"
+                      bgColor={colors.panel}
+                    />
+                  )
+                })()}
+              </View>
+            </SectionCard>
+
+            {/* ════ TABLE SESSIONS ══════════════════════════════════ */}
+            <SectionCard title="Table Sessions" icon={<Table2 size={14} color={colors.teal} />}>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <StatCard icon={<Hash size={14} color={colors.teal} />} label="Sessions" value={String(data.sessions.totalSessions)} sub={`${data.sessions.totalCovers} covers`} />
+                <StatCard icon={<Users size={14} color={colors.teal} />} label="Avg Party" value={data.sessions.averagePartySize.toFixed(1)} sub="guests / session" />
+                <StatCard icon={<Clock size={14} color={colors.teal} />} label="Avg Duration" value={data.sessions.averageDurationMinutes > 0 ? `${Math.round(data.sessions.averageDurationMinutes)}m` : '—'} />
               </View>
 
-              <View className='flex-1'>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                  Top 5 Slow Movers
-                </Text>
-                <View
-                  style={{
-                    backgroundColor: colors.panel,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 12,
-                    padding: 12
-                  }}
-                >
-                  {currentReportData.inventoryAnalysis.slowMovers.map(
-                    (item, index) => (
-                      <View
-                        key={index}
-                        className='flex-row justify-between items-center py-2 border-b border-border last:border-b-0'
-                      >
-                        <Text style={{ fontSize: 12, color: colors.heading, flex: 1 }}>
-                          {item.itemName}
-                        </Text>
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.danger }}>
-                          {item.totalSold}
-                        </Text>
-                      </View>
-                    )
-                  )}
+            </SectionCard>
+
+            {/* ════ STAFF ═══════════════════════════════════════════ */}
+            <SectionCard title="Staff Performance" icon={<Users size={14} color={colors.teal} />}>
+              {data.staff.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                  <Users size={26} color={colors.muted} />
+                  <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>No staff data for this period</Text>
                 </View>
-              </View>
-            </View>
+              ) : (
+                (() => {
+                  const maxRev = Math.max(...data.staff.map((s) => s.revenue), 1)
+                  const barData = data.staff.map((row) => ({
+                    value: row.revenue,
+                    label: row.name.split(' ')[0],
+                    frontColor: colors.teal,
+                    topLabelComponent: () => (
+                      <Text style={{ fontSize: 9, color: colors.label, marginBottom: 3 }}>{fmt$(row.revenue)}</Text>
+                    ),
+                  }))
+
+                  return (
+                    <View style={{ gap: 10 }}>
+                      {/* Bar chart */}
+                      <Panel label="Revenue by Staff">
+                        <BarChart
+                          data={barData}
+                          barWidth={28}
+                          spacing={16}
+                          roundedTop
+                          hideRules={false}
+                          rulesColor={colors.border}
+                          rulesType="dashed"
+                          dashWidth={4}
+                          dashGap={6}
+                          xAxisColor={colors.border}
+                          yAxisColor="transparent"
+                          yAxisThickness={0}
+                          yAxisTextStyle={{ color: colors.label, fontSize: 9 }}
+                          xAxisLabelTextStyle={{ color: colors.label, fontSize: 10 }}
+                          noOfSections={3}
+                          maxValue={maxRev * 1.25}
+                          isAnimated
+                          animationDuration={500}
+                          barBorderRadius={4}
+                          backgroundColor={colors.panel}
+                          formatYLabel={(v) => fmt$(Number(v))}
+                        />
+                      </Panel>
+
+                      {/* Staff rows */}
+                      {data.staff.map((row) => (
+                        <View
+                          key={row.staffId}
+                          style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>{row.name.charAt(0).toUpperCase()}</Text>
+                              </View>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>{row.name}</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', gap: 20 }}>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>{fmtFull$(row.revenue)}</Text>
+                                <Text style={{ fontSize: 10, color: colors.muted }}>revenue</Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>{row.orderCount}</Text>
+                                <Text style={{ fontSize: 10, color: colors.muted }}>orders</Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.label }}>{fmtFull$(row.averageOrderValue)}</Text>
+                                <Text style={{ fontSize: 10, color: colors.muted }}>avg order</Text>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )
+                })()
+              )}
+            </SectionCard>
+          </>
+        )}
+
+        {!isLoading && !data && !error && (
+          <View style={{ alignItems: 'center', paddingTop: 80 }}>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>No data available for the selected period.</Text>
           </View>
         )}
 
-        {/* Wait Time Accuracy Metrics */}
-        <View style={{ marginTop: 16 }}>
-          <WaitTimeAccuracyCard
-            client={supabaseClient}
-            locationId={currentLocationId}
-            dateRangeStart={dateRangeStartIso}
-            dateRangeEnd={dateRangeEndIso}
-          />
-        </View>
+        <View style={{ height: 24 }} />
+      </ScrollView>
 
-        {/* Pre-built Reports Section */}
-        <View style={{ marginTop: 16 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
-            Pre-built Reports
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {preBuiltReports.map(report => (
-              <ReportCard
-                key={report.id}
-                title={report.title}
-                description={report.description}
-                icon={report.icon}
-                onPress={() => handleReportPress(report.id, report.chartType)}
-              />
-            ))}
-          </View>
-        </View>
-
-        {/* Custom Reports Section */}
-        <View style={{ marginTop: 16 }}>
-          <View className='flex-row items-center justify-between mb-3'>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
-              Custom Reports
-            </Text>
-            <TouchableOpacity
-              onPress={handleCreateCustomReport}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.teal + '20',
-                borderWidth: 1,
-                borderColor: colors.teal + '50',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 5
-              }}
-              activeOpacity={0.8}
-            >
-              <Plus color={colors.teal} size={14} />
-              <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 12, marginLeft: 4 }}>Create</Text>
-            </TouchableOpacity>
-          </View>
-
-          {savedCustomReports.length > 0 ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {savedCustomReports.map(report => (
-                <ReportCard
-                  key={report.id}
-                  title={report.name}
-                  description={`Metrics: ${report.metrics.join(
-                    ', '
-                  )} | Breakdown: ${report.breakdown}`}
-                  icon={<BarChart3 color={colors.teal} size={16} />}
-                  onPress={() => handleCustomReportPress(report)}
-                />
-              ))}
-            </View>
-          ) : (
-            <View
-              style={{
-                backgroundColor: colors.panel,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 12,
-                padding: 24,
-                alignItems: 'center'
-              }}
-            >
-              <BarChart3 color={colors.muted} size={36} />
-              <Text style={{ fontSize: 13, color: colors.label, marginTop: 10, textAlign: 'center' }}>
-                No custom reports yet
-              </Text>
-              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4, textAlign: 'center' }}>
-                Create your first custom report to get started
-              </Text>
-              <TouchableOpacity
-                onPress={handleCreateCustomReport}
-                style={{
-                  marginTop: 12,
-                  backgroundColor: colors.teal + '20',
-                  borderWidth: 1,
-                  borderColor: colors.teal + '50',
-                  borderRadius: 8,
-                  paddingHorizontal: 16,
-                  paddingVertical: 7
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 12 }}>Create Report</Text>
+      {/* ── Date Range Modal ──────────────────────────────────────── */}
+      <Modal visible={showDateModal} transparent animationType="fade" onRequestClose={() => setShowDateModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, width: 360, maxWidth: '92%' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>Select Date Range</Text>
+              <TouchableOpacity onPress={() => setShowDateModal(false)} style={{ padding: 4 }}>
+                <X size={16} color={colors.label} />
               </TouchableOpacity>
             </View>
-          )}
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              {presets.map((p) => {
+                const isActive = activePresetLabel === p.label
+                return (
+                  <TouchableOpacity
+                    key={p.label}
+                    onPress={() => { setDateRange(p.getRange(), p.label); setActivePicker(null); setShowDateModal(false) }}
+                    style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: isActive ? colors.teal : colors.screen, borderWidth: 1, borderColor: isActive ? colors.teal : colors.border }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? colors.onSolid : colors.label }}>{p.label}</Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+
+            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 14 }} />
+            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Custom Range</Text>
+
+            {/* From / To toggle tabs */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+              {(['from', 'to'] as const).map((side) => {
+                const isActive = activePicker === side
+                const date = side === 'from' ? tempStart : tempEnd
+                return (
+                  <TouchableOpacity
+                    key={side}
+                    onPress={() => setActivePicker(isActive ? null : side)}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isActive ? colors.teal + '15' : colors.screen, borderWidth: 1, borderColor: isActive ? colors.teal : colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 }}
+                    activeOpacity={0.8}
+                  >
+                    <View>
+                      <Text style={{ fontSize: 9, color: isActive ? colors.teal : colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{side === 'from' ? 'From' : 'To'}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? colors.teal : colors.heading }}>{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                    </View>
+                    <Calendar size={13} color={isActive ? colors.teal : colors.label} />
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+
+            {/* Calendar grid */}
+            {activePicker === 'from' && (
+              <View style={{ marginBottom: 10 }}>
+                <MiniCalendar
+                  value={tempStart}
+                  maxDate={tempEnd}
+                  onChange={(d) => { setTempStart(d); setActivePicker(null) }}
+                />
+              </View>
+            )}
+            {activePicker === 'to' && (
+              <View style={{ marginBottom: 10 }}>
+                <MiniCalendar
+                  value={tempEnd}
+                  minDate={tempStart}
+                  onChange={(d) => { setTempEnd(d); setActivePicker(null) }}
+                />
+              </View>
+            )}
+
+            <TouchableOpacity onPress={applyCustomRange} style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', borderRadius: 8, paddingVertical: 9, alignItems: 'center' }} activeOpacity={0.8}>
+              <Text style={{ color: colors.teal, fontSize: 13, fontWeight: '600' }}>Apply Range</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </ScrollView>
+      </Modal>
     </View>
   )
 }
