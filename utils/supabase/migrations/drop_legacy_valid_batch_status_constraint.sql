@@ -1,0 +1,57 @@
+-- ============================================================
+-- Fix: drop legacy `valid_batch_status` check constraint
+-- File: utils/supabase/migrations/drop_legacy_valid_batch_status_constraint.sql
+-- ============================================================
+-- Bug:
+--   Castles End-of-Day settlement failed in the app with:
+--     "Settlement prepare failed: new row for relation
+--      'settlement_batches' violates check constraint
+--      'valid_batch_status'"
+--
+-- Root cause:
+--   settlement_batches had TWO conflicting CHECK constraints on
+--   the status column:
+--
+--     chk_settlement_status (current, correct):
+--       open, pending, settling, settled, partial_failure,
+--       retry, failed, terminal_unavailable, closed
+--
+--     valid_batch_status (legacy):
+--       open, closed, submitted, settled, funded
+--
+--   A row had to satisfy BOTH. The intersection is only
+--   {open, closed, settled} — far too narrow for the real
+--   Castles prepare/finalize state machine. `prepare_castles_settlement`
+--   inserts with status='pending' and immediately tripped the
+--   legacy constraint.
+--
+-- Why dropping valid_batch_status is safe:
+--   1. No DB function writes `submitted` or `funded` (audited all
+--      public functions that touch settlement_batches — only
+--      prepare_castles_settlement, finalize_castles_settlement,
+--      and settle_castles_batch mutate this table).
+--   2. The Castles stuck-batch detection in
+--      get_unsettled_summary_by_terminal reads statuses
+--      (failed, retry, terminal_unavailable) that the legacy
+--      constraint rejected — another sign the legacy model was
+--      abandoned but the constraint was left behind.
+--   3. Staging has 2 rows in settlement_batches, both 'closed'.
+--      No row depends on legacy-only values.
+--   4. chk_settlement_status continues to enforce a valid state
+--      machine that covers every status actually used by the app.
+--
+-- Audit of DB functions that write settlement_batches.status
+-- (verified against chk_settlement_status after the drop):
+--   - prepare_castles_settlement  → pending, failed          ✓
+--   - finalize_castles_settlement → settled, partial_failure,
+--                                    retry, failed            ✓
+--   - settle_castles_batch        → closed                    ✓
+--
+-- Scope:
+--   Staging only (project dfwqakoyittmrwbqvxgw). Prod does not
+--   yet have either constraint (no Castles settlement RPCs
+--   deployed) — this migration is idempotent regardless.
+-- ============================================================
+
+ALTER TABLE public.settlement_batches
+  DROP CONSTRAINT IF EXISTS valid_batch_status;

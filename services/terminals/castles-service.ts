@@ -90,6 +90,9 @@ export class CastlesService {
   private _watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private _watchdogConsecutiveFailures = 0;
 
+  // ── Suspend state ──
+  private _suspended = false;
+
   // ============================================================
   // CONNECTION
   // ============================================================
@@ -103,6 +106,9 @@ export class CastlesService {
    * each other's transport.
    */
   async connect(config: CastlesConnectionConfig): Promise<void> {
+    if (this._suspended) {
+      throw new Error("CastlesService is suspended; call resume() first");
+    }
     return this._mutex.runExclusive(() => this._connectInner(config));
   }
 
@@ -257,6 +263,68 @@ export class CastlesService {
 
   isConnected(): boolean {
     return this.transport?.isOpen ?? false;
+  }
+
+  isSuspended(): boolean {
+    return this._suspended;
+  }
+
+  /**
+   * Put the service into a "suspended" state.
+   *
+   * Always tears down the transport, regardless of mutex state. If a command
+   * is in flight, the tear-down causes the native socket to emit 'close', which
+   * fires our onClose listeners in _sendAndReceive and cleanly rejects the
+   * in-flight promise with a "Transport closed" error. The mutex releases
+   * naturally when the in-flight runExclusive callback returns.
+   *
+   * Previously, suspend() bailed early when _mutex.isLocked() — leaving a dead
+   * socket open while the in-flight command waited for a 60+ second timeout.
+   * That was the upstream amplifier for the "retry loop crashes on stale socket"
+   * bug (castles-transport-tcp.ts disconnect() race).
+   *
+   * Safe to call from an AppState listener — never throws, never blocks long.
+   */
+  async suspend(): Promise<void> {
+    if (this._suspended) return;
+    this._suspended = true;
+    this.stopWatchdog();
+
+    // Tear down the transport directly, without acquiring the mutex.
+    // Any in-flight _sendAndReceive will receive a close event and reject.
+    if (this.transport) {
+      try {
+        this.transport.disconnect();
+      } catch (e) {
+        console.warn(
+          "[CastlesService] suspend: disconnect failed (non-fatal)",
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+      this.transport = null;
+    }
+
+    console.log("[CastlesService] suspended");
+  }
+
+  /**
+   * Exit the "suspended" state and optionally pre-warm a new connection.
+   * - Clears the flag so lazy-reconnect from command path is allowed again.
+   * - If `config` is provided, fire-and-forget a connect() attempt to put the
+   *   socket back online before the first user action (invisible latency).
+   */
+  resume(config?: CastlesConnectionConfig): void {
+    if (!this._suspended) return;
+    this._suspended = false;
+    const cfg = config ?? this.config;
+    if (!cfg) return;
+    // Fire-and-forget pre-warm; failure is non-fatal (lazy path will retry).
+    this.connect(cfg).catch((e) => {
+      console.warn(
+        "[CastlesService] resume pre-warm failed (non-fatal):",
+        e instanceof Error ? e.message : String(e),
+      );
+    });
   }
 
   setOnStatusNotification(callback: CastlesStatusCallback | null): void {
@@ -962,11 +1030,20 @@ export class CastlesService {
    */
   private async _forceReturn2Idle(): Promise<boolean> {
     if (!this.config) return false;
+    if (this._suspended) {
+      console.log("[CastlesService] _forceReturn2Idle: suspended — skipping");
+      return false;
+    }
 
     const config = this.config;
     console.log("[CastlesService] Force return2Idle: closing transport and reconnecting...");
 
     this._disconnectInner();
+    // Let the native executor drain any pending Runnable from the disconnect
+    // before we reconnect. Belt-and-suspenders: with the transport-level fix
+    // in place, disconnect() schedules at most one Runnable, but 50ms of
+    // breathing room makes reconnects on this path fully deterministic.
+    await this._delay(50);
 
     try {
       this._createTransport(config);
@@ -1026,6 +1103,7 @@ export class CastlesService {
     this._watchdogConsecutiveFailures = 0;
 
     this._watchdogTimer = setInterval(async () => {
+      if (this._suspended) return;
       if (!this.transport?.isOpen || !this.config) return;
       if (this._mutex.isLocked()) return;
 
@@ -1100,6 +1178,9 @@ export class CastlesService {
    *    - If ping fails → reconnect
    */
   private async _ensureConnected(): Promise<void> {
+    if (this._suspended) {
+      throw new Error("Transport is not open — service suspended");
+    }
     if (!this.config) {
       throw new Error("Not connected to terminal — call connect() first");
     }
@@ -1140,6 +1221,9 @@ export class CastlesService {
     const first = await fn();
 
     if (!first.success && first.error && isConnectionError(first.error) && this.config) {
+      if (this._suspended) {
+        return first; // don't attempt reconnect; caller gets the original failure
+      }
       console.log("[CastlesService] Connection error detected, retrying after reconnect...");
       try {
         await this._mutex.runExclusive(() => this._connectInner(this.config!));

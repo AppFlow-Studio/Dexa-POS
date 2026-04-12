@@ -38,6 +38,9 @@ let toastShownForCurrentFailureStreak = false;
 async function performHealthCheck(): Promise<void> {
   if (!currentSupabase || !currentTerminalId || !currentPaymentTerminal) return;
 
+  // Don't fight the suspend — probing a closed/closing socket is wasted work.
+  if (getSharedCastlesService().isSuspended()) return;
+
   // Skip if a payment is currently being processed
   const isProcessing = usePaymentTerminalStore.getState().isProcessingPayment;
   if (isProcessing) {
@@ -219,8 +222,11 @@ function syncToStationStore(isConnected: boolean): void {
  */
 async function preWarmCastlesService(): Promise<void> {
   if (!currentPaymentTerminal || !currentTerminalId) return;
+  const service = getSharedCastlesService();
+  if (service.isSuspended()) {
+    return; // Don't fight the suspend; resume() will handle it.
+  }
   try {
-    const service = getSharedCastlesService();
     await service.connect({
       connectionType: currentPaymentTerminal.connection_type === 'usb' ? 'usb' : 'local_socket',
       host: currentPaymentTerminal.ip_address!,

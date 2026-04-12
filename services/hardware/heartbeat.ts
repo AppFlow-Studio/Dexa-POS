@@ -75,7 +75,7 @@ async function sendHeartbeat(): Promise<void> {
           network_type: networkType,
           printer_status: cached?.hasBuiltinPrinter ? "available" : "none",
           cfd_connected: cached?.hasBuiltinCfd ?? false,
-          created_at: currentSessionStart,
+          created_at: currentSessionStart != null ? currentSessionStart : new Date(),
         },
         { onConflict: "station_id" }
       );

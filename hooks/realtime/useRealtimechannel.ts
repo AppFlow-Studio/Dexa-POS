@@ -219,22 +219,28 @@ export function useRealtimeChannel<T>({
     };
   }, [enabled, subscribe, disconnect]);
 
-  // Periodic auth token refresh (every 50 minutes, tokens expire at 60 minutes)
+  // Periodic auth token refresh. Tightened from 50min → 10min because the
+  // previous value was too close to typical Clerk/Supabase JWT TTLs and left
+  // the channel with an expired token just long enough to trigger cascading
+  // reconnect failures. On refresh failure we now force a full reconnect
+  // cycle instead of silently logging — a dead channel blocks realtime
+  // updates, which can surface downstream as stale state / render errors.
   useEffect(() => {
     if (!enabled || status.state !== 'SUBSCRIBED') return;
 
     const refreshInterval = setInterval(async () => {
-      // console.log('[Realtime] Refreshing auth token...');
       try {
         await supabaseClient.realtime.setAuth();
-        // console.log('[Realtime] Auth token refreshed successfully');
       } catch (error) {
         console.error('[Realtime] Failed to refresh auth token:', error);
+        // Force a reconnect cycle so we don't leave the channel in a
+        // half-dead state with an expired token.
+        handleReconnect();
       }
-    }, 50 * 60 * 1000); // 50 minutes
+    }, 10 * 60 * 1000); // 10 minutes
 
     return () => clearInterval(refreshInterval);
-  }, [enabled, status.state, supabaseClient]);
+  }, [enabled, status.state, supabaseClient, handleReconnect]);
 
   // Reconnect channels when app returns to foreground
   useEffect(() => {
