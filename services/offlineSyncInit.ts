@@ -1000,6 +1000,16 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         );
 
         if (error) {
+          // If the order is already paid, the desired state is already achieved — discard
+          const errMsg = (error as any)?.message || String(error);
+          if (
+            errMsg.toLowerCase().includes('already paid') ||
+            errMsg.toLowerCase().includes('already been paid') ||
+            errMsg.toLowerCase().includes('fully paid')
+          ) {
+            console.warn(`[OfflineSync:payment] Order already paid — discarding operation as complete:`, errMsg);
+            return true;
+          }
           console.error(`[OfflineSync:payment] FAILED - Error:`, error);
           return false;
         }
