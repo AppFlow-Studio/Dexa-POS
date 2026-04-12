@@ -14,14 +14,11 @@ import {
   CreditCard,
   FileText,
   Minus,
-  Plus,
-  RotateCcw,
-  Trash2
+  Plus
 } from 'lucide-react-native'
 import React, { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -176,13 +173,11 @@ interface PaymentRowProps {
     }[]
   }
   index: number
-  onVoid: () => void
   onPrint?: () => void
-  isVoiding?: boolean
 }
 
 const PaymentRow: React.FC<PaymentRowProps> = React.memo(
-  ({ payment, index, onVoid, onPrint, isVoiding }) => {
+  ({ payment, index, onPrint }) => {
     const methodDisplay =
       payment.method === 'Cash'
         ? 'Cash'
@@ -273,22 +268,6 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(
               <FileText size={13} color={colors.teal} />
             </TouchableOpacity>
           )}
-          <TouchableOpacity
-            onPress={onVoid}
-            disabled={isVoiding}
-            style={{
-              paddingHorizontal: 8,
-              paddingVertical: 7,
-              backgroundColor: colors.danger + '15',
-              borderRadius: 7
-            }}
-          >
-            {isVoiding ? (
-              <ActivityIndicator size='small' color={colors.danger} />
-            ) : (
-              <RotateCcw size={13} color={colors.danger} />
-            )}
-          </TouchableOpacity>
         </View>
       </View>
     )
@@ -309,7 +288,6 @@ const PayForItemsView: React.FC = () => {
   const activeOrderOutstandingCash = useOrderStore(
     state => state.activeOrderOutstandingCash
   )
-  const voidPayment = useOrderStore(state => state.voidPayment)
   const taxRatesMap = useStoreSettingsStore(state => state.taxRatesMap)
 
   const setView = usePaymentStore(s => s.setView)
@@ -323,9 +301,6 @@ const PayForItemsView: React.FC = () => {
   >(new Map())
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>('card')
   const [isProcessing, setIsProcessing] = useState(false)
-  const [voidingPaymentIndex, setVoidingPaymentIndex] = useState<number | null>(
-    null
-  )
 
   // --- DERIVED VALUES ---
   const activeOrder = useMemo(
@@ -462,50 +437,6 @@ const PayForItemsView: React.FC = () => {
     setSelectedItems(new Map())
   }, [])
 
-  const handleVoidPayment = useCallback(
-    async (paymentIndex: number) => {
-      if (!activeOrderId) return
-
-      setVoidingPaymentIndex(paymentIndex)
-      try {
-        const success = await voidPayment(activeOrderId, paymentIndex)
-        if (!success) {
-          Alert.alert(
-            'Void Failed',
-            'Could not void this payment. Please try again.'
-          )
-        }
-      } finally {
-        setVoidingPaymentIndex(null)
-      }
-    },
-    [activeOrderId, voidPayment]
-  )
-
-  const handleVoidAllPayments = useCallback(async () => {
-    if (!activeOrderId || !payments.length) return
-
-    Alert.alert(
-      'Void All Payments',
-      'Are you sure you want to void all payments? Items will be returned to unpaid status.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Void All',
-          style: 'destructive',
-          onPress: async () => {
-            // Void payments in reverse order to avoid index shifting
-            for (let i = payments.length - 1; i >= 0; i--) {
-              setVoidingPaymentIndex(i)
-              await voidPayment(activeOrderId, i)
-            }
-            setVoidingPaymentIndex(null)
-          }
-        }
-      ]
-    )
-  }, [activeOrderId, payments, voidPayment])
-
   const handleContinueCharging = useCallback(() => {
     if (selectedItems.size === 0) return
 
@@ -613,27 +544,6 @@ const PayForItemsView: React.FC = () => {
             Select items to pay or manage payments
           </Text>
         </View>
-        {payments.length > 0 && (
-          <TouchableOpacity
-            onPress={handleVoidAllPayments}
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              backgroundColor: `${colors.danger}15`,
-              borderRadius: 7,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5
-            }}
-          >
-            <Trash2 size={13} color={colors.danger} />
-            <Text
-              style={{ color: colors.danger, fontWeight: '700', fontSize: 11 }}
-            >
-              VOID ALL
-            </Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Two-Panel Layout */}
@@ -963,8 +873,6 @@ const PayForItemsView: React.FC = () => {
                     key={payment.id || index}
                     payment={payment}
                     index={index}
-                    onVoid={() => handleVoidPayment(index)}
-                    isVoiding={voidingPaymentIndex === index}
                   />
                 ))
               )}

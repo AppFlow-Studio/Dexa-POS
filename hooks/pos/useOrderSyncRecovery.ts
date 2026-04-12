@@ -2,14 +2,18 @@ import { useEffect, useRef } from "react";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { queryClient } from "@/contexts/TanstackProvider";
 import { orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
+import { useRealtimeFallbackPolling } from "@/hooks/pos/useRealtimeFallbackPolling";
 
 /**
  * Recovers order sync when the realtime WebSocket drops.
  *
  * 1. Detects reconnection (was disconnected → now connected) and immediately
- *    invalidates the active-orders query so React Query refetches.
- * 2. Runs adaptive polling: 15 s while disconnected, 120 s while connected
- *    (same cadence as the KDS screen).
+ *    invalidates the active-orders query so React Query refetches to catch
+ *    anything missed during the outage.
+ * 2. While the orders channel is disconnected, invalidates `orders.active`
+ *    every 15s. While it's connected, polling fully stops — broadcasts keep
+ *    `useOrderStore` fresh via the `_handleOrderBroadcast` fan-out in the
+ *    main layout.
  *
  * Must be rendered inside <LocationRealtimeProvider>.
  */
@@ -30,14 +34,13 @@ export function useOrderSyncRecovery(locationId: string) {
     }
   }, [orders.isConnected, locationId]);
 
-  // Adaptive polling (KDS pattern: 15 s disconnected, 120 s connected)
-  useEffect(() => {
-    const pollInterval = orders.isConnected ? 120_000 : 15_000;
-    const id = setInterval(() => {
+  // Realtime-first, polling-fallback: runs only while the channel is down.
+  useRealtimeFallbackPolling(
+    () => {
       queryClient.invalidateQueries({
         queryKey: orderQueryKeys.active(locationId),
       });
-    }, pollInterval);
-    return () => clearInterval(id);
-  }, [orders.isConnected, locationId]);
+    },
+    { intervalMs: 15_000 },
+  );
 }

@@ -21,8 +21,8 @@ import {
   useReopenCheck,
   useVoidOrder,
 } from '@/hooks/orders/useOrderActions'
+import { useRealtimeFallbackPolling } from '@/hooks/pos/useRealtimeFallbackPolling'
 import { colors } from '@/lib/theme'
-import type { PreviousOrder } from '@/lib/types'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -54,7 +54,9 @@ const OrderDetailsScreen = () => {
   const router = useRouter()
   const { orderId } = useLocalSearchParams()
   const orderIdParam = String(orderId ?? '')
-  const { getOrderById, refreshPreviousOrders } = usePreviousOrdersStore()
+  const refreshPreviousOrders = usePreviousOrdersStore(
+    s => s.refreshPreviousOrders
+  )
 
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const { show: _show } = useToast()
@@ -68,35 +70,41 @@ const OrderDetailsScreen = () => {
   const [historyHydrated, setHistoryHydrated] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [showNotesModal, setShowNotesModal] = useState(false)
-  const [order, setOrder] = useState<PreviousOrder | undefined>(undefined)
+
+  // Reactive selector — re-renders whenever the underlying previous-orders
+  // store is patched (e.g. via `_handleOrderBroadcast` → `patchPreviousOrder`),
+  // so broadcast-driven updates flow to this screen without polling.
+  const order = usePreviousOrdersStore(
+    useCallback(s => s.getOrderById(orderIdParam), [orderIdParam])
+  )
 
   const refundModalRef = useRef<AdvancedRefundModalRef>(null)
   const tipAdjustRef = useRef<TipAdjustSheetRef>(null)
 
-  // Load order on mount or when orderId changes
+  // If an order arrives via deep link and it's still in-flight (lives in
+  // `useOrderStore`, not yet in history), seed it into history so the
+  // reactive selector above can pick it up.
   useEffect(() => {
-    if (!orderId) return
-
-    const loadOrder = () => {
-      const { getOrderById } = usePreviousOrdersStore.getState()
-      let foundOrder = getOrderById(orderId as string)
-
-      // If order not found in previous orders, try current orders
-      if (!foundOrder) {
-        const currentOrder =
-          useOrderStore.getState().ordersById[orderId as string]
-        if (currentOrder) {
-          // Add to history
-          usePreviousOrdersStore.getState().addOrderToHistory(currentOrder)
-          foundOrder = getOrderById(orderId as string)
-        }
-      }
-
-      setOrder(foundOrder)
+    if (!orderIdParam) return
+    const found = usePreviousOrdersStore.getState().getOrderById(orderIdParam)
+    if (found) return
+    const currentOrder =
+      useOrderStore.getState().ordersById[orderIdParam]
+    if (currentOrder) {
+      usePreviousOrdersStore.getState().addOrderToHistory(currentOrder)
     }
+  }, [orderIdParam])
 
-    loadOrder()
-  }, [orderId])
+  // Realtime-first, polling-fallback. Only runs while the orders channel is
+  // disconnected — otherwise the reactive selector above handles updates.
+  useRealtimeFallbackPolling(
+    () => {
+      void usePreviousOrdersStore
+        .getState()
+        .refreshPreviousOrders({ force: true })
+    },
+    { intervalMs: 15_000 }
+  )
 
   // Ensure history is loaded (cold start / deep link) before not-found
   useEffect(() => {

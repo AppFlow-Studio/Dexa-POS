@@ -95,6 +95,48 @@ export class RefundService {
       .eq("order_id", request.orderId)
       .in("status", ["captured", "refunded", "partially_refunded"]);
 
+    // Batch-fetch terminal configs for all terminal IDs on these payments — one round-trip.
+    // Needed so cross-station voids route to the original terminal, not the current station's.
+    const uniqueTerminalIds = [
+      ...new Set(
+        (payments ?? [])
+          .map((p: any) => p.terminal_id as string | null)
+          .filter((id): id is string => !!id)
+      ),
+    ];
+    const terminalConfigMap = new Map<string, StationPaymentTerminal>();
+    if (uniqueTerminalIds.length > 0) {
+      const { data: terminalRows } = await this.supabase
+        .from("payment_terminals")
+        .select(
+          "id, terminal_name, terminal_type, local_ip_address, local_port, auth_key, " +
+          "register_id, connection_type, is_connected, last_connection_status, " +
+          "last_connection_test_at, consecutive_failures, health_check_interval, terminal_model"
+        )
+        .in("id", uniqueTerminalIds);
+
+      for (const t of (terminalRows ?? []) as any[]) {
+        terminalConfigMap.set(t.id, {
+          id:                      t.id,
+          terminal_name:           t.terminal_name,
+          // terminal_type DB col is string | null; default to 'dejavoo' if unset
+          terminal_type:           (t.terminal_type ?? "dejavoo") as StationPaymentTerminal["terminal_type"],
+          auth_key:                t.auth_key ?? null,
+          register_id:             t.register_id ?? null,
+          terminal_model:          t.terminal_model ?? null,
+          is_connected:            t.is_connected ?? false,
+          // local_ip_address is DB type 'unknown' (inet); guard null before stringify
+          ip_address:              t.local_ip_address != null ? String(t.local_ip_address) : undefined,
+          port:                    t.local_port ?? undefined,
+          connection_type:         (t.connection_type ?? undefined) as StationPaymentTerminal["connection_type"],
+          last_connection_status:  (t.last_connection_status ?? null) as StationPaymentTerminal["last_connection_status"],
+          last_connection_test_at: t.last_connection_test_at ?? null,
+          consecutive_failures:    t.consecutive_failures ?? undefined,
+          health_check_interval:   t.health_check_interval ?? undefined,
+        });
+      }
+    }
+
     const paymentContexts: PaymentRefundContext[] = (payments || [])
       .map((p: any) => {
         const amount = Number(p.amount || 0);
@@ -115,8 +157,9 @@ export class RefundService {
           availableForRefund,
           paymentMethod: p.payment_method,
           batchNumber: p.batch_number || "",
-          isVoidable: p.is_settled === false,
+          isVoidable: !p.is_settled, // null/false = unsettled = voidable; only true = batch-settled
           terminalId: p.terminal_id,
+          terminalConfig: p.terminal_id ? terminalConfigMap.get(p.terminal_id) : undefined,
         };
       })
       .filter((p) => p.availableForRefund > 0);
@@ -172,12 +215,22 @@ export class RefundService {
 
     console.log('processFullPaymentRefund Reversal', reversal);
 
+    // Prefer the terminal the payment was originally captured on.
+    // Falls back to the requesting station's terminal only for legacy payments
+    // where terminal_id was not recorded on order_payments.
+    const effectiveTerminalId = payment.terminalId || request.payment_terminal_id;
+    const effectiveTerminal =
+      payment.terminalConfig ??
+      (request.payment_terminal?.id === effectiveTerminalId
+        ? request.payment_terminal
+        : undefined);
+
     const terminalResult = await this.processTerminalRefund(
       payment,
       payment.availableForRefund,
       useVoid,
-      request.payment_terminal_id,
-      request?.payment_terminal ?? undefined,
+      effectiveTerminalId,
+      effectiveTerminal,
     );
 
     console.log('processFullPaymentRefund Terminal Result', terminalResult);
@@ -206,15 +259,16 @@ export class RefundService {
       };
     }
 
-    // Extract terminal response fields for storage
-    // Cast to any since DejavooRefundResponse doesn't have all fields from the raw API response
+    // Extract terminal response fields for storage.
+    // Dejavoo returns flat fields; Castles nests them under castles_transaction.
     const terminalResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
     const generalResponse = (terminalResponse?.GeneralResponse as { ResultCode?: string; Message?: string }) ?? undefined;
+    const castlesTxn = terminalResponse?.castles_transaction as Record<string, unknown> | undefined;
     const returnDetails = {
-      rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn) as string | undefined,
-      authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode) as string | undefined,
-      referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId) as string | undefined,
-      transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber) as string | undefined,
+      rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn ?? castlesTxn?.rrn) as string | undefined,
+      authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode ?? castlesTxn?.approvalCode) as string | undefined,
+      referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId ?? castlesTxn?.referenceId) as string | undefined,
+      transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber ?? castlesTxn?.stan) as string | undefined,
       reason: request.reasonDetail,
       initiatedBy: request.initiatedBy,
     };
@@ -232,7 +286,7 @@ export class RefundService {
         (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
         generalResponse?.ResultCode ?? null,
         generalResponse?.Message ?? null,
-        ((terminalResponse?.RRN ?? terminalResponse?.PNReferenceId) as string) ?? null,
+        ((terminalResponse?.RRN ?? terminalResponse?.rrn ?? castlesTxn?.rrn ?? terminalResponse?.PNReferenceId) as string) ?? null,
       ),
       OrderService.applyRefundToPayment(
         this.supabase,
@@ -319,12 +373,19 @@ export class RefundService {
       };
     }
 
+    const effectiveTerminalId = payment.terminalId || request.payment_terminal_id || '';
+    const effectiveTerminal =
+      payment.terminalConfig ??
+      (request.payment_terminal?.id === effectiveTerminalId
+        ? request.payment_terminal
+        : undefined);
+
     const terminalResult = await this.processTerminalRefund(
       payment,
       amount,
       useVoid,
-      request.payment_terminal_id ?? payment.terminalId ?? '',
-      request.payment_terminal ?? undefined,
+      effectiveTerminalId,
+      effectiveTerminal,
     );
 
     if (!terminalResult.success) {
@@ -351,22 +412,23 @@ export class RefundService {
       };
     }
 
-    // Extract terminal response fields for storage
-    // Cast to any since DejavooRefundResponse doesn't have all fields from the raw API response
+    // Extract terminal response fields for storage.
+    // Dejavoo returns flat fields; Castles nests them under castles_transaction.
     const terminalResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
     const generalResponse = (terminalResponse?.GeneralResponse as { ResultCode?: string; Message?: string }) ?? undefined;
+    const castlesTxn = terminalResponse?.castles_transaction as Record<string, unknown> | undefined;
     const returnDetails = {
-      rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn) as string | undefined,
-      authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode) as string | undefined,
-      referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId) as string | undefined,
-      transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber) as string | undefined,
+      rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn ?? castlesTxn?.rrn) as string | undefined,
+      authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode ?? castlesTxn?.approvalCode) as string | undefined,
+      referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId ?? castlesTxn?.referenceId) as string | undefined,
+      transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber ?? castlesTxn?.stan) as string | undefined,
       reason: request.reasonDetail,
       initiatedBy: request.initiatedBy,
     };
 
     // Update all records - collect errors but don't fail the whole operation
     const dbErrors: string[] = [];
-    
+
     // First, update reversal and payment in parallel
     const [reversalResult, paymentResult] = await Promise.all([
       OrderService.updateReversalStatus(
@@ -377,7 +439,7 @@ export class RefundService {
         (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
         generalResponse?.ResultCode ?? null,
         generalResponse?.Message ?? null,
-        ((terminalResponse?.RRN ?? terminalResponse?.PNReferenceId) as string) ?? null,
+        ((terminalResponse?.RRN ?? terminalResponse?.rrn ?? castlesTxn?.rrn ?? terminalResponse?.PNReferenceId) as string) ?? null,
       ),
       OrderService.applyRefundToPayment(
         this.supabase,

@@ -1732,7 +1732,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                       }}
                     >
                       {brandLabel || 'Card'}
-                      {payment.timestamp ? ` — ${payment.timestamp}` : ''}
+                      {payment.timestamp ? ` — ${formatTimestamp(payment.timestamp)}` : ''}
                     </Text>
                   </View>
                 </View>

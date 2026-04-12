@@ -2544,8 +2544,11 @@ interface OrderState {
   voidOrder: (orderId: string) => void
 
   // Payment void action - reverts payment and restores items to unpaid
-  voidPayment: (orderId: string, paymentIndex: number) => Promise<boolean>
+  voidPayment: (orderId: string, paymentId: string) => Promise<boolean>
   voidAllPayments: (orderId: string) => Promise<boolean>
+  // Pure local state sync after a successful terminal void via RefundService.
+  // DB is already updated by RefundService; this only updates in-memory state.
+  applyPaymentVoidLocally: (orderId: string, paymentId: string) => void
 
   // O(1) Getter for order by db_order_id
   getOrderByDbId: (dbOrderId: string) => OrderProfile | undefined
@@ -3914,13 +3917,13 @@ export const useOrderStore = create<OrderState>()(
 
             if (existing) {
               // Don't overwrite orders with pending local changes
-              if (existing.sync_status === 'pending') {
-                console.log(
-                  '[UpsertOrder] Skipping - has pending sync:',
-                  dbOrderId
-                )
-                return
-              }
+              // if (existing.sync_status === 'pending') {
+              //   console.log(
+              //     '[UpsertOrder] Skipping - has pending sync:',
+              //     dbOrderId
+              //   )
+              //   return
+              // }
 
               // Phase 8: Version check - skip if server version is not newer
               const existingVersion = existing.sync_version ?? 0
@@ -9293,21 +9296,30 @@ export const useOrderStore = create<OrderState>()(
           // ============================================================================
           voidPayment: async (
             orderId: string,
-            paymentIndex: number
+            paymentId: string
           ): Promise<boolean> => {
             const { ordersById, activeOrderId } = get()
             const order = ordersById[orderId]
 
-            if (!order || !order.payments?.[paymentIndex]) {
-              console.error('[voidPayment] Order or payment not found')
+            if (!order) {
+              console.error('[voidPayment] Order not found:', orderId)
               return false
             }
 
-            const paymentToVoid = order.payments[paymentIndex]
+            // Find by stable db_payment_id — immune to array reordering from Realtime
+            const paymentIndex = (order.payments ?? []).findIndex(
+              p => p.db_payment_id === paymentId || p.id === paymentId
+            )
+            if (paymentIndex === -1) {
+              console.error('[voidPayment] Payment not found:', paymentId)
+              return false
+            }
+
+            const paymentToVoid = order.payments![paymentIndex]
             const originalOrder = { ...order }
 
             // 1. OPTIMISTIC UPDATE: Remove payment and restore paidQuantity
-            const updatedPayments = order.payments.filter(
+            const updatedPayments = order.payments!.filter(
               (_, i) => i !== paymentIndex
             )
 
@@ -9406,11 +9418,11 @@ export const useOrderStore = create<OrderState>()(
 
             // 2. SYNC TO BACKEND
             const supabase = getOrderStoreSupabaseClient()
-            if (supabase && order.db_order_id && paymentToVoid.id) {
+            if (supabase && order.db_order_id && (paymentToVoid.db_payment_id ?? paymentToVoid.id)) {
               try {
-                // Call the void_payment RPC
+                // Call the void_payment RPC — prefer db_payment_id (backend UUID)
                 const { error } = await supabase.rpc('void_payment', {
-                  p_payment_id: paymentToVoid.id,
+                  p_payment_id: paymentToVoid.db_payment_id ?? paymentToVoid.id,
                   p_void_reason: 'User voided from split review'
                 })
 
@@ -9469,9 +9481,13 @@ export const useOrderStore = create<OrderState>()(
 
             if (!order?.payments?.length) return true
 
-            // Void each payment in reverse order to maintain index consistency
-            for (let i = order.payments.length - 1; i >= 0; i--) {
-              const success = await get().voidPayment(orderId, i)
+            // Snapshot payments before the loop — each voidPayment call removes one
+            // payment from the live array, so we must iterate the snapshot.
+            // Reverse order preserves intent for any UI that cares about order.
+            const paymentsSnapshot = [...order.payments]
+            for (let i = paymentsSnapshot.length - 1; i >= 0; i--) {
+              const p = paymentsSnapshot[i]
+              const success = await get().voidPayment(orderId, p.db_payment_id ?? p.id)
               if (!success) {
                 return false // Stop if any void fails
               }
@@ -9503,6 +9519,84 @@ export const useOrderStore = create<OrderState>()(
             }
 
             return true
+          },
+
+          // ============================================================================
+          // APPLY PAYMENT VOID LOCALLY
+          // Pure local state sync used after a successful terminal void via
+          // RefundService.processRefund(). The DB is already updated by RefundService;
+          // this method only mirrors that update into in-memory state.
+          // Finds the payment by db_payment_id (not by fragile array index).
+          // No toast, no rollback — those are the caller's responsibility.
+          // ============================================================================
+          applyPaymentVoidLocally: (orderId: string, paymentId: string): void => {
+            const { ordersById, activeOrderId } = get()
+            const order = ordersById[orderId]
+            if (!order) return
+
+            const paymentIndex = order.payments?.findIndex(
+              p => p.db_payment_id === paymentId || p.id === paymentId
+            ) ?? -1
+            if (paymentIndex === -1) return
+
+            const payments = order.payments ?? []
+            const paymentToVoid = payments[paymentIndex]
+            const updatedPayments = payments.filter((_, i) => i !== paymentIndex)
+
+            // Restore paidQuantity — same logic as voidPayment()
+            const itemsCoveredMap = new Map<string, number>()
+            if (paymentToVoid.itemsCovered) {
+              for (const covered of paymentToVoid.itemsCovered) {
+                if (typeof covered === 'string') {
+                  itemsCoveredMap.set(covered, Infinity)
+                } else {
+                  itemsCoveredMap.set(covered.itemId, covered.quantity)
+                }
+              }
+            }
+            const updatedItems = order.items.map(item => {
+              const qty = itemsCoveredMap.get(item.db_order_item_id || '')
+              if (qty !== undefined) {
+                return {
+                  ...item,
+                  paidQuantity:
+                    qty === Infinity ? 0 : Math.max(0, (item.paidQuantity || 0) - qty),
+                }
+              }
+              return item
+            })
+
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap
+            const totals = calculateOrderTotals(
+              updatedItems,
+              order.checkDiscount,
+              updatedPayments,
+              taxRatesMap
+            )
+            const newAmountPaid = updatedPayments.reduce(
+              (acc, p) => acc + p.amount + (p.tip_amount || 0),
+              0
+            )
+            const newAmountDue = totals.total_amount - newAmountPaid
+            const isStillPaid = newAmountDue < 0.01
+
+            set(state => {
+              const o = state.ordersById[orderId]
+              if (!o) return
+              o.payments    = updatedPayments
+              o.items       = updatedItems
+              o.amount_paid = newAmountPaid
+              o.amount_due  = newAmountDue
+              o.paid_status  = isStillPaid ? ('Paid' as const)   : ('Pending' as const)
+              o.check_status = isStillPaid ? ('Closed' as const) : ('Opened' as const)
+              if (updatedPayments.length === 0) o.split_payment_path = null
+              if (orderId === activeOrderId) {
+                state.activeOrderOutstandingTotal    = totals.outstanding_total
+                state.activeOrderOutstandingSubtotal = totals.outstanding_subtotal
+                state.activeOrderOutstandingTax      = totals.outstanding_tax
+                state.activeOrderOutstandingCash     = totals.cash_outstanding_total
+              }
+            })
           },
 
           // O(1) Getter for order by ID (single index - DB UUID is the key after sync)
@@ -10222,8 +10316,8 @@ export const useOrderStore = create<OrderState>()(
                       method: (p.payment_method === 'card'
                         ? 'Card'
                         : 'Cash') as PaymentType,
-                      cardBrand: p.card_brand,
-                      last4: p.card_last4,
+                      cardBrand: p.card_type,
+                      last4: p.card_last_four,
                       tip_amount: p.tip_amount || 0,
                       total_collected: p.amount + (p.tip_amount || 0),
                       itemsCovered: (p.item_ids || []).map(

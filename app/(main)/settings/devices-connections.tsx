@@ -464,27 +464,74 @@ const DevicesConnectionsScreen = () => {
           });
         }
       } else {
-        const { data: terminalRow, error: termErr } = await supabase
-          .from("payment_terminals")
-          .insert({
-            location_id: selectedStore.id, merchant_id: selectedStore.merchant_id, station_id: selectedStation.id,
-            terminal_name: registerForm.name, terminal_type: "castles", terminal_model: registerForm.model || null,
-            register_id: "CASTLES", auth_key: "CASTLES",
-            local_ip_address: registerForm.connectionType === "local_socket" ? registerForm.ipAddress : null,
-            local_port: registerForm.connectionType === "local_socket" ? (parseInt(registerForm.port, 10) || 8080) : null,
-            connection_type: registerForm.connectionType === "usb" ? "usb" : "local",
-            is_active: true, is_connected: false, api_environment: "production",
-          })
-          .select("id").single();
-        if (termErr) throw termErr;
-        newTerminalId = terminalRow.id;
-        await supabase.from("payment_terminals").update({ is_active: false }).eq("station_id", selectedStation.id).eq("is_active", true).neq("id", terminalRow.id);
+        const connectionType = registerForm.connectionType === "usb" ? "usb" : "local";
+        const localIp = registerForm.connectionType === "local_socket" ? registerForm.ipAddress : null;
+        const localPort = registerForm.connectionType === "local_socket" ? (parseInt(registerForm.port, 10) || 8080) : null;
+
+        // Pre-test on network terminals to get serial number before touching the DB.
+        // This lets us upsert by SN instead of blindly creating duplicates.
+        let discoveredSN: string | undefined;
+        if (registerForm.connectionType === "local_socket" && registerForm.ipAddress) {
+          const preTest = await testConnectionWithConfig({
+            terminalId: `provisional-${selectedStation.id}`,
+            terminalType: "castles",
+            ipAddress: registerForm.ipAddress,
+            port: localPort ?? 8080,
+          });
+          discoveredSN = preTest.serialNumber;
+        }
+
+        // If we have a serial number, check if this physical device is already registered
+        let existingId: string | null = null;
+        if (discoveredSN) {
+          const { data: existing } = await supabase
+            .from("payment_terminals")
+            .select("id")
+            .eq("location_id", selectedStore.id)
+            .eq("serial_number", discoveredSN)
+            .maybeSingle();
+          existingId = existing?.id ?? null;
+        }
+
+        if (existingId) {
+          // Same physical device already in DB — update it rather than creating a duplicate
+          await supabase.from("payment_terminals").update({
+            terminal_name: registerForm.name,
+            terminal_model: registerForm.model || null,
+            local_ip_address: localIp,
+            local_port: localPort,
+            connection_type: connectionType,
+            station_id: selectedStation.id,
+            is_active: true,
+          }).eq("id", existingId);
+          newTerminalId = existingId;
+        } else {
+          // New device — insert with serial number already populated if we got it
+          const { data: terminalRow, error: termErr } = await supabase
+            .from("payment_terminals")
+            .insert({
+              location_id: selectedStore.id, merchant_id: selectedStore.merchant_id, station_id: selectedStation.id,
+              terminal_name: registerForm.name, terminal_type: "castles", terminal_model: registerForm.model || null,
+              register_id: "CASTLES", auth_key: "CASTLES",
+              local_ip_address: localIp,
+              local_port: localPort,
+              connection_type: connectionType,
+              is_active: true, is_connected: false, api_environment: "production",
+              serial_number: discoveredSN ?? null,
+            })
+            .select("id").single();
+          if (termErr) throw termErr;
+          newTerminalId = terminalRow.id;
+        }
+
+        // Deactivate other terminals at this station
+        await supabase.from("payment_terminals").update({ is_active: false }).eq("station_id", selectedStation.id).eq("is_active", true).neq("id", newTerminalId);
         await loadTerminals(selectedStore.id);
-        setActiveTerminal(terminalRow.id);
+        setActiveTerminal(newTerminalId!);
         setSelectedStation({
           ...selectedStation,
           payment_terminal: {
-            id: terminalRow.id, terminal_name: registerForm.name, register_id: null, auth_key: null,
+            id: newTerminalId!, terminal_name: registerForm.name, register_id: null, auth_key: null,
             terminal_type: "castles", terminal_model: registerForm.model || null, is_connected: false,
             ip_address: registerForm.connectionType === "local_socket" ? registerForm.ipAddress : undefined,
             port: registerForm.connectionType === "local_socket" ? (parseInt(registerForm.port, 10) || 8080) : undefined,
@@ -557,6 +604,7 @@ const DevicesConnectionsScreen = () => {
         updatePayload.connection_type = editForm.connectionType === "usb" ? "usb" : "local";
         updatePayload.local_ip_address = editForm.connectionType === "local_socket" ? editForm.ipAddress.trim() : null;
         updatePayload.local_port = editForm.connectionType === "local_socket" ? (parseInt(editForm.port, 10) || 8080) : null;
+        if (testResult.serialNumber) updatePayload.serial_number = testResult.serialNumber;
       } else {
         updatePayload.tpn = editForm.tpn.trim();
         updatePayload.register_id = editForm.tpn.trim();

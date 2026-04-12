@@ -23,6 +23,7 @@ let currentSupabase: SupabaseClient | null = null;
 let currentStationId: string | null = null;
 let currentLocationId: string | null = null;
 let currentSessionStart: string | null = null; // reset each startHeartbeat() call
+let currentSessionStart: string | null = null; // reset each startHeartbeat() call
 
 // ============================================================================
 // HEARTBEAT TICK
@@ -61,6 +62,9 @@ async function sendHeartbeat(): Promise<void> {
     const cached = getCachedCapabilities();
     const appVersion = Application.nativeApplicationVersion || null;
 
+    // 3. Upsert into device_heartbeats — one row per station.
+    // created_at is set to session start on every upsert so updated_at - created_at = current session uptime.
+    const { error: upsertError } = await supabase
     // 3. Upsert into device_heartbeats — one row per station.
     // created_at is set to session start on every upsert so updated_at - created_at = current session uptime.
     const { error: upsertError } = await supabase

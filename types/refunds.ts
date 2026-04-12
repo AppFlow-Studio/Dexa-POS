@@ -113,6 +113,7 @@ export interface PaymentRefundContext {
   batchNumber: string;
   isVoidable: boolean;
   terminalId?: string | null;
+  terminalConfig?: StationPaymentTerminal; // resolved from payment_terminals at gather time
 }
 
 export interface PaymentItemAllocation {

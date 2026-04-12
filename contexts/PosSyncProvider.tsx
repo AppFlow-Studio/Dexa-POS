@@ -46,6 +46,8 @@ import {
   startStarPrinterDiscoveryService,
   stopStarPrinterDiscoveryService,
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
+import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { TaxRate } from "@/types/menu";
@@ -143,6 +145,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
     return () => {
       stopTerminalHealthCheck();
+      // Fire-and-forget graceful disconnect of the Castles singleton when
+      // the effect tears down (station switch, unmount). Prevents a stale
+      // socket from lingering against the previous terminal's host:port.
+      getSharedCastlesService()
+        .gracefulDisconnect()
+        .catch(() => {});
     };
   }, [supabase, selectedStation?.payment_terminal?.id]);
 
@@ -551,6 +559,36 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
             });
           }
         }
+
+        // Resume the Castles singleton with the current station's terminal
+        // config so the first post-resume payment skips the cold-connect
+        // penalty. Read from the store (not closure) to avoid stale refs.
+        const terminal =
+          useStoreSettingsStore.getState().selectedStation?.payment_terminal;
+        if (
+          terminal?.id &&
+          terminal?.terminal_type === "castles" &&
+          (terminal.ip_address || terminal.connection_type === "usb")
+        ) {
+          const service = getSharedCastlesService();
+          if (service.isSuspended()) {
+            service.resume({
+              connectionType:
+                terminal.connection_type === "usb" ? "usb" : "local_socket",
+              host: terminal.ip_address,
+              port: terminal.port ?? CASTLES_DEFAULT_PORT,
+              timeout: 10_000,
+              terminalId: terminal.id,
+            });
+          }
+        }
+      } else if (nextState === "background") {
+        // Graceful Castles disconnect: send return2Idle + close the socket so
+        // the terminal cleans up its side. Fire-and-forget — the method is
+        // safe (never throws, never blocks long) but defensively catch.
+        getSharedCastlesService()
+          .suspend()
+          .catch(() => {});
       }
     };
 

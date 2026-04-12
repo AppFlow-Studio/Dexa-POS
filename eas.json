@@ -12,12 +12,16 @@
     "preview": {
       "distribution": "internal",
       "developmentClient": false,
-      "channel": "preview"
+      "channel": "preview",
+      "autoIncrement": true
     },
     "production": {
       "autoIncrement": true,
       "environment": "production",
-      "channel": "production"
+      "channel": "production",
+       "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

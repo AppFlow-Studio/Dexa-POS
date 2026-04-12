@@ -2,9 +2,11 @@ import '@/global.css'
 import { PortalHost } from '@rn-primitives/portal'
 import { PortalProvider } from 'react-native-teleport'
 
+import { ClerkSessionKeeper } from '@/components/auth/ClerkSessionKeeper'
 import ClockInWallModal from '@/components/auth/ClockInWallModal'
 import ManagerPinModal from '@/components/auth/ManagerPinModal'
 import CustomerSheet from '@/components/bill/CustomerSheet'
+import { ProductionErrorBoundary } from '@/components/ErrorBoundary'
 import ItemCustomizationDialog from '@/components/menu/ItemCustomizationDialog'
 import SearchBottomSheet from '@/components/menu/SearchBottomSheet'
 import { NoPrinterModal } from '@/components/printing/NoPrinterModal'
@@ -32,7 +34,7 @@ import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { Toasts } from '@backpackapp-io/react-native-toast'
-import { ClerkLoaded, ClerkProvider, TokenCache } from '@clerk/clerk-expo'
+import { ClerkProvider, TokenCache, useAuth } from '@clerk/clerk-expo'
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet'
 import {
   DarkTheme,
@@ -45,7 +47,7 @@ import { Stack, useNavigationContainerRef } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import * as React from 'react'
-import { AppState, Platform, Text, View } from 'react-native'
+import { ActivityIndicator, AppState, Platform, Pressable, Text, View } from 'react-native'
 import { SystemBars } from 'react-native-edge-to-edge'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -123,6 +125,56 @@ export {
   // Catch any errors thrown by the Layout component.
   ErrorBoundary
 } from 'expo-router'
+
+/**
+ * Gate that replaces the bare <ClerkLoaded>. While Clerk is loading (either
+ * at cold start or if the SDK transiently re-enters a loading state during a
+ * session refresh), show a visible spinner instead of rendering null — which
+ * would blank the entire tree and produce the ~30-minute white-screen bug.
+ */
+function ClerkGate ({ children }: { children: React.ReactNode }) {
+  const { isLoaded } = useAuth()
+  if (!isLoaded) {
+    return (
+      <View className='flex-1 items-center justify-center bg-background'>
+        <ActivityIndicator size='large' />
+      </View>
+    )
+  }
+  return <>{children}</>
+}
+
+/**
+ * Fallback shown when the root ProductionErrorBoundary catches a render
+ * error anywhere in the provider / Stack tree. Offers both an in-place retry
+ * (which resets the boundary) and a full app reload via expo-updates, which
+ * unsticks corrupted top-level state.
+ */
+function RootErrorFallback () {
+  const handleReload = React.useCallback(() => {
+    Updates.reloadAsync().catch(err => {
+      console.error('[RootErrorFallback] reloadAsync failed:', err)
+    })
+  }, [])
+  return (
+    <View className='flex-1 items-center justify-center bg-background p-6'>
+      <Text className='text-2xl font-bold text-destructive mb-2'>
+        Something went wrong
+      </Text>
+      <Text className='text-base text-muted-foreground text-center mb-6'>
+        The app ran into an unexpected problem. Tap below to reload.
+      </Text>
+      <Pressable
+        onPress={handleReload}
+        className='bg-primary px-8 py-4 rounded-lg'
+      >
+        <Text className='text-primary-foreground font-semibold text-lg'>
+          Reload App
+        </Text>
+      </Pressable>
+    </View>
+  )
+}
 
 export default function RootLayout () {
   const hasMounted = React.useRef(false)
@@ -231,10 +283,15 @@ export default function RootLayout () {
         tokenCache={tokenCache}
         __experimental_resourceCache={mmkvResourceCache}
       >
-        <ClerkLoaded>
+        <ClerkGate>
           {/* <ClerkSessionDebugger /> */}
-          <TanstackProvider>
-            <PosSyncProvider>
+          <ClerkSessionKeeper />
+          <ProductionErrorBoundary
+            section='RootLayout'
+            fallback={<RootErrorFallback />}
+          >
+            <TanstackProvider>
+              <PosSyncProvider>
               <GestureHandlerRootView>
                 <SafeAreaProvider>
                   <ThemeProvider
@@ -330,9 +387,10 @@ export default function RootLayout () {
                   </ThemeProvider>
                 </SafeAreaProvider>
               </GestureHandlerRootView>
-            </PosSyncProvider>
-          </TanstackProvider>
-        </ClerkLoaded>
+              </PosSyncProvider>
+            </TanstackProvider>
+          </ProductionErrorBoundary>
+        </ClerkGate>
       </ClerkProvider>
     </PortalProvider>
   )

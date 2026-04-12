@@ -1,28 +1,22 @@
-name: Deploy
+name: DEXA POS Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main] # triggers OTA update on every merge to main
   workflow_dispatch:
     inputs:
       version:
-        description: "App version (e.g. 1.2.0)"
+        description: "Version tag for the APK (e.g. 1.4.2)"
         required: true
-      force_update:
-        description: "Force update (hide Skip button)"
-        type: boolean
-        default: false
-      release_notes:
-        description: "Release notes shown in the update modal"
-        required: true
+        type: string
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Job 1: OTA update via EAS — runs on every push to main
-  # ---------------------------------------------------------------------------
+  # ─────────────────────────────────────────────
+  # Layer 1: OTA JS update — runs on every push to main.
+  # Covers ~80% of all fixes. No APK install required by merchant.
+  # ─────────────────────────────────────────────
   ota-update:
-    name: EAS OTA Update
+    name: Push OTA Update
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:
@@ -33,21 +27,33 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Publish OTA update
-        run: npx eas-cli update --branch production --message "${{ github.event.head_commit.message }}" --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
 
-  # ---------------------------------------------------------------------------
-  # Job 2: Build APK + deploy to Bunny CDN — manual trigger only
-  # ---------------------------------------------------------------------------
-  build-and-release-apk:
-    name: Build APK & Release
+      - name: Publish OTA update to production channel
+        run: |
+          eas update \
+            --branch production \
+            --message "${{ github.event.head_commit.message }}" \
+            --non-interactive
+
+  # ─────────────────────────────────────────────
+  # Layer 2: Native APK build — triggered manually only.
+  # Use this when a native dependency, permission, or SDK changes.
+  # After the build, the APK is uploaded to Bunny CDN and version.json
+  # is updated so the in-app updater prompts merchants automatically.
+  # ─────────────────────────────────────────────
+  build-apk:
+    name: Build & Upload APK
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     steps:
@@ -58,70 +64,66 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Android APK via EAS
-        id: eas_build
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build APK via EAS
         run: |
-          npx eas-cli build \
+          eas build \
             --platform android \
             --profile production \
             --non-interactive \
-            --wait \
-            --json \
-            > eas_build_output.json
-          cat eas_build_output.json
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+            --output ./build/dexa-pos.apk
 
-      - name: Extract APK download URL
-        id: extract_url
-        run: |
-          # eas build --json outputs an array; grab the first artifact URL
-          APK_URL=$(npx eas-cli build:list --platform android --limit 1 --json \
-            | python3 -c "import sys,json; builds=json.load(sys.stdin); print(builds[0]['artifacts']['buildUrl'])")
-          echo "apk_url=$APK_URL" >> "$GITHUB_OUTPUT"
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Download APK
-        run: |
-          curl -L "${{ steps.extract_url.outputs.apk_url }}" -o dexa-pos-${{ inputs.version }}.apk
-
+      # FIX: Use --upload-file (streams raw binary as Bunny requires).
+      # FIX: Set Content-Type to the Android APK MIME type so Bunny serves
+      # it correctly and Android download manager accepts the install intent.
       - name: Upload APK to Bunny CDN
         run: |
           curl -X PUT \
+            "https://storage.bunnycdn.com/${{ secrets.BUNNY_STORAGE_ZONE }}/releases/dexa-pos-${{ inputs.version }}.apk" \
             -H "AccessKey: ${{ secrets.BUNNY_STORAGE_KEY }}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @dexa-pos-${{ inputs.version }}.apk \
-            "https://storage.bunnycdn.com/dexa-pos-uploads/releases/dexa-pos-${{ inputs.version }}.apk"
+            -H "Content-Type: application/vnd.android.package-archive" \
+            --upload-file ./build/dexa-pos.apk
 
-      - name: Build and upload version.json
+      # Update version.json so the in-app native updater picks up the new APK.
+      # forceUpdate: true will block the app until the merchant installs.
+      # Set to false for non-critical releases.
+      - name: Update version manifest on Bunny CDN
+        env:
+          VERSION: ${{ inputs.version }}
+          BUNNY_CDN_HOSTNAME: ${{ secrets.BUNNY_CDN_HOSTNAME }}
+          BUNNY_STORAGE_ZONE: ${{ secrets.BUNNY_STORAGE_ZONE }}
+          BUNNY_STORAGE_KEY: ${{ secrets.BUNNY_STORAGE_KEY }}
         run: |
-          # Derive build number from version (strip dots, use as integer)
-          BUILD_NUMBER=$(echo "${{ inputs.version }}" | tr -d '.' | sed 's/^0*//')
+          MANIFEST=$(jq -n \
+            --arg version "$VERSION" \
+            --arg apkUrl "https://$BUNNY_CDN_HOSTNAME/releases/dexa-pos-$VERSION.apk" \
+            --arg releaseNotes "${{ github.event.inputs.version }} release" \
+            '{
+              version: $version,
+              buildNumber: (now | floor),
+              apkUrl: $apkUrl,
+              releaseNotes: $releaseNotes,
+              forceUpdate: false
+            }')
 
-          cat > version.json << EOF
-          {
-            "version": "${{ inputs.version }}",
-            "buildNumber": $BUILD_NUMBER,
-            "apkUrl": "https://dexa-pos-uploads.b-cdn.net/releases/dexa-pos-${{ inputs.version }}.apk",
-            "releaseNotes": "${{ inputs.release_notes }}",
-            "forceUpdate": ${{ inputs.force_update }}
-          }
-          EOF
-
-          curl -X PUT \
-            -H "AccessKey: ${{ secrets.BUNNY_STORAGE_KEY }}" \
+          echo "$MANIFEST" | curl -X PUT \
+            "https://storage.bunnycdn.com/$BUNNY_STORAGE_ZONE/releases/version.json" \
+            -H "AccessKey: $BUNNY_STORAGE_KEY" \
             -H "Content-Type: application/json" \
-            --data-binary @version.json \
-            "https://storage.bunnycdn.com/dexa-pos-uploads/releases/version.json"
+            --upload-file -
 
-      - name: Done
+      - name: Print CDN URLs
         run: |
-          echo "Released version ${{ inputs.version }} to Bunny CDN."
-          echo "APK: https://dexa-pos-uploads.b-cdn.net/releases/dexa-pos-${{ inputs.version }}.apk"
-          echo "Manifest: https://dexa-pos-uploads.b-cdn.net/releases/version.json"
+          echo "APK URL: https://${{ secrets.BUNNY_CDN_HOSTNAME }}/releases/dexa-pos-${{ inputs.version }}.apk"
+          echo "Manifest: https://${{ secrets.BUNNY_CDN_HOSTNAME }}/releases/version.json"

@@ -131,6 +131,17 @@ export function usePaymentTerminal() {
             console.warn('[usePaymentTerminal] Castles DB health update failed:', dbErr);
           }
 
+          // Write serial number if the terminal reported one
+          if (result.data?.infSN) {
+            supabase
+              .from('payment_terminals')
+              .update({ serial_number: result.data.infSN })
+              .eq('id', targetId)
+              .then(({ error }) => {
+                if (error) console.warn('[usePaymentTerminal] Serial number update failed:', error);
+              });
+          }
+
           return true;
         } else {
           // 3b. getData failed — terminal not responsive
@@ -507,7 +518,7 @@ export function usePaymentTerminal() {
     port?: number;
     tpn?: string;
     authKey?: string;
-  }): Promise<{ success: boolean; error?: string }> => {
+  }): Promise<{ success: boolean; error?: string; serialNumber?: string }> => {
     try {
       if (params.terminalType === 'castles') {
         const host = params.ipAddress;
@@ -527,7 +538,7 @@ export function usePaymentTerminal() {
         const result = await service.getTerminalData(counter.next());
 
         return result.success
-          ? { success: true }
+          ? { success: true, serialNumber: result.data?.infSN ?? undefined }
           : { success: false, error: result.error || 'Terminal did not respond' };
       }
 

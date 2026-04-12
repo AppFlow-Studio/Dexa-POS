@@ -136,14 +136,25 @@ export class CastlesTcpTransport implements ICastlesTransport {
   }
 
   /**
-   * Disconnect and clean up the socket.
-   * Nulls currentSocket FIRST to prevent stale event races,
-   * then end() + delayed destroy() so TCP FIN propagates.
+   * Disconnect and clean up the socket synchronously.
+   *
+   * - Null JS refs FIRST so the stale-socket guards in onClose/onError/onData
+   *   ignore any events fired for this socket from this point on.
+   * - Remove library-level listeners.
+   * - Call destroy() exactly once. Do NOT also call end(). Both route to
+   *   Java's TcpSocketModule.end(), which schedules a Runnable on the native
+   *   executor that calls getTcpClient(cId) unguarded; two Runnables for the
+   *   same cId race each other and the second one hits a missing id → native
+   *   IllegalArgumentException → process crash.
+   *
+   * We do not need end()'s graceful FIN here: the Castles protocol is app-layer
+   * stateful (return2Idle). _gracefulDisconnectInner() handles the app-layer
+   * graceful shutdown; disconnect() is the ungraceful path (retries, timeouts,
+   * errors) and a hard close is correct there.
    */
   disconnect(): void {
     const oldSocket = this._socket;
 
-    // Null out references FIRST to prevent race conditions
     this._socket = null;
     this._currentSocket = null;
     this._isOpen = false;
@@ -151,14 +162,10 @@ export class CastlesTcpTransport implements ICastlesTransport {
     if (oldSocket) {
       try {
         oldSocket.removeAllListeners();
-        oldSocket.end(); // Send TCP FIN (graceful close)
-        // Delay destroy to let FIN reach the terminal before force-closing
-        setTimeout(() => {
-          try { oldSocket.destroy(); } catch { /* already closed */ }
-        }, 500);
-      } catch {
-        // Socket may already be destroyed
-      }
+      } catch { /* ignore */ }
+      try {
+        oldSocket.destroy();
+      } catch { /* already destroyed */ }
     }
   }
 
