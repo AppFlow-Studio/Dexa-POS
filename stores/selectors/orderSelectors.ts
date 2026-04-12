@@ -55,6 +55,8 @@ function useStableOrderList(orders: OrderProfile[]): OrderProfile[] {
     const o = orders[i];
     hash = ((hash << 5) - hash + hashStr(o.id)) | 0;
     hash = ((hash << 5) - hash + (o.sync_version ?? 0)) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.order_status ?? '')) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.paid_status ?? '')) | 0;
   }
 
   if (hash !== prevHash.current) {
