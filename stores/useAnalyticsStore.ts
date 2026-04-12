@@ -1,790 +1,289 @@
-import {
-    InventoryAnalysis,
-    KPIs,
-    SaleEvent,
-    SalesTrend,
-    calculateAllMetrics,
-    generateMockSalesData
-} from '@/lib/analyticsEngine';
-import { create } from 'zustand';
+import { create } from 'zustand'
 
 export interface DateRange {
-    start: Date;
-    end: Date;
+  start: Date
+  end: Date
 }
 
-export interface Filters {
-    dateRange: DateRange;
-    location?: string;
-    employee?: string;
-    category?: string;
+export interface AnalyticsFilters {
+  dateRange: DateRange
+  location?: string
+  employee?: string
 }
 
-export interface CustomReportConfig {
-    id: string;
-    name: string;
-    metrics: string[];
-    breakdown: string;
-    chartType: 'bar' | 'line' | 'pie';
-    filters: Filters;
-    createdAt: Date;
+export interface OrdersSummary {
+  totalOrders: number
+  completedOrders: number
+  voidedOrders: number
+  cancelledOrders: number
+  totalRevenue: number
+  totalTax: number
+  totalTips: number
+  totalDiscounts: number
+  averageOrderValue: number
+  ordersByType: { type: string; count: number; revenue: number }[]
 }
 
-export interface ReportData {
-    title: string;
-    kpis: KPIs;
-    inventoryAnalysis: InventoryAnalysis;
-    salesTrends: SalesTrend[];
-    chartData: any[];
-    tableData: {
-        headers: string[];
-        rows: any[][];
-    };
+export interface PaymentsSummary {
+  totalPayments: number
+  totalAmount: number
+  byMethod: { method: string; count: number; amount: number }[]
+  refundCount: number
+  refundAmount: number
+}
+
+export interface SessionsSummary {
+  totalSessions: number
+  averagePartySize: number
+  averageDurationMinutes: number
+  totalCovers: number
+  sessionsByStatus: { status: string; count: number }[]
+}
+
+export interface StaffRow {
+  staffId: string
+  name: string
+  orderCount: number
+  revenue: number
+  averageOrderValue: number
+}
+
+export interface AnalyticsData {
+  orders: OrdersSummary
+  payments: PaymentsSummary
+  sessions: SessionsSummary
+  staff: StaffRow[]
 }
 
 export interface AnalyticsState {
-    // Data
-    salesData: SaleEvent[];
-    currentReportData: ReportData | null;
-    savedCustomReports: CustomReportConfig[];
-
-    // UI State
-    isLoading: boolean;
-    error: string | null;
-    filters: Filters;
-
-    // Actions
-    addSaleEvent: (event: SaleEvent[]) => void;
-    setFilters: (filters: Partial<Filters>) => void;
-    setDateRange: (dateRange: DateRange) => void;
-    setLocation: (location: string) => void;
-    setEmployee: (employee: string) => void;
-    fetchReportData: (config: { type?: string; customConfig?: CustomReportConfig }) => void;
-    saveCustomReport: (config: Omit<CustomReportConfig, 'id' | 'createdAt'>) => void;
-    deleteCustomReport: (id: string) => void;
-    generateCustomReport: (config: CustomReportConfig, salesData: SaleEvent[]) => ReportData;
-    clearError: () => void;
-    resetFilters: () => void;
-    forceRefresh: () => void;
+  filters: AnalyticsFilters
+  activePresetLabel: string | null
+  data: AnalyticsData | null
+  isLoading: boolean
+  error: string | null
+  setDateRange: (range: DateRange, presetLabel?: string) => void
+  fetchData: (supabase: any, locationId: string) => Promise<void>
 }
 
-// Initialize with mock data
-const initialSalesData = generateMockSalesData(30);
-
-// Helper functions for category data generation
-function generateCategoryRevenueData(salesData: SaleEvent[]) {
-    const categoryRevenue = new Map<string, number>();
-
-    salesData.forEach(sale => {
-        const category = sale.category || 'Uncategorized';
-        const revenue = sale.salePrice * sale.quantitySold;
-        categoryRevenue.set(category, (categoryRevenue.get(category) || 0) + revenue);
-    });
-
-    return Array.from(categoryRevenue.entries()).map(([category, revenue]) => ({
-        label: category,
-        value: revenue,
-        valueType: 'revenue',
-        unit: '$',
-        description: `Revenue from ${category} items`,
-        color: `hsl(${Math.random() * 360}, 70%, 50%)`
-    }));
+const defaultFilters: AnalyticsFilters = {
+  dateRange: {
+    start: (() => { const d = new Date(); d.setHours(0,0,0,0); return d })(),
+    end: (() => { const d = new Date(); d.setHours(23,59,59,999); return d })(),
+  }
 }
 
-function generateCategoryItemsData(salesData: SaleEvent[]) {
-    const categoryItems = new Map<string, number>();
+// Legacy shim — financial.tsx reads salesData; keep it as empty array
+export const useAnalyticsStore = create<AnalyticsState & Record<string, any>>((set, get) => ({
+  salesData: [] as any[],
+  currentReportData: null as any,
+  savedCustomReports: [] as any[],
+  fetchReportData: async () => {},
+  forceRefresh: () => {},
+  setFilters: () => {},
+  resetFilters: () => {},
+  setLocation: () => {},
+  setEmployee: () => {},
+  addSaleEvent: () => {},
+  generateCustomReport: () => ({} as any),
+  saveCustomReport: () => {},
+  deleteCustomReport: () => {},
+  clearError: () => {},
+  filters: defaultFilters,
+  activePresetLabel: 'Today',
+  data: null,
+  isLoading: false,
+  error: null,
 
-    salesData.forEach(sale => {
-        const category = sale.category || 'Uncategorized';
-        categoryItems.set(category, (categoryItems.get(category) || 0) + sale.quantitySold);
-    });
+  setDateRange: (range, presetLabel) => {
+    set({ filters: { dateRange: range }, activePresetLabel: presetLabel ?? null })
+  },
 
-    return Array.from(categoryItems.entries()).map(([category, items]) => ({
-        label: category,
-        value: items,
-        valueType: 'items',
-        unit: 'items',
-        description: `Number of ${category} items sold`,
-        color: `hsl(${Math.random() * 360}, 70%, 50%)`
-    }));
-}
+  fetchData: async (supabase: any, locationId: string) => {
+    if (!locationId) return
+    set({ isLoading: true, error: null })
 
-function generateCategoryPerformanceData(salesData: SaleEvent[]) {
-    const categoryData = new Map<string, { revenue: number; items: number; orders: number }>();
+    const { dateRange } = get().filters
+    const startIso = dateRange.start.toISOString()
+    const endIso = dateRange.end.toISOString()
 
-    salesData.forEach(sale => {
-        const category = sale.category || 'Uncategorized';
-        const existing = categoryData.get(category) || { revenue: 0, items: 0, orders: 0 };
-        categoryData.set(category, {
-            revenue: existing.revenue + (sale.salePrice * sale.quantitySold),
-            items: existing.items + sale.quantitySold,
-            orders: existing.orders + 1
-        });
-    });
+    try {
+      // Fetch orders — include payment_status to determine revenue
+      const { data: ordersRaw, error: ordersErr } = await supabase
+        .from('orders')
+        .select('id, status, payment_status, order_type, total_amount, tax_amount, tip_amount, discount_amount, assigned_server_id, created_by_staff_id, created_at')
+        .eq('location_id', locationId)
+        .gte('created_at', startIso)
+        .lte('created_at', endIso)
+        .not('status', 'in', '("draft")')
 
-    return Array.from(categoryData.entries()).map(([category, data]) => ({
-        label: category,
-        value: data.revenue,
-        valueType: 'revenue',
-        unit: '$',
-        description: `${data.items} items sold, ${data.orders} orders`,
-        color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-        additionalData: {
-            items: data.items,
-            orders: data.orders
-        }
-    }));
-}
+      if (ordersErr) throw new Error(ordersErr.message)
+      const orders: any[] = ordersRaw || []
 
-const defaultFilters: Filters = {
-    dateRange: {
-        start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-        end: new Date(Date.now() + 24 * 60 * 60 * 1000) // Tomorrow to ensure today is included
+      // An order is "paid" if payment_status is paid/partial/partially_refunded
+      const isPaid = (o: any) =>
+        ['paid', 'partial', 'partially_refunded', 'refunded'].includes(o.payment_status)
+      // "Completed" for display purposes = paid OR status=completed
+      const voided = orders.filter(o => o.status === 'void')
+      const cancelled = orders.filter(o => o.status === 'cancelled')
+      // Revenue from all orders that have been paid (any payment)
+      const revenueOrders = orders.filter(o => isPaid(o))
+      const totalRevenue = revenueOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0)
+      const totalTax = revenueOrders.reduce((s, o) => s + Number(o.tax_amount || 0), 0)
+      const totalTips = revenueOrders.reduce((s, o) => s + Number(o.tip_amount || 0), 0)
+      const totalDiscounts = orders.reduce((s, o) => s + Number(o.discount_amount || 0), 0)
+
+      // Orders by type — count all, revenue from paid only
+      const typeMap = new Map<string, { count: number; revenue: number }>()
+      orders.forEach(o => {
+        const t = o.order_type || 'unknown'
+        const ex = typeMap.get(t) || { count: 0, revenue: 0 }
+        typeMap.set(t, {
+          count: ex.count + 1,
+          revenue: ex.revenue + (isPaid(o) ? Number(o.total_amount || 0) : 0)
+        })
+      })
+      const ordersByType = Array.from(typeMap.entries())
+        .map(([type, v]) => ({ type, ...v }))
+        .sort((a, b) => b.count - a.count)
+
+      const ordersSummary: OrdersSummary = {
+        totalOrders: orders.length,
+        completedOrders: revenueOrders.length,
+        voidedOrders: voided.length,
+        cancelledOrders: cancelled.length,
+        totalRevenue,
+        totalTax,
+        totalTips,
+        totalDiscounts,
+        averageOrderValue: revenueOrders.length > 0 ? totalRevenue / revenueOrders.length : 0,
+        ordersByType,
+      }
+
+      // Fetch payments
+      const { data: paymentsRaw, error: paymentsErr } = await supabase
+        .from('order_payments')
+        .select('id, amount, tip_amount, total_amount, payment_method, status, is_voided, is_returned')
+        .eq('location_id', locationId)
+        .gte('initiated_at', startIso)
+        .lte('initiated_at', endIso)
+
+      if (paymentsErr) throw new Error(paymentsErr.message)
+      const payments: any[] = paymentsRaw || []
+
+      const approvedPayments = payments.filter(p => !p.is_voided && !p.is_returned && (p.status === 'approved' || p.status === 'settled' || p.status === 'captured'))
+      const refunds = payments.filter(p => p.is_returned || p.is_voided)
+
+      const methodMap = new Map<string, { count: number; amount: number }>()
+      approvedPayments.forEach(p => {
+        const m = p.payment_method || 'unknown'
+        const ex = methodMap.get(m) || { count: 0, amount: 0 }
+        methodMap.set(m, {
+          count: ex.count + 1,
+          amount: ex.amount + Number(p.total_amount || p.amount || 0)
+        })
+      })
+      const byMethod = Array.from(methodMap.entries())
+        .map(([method, v]) => ({ method, ...v }))
+        .sort((a, b) => b.amount - a.amount)
+
+      const paymentsSummary: PaymentsSummary = {
+        totalPayments: approvedPayments.length,
+        totalAmount: approvedPayments.reduce((s, p) => s + Number(p.total_amount || p.amount || 0), 0),
+        byMethod,
+        refundCount: refunds.length,
+        refundAmount: refunds.reduce((s, p) => s + Number(p.total_amount || p.amount || 0), 0),
+      }
+
+      // Fetch table sessions
+      const { data: sessionsRaw, error: sessionsErr } = await supabase
+        .from('table_sessions')
+        .select('id, status, party_size, seated_at, closed_at, actual_duration')
+        .eq('location_id', locationId)
+        .gte('created_at', startIso)
+        .lte('created_at', endIso)
+
+      if (sessionsErr) throw new Error(sessionsErr.message)
+      const sessions: any[] = sessionsRaw || []
+
+      const totalCovers = sessions.reduce((s, ses) => s + (Number(ses.party_size) || 0), 0)
+
+      // Duration: prefer actual_duration (seconds), fall back to seated_at→closed_at diff
+      const durationsMin = sessions
+        .map(s => {
+          if (s.actual_duration) return Number(s.actual_duration) / 60
+          if (s.seated_at && s.closed_at) {
+            const diff = (new Date(s.closed_at).getTime() - new Date(s.seated_at).getTime()) / 60000
+            return diff > 0 ? diff : null
+          }
+          return null
+        })
+        .filter((d): d is number => d !== null)
+      const avgDuration = durationsMin.length > 0 ? durationsMin.reduce((a, b) => a + b, 0) / durationsMin.length : 0
+
+      const statusMap = new Map<string, number>()
+      sessions.forEach(s => {
+        statusMap.set(s.status || 'unknown', (statusMap.get(s.status || 'unknown') || 0) + 1)
+      })
+      const sessionsByStatus = Array.from(statusMap.entries())
+        .map(([status, count]) => ({ status, count }))
+        .sort((a, b) => b.count - a.count)
+
+      const sessionsSummary: SessionsSummary = {
+        totalSessions: sessions.length,
+        averagePartySize: sessions.length > 0 ? totalCovers / sessions.length : 0,
+        averageDurationMinutes: avgDuration,
+        totalCovers,
+        sessionsByStatus,
+      }
+
+      // Staff performance — group paid orders by server (fallback to created_by_staff_id)
+      const staffMap = new Map<string, { orderCount: number; revenue: number }>()
+      revenueOrders.forEach(o => {
+        const sid = o.assigned_server_id || o.created_by_staff_id
+        if (!sid) return
+        const ex = staffMap.get(sid) || { orderCount: 0, revenue: 0 }
+        staffMap.set(sid, {
+          orderCount: ex.orderCount + 1,
+          revenue: ex.revenue + Number(o.total_amount || 0)
+        })
+      })
+
+      // Fetch staff names
+      const staffIds = Array.from(staffMap.keys())
+      let staffRows: StaffRow[] = []
+      if (staffIds.length > 0) {
+        const { data: staffRaw } = await supabase
+          .from('staff_profiles')
+          .select('id, first_name, last_name, display_name')
+          .in('id', staffIds)
+
+        staffRows = staffIds.map(id => {
+          const metrics = staffMap.get(id)!
+          const profile = (staffRaw || []).find((s: any) => s.id === id)
+          const name = profile
+            ? (profile.display_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || id)
+            : id
+          return {
+            staffId: id,
+            name,
+            orderCount: metrics.orderCount,
+            revenue: metrics.revenue,
+            averageOrderValue: metrics.orderCount > 0 ? metrics.revenue / metrics.orderCount : 0
+          }
+        }).sort((a, b) => b.revenue - a.revenue)
+      }
+
+      set({
+        data: {
+          orders: ordersSummary,
+          payments: paymentsSummary,
+          sessions: sessionsSummary,
+          staff: staffRows,
+        },
+        isLoading: false,
+      })
+    } catch (err: any) {
+      set({ error: err.message || 'Failed to load analytics', isLoading: false })
     }
-};
-
-export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
-    // Initial state
-    salesData: initialSalesData,
-    currentReportData: null,
-    savedCustomReports: [],
-    isLoading: false,
-    error: null,
-    filters: defaultFilters,
-    generateCustomReport(config: CustomReportConfig, salesData: SaleEvent[]): ReportData {
-        // Ensure dateRange is valid before passing to calculateAllMetrics
-        const dateRange = config.filters.dateRange?.start && config.filters.dateRange?.end
-            ? config.filters.dateRange
-            : undefined;
-
-        const { kpis, inventoryAnalysis, salesTrends } = calculateAllMetrics(salesData, dateRange);
-
-        return {
-            title: getSmartDateRangeTitle(config.name, salesTrends),
-            kpis,
-            inventoryAnalysis,
-            salesTrends,
-            chartData: formatCustomChartData(salesData, config),
-            tableData: formatCustomTableData(salesData, config)
-        };
-    },
-    // Actions
-    addSaleEvent: (event: SaleEvent[]) => {
-        // console.log('📈 Analytics Store: Adding sale events:', event);
-
-        set((state) => {
-            const newSalesData = [...state.salesData, ...event];
-            // console.log('📈 Analytics Store: Total sales data count:', newSalesData.length);
-            // Ensure current filters include "now" so new sales reflect immediately
-            const now = new Date();
-            const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-            const currentRange = state.filters?.dateRange;
-            let updatedFilters = state.filters;
-            if (currentRange) {
-                // If end is before now, extend to tomorrow
-                if (currentRange.end < now) {
-                    updatedFilters = {
-                        ...state.filters,
-                        dateRange: {
-                            start: currentRange.start,
-                            end: tomorrow
-                        }
-                    };
-                }
-            } else {
-                updatedFilters = {
-                    ...state.filters,
-                    dateRange: { start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), end: tomorrow }
-                };
-            }
-            return {
-                salesData: newSalesData,
-                filters: updatedFilters
-            };
-        });
-
-        // Recalculate current report if it exists
-        const { currentReportData } = get();
-        if (currentReportData) {
-            // console.log('📈 Analytics Store: Refreshing report data...');
-            // Use setTimeout to avoid blocking the UI during payment processing
-            setTimeout(() => {
-                get().fetchReportData({ type: 'overview' });
-            }, 100);
-        } else {
-            // console.log('📈 Analytics Store: No current report data, initializing...');
-            // Initialize the report data if it doesn't exist
-            setTimeout(() => {
-                get().fetchReportData({ type: 'overview' });
-            }, 100);
-        }
-    },
-
-    setFilters: (newFilters: Partial<Filters>) => {
-        set((state) => ({
-            filters: { ...state.filters, ...newFilters }
-        }));
-    },
-
-    setDateRange: (dateRange: DateRange) => {
-        set((state) => ({
-            filters: { ...state.filters, dateRange }
-        }));
-    },
-
-    setLocation: (location: string) => {
-        set((state) => ({
-            filters: { ...state.filters, location }
-        }));
-    },
-
-    setEmployee: (employee: string) => {
-        set((state) => ({
-            filters: { ...state.filters, employee }
-        }));
-    },
-
-    fetchReportData: async (config: { type?: string; customConfig?: CustomReportConfig }) => {
-        set({ isLoading: true, error: null });
-
-        try {
-            const { salesData, filters } = get();
-
-            // Simulate API delay
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            let reportData: ReportData;
-
-            if (config.type) {
-                // Pre-built report types
-                reportData = generatePreBuiltReport(config.type, salesData, filters);
-            } else if (config.customConfig) {
-                // Custom report
-                // console.log('📊 Analytics Store: Generating custom report with config:', config.customConfig);
-                reportData = useAnalyticsStore.getState().generateCustomReport(config.customConfig, salesData);
-                // console.log('📊 Analytics Store: Generated custom report data:', {
-                //     title: reportData.title,
-                //     chartDataLength: reportData.chartData?.length,
-                //     firstChartItem: reportData.chartData?.[0]
-                // });
-            } else {
-                throw new Error('Invalid report configuration');
-            }
-
-            set({
-                currentReportData: reportData,
-                isLoading: false
-            });
-        } catch (error) {
-            set({
-                error: error instanceof Error ? error.message : 'Failed to fetch report data',
-                isLoading: false
-            });
-        }
-    },
-
-    saveCustomReport: (config: Omit<CustomReportConfig, 'id' | 'createdAt'>) => {
-        const newReport: CustomReportConfig = {
-            ...config,
-            id: `custom_${Date.now()}`,
-            createdAt: new Date()
-        };
-
-        set((state) => ({
-            savedCustomReports: [...state.savedCustomReports, newReport]
-        }));
-    },
-
-    deleteCustomReport: (id: string) => {
-        set((state) => ({
-            savedCustomReports: state.savedCustomReports.filter(report => report.id !== id)
-        }));
-    },
-
-    clearError: () => {
-        set({ error: null });
-    },
-
-    resetFilters: () => {
-        set({ filters: defaultFilters });
-    },
-
-    // Force refresh analytics data (useful for debugging)
-    forceRefresh: () => {
-        // console.log('🔄 Analytics Store: Force refreshing...');
-        get().fetchReportData({ type: 'overview' });
-    },
-
-}));
-
-// Helper function to generate smart date range titles
-function getSmartDateRangeTitle(baseTitle: string, salesTrends: SalesTrend[]): string {
-    if (!salesTrends || salesTrends.length === 0) {
-        return baseTitle;
-    }
-
-    const dates = salesTrends.map(trend => new Date(trend.date));
-    const startDate = new Date(Math.min(...dates.map(d => d.getTime())));
-    const endDate = new Date(Math.max(...dates.map(d => d.getTime())));
-
-    const startYear = startDate.getFullYear();
-    const endYear = endDate.getFullYear();
-
-    if (startYear === endYear) {
-        return `${baseTitle} - ${startYear}`;
-    } else {
-        return `${baseTitle} - ${startYear} - ${endYear}`;
-    }
-}
-
-// Helper functions for report generation
-function generatePreBuiltReport(type: string, salesData: SaleEvent[], filters: Filters): ReportData {
-    const { kpis, inventoryAnalysis, salesTrends } = calculateAllMetrics(salesData, filters.dateRange);
-
-    switch (type) {
-        case 'overview':
-            return {
-                title: getSmartDateRangeTitle('Analytics Overview', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: formatChartData(salesTrends, 'revenue'),
-                tableData: formatTableData(salesTrends)
-            };
-
-        case 'sales-summary':
-            return {
-                title: getSmartDateRangeTitle('Sales Summary', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: formatChartData(salesTrends, 'revenue'),
-                tableData: formatTableData(salesTrends)
-            };
-
-        case 'item-sales':
-            return {
-                title: getSmartDateRangeTitle('Item Sales Analysis', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: formatItemChartData(inventoryAnalysis.fastMovers),
-                tableData: formatItemTableData(inventoryAnalysis.fastMovers)
-            };
-
-        case 'sales-by-hour':
-            return {
-                title: getSmartDateRangeTitle('Sales by Hour', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: formatHourlyChartData(salesData),
-                tableData: formatHourlyTableData(salesData)
-            };
-
-        case 'sales-by-employee':
-            return {
-                title: getSmartDateRangeTitle('Sales by Employee', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: formatEmployeeChartData(salesData),
-                tableData: formatEmployeeTableData(salesData)
-            };
-
-        case 'discounts':
-            return {
-                title: getSmartDateRangeTitle('Discount Analysis', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: formatChartData(salesTrends, 'revenue'),
-                tableData: formatTableData(salesTrends)
-            };
-
-        case 'payments':
-            return {
-                title: getSmartDateRangeTitle('Payment Method Analysis', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: formatPaymentChartData(salesData),
-                tableData: formatPaymentTableData(salesData)
-            };
-
-        case 'revenue-by-category': {
-            const categoryRevenueData = generateCategoryRevenueData(salesData);
-            return {
-                title: getSmartDateRangeTitle('Revenue by Category', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: categoryRevenueData,
-                tableData: formatCategoryTableData(categoryRevenueData)
-            };
-        }
-
-        case 'items-sold-by-category': {
-            const categoryItemsData = generateCategoryItemsData(salesData);
-            return {
-                title: getSmartDateRangeTitle('Items Sold by Category', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: categoryItemsData,
-                tableData: formatCategoryItemsTableData(categoryItemsData)
-            };
-        }
-
-        case 'category-performance': {
-            const categoryPerformanceData = generateCategoryPerformanceData(salesData);
-            return {
-                title: getSmartDateRangeTitle('Category Performance', salesTrends),
-                kpis,
-                inventoryAnalysis,
-                salesTrends,
-                chartData: categoryPerformanceData,
-                tableData: formatCategoryPerformanceTableData(categoryPerformanceData)
-            };
-        }
-
-        default:
-            throw new Error(`Unknown report type: ${type}`);
-    }
-}
-
-
-// Chart data formatting functions
-function formatChartData(trends: SalesTrend[], metric: keyof SalesTrend) {
-    return trends.map(trend => ({
-        date: new Date(trend.date).toLocaleDateString(),
-        value: trend[metric]
-    }));
-}
-
-function formatItemChartData(items: { itemName: string; totalSold: number; revenue: number }[]) {
-    return items.map(item => ({
-        name: item.itemName,
-        quantity: item.totalSold,
-        revenue: item.revenue
-    }));
-}
-
-function formatHourlyChartData(salesData: SaleEvent[]) {
-    const hourlyData = new Map<number, { orders: number; revenue: number }>();
-
-    for (let hour = 0; hour < 24; hour++) {
-        hourlyData.set(hour, { orders: 0, revenue: 0 });
-    }
-
-    salesData.forEach(sale => {
-        const hour = new Date(sale.date).getHours();
-        const existing = hourlyData.get(hour)!;
-        hourlyData.set(hour, {
-            orders: existing.orders + 1,
-            revenue: existing.revenue + (sale.salePrice * sale.quantitySold)
-        });
-    });
-
-    return Array.from(hourlyData.entries()).map(([hour, data]) => ({
-        hour: `${hour}:00`,
-        orders: data.orders,
-        revenue: data.revenue
-    }));
-}
-
-function formatEmployeeChartData(salesData: SaleEvent[]) {
-    const employeeData = new Map<string, { orders: number; revenue: number }>();
-
-    salesData.forEach(sale => {
-        const employeeId = sale.employeeId || 'Unknown';
-        const existing = employeeData.get(employeeId) || { orders: 0, revenue: 0 };
-        employeeData.set(employeeId, {
-            orders: existing.orders + 1,
-            revenue: existing.revenue + (sale.salePrice * sale.quantitySold)
-        });
-    });
-
-    return Array.from(employeeData.entries()).map(([employee, data]) => ({
-        employee: `Employee ${employee.split('_')[1] || employee}`,
-        orders: data.orders,
-        revenue: data.revenue
-    }));
-}
-
-function formatPaymentChartData(salesData: SaleEvent[]) {
-    const paymentData = new Map<string, { orders: number; revenue: number }>();
-
-    salesData.forEach(sale => {
-        const method = sale.paymentMethod || 'Unknown';
-        const existing = paymentData.get(method) || { orders: 0, revenue: 0 };
-        paymentData.set(method, {
-            orders: existing.orders + 1,
-            revenue: existing.revenue + (sale.salePrice * sale.quantitySold)
-        });
-    });
-
-    return Array.from(paymentData.entries()).map(([method, data]) => ({
-        method: method.charAt(0).toUpperCase() + method.slice(1),
-        orders: data.orders,
-        revenue: data.revenue
-    }));
-}
-
-function formatCustomChartData(salesData: SaleEvent[], config: CustomReportConfig) {
-    console.log('📊 Custom Report: Generating chart data for', config.name);
-    console.log('📊 Custom Report: Metrics:', config.metrics);
-    console.log('📊 Custom Report: Breakdown:', config.breakdown);
-
-    // Filter data by date range
-    const filteredData = salesData.filter(s => {
-        const saleDate = new Date(s.date);
-        const startDate = config.filters.dateRange?.start;
-        const endDate = config.filters.dateRange?.end;
-
-        if (!startDate || !endDate) {
-            console.log('📊 Custom Report: No valid date range, including all data');
-            return true;
-        }
-
-        return saleDate >= startDate && saleDate <= endDate;
-    });
-
-    // Group data by breakdown dimension
-    const groupedData = new Map<string, any>();
-
-    filteredData.forEach(sale => {
-        let groupKey: string;
-
-        switch (config.breakdown) {
-            case 'item':
-                groupKey = sale.itemName;
-                break;
-            case 'category':
-                groupKey = sale.category || 'Uncategorized';
-                break;
-            case 'employee':
-                groupKey = sale.employeeId || 'Unknown';
-                break;
-            case 'payment_method':
-                groupKey = sale.paymentMethod || 'Unknown';
-                break;
-            case 'hour':
-                groupKey = new Date(sale.date).getHours().toString();
-                break;
-            case 'day':
-                groupKey = new Date(sale.date).toLocaleDateString('en-US', { weekday: 'long' });
-                break;
-            case 'date':
-                groupKey = new Date(sale.date).toLocaleDateString();
-                break;
-            default:
-                groupKey = 'All';
-        }
-
-        if (!groupedData.has(groupKey)) {
-            groupedData.set(groupKey, {
-                name: groupKey,
-                revenue: 0,
-                costOfGoods: 0,
-                grossMargin: 0,
-                orderCount: new Set(),
-                itemQuantity: 0,
-                averageOrderValue: 0
-            });
-        }
-
-        const group = groupedData.get(groupKey);
-        group.revenue += sale.salePrice * sale.quantitySold;
-        group.costOfGoods += sale.costOfGoods * sale.quantitySold;
-        group.itemQuantity += sale.quantitySold;
-        if (sale.orderId) {
-            group.orderCount.add(sale.orderId);
-        }
-    });
-
-    // Calculate derived metrics
-    groupedData.forEach(group => {
-        group.grossMargin = group.revenue - group.costOfGoods;
-        group.averageOrderValue = group.orderCount.size > 0 ? group.revenue / group.orderCount.size : 0;
-    });
-
-    // Convert to array and sort by primary metric
-    const primaryMetric = config.metrics[0] || 'revenue';
-    const sortedData = Array.from(groupedData.values()).sort((a, b) => {
-        return (b[primaryMetric] || 0) - (a[primaryMetric] || 0);
-    });
-
-    console.log('📊 Custom Report: Generated data:', sortedData.slice(0, 5));
-    console.log('📊 Custom Report: Sample data structure:', {
-        firstItem: sortedData[0],
-        hasName: sortedData[0]?.name,
-        hasDate: sortedData[0]?.date,
-        breakdown: config.breakdown
-    });
-
-    return sortedData;
-}
-
-// Table data formatting functions
-function formatTableData(trends: SalesTrend[]) {
-    return {
-        headers: ['Date', 'Revenue', 'Orders', 'Items Sold'],
-        rows: trends.map(trend => [
-            new Date(trend.date).toLocaleDateString(),
-            `$${trend.revenue.toFixed(2)}`,
-            trend.orders.toString(),
-            trend.itemsSold.toString()
-        ])
-    };
-}
-
-function formatItemTableData(items: { itemName: string; totalSold: number; revenue: number }[]) {
-    return {
-        headers: ['Item Name', 'Quantity Sold', 'Revenue'],
-        rows: items.map(item => [
-            item.itemName,
-            item.totalSold.toString(),
-            `$${item.revenue.toFixed(2)}`
-        ])
-    };
-}
-
-function formatHourlyTableData(salesData: SaleEvent[]) {
-    const hourlyData = formatHourlyChartData(salesData);
-    return {
-        headers: ['Hour', 'Orders', 'Revenue'],
-        rows: hourlyData.map(data => [
-            data.hour,
-            data.orders.toString(),
-            `$${data.revenue.toFixed(2)}`
-        ])
-    };
-}
-
-function formatEmployeeTableData(salesData: SaleEvent[]) {
-    const employeeData = formatEmployeeChartData(salesData);
-    return {
-        headers: ['Employee', 'Orders', 'Revenue'],
-        rows: employeeData.map(data => [
-            data.employee,
-            data.orders.toString(),
-            `$${data.revenue.toFixed(2)}`
-        ])
-    };
-}
-
-function formatPaymentTableData(salesData: SaleEvent[]) {
-    const paymentData = formatPaymentChartData(salesData);
-    return {
-        headers: ['Payment Method', 'Orders', 'Revenue'],
-        rows: paymentData.map(data => [
-            data.method,
-            data.orders.toString(),
-            `$${data.revenue.toFixed(2)}`
-        ])
-    };
-}
-
-function formatCustomTableData(salesData: SaleEvent[], config: CustomReportConfig) {
-    console.log('📊 Custom Report: Generating table data for', config.name);
-
-    // Use the same logic as formatCustomChartData
-    const chartData = formatCustomChartData(salesData, config);
-
-    // Generate headers based on selected metrics and breakdown
-    const headers = [config.breakdown.charAt(0).toUpperCase() + config.breakdown.slice(1)];
-    config.metrics.forEach(metric => {
-        switch (metric) {
-            case 'revenue':
-                headers.push('Revenue');
-                break;
-            case 'cost_of_goods':
-                headers.push('Cost of Goods');
-                break;
-            case 'gross_margin':
-                headers.push('Gross Margin');
-                break;
-            case 'order_count':
-                headers.push('Orders');
-                break;
-            case 'item_quantity':
-                headers.push('Items Sold');
-                break;
-            case 'average_order_value':
-                headers.push('Avg Order Value');
-                break;
-        }
-    });
-
-    // Generate rows
-    const rows = chartData.map(item => {
-        const row = [item.name];
-        config.metrics.forEach(metric => {
-            switch (metric) {
-                case 'revenue':
-                    row.push(`$${item.revenue.toFixed(2)}`);
-                    break;
-                case 'cost_of_goods':
-                    row.push(`$${item.costOfGoods.toFixed(2)}`);
-                    break;
-                case 'gross_margin':
-                    row.push(`$${item.grossMargin.toFixed(2)}`);
-                    break;
-                case 'order_count':
-                    row.push(item.orderCount.size.toString());
-                    break;
-                case 'item_quantity':
-                    row.push(item.itemQuantity.toString());
-                    break;
-                case 'average_order_value':
-                    row.push(`$${item.averageOrderValue.toFixed(2)}`);
-                    break;
-            }
-        });
-        return row;
-    });
-
-    console.log('📊 Custom Report: Generated table:', { headers, rows: rows.slice(0, 3) });
-
-    return { headers, rows };
-}
-
-// Table formatting functions for new category reports
-function formatCategoryTableData(data: any[]) {
-    return {
-        headers: ['Category', 'Revenue', 'Percentage'],
-        rows: data.map(item => [
-            item.label,
-            `$${item.value.toFixed(2)}`,
-            `${((item.value / data.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%`
-        ])
-    };
-}
-
-function formatCategoryItemsTableData(data: any[]) {
-    return {
-        headers: ['Category', 'Items Sold', 'Percentage'],
-        rows: data.map(item => [
-            item.label,
-            item.value.toString(),
-            `${((item.value / data.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%`
-        ])
-    };
-}
-
-function formatCategoryPerformanceTableData(data: any[]) {
-    return {
-        headers: ['Category', 'Revenue', 'Items Sold', 'Orders', 'Percentage'],
-        rows: data.map(item => [
-            item.label,
-            `$${item.value.toFixed(2)}`,
-            item.additionalData?.items?.toString() || '0',
-            item.additionalData?.orders?.toString() || '0',
-            `${((item.value / data.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%`
-        ])
-    };
-}
-
-// Initialize the store with default data
-useAnalyticsStore.getState().fetchReportData({ type: 'overview' });
+  }
+}))

@@ -24,6 +24,7 @@ let currentStationId: string | null = null;
 let currentLocationId: string | null = null;
 let currentSessionStart: string | null = null; // reset each startHeartbeat() call
 
+
 // ============================================================================
 // HEARTBEAT TICK
 // ============================================================================
@@ -63,6 +64,7 @@ async function sendHeartbeat(): Promise<void> {
 
     // 3. Upsert into device_heartbeats — one row per station.
     // created_at is set to session start on every upsert so updated_at - created_at = current session uptime.
+    
     const { error: upsertError } = await supabase
       .from("device_heartbeats")
       .upsert(
@@ -75,7 +77,7 @@ async function sendHeartbeat(): Promise<void> {
           network_type: networkType,
           printer_status: cached?.hasBuiltinPrinter ? "available" : "none",
           cfd_connected: cached?.hasBuiltinCfd ?? false,
-          created_at: currentSessionStart != null ? currentSessionStart : new Date(),
+          created_at: currentSessionStart,
         },
         { onConflict: "station_id" }
       );
