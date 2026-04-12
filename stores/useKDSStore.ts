@@ -5,6 +5,7 @@ import type {
 } from '@/hooks/realtime/useOrdersRealtime'
 import { getKitchenSentStatus } from '@/lib/kitchenStatusUtils'
 import { normalizePlatform } from '@/lib/platformAliases'
+import { isHeaderOnlyBroadcast } from '@/utils/orderTransformers'
 import { mmkvStorage } from '@/lib/storage'
 import { OrderService } from '@/services/orderService'
 import {
@@ -86,7 +87,7 @@ interface KDSState {
   handleOrderBroadcast: (payload: OrderBroadcastPayload) => void
   _processOrderBroadcast: (payload: OrderBroadcastPayload) => void
   incrementTimerTick: () => void
-  scheduleRefetch: (locationId: string) => void
+  scheduleRefetch: (locationId: string, immediate?: boolean) => void
 
   // New-order callback (for sound notifications)
   _onNewOrderCallback: ((orderSource: string | null) => void) | null
@@ -1367,7 +1368,55 @@ export const useKDSStore = create<KDSState>()(
           return
         }
 
-        // Skip if no items (payment-only broadcast)
+        // v2 (header-only) broadcasts: no items in payload, handle via refetch
+        if (isHeaderOnlyBroadcast(order)) {
+          const { tickets, _ticketIdsByOrderId } = get()
+          const orderTids = _ticketIdsByOrderId[order.id]
+
+          // Terminal statuses: remove tickets immediately from header alone
+          if (TERMINAL_ORDER_STATUSES.has(order.status)) {
+            let hasProtected = false
+            if (orderTids) {
+              for (const tid of orderTids) {
+                if (_pendingActions.has(tid) || _recalledTicketIds.has(tid)) {
+                  hasProtected = true
+                  break
+                }
+              }
+            }
+            if (!hasProtected && orderTids?.size) {
+              const filtered = tickets.filter(t => !orderTids!.has(t.ticket_id))
+              const bucketed = smartBucketTickets(
+                filtered,
+                get().ticketsByStatus,
+                get().prioritizedTicketIds,
+                get().newOrderPosition
+              )
+              set({ tickets: filtered, ...bucketed })
+            }
+            return
+          }
+
+          // Track potential new order for sound notification after refetch
+          if (!orderTids?.size) {
+            _pendingNewOrderSounds.add(order.id)
+          }
+
+          // Fast refetch for authoritative ticket data
+          const locationId = order.location_id
+          if (locationId) {
+            const allProtected =
+              orderTids &&
+              orderTids.size > 0 &&
+              Array.from(orderTids).every(tid => _pendingActions.has(tid))
+            if (!allProtected) {
+              get().scheduleRefetch(locationId, true)
+            }
+          }
+          return
+        }
+
+        // Legacy v1 full broadcast path — skip if no items (payment-only broadcast)
         if (!order.order_items || order.order_items.length === 0) return
 
         const {
@@ -1533,11 +1582,11 @@ export const useKDSStore = create<KDSState>()(
         set(state => ({ timerTick: state.timerTick + 1 }))
       },
 
-      scheduleRefetch: (locationId: string) => {
+      scheduleRefetch: (locationId: string, immediate?: boolean) => {
         if (_refetchTimeout) clearTimeout(_refetchTimeout)
         _refetchTimeout = setTimeout(() => {
           get()._backgroundFetchTickets(locationId)
-        }, 1500)
+        }, immediate ? 300 : 1500)
       },
 
       // ─── Long-Press Actions ─────────────────────────────────────────

@@ -242,7 +242,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
               </Text>
               <Text style={{ color: colors.muted }}>·</Text>
               <Text style={{ fontSize: 12, color: colors.muted }}>
-                {order.items.length} item{order.items.length !== 1 ? "s" : ""}
+                {(order.items.length > 0 ? order.items.length : (order._broadcastItemCount ?? 0))} item{(order.items.length > 0 ? order.items.length : (order._broadcastItemCount ?? 0)) !== 1 ? "s" : ""}
               </Text>
             </View>
             <Text style={{ fontSize: 11, color: colors.muted }}>{formattedTime}</Text>
@@ -614,6 +614,7 @@ const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
     prev.order.paid_status === next.order.paid_status &&
     prev.order.check_status === next.order.check_status &&
     prev.order.items.length === next.order.items.length &&
+    prev.order._broadcastItemCount === next.order._broadcastItemCount &&
     prev.order.amount_due === next.order.amount_due &&
     prev.order.amount_paid === next.order.amount_paid &&
     prev.order.total_amount === next.order.total_amount &&

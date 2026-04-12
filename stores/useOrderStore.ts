@@ -77,6 +77,7 @@ import { OrderDiscountService } from '@/services/orderDiscountService'
 import { paymentPreviewService } from '@/services/paymentPreviewService'
 import {
   deriveCashSavings,
+  isHeaderOnlyBroadcast,
   mapBackendItemToCartItem,
   mapOrderType,
   mapPaymentStatus,
@@ -312,8 +313,12 @@ const KITCHEN_STATUS_RANK: Record<string, number> = {
  */
 function hasItemLevelChanges (
   localItems: CartItem[],
-  backendItems: BroadcastOrderData['order_items'] | undefined
+  backendItems: BroadcastOrderData['order_items'] | undefined,
+  broadcastVersion?: number
 ): boolean {
+  // v2 (header-only) broadcasts intentionally omit items — not a change signal
+  if ((broadcastVersion ?? 1) >= 2) return false
+
   if (!backendItems || localItems.length !== backendItems.length) {
     return true
   }
@@ -3206,6 +3211,10 @@ export const useOrderStore = create<OrderState>()(
 
                     // PERFORMANCE: Skip update if no meaningful data changed
                     // Compare key fields that actually affect UI
+                    // v2 broadcasts: use item_count for length comparison instead of order_items
+                    const broadcastItemCount = isHeaderOnlyBroadcast(backendOrder)
+                      ? backendOrder.item_count
+                      : backendOrder.order_items?.length
                     const noMeaningfulChange =
                       localOrder.amount_paid === backendOrder.amount_paid &&
                       localOrder.paid_status ===
@@ -3214,12 +3223,12 @@ export const useOrderStore = create<OrderState>()(
                       localOrder.total_amount === backendOrder.card_total &&
                       localOrder.check_status === backendOrder.check_status &&
                       localOrder.items.length ===
-                        (backendOrder.order_items?.length ??
-                          localOrder.items.length) &&
+                        (broadcastItemCount ?? localOrder.items.length) &&
                       !hasItemLevelChanges(
                         localOrder.items,
-                        backendOrder.order_items
-                      ) // NEW: Check item-level changes
+                        backendOrder.order_items,
+                        backendOrder._broadcast_version
+                      )
 
                     if (noMeaningfulChange && !hasPendingChanges) {
                       // No meaningful change - skip state update to prevent re-renders
@@ -3252,9 +3261,12 @@ export const useOrderStore = create<OrderState>()(
                             backendOrder.payment_status
                           ),
                           total_discount: backendOrder.discount_amount,
-                          items: backendOrder.order_items
-                            ? transformBroadcastItems(backendOrder.order_items)
-                            : [],
+                          // v2: use local items for conflict detection (broadcast omits them)
+                          items: isHeaderOnlyBroadcast(backendOrder)
+                            ? localOrder.items
+                            : (backendOrder.order_items
+                              ? transformBroadcastItems(backendOrder.order_items)
+                              : []),
                           _sourceStationName: backendOrder.station_name
                         }
 
@@ -3322,9 +3334,12 @@ export const useOrderStore = create<OrderState>()(
                     }
 
                     // Phase 2.5: Transform fresh items from broadcast (if available)
-                    const broadcastItems = backendOrder.order_items
-                      ? transformBroadcastItems(backendOrder.order_items)
-                      : null
+                    // v2 broadcasts omit items — skip transform, keep local items
+                    const broadcastItems = isHeaderOnlyBroadcast(backendOrder)
+                      ? null
+                      : (backendOrder.order_items
+                        ? transformBroadcastItems(backendOrder.order_items)
+                        : null)
 
                     set(state => {
                       const existingOrder = state.ordersById[localOrderId]
@@ -3501,12 +3516,23 @@ export const useOrderStore = create<OrderState>()(
                           existingOrder.sync_version ??
                           0,
 
-                        // Don't let broadcast revert a locally-preparing order back to draft
+                        // Don't let broadcast revert a locally-advanced order status
+                        // (e.g. sent_to_kitchen/preparing reverted to draft by stale item-trigger broadcast)
                         // or revert locally-advanced payment state
                         ...(() => {
+                          const STATUS_RANK: Record<string, number> = {
+                            draft: 0,
+                            sent_to_kitchen: 1,
+                            preparing: 1,
+                            ready: 2,
+                            completed: 3,
+                            closed: 3,
+                            void: 4
+                          }
+                          const localStatusRank = STATUS_RANK[existingOrder.order_status ?? ''] ?? 0
+                          const broadcastStatusRank = STATUS_RANK[backendOrder.status ?? ''] ?? 0
                           const isLocalAhead =
-                            (existingOrder.order_status === 'preparing' &&
-                              backendOrder.status === 'draft') ||
+                            (localStatusRank > broadcastStatusRank) ||
                             isPaymentLocallyAhead
                           return !hasPendingChanges && !isLocalAhead
                             ? {
@@ -3634,6 +3660,15 @@ export const useOrderStore = create<OrderState>()(
                       if (backendRank >= localRank) {
                         get()._debouncedOrderRefresh(dbOrderId)
                       }
+                    }
+
+                    // v2: item count change → full sync to fetch new items
+                    if (
+                      isHeaderOnlyBroadcast(backendOrder) &&
+                      backendOrder.item_count !== undefined &&
+                      backendOrder.item_count !== localOrder.items.filter(i => !i.is_voided).length
+                    ) {
+                      get()._debouncedOrderRefresh(dbOrderId)
                     }
                   }
                   break
@@ -3967,6 +4002,52 @@ export const useOrderStore = create<OrderState>()(
                 })
               }
             }
+
+            // v2 broadcast preservation: keep existing data that header-only broadcast omits
+            if (existing) {
+              const isV2 = isHeaderOnlyBroadcast(backendOrder)
+
+              // Preserve items when broadcast doesn't include them
+              if (isV2 && existing.items.length > 0) {
+                orderProfile.items = existing.items
+              }
+
+              // Preserve payments when not included in this broadcast
+              if (
+                (!backendOrder.order_payments || backendOrder.order_payments.length === 0) &&
+                existing.payments &&
+                existing.payments.length > 0
+              ) {
+                orderProfile.payments = existing.payments
+              } else if (
+                backendOrder.order_payments &&
+                backendOrder.order_payments.length > 0 &&
+                existing.items.length > 0
+              ) {
+                // Payment broadcast without items: resolve "Unknown Item" names from existing items
+                orderProfile.payments = (orderProfile.payments || []).map(p => ({
+                  ...p,
+                  itemsCovered: (p.itemsCovered || []).map(c => {
+                    if (c.itemName !== 'Unknown Item') return c
+                    const local = existing.items.find(
+                      i => i.db_order_item_id === c.itemId
+                    )
+                    return local ? { ...c, itemName: local.name } : c
+                  })
+                }))
+              }
+
+              // Preserve reversals/refund_items when not in broadcast
+              if (!backendOrder.reversals?.length && existing.reversals) {
+                orderProfile.reversals = existing.reversals
+              }
+              if (!backendOrder.order_refund_items?.length && existing.order_refund_items) {
+                orderProfile.order_refund_items = existing.order_refund_items
+              }
+            }
+
+            // Set broadcast item count for display
+            orderProfile._broadcastItemCount = backendOrder.item_count
 
             // Upsert to single index (pre-freeze so Immer skips recursive scan)
             set(state => {
@@ -4594,6 +4675,11 @@ export const useOrderStore = create<OrderState>()(
 
             // Synchronously calculate and update all derived state - instant!
             get().recalculateOrder(orderId)
+
+            // Lazy-fetch full detail for remote/header-only orders with no items loaded
+            if (order && order.items.length === 0 && order.db_order_id) {
+              get().syncOrderFromBackendComplete(orderId)
+            }
           },
 
           startNewOrder: details => {

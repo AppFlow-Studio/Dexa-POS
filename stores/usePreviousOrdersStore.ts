@@ -871,7 +871,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           amount_paid: profile.amount_paid ?? existing.amount_paid,
           amount_due: profile.amount_due ?? existing.amount_due,
           cash_amount_due: profile.cash_amount_due ?? existing.cash_amount_due,
-          payments: profile.payments || existing.payments,
+          payments: (profile.payments?.length ?? 0) > 0 ? profile.payments : existing.payments,
           checkStatus: profile.check_status || existing.checkStatus,
         });
       } else if (_isFinalState(profile)) {

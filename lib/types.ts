@@ -948,6 +948,9 @@ export interface OrderProfile {
 
   // === SYNC VERSION (for optimistic concurrency) ===
   sync_version?: number; // Backend sync version for conflict detection
+
+  // === BROADCAST METADATA (transient, not persisted to MMKV) ===
+  _broadcastItemCount?: number; // Non-voided item count from v2 broadcasts
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

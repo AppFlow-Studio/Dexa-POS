@@ -235,6 +235,11 @@ export interface BroadcastOrderData {
   sync_version: number;
   is_offline: boolean;
 
+  // Broadcast version: 1 = legacy full payload, 2 = header-only (no items/reversals/refund_items)
+  _broadcast_version?: number;
+  // Computed non-voided item count (present in v2 broadcasts)
+  item_count?: number;
+
   // Order items (Phase 2: Remote Order Management)
   order_items?: BroadcastOrderItemData[];
 

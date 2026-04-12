@@ -586,7 +586,7 @@ export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
           o.order_type !== "dine_in" &&
           o.order_status !== "void" &&
           o.order_status !== "completed" &&
-          o.items.length > 0 &&
+          (o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0) &&
           (
             // Draft orders: only show own-station ones
             (isDraft && isOwnStation) ||
