@@ -373,9 +373,8 @@ export function useOrdersRealtime({
 
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
-      console.log(`📨 [OrdersRealtime] Received ${event} event:`, {
+      if (__DEV__) console.log(`[OrdersRealtime] Received ${event} event:`, {
         event,
-        hasPayload: !!payload,
         orderId: (payload as any)?.data?.order?.id,
         operation: (payload as any)?.operation,
       });
@@ -494,7 +493,7 @@ export function useKitchenRealtime({
         return;
       }
 
-      console.log(`[KitchenRealtime] Event: ${event}`, orderPayload);
+      if (__DEV__) console.log(`[KitchenRealtime] Event: ${event}`, orderPayload);
 
       // Invalidate kitchen queue
       queryClient.invalidateQueries({

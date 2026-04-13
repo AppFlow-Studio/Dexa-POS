@@ -1,6 +1,5 @@
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
 import HistoryTab from "@/components/profile/HistoryTab";
-import MyScheduleScreen from "@/components/profile/MyScheduleScreen";
 import ProfileInfoTab from "@/components/profile/ProfileInfoTab";
 import SecurityTab from "@/components/profile/SecurityTab";
 import UserProfileCard from "@/components/timeclock/UserProfileCard";
@@ -9,23 +8,18 @@ import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { replaceRoute } from "@/lib/rootNavigation";
-import { Link, router, useLocalSearchParams } from "expo-router";
 import { colors, spinnerColor } from "@/lib/theme";
-import { ArrowLeft, Calendar, Menu } from "lucide-react-native";
+import { ArrowLeft } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type TabName = "Profile Info" | "My Schedule" | "Security" | "History";
-const TABS: TabName[] = ["Profile Info", "My Schedule", "Security", "History"];
+type TabName = "Profile Info" | "Security" | "History";
+const TABS: TabName[] = ["Profile Info", "Security", "History"];
 
 const MyProfileScreen = () => {
   const { activeEmployeeId, employees } = useEmployeeStore();
   const { sessions, activeEmployeeId: timeclockActiveId } = useTimeclockStore();
-  const { tab, date } = useLocalSearchParams<{
-    tab: string;
-    date: string;
-  }>();
 
   // Find current employee - check multiple sources
   const currentEmployee = React.useMemo(() => {
@@ -52,18 +46,12 @@ const MyProfileScreen = () => {
   const { setSheetRef } = useNotificationSheetStore();
 
   useEffect(() => {
-    console.log("we are setting it here again");
-
     setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>);
   }, [setSheetRef]);
 
   useEffect(() => {
-    if (tab === "MyScheduleScreen") {
-      setActiveTab("My Schedule");
-    } else {
-      setActiveTab("Profile Info");
-    }
-  }, [tab]);
+    setActiveTab("Profile Info");
+  }, []);
 
   const renderContent = () => {
     if (activeTab === null) {
@@ -77,8 +65,6 @@ const MyProfileScreen = () => {
     switch (activeTab) {
       case "Profile Info":
         return <ProfileInfoTab />;
-      case "My Schedule":
-        return <MyScheduleScreen initialDate={date} />;
       case "Security":
         return <SecurityTab />;
       case "History":
@@ -103,7 +89,8 @@ const MyProfileScreen = () => {
             <Text className="text-lg font-bold text-heading">My Profile</Text>
           </View>
 
-          <View className="flex-row items-center gap-2">
+          {/* PTO and Requests buttons — disabled until scheduling module is complete */}
+          {/* <View className="flex-row items-center gap-2">
             <Link href="/pto" asChild>
               <TouchableOpacity className="flex-row items-center gap-2 px-3 py-1.5 bg-panel border border-border rounded-xl">
                 <Calendar size={14} color={colors.teal} />
@@ -116,7 +103,7 @@ const MyProfileScreen = () => {
                 <Text className="text-sm font-semibold text-heading">Requests</Text>
               </TouchableOpacity>
             </Link>
-          </View>
+          </View> */}
         </View>
 
         <View style={{ flex: 1, flexDirection: 'row', gap: 16, alignItems: 'stretch' }}>

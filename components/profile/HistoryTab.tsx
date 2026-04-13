@@ -5,11 +5,22 @@ import { PrinterService } from "@/services/printing/PrinterService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { Clock, Printer } from "lucide-react-native";
-import { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { Clock, Printer, RefreshCw } from "lucide-react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const TABLE_HEADERS = ["Date", "Clock In", "Break", "Clock Out", "Duration"];
+
+const formatTime = (isoString: string): string => {
+  if (!isoString || isoString === "N/A") return "N/A";
+  try {
+    const d = new Date(isoString);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return isoString;
+  }
+};
 
 const HistoryTableHeader = () => (
   <View
@@ -63,15 +74,15 @@ const HistoryTableRow = ({
 
     {/* Clock In */}
     <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.heading }}>
-      {item.clockIn}
+      {formatTime(item.clockIn)}
     </Text>
 
     {/* Break */}
     <View style={{ flex: 1 }}>
       {item.breakInitiated !== "N/A" ? (
         <>
-          <Text style={{ fontSize: 11, color: colors.teal }}>{item.breakInitiated}</Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>– {item.breakEnded}</Text>
+          <Text style={{ fontSize: 11, color: colors.teal }}>{formatTime(item.breakInitiated)}</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>– {formatTime(item.breakEnded)}</Text>
         </>
       ) : (
         <Text style={{ fontSize: 11, color: colors.muted, fontStyle: "italic" }}>No break</Text>
@@ -80,7 +91,11 @@ const HistoryTableRow = ({
 
     {/* Clock Out */}
     <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.heading }}>
-      {item.clockOut}
+      {item.clockOut === "N/A" ? (
+        <Text style={{ color: colors.teal, fontStyle: "italic" }}>Active</Text>
+      ) : (
+        formatTime(item.clockOut)
+      )}
     </Text>
 
     {/* Duration */}
@@ -103,7 +118,7 @@ const HistoryTableRow = ({
         }}
       >
         <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
-          {item.duration}h
+          {item.duration}
         </Text>
       </View>
     </View>
@@ -111,10 +126,18 @@ const HistoryTableRow = ({
 );
 
 const HistoryTab = () => {
-  const { shiftHistory } = useTimeclockStore();
+  const { shiftHistory, historyLoading, fetchShiftHistory } = useTimeclockStore();
   const { activeEmployeeId, getEmployeeById } = useEmployeeStore();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const supabase = useSupabaseClient();
   const [isPrinting, setIsPrinting] = useState(false);
+
+  // Fetch history on mount and when employee changes
+  useEffect(() => {
+    if (selectedStore?.id && supabase) {
+      fetchShiftHistory(supabase, selectedStore.id);
+    }
+  }, [selectedStore?.id, supabase, activeEmployeeId]);
 
   const myHistory = useMemo(
     () =>
@@ -123,6 +146,12 @@ const HistoryTab = () => {
       ),
     [shiftHistory, activeEmployeeId],
   );
+
+  const handleRefresh = () => {
+    if (selectedStore?.id && supabase) {
+      fetchShiftHistory(supabase, selectedStore.id);
+    }
+  };
 
   const handlePrintTimesheet = async () => {
     if (!selectedStore?.id) {
@@ -137,7 +166,7 @@ const HistoryTab = () => {
       toastService.show({
         title: "Nothing to print",
         message: "No shifts in history yet.",
-        type: "info",
+        type: "warning",
       });
       return;
     }
@@ -224,40 +253,63 @@ const HistoryTab = () => {
             letterSpacing: 1,
           }}
         >
-          Shift History
+          Shift History (Last 30 Days)
         </Text>
-        <TouchableOpacity
-          onPress={handlePrintTimesheet}
-          disabled={isPrinting || myHistory.length === 0}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor:
-              myHistory.length === 0 ? colors.border : colors.teal + "50",
-            backgroundColor:
-              myHistory.length === 0 ? "transparent" : colors.teal + "15",
-            opacity: isPrinting ? 0.6 : 1,
-            gap: 5,
-          }}
-        >
-          <Printer
-            size={12}
-            color={myHistory.length === 0 ? colors.muted : colors.teal}
-          />
-          <Text
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            onPress={handleRefresh}
+            disabled={historyLoading}
             style={{
-              fontSize: 11,
-              fontWeight: "600",
-              color: myHistory.length === 0 ? colors.muted : colors.teal,
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              opacity: historyLoading ? 0.6 : 1,
+              gap: 5,
             }}
           >
-            {isPrinting ? "Printing..." : "Print Timesheet"}
-          </Text>
-        </TouchableOpacity>
+            <RefreshCw size={12} color={colors.label} />
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label }}>
+              Refresh
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handlePrintTimesheet}
+            disabled={isPrinting || myHistory.length === 0}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor:
+                myHistory.length === 0 ? colors.border : colors.teal + "50",
+              backgroundColor:
+                myHistory.length === 0 ? "transparent" : colors.teal + "15",
+              opacity: isPrinting ? 0.6 : 1,
+              gap: 5,
+            }}
+          >
+            <Printer
+              size={12}
+              color={myHistory.length === 0 ? colors.muted : colors.teal}
+            />
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "600",
+                color: myHistory.length === 0 ? colors.muted : colors.teal,
+              }}
+            >
+              {isPrinting ? "Printing..." : "Print Timesheet"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View
@@ -270,7 +322,12 @@ const HistoryTab = () => {
         }}
       >
         <HistoryTableHeader />
-        {myHistory.length === 0 ? (
+        {historyLoading && myHistory.length === 0 ? (
+          <View style={{ alignItems: "center", paddingVertical: 40, gap: 8 }}>
+            <ActivityIndicator size="small" color={colors.teal} />
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Loading shift history...</Text>
+          </View>
+        ) : myHistory.length === 0 ? (
           <View style={{ alignItems: "center", paddingVertical: 40, gap: 8 }}>
             <Clock size={28} color={colors.muted} />
             <Text style={{ color: colors.muted, fontSize: 13 }}>No shift history yet.</Text>

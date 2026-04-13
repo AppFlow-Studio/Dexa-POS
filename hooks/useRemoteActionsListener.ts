@@ -46,7 +46,7 @@ export function useRemoteActionsListener() {
   const stationId = selectedStation?.id ?? null;
 
   const performLogout = useCallback(() => {
-    console.log("[RemoteActions] Performing logout");
+    if (__DEV__) console.log("[RemoteActions] Performing logout");
     setStationSessionId(null);
     clearSelectedStation();
     routerRef.current.replace("/station-select");
@@ -140,7 +140,7 @@ export function useRemoteActionsListener() {
     if (!stationId) return;
 
     const channelName = `station:${stationId}`;
-    console.log(`[RemoteActions] Subscribing to broadcast channel: ${channelName}`);
+    if (__DEV__) console.log(`[RemoteActions] Subscribing to broadcast channel: ${channelName}`);
 
     const actionTypes: RemoteActionType[] = [
       "force_refresh",
@@ -157,14 +157,14 @@ export function useRemoteActionsListener() {
     for (const event of actionTypes) {
       ch = ch.on("broadcast", { event }, (msg) => {
         const payload = msg.payload as RemoteActionPayload;
-        console.log(`[RemoteActions] Received event: ${event}`, payload.request_id);
+        if (__DEV__) console.log(`[RemoteActions] Received event: ${event}`, payload.request_id);
         handleAction(channelRef.current!, payload, stationId);
       });
     }
 
     ch.subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        console.log("[RemoteActions] Broadcast channel connected");
+        if (__DEV__) console.log("[RemoteActions] Broadcast channel connected");
       } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
         console.warn(`[RemoteActions] Broadcast channel ${status}`);
       }
@@ -174,7 +174,7 @@ export function useRemoteActionsListener() {
 
     return () => {
       if (channelRef.current) {
-        console.log("[RemoteActions] Removing broadcast channel");
+        if (__DEV__) console.log("[RemoteActions] Removing broadcast channel");
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }

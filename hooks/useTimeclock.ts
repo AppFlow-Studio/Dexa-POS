@@ -105,6 +105,9 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
             store.setBreakStartTime(new Date().toISOString());
           } else if (type === "break_end") {
             store.setBreakStartTime(null);
+          } else if (type === "sign_in") {
+            // New employee signing in — clear any stale break time from previous employee
+            store.setBreakStartTime(null);
           } else if (type === "clock_out") {
             // Clear all state on clock out
             store.clearState();

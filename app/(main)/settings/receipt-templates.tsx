@@ -2161,7 +2161,7 @@ function ReceiptSettings({
           onToggle={(v) => updateField("showOrderType", v)}
         />
       </CollapsibleSection>
-
+{/* 
       <CollapsibleSection title="Extras" subtitle="Barcodes and QR codes" defaultOpen={false}>
         <ToggleRow
           label="Show Barcode"
@@ -2175,7 +2175,7 @@ function ReceiptSettings({
           value={config.showQrCode}
           onToggle={(v) => updateField("showQrCode", v)}
         />
-      </CollapsibleSection>
+      </CollapsibleSection> */}
 
       <CollapsibleSection
         title="Organisation"
