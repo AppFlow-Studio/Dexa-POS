@@ -20,7 +20,7 @@ import {
   X,
   Zap,
 } from 'lucide-react-native'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   ScrollView,
@@ -57,6 +57,7 @@ export default function EnrollCustomerScreen() {
   const [searching,      setSearching]      = useState(false)
   const [searchResults,  setSearchResults]  = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Programs
   const [programs,         setPrograms]         = useState<LoyaltyProgram[]>([])
@@ -83,26 +84,32 @@ export default function EnrollCustomerScreen() {
       })
   }, [merchantId, supabase])
 
-  const handleSearch = async () => {
-    const q = query.trim()
-    if (!q) return
+  const runSearch = async (q: string) => {
+    const trimmed = q.trim()
+    if (!trimmed) { setSearchResults([]); return }
     setSearching(true)
     try {
-      const digits = q.replace(/\D/g, '').slice(-10)
+      const digits = trimmed.replace(/\D/g, '').slice(-10)
       const { data } = await supabase
         .from('customers')
         .select('id, name, phone, lifetime_spend, visits')
         .eq('merchant_id', merchantId)
         .or(
           digits.length >= 7
-            ? `phone.ilike.%${digits}%,name.ilike.%${q}%`
-            : `name.ilike.%${q}%`
+            ? `phone.ilike.%${digits}%,name.ilike.%${trimmed}%`
+            : `name.ilike.%${trimmed}%`
         )
         .limit(10)
       setSearchResults((data ?? []) as Customer[])
     } finally {
       setSearching(false)
     }
+  }
+
+  const handleQueryChange = (text: string) => {
+    setQuery(text)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => runSearch(text), 400)
   }
 
   const handleSelectCustomer = async (cust: Customer) => {
@@ -203,22 +210,17 @@ export default function EnrollCustomerScreen() {
                     <Search size={14} color={colors.muted} />
                     <TextInput
                       value={query}
-                      onChangeText={setQuery}
+                      onChangeText={handleQueryChange}
                       placeholder="Name or phone…"
                       placeholderTextColor={colors.muted}
                       style={{ flex: 1, fontSize: 13, color: colors.heading }}
-                      onSubmitEditing={handleSearch}
+                      onSubmitEditing={() => runSearch(query)}
                       returnKeyType="search"
+                      autoFocus
                     />
-                    {query ? <TouchableOpacity onPress={() => { setQuery(''); setSearchResults([]) }}><X size={14} color={colors.muted} /></TouchableOpacity> : null}
+                    {query ? <TouchableOpacity onPress={() => { setQuery(''); setSearchResults([]); if (searchTimer.current) clearTimeout(searchTimer.current) }}><X size={14} color={colors.muted} /></TouchableOpacity> : null}
+                    {searching && <ActivityIndicator color={colors.teal} size="small" />}
                   </View>
-                  <TouchableOpacity
-                    onPress={handleSearch}
-                    disabled={searching || !query.trim()}
-                    style={{ paddingHorizontal: 14, paddingVertical: 9, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', borderRadius: 9, alignItems: 'center', justifyContent: 'center', minWidth: 80 }}
-                  >
-                    {searching ? <ActivityIndicator color={colors.teal} size="small" /> : <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>Search</Text>}
-                  </TouchableOpacity>
                 </View>
               </View>
             </View>

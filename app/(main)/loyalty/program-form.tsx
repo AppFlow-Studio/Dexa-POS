@@ -313,6 +313,19 @@ export default function ProgramFormScreen() {
         display_icon:                 'star',
       }
 
+      // If this program is being set active, deactivate all others for this merchant+location
+      if (isActive) {
+        const locationId = selectedStore?.id
+        const deactivateQuery = supabase
+          .from('loyalty_programs')
+          .update({ is_active: false })
+          .eq('merchant_id', merchantId)
+          .eq('is_active', true)
+          .contains('location_ids', locationId ? [locationId] : [])
+        if (isEdit) deactivateQuery.neq('id', editId!)
+        await deactivateQuery
+      }
+
       let error: any
       if (isEdit) {
         ;({ error } = await supabase.from('loyalty_programs').update(payload).eq('id', editId!))
@@ -527,7 +540,7 @@ export default function ProgramFormScreen() {
 
           {/* Settings */}
           <SectionBox title="Settings">
-            <ToggleRow label="Active" desc="Program is available to customers" value={isActive} onChange={setIsActive} />
+            <ToggleRow label="Active" desc="Only one program can be active at a time — enabling this will deactivate the current one" value={isActive} onChange={setIsActive} />
             <View style={{ height: 1, backgroundColor: colors.border }} />
             <ToggleRow label="Auto-Enroll" desc="Automatically enroll customers on first qualifying order" value={autoEnroll} onChange={setAutoEnroll} />
             <View style={{ height: 1, backgroundColor: colors.border }} />
