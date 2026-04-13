@@ -1,4 +1,5 @@
 import '@/global.css'
+import * as Application from 'expo-application'
 import { PortalHost } from '@rn-primitives/portal'
 import { PortalProvider } from 'react-native-teleport'
 
@@ -237,6 +238,10 @@ export default Sentry.wrap(function RootLayout() {
     if (Platform.OS === 'android') {
       NavigationBar.setVisibilityAsync('hidden').catch(() => {})
       checkForNativeUpdate().then(manifest => {
+        Sentry.captureMessage(
+          `[AppUpdater] nativeBuild=${Application.nativeBuildVersion} remoteBuild=${manifest?.buildNumber ?? 'none'} needsUpdate=${!!manifest}`,
+          'info'
+        )
         if (manifest) setNativeUpdateManifest(manifest)
       })
     }
