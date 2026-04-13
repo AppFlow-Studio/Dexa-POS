@@ -283,6 +283,7 @@ const DevicesConnectionsScreen = () => {
     isDefaultReceipt?: boolean;
     isDefaultKitchen?: boolean;
     isActive?: boolean;
+    printerName?: string;
   }>({});
   const [isSavingPrinter, setIsSavingPrinter] = useState(false);
 
@@ -707,7 +708,19 @@ const DevicesConnectionsScreen = () => {
   const handleSavePrinterEdits = async (printerId: string) => {
     setIsSavingPrinter(true);
     try {
-      await updatePrinterConfig(printerId, draftPrinterEdits);
+      const hasNameUpdate = draftPrinterEdits.printerName !== undefined;
+      const trimmedName = draftPrinterEdits.printerName?.trim();
+      if (hasNameUpdate && !trimmedName) {
+        Alert.alert("Invalid Name", "Printer name cannot be empty.");
+        return;
+      }
+
+      const updatePayload = {
+        ...draftPrinterEdits,
+        ...(hasNameUpdate ? { printerName: trimmedName } : {}),
+      };
+
+      await updatePrinterConfig(printerId, updatePayload);
       if (selectedStore?.id) await fetchPrinters(selectedStore.id);
       setEditingPrinterId(null);
       setDraftPrinterEdits({});
@@ -1315,8 +1328,28 @@ const DevicesConnectionsScreen = () => {
                       const draftDefaultReceipt = draftPrinterEdits.isDefaultReceipt ?? receiptPrinter.isDefaultReceipt;
                       const draftDefaultKitchen = draftPrinterEdits.isDefaultKitchen ?? receiptPrinter.isDefaultKitchen;
                       const draftActive = draftPrinterEdits.isActive ?? receiptPrinter.isActive;
+                      const draftPrinterName = draftPrinterEdits.printerName ?? receiptPrinter.printerName;
                       return (
                         <View style={{ marginHorizontal: 12, marginBottom: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+                          <View style={{ marginBottom: 8 }}>
+                            <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>Printer Name</Text>
+                            <TextInput
+                              value={draftPrinterName}
+                              onChangeText={(v) => setDraftPrinterEdits((prev) => ({ ...prev, printerName: v }))}
+                              placeholder="Printer name"
+                              placeholderTextColor={colors.muted}
+                              style={{
+                                backgroundColor: colors.screen,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                borderRadius: 8,
+                                paddingHorizontal: 12,
+                                paddingVertical: 9,
+                                color: colors.heading,
+                                fontSize: 13,
+                              }}
+                            />
+                          </View>
                           {draftRole !== "label" && (
                             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
                               <View>
@@ -1407,8 +1440,28 @@ const DevicesConnectionsScreen = () => {
                     {isEditing && (() => {
                       const draftDefaultKitchen = draftPrinterEdits.isDefaultKitchen ?? printer.isDefaultKitchen;
                       const draftActive = draftPrinterEdits.isActive ?? printer.isActive;
+                      const draftPrinterName = draftPrinterEdits.printerName ?? printer.printerName;
                       return (
                         <View style={{ marginHorizontal: 12, marginBottom: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+                          <View style={{ marginBottom: 8 }}>
+                            <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>Printer Name</Text>
+                            <TextInput
+                              value={draftPrinterName}
+                              onChangeText={(v) => setDraftPrinterEdits((prev) => ({ ...prev, printerName: v }))}
+                              placeholder="Printer name"
+                              placeholderTextColor={colors.muted}
+                              style={{
+                                backgroundColor: colors.screen,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                borderRadius: 8,
+                                paddingHorizontal: 12,
+                                paddingVertical: 9,
+                                color: colors.heading,
+                                fontSize: 13,
+                              }}
+                            />
+                          </View>
                           <TouchableOpacity onPress={() => setRoutingModalPrinter(printer)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                               <Route size={14} color={colors.teal} />
