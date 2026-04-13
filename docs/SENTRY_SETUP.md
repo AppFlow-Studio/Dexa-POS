@@ -37,7 +37,7 @@ In `app.json` (or `app.config.ts`):
       [
         "@sentry/react-native/expo",
         {
-          "organization": "your-org",
+          "organization": "appflow-studios",
           "project": "dexa-pos"
         }
       ]
