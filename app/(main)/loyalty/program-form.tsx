@@ -258,7 +258,7 @@ export default function ProgramFormScreen() {
     setEarnOnDiscount(p.earn_on_discounted ?? true)
     setDisplayColor(p.display_color ?? ACCENT_COLORS[0])
     setLoading(false)
-  }, [editId, supabase, router, show])
+  }, [editId, router, show])
 
   useEffect(() => { if (isEdit) loadProgram() }, [isEdit, loadProgram])
 

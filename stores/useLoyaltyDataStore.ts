@@ -135,15 +135,19 @@ export const useLoyaltyDataStore = create<LoyaltyDataState>()((set, get) => ({
     if (!supabase) return { success: false, error: 'No Supabase client' }
 
     try {
-      // Deactivate other programs for this location first
+      // Deactivate other programs for this merchant first
       if (isActive) {
-        const deactivateQuery = supabase
+        let deactivateQuery = supabase
           .from('loyalty_programs')
           .update({ is_active: false })
           .eq('merchant_id', merchantId)
           .eq('is_active', true)
-          .contains('location_ids', locationId ? [locationId] : [])
-        if (isEdit && editId) (deactivateQuery as any).neq('id', editId)
+        if (locationId) {
+          deactivateQuery = (deactivateQuery as any).contains('location_ids', [locationId])
+        }
+        if (isEdit && editId) {
+          deactivateQuery = (deactivateQuery as any).neq('id', editId)
+        }
         await deactivateQuery
       }
 
