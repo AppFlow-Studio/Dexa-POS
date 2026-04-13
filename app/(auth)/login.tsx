@@ -2,6 +2,7 @@ import { colors, spinnerColor } from "@/lib/theme";
 import { useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
+import { Eye, EyeOff } from "lucide-react-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -43,6 +44,7 @@ const MerchantLoginScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -210,25 +212,38 @@ const MerchantLoginScreen = () => {
         <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 5 }}>
           Password
         </Text>
-        <TextInput
-          style={{
-            width: "100%",
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 8,
-            backgroundColor: colors.screen,
-            color: colors.heading,
-            fontSize: 13,
-          }}
-          placeholder="••••••••"
-          placeholderTextColor={colors.muted}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-          editable={!isFormLoading}
-        />
+        <View style={{ position: "relative" }}>
+          <TextInput
+            style={{
+              width: "100%",
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              paddingRight: 40,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              backgroundColor: colors.screen,
+              color: colors.heading,
+              fontSize: 13,
+            }}
+            placeholder="••••••••"
+            placeholderTextColor={colors.muted}
+            secureTextEntry={!showPassword}
+            value={password}
+            onChangeText={setPassword}
+            editable={!isFormLoading}
+          />
+          <TouchableOpacity
+            onPress={() => setShowPassword(v => !v)}
+            style={{ position: "absolute", right: 10, top: 0, bottom: 0, justifyContent: "center" }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {showPassword
+              ? <EyeOff size={16} color={colors.muted} />
+              : <Eye size={16} color={colors.muted} />
+            }
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Forgot password */}
