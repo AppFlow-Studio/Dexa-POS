@@ -1,6 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useRouter } from 'expo-router'
 import {
+  Award,
   BarChart3,
   CalendarClock,
   ChefHat,
@@ -265,6 +266,13 @@ const MainMenu: React.FC = () => {
       subtitle: 'System Config',
       route: '/settings',
       isLocked: true,
+    },
+    {
+      id: 'loyalty',
+      icon: <Award color={colors.teal} size={20} />,
+      title: 'Loyalty',
+      subtitle: 'Rewards & Members',
+      route: '/loyalty',
     },
     {
       id: 'castlestest',
