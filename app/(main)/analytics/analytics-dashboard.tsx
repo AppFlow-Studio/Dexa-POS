@@ -12,10 +12,16 @@ import {
   CreditCard,
   DollarSign,
   Hash,
+  Award,
+  Gift,
+  LayoutDashboard,
+  Package,
   RefreshCw,
   ShoppingBag,
+  Star,
   Table2,
   TrendingUp,
+  User,
   Users,
   X,
 } from 'lucide-react-native'
@@ -50,6 +56,21 @@ const CHART_COLORS = [
   '#F87171', // red
   '#A78BFA', // purple
   '#FB923C', // orange
+]
+
+// ─── Tab definitions ──────────────────────────────────────────────────────────
+
+type TabId = 'overview' | 'items' | 'customers' | 'loyalty' | 'staff' | 'payments'
+
+type TabIconComponent = React.FC<{ size: number; color: string }>
+
+const TABS: { id: TabId; label: string; Icon: TabIconComponent }[] = [
+  { id: 'overview', label: 'Overview', Icon: ({ size, color }) => <LayoutDashboard size={size} color={color} /> },
+  { id: 'items', label: 'Items', Icon: ({ size, color }) => <Package size={size} color={color} /> },
+  { id: 'customers', label: 'Customers', Icon: ({ size, color }) => <User size={size} color={color} /> },
+  { id: 'loyalty', label: 'Loyalty', Icon: ({ size, color }) => <Star size={size} color={color} /> },
+  { id: 'staff', label: 'Staff', Icon: ({ size, color }) => <Users size={size} color={color} /> },
+  { id: 'payments', label: 'Payments', Icon: ({ size, color }) => <CreditCard size={size} color={color} /> },
 ]
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
@@ -277,14 +298,405 @@ const MiniCalendar: React.FC<MiniCalendarProps> = ({ value, onChange, minDate, m
   )
 }
 
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+const EmptyState: React.FC<{ icon: React.ReactNode; message: string }> = ({ icon, message }) => (
+  <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+    {icon}
+    <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>{message}</Text>
+  </View>
+)
+
+// ─── Tab: Overview ────────────────────────────────────────────────────────────
+
+const OverviewTab: React.FC<{ data: any }> = ({ data }) => (
+  <>
+    {/* Orders summary */}
+    <SectionCard title="Orders" icon={<ShoppingBag size={14} color={colors.teal} />}>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1, gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <StatCard icon={<Hash size={14} color={colors.teal} />} label="Total Orders" value={String(data.orders.totalOrders)} sub={`${data.orders.completedOrders} paid`} />
+            <StatCard icon={<DollarSign size={14} color={colors.teal} />} label="Revenue" value={fmt$(data.orders.totalRevenue)} sub={fmtFull$(data.orders.totalRevenue)} />
+            <StatCard icon={<TrendingUp size={14} color={colors.teal} />} label="Avg Order" value={fmt$(data.orders.averageOrderValue)} />
+            <StatCard icon={<ArrowDownLeft size={14} color={colors.teal} />} label="Discounts" value={fmt$(data.orders.totalDiscounts)} />
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Panel style={{ flex: 1, flexDirection: undefined }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Status</Text>
+              <View style={{ gap: 6 }}>
+                {[
+                  { label: 'Paid', count: data.orders.completedOrders, color: colors.teal },
+                  { label: 'Voided', count: data.orders.voidedOrders, color: colors.danger },
+                  { label: 'Cancelled', count: data.orders.cancelledOrders, color: colors.warning },
+                ].map((item) => {
+                  const total = data.orders.totalOrders || 1
+                  const pct = Math.round((item.count / total) * 100)
+                  return (
+                    <View key={item.label}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: item.color }} />
+                          <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>{item.count}</Text>
+                          <Text style={{ fontSize: 10, color: colors.muted }}>{pct}%</Text>
+                        </View>
+                      </View>
+                      <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
+                        <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: item.color, borderRadius: 3, opacity: 0.8 }} />
+                      </View>
+                    </View>
+                  )
+                })}
+              </View>
+            </Panel>
+
+            <Panel style={{ flex: 1 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Collected</Text>
+              <View style={{ gap: 4 }}>
+                {[
+                  { label: 'Tax', value: fmtFull$(data.orders.totalTax) },
+                  { label: 'Tips', value: fmtFull$(data.orders.totalTips) },
+                ].map((item) => (
+                  <View key={item.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{item.value}</Text>
+                  </View>
+                ))}
+              </View>
+            </Panel>
+          </View>
+        </View>
+
+        {data.orders.ordersByType.length > 0 && (() => {
+          const pieData = data.orders.ordersByType.map((row: any, i: number) => ({
+            value: row.count,
+            color: CHART_COLORS[i % CHART_COLORS.length],
+            label: fmtLabel(row.type),
+            sub: `${row.count} · ${fmtFull$(row.revenue)}`,
+          }))
+          return (
+            <DonutBox
+              pieData={pieData}
+              centerValue={String(data.orders.totalOrders)}
+              centerLabel="orders"
+              bgColor={colors.panel}
+            />
+          )
+        })()}
+      </View>
+    </SectionCard>
+
+    {/* Table sessions */}
+    <SectionCard title="Table Sessions" icon={<Table2 size={14} color={colors.teal} />}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <StatCard icon={<Hash size={14} color={colors.teal} />} label="Sessions" value={String(data.sessions.totalSessions)} sub={`${data.sessions.totalCovers} covers`} />
+        <StatCard icon={<Users size={14} color={colors.teal} />} label="Avg Party" value={data.sessions.averagePartySize.toFixed(1)} sub="guests / session" />
+        <StatCard icon={<Clock size={14} color={colors.teal} />} label="Avg Duration" value={data.sessions.averageDurationMinutes > 0 ? `${Math.round(data.sessions.averageDurationMinutes)}m` : '—'} />
+      </View>
+    </SectionCard>
+
+  </>
+)
+
+// ─── Tab: Items ───────────────────────────────────────────────────────────────
+
+const ItemsTab: React.FC<{ data: any }> = ({ data }) => {
+  if (data.topItems.length === 0) {
+    return <EmptyState icon={<Package size={32} color={colors.muted} />} message="No item data for this period" />
+  }
+
+  return (
+    <SectionCard title="Top Selling Items" icon={<Package size={14} color={colors.teal} />}>
+      <View style={{ gap: 8 }}>
+        {data.topItems.map((item: any, i: number) => (
+          <View key={item.itemName} style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: colors.teal }}>{i + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>{item.itemName}</Text>
+                  {item.categoryName ? <Text style={{ fontSize: 10, color: colors.muted }}>{item.categoryName}</Text> : null}
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-end' }}>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>{item.quantity}</Text>
+                  <Text style={{ fontSize: 10, color: colors.muted }}>sold</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>{fmtFull$(item.revenue)}</Text>
+                  <Text style={{ fontSize: 10, color: colors.muted }}>revenue</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+    </SectionCard>
+  )
+}
+
+// ─── Tab: Customers ───────────────────────────────────────────────────────────
+
+const CustomersTab: React.FC<{ data: any }> = ({ data }) => {
+  if (data.topCustomers.length === 0) {
+    return <EmptyState icon={<User size={32} color={colors.muted} />} message="No customer data for this period" />
+  }
+
+  return (
+    <SectionCard title="Top Customers" icon={<User size={14} color={colors.teal} />}>
+      <View style={{ gap: 8 }}>
+        {data.topCustomers.map((customer: any) => {
+          const initial = (customer.name || '?').charAt(0).toUpperCase()
+          return (
+            <View key={customer.customerId || customer.name} style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>{initial}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>{customer.name}</Text>
+                    <Text style={{ fontSize: 10, color: colors.muted }}>{customer.orderCount} {customer.orderCount === 1 ? 'visit' : 'visits'}</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-end' }}>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}>{fmtFull$(customer.totalSpend)}</Text>
+                    <Text style={{ fontSize: 10, color: colors.muted }}>total spent</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.label }}>{fmtFull$(customer.avgSpend)}</Text>
+                    <Text style={{ fontSize: 10, color: colors.muted }}>avg order</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )
+        })}
+      </View>
+    </SectionCard>
+  )
+}
+
+// ─── Tab: Loyalty ────────────────────────────────────────────────────────────
+
+const LoyaltyTab: React.FC<{ data: any }> = ({ data }) => {
+  const loyalty = data.loyalty
+  if (!loyalty) {
+    return <EmptyState icon={<Star size={32} color={colors.muted} />} message="No loyalty program data available" />
+  }
+
+  return (
+    <>
+      {/* KPI cards */}
+      <SectionCard title="Loyalty Overview" icon={<Star size={14} color={colors.teal} />}>
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <StatCard icon={<Users size={14} color={colors.teal} />} label="Total Members" value={String(loyalty.totalEnrolled)} sub={`${loyalty.activeMembers} active`} />
+            <StatCard icon={<Gift size={14} color={colors.teal} />} label="Rewards Redeemed" value={String(loyalty.totalRewardsRedeemed)} sub={fmtFull$(loyalty.totalRewardValue) + ' value'} />
+            <StatCard icon={<Award size={14} color={colors.teal} />} label="Rewards Earned" value={String(loyalty.totalRewardsEarned)} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Panel style={{ flex: 1 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>This Period</Text>
+              <View style={{ gap: 6 }}>
+                {[
+                  { label: 'New Enrollments', value: String(loyalty.newEnrollmentsInPeriod) },
+                  { label: 'Redemptions', value: String(loyalty.redemptionsInPeriod) },
+                ].map((item) => (
+                  <View key={item.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, color: colors.label }}>{item.label}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}>{item.value}</Text>
+                  </View>
+                ))}
+              </View>
+            </Panel>
+          </View>
+        </View>
+      </SectionCard>
+
+      {/* Top loyalty customers */}
+      {loyalty.topLoyaltyCustomers.length > 0 && (
+        <SectionCard title="Top Loyalty Members" icon={<Award size={14} color={colors.teal} />}>
+          <View style={{ gap: 8 }}>
+            {loyalty.topLoyaltyCustomers.map((customer: any, i: number) => (
+              <View key={customer.customerId} style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>{i + 1}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>{customer.name}</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-end' }}>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>{customer.totalRewardsRedeemed}</Text>
+                      <Text style={{ fontSize: 10, color: colors.muted }}>redeemed</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        </SectionCard>
+      )}
+    </>
+  )
+}
+
+// ─── Tab: Staff ───────────────────────────────────────────────────────────────
+
+const StaffTab: React.FC<{ data: any }> = ({ data }) => {
+  if (data.staff.length === 0) {
+    return <EmptyState icon={<Users size={32} color={colors.muted} />} message="No staff data for this period" />
+  }
+
+  const maxRev = Math.max(...data.staff.map((s: any) => s.revenue), 1)
+  const barData = data.staff.map((row: any) => ({
+    value: row.revenue,
+    label: row.name.split(' ')[0],
+    frontColor: colors.teal,
+    topLabelComponent: () => (
+      <Text style={{ fontSize: 9, color: colors.label, marginBottom: 3 }}>{fmt$(row.revenue)}</Text>
+    ),
+  }))
+
+  return (
+    <>
+      <SectionCard title="Staff Performance" icon={<Users size={14} color={colors.teal} />}>
+        <Panel label="Revenue by Staff" style={{ marginBottom: 12 }}>
+          <BarChart
+            data={barData}
+            barWidth={28}
+            spacing={16}
+            roundedTop
+            hideRules={false}
+            rulesColor={colors.border}
+            rulesType="dashed"
+            dashWidth={4}
+            dashGap={6}
+            xAxisColor={colors.border}
+            yAxisColor="transparent"
+            yAxisThickness={0}
+            yAxisTextStyle={{ color: colors.label, fontSize: 9 }}
+            xAxisLabelTextStyle={{ color: colors.label, fontSize: 10 }}
+            noOfSections={3}
+            maxValue={maxRev * 1.25}
+            isAnimated
+            animationDuration={500}
+            barBorderRadius={4}
+            backgroundColor={colors.panel}
+            formatYLabel={(v) => fmt$(Number(v))}
+          />
+        </Panel>
+
+        <View style={{ gap: 8 }}>
+          {data.staff.map((row: any) => (
+            <View
+              key={row.staffId}
+              style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>{row.name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>{row.name}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 20 }}>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>{fmtFull$(row.revenue)}</Text>
+                    <Text style={{ fontSize: 10, color: colors.muted }}>revenue</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>{row.orderCount}</Text>
+                    <Text style={{ fontSize: 10, color: colors.muted }}>orders</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.label }}>{fmtFull$(row.averageOrderValue)}</Text>
+                    <Text style={{ fontSize: 10, color: colors.muted }}>avg order</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      </SectionCard>
+    </>
+  )
+}
+
+// ─── Tab: Payments ────────────────────────────────────────────────────────────
+
+const PaymentsTab: React.FC<{ data: any }> = ({ data }) => (
+  <SectionCard title="Payments" icon={<CreditCard size={14} color={colors.teal} />}>
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <StatCard icon={<DollarSign size={14} color={colors.teal} />} label="Collected" value={fmt$(data.payments.totalAmount)} sub={`${data.payments.totalPayments} txns`} />
+          <StatCard icon={<ArrowDownLeft size={14} color={colors.teal} />} label="Refunds" value={String(data.payments.refundCount)} sub={data.payments.refundCount > 0 ? fmtFull$(data.payments.refundAmount) : 'None'} />
+        </View>
+
+        {data.payments.byMethod.length > 0 && (
+          <Panel label="Breakdown">
+            {data.payments.byMethod.map((row: any, i: number) => {
+              const total = data.payments.totalAmount || 1
+              const pct = Math.round((row.amount / total) * 100)
+              return (
+                <View key={row.method} style={{ marginBottom: i < data.payments.byMethod.length - 1 ? 8 : 0 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <Text style={{ fontSize: 12, color: colors.heading }}>{fmtLabel(row.method)}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{fmtFull$(row.amount)}</Text>
+                  </View>
+                  <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
+                    <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length], borderRadius: 3 }} />
+                  </View>
+                </View>
+              )
+            })}
+          </Panel>
+        )}
+      </View>
+
+      {data.payments.byMethod.length > 0 && (() => {
+        const pieData = data.payments.byMethod.map((row: any, i: number) => ({
+          value: row.amount,
+          color: CHART_COLORS[i % CHART_COLORS.length],
+          label: fmtLabel(row.method),
+          sub: fmtFull$(row.amount),
+        }))
+        return (
+          <DonutBox
+            pieData={pieData}
+            centerValue={String(data.payments.totalPayments)}
+            centerLabel="txns"
+            bgColor={colors.panel}
+          />
+        )
+      })()}
+    </View>
+  </SectionCard>
+)
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 const AnalyticsDashboardScreen = () => {
   const supabase = useSupabaseClient()
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore)
   const locationId = selectedStore?.id || ''
+  const merchantId = selectedStore?.merchant_id || ''
   const { filters, activePresetLabel, data, isLoading, error, setDateRange, fetchData } = useAnalyticsStore()
 
+  const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [showDateModal, setShowDateModal] = useState(false)
   const [tempStart, setTempStart] = useState(filters.dateRange.start)
   const [tempEnd, setTempEnd] = useState(filters.dateRange.end)
@@ -292,8 +704,8 @@ const AnalyticsDashboardScreen = () => {
 
   const presets = makePresets()
 
-  const load = useCallback(() => { fetchData(supabase, locationId) }, [supabase, locationId, filters.dateRange])
-  useEffect(() => { load() }, [filters.dateRange, locationId])
+  const load = useCallback(() => { fetchData(supabase, locationId, merchantId) }, [supabase, locationId, merchantId, filters.dateRange])
+  useEffect(() => { load() }, [filters.dateRange, locationId, merchantId])
 
   const applyCustomRange = () => {
     const start = new Date(tempStart); start.setHours(0, 0, 0, 0)
@@ -315,23 +727,53 @@ const AnalyticsDashboardScreen = () => {
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
 
       {/* ── Header ───────────────────────────────────────────────── */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
-        <View>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Analytics</Text>
-          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{selectedStore?.name || 'All Locations'}</Text>
+      <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 }}>
+          <View>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Analytics</Text>
+            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{selectedStore?.name || 'All Locations'}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => { setTempStart(new Date(filters.dateRange.start)); setTempEnd(new Date(filters.dateRange.end)); setActivePicker(null); setShowDateModal(true) }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '40', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 6 }}
+              activeOpacity={0.8}
+            >
+              <Calendar size={13} color={colors.teal} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{fmtDateRange()}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={load} style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 7 }} activeOpacity={0.8}>
+              {isLoading ? <ActivityIndicator size={14} color={colors.teal} /> : <RefreshCw size={14} color={colors.label} />}
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity
-            onPress={() => { setTempStart(new Date(filters.dateRange.start)); setTempEnd(new Date(filters.dateRange.end)); setActivePicker(null); setShowDateModal(true) }}
-            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '40', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 6 }}
-            activeOpacity={0.8}
-          >
-            <Calendar size={13} color={colors.teal} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{fmtDateRange()}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={load} style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 7 }} activeOpacity={0.8}>
-            {isLoading ? <ActivityIndicator size={14} color={colors.teal} /> : <RefreshCw size={14} color={colors.label} />}
-          </TouchableOpacity>
+
+        {/* ── Tab bar ──────────────────────────────────────────── */}
+        <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 0 }}>
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id
+            const iconColor = isActive ? colors.teal : colors.muted
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                onPress={() => setActiveTab(tab.id)}
+                activeOpacity={0.7}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  borderBottomWidth: 2,
+                  borderBottomColor: isActive ? colors.teal : 'transparent',
+                  marginRight: 2,
+                }}
+              >
+                <tab.Icon size={12} color={iconColor} />
+                <Text style={{ fontSize: 12, fontWeight: isActive ? '700' : '500', color: iconColor }}>{tab.label}</Text>
+              </TouchableOpacity>
+            )
+          })}
         </View>
       </View>
 
@@ -354,240 +796,12 @@ const AnalyticsDashboardScreen = () => {
 
         {data && (
           <>
-            {/* ════ ORDERS ══════════════════════════════════════════ */}
-            <SectionCard title="Orders" icon={<ShoppingBag size={14} color={colors.teal} />}>
-
-              {/* Stats row + pie chart box side by side */}
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-
-                {/* Left: stats stacked */}
-                <View style={{ flex: 1, gap: 8 }}>
-                  {/* KPI row */}
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <StatCard icon={<Hash size={14} color={colors.teal} />} label="Total Orders" value={String(data.orders.totalOrders)} sub={`${data.orders.completedOrders} paid`} />
-                    <StatCard icon={<DollarSign size={14} color={colors.teal} />} label="Revenue" value={fmt$(data.orders.totalRevenue)} sub={fmtFull$(data.orders.totalRevenue)} />
-                    <StatCard icon={<TrendingUp size={14} color={colors.teal} />} label="Avg Order" value={fmt$(data.orders.averageOrderValue)} />
-                    <StatCard icon={<ArrowDownLeft size={14} color={colors.teal} />} label="Discounts" value={fmt$(data.orders.totalDiscounts)} />
-                  </View>
-
-                  {/* Status + tax/tips row */}
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {/* Order statuses */}
-                    <Panel style={{ flex: 1, flexDirection: undefined }}>
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Status</Text>
-                      <View style={{ gap: 6 }}>
-                        {[
-                          { label: 'Paid', count: data.orders.completedOrders, color: colors.teal },
-                          { label: 'Voided', count: data.orders.voidedOrders, color: colors.danger },
-                          { label: 'Cancelled', count: data.orders.cancelledOrders, color: colors.warning },
-                        ].map((item) => {
-                          const total = data.orders.totalOrders || 1
-                          const pct = Math.round((item.count / total) * 100)
-                          return (
-                            <View key={item.label}>
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: item.color }} />
-                                  <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
-                                </View>
-                                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>{item.count}</Text>
-                                  <Text style={{ fontSize: 10, color: colors.muted }}>{pct}%</Text>
-                                </View>
-                              </View>
-                              <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
-                                <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: item.color, borderRadius: 3, opacity: 0.8 }} />
-                              </View>
-                            </View>
-                          )
-                        })}
-                      </View>
-                    </Panel>
-
-                    {/* Tax + Tips */}
-                    <Panel style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Collected</Text>
-                      <View style={{ gap: 4 }}>
-                        {[
-                          { label: 'Tax', value: fmtFull$(data.orders.totalTax) },
-                          { label: 'Tips', value: fmtFull$(data.orders.totalTips) },
-                        ].map((item) => (
-                          <View key={item.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
-                            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{item.value}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </Panel>
-                  </View>
-                </View>
-
-                {/* Right: donut chart box */}
-                {data.orders.ordersByType.length > 0 && (() => {
-                  const pieData = data.orders.ordersByType.map((row, i) => ({
-                    value: row.count,
-                    color: CHART_COLORS[i % CHART_COLORS.length],
-                    label: fmtLabel(row.type),
-                    sub: `${row.count} · ${fmtFull$(row.revenue)}`,
-                  }))
-                  return (
-                    <DonutBox
-                      pieData={pieData}
-                      centerValue={String(data.orders.totalOrders)}
-                      centerLabel="orders"
-                      bgColor={colors.panel}
-                    />
-                  )
-                })()}
-              </View>
-            </SectionCard>
-
-            {/* ════ PAYMENTS ════════════════════════════════════════ */}
-            <SectionCard title="Payments" icon={<CreditCard size={14} color={colors.teal} />}>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-
-                {/* Left: stats */}
-                <View style={{ flex: 1, gap: 8 }}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <StatCard icon={<DollarSign size={14} color={colors.teal} />} label="Collected" value={fmt$(data.payments.totalAmount)} sub={`${data.payments.totalPayments} txns`} />
-                    <StatCard icon={<ArrowDownLeft size={14} color={colors.teal} />} label="Refunds" value={String(data.payments.refundCount)} sub={data.payments.refundCount > 0 ? fmtFull$(data.payments.refundAmount) : 'None'} />
-                  </View>
-
-                  {/* Method rows */}
-                  {data.payments.byMethod.length > 0 && (
-                    <Panel label="Breakdown">
-                      {data.payments.byMethod.map((row, i) => {
-                        const total = data.payments.totalAmount || 1
-                        const pct = Math.round((row.amount / total) * 100)
-                        return (
-                          <View key={row.method} style={{ marginBottom: i < data.payments.byMethod.length - 1 ? 8 : 0 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
-                              <Text style={{ fontSize: 12, color: colors.heading }}>{fmtLabel(row.method)}</Text>
-                              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{fmtFull$(row.amount)}</Text>
-                            </View>
-                            <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
-                              <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length], borderRadius: 3 }} />
-                            </View>
-                          </View>
-                        )
-                      })}
-                    </Panel>
-                  )}
-                </View>
-
-                {/* Right: donut chart */}
-                {data.payments.byMethod.length > 0 && (() => {
-                  const pieData = data.payments.byMethod.map((row, i) => ({
-                    value: row.amount,
-                    color: CHART_COLORS[i % CHART_COLORS.length],
-                    label: fmtLabel(row.method),
-                    sub: fmtFull$(row.amount),
-                  }))
-                  return (
-                    <DonutBox
-                      pieData={pieData}
-                      centerValue={String(data.payments.totalPayments)}
-                      centerLabel="txns"
-                      bgColor={colors.panel}
-                    />
-                  )
-                })()}
-              </View>
-            </SectionCard>
-
-            {/* ════ TABLE SESSIONS ══════════════════════════════════ */}
-            <SectionCard title="Table Sessions" icon={<Table2 size={14} color={colors.teal} />}>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <StatCard icon={<Hash size={14} color={colors.teal} />} label="Sessions" value={String(data.sessions.totalSessions)} sub={`${data.sessions.totalCovers} covers`} />
-                <StatCard icon={<Users size={14} color={colors.teal} />} label="Avg Party" value={data.sessions.averagePartySize.toFixed(1)} sub="guests / session" />
-                <StatCard icon={<Clock size={14} color={colors.teal} />} label="Avg Duration" value={data.sessions.averageDurationMinutes > 0 ? `${Math.round(data.sessions.averageDurationMinutes)}m` : '—'} />
-              </View>
-
-            </SectionCard>
-
-            {/* ════ STAFF ═══════════════════════════════════════════ */}
-            <SectionCard title="Staff Performance" icon={<Users size={14} color={colors.teal} />}>
-              {data.staff.length === 0 ? (
-                <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                  <Users size={26} color={colors.muted} />
-                  <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>No staff data for this period</Text>
-                </View>
-              ) : (
-                (() => {
-                  const maxRev = Math.max(...data.staff.map((s) => s.revenue), 1)
-                  const barData = data.staff.map((row) => ({
-                    value: row.revenue,
-                    label: row.name.split(' ')[0],
-                    frontColor: colors.teal,
-                    topLabelComponent: () => (
-                      <Text style={{ fontSize: 9, color: colors.label, marginBottom: 3 }}>{fmt$(row.revenue)}</Text>
-                    ),
-                  }))
-
-                  return (
-                    <View style={{ gap: 10 }}>
-                      {/* Bar chart */}
-                      <Panel label="Revenue by Staff">
-                        <BarChart
-                          data={barData}
-                          barWidth={28}
-                          spacing={16}
-                          roundedTop
-                          hideRules={false}
-                          rulesColor={colors.border}
-                          rulesType="dashed"
-                          dashWidth={4}
-                          dashGap={6}
-                          xAxisColor={colors.border}
-                          yAxisColor="transparent"
-                          yAxisThickness={0}
-                          yAxisTextStyle={{ color: colors.label, fontSize: 9 }}
-                          xAxisLabelTextStyle={{ color: colors.label, fontSize: 10 }}
-                          noOfSections={3}
-                          maxValue={maxRev * 1.25}
-                          isAnimated
-                          animationDuration={500}
-                          barBorderRadius={4}
-                          backgroundColor={colors.panel}
-                          formatYLabel={(v) => fmt$(Number(v))}
-                        />
-                      </Panel>
-
-                      {/* Staff rows */}
-                      {data.staff.map((row) => (
-                        <View
-                          key={row.staffId}
-                          style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>{row.name.charAt(0).toUpperCase()}</Text>
-                              </View>
-                              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>{row.name}</Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', gap: 20 }}>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>{fmtFull$(row.revenue)}</Text>
-                                <Text style={{ fontSize: 10, color: colors.muted }}>revenue</Text>
-                              </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>{row.orderCount}</Text>
-                                <Text style={{ fontSize: 10, color: colors.muted }}>orders</Text>
-                              </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.label }}>{fmtFull$(row.averageOrderValue)}</Text>
-                                <Text style={{ fontSize: 10, color: colors.muted }}>avg order</Text>
-                              </View>
-                            </View>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  )
-                })()
-              )}
-            </SectionCard>
+            {activeTab === 'overview' && <OverviewTab data={data} />}
+            {activeTab === 'items' && <ItemsTab data={data} />}
+            {activeTab === 'customers' && <CustomersTab data={data} />}
+            {activeTab === 'loyalty' && <LoyaltyTab data={data} />}
+            {activeTab === 'staff' && <StaffTab data={data} />}
+            {activeTab === 'payments' && <PaymentsTab data={data} />}
           </>
         )}
 

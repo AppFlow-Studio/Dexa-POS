@@ -48,11 +48,41 @@ export interface StaffRow {
   averageOrderValue: number
 }
 
+export interface TopItemRow {
+  itemName: string
+  quantity: number
+  revenue: number
+  categoryName: string | null
+}
+
+export interface TopCustomerRow {
+  customerId: string | null
+  name: string
+  orderCount: number
+  totalSpend: number
+  avgSpend: number
+}
+
+export interface LoyaltySummary {
+  totalEnrolled: number
+  activeMembers: number
+  totalPointsInCirculation: number
+  totalRewardsEarned: number
+  totalRewardsRedeemed: number
+  totalRewardValue: number
+  redemptionsInPeriod: number
+  newEnrollmentsInPeriod: number
+  topLoyaltyCustomers: { customerId: string; name: string; currentPoints: number; lifetimePoints: number; totalRewardsRedeemed: number }[]
+}
+
 export interface AnalyticsData {
   orders: OrdersSummary
   payments: PaymentsSummary
   sessions: SessionsSummary
   staff: StaffRow[]
+  topItems: TopItemRow[]
+  topCustomers: TopCustomerRow[]
+  loyalty: LoyaltySummary | null
 }
 
 export interface AnalyticsState {
@@ -62,7 +92,7 @@ export interface AnalyticsState {
   isLoading: boolean
   error: string | null
   setDateRange: (range: DateRange, presetLabel?: string) => void
-  fetchData: (supabase: any, locationId: string) => Promise<void>
+  fetchData: (supabase: any, locationId: string, merchantId?: string) => Promise<void>
 }
 
 const defaultFilters: AnalyticsFilters = {
@@ -98,7 +128,7 @@ export const useAnalyticsStore = create<AnalyticsState & Record<string, any>>((s
     set({ filters: { dateRange: range }, activePresetLabel: presetLabel ?? null })
   },
 
-  fetchData: async (supabase: any, locationId: string) => {
+  fetchData: async (supabase: any, locationId: string, merchantId?: string) => {
     if (!locationId) return
     set({ isLoading: true, error: null })
 
@@ -110,7 +140,7 @@ export const useAnalyticsStore = create<AnalyticsState & Record<string, any>>((s
       // Fetch orders — include payment_status to determine revenue
       const { data: ordersRaw, error: ordersErr } = await supabase
         .from('orders')
-        .select('id, status, payment_status, order_type, total_amount, tax_amount, tip_amount, discount_amount, assigned_server_id, created_by_staff_id, created_at')
+        .select('id, status, payment_status, order_type, total_amount, tax_amount, tip_amount, discount_amount, assigned_server_id, created_by_staff_id, created_at, customer_id, customer_name, customer_email')
         .eq('location_id', locationId)
         .gte('created_at', startIso)
         .lte('created_at', endIso)
@@ -273,12 +303,119 @@ export const useAnalyticsStore = create<AnalyticsState & Record<string, any>>((s
         }).sort((a, b) => b.revenue - a.revenue)
       }
 
+      // Fetch top selling items
+      const orderIds = orders.filter(o => isPaid(o)).map((o: any) => o.id)
+      let topItems: TopItemRow[] = []
+      if (orderIds.length > 0) {
+        const { data: itemsRaw } = await supabase
+          .from('order_items')
+          .select('item_name, category_name, quantity, price_paid, subtotal')
+          .in('order_id', orderIds)
+          .eq('is_voided', false)
+
+        const itemMap = new Map<string, { quantity: number; revenue: number; categoryName: string | null }>()
+        ;(itemsRaw || []).forEach((item: any) => {
+          const name = item.item_name || 'Unknown'
+          const ex = itemMap.get(name) || { quantity: 0, revenue: 0, categoryName: item.category_name || null }
+          itemMap.set(name, {
+            quantity: ex.quantity + Number(item.quantity || 1),
+            revenue: ex.revenue + Number(item.subtotal || item.price_paid || 0),
+            categoryName: ex.categoryName,
+          })
+        })
+        topItems = Array.from(itemMap.entries())
+          .map(([itemName, v]) => ({ itemName, ...v }))
+          .sort((a, b) => b.quantity - a.quantity)
+          .slice(0, 15)
+      }
+
+      // Top customers — group paid orders by customer
+      const customerMap = new Map<string, { name: string; orderCount: number; totalSpend: number; customerId: string | null }>()
+      revenueOrders.forEach((o: any) => {
+        const key = o.customer_id || o.customer_name || o.customer_email
+        if (!key) return
+        const name = o.customer_name || o.customer_email || 'Guest'
+        const ex = customerMap.get(key) || { name, orderCount: 0, totalSpend: 0, customerId: o.customer_id || null }
+        customerMap.set(key, {
+          name: ex.name,
+          orderCount: ex.orderCount + 1,
+          totalSpend: ex.totalSpend + Number(o.total_amount || 0),
+          customerId: ex.customerId,
+        })
+      })
+      const topCustomers: TopCustomerRow[] = Array.from(customerMap.entries())
+        .map(([, v]) => ({ ...v, avgSpend: v.orderCount > 0 ? v.totalSpend / v.orderCount : 0 }))
+        .sort((a, b) => b.totalSpend - a.totalSpend)
+        .slice(0, 15)
+
+      // Loyalty
+      let loyalty: LoyaltySummary | null = null
+      if (merchantId) {
+        const { data: enrollmentsRaw } = await supabase
+          .from('loyalty_enrollments')
+          .select('customer_id, current_points, lifetime_points, total_rewards_earned, total_rewards_redeemed, total_reward_value, is_active, enrolled_at, last_redeem_at')
+          .eq('merchant_id', merchantId)
+
+        const enrollments: any[] = enrollmentsRaw || []
+        const activeEnrollments = enrollments.filter((e: any) => e.is_active)
+
+        // New enrollments in period
+        const newInPeriod = enrollments.filter((e: any) => {
+          if (!e.enrolled_at) return false
+          const d = new Date(e.enrolled_at)
+          return d >= dateRange.start && d <= dateRange.end
+        }).length
+
+        // Redemptions in period (last_redeem_at within range)
+        const redemptionsInPeriod = enrollments.filter((e: any) => {
+          if (!e.last_redeem_at) return false
+          const d = new Date(e.last_redeem_at)
+          return d >= dateRange.start && d <= dateRange.end
+        }).length
+
+        // Fetch customer names for top loyalty customers
+        const topEnrollments = [...activeEnrollments]
+          .sort((a: any, b: any) => b.current_points - a.current_points)
+          .slice(0, 10)
+
+        const loyaltyCustomerIds = topEnrollments.map((e: any) => e.customer_id)
+        let loyaltyCustomerNames: Record<string, string> = {}
+        if (loyaltyCustomerIds.length > 0) {
+          const { data: custRaw } = await supabase
+            .from('customers')
+            .select('id, name')
+            .in('id', loyaltyCustomerIds)
+          ;(custRaw || []).forEach((c: any) => { loyaltyCustomerNames[c.id] = c.name || 'Guest' })
+        }
+
+        loyalty = {
+          totalEnrolled: enrollments.length,
+          activeMembers: activeEnrollments.length,
+          totalPointsInCirculation: activeEnrollments.reduce((s: number, e: any) => s + Number(e.current_points || 0), 0),
+          totalRewardsEarned: enrollments.reduce((s: number, e: any) => s + Number(e.total_rewards_earned || 0), 0),
+          totalRewardsRedeemed: enrollments.reduce((s: number, e: any) => s + Number(e.total_rewards_redeemed || 0), 0),
+          totalRewardValue: enrollments.reduce((s: number, e: any) => s + Number(e.total_reward_value || 0), 0),
+          redemptionsInPeriod,
+          newEnrollmentsInPeriod: newInPeriod,
+          topLoyaltyCustomers: topEnrollments.map((e: any) => ({
+            customerId: e.customer_id,
+            name: loyaltyCustomerNames[e.customer_id] || 'Guest',
+            currentPoints: Number(e.current_points || 0),
+            lifetimePoints: Number(e.lifetime_points || 0),
+            totalRewardsRedeemed: Number(e.total_rewards_redeemed || 0),
+          })),
+        }
+      }
+
       set({
         data: {
           orders: ordersSummary,
           payments: paymentsSummary,
           sessions: sessionsSummary,
           staff: staffRows,
+          topItems,
+          topCustomers,
+          loyalty,
         },
         isLoading: false,
       })
