@@ -64,8 +64,9 @@
         "@sentry/react-native/expo",
         {
           "url": "https://sentry.io/",
-          "project": "react-native",
-          "organization": "appflow-studios"
+          "project": "dexa-pos",
+          "organization": "appflow-studios",
+          "enableNativeSourceMaps": false
         }
       ]
     ],

@@ -3253,7 +3253,16 @@ export const useOrderStore = create<OrderState>()(
                     const broadcastItemCount = isHeaderOnlyBroadcast(backendOrder)
                       ? backendOrder.item_count
                       : backendOrder.order_items?.length
+                    // v2: sync_version advance on kitchen-active orders is meaningful
+                    // (KDS bumps update order_items kitchen_status + bump sync_version,
+                    //  but v2 broadcasts omit items — so header fields may look identical)
+                    const isKitchenSyncAdvance =
+                      isHeaderOnlyBroadcast(backendOrder) &&
+                      (backendOrder.sync_version ?? 0) > ((localOrder as any).sync_version ?? 0) &&
+                      ['sent_to_kitchen', 'preparing'].includes(localOrder.order_status ?? '')
+
                     const noMeaningfulChange =
+                      !isKitchenSyncAdvance &&
                       localOrder.amount_paid === backendOrder.amount_paid &&
                       localOrder.paid_status ===
                         mapPaymentStatus(backendOrder.payment_status) &&
@@ -3711,6 +3720,11 @@ export const useOrderStore = create<OrderState>()(
                       backendOrder.item_count !== undefined &&
                       backendOrder.item_count !== localOrder.items.filter(i => !i.is_voided).length
                     ) {
+                      get()._debouncedOrderRefresh(dbOrderId)
+                    }
+
+                    // v2: sync_version ahead + kitchen-active → fetch fresh items for kitchen_status
+                    if (isKitchenSyncAdvance) {
                       get()._debouncedOrderRefresh(dbOrderId)
                     }
                   }
