@@ -150,6 +150,9 @@ export interface StoreSettings {
 
   // Manager override for schedule-restricted menus/categories
   managerOverrideTimeoutMinutes: 0 | 5 | 15 | 30 | 60
+
+  // Order completion mode
+  orderCompletionMode: 'manual' | 'auto' | 'auto_on_payment'
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -309,6 +312,9 @@ const initialData: StoreSettings = {
 
   // Manager override
   managerOverrideTimeoutMinutes: 0,
+
+  // Order completion mode
+  orderCompletionMode: 'manual',
 }
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -607,6 +613,8 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         openDrawerOnTip: state.openDrawerOnTip,
         // Manager override
         managerOverrideTimeoutMinutes: state.managerOverrideTimeoutMinutes,
+        // Order completion mode
+        orderCompletionMode: state.orderCompletionMode,
       })
     }
   )

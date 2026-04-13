@@ -2260,14 +2260,24 @@ const syncPaymentToBackend = async (
         }
       }
 
-      // Auto-archive ready+paid orders (Path A: marked ready first, then paid)
+      // Auto-archive based on completion mode setting
       if (isFullyPaid) {
+        const completionMode = useStoreSettingsStore.getState().orderCompletionMode
         const postPayOrder = useOrderStore.getState().ordersById[order.id]
-        if (postPayOrder && postPayOrder.order_status === 'ready') {
+
+        if (completionMode === 'auto_on_payment' && postPayOrder) {
+          // Auto-complete on payment regardless of kitchen status
+          queueMicrotask(() => {
+            useOrderStore.getState().markAllItemsAsReady(order.id)
+            useOrderStore.getState().archiveOrder(order.id)
+          })
+        } else if (completionMode === 'auto' && postPayOrder?.order_status === 'ready') {
+          // Auto-complete only when both paid + ready
           queueMicrotask(() => {
             useOrderStore.getState().archiveOrder(order.id)
           })
         }
+        // 'manual' mode: no auto-archive (user must click Mark as Done)
       }
 
       if (__DEV__)

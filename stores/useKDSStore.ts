@@ -18,6 +18,8 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { useOrderStore } from './useOrderStore'
+import { useStoreSettingsStore } from './useStoreSettingsStore'
 import { useTableSessionStore } from './useTableSessionStore'
 
 // Global client reference (same pattern as other stores)
@@ -1293,6 +1295,19 @@ export const useKDSStore = create<KDSState>()(
                       }
                     }
                   )
+
+                  // Auto-complete if paid and completion mode allows (Path B: kitchen finishes after payment)
+                  const completionMode = useStoreSettingsStore.getState().orderCompletionMode
+                  if (completionMode === 'auto') {
+                    const { ordersById, dbOrderIdIndex } = useOrderStore.getState()
+                    const localId = dbOrderIdIndex[orderId]
+                    const localOrder = localId ? ordersById[localId] : null
+                    if (localOrder?.paid_status === 'Paid') {
+                      queueMicrotask(() => {
+                        useOrderStore.getState().archiveOrder(localOrder.id)
+                      })
+                    }
+                  }
                 }
               }
             },

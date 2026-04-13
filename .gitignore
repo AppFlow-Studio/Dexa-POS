@@ -58,3 +58,8 @@ android/*.iml
 android/.idea/
 android/.cxx
 # android/gradle.properties must NOT be ignored — EAS Build needs it
+
+.env.local
+
+# Sentry
+sentry.properties

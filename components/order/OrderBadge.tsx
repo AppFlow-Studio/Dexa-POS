@@ -2,6 +2,7 @@ import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useWasOrderRecentlyUpdated } from "@/stores/useConflictStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { formatOrderStatus } from "@/utils/orderStatusHelpers";
 import {
   CheckCircle2,
@@ -18,7 +19,18 @@ import {
 import DeliveryPlatformBadge from "./DeliveryPlatformBadge";
 import React, { useCallback, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { PanGestureHandler } from "react-native-gesture-handler";
 import Popover from "react-native-popover-view";
+import Animated, {
+  useAnimatedGestureHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  runOnJS,
+  interpolate,
+  Extrapolation,
+} from "react-native-reanimated";
 
 interface OrderBadgeProps {
   order: OrderProfile;
@@ -499,6 +511,51 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
     return status || "pending";
   }, [order.order_status, refundState.isFullyRefunded, refundState.isPartiallyRefunded]);
 
+  // Completion mode from store
+  const orderCompletionMode = useStoreSettingsStore((s) => s.orderCompletionMode);
+
+  // Can this badge be swiped to complete?
+  const canSwipeComplete = useMemo(() => {
+    if (order.order_status === "completed" || order.order_status === "void") return false;
+    if (orderCompletionMode === "auto_on_payment") return order.paid_status === "Paid";
+    // manual & auto: require ready + paid
+    return order.paid_status === "Paid" && order.order_status === "ready";
+  }, [order.paid_status, order.order_status, orderCompletionMode]);
+
+  // Swipe-to-complete gesture (single shared value — lightweight)
+  const translateY = useSharedValue(0);
+
+  const handleSwipeComplete = useCallback(() => {
+    onMarkDone();
+    // Reset position after completion animation
+    setTimeout(() => { translateY.value = withTiming(0, { duration: 200 }); }, 300);
+  }, [onMarkDone]);
+
+  const swipeHandler = useAnimatedGestureHandler({
+    onStart: (_, ctx: any) => { ctx.startY = translateY.value; },
+    onActive: (event, ctx: any) => {
+      // Only allow upward swipe (negative Y), clamp
+      translateY.value = Math.min(0, Math.max(-60, ctx.startY + event.translationY));
+    },
+    onEnd: () => {
+      if (translateY.value < -35) {
+        translateY.value = withTiming(-60, { duration: 150 }, (finished) => {
+          if (finished) runOnJS(handleSwipeComplete)();
+        });
+      } else {
+        translateY.value = withSpring(0, { damping: 15, stiffness: 150 });
+      }
+    },
+  });
+
+  const animatedSwipeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const doneRevealStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(translateY.value, [0, -35], [0, 1], Extrapolation.CLAMP),
+  }));
+
   // PERFORMANCE: Memoize callbacks to prevent recreation
   const handleClose = useCallback(() => setShowTooltip(false), []);
   const handleOpen = useCallback(() => setShowTooltip(true), []);
@@ -509,6 +566,39 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   const isElevated = showTooltip || isActive;
 
   return (
+    <View style={{ position: "relative" }}>
+      {/* Green "Done" indicator revealed on swipe up */}
+      {canSwipeComplete && (
+        <Animated.View
+          style={[
+            doneRevealStyle,
+            {
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 28,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              borderRadius: 14,
+              backgroundColor: colors.success + "20",
+            },
+          ]}
+        >
+          <CheckCircle2 size={12} color={colors.success} />
+          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.success }}>Done</Text>
+        </Animated.View>
+      )}
+      <PanGestureHandler
+        onGestureEvent={swipeHandler}
+        enabled={canSwipeComplete}
+        activeOffsetY={-10}
+        failOffsetX={[-15, 15]}
+        failOffsetY={10}
+      >
+        <Animated.View style={canSwipeComplete ? animatedSwipeStyle : undefined}>
     <Popover
       isVisible={showTooltip}
       onRequestClose={handleClose}
@@ -591,6 +681,9 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
         />
       ) : null}
     </Popover>
+        </Animated.View>
+      </PanGestureHandler>
+    </View>
   );
 };
 

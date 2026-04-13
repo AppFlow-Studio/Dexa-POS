@@ -18,7 +18,7 @@ import { replaceRoute } from "@/lib/rootNavigation";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Button, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -31,7 +31,7 @@ import {
   sanitizeIpAddress,
   sendKickBroadcast,
 } from "@/hooks/usePinSignIn";
-
+  
 const MAX_PIN_LENGTH = 4;
 
 const PinLoginScreen = () => {
