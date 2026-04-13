@@ -6,6 +6,7 @@ import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useRouter } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
+import DatePillRow, { type DatePillDef } from "./DatePillRow";
 import {
   Pressable,
   Text,
@@ -87,7 +88,9 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  // Narrow selector: only subscribe to live/active orders, not the full ordersById map
+  // Narrow selector: only active order + working set + own-station active orders.
+  // History comes from previousOrders (date-bounded). Do NOT scan all orderIds —
+  // useOrderStore can have 800+ stale orders with non-final statuses from useOrdersQuery.
   const liveOrders = useOrderStore(
     useShallow((s) => {
       const ids = new Set<string>();
@@ -96,11 +99,17 @@ const PreviousOrdersSection = () => {
         const localId = s.dbOrderIdIndex[wsId] || wsId;
         ids.add(localId);
       }
+      // Only include own-station, non-final, non-empty-draft orders
+      // (not ALL orders — that pulls in hundreds of stale "ready" orders)
+      const finalStatuses = new Set(['completed', 'void', 'cancelled', 'voided']);
       for (const id of s.orderIds) {
+        if (ids.has(id)) continue;
         const o = s.ordersById[id];
-        if (o && (o.order_status !== 'draft' || o.items.length > 0)) {
-          ids.add(id);
-        }
+        if (!o) continue;
+        if (o.station_id !== s.currentStationId) continue; // own station only
+        if (finalStatuses.has(o.order_status ?? '')) continue;
+        if (o.order_status === 'draft' && o.items.length === 0) continue;
+        ids.add(id);
       }
       const result: OrderProfile[] = [];
       for (const id of ids) {
@@ -111,6 +120,8 @@ const PreviousOrdersSection = () => {
     })
   );
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
+  const dateWindowLabel = usePreviousOrdersStore((s) => s.dateWindow?.label ?? 'today');
+  const setDateWindow = usePreviousOrdersStore((s) => s.setDateWindow);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabName>("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
@@ -120,6 +131,11 @@ const PreviousOrdersSection = () => {
   const loadMoreOrders = usePreviousOrdersStore((s) => s.loadMoreOrders);
   const isLoadingMore = usePreviousOrdersStore((s) => s._isLoadingMore);
   const hasMore = usePreviousOrdersStore((s) => s._hasMore);
+
+  const handleDatePillSelect = useCallback((pill: DatePillDef) => {
+    const { startDate, endDate } = pill.getDateRange();
+    setDateWindow({ startDate, endDate, label: pill.windowLabel });
+  }, [setDateWindow]);
 
   const handleLoadMore = useCallback(() => {
     if (hasMore && !isLoadingMore) void loadMoreOrders();
@@ -300,7 +316,10 @@ const PreviousOrdersSection = () => {
 
   return (
     <View className="flex-1 px-3 pt-3">
-      {/* Header: Tabs + Search + Refresh */}
+      {/* Header: Date Pills + Tabs + Search + Refresh */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <DatePillRow activeLabel={dateWindowLabel} onSelect={handleDatePillSelect} />
+      </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <OrderTabs onTabChange={handleTabChange} counts={tabCounts} activeTab={activeTab} />
 

@@ -746,6 +746,11 @@ export interface OrderPaymentTransactionDetails {
   splitLabel?: string;
   isCashPayment?: boolean;
   isCash?: boolean;
+  rrn?: string;
+  batchNumber?: string;
+  invoiceNumber?: string;
+  entryMode?: string;
+  referenceId?: string;
   // Full Dejavoo response details (sanitized, no First4/BIN/IPosToken)
   dejavooTransaction?: DejavooSaleTransactionResponse;
   // Full Castles response JSONB (from buildCastlesTerminalResponse)
@@ -948,6 +953,9 @@ export interface OrderProfile {
 
   // === SYNC VERSION (for optimistic concurrency) ===
   sync_version?: number; // Backend sync version for conflict detection
+
+  // === BROADCAST METADATA (transient, not persisted to MMKV) ===
+  _broadcastItemCount?: number; // Non-voided item count from v2 broadcasts
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

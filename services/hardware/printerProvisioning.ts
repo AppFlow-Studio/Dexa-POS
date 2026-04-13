@@ -45,13 +45,13 @@ export async function addStarPrinter(
 
   if (existing?.length) {
     // Update existing row (IP match — same physical printer)
+    // Printers are location-level resources — don't bind to a specific station
     await supabase
       .from("printers")
       .update({
         printer_name: `${discovered.modelName} (${discovered.ipAddress})`,
         printer_model: discovered.modelName,
         printer_role: role,
-        station_id: stationId,
         paper_width: caps.paperWidth,
         max_chars_per_line: caps.maxCharsPerLine,
         supports_auto_cut: caps.supportsAutoCut,
@@ -94,7 +94,7 @@ export async function addStarPrinter(
       is_connected: false,
       location_id: locationId,
       merchant_id: merchantId,
-      station_id: stationId,
+      // Printers are location-level resources — no station binding
       metadata: {
         starModel: discovered.model,
         macAddress: discovered.macAddress,

@@ -136,6 +136,10 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   showPrepTimesToCustomers: boolean;
   autoAdjustPrepTimes: boolean;
 
+  // Printer Assignment (per-station, persisted locally via MMKV)
+  defaultReceiptPrinterId: string | null;
+  setDefaultReceiptPrinterId: (printerId: string | null) => void;
+
   // Order Line
   orderLineSettings: OrderLineSettings;
 
@@ -278,6 +282,10 @@ export const useSettingsStore = create<SettingsState>()(
       showPrepTimesToCustomers: true,
       autoAdjustPrepTimes: true,
 
+      // Printer Assignment
+      defaultReceiptPrinterId: null,
+      setDefaultReceiptPrinterId: (printerId) => set({ defaultReceiptPrinterId: printerId }),
+
       // Order Line
       orderLineSettings: { daysToShow: 0 },
 
@@ -349,6 +357,8 @@ export const useSettingsStore = create<SettingsState>()(
         showMenuImages: state.showMenuImages,
         // Order Line
         orderLineSettings: state.orderLineSettings,
+        // Printer Assignment
+        defaultReceiptPrinterId: state.defaultReceiptPrinterId,
       }),
     }
   )

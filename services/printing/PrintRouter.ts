@@ -1,26 +1,33 @@
 import { CartItem } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { PrinterConfig, PrinterRoutingConfig } from "@/types/printer";
 
 /**
- * Finds the default receipt printer for a location/station.
+ * Finds the receipt printer for this station.
  *
  * Priority order:
- *   1. isDefaultReceipt + isConnected + non-builtin  (e.g. Star set as default)
- *   2. isDefaultReceipt + isConnected + builtin       (Landi fallback when Star offline)
- *   3. isDefaultReceipt + non-builtin                 (Star set, not yet connected)
- *   4. isDefaultReceipt + builtin                     (Landi only option)
+ *   1. Station's defaultReceiptPrinterId (from MMKV settings — per-device)
+ *   2. Fallback: any active receipt-role printer at this location
  *
- * Builtin printers are always treated as lower priority than network printers
- * so that explicitly assigning a Star as the receipt printer is respected.
+ * Printers are location-level resources. Each station stores its own
+ * receipt printer assignment locally via useSettingsStore.
  */
 export function getReceiptPrinter(
   locationId: string,
-  stationId?: string | null,
+  _stationId?: string | null,
 ): PrinterConfig | null {
   const { printers } = usePrinterStore.getState();
+  const defaultId = useSettingsStore.getState().defaultReceiptPrinterId;
 
+  // Station's chosen receipt printer (stored in MMKV per-device)
+  if (defaultId) {
+    const chosen = printers.find((p) => p.id === defaultId && p.isActive);
+    if (chosen) return chosen;
+  }
+
+  // Fallback: any active receipt printer at this location
   const activePrinters = printers.filter(
     (p) =>
       p.isActive &&
@@ -28,32 +35,16 @@ export function getReceiptPrinter(
       (p.printerRole === "receipt" || p.isDefaultReceipt),
   );
 
-  console.log(
-    `[PrintRouter] getReceiptPrinter: locationId=${locationId}, candidates=${activePrinters.length}`,
-  );
-
   const isBuiltin = (p: PrinterConfig) => p.connectionType === "builtin";
 
-  const pick = (candidates: PrinterConfig[]): PrinterConfig | undefined =>
-    // Prefer non-builtin (network/Star) over builtin (Landi) within any tier
-    candidates.find((p) => p.isDefaultReceipt && p.isConnected && !isBuiltin(p)) ??
-    candidates.find((p) => p.isDefaultReceipt && p.isConnected) ??
-    candidates.find((p) => p.isDefaultReceipt && !isBuiltin(p)) ??
-    candidates.find((p) => p.isDefaultReceipt);
-
-  // Station-specific default first
-  if (stationId) {
-    const stationPrinters = activePrinters.filter((p) => p.stationId === stationId);
-    const stationPrinter = pick(stationPrinters);
-    if (stationPrinter) return stationPrinter;
-  }
-
-  // Location-wide default
-  const defaultPrinter = pick(activePrinters);
-  if (defaultPrinter) return defaultPrinter;
-
-  // No default receipt printer set → return null (triggers "set default" modal)
-  return null;
+  // Prefer connected non-builtin (Star) over builtin (Landi)
+  return (
+    activePrinters.find((p) => p.isConnected && !isBuiltin(p)) ??
+    activePrinters.find((p) => p.isConnected) ??
+    activePrinters.find((p) => !isBuiltin(p)) ??
+    activePrinters[0] ??
+    null
+  );
 }
 
 /**

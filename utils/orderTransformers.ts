@@ -22,6 +22,14 @@ import type {
 } from '@/lib/types'
 
 /**
+ * Check if a broadcast payload is header-only (v2 — no items/reversals/refund_items).
+ * Payments may or may not be present depending on whether payment fields changed.
+ */
+export function isHeaderOnlyBroadcast (order: BroadcastOrderData): boolean {
+  return (order._broadcast_version ?? 1) >= 2
+}
+
+/**
  * Derive cashSavings for a cash-priced payment.
  *
  * Prefers backend-provided original_amount. Falls back to deriving from
@@ -673,8 +681,13 @@ export function transformBroadcastToOrder (
     amount_due: backendOrder.amount_due,
     cash_amount_due: backendOrder.cash_amount_due,
 
-    // Items
-    items: transformBroadcastItems(backendOrder.order_items),
+    // Items — v2 (header-only) broadcasts omit items; fetch on-demand via syncOrderFromBackendComplete
+    items: isHeaderOnlyBroadcast(backendOrder)
+      ? []
+      : transformBroadcastItems(backendOrder.order_items),
+
+    // Broadcast item count (v2) — used for display when items array is empty
+    _broadcastItemCount: backendOrder.item_count,
 
     // Payments - transform with item context for coverage derivation
     payments: transformBroadcastPaymentsToProfile(
@@ -685,11 +698,14 @@ export function transformBroadcastToOrder (
       backendOrder.cash_total
     ),
     // Cast reversals and refund items to proper types (broadcast returns Record<string, unknown>[])
-    reversals:
-      (backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined,
-    order_refund_items:
-      (backendOrder.order_refund_items as unknown as OrderRefundItemRecord[]) ??
-      undefined,
+    // v2 broadcasts omit these — preserved from existing order in upsertOrder
+    reversals: isHeaderOnlyBroadcast(backendOrder)
+      ? undefined
+      : ((backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined),
+    order_refund_items: isHeaderOnlyBroadcast(backendOrder)
+      ? undefined
+      : ((backendOrder.order_refund_items as unknown as OrderRefundItemRecord[]) ??
+        undefined),
 
     // Timestamps
     opened_at: backendOrder.created_at,

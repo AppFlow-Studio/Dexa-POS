@@ -88,12 +88,40 @@ function hydrateWorkspace(
     }
   }
 
-  // Build server map
+  // Build server map — preserve locally-advanced order status to prevent
+  // stale re-fetches from reverting optimistic updates (e.g. draft overwriting preparing)
+  const STATUS_RANK: Record<string, number> = {
+    draft: 0,
+    pending: 0,
+    sent_to_kitchen: 1,
+    preparing: 1,
+    ready: 2,
+    completed: 3,
+    closed: 3,
+    void: 4,
+  };
   const serverMap: Record<string, OrderProfile> = {};
   const serverIds: string[] = [];
   for (const order of serverOrders) {
     const key = order.db_order_id || order.id;
-    serverMap[key] = order;
+    const existing = state.ordersById[key];
+    if (existing) {
+      const localRank = STATUS_RANK[existing.order_status ?? ""] ?? 0;
+      const serverRank = STATUS_RANK[order.order_status ?? ""] ?? 0;
+      if (localRank > serverRank) {
+        // Local is ahead (optimistic update) — preserve local status + kitchen timestamps
+        serverMap[key] = {
+          ...order,
+          order_status: existing.order_status,
+          sent_to_kitchen_at: existing.sent_to_kitchen_at ?? order.sent_to_kitchen_at,
+          items: existing.items.length > 0 ? existing.items : order.items,
+        };
+      } else {
+        serverMap[key] = order;
+      }
+    } else {
+      serverMap[key] = order;
+    }
     serverIds.push(key);
   }
 

@@ -705,7 +705,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         prePaymentOrder &&
         (prePaymentOrder.order_status === "draft" || prePaymentOrder.order_status === "pending")
       ) {
-        await useOrderStore.getState().sendNewItemsToKitchenForOrder(activeOrderId);
+        useOrderStore.getState().sendNewItemsToKitchenForOrder(activeOrderId);
       }
 
       // Await payment and check for success

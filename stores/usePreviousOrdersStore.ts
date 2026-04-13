@@ -12,12 +12,24 @@ import {
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
+import { getCurrentBusinessDay, type BusinessDayConfig } from "@/lib/businessDay";
+import { todayOrdersCache, projectToSummary } from "@/stores/todayOrdersCache";
 
 /** Same source as useOrdersQuery / reconcile: selected store, then floor plan fallback */
 function resolveHistoryLocationId(): string | null {
   const storeId = useStoreSettingsStore.getState().selectedStore?.id ?? null;
   if (storeId) return storeId;
   return useFloorPlanStore.getState().locationId;
+}
+
+/** Resolve the BusinessDayConfig from the current location settings. */
+function resolveBusinessDayConfig(): BusinessDayConfig | null {
+  const store = useStoreSettingsStore.getState().selectedStore;
+  if (!store?.timezone) return null;
+  return {
+    timezone: store.timezone,
+    rolloverHour: store.business_day_start_hour ?? 0,
+  };
 }
 
 /** DB row id and local order id may both appear in URLs / lookups */
@@ -99,6 +111,31 @@ const toRefundReasonType = (reason: string): RefundReasonType => {
 
 
 const MAX_IN_MEMORY_PREVIOUS_ORDERS = 500;
+const INITIAL_FETCH_SIZE = 100;
+const LOAD_MORE_PAGE_SIZE = 100;
+const LOAD_MORE_COOLDOWN_MS = 2000;
+
+// Cooldown tracking for onEndReached cascade prevention
+let _lastLoadMoreCompletedAt = 0;
+
+export type DateWindowLabel = 'today' | 'yesterday' | 'last_7_days' | 'custom';
+
+export interface DateWindow {
+  startDate: string | null;  // ISO date string, null = today (server computes)
+  endDate: string | null;    // ISO date string
+  label: DateWindowLabel;
+  // Resolved bounds from RPC (cached for broadcast guard + loadMore)
+  _resolvedStartTs: string | null;
+  _resolvedEndTs: string | null;
+}
+
+const DEFAULT_DATE_WINDOW: DateWindow = {
+  startDate: null,
+  endDate: null,
+  label: 'today',
+  _resolvedStartTs: null,
+  _resolvedEndTs: null,
+};
 
 interface PreviousOrdersState {
   previousOrders: PreviousOrder[];
@@ -110,6 +147,9 @@ interface PreviousOrdersState {
   /** Location id used for last successful refresh (invalidates throttle on store switch) */
   _lastRefreshLocationId: string | null;
 
+  // Date window for business-day-aware filtering
+  dateWindow: DateWindow;
+
   // Pagination state
   _currentOffset: number;
   _hasMore: boolean;
@@ -120,6 +160,7 @@ interface PreviousOrdersState {
   getOrderById: (orderId: string) => PreviousOrder | undefined;
   searchOrders: (query: string) => PreviousOrder[];
   getOrdersByDate: (date: Date) => PreviousOrder[];
+  setDateWindow: (window: { startDate: string | null; endDate: string | null; label: DateWindowLabel }) => void;
   refreshPreviousOrders: (opts?: { force?: boolean }) => Promise<void>; // Full refresh from backend
   loadMoreOrders: () => Promise<void>; // Paginated load-more
   checkForNewOrders: () => Promise<number>; // Check for new orders (lightweight)
@@ -221,9 +262,27 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     _orderLookup: {},
     lastHistoryRefreshAt: null,
     _lastRefreshLocationId: null,
+    dateWindow: { ...DEFAULT_DATE_WINDOW },
     _currentOffset: 0,
     _hasMore: false,
     _isLoadingMore: false,
+
+    setDateWindow: (window) => {
+      set({
+        dateWindow: {
+          ...window,
+          _resolvedStartTs: null,
+          _resolvedEndTs: null,
+        },
+        previousOrders: [],
+        _orderLookup: {},
+        _currentOffset: 0,
+        _hasMore: false,  // Block loadMore until refresh resolves bounds + sets _hasMore
+        _isLoadingMore: false,
+        newOrdersCount: 0,
+      });
+      void get().refreshPreviousOrders({ force: true });
+    },
 
     addOrderToHistory: (order: OrderProfile) => {
       // An order should be added to history if it has reached a final state.
@@ -252,6 +311,18 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       const lookupKey = order.db_order_id || order.id;
       if (lookup[lookupKey]) {
         return; // Don't add duplicates
+      }
+
+      // Date window guard: only add if order falls within the current viewed window
+      const { _resolvedStartTs, _resolvedEndTs } = get().dateWindow ?? DEFAULT_DATE_WINDOW;
+      if (_resolvedStartTs && _resolvedEndTs) {
+        const orderCreatedAt = order.opened_at;
+        if (orderCreatedAt) {
+          const orderTime = new Date(orderCreatedAt).getTime();
+          if (orderTime < new Date(_resolvedStartTs).getTime() || orderTime >= new Date(_resolvedEndTs).getTime()) {
+            return; // Order outside current date window
+          }
+        }
       }
 
       // Use the actual order timestamp, not current time
@@ -323,12 +394,26 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       };
 
       set((state) => {
-        const previousOrders = [...state.previousOrders, previousOrder];
+        let previousOrders = [...state.previousOrders, previousOrder];
+        // Sort newest first and enforce memory cap
+        previousOrders.sort((a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        if (previousOrders.length > MAX_IN_MEMORY_PREVIOUS_ORDERS) {
+          previousOrders = previousOrders.slice(0, MAX_IN_MEMORY_PREVIOUS_ORDERS);
+        }
         return {
           previousOrders,
           _orderLookup: buildOrderLookupMap(previousOrders),
         };
       });
+
+      // Write-through to MMKV cache for instant boot rendering
+      const locationId = resolveHistoryLocationId();
+      const config = resolveBusinessDayConfig();
+      if (locationId && config) {
+        todayOrdersCache.upsert(locationId, config, projectToSummary(previousOrder));
+      }
     },
 
     getOrderById: (orderId: string) => {
@@ -403,13 +488,95 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       if (__DEV__) console.log("Refreshing previous orders data from backend...");
 
       try {
-        // Fetch last 100 orders with full history details
+        // Step 1: Resolve business day bounds
+        // Defensive fallback for hot reload (dateWindow may not exist in old store state)
+        const dateWindow = get().dateWindow ?? DEFAULT_DATE_WINDOW;
+        let startTs: string | null = null;
+        let endTs: string | null = null;
+
+        // Strategy 1: Server RPC (authoritative)
+        try {
+          const bounds = await OrderService.getBusinessDayBounds(
+            client,
+            locationId,
+            dateWindow.startDate,
+            dateWindow.endDate,
+          );
+          if (bounds) {
+            startTs = bounds.start_ts;
+            endTs = bounds.end_ts;
+            console.log(`[PreviousOrders] ✅ Business day bounds (server): ${startTs} → ${endTs}`);
+          }
+        } catch (rpcErr) {
+          console.warn('[PreviousOrders] RPC get_business_day_bounds failed:', rpcErr);
+        }
+
+        // Strategy 2: Client-side Luxon (if RPC failed)
+        if (!startTs || !endTs) {
+          try {
+            const config = resolveBusinessDayConfig();
+            if (config) {
+              const { getBusinessDayBounds: getLocalBounds, getCurrentBusinessDay: getLocalDay } = require('@/lib/businessDay');
+              if (dateWindow.label === 'today' || !dateWindow.startDate) {
+                const localDay = getLocalDay(config);
+                const localBounds = getLocalBounds(localDay, config);
+                startTs = localBounds.startUtc;
+                endTs = localBounds.endUtc;
+              } else {
+                const localBounds = getLocalBounds(dateWindow.startDate, config);
+                startTs = localBounds.startUtc;
+                endTs = dateWindow.endDate
+                  ? getLocalBounds(dateWindow.endDate, config).endUtc
+                  : localBounds.endUtc;
+              }
+              console.log(`[PreviousOrders] ⚠️ Using Luxon fallback bounds: ${startTs} → ${endTs}`);
+            }
+          } catch (luxonErr) {
+            console.warn('[PreviousOrders] Luxon fallback failed:', luxonErr);
+          }
+        }
+
+        // Strategy 3: Plain JS Date (absolute last resort — no dependencies)
+        if (!startTs || !endTs) {
+          const store = useStoreSettingsStore.getState().selectedStore;
+          const tz = store?.timezone || 'America/New_York';
+          const rollover = store?.business_day_start_hour ?? 0;
+          // Get current time in merchant timezone using Intl
+          const nowStr = new Date().toLocaleString('en-US', { timeZone: tz });
+          const localNow = new Date(nowStr);
+          const localHour = localNow.getHours();
+          // Compute business day start in local time
+          const dayStart = new Date(localNow);
+          dayStart.setHours(rollover, 0, 0, 0);
+          if (localHour < rollover) {
+            dayStart.setDate(dayStart.getDate() - 1);
+          }
+          const dayEnd = new Date(dayStart);
+          dayEnd.setDate(dayEnd.getDate() + 1);
+          // Convert back to UTC ISO strings (approximate — Intl round-trip)
+          startTs = dayStart.toISOString();
+          endTs = dayEnd.toISOString();
+          console.log(`[PreviousOrders] 🔧 Using JS Date fallback bounds: ${startTs} → ${endTs}`);
+        }
+
+        // Cache resolved bounds for broadcast guard + loadMore
+        set({
+          dateWindow: {
+            ...dateWindow,
+            _resolvedStartTs: startTs,
+            _resolvedEndTs: endTs,
+          },
+        });
+
+        // Step 2: Fetch orders within the business day window
         const { data: fetchedOrders, error } =
           await OrderService.getHistoryOrders(
             client,
             locationId,
-            100,
+            INITIAL_FETCH_SIZE,
             null,
+            startTs,
+            endTs,
           );
 
         if (error) {
@@ -429,17 +596,33 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
         const existingPreviousOrders = get().previousOrders;
 
-        // Create a map for existing orders for quick lookup and to preserve local state
+        // Build merge map — filtered when date-bounded, full when not
         const ordersMap = new Map<string, PreviousOrder>();
-        existingPreviousOrders.forEach((order) => {
-          const key = order.db_order_id || order.orderId;
-          ordersMap.set(key, order);
-        });
+        if (startTs && endTs) {
+          // Filtered merge: only keep existing orders within the current date window.
+          // This drops stale orders from other days while preserving broadcast-added
+          // orders from today (avoids race condition where broadcast arrives mid-refresh).
+          const startTime = new Date(startTs).getTime();
+          const endTime = new Date(endTs).getTime();
+          existingPreviousOrders.forEach((order) => {
+            const key = order.db_order_id || order.orderId;
+            const orderTime = new Date(order.timestamp).getTime();
+            if (orderTime >= startTime && orderTime < endTime) {
+              ordersMap.set(key, order);
+            }
+          });
+        } else {
+          // No date bounds (fallback): full merge to preserve all existing orders
+          existingPreviousOrders.forEach((order) => {
+            const key = order.db_order_id || order.orderId;
+            ordersMap.set(key, order);
+          });
+        }
 
-        // Add or update with new previous orders, prioritizing fetched data
+        // Overlay fetched data — server wins on duplicates
         newPreviousOrders.forEach((order) => {
           const key = order.db_order_id || order.orderId;
-          ordersMap.set(key, order); // Overwrite if already exists, ensuring server data is prioritized
+          ordersMap.set(key, order);
         });
 
         // Convert map values back to an array
@@ -461,12 +644,22 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           _lastRefreshLocationId: locationId,
           // Reset pagination state on refresh
           _currentOffset: mergedPreviousOrders.length,
-          _hasMore: fetchedOrders.length === 100,
+          _hasMore: fetchedOrders.length === INITIAL_FETCH_SIZE,
           _isLoadingMore: false,
         });
         if (__DEV__) console.log(
-          `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded.`,
+          `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded (window: ${dateWindow.label}).`,
         );
+
+        // Bulk-write to MMKV cache for instant boot rendering (today only)
+        if (dateWindow.label === 'today') {
+          const config = resolveBusinessDayConfig();
+          if (config) {
+            const businessDay = getCurrentBusinessDay(config);
+            todayOrdersCache.writeFromRefresh(locationId, businessDay, mergedPreviousOrders);
+            todayOrdersCache.evictStale(locationId, businessDay);
+          }
+        }
       } catch (err) {
         console.error("Error in refreshPreviousOrders:", err);
       } finally {
@@ -490,9 +683,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       }
 
       try {
-        // Fetch only the latest 10 orders (lightweight check)
+        // Fetch only the latest 10 orders within current date window (lightweight check)
+        const { _resolvedStartTs, _resolvedEndTs } = get().dateWindow ?? DEFAULT_DATE_WINDOW;
         const { data: latestOrders, error } =
-          await OrderService.getHistoryOrders(client, locationId, 10, null);
+          await OrderService.getHistoryOrders(client, locationId, 10, null, _resolvedStartTs, _resolvedEndTs);
 
         if (error || !latestOrders) {
           return 0;
@@ -548,6 +742,16 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       const { _isLoadingMore, _hasMore, _currentOffset } = get();
       if (_isLoadingMore || !_hasMore) return;
 
+      // Cooldown: prevent onEndReached cascade
+      if (Date.now() - _lastLoadMoreCompletedAt < LOAD_MORE_COOLDOWN_MS) return;
+
+      // Block pagination until date bounds are resolved (refresh must complete first)
+      const { _resolvedStartTs, _resolvedEndTs } = get().dateWindow ?? DEFAULT_DATE_WINDOW;
+      if (!_resolvedStartTs || !_resolvedEndTs) {
+        if (__DEV__) console.log('[loadMoreOrders] Skipped — waiting for date bounds to resolve');
+        return;
+      }
+
       const client = _supabaseClient;
       if (!client) return;
 
@@ -557,14 +761,16 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       set({ _isLoadingMore: true });
 
       try {
-        const PAGE_SIZE = 50;
+
         const { data, error, hasMore } =
           await OrderService.getHistoryOrdersPaginated(
             client,
             locationId,
-            PAGE_SIZE,
+            LOAD_MORE_PAGE_SIZE,
             _currentOffset,
             null,
+            _resolvedStartTs,
+            _resolvedEndTs,
           );
 
         if (error || !data) {
@@ -617,6 +823,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       } catch (err) {
         console.error("Error in loadMoreOrders:", err);
       } finally {
+        _lastLoadMoreCompletedAt = Date.now();
         set({ _isLoadingMore: false });
       }
     },
@@ -871,7 +1078,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           amount_paid: profile.amount_paid ?? existing.amount_paid,
           amount_due: profile.amount_due ?? existing.amount_due,
           cash_amount_due: profile.cash_amount_due ?? existing.cash_amount_due,
-          payments: profile.payments || existing.payments,
+          payments: (profile.payments?.length ?? 0) > 0 ? profile.payments : existing.payments,
           checkStatus: profile.check_status || existing.checkStatus,
         });
       } else if (_isFinalState(profile)) {

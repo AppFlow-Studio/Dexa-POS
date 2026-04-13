@@ -583,11 +583,36 @@ export class OrderService {
    * Fetch orders with full history details (items, modifiers, payments, station, staff).
    * Used for Previous Orders / History view.
    */
+  /**
+   * Fetch business day bounds from the server.
+   * Returns the start/end timestamptz for the given date window.
+   * Pass null dates to get "today" computed from the merchant's timezone.
+   */
+  static async getBusinessDayBounds(
+    client: SupabaseClient,
+    locationId: string,
+    startDate?: string | null,
+    endDate?: string | null,
+  ): Promise<{ start_ts: string; end_ts: string } | null> {
+    const { data, error } = await client.rpc('get_business_day_bounds', {
+      p_location_id: locationId,
+      p_start_date: startDate ?? null,
+      p_end_date: endDate ?? null,
+    });
+    if (error || !data || data.length === 0) {
+      console.error('[OrderService] getBusinessDayBounds error:', error);
+      return null;
+    }
+    return { start_ts: data[0].start_ts, end_ts: data[0].end_ts };
+  }
+
   static async getHistoryOrders (
     client: SupabaseClient,
     locationId: string,
     limit: number = 50,
-    statuses: OrderStatus[] | null = null
+    statuses: OrderStatus[] | null = null,
+    startTs?: string | null,
+    endTs?: string | null,
   ): Promise<{ data: any[] | null; error: any }> {
     let query = client
       .from('orders')
@@ -607,6 +632,9 @@ export class OrderService {
       .order('created_at', { ascending: false })
       .limit(limit)
 
+    if (startTs) query = query.gte('created_at', startTs)
+    if (endTs) query = query.lt('created_at', endTs)
+
     if (statuses && statuses.length > 0) {
       query = query.in('status', statuses)
     }
@@ -624,7 +652,9 @@ export class OrderService {
     locationId: string,
     limit: number,
     offset: number,
-    statuses: OrderStatus[] | null = null
+    statuses: OrderStatus[] | null = null,
+    startTs?: string | null,
+    endTs?: string | null,
   ): Promise<{ data: any[] | null; error: any; hasMore: boolean }> {
     let query = client
       .from('orders')
@@ -643,6 +673,9 @@ export class OrderService {
       .eq('location_id', locationId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
+
+    if (startTs) query = query.gte('created_at', startTs)
+    if (endTs) query = query.lt('created_at', endTs)
 
     if (statuses && statuses.length > 0) {
       query = query.in('status', statuses)

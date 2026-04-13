@@ -1,6 +1,7 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Delete } from "lucide-react-native";
 import { useState } from "react";
 import {
@@ -106,6 +107,10 @@ const OpenItemAdder = () => {
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
   const { show } = useToast();
 
+  const pricingStrategy = useStoreSettingsStore(s => s.selectedStore?.pricing_strategy);
+  const dualPricingPct = useStoreSettingsStore(s => s.selectedStore?.dual_pricing_percentage);
+  const isDualPricing = pricingStrategy === "dual" && typeof dualPricingPct === "number" && dualPricingPct > 0;
+
   const [openItemName, setOpenItemName] = useState("");
   const [openItemPrice, setOpenItemPrice] = useState("");
   const [priceDisplay, setPriceDisplay] = useState("0.00");
@@ -175,7 +180,17 @@ const OpenItemAdder = () => {
       return;
     }
 
-    const cashPrice = Math.round(price * 96) / 100;
+    // User enters the cash/base price; card price is increased by the dual pricing percentage
+    let cardPrice: number;
+    let cashPrice: number;
+    if (isDualPricing) {
+      cardPrice = Math.round(price * (1 + dualPricingPct! / 100) * 100) / 100;
+      cashPrice = price;
+    } else {
+      cardPrice = price;
+      cashPrice = price;
+    }
+
     addItemToActiveOrder({
       id: `open_item_${Date.now()}`,
       menuItemId: `open_item_${Date.now()}`,
@@ -183,20 +198,20 @@ const OpenItemAdder = () => {
       quantity: 1,
       originalPrice: cashPrice,
       baseCashPrice: cashPrice,
-      price,
-      unitPrice: price,
-      baseCardPrice: price,
+      price: cardPrice,
+      unitPrice: cardPrice,
+      baseCardPrice: cardPrice,
       cashPrice,
       customizations: { notes: "Open Item" },
       availableDiscount: undefined,
       appliedDiscount: null,
       is_open_item: true,
       open_item_name: itemName,
-      open_item_price: price,
+      open_item_price: cardPrice,
       category_name: "Open Items",
       is_tax_exempt: false,
       paidQuantity: 0,
-      subtotal: price,
+      subtotal: cardPrice,
       cashSubtotal: cashPrice,
       taxRate: 0,
       taxAmount: 0,
@@ -239,6 +254,11 @@ const OpenItemAdder = () => {
           <View style={styles.priceDisplay}>
             <Text style={styles.priceText}>${priceDisplay}</Text>
           </View>
+          {isDualPricing && (
+            <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", marginTop: 4 }}>
+              Item Price Increase is enabled, the price will be adjusted by {dualPricingPct}%
+            </Text>
+          )}
         </View>
 
         {/* Numpad */}

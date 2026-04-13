@@ -55,6 +55,8 @@ function useStableOrderList(orders: OrderProfile[]): OrderProfile[] {
     const o = orders[i];
     hash = ((hash << 5) - hash + hashStr(o.id)) | 0;
     hash = ((hash << 5) - hash + (o.sync_version ?? 0)) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.order_status ?? '')) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.paid_status ?? '')) | 0;
   }
 
   if (hash !== prevHash.current) {
@@ -586,7 +588,7 @@ export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
           o.order_type !== "dine_in" &&
           o.order_status !== "void" &&
           o.order_status !== "completed" &&
-          o.items.length > 0 &&
+          (o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0) &&
           (
             // Draft orders: only show own-station ones
             (isDraft && isOwnStation) ||
