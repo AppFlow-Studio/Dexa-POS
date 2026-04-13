@@ -117,6 +117,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const {
     currentCourse,
     sentCourses,
+    courseSentAtMap,
     itemCourseMap,
     setCurrentCourse,
     isCourseSent,
@@ -189,11 +190,20 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     if (renderStage === 0) {
       setRenderStage(1)
     }
-    requestAnimationFrame(() => {
+    // Defer menu section mount to avoid competing with modal open animation.
+    // InteractionManager waits for animations to settle; the 100ms fallback
+    // covers cases where no interaction is registered.
+    const InteractionManager = require('react-native').InteractionManager
+    const handle = InteractionManager.runAfterInteractions(() => {
       if (!cancelled) setRenderStage(2)
     })
+    const timeout = setTimeout(() => {
+      if (!cancelled) setRenderStage(2)
+    }, 100)
     return () => {
       cancelled = true
+      handle.cancel()
+      clearTimeout(timeout)
     }
   }, [renderStage])
 
@@ -1142,6 +1152,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               showOrderDetails={false}
               itemCourseMap={itemCourseMap}
               sentCourses={sentCourses}
+              courseSentAtMap={courseSentAtMap}
               currentCourse={currentCourse}
               onSelectCourse={handleSelectCourse}
               setCurrentCourse={handleSetCurrentCourse}
