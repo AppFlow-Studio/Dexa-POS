@@ -2,10 +2,10 @@
  * Add / Edit Loyalty Program
  * Handles all 3 program types: points | visits | punch
  */
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useToast } from '@/contexts/ToastContext'
+import { useLoyaltyDataStore } from '@/stores/useLoyaltyDataStore'
 import type { Database } from '@/database.types'
 import {
   Award,
@@ -170,10 +170,11 @@ const SelectPill: React.FC<{
 
 export default function ProgramFormScreen() {
   const router        = useRouter()
-  const supabase      = useSupabaseClient()
   const { show }      = useToast()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const merchantId    = selectedStore?.merchant_id ?? ''
+  const saveProgram   = useLoyaltyDataStore(s => s.saveProgram)
+  const deleteProgram = useLoyaltyDataStore(s => s.deleteProgram)
   const params        = useLocalSearchParams<{ id?: string }>()
   const editId        = params.id
   const isEdit        = !!editId
@@ -219,6 +220,9 @@ export default function ProgramFormScreen() {
   // ── Load existing program ───────────────────────────────────────────────────
   const loadProgram = useCallback(async () => {
     if (!editId) return
+    const { getOrderStoreSupabaseClient } = await import('@/stores/useOrderStore')
+    const supabase = getOrderStoreSupabaseClient()
+    if (!supabase) { show({ title: 'Error', message: 'No client', type: 'error' }); return }
     const { data, error } = await supabase
       .from('loyalty_programs')
       .select('*')
@@ -313,28 +317,16 @@ export default function ProgramFormScreen() {
         display_icon:                 'star',
       }
 
-      // If this program is being set active, deactivate all others for this merchant+location
-      if (isActive) {
-        const locationId = selectedStore?.id
-        const deactivateQuery = supabase
-          .from('loyalty_programs')
-          .update({ is_active: false })
-          .eq('merchant_id', merchantId)
-          .eq('is_active', true)
-          .contains('location_ids', locationId ? [locationId] : [])
-        if (isEdit) deactivateQuery.neq('id', editId!)
-        await deactivateQuery
-      }
+      const result = await saveProgram(payload, {
+        isEdit,
+        editId: editId ?? undefined,
+        isActive,
+        merchantId,
+        locationId: selectedStore?.id ?? null,
+      })
 
-      let error: any
-      if (isEdit) {
-        ;({ error } = await supabase.from('loyalty_programs').update(payload).eq('id', editId!))
-      } else {
-        ;({ error } = await supabase.from('loyalty_programs').insert(payload))
-      }
-
-      if (error) {
-        show({ title: 'Error', message: error.message ?? 'Failed to save program', type: 'error' })
+      if (!result.success) {
+        show({ title: 'Error', message: result.error ?? 'Failed to save program', type: 'error' })
         return
       }
 
@@ -357,8 +349,8 @@ export default function ProgramFormScreen() {
           onPress: async () => {
             setDeleting(true)
             try {
-              const { error } = await supabase.from('loyalty_programs').delete().eq('id', editId!)
-              if (error) { show({ title: 'Error', message: error.message, type: 'error' }); return }
+              const result = await deleteProgram(editId!)
+              if (!result.success) { show({ title: 'Error', message: result.error ?? 'Failed to delete', type: 'error' }); return }
               show({ title: 'Deleted', message: 'Program deleted', type: 'success' })
               router.back()
             } finally {

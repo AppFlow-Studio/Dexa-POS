@@ -1,7 +1,6 @@
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import type { Database } from '@/database.types'
+import { useLoyaltyDataStore, type LoyaltyProgram, type LoyaltyEnrollment, type LoyaltyReward } from '@/stores/useLoyaltyDataStore'
 import {
   Award,
   Gift,
@@ -34,26 +33,6 @@ import { useToast } from '@/contexts/ToastContext'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type TabId = 'overview' | 'programs' | 'customers' | 'redeem'
-
-type LoyaltyProgram = Database['public']['Tables']['loyalty_programs']['Row']
-
-type LoyaltyEnrollment = Database['public']['Tables']['loyalty_enrollments']['Row'] & {
-  customer?: {
-    id: string
-    name: string | null
-    phone: string | null
-    last_visit: string | null
-    lifetime_spend: number | null
-    visits: number | null
-  } | null
-  program?: Pick<
-    LoyaltyProgram,
-    | 'name' | 'program_type' | 'visits_required' | 'punches_required'
-    | 'points_redemption_threshold' | 'reward_description' | 'display_color' | 'display_icon'
-  > | null
-}
-
-type LoyaltyReward = Database['public']['Tables']['loyalty_rewards']['Row']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -562,95 +541,39 @@ const CustomersTab: React.FC<{
 
 // ─── Tab: Redeem ──────────────────────────────────────────────────────────────
 
-// Fix #7 — instant lookup on type (debounced), cleaner design
 const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
-  const supabase    = useSupabaseClient()
-  const { show }    = useToast()
+  const { show } = useToast()
 
-  const [phone, setPhone]             = useState('')
-  const [searching, setSearching]     = useState(false)
-  const [searched, setSearched]       = useState(false)
-  const [enrollments, setEnrollments] = useState<LoyaltyEnrollment[]>([])
-  const [rewards, setRewards]         = useState<LoyaltyReward[]>([])
-  const [redeeming, setRedeeming]     = useState<string | null>(null)
-  const [redeemed, setRedeemed]       = useState<LoyaltyReward | null>(null)
-  const [customer, setCustomer]       = useState<{ id: string; name: string | null; phone: string | null; lifetime_spend: number | null; visits: number | null } | null>(null)
+  const phone        = useLoyaltyDataStore(s => s.redeemPhone)
+  const searching    = useLoyaltyDataStore(s => s.redeemSearching)
+  const searched     = useLoyaltyDataStore(s => s.redeemSearched)
+  const customer     = useLoyaltyDataStore(s => s.redeemCustomer)
+  const enrollments  = useLoyaltyDataStore(s => s.redeemEnrollments)
+  const rewards      = useLoyaltyDataStore(s => s.redeemRewards)
+  const redeeming    = useLoyaltyDataStore(s => s.redeemRedeeming)
+  const redeemed     = useLoyaltyDataStore(s => s.redeemLastRedeemed)
+  const lookupCustomer   = useLoyaltyDataStore(s => s.lookupCustomer)
+  const redeemReward     = useLoyaltyDataStore(s => s.redeemReward)
+  const clearRedeemState = useLoyaltyDataStore(s => s.clearRedeemState)
+  const clearLastRedeemed = useLoyaltyDataStore(s => s.clearLastRedeemed)
+  const setRedeemPhone   = useLoyaltyDataStore(s => s.setRedeemPhone)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const doLookup = useCallback(async (raw: string) => {
-    const trimmed = raw.trim()
-    if (trimmed.length < 4) {
-      setSearched(false); setCustomer(null); setEnrollments([]); setRewards([]); setRedeemed(null)
-      return
-    }
-    setSearching(true)
-    try {
-      const digits = trimmed.replace(/\D/g, '').slice(-10)
-      const { data: customers } = await supabase
-        .from('customers')
-        .select('id, name, phone, lifetime_spend, visits')
-        .eq('merchant_id', merchantId)
-        .or(`phone.ilike.%${digits}%,phone.ilike.%${trimmed}%`)
-        .limit(1)
-
-      const cust = customers?.[0] ?? null
-      setCustomer(cust)
-      setRedeemed(null)
-
-      if (!cust) { setSearched(true); return }
-
-      const [{ data: enrolData }, { data: rewardData }] = await Promise.all([
-        supabase
-          .from('loyalty_enrollments')
-          .select('*, program:loyalty_programs(name, program_type, visits_required, punches_required, points_redemption_threshold, reward_description, display_color, display_icon)')
-          .eq('customer_id', cust.id)
-          .eq('merchant_id', merchantId)
-          .eq('is_active', true),
-        supabase
-          .from('loyalty_rewards')
-          .select('*')
-          .eq('customer_id', cust.id)
-          .eq('merchant_id', merchantId)
-          .is('redeemed_at', null)
-          .is('voided_at', null),
-      ])
-
-      setEnrollments((enrolData ?? []) as LoyaltyEnrollment[])
-      setRewards((rewardData ?? []) as LoyaltyReward[])
-    } finally {
-      setSearched(true)
-      setSearching(false)
-    }
-  }, [merchantId, supabase])
-
-  // Instant debounced lookup as user types
   const handlePhoneChange = (val: string) => {
-    setPhone(val)
+    setRedeemPhone(val)
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => doLookup(val), 400)
+    debounceRef.current = setTimeout(() => lookupCustomer(val, merchantId), 400)
   }
 
   const handleRedeem = async (reward: LoyaltyReward) => {
-    setRedeeming(reward.id)
-    try {
-      const { error } = await supabase
-        .from('loyalty_rewards')
-        .update({ status: 'redeemed', redeemed_at: new Date().toISOString() })
-        .eq('id', reward.id)
-
-      if (error) { show({ title: 'Error', message: 'Failed to redeem reward', type: 'error' }); return }
-      setRedeemed(reward)
-      setRewards(prev => prev.filter(r => r.id !== reward.id))
-    } finally {
-      setRedeeming(null)
-    }
+    const result = await redeemReward(reward.id, merchantId)
+    if (!result.success) show({ title: 'Error', message: result.error ?? 'Failed to redeem reward', type: 'error' })
   }
 
   const handleReset = () => {
-    setPhone(''); setSearched(false); setCustomer(null)
-    setEnrollments([]); setRewards([]); setRedeemed(null)
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    clearRedeemState()
   }
 
   const totalPoints  = enrollments.reduce((s, e) => s + (e.current_points  ?? 0), 0)
@@ -715,7 +638,7 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                 {' '}applied for {customer?.name}
               </Text>
             </View>
-            <TouchableOpacity onPress={() => setRedeemed(null)} style={{ padding: 6 }}>
+            <TouchableOpacity onPress={clearLastRedeemed} style={{ padding: 6 }}>
               <X size={13} color={colors.muted} />
             </TouchableOpacity>
           </View>
@@ -845,38 +768,17 @@ const TABS: { id: TabId; label: string }[] = [
 
 export default function LoyaltyScreen() {
   const router        = useRouter()
-  const supabase      = useSupabaseClient()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const merchantId    = selectedStore?.merchant_id ?? ''
 
-  const [activeTab, setActiveTab] = useState<TabId>(_persistedTab)
-  const [programs,    setPrograms]    = useState<LoyaltyProgram[]>([])
-  const [enrollments, setEnrollments] = useState<LoyaltyEnrollment[]>([])
-  const [loading,     setLoading]     = useState(true)
+  const programs    = useLoyaltyDataStore(s => s.programs)
+  const enrollments = useLoyaltyDataStore(s => s.enrollments)
+  const loading     = useLoyaltyDataStore(s => s.loading)
+  const fetchData   = useLoyaltyDataStore(s => s.fetchData)
 
-  const loadData = useCallback(async () => {
-    if (!merchantId) return
-    setLoading(true)
-    try {
-      const [{ data: progsData }, { data: enrolData }] = await Promise.all([
-        supabase
-          .from('loyalty_programs')
-          .select('*')
-          .eq('merchant_id', merchantId)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('loyalty_enrollments')
-          .select('*, customer:customers(id,name,phone,last_visit,lifetime_spend,visits), program:loyalty_programs(name,program_type,visits_required,punches_required,points_redemption_threshold,reward_description,display_color,display_icon)')
-          .eq('merchant_id', merchantId)
-          .order('last_earn_at', { ascending: false, nullsFirst: false })
-          .limit(300),
-      ])
-      setPrograms((progsData ?? []) as LoyaltyProgram[])
-      setEnrollments((enrolData ?? []) as LoyaltyEnrollment[])
-    } finally {
-      setLoading(false)
-    }
-  }, [merchantId, supabase])
+  const [activeTab, setActiveTab] = useState<TabId>(_persistedTab)
+
+  const loadData = useCallback(() => { fetchData(merchantId) }, [merchantId, fetchData])
 
   useEffect(() => { loadData() }, [loadData])
 

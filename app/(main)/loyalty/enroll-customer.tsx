@@ -4,11 +4,11 @@
  * - Select program
  * - Create enrollment
  */
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useToast } from '@/contexts/ToastContext'
-import type { Database } from '@/database.types'
+import { useLoyaltyDataStore } from '@/stores/useLoyaltyDataStore'
+import type { LoyaltyProgram, CustomerResult } from '@/stores/useLoyaltyDataStore'
 import {
   Award,
   Check,
@@ -31,9 +31,6 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 
-type LoyaltyProgram   = Database['public']['Tables']['loyalty_programs']['Row']
-type Customer = { id: string; name: string | null; phone: string | null; lifetime_spend: number | null; visits: number | null }
-
 const PROGRAM_TYPE_LABELS: Record<string, string> = { points: 'Points', visits: 'Visits', punch: 'Punch Card' }
 
 const ProgramIcon: React.FC<{ type: string; size?: number; color?: string }> = ({ type, size = 14, color = colors.teal }) => {
@@ -44,10 +41,11 @@ const ProgramIcon: React.FC<{ type: string; size?: number; color?: string }> = (
 
 export default function EnrollCustomerScreen() {
   const router        = useRouter()
-  const supabase      = useSupabaseClient()
   const { show }      = useToast()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const merchantId    = selectedStore?.merchant_id ?? ''
+
+  const { searchCustomers, fetchActivePrograms, fetchEnrollmentsForCustomer, enrollCustomer } = useLoyaltyDataStore()
 
   // Step: 'search' | 'select-program' | 'done'
   const [step, setStep] = useState<'search' | 'select-program' | 'done'>('search')
@@ -55,8 +53,8 @@ export default function EnrollCustomerScreen() {
   // Search
   const [query,          setQuery]          = useState('')
   const [searching,      setSearching]      = useState(false)
-  const [searchResults,  setSearchResults]  = useState<Customer[]>([])
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [searchResults,  setSearchResults]  = useState<CustomerResult[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Programs
@@ -72,35 +70,19 @@ export default function EnrollCustomerScreen() {
   useEffect(() => {
     if (!merchantId) return
     setLoadingPrograms(true)
-    supabase
-      .from('loyalty_programs')
-      .select('*')
-      .eq('merchant_id', merchantId)
-      .eq('is_active', true)
-      .order('name')
-      .then(({ data }) => {
-        setPrograms((data ?? []) as LoyaltyProgram[])
-        setLoadingPrograms(false)
-      })
-  }, [merchantId, supabase])
+    fetchActivePrograms(merchantId).then(data => {
+      setPrograms(data)
+      setLoadingPrograms(false)
+    })
+  }, [merchantId])
 
   const runSearch = async (q: string) => {
     const trimmed = q.trim()
     if (!trimmed) { setSearchResults([]); return }
     setSearching(true)
     try {
-      const digits = trimmed.replace(/\D/g, '').slice(-10)
-      const { data } = await supabase
-        .from('customers')
-        .select('id, name, phone, lifetime_spend, visits')
-        .eq('merchant_id', merchantId)
-        .or(
-          digits.length >= 7
-            ? `phone.ilike.%${digits}%,name.ilike.%${trimmed}%`
-            : `name.ilike.%${trimmed}%`
-        )
-        .limit(10)
-      setSearchResults((data ?? []) as Customer[])
+      const results = await searchCustomers(trimmed, merchantId)
+      setSearchResults(results)
     } finally {
       setSearching(false)
     }
@@ -112,15 +94,10 @@ export default function EnrollCustomerScreen() {
     searchTimer.current = setTimeout(() => runSearch(text), 400)
   }
 
-  const handleSelectCustomer = async (cust: Customer) => {
+  const handleSelectCustomer = async (cust: CustomerResult) => {
     setSelectedCustomer(cust)
-    // Find which programs this customer is already enrolled in
-    const { data } = await supabase
-      .from('loyalty_enrollments')
-      .select('program_id')
-      .eq('customer_id', cust.id)
-      .eq('merchant_id', merchantId)
-    setAlreadyEnrolled((data ?? []).map(e => e.program_id))
+    const enrolled = await fetchEnrollmentsForCustomer(cust.id, merchantId)
+    setAlreadyEnrolled(enrolled)
     setStep('select-program')
   }
 
@@ -128,21 +105,11 @@ export default function EnrollCustomerScreen() {
     if (!selectedCustomer || !selectedProgram) return
     setEnrolling(true)
     try {
-      const { error } = await supabase
-        .from('loyalty_enrollments')
-        .insert({
-          customer_id:   selectedCustomer.id,
-          program_id:    selectedProgram.id,
-          merchant_id:   merchantId,
-          is_active:     true,
-          enrolled_at:   new Date().toISOString(),
-        })
-
-      if (error) {
-        show({ title: 'Error', message: error.message ?? 'Failed to enroll customer', type: 'error' })
+      const result = await enrollCustomer(selectedCustomer.id, selectedProgram.id, merchantId)
+      if (!result.success) {
+        show({ title: 'Error', message: result.error ?? 'Failed to enroll customer', type: 'error' })
         return
       }
-
       setStep('done')
     } finally {
       setEnrolling(false)
