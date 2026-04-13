@@ -293,11 +293,6 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         const cardLineTotal = item.subtotal || cardUnitPrice * item.quantity
         const cashLineTotal = item.cashSubtotal || cashUnitPrice * item.quantity
 
-        if (DEBUG && item.courseNumber) {
-          console.log(
-            `[CFD] Item ${item.id} (${item.name}) -> Course ${item.courseNumber}`
-          )
-        }
 
         return {
           id: item.id,
