@@ -94,14 +94,13 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
 
   const date = sessionDate ?? new Date().toISOString().split('T')[0]
 
-  const [focusedEmployeeId, setFocusedEmployeeId] = useState<string | null>(
-    null
-  )
+  const [focusedEmployeeId, setFocusedEmployeeId] = useState<string | null>(null)
   const [focusedDetailId, setFocusedDetailId] = useState<string | null>(null)
-  const [clockedInStaffProfileIds, setClockedInStaffProfileIds] = useState<
-    Set<string>
-  >(new Set())
+  const [clockedInStaffProfileIds, setClockedInStaffProfileIds] = useState<Set<string>>(new Set())
   const [isLoadingClockedInStaff, setIsLoadingClockedInStaff] = useState(false)
+  // Tips pulled from payments, keyed by staff profile id
+  const [cardTipsByStaff, setCardTipsByStaff] = useState<Record<string, number>>({})
+
 
   // Fixed pixel height for the scrollable list cards
   // 96% sheet - 32px padding top/bottom - ~58px step indicator - 14px margin
@@ -110,56 +109,109 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
   useEffect(() => {
     if (!isOpen || !selectedStore?.id) {
       setClockedInStaffProfileIds(new Set())
+      setCardTipsByStaff({})
       return
     }
 
     setClockedInStaffProfileIds(new Set())
+    setCardTipsByStaff({})
 
     const startOfDay = new Date(`${date}T00:00:00`).toISOString()
     const endOfDay = new Date(`${date}T23:59:59.999`).toISOString()
     let isCancelled = false
 
-    const loadClockedInStaff = async () => {
+    const loadData = async () => {
       setIsLoadingClockedInStaff(true)
       try {
-        const { data, error } = await supabase
-          .from('staff_shifts')
-          .select('staff_profile_id')
-          .eq('location_id', selectedStore.id)
-          .gte('clock_in_time', startOfDay)
-          .lte('clock_in_time', endOfDay)
+        // Load clocked-in staff and card tips in parallel
+        const [shiftsRes, paymentsRes] = await Promise.all([
+          supabase
+            .from('staff_shifts')
+            .select('staff_profile_id')
+            .eq('location_id', selectedStore.id)
+            .gte('clock_in_time', startOfDay)
+            .lte('clock_in_time', endOfDay),
+          supabase
+            .from('order_payments')
+            .select('tip_amount, order_id, payment_method, status, is_voided, is_returned')
+            .eq('location_id', selectedStore.id)
+            .or(`initiated_at.gte.${startOfDay},initiated_at.is.null`),
+        ])
 
-        if (error) {
-          console.error(
-            '[TipDist] Failed to load clocked-in staff for EOD:',
-            error
-          )
-          return
+        if (shiftsRes.error) {
+          console.error('[TipDist] Failed to load clocked-in staff:', shiftsRes.error)
         }
+        if (paymentsRes.error) {
+          console.error('[TipDist] Failed to load payments:', paymentsRes.error)
+        }
+        console.log('[TipDist] raw payments count:', paymentsRes.data?.length, 'date range:', startOfDay, '-', endOfDay)
 
         if (!isCancelled) {
           const ids = new Set<string>(
-            (data || [])
-              .map(
-                (row: { staff_profile_id: string | null }) =>
-                  row.staff_profile_id
-              )
+            (shiftsRes.data || [])
+              .map((row: { staff_profile_id: string | null }) => row.staff_profile_id)
               .filter((id): id is string => Boolean(id))
           )
           setClockedInStaffProfileIds(ids)
         }
-      } finally {
-        if (!isCancelled) {
-          setIsLoadingClockedInStaff(false)
+
+        // Split payments into card vs cash, filter out failed/void
+        const validPayments: any[] = (paymentsRes.data || []).filter(
+          (p: any) =>
+            !p.is_voided &&
+            !p.is_returned &&
+            !['pending', 'processing', 'failed', 'declined', 'void'].includes(p.status)
+        )
+        const cardPayments = validPayments.filter((p: any) => p.payment_method !== 'cash')
+        const cashPayments = validPayments.filter((p: any) => p.payment_method === 'cash')
+
+        console.log('[TipDist] valid payments:', validPayments.length, 'card:', cardPayments.length, 'cash:', cashPayments.length)
+
+        const allOrderIds = [...new Set(validPayments.map((p: any) => p.order_id).filter(Boolean))]
+
+        if (allOrderIds.length > 0 && !isCancelled) {
+          // Build per-order tip maps for card and cash
+          const cardOrderTipMap = new Map<string, number>()
+          cardPayments.forEach((p: any) => {
+            if (!p.order_id) return
+            cardOrderTipMap.set(p.order_id, (cardOrderTipMap.get(p.order_id) || 0) + Number(p.tip_amount || 0))
+          })
+          const cashOrderTipMap = new Map<string, number>()
+          cashPayments.forEach((p: any) => {
+            if (!p.order_id) return
+            cashOrderTipMap.set(p.order_id, (cashOrderTipMap.get(p.order_id) || 0) + Number(p.tip_amount || 0))
+          })
+
+          const { data: ordersRaw } = await supabase
+            .from('orders')
+            .select('id, assigned_server_id, created_by_staff_id')
+            .in('id', allOrderIds)
+
+          if (!isCancelled) {
+            const cardMap: Record<string, number> = {}
+            const cashMap: Record<string, number> = {}
+            ;(ordersRaw || []).forEach((o: any) => {
+              const sid = o.assigned_server_id || o.created_by_staff_id
+              if (!sid) return
+              if (cardOrderTipMap.has(o.id)) cardMap[sid] = (cardMap[sid] || 0) + cardOrderTipMap.get(o.id)!
+              if (cashOrderTipMap.has(o.id)) cashMap[sid] = (cashMap[sid] || 0) + cashOrderTipMap.get(o.id)!
+            })
+            console.log('[TipDist] cardMap:', cardMap, 'cashMap:', cashMap)
+            setCardTipsByStaff(cardMap)
+            // Pre-populate cash declarations with amounts from payments
+            Object.entries(cashMap).forEach(([staffId, amount]) => {
+              if (amount > 0) declareCashTips(staffId, amount)
+            })
+          }
         }
+      } finally {
+        if (!isCancelled) setIsLoadingClockedInStaff(false)
       }
     }
 
-    void loadClockedInStaff()
+    void loadData()
 
-    return () => {
-      isCancelled = true
-    }
+    return () => { isCancelled = true }
   }, [date, isOpen, selectedStore?.id, supabase])
 
   const activeEmployees = useMemo(
@@ -170,41 +222,84 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
   const handleCalculate = useCallback(async () => {
     if (!selectedStore || !loggedInEmployee) return
 
-    // Save cash tip declarations to database before calculating
+    const startOfDay = new Date(`${date}T00:00:00`).toISOString()
+    const endOfDay = new Date(`${date}T23:59:59.999`).toISOString()
+
+    // ── Sync card tips from paid orders ──────────────────────────────────────
+    // Pull all approved card payments for the day and sum tips per server
+    const { data: paymentsRaw } = await supabase
+      .from('order_payments')
+      .select('tip_amount, order_id, payment_method, is_voided, is_returned, status')
+      .eq('location_id', selectedStore.id)
+      .neq('payment_method', 'cash')
+      .gte('initiated_at', startOfDay)
+      .lte('initiated_at', endOfDay)
+
+    const filteredPayments = (paymentsRaw || []).filter(
+      (p: any) =>
+        !p.is_voided &&
+        !p.is_returned &&
+        !['pending', 'processing', 'failed', 'declined', 'void'].includes(p.status)
+    )
+    const orderIds: string[] = filteredPayments.map((p: any) => p.order_id).filter(Boolean)
+
+    // Map order → tip amount
+    const orderTipMap = new Map<string, number>()
+    filteredPayments.forEach((p: any) => {
+      if (!p.order_id) return
+      orderTipMap.set(p.order_id, (orderTipMap.get(p.order_id) || 0) + Number(p.tip_amount || 0))
+    })
+
+    // Look up server per order
+    if (orderIds.length > 0) {
+      const { data: ordersRaw } = await supabase
+        .from('orders')
+        .select('id, assigned_server_id, created_by_staff_id')
+        .in('id', orderIds)
+
+      // Sum card tips per staff profile
+      const cardTipsByStaff = new Map<string, number>()
+      ;(ordersRaw || []).forEach((o: any) => {
+        const sid = o.assigned_server_id || o.created_by_staff_id
+        if (!sid) return
+        const tip = orderTipMap.get(o.id) || 0
+        cardTipsByStaff.set(sid, (cardTipsByStaff.get(sid) || 0) + tip)
+      })
+
+      // Upsert charged_tips for each staff member that has card tips
+      if (cardTipsByStaff.size > 0) {
+        const cardUpdates = Array.from(cardTipsByStaff.entries()).map(([staffProfileId, charged_tips]) => ({
+          staff_profile_id: staffProfileId,
+          merchant_id: selectedStore.merchant_id,
+          location_id: selectedStore.id,
+          shift_date: date,
+          charged_tips,
+        }))
+        console.log('[TipDist] upserting card tips:', cardUpdates)
+        const { error: cardUpsertErr } = await supabase
+          .from('employee_daily_tips')
+          .upsert(cardUpdates, { onConflict: 'staff_profile_id,location_id,shift_date' })
+        if (cardUpsertErr) console.error('[TipDist] card tips upsert error:', cardUpsertErr)
+      }
+    }
+
+    // ── Save cash tip declarations ────────────────────────────────────────────
     const declarations = Object.entries(cashTipDeclarations).filter(
       ([_, amount]) => amount > 0
     )
-
     if (declarations.length > 0) {
-      const updates = declarations.map(([staffProfileId, amount]) => ({
+      const cashUpdates = declarations.map(([staffProfileId, amount]) => ({
         staff_profile_id: staffProfileId,
         merchant_id: selectedStore.merchant_id,
         location_id: selectedStore.id,
         shift_date: date,
-        cash_tips_declared: amount
+        cash_tips_declared: amount,
       }))
-
-      console.log('[TipDist] Upserting declarations:', updates)
-
-      // Batch upsert all declarations at once
-      const { data, error } = await supabase
+      console.log('[TipDist] upserting cash tips:', cashUpdates)
+      const { error: cashUpsertErr } = await supabase
         .from('employee_daily_tips')
-        .upsert(updates, {
-          onConflict: 'staff_profile_id,location_id,shift_date'
-        })
-      if (error) {
-        console.error('[TipDist] Upsert error:', error)
-        return
-      }
-      console.log('[TipDist] Upsert response:', { data, error })
-
-      // Verify what was actually saved
-      const { data: verifyData } = await supabase
-        .from('employee_daily_tips')
-        .select('staff_profile_id, cash_tips_declared, charged_tips')
-        .eq('location_id', selectedStore.id)
-        .eq('shift_date', date)
-      console.log('[TipDist] Verified saved data:', verifyData)
+        .upsert(cashUpdates, { onConflict: 'staff_profile_id,location_id,shift_date' })
+      if (cashUpsertErr) console.error('[TipDist] cash tips upsert error:', cashUpsertErr)
     }
 
     await calculateDistribution(
@@ -494,10 +589,10 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
             <Text
               style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
             >
-              Cash Tip Declarations
+              Tip Declaration
             </Text>
             <Text style={{ fontSize: 11, color: colors.label, marginTop: 3 }}>
-              Tap an employee, then enter their cash tips.
+              Card tips are pre-filled. Tap a server to adjust their cash tips.
             </Text>
           </View>
           <ScrollView
@@ -534,91 +629,85 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
             )}
             {activeEmployees.map(emp => {
               const isSelected = focusedEmployeeId === emp.profileId
-              const amount = cashTipDeclarations[emp.profileId] ?? 0
+              const cashAmount = cashTipDeclarations[emp.profileId] ?? 0
+              const cardAmount = cardTipsByStaff[emp.profileId] ?? 0
               return (
                 <TouchableOpacity
                   key={emp.id}
                   onPress={() => setFocusedEmployeeId(emp.profileId)}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 12,
                     paddingVertical: 12,
                     paddingHorizontal: 12,
                     borderRadius: 10,
-                    backgroundColor: isSelected
-                      ? colors.teal + '12'
-                      : colors.panel,
+                    backgroundColor: isSelected ? colors.teal + '12' : colors.panel,
                     borderWidth: 1,
                     borderColor: isSelected ? colors.teal : colors.border
                   }}
                 >
-                  <View
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor: isSelected
-                        ? colors.teal + '30'
-                        : colors.card,
-                      borderWidth: 1,
-                      borderColor: isSelected ? colors.teal : colors.border,
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <Text
+                  {/* Top row: avatar + name + total */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View
                       style={{
-                        fontSize: 12,
-                        fontWeight: '700',
-                        color: isSelected ? colors.teal : colors.label
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        backgroundColor: isSelected ? colors.teal + '30' : colors.card,
+                        borderWidth: 1,
+                        borderColor: isSelected ? colors.teal : colors.border,
+                        alignItems: 'center',
+                        justifyContent: 'center'
                       }}
                     >
-                      {initials(emp.displayName)}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: '600',
-                        color: colors.heading
-                      }}
-                    >
-                      {emp.displayName}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        color: colors.label,
-                        marginTop: 1
-                      }}
-                    >
-                      {emp.role.replace('merchant.', '')}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text
-                      style={{
-                        fontSize: 15,
-                        fontWeight: '700',
-                        color: amount > 0 ? colors.teal : colors.muted
-                      }}
-                    >
-                      ${amount.toFixed(2)}
-                    </Text>
-                    {amount > 0 && (
-                      <Text
-                        style={{
-                          fontSize: 9,
-                          color: colors.success,
-                          fontWeight: '600',
-                          marginTop: 2
-                        }}
-                      >
-                        DECLARED
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? colors.teal : colors.label }}>
+                        {initials(emp.displayName)}
                       </Text>
-                    )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                        {emp.displayName}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: colors.label, marginTop: 1 }}>
+                        {emp.role.replace('merchant.', '')}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: colors.teal }}>
+                        ${(cardAmount + cashAmount).toFixed(2)}
+                      </Text>
+                      <Text style={{ fontSize: 9, color: colors.muted, marginTop: 1 }}>total tips</Text>
+                    </View>
+                  </View>
+
+                  {/* Bottom row: card tips chip + cash declaration */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                    <View style={{
+                      flex: 1,
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                    }}>
+                      <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>Card Tips</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: cardAmount > 0 ? colors.heading : colors.muted }}>
+                        ${cardAmount.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={{
+                      flex: 1,
+                      backgroundColor: isSelected ? colors.teal + '15' : colors.card,
+                      borderWidth: 1,
+                      borderColor: isSelected ? colors.teal + '50' : colors.border,
+                      borderRadius: 8,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                    }}>
+                      <Text style={{ fontSize: 9, color: isSelected ? colors.teal : colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>Cash Tips</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: cashAmount > 0 ? colors.teal : colors.muted }}>
+                        ${cashAmount.toFixed(2)}
+                      </Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
               )
@@ -628,7 +717,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
 
         {/* Right — numpad */}
         {renderNumpad(
-          focusedEmp ? focusedEmp.displayName : 'Select an employee',
+          focusedEmp ? `${focusedEmp.displayName} — Cash Tips` : 'Select an employee',
           `$${focusedAmount}`,
           !!focusedEmployeeId,
           handleNumpadInput,
@@ -1109,9 +1198,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
           justifyContent: 'flex-end'
         }}
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          pointerEvents='box-none'
+        <View
           style={{
             height: '96%',
             borderTopLeftRadius: 20,
@@ -1125,7 +1212,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
           {wizardStep === 'calculate' && renderCalculateStep()}
           {wizardStep === 'review' && renderReviewStep()}
           {wizardStep === 'approve' && renderApproveStep()}
-        </TouchableOpacity>
+        </View>
       </TouchableOpacity>
     </Modal>
   )

@@ -48,6 +48,7 @@ const EditModifierScreen: React.FC = () => {
   const modifierGroups = useMenuStore((s) => s.modifierGroups);
   const updateModifierGroup = useMenuStore((s) => s.updateModifierGroup);
   const deleteModifierGroup = useMenuStore((s) => s.deleteModifierGroup);
+  const addModifierGroup = useMenuStore((s) => s.addModifierGroup);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
@@ -65,6 +66,7 @@ const EditModifierScreen: React.FC = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isMakingLocalCopy, setIsMakingLocalCopy] = useState(false);
   const [originalFormData, setOriginalFormData] = useState<ModifierFormData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const hasSavedRef = useRef(false);
@@ -199,6 +201,73 @@ const EditModifierScreen: React.FC = () => {
     }
   };
 
+  const handleMakeLocalCopy = async () => {
+    if (!existing || !selectedStore?.id || !selectedStore?.merchant_id) return;
+    setIsMakingLocalCopy(true);
+    try {
+      // 1. Create new local modifier group
+      const { data: newGroup, error: groupError } = await MenuService.createModifierGroup(supabase, {
+        merchantId: selectedStore.merchant_id,
+        locationId: selectedStore.id,
+        name: existing.name,
+        description: existing.description,
+        isRequired: existing.type === "required",
+        minSelections: existing.type === "required" ? 1 : 0,
+        maxSelections: existing.selectionType === "multiple" ? existing.maxSelections : 1,
+      });
+      if (groupError || !newGroup) {
+        show({ title: "Error", message: "Failed to create local copy.", type: "error" });
+        return;
+      }
+
+      // 2. Copy all options
+      for (const opt of existing.options || []) {
+        await MenuService.createModifierItem(supabase, {
+          modifierGroupId: newGroup.id,
+          name: opt.name,
+          priceModifier: opt.price,
+          isActive: opt.isAvailable ?? true,
+          isDefault: opt.isDefault ?? false,
+          merchantId: selectedStore.merchant_id,
+        });
+      }
+
+      // 3. Re-link menu items at this location from global → local
+      const locationItemIds = (existing.items || [])
+        .filter((item) => !item.location_id || item.location_id === selectedStore.id)
+        .map((item) => item.id);
+
+      for (const menuItemId of locationItemIds) {
+        await MenuService.removeModifierFromItem(supabase, menuItemId, existing.id);
+        await MenuService.assignModifierToItem(supabase, {
+          menuItemId,
+          modifierGroupId: newGroup.id,
+          merchantId: selectedStore.merchant_id,
+        });
+      }
+
+      // 4. Add to local store and navigate
+      addModifierGroup({
+        id: newGroup.id,
+        name: newGroup.name,
+        type: existing.type,
+        selectionType: existing.selectionType,
+        maxSelections: existing.maxSelections,
+        description: existing.description,
+        location_id: selectedStore.id,
+        options: existing.options || [],
+      });
+
+      show({ title: "Local Copy Created", message: `"${existing.name}" is now editable for this location.`, type: "success" });
+      router.replace(`/menu/edit-modifier?id=${newGroup.id}`);
+    } catch (err) {
+      console.error(err);
+      show({ title: "Error", message: "Failed to create local copy.", type: "error" });
+    } finally {
+      setIsMakingLocalCopy(false);
+    }
+  };
+
   const handleDelete = () => {
     setShowDeleteDialog(true);
   };
@@ -263,7 +332,13 @@ const EditModifierScreen: React.FC = () => {
   }
 
   if (isGlobalModifier || !isLocalModifier) {
-    return <GlobalItemScreen type="Modifier" />
+    return (
+      <GlobalItemScreen
+        type="Modifier"
+        onMakeLocalCopy={selectedStore?.id ? handleMakeLocalCopy : undefined}
+        isMakingLocalCopy={isMakingLocalCopy}
+      />
+    )
   }
 
   return (

@@ -268,6 +268,118 @@ export default function EodStepReport ({
         )}
       </View>
 
+      {summary && (summary.topItem || summary.topServer || summary.busyHour) ? (
+        <View
+          style={{
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.panel,
+            padding: 12,
+            gap: 10
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+            Highlights
+          </Text>
+          <View style={{ gap: 8 }}>
+            {summary.topItem ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9
+                }}
+              >
+                <View style={{ gap: 2 }}>
+                  <Text style={{ fontSize: 10, color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Top Item
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                    {summary.topItem.name}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.teal }}>
+                    {summary.topItem.quantity}x
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.label }}>
+                    ${summary.topItem.revenue.toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            {summary.topServer ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9
+                }}
+              >
+                <View style={{ gap: 2 }}>
+                  <Text style={{ fontSize: 10, color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Top Server
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                    {summary.topServer.name}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.teal }}>
+                    ${summary.topServer.revenue.toFixed(2)}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.label }}>
+                    {summary.topServer.orderCount} orders
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            {summary.busyHour ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9
+                }}
+              >
+                <View style={{ gap: 2 }}>
+                  <Text style={{ fontSize: 10, color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Busiest Hour
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                    {summary.busyHour.hour === 0 ? '12 AM' : summary.busyHour.hour < 12 ? `${summary.busyHour.hour} AM` : summary.busyHour.hour === 12 ? '12 PM' : `${summary.busyHour.hour - 12} PM`}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.teal }}>
+                    {summary.busyHour.orderCount} orders
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
       {!canComplete ? (
         <TouchableOpacity
           onPress={onContinueWithIssues}

@@ -1,13 +1,15 @@
 import { colors } from '@/lib/theme'
 import { router } from 'expo-router'
-import { ArrowLeft, Globe } from 'lucide-react-native'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { ArrowLeft, Copy, Globe } from 'lucide-react-native'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 
 interface GlobalItemScreenProps {
   type: 'Menu' | 'Category' | 'Item' | 'Modifier'
+  onMakeLocalCopy?: () => void
+  isMakingLocalCopy?: boolean
 }
 
-export function GlobalItemScreen({ type }: GlobalItemScreenProps) {
+export function GlobalItemScreen({ type, onMakeLocalCopy, isMakingLocalCopy }: GlobalItemScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.panel }}>
       {/* Content */}
@@ -56,7 +58,8 @@ export function GlobalItemScreen({ type }: GlobalItemScreenProps) {
           marginBottom: 28,
           maxWidth: 320
         }}>
-          This {type.toLowerCase()} is managed globally across all locations and cannot be edited here. Contact your administrator to make changes.
+          This {type.toLowerCase()} is managed globally across all locations and cannot be edited here.
+          {onMakeLocalCopy ? ' You can make a local copy to customize it for this location.' : ' Contact your administrator to make changes.'}
         </Text>
 
         {/* Info card */}
@@ -82,6 +85,33 @@ export function GlobalItemScreen({ type }: GlobalItemScreenProps) {
             </View>
           ))}
         </View>
+
+        {/* Make local copy button */}
+        {onMakeLocalCopy && (
+          <TouchableOpacity
+            onPress={onMakeLocalCopy}
+            disabled={isMakingLocalCopy}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: 8,
+              backgroundColor: colors.teal,
+              marginBottom: 12,
+              opacity: isMakingLocalCopy ? 0.7 : 1
+            }}
+          >
+            {isMakingLocalCopy
+              ? <ActivityIndicator size='small' color={colors.onSolid} />
+              : <Copy size={14} color={colors.onSolid} />
+            }
+            <Text style={{ fontSize: 13, color: colors.onSolid, fontWeight: '600' }}>
+              {isMakingLocalCopy ? 'Creating Local Copy...' : 'Make Local Copy'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Back button */}
         <TouchableOpacity

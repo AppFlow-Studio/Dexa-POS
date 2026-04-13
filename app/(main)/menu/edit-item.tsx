@@ -143,6 +143,25 @@ const EditMenuItemScreen: React.FC = () => {
         }
       }
 
+      // Sync modifier group changes to backend
+      const oldModifierIds = itemToEdit.modifierGroupIds ?? [];
+      const newModifierIds = data.modifierGroupIds ?? [];
+      const modifiersToAdd = newModifierIds.filter((id) => !oldModifierIds.includes(id));
+      const modifiersToRemove = oldModifierIds.filter((id) => !newModifierIds.includes(id));
+
+      for (const modifierGroupId of modifiersToAdd) {
+        if (selectedStore) {
+          await MenuService.assignModifierToItem(supabase, {
+            menuItemId: itemId,
+            modifierGroupId,
+            merchantId: selectedStore.merchant_id,
+          });
+        }
+      }
+      for (const modifierGroupId of modifiersToRemove) {
+        await MenuService.removeModifierFromItem(supabase, itemId, modifierGroupId);
+      }
+
       // 4. Save Recipe Ingredients (New)
       if (data.recipe) {
         // Always upsert if present (even if empty, it might mean clearing ingredients)

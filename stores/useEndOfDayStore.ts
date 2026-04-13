@@ -142,6 +142,10 @@ export interface DailySummary {
   totalVoids: number;
   totalDiscounts: number;
   totalRefunds: number;
+  // Highlights
+  topItem?: { name: string; quantity: number; revenue: number } | null;
+  topServer?: { name: string; revenue: number; orderCount: number } | null;
+  busyHour?: { hour: number; orderCount: number } | null;
 }
 
 export interface OpenOrderSummary {
