@@ -55,6 +55,7 @@ export interface ModifierItem {
   name: string;
   price_modifier: number;
   is_active: boolean;
+  is_default: boolean | null;
   stock_tracking_mode: StockTrackingMode;
   current_stock: number | null;
 }

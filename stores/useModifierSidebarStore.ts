@@ -209,39 +209,36 @@ function precomputeModifierData (
       }
       // OPTIMIZATION: Skip setting false values - component uses ?? false
     } else {
-      // For add mode, auto-select defaults for required categories
-      if (category.type === 'required') {
-        // Priority 1: Find options with isDefault: true
-        const defaultOptions = category.options.filter(
-          option => option.isDefault === true && option.isAvailable !== false
+      // For add mode, auto-select defaults
+      const defaultOptions = category.options.filter(
+        option => option.isDefault === true && option.isAvailable !== false
+      )
+
+      if (defaultOptions.length > 0) {
+        // For single-select, use the first default; for multiple, use all defaults
+        if (category.selectionType === 'single') {
+          initialSelections[category.id][defaultOptions[0].id] = true
+        } else {
+          // Multiple selection - select all defaults
+          defaultOptions.forEach(option => {
+            initialSelections[category.id][option.id] = true
+          })
+        }
+      } else if (category.type === 'required') {
+        // No defaults set on required category - select first available option with price $0
+        const freeOption = category.options.find(
+          option => option.isAvailable !== false && option.price === 0
         )
 
-        if (defaultOptions.length > 0) {
-          // For single-select, use the first default; for multiple, use all defaults
-          if (category.selectionType === 'single') {
-            initialSelections[category.id][defaultOptions[0].id] = true
-          } else {
-            // Multiple selection - select all defaults
-            defaultOptions.forEach(option => {
-              initialSelections[category.id][option.id] = true
-            })
-          }
+        if (freeOption) {
+          initialSelections[category.id][freeOption.id] = true
         } else {
-          // Priority 2: No defaults set - select first available option with price $0
-          const freeOption = category.options.find(
-            option => option.isAvailable !== false && option.price === 0
+          // Priority 3: No free option - select first available option
+          const firstAvailableOption = category.options.find(
+            option => option.isAvailable !== false
           )
-
-          if (freeOption) {
-            initialSelections[category.id][freeOption.id] = true
-          } else {
-            // Priority 3: No free option - select first available option
-            const firstAvailableOption = category.options.find(
-              option => option.isAvailable !== false
-            )
-            if (firstAvailableOption) {
-              initialSelections[category.id][firstAvailableOption.id] = true
-            }
+          if (firstAvailableOption) {
+            initialSelections[category.id][firstAvailableOption.id] = true
           }
         }
       }

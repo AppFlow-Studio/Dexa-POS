@@ -508,7 +508,7 @@ const transformModifierGroupsFromSync = (
                 name: opt.name,
                 price: opt.price_modifier, // API uses price_modifier
                 isAvailable: opt.is_active,
-                isDefault: false, // API doesn't have this
+                isDefault: opt.is_default ?? false,
                 recipe: ingredientsMap.get(opt.id),
               })),
             });

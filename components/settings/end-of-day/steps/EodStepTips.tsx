@@ -3,10 +3,8 @@ import { ChecklistItem, ChecklistItemId } from "@/stores/useEndOfDayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   TipDistributionRulesOverview,
-  TodayTipSummary,
   fetchTipDistributionRulesOverview,
   fetchUnsettledTipSummary,
-  computeLocalUnsettledTips,
 } from "@/services/endOfDayService";
 import { colors } from "@/lib/theme";
 import { useQuery } from "@tanstack/react-query";
@@ -54,12 +52,8 @@ export default function EodStepTips({
   const { data: tipSummary, isLoading: summaryLoading, isFetching: summaryFetching, refetch: refetchTipSummary } = useQuery({
     queryKey: ["eod-tip-summary", locationId],
     enabled: Boolean(locationId),
-    staleTime: 30_000,
-    placeholderData: (): TodayTipSummary => ({
-      ...computeLocalUnsettledTips(),
-      periodStart: null,
-      pendingPriorDaySessions: [],
-    }),
+    staleTime: 0,
+    gcTime: 0,
     queryFn: () => fetchUnsettledTipSummary(supabase, locationId),
   });
 

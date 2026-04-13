@@ -1250,17 +1250,15 @@ const MenuPage: React.FC = () => {
 
                 <TouchableOpacity
                   onPress={() => router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)}
-                  disabled={!editable}
                   style={{
                     padding: 6,
                     backgroundColor: colors.panel,
                     borderRadius: 8,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    opacity: editable ? 1 : 0.4,
                   }}
                 >
-                  <Pencil size={14} color={editable ? colors.label : colors.muted} />
+                  <Pencil size={14} color={colors.label} />
                 </TouchableOpacity>
               </View>
 
