@@ -55,6 +55,37 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import * as Updates from 'expo-updates';
 import AppUpdateModal from '@/components/AppUpdateModal';
 import { checkForNativeUpdate, type VersionManifest } from '@/services/appUpdater';
+import * as Sentry from '@sentry/react-native';
+import { isRunningInExpoGo } from 'expo';
+
+const navigationIntegration = Sentry.reactNavigationIntegration({
+  enableTimeToInitialDisplay: !isRunningInExpoGo(),
+});
+
+Sentry.init({
+  dsn: 'https://dcfdfcd20582347382d2fb94df146b1e@o4511212537380864.ingest.us.sentry.io/4511212539019264',
+
+  // Maps to EAS channel: "development" | "preview" | "production"
+  environment: __DEV__ ? 'development' : (Updates.channel ?? 'unknown'),
+
+  sendDefaultPii: true,
+  enableLogs: true,
+
+  // Auto-capture HTTP 4xx/5xx responses as error events
+  enableCaptureFailedRequests: true,
+
+  // Offline: cache up to 100 envelopes on disk (default 30)
+  maxCacheItems: 100,
+
+  // Sample 100% of transactions — tune down if volume gets too high
+  tracesSampleRate: 1.0,
+
+  integrations: [Sentry.feedbackIntegration(), navigationIntegration],
+  enableNativeFramesTracking: !isRunningInExpoGo(),
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
 
 async function checkForUpdate() {
   try {
@@ -176,7 +207,7 @@ function RootErrorFallback () {
   )
 }
 
-export default function RootLayout () {
+export default Sentry.wrap(function RootLayout() {
   const hasMounted = React.useRef(false)
   const { colorScheme, isDarkColorScheme } = useColorScheme()
   const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false)
@@ -192,10 +223,13 @@ export default function RootLayout () {
   const isCustomizationOpen = useCustomizationStore(s => s.isOpen)
   const [nativeUpdateManifest, setNativeUpdateManifest] = React.useState<VersionManifest | null>(null)
 
-  // Store the navigation container ref for cross-group navigation
+  // Store the navigation container ref for cross-group navigation + Sentry tracing
   const navigationRef = useNavigationContainerRef()
   React.useEffect(() => {
     setRootNavigationRef(navigationRef)
+    if (navigationRef?.current) {
+      navigationIntegration.registerNavigationContainer(navigationRef)
+    }
   }, [navigationRef])
 
   // Hide system UI for full-screen immersive POS experience
@@ -394,7 +428,7 @@ export default function RootLayout () {
       </ClerkProvider>
     </PortalProvider>
   )
-}
+});
 
 const useIsomorphicLayoutEffect =
   Platform.OS === 'web' && typeof window === 'undefined'

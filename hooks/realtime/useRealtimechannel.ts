@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { RealtimeChannel, REALTIME_SUBSCRIBE_STATES, SupabaseClient } from '@supabase/supabase-js';
 import type {
   RealtimeChannelTopic,
@@ -11,7 +12,7 @@ import type {
 } from '@/types/real-time';
 
 interface UseRealtimeChannelOptions<T> {
-  supabaseClient: SupabaseClient; // NEW: Required prop to avoid hooks violation
+  supabaseClient: SupabaseClient;
   topic: RealtimeChannelTopic;
   events: RealtimeEventType[];
   onMessage: (event: RealtimeEventType, payload: T) => void;
@@ -27,14 +28,16 @@ interface UseRealtimeChannelReturn {
   disconnect: () => void;
 }
 
+const MAX_BACKOFF_MS = 60_000; // Cap exponential backoff at 60 seconds
+
 export function useRealtimeChannel<T>({
-  supabaseClient, // NEW: Accept as prop instead of calling hook
+  supabaseClient,
   topic,
   events,
   onMessage,
   onStatusChange,
   enabled = true,
-  maxReconnectAttempts = 5,
+  maxReconnectAttempts = 15,
   reconnectDelay = 2000,
 }: UseRealtimeChannelOptions<T>): UseRealtimeChannelReturn {
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -43,6 +46,13 @@ export function useRealtimeChannel<T>({
   const subscribeRef = useRef<() => void>(() => {});
   const statusRef = useRef<ChannelState>('CLOSED');
   const isIntentionalCloseRef = useRef(false);
+
+  // Stabilize onMessage via ref to prevent channel teardown on parent re-renders
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
   const [status, setStatus] = useState<ChannelStatus>({
     topic,
@@ -59,14 +69,13 @@ export function useRealtimeChannel<T>({
       if (updates.state) {
         statusRef.current = updates.state;
       }
-      onStatusChange?.(newStatus);
+      onStatusChangeRef.current?.(newStatus);
       return newStatus;
     });
-  }, [onStatusChange]);
+  }, []);
 
   // Core subscription logic
   const subscribe = useCallback(async () => {
-    // FIXED: Use prop instead of calling hook inside callback
     // Clean up existing channel
     if (channelRef.current) {
       isIntentionalCloseRef.current = true;
@@ -85,24 +94,26 @@ export function useRealtimeChannel<T>({
 
     // Register event handlers
     events.forEach(event => {
-      console.log(`[Realtime] Registering handler for event: ${event} on ${topic}`);
+      if (__DEV__) console.log(`[Realtime] Registering handler for event: ${event} on ${topic}`);
       channel.on('broadcast', { event }, (payload) => {
-        console.log(`[Realtime] Received event: ${event} on ${topic}`, payload);
-        onMessage(event, payload.payload as T);
+        if (__DEV__) console.log(`[Realtime] Received event: ${event} on ${topic}`);
+        onMessageRef.current(event, payload.payload as T);
       });
     });
 
     // Handle subscription state changes
     channel.subscribe((state, err) => {
-      console.log(`[Realtime] Channel ${topic} state: ${state}`, `${err ? err : ''}`);
+      if (__DEV__) console.log(`[Realtime] Channel ${topic} state: ${state}`, `${err ? err : ''}`);
 
       switch (state) {
         case REALTIME_SUBSCRIBE_STATES.SUBSCRIBED:
           reconnectAttemptsRef.current = 0;
-          console.log(`✅ [Realtime] Successfully subscribed to ${topic}`, {
-            registeredEvents: events,
-            channelState: state,
-          });
+          if (__DEV__) {
+            console.log(`[Realtime] Successfully subscribed to ${topic}`, {
+              registeredEvents: events,
+              channelState: state,
+            });
+          }
           updateStatus({
             state: 'SUBSCRIBED',
             lastError: null,
@@ -134,12 +145,12 @@ export function useRealtimeChannel<T>({
     });
 
     channelRef.current = channel;
-  }, [supabaseClient, topic, events, onMessage, updateStatus]);
+  }, [supabaseClient, topic, events, updateStatus]);
 
   // Keep subscribeRef in sync for AppState effect
   subscribeRef.current = subscribe;
 
-  // Reconnection logic with exponential backoff
+  // Reconnection logic with exponential backoff (capped at 60s)
   const handleReconnect = useCallback(() => {
     if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
       console.warn(`[Realtime] Max reconnect attempts reached for ${topic}`);
@@ -155,19 +166,21 @@ export function useRealtimeChannel<T>({
       clearTimeout(reconnectTimeoutRef.current);
     }
 
-    // Calculate delay with exponential backoff
-    const delay = reconnectDelay * Math.pow(2, reconnectAttemptsRef.current);
+    // Calculate delay with exponential backoff, capped at MAX_BACKOFF_MS
+    const delay = Math.min(
+      reconnectDelay * Math.pow(2, reconnectAttemptsRef.current),
+      MAX_BACKOFF_MS,
+    );
     reconnectAttemptsRef.current += 1;
 
     updateStatus({
       reconnectAttempts: reconnectAttemptsRef.current,
     });
 
-    console.log(`[Realtime] Reconnecting ${topic} in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
+    if (__DEV__) console.log(`[Realtime] Reconnecting ${topic} in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
 
     reconnectTimeoutRef.current = setTimeout(async () => {
-      // FIXED: Use prop instead of calling hook inside setTimeout
-      // Unsubscribe first (Reddit pattern)
+      // Unsubscribe first
       if (channelRef.current) {
         isIntentionalCloseRef.current = true;
         await supabaseClient.removeChannel(channelRef.current);
@@ -176,7 +189,6 @@ export function useRealtimeChannel<T>({
       // Refresh auth token before re-subscribing
       try {
         await supabaseClient.realtime.setAuth();
-        // console.log('[Realtime] Auth token refreshed before reconnect');
       } catch (error) {
         console.error('[Realtime] Failed to refresh auth token on reconnect:', error);
       }
@@ -194,7 +206,6 @@ export function useRealtimeChannel<T>({
   // Disconnect
   const disconnect = useCallback(async () => {
     isIntentionalCloseRef.current = true;
-    // FIXED: Use prop instead of calling hook inside callback
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
@@ -219,12 +230,8 @@ export function useRealtimeChannel<T>({
     };
   }, [enabled, subscribe, disconnect]);
 
-  // Periodic auth token refresh. Tightened from 50min → 10min because the
-  // previous value was too close to typical Clerk/Supabase JWT TTLs and left
-  // the channel with an expired token just long enough to trigger cascading
-  // reconnect failures. On refresh failure we now force a full reconnect
-  // cycle instead of silently logging — a dead channel blocks realtime
-  // updates, which can surface downstream as stale state / render errors.
+  // Periodic auth token refresh (10 min). On failure force reconnect
+  // so we don't leave the channel in a half-dead state with expired token.
   useEffect(() => {
     if (!enabled || status.state !== 'SUBSCRIBED') return;
 
@@ -233,14 +240,32 @@ export function useRealtimeChannel<T>({
         await supabaseClient.realtime.setAuth();
       } catch (error) {
         console.error('[Realtime] Failed to refresh auth token:', error);
-        // Force a reconnect cycle so we don't leave the channel in a
-        // half-dead state with an expired token.
         handleReconnect();
       }
-    }, 10 * 60 * 1000); // 10 minutes
+    }, 10 * 60 * 1000);
 
     return () => clearInterval(refreshInterval);
   }, [enabled, status.state, supabaseClient, handleReconnect]);
+
+  // Network state awareness: reconnect when network restores
+  useEffect(() => {
+    if (!enabled) return;
+
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected && statusRef.current !== 'SUBSCRIBED') {
+        if (__DEV__) console.log(`[Realtime] Network restored, reconnecting ${topic}`);
+        // Reset reconnect budget and reconnect immediately
+        reconnectAttemptsRef.current = 0;
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+        subscribeRef.current();
+      }
+    });
+
+    return () => unsubscribe();
+  }, [enabled, topic]);
 
   // Reconnect channels when app returns to foreground
   useEffect(() => {
@@ -265,7 +290,7 @@ export function useRealtimeChannel<T>({
 
       if (!channel || currentState !== 'SUBSCRIBED') {
         // Channel is dead or missing - full reconnect after short delay for network restoration
-        console.log(`[Realtime] App foregrounded, reconnecting ${topic} (state: ${currentState})`);
+        if (__DEV__) console.log(`[Realtime] App foregrounded, reconnecting ${topic} (state: ${currentState})`);
         reconnectTimeoutRef.current = setTimeout(() => {
           if (isMounted) {
             subscribeRef.current();
@@ -273,7 +298,7 @@ export function useRealtimeChannel<T>({
         }, 1000);
       } else {
         // Channel appears healthy - proactively refresh auth token
-        console.log(`[Realtime] App foregrounded, ${topic} still SUBSCRIBED, refreshing auth`);
+        if (__DEV__) console.log(`[Realtime] App foregrounded, ${topic} still SUBSCRIBED, refreshing auth`);
         supabaseClient.realtime.setAuth().catch((error) => {
           console.error(`[Realtime] Failed to refresh auth for ${topic} on foreground:`, error);
         });

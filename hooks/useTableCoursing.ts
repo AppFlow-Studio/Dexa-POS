@@ -186,11 +186,25 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
     return sentMap;
   }, [orderCoursing?.courses]);
 
+  // Persistent sent timestamps from the coursing store (survives navigation)
+  const courseSentAtMap = useMemo(() => {
+    const map: Record<number, number> = {};
+    if (orderCoursing?.courses) {
+      Object.entries(orderCoursing.courses).forEach(([num, info]) => {
+        if (info.firedAt) {
+          map[Number(num)] = new Date(info.firedAt).getTime();
+        }
+      });
+    }
+    return map;
+  }, [orderCoursing?.courses]);
+
   const itemCourseMap = orderCoursing?.itemCourseMap;
 
   return {
     currentCourse,
     sentCourses,
+    courseSentAtMap,
     itemCourseMap,
     coursingInitialized,
     setCurrentCourse,

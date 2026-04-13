@@ -2260,14 +2260,24 @@ const syncPaymentToBackend = async (
         }
       }
 
-      // Auto-archive ready+paid orders (Path A: marked ready first, then paid)
+      // Auto-archive based on completion mode setting
       if (isFullyPaid) {
+        const completionMode = useStoreSettingsStore.getState().orderCompletionMode
         const postPayOrder = useOrderStore.getState().ordersById[order.id]
-        if (postPayOrder && postPayOrder.order_status === 'ready') {
+
+        if (completionMode === 'auto_on_payment' && postPayOrder) {
+          // Auto-complete on payment regardless of kitchen status
+          queueMicrotask(() => {
+            useOrderStore.getState().markAllItemsAsReady(order.id)
+            useOrderStore.getState().archiveOrder(order.id)
+          })
+        } else if (completionMode === 'auto' && postPayOrder?.order_status === 'ready') {
+          // Auto-complete only when both paid + ready
           queueMicrotask(() => {
             useOrderStore.getState().archiveOrder(order.id)
           })
         }
+        // 'manual' mode: no auto-archive (user must click Mark as Done)
       }
 
       if (__DEV__)
@@ -3243,7 +3253,16 @@ export const useOrderStore = create<OrderState>()(
                     const broadcastItemCount = isHeaderOnlyBroadcast(backendOrder)
                       ? backendOrder.item_count
                       : backendOrder.order_items?.length
+                    // v2: sync_version advance on kitchen-active orders is meaningful
+                    // (KDS bumps update order_items kitchen_status + bump sync_version,
+                    //  but v2 broadcasts omit items — so header fields may look identical)
+                    const isKitchenSyncAdvance =
+                      isHeaderOnlyBroadcast(backendOrder) &&
+                      (backendOrder.sync_version ?? 0) > ((localOrder as any).sync_version ?? 0) &&
+                      ['sent_to_kitchen', 'preparing'].includes(localOrder.order_status ?? '')
+
                     const noMeaningfulChange =
+                      !isKitchenSyncAdvance &&
                       localOrder.amount_paid === backendOrder.amount_paid &&
                       localOrder.paid_status ===
                         mapPaymentStatus(backendOrder.payment_status) &&
@@ -3703,6 +3722,11 @@ export const useOrderStore = create<OrderState>()(
                     ) {
                       get()._debouncedOrderRefresh(dbOrderId)
                     }
+
+                    // v2: sync_version ahead + kitchen-active → fetch fresh items for kitchen_status
+                    if (isKitchenSyncAdvance) {
+                      get()._debouncedOrderRefresh(dbOrderId)
+                    }
                   }
                   break
 
@@ -4110,6 +4134,11 @@ export const useOrderStore = create<OrderState>()(
             }
 
             set(state => {
+              // Surgical dbOrderIdIndex cleanup
+              const orderToRemove = state.ordersById[dbOrderId]
+              if (orderToRemove?.db_order_id) {
+                delete state.dbOrderIdIndex[orderToRemove.db_order_id]
+              }
               delete state.ordersById[dbOrderId]
               state.orderIds = state.orderIds.filter(id => id !== dbOrderId)
               // Also remove from working set
@@ -8077,6 +8106,11 @@ export const useOrderStore = create<OrderState>()(
             if (idsToRemove.length > 0) {
               set(state => {
                 idsToRemove.forEach(id => {
+                  // Surgical dbOrderIdIndex cleanup
+                  const order = state.ordersById[id]
+                  if (order?.db_order_id) {
+                    delete state.dbOrderIdIndex[order.db_order_id]
+                  }
                   delete state.ordersById[id]
                 })
                 state.orderIds = state.orderIds.filter(
@@ -8290,6 +8324,11 @@ export const useOrderStore = create<OrderState>()(
               const removeSet = new Set(idsToRemove)
               set(state => {
                 for (const id of idsToRemove) {
+                  // Surgical dbOrderIdIndex cleanup
+                  const order = state.ordersById[id]
+                  if (order?.db_order_id) {
+                    delete state.dbOrderIdIndex[order.db_order_id]
+                  }
                   delete state.ordersById[id]
                 }
                 state.orderIds = state.orderIds.filter(id => !removeSet.has(id))
@@ -8638,8 +8677,14 @@ export const useOrderStore = create<OrderState>()(
 
             const oldOrderIdSet = new Set(oldOrderIds)
             set(state => {
-              // Remove old orders
-              oldOrderIds.forEach(id => delete state.ordersById[id])
+              // Remove old orders (with dbOrderIdIndex cleanup)
+              oldOrderIds.forEach(id => {
+                const order = state.ordersById[id]
+                if (order?.db_order_id) {
+                  delete state.dbOrderIdIndex[order.db_order_id]
+                }
+                delete state.ordersById[id]
+              })
               // Add new order
               state.ordersById[newMergedOrderData.id] = newMergedOrderData
 
@@ -9758,8 +9803,12 @@ export const useOrderStore = create<OrderState>()(
             })
           },
 
-          // O(1) Getter for order by ID (single index - DB UUID is the key after sync)
-          getOrderByDbId: (dbOrderId: string) => get().ordersById[dbOrderId],
+          // O(1) Getter for order by DB UUID (resolves via dbOrderIdIndex)
+          getOrderByDbId: (dbOrderId: string) => {
+            const state = get()
+            const localKey = state.dbOrderIdIndex[dbOrderId] ?? dbOrderId
+            return state.ordersById[localKey]
+          },
 
           // === OFFLINE-FIRST HELPER METHODS ===
 
@@ -11878,6 +11927,63 @@ export const useOrderStore = create<OrderState>()(
                   item => !item.db_order_item_id && !item.isDraft
                 )
 
+                // Preserve locally-synced items not yet in the backend fetch.
+                // Mirrors the broadcast merge safeguard at line ~3474.
+                // Race: db_order_item_id was set between the RPC fetch start
+                // and this set(), so the item is absent from transformedItems
+                // but excluded from localPendingItems (it already has db_order_item_id).
+                const backendItemDbIds = new Set(
+                  transformedItems
+                    .map(i => i.db_order_item_id)
+                    .filter(Boolean)
+                )
+                const localSyncedNotInBackend = currentOrder.items.filter(
+                  item =>
+                    item.db_order_item_id &&
+                    !item.isDraft &&
+                    !backendItemDbIds.has(item.db_order_item_id)
+                )
+
+                // Preserve locally-advanced kitchen_status and item_status.
+                // Mirrors the broadcast merge logic at line ~3436.
+                // Race: optimistic kitchen send sets local kitchen_status='sent'/'preparing',
+                // but the backend fetch (started before the RPC committed) returns stale 'new'.
+                const localItemsByDbId = new Map<string, CartItem>()
+                for (const item of currentOrder.items) {
+                  if (item.db_order_item_id) {
+                    localItemsByDbId.set(item.db_order_item_id, item)
+                  }
+                }
+                for (let i = 0; i < transformedItems.length; i++) {
+                  const backendItem = transformedItems[i]
+                  if (!backendItem.db_order_item_id) continue
+                  const localItem = localItemsByDbId.get(backendItem.db_order_item_id)
+                  if (!localItem) continue
+
+                  // Preserve locally-advanced kitchen_status
+                  const localKRank = KITCHEN_STATUS_RANK[localItem.kitchen_status ?? 'new'] ?? 0
+                  const backendKRank = KITCHEN_STATUS_RANK[backendItem.kitchen_status ?? 'new'] ?? 0
+                  if (localKRank > backendKRank) {
+                    transformedItems[i] = {
+                      ...backendItem,
+                      id: localItem.id, // Keep local ID
+                      kitchen_status: localItem.kitchen_status,
+                      item_status: localItem.item_status
+                    }
+                  } else if (localItem.id !== backendItem.id) {
+                    // Preserve local item ID even when backend is ahead
+                    transformedItems[i] = { ...backendItem, id: localItem.id }
+                  }
+
+                  // Preserve local quantity if a sync is in-flight
+                  const pendingQuantity =
+                    useSyncStatusStore.getState().itemSyncStatus.get(localItem.id) === 'pending' ||
+                    useSyncStatusStore.getState().itemSyncStatus.get(localItem.id) === 'syncing'
+                  if (pendingQuantity) {
+                    transformedItems[i] = { ...transformedItems[i], quantity: localItem.quantity }
+                  }
+                }
+
                 // Preserve local payments that haven't synced to backend yet
                 // (e.g. pre-auth payments added optimistically before syncPreAuthToBackend completes)
                 const localPendingPayments =
@@ -11946,7 +12052,7 @@ export const useOrderStore = create<OrderState>()(
                 // Build the updated order once to avoid duplication
                 const updatedOrder: OrderProfile = {
                   ...currentOrder,
-                  items: [...transformedItems, ...localPendingItems],
+                  items: [...transformedItems, ...localPendingItems, ...localSyncedNotInBackend],
                   payments: [...mergedPayments, ...localPendingPayments],
                   // Reversals and refund items from backend
                   reversals: reversalsData,

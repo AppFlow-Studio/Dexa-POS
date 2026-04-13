@@ -15,8 +15,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type TabName = "Profile Info" | "My Schedule" | "Security" | "History";
-const TABS: TabName[] = ["Profile Info", "My Schedule", "Security", "History"];
+type TabName = "Profile Info" | "Security" | "History";
+const TABS: TabName[] = ["Profile Info", "Security", "History"];
 
 const MyProfileScreen = () => {
   const { activeEmployeeId, employees } = useEmployeeStore();
@@ -56,13 +56,13 @@ const MyProfileScreen = () => {
     setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>);
   }, [setSheetRef]);
 
-  useEffect(() => {
-    if (tab === "MyScheduleScreen") {
-      setActiveTab("My Schedule");
-    } else {
-      setActiveTab("Profile Info");
-    }
-  }, [tab]);
+  // useEffect(() => {
+  //   // if (tab === "MyScheduleScreen") {
+  //   //   setActiveTab("My Schedule");
+  //   // } else {
+  //     setActiveTab("Profile Info");
+  //   // }
+  // }, [tab]);
 
   const renderContent = () => {
     if (activeTab === null) {
@@ -76,8 +76,8 @@ const MyProfileScreen = () => {
     switch (activeTab) {
       case "Profile Info":
         return <ProfileInfoTab />;
-      case "My Schedule":
-        return <MyScheduleScreen initialDate={date} />;
+      // case "My Schedule":
+      //   return <MyScheduleScreen initialDate={date} />;
       case "Security":
         return <SecurityTab />;
       case "History":

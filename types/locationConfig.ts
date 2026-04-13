@@ -169,7 +169,7 @@ export type ConfigForNamespace<N extends ConfigNamespace> = LocationPosConfig[N]
 // ============================================================================
 
 export const DEFAULT_DINING_CONFIG: DiningConfig = {
-  enablePerSeatOrdering: false,
+  enablePerSeatOrdering: true,
   enableCoursing: true,
   allowTableMerging: true,
   allowTableSplitting: false,

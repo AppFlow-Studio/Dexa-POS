@@ -474,17 +474,21 @@ const ModifierScreen = () => {
   const enablePerSeatOrdering = useLocationConfigStore(
     s => s.config.dining.enablePerSeatOrdering
   )
-  const { activeOrderId: seatOrderId } = useOrderStore(
-    useShallow(s => ({ activeOrderId: s.activeOrderId }))
+  const seatOrderId = useOrderStore(s => s.activeOrderId)
+  const orderSelector = useCallback(
+    (s: any) => (seatOrderId ? s.ordersById[seatOrderId] ?? null : null),
+    [seatOrderId]
   )
-  const activeOrderForSeat = seatOrderId
-    ? useOrderStore.getState().ordersById[seatOrderId]
-    : null
+  const activeOrderForSeat = useOrderStore(orderSelector)
   const isTableOrder = !!activeOrderForSeat?.service_location_id
-  const seatCount =
-    isTableOrder && seatOrderId
-      ? useSeatingStore.getState().getSeatCount(seatOrderId)
-      : 0
+  const seatCountSelector = useCallback(
+    (s: any) => {
+      if (!isTableOrder || !seatOrderId) return 0
+      return s.getSeatCount(seatOrderId)
+    },
+    [isTableOrder, seatOrderId]
+  )
+  const seatCount = useSeatingStore(seatCountSelector)
   const showSeatPicker = enablePerSeatOrdering && isTableOrder && seatCount > 0
 
   const addItemToActiveOrder = useCallback(
@@ -1219,6 +1223,20 @@ const ModifierScreen = () => {
   // RENDER
   // ============================================================================
 
+  // IMPORTANT: These must be ABOVE early returns so hook count stays stable.
+  const currentCategory = state.activeCategory
+    ? modifierCategoriesById.get(state.activeCategory) ?? null
+    : null
+
+  const visibleOptions = useMemo(() => {
+    if (!currentCategory) return [] as ModifierCategory['options']
+    return currentCategory.options.slice(0, visibleOptionCount)
+  }, [currentCategory, visibleOptionCount])
+
+  const hasModifiers = !!(
+    menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0
+  )
+
   if (
     cartItem?.kitchen_status === 'sent' ||
     cartItem?.kitchen_status === 'preparing' ||
@@ -1306,19 +1324,6 @@ const ModifierScreen = () => {
       </View>
     )
   }
-
-  const currentCategory = state.activeCategory
-    ? modifierCategoriesById.get(state.activeCategory) ?? null
-    : null
-
-  const visibleOptions = useMemo(() => {
-    if (!currentCategory) return [] as ModifierCategory['options']
-    return currentCategory.options.slice(0, visibleOptionCount)
-  }, [currentCategory, visibleOptionCount])
-
-  const hasModifiers = !!(
-    menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0
-  )
 
   return (
     <KeyboardAvoidingView

@@ -1,21 +1,558 @@
 import { colors } from '@/lib/theme'
-import { OrderProfile } from '@/lib/types'
+import { CartItem, OrderProfile } from '@/lib/types'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { Send, X } from 'lucide-react-native'
-import React, { useRef } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import {
+  ArrowUpToLine,
+  ChevronDown,
+  ChevronRight,
+  Flame,
+  Plus,
+  Send,
+  Users,
+  X
+} from 'lucide-react-native'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
+import BillItem from './BillItem'
 import BottomActionBar from './BottomActionBar'
 import CourseAccordion from './CourseAccordion'
 import DiscountBottomSheet from './DiscountBottomSheet'
 import PricingBreakdownSheet from './PricingBreakdownSheet'
-import SeatAccordion from './SeatAccordion'
-import SeatCourseAccordion from './SeatCourseAccordion'
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+type AggregateKitchenStatus = 'sent' | 'preparing' | 'ready' | null
+
+const STATUS_BADGE: Record<
+  NonNullable<AggregateKitchenStatus>,
+  { label: string; color: string }
+> = {
+  sent: { label: 'Queued', color: colors.orderPreparing },
+  preparing: { label: 'Preparing', color: colors.paymentPartialRefund },
+  ready: { label: 'Ready', color: colors.orderReady },
+}
+
+function deriveAggregateStatus(items: CartItem[]): AggregateKitchenStatus {
+  const active = items.filter(i => !i.is_voided)
+  if (active.length === 0) return null
+  if (active.every(i => i.kitchen_status === 'ready' || i.kitchen_status === 'served')) return 'ready'
+  if (active.some(i => i.kitchen_status === 'preparing')) return 'preparing'
+  if (active.some(i => i.kitchen_status === 'sent')) return 'sent'
+  return null
+}
+
+function isSentToKitchen(item: CartItem): boolean {
+  return !!item.kitchen_status && item.kitchen_status !== 'new'
+}
+
+const StatusPill = React.memo(({ status }: { status: AggregateKitchenStatus }) => {
+  if (!status) return null
+  const cfg = STATUS_BADGE[status]
+  return (
+    <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: cfg.color + '20' }}>
+      <Text style={{ fontSize: 9, fontWeight: '700', color: cfg.color }}>{cfg.label}</Text>
+    </View>
+  )
+})
+
+// ============================================================================
+// KitchenTimer — shows elapsed minutes since course was sent (30s refresh)
+// ============================================================================
+
+const KitchenTimer = React.memo(({ sentAt }: { sentAt: number }) => {
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - sentAt) / 60000))
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - sentAt) / 60000))
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [sentAt])
+
+  if (elapsed < 1) return null
+  return (
+    <Text style={{ fontSize: 9, fontWeight: '600', color: colors.muted }}>· {elapsed}m</Text>
+  )
+})
+
+// ============================================================================
+// Collapsible Seat Header
+// ============================================================================
+
+const SeatHeader = React.memo(({
+  label,
+  itemCount,
+  total,
+  isCurrent,
+  expanded,
+  onPress,
+}: {
+  label: string
+  itemCount: number
+  total: number
+  isCurrent: boolean
+  expanded: boolean
+  onPress?: () => void
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={onPress ? 0.7 : 1}
+    style={{
+      height: 34,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 10,
+      marginTop: 6,
+      backgroundColor: isCurrent ? colors.teal + '12' : colors.card + '80',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      borderTopWidth: 1,
+      borderTopColor: colors.border + '60',
+    }}
+  >
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isCurrent ? colors.teal : colors.muted }} />
+      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.heading, letterSpacing: 0.2 }}>{label}</Text>
+      <Text style={{ fontSize: 10, color: colors.muted }}>· {itemCount} {itemCount === 1 ? 'item' : 'items'}</Text>
+    </View>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.teal }}>${total.toFixed(2)}</Text>
+      {expanded ? <ChevronDown size={14} color={colors.label} /> : <ChevronRight size={14} color={colors.label} />}
+    </View>
+  </TouchableOpacity>
+))
+
+// ============================================================================
+// Dense Course Sub-header (24px, indented under seat)
+// ============================================================================
+
+const CourseSubHeader = React.memo(({
+  course,
+  itemCount,
+  isSent,
+  isCurrentCourse,
+  expanded,
+  status,
+  sentAt,
+  onPress,
+  onSend,
+  onLongPress,
+}: {
+  course: number
+  itemCount: number
+  isSent: boolean
+  isCurrentCourse: boolean
+  expanded: boolean
+  status: AggregateKitchenStatus
+  sentAt?: number
+  onPress?: () => void
+  onSend?: () => void
+  onLongPress?: () => void
+}) => (
+  <TouchableOpacity
+    activeOpacity={0.7}
+    onPress={onPress}
+    onLongPress={onLongPress}
+    style={{
+      height: 26,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingLeft: 22,
+      paddingRight: 10,
+      marginTop: 2,
+    }}
+  >
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: isCurrentCourse ? colors.success : colors.muted }} />
+      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.label }}>Course {course}</Text>
+      <StatusPill status={status} />
+      {sentAt && status && status !== 'served' && <KitchenTimer sentAt={sentAt} />}
+      <Text style={{ fontSize: 9, color: colors.muted }}>{itemCount} {itemCount === 1 ? 'item' : 'items'}</Text>
+    </View>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      {!isSent && itemCount > 0 && onSend && (
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation(); onSend() }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 3,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 5,
+            backgroundColor: colors.teal + '18',
+            borderWidth: 1,
+            borderColor: colors.teal + '50',
+          }}
+          activeOpacity={0.6}
+        >
+          <Send size={8} color={colors.teal} />
+          <Text style={{ color: colors.teal, fontSize: 9, fontWeight: '700' }}>Send</Text>
+        </TouchableOpacity>
+      )}
+      {expanded ? <ChevronDown size={12} color={colors.label} /> : <ChevronRight size={12} color={colors.label} />}
+    </View>
+  </TouchableOpacity>
+))
+
+// ============================================================================
+// DenseSeatView — collapsible seats & courses, supports optional coursing
+// ============================================================================
+
+const DenseSeatView = React.memo(({
+  activeOrder,
+  itemSeatMap,
+  itemCourseMap,
+  sentCourses,
+  courseSentAtMap,
+  currentCourse,
+  activeSeat,
+  seatCount,
+  onSelectSeat,
+  onSelectCourse,
+  onPressStartNewCourse,
+  onDoubleTapCourse,
+  onRushCourse,
+  onPrioritizeCourse,
+  onResendCourse,
+  enableCoursing = false,
+}: {
+  activeOrder: OrderProfile | undefined
+  itemSeatMap?: Record<string, number | null>
+  itemCourseMap?: Record<string, number>
+  sentCourses?: Record<number, boolean>
+  courseSentAtMap?: Record<number, number>
+  currentCourse?: number
+  activeSeat?: number | null
+  seatCount: number
+  onSelectSeat?: (seat: number | null) => void
+  onSelectCourse?: (course: number | null) => void
+  onPressStartNewCourse?: () => void
+  onDoubleTapCourse?: (courseId: number) => void
+  onRushCourse?: (courseId: number) => void
+  onPrioritizeCourse?: (courseId: number) => void
+  onResendCourse?: (courseId: number) => void
+  enableCoursing?: boolean
+}) => {
+  const [actionCourse, setActionCourse] = useState<number | null>(null)
+  const [collapsedSeats, setCollapsedSeats] = useState<Set<string | number>>(new Set())
+  const [collapsedCourses, setCollapsedCourses] = useState<Set<string>>(new Set())
+
+  const toggleSeat = useCallback((seatKey: string | number) => {
+    setCollapsedSeats(prev => {
+      const next = new Set(prev)
+      if (next.has(seatKey)) next.delete(seatKey)
+      else next.add(seatKey)
+      return next
+    })
+  }, [])
+
+  const toggleCourse = useCallback((seatKey: string | number, course: number) => {
+    const key = `${seatKey}-${course}`
+    setCollapsedCourses(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
+  // Group items: seat -> course -> items
+  const { seatGroups, sortedSeatKeys } = useMemo(() => {
+    const groups: Record<string, Record<number, CartItem[]>> = {}
+
+    activeOrder?.items?.forEach(item => {
+      const seat = item.seatNumber ?? itemSeatMap?.[item.id] ?? null
+      const course = enableCoursing ? (item.courseNumber ?? itemCourseMap?.[item.id] ?? 1) : 1
+      const seatKey = seat === null ? 'shared' : String(seat)
+
+      if (!groups[seatKey]) groups[seatKey] = {}
+      if (!groups[seatKey][course]) groups[seatKey][course] = []
+      groups[seatKey][course].push(item)
+    })
+
+    // Sorted seat keys: numbered first, shared last
+    const numbered = Object.keys(groups)
+      .filter(k => k !== 'shared')
+      .map(Number)
+      .sort((a, b) => a - b)
+
+    const allSeats = new Set(numbered)
+    for (let i = 1; i <= seatCount; i++) allSeats.add(i)
+
+    const keys: (number | 'shared')[] = Array.from(allSeats).sort((a, b) => a - b)
+    if (groups['shared'] && Object.keys(groups['shared']).length > 0) {
+      keys.push('shared')
+    }
+
+    return { seatGroups: groups, sortedSeatKeys: keys }
+  }, [activeOrder?.items, itemSeatMap, itemCourseMap, seatCount, enableCoursing])
+
+  const handleCourseAction = useCallback((action: 'rush' | 'prioritize' | 'resend') => {
+    if (actionCourse === null) return
+    const c = actionCourse
+    setActionCourse(null)
+    if (action === 'rush') onRushCourse?.(c)
+    else if (action === 'prioritize') onPrioritizeCourse?.(c)
+    else if (action === 'resend') onResendCourse?.(c)
+  }, [actionCourse, onRushCourse, onPrioritizeCourse, onResendCourse])
+
+  if (!activeOrder) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+        <Text style={{ fontSize: 12, color: colors.muted }}>No active order.</Text>
+      </View>
+    )
+  }
+
+  const hasItems = activeOrder.items && activeOrder.items.length > 0
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.panel }}>
+      {/* Order header */}
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+          Order{' '}
+          {activeOrder.display_number
+            ? activeOrder.display_number.startsWith('#')
+              ? activeOrder.display_number
+              : `#${activeOrder.display_number}`
+            : activeOrder.order_number
+              ? `#${activeOrder.order_number}`
+              : ''}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {hasItems && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Users size={11} color={colors.muted} />
+              <Text style={{ fontSize: 10, color: colors.muted }}>
+                {seatCount} {seatCount === 1 ? 'seat' : 'seats'}
+              </Text>
+            </View>
+          )}
+          {enableCoursing && onPressStartNewCourse && (
+            <TouchableOpacity
+              onPress={onPressStartNewCourse}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+              }}
+              activeOpacity={0.8}
+            >
+              <Plus size={12} color={colors.teal} />
+              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>Course</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+        {!hasItems ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+            <Text style={{ fontSize: 12, color: colors.muted }}>Add items to start an order.</Text>
+          </View>
+        ) : (
+          sortedSeatKeys.map(seatKey => {
+            const seatNumber = seatKey === 'shared' ? null : (seatKey as number)
+            const label = seatKey === 'shared' ? 'Shared' : `Seat ${seatKey}`
+            const isCurrent = activeSeat === seatNumber
+            const courseGroups = seatGroups[seatKey === 'shared' ? 'shared' : String(seatKey)] || {}
+            const sortedCourses = Object.keys(courseGroups).map(Number).sort((a, b) => a - b)
+
+            // Flatten all items for seat-level stats
+            const allItems = sortedCourses.flatMap(c => courseGroups[c] || [])
+            const nonVoided = allItems.filter(i => !i.is_voided)
+            const seatTotal = nonVoided.reduce((sum, i) => sum + i.price * i.quantity, 0)
+            const seatItemCount = nonVoided.reduce((sum, i) => sum + i.quantity, 0)
+
+            const seatExpanded = !collapsedSeats.has(seatKey)
+
+            const renderItem = (item: CartItem) => {
+              const isSent = isSentToKitchen(item) && !item.is_voided
+              return <BillItem key={item.id} item={item} isEditable={!isSent} />
+            }
+
+            const handleSeatPress = () => {
+              toggleSeat(seatKey)
+              onSelectSeat?.(seatNumber)
+            }
+
+            if (allItems.length === 0) {
+              return (
+                <SeatHeader
+                  key={`seat-${seatKey}`}
+                  label={label}
+                  itemCount={0}
+                  total={0}
+                  isCurrent={isCurrent}
+                  expanded={seatExpanded}
+                  onPress={handleSeatPress}
+                />
+              )
+            }
+
+            return (
+              <View key={`seat-${seatKey}`}>
+                <SeatHeader
+                  label={label}
+                  itemCount={seatItemCount}
+                  total={seatTotal}
+                  isCurrent={isCurrent}
+                  expanded={seatExpanded}
+                  onPress={handleSeatPress}
+                />
+
+                {seatExpanded && (
+                  enableCoursing ? (
+                    // With coursing: show collapsible course sub-groups
+                    sortedCourses.map(course => {
+                      const items = courseGroups[course] || []
+                      const courseNonVoided = items.filter(i => !i.is_voided)
+                      const courseItemCount = courseNonVoided.reduce((sum, i) => sum + i.quantity, 0)
+                      const isSent = !!sentCourses?.[course]
+                      const isCurrentCourse = currentCourse === course
+                      const courseKey = `${seatKey}-${course}`
+                      const courseExpanded = !collapsedCourses.has(courseKey)
+                      const courseStatus = deriveAggregateStatus(items)
+
+                      const sentAt = courseSentAtMap?.[course]
+
+                      return (
+                        <View key={`course-${course}`}>
+                          <CourseSubHeader
+                            course={course}
+                            itemCount={courseItemCount}
+                            isSent={isSent}
+                            isCurrentCourse={isCurrentCourse}
+                            expanded={courseExpanded}
+                            status={courseStatus}
+                            sentAt={sentAt}
+                            onPress={() => toggleCourse(seatKey, course)}
+                            onSend={onDoubleTapCourse ? () => onDoubleTapCourse(course) : undefined}
+                            onLongPress={isSent ? () => setActionCourse(course) : undefined}
+                          />
+                          {courseExpanded && (
+                            <View style={{
+                              gap: 3,
+                              paddingLeft: 14,
+                              paddingRight: 4,
+                              paddingVertical: 2,
+                              ...(isSent ? { opacity: 0.55 } : {}),
+                            }}>
+                              {items.map(renderItem)}
+                            </View>
+                          )}
+                        </View>
+                      )
+                    })
+                  ) : (
+                    // Without coursing: flat items
+                    <View style={{ gap: 3, paddingLeft: 6, paddingRight: 4, paddingVertical: 3 }}>
+                      {allItems.map(renderItem)}
+                    </View>
+                  )
+                )}
+              </View>
+            )
+          })
+        )}
+      </ScrollView>
+
+      {/* Long-press course action menu */}
+      {actionCourse !== null && (
+        <Modal transparent animationType='fade' visible onRequestClose={() => setActionCourse(null)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => setActionCourse(null)}
+          >
+            <View style={{
+              backgroundColor: colors.panel,
+              borderRadius: 12,
+              padding: 8,
+              width: 220,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.heading, paddingHorizontal: 12, paddingVertical: 6 }}>
+                Course {actionCourse} Actions
+              </Text>
+              {onRushCourse && (
+                <TouchableOpacity
+                  onPress={() => handleCourseAction('rush')}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <Flame size={16} color={colors.danger} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>Rush Course</Text>
+                </TouchableOpacity>
+              )}
+              {onPrioritizeCourse && (
+                <TouchableOpacity
+                  onPress={() => handleCourseAction('prioritize')}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <ArrowUpToLine size={16} color='#f59e0b' />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#f59e0b' }}>Prioritize Course</Text>
+                </TouchableOpacity>
+              )}
+              {onResendCourse && (
+                <TouchableOpacity
+                  onPress={() => handleCourseAction('resend')}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <Send size={16} color={colors.teal} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>Resend Course</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </Pressable>
+        </Modal>
+      )}
+
+    </View>
+  )
+})
+
+// ============================================================================
+// Main Component
+// ============================================================================
 
 const TableBillSection = ({
   showOrderDetails = true,
   itemCourseMap,
   sentCourses,
+  courseSentAtMap,
   currentCourse,
   onSelectCourse,
   onPressStartNewCourse,
@@ -49,6 +586,7 @@ const TableBillSection = ({
   showOrderDetails?: boolean
   itemCourseMap?: Record<string, number>
   sentCourses?: Record<number, boolean>
+  courseSentAtMap?: Record<number, number>
   currentCourse?: number
   onSelectCourse?: (course: number | null) => void
   onPressStartNewCourse: () => void
@@ -83,27 +621,25 @@ const TableBillSection = ({
   const discountSheetRef = useRef<BottomSheetMethods>(null)
 
   const activeOrder = passedActiveOrder
-
-  // Derived check discount
   const appliedDiscount = activeOrder?.checkDiscount
 
-  // Handler to remove discount
   const handleRemoveDiscount = () => {
     if (activeOrder?.id) {
       removeCheckDiscount(activeOrder.id)
     }
   }
 
-  // Determine which accordion to render
-  const renderAccordion = () => {
-    if (enablePerSeatOrdering && enableCoursing) {
-      // Both enabled: seat -> course nesting
+  // Determine which view to render
+  const renderOrderView = () => {
+    if (enablePerSeatOrdering) {
+      // Collapsible seat view (with or without coursing)
       return (
-        <SeatCourseAccordion
+        <DenseSeatView
           activeOrder={activeOrder}
           itemSeatMap={itemSeatMap}
           itemCourseMap={itemCourseMap}
           sentCourses={sentCourses}
+          courseSentAtMap={courseSentAtMap}
           currentCourse={currentCourse}
           activeSeat={activeSeat}
           seatCount={seatCount ?? 2}
@@ -119,20 +655,7 @@ const TableBillSection = ({
       )
     }
 
-    if (enablePerSeatOrdering) {
-      // Seat only
-      return (
-        <SeatAccordion
-          activeOrder={activeOrder}
-          itemSeatMap={itemSeatMap}
-          activeSeat={activeSeat}
-          seatCount={seatCount ?? 2}
-          onSelectSeat={onSelectSeat}
-        />
-      )
-    }
-
-    // Course only or neither (existing behavior)
+    // Course only or neither (existing accordion behavior)
     return (
       <CourseAccordion
         activeOrder={activeOrder}
@@ -154,7 +677,7 @@ const TableBillSection = ({
   return (
     <>
       <View className='max-w-lg  flex-1 flex-col'>
-        {renderAccordion()}
+        {renderOrderView()}
 
         {/* --- INLINED ACTIVE DISCOUNT INDICATOR --- */}
         {appliedDiscount && (
@@ -174,47 +697,44 @@ const TableBillSection = ({
                 gap: 8
               }}
             >
-              <Text
-                style={{ fontSize: 12, fontWeight: '600', color: colors.info }}
-              >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.info }}>
                 {appliedDiscount.label}
               </Text>
-              <TouchableOpacity
-                onPress={handleRemoveDiscount}
-                style={{ padding: 4 }}
-              >
+              <TouchableOpacity onPress={handleRemoveDiscount} style={{ padding: 4 }}>
                 <X color={colors.info} size={14} />
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {onPressSendAllToKitchen && activeOrder?.items?.some(i => !i.kitchen_status || i.kitchen_status === 'new') && (
-          <View style={{ paddingHorizontal: 10, paddingBottom: 6 }}>
-            <TouchableOpacity
-              onPress={onPressSendAllToKitchen}
-              activeOpacity={0.8}
-              style={{
-                height: 34,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.teal + '55',
-                backgroundColor: colors.teal + '14',
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6
-              }}
-            >
-              <Send size={13} color={colors.teal} />
-              <Text
-                style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}
+        {(() => {
+          const unsent = activeOrder?.items?.filter(i => !i.kitchen_status || i.kitchen_status === 'new') ?? [];
+          if (!onPressSendAllToKitchen || unsent.length === 0) return null;
+          return (
+            <View style={{ paddingHorizontal: 10, paddingBottom: 6, backgroundColor: colors.panel }}>
+              <TouchableOpacity
+                onPress={onPressSendAllToKitchen}
+                activeOpacity={0.8}
+                style={{
+                  height: 34,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.teal + '55',
+                  backgroundColor: colors.teal + '14',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6
+                }}
               >
-                Send All to Kitchen
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+                <Send size={13} color={colors.teal} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}>
+                  Send to Kitchen ({unsent.length} {unsent.length === 1 ? 'item' : 'items'})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })()}
 
         <BottomActionBar
           activeOrder={activeOrder}
@@ -246,8 +766,6 @@ const TableBillSection = ({
 }
 
 export default React.memo(TableBillSection, (prev, next) => {
-  // Only re-render when structurally meaningful props change
-  // kitchen_status changes on items are handled by CourseAccordion/BillItem directly
   if (prev.totalDisplayAmount !== next.totalDisplayAmount) return false
   if (prev.isFullyPaid !== next.isFullyPaid) return false
   if (prev.currentCourse !== next.currentCourse) return false
@@ -265,9 +783,9 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prevHasUnsent !== nextHasUnsent) return false
   if ((prev.activeOrder?.payments?.length ?? 0) !== (next.activeOrder?.payments?.length ?? 0)) return false
   if (prev.sentCourses !== next.sentCourses) return false
+  if (prev.courseSentAtMap !== next.courseSentAtMap) return false
   if (prev.itemCourseMap !== next.itemCourseMap) return false
   if (prev.itemSeatMap !== next.itemSeatMap) return false
-  // Callbacks — these should be stable useCallbacks from parent
   if (prev.onPressMore !== next.onPressMore) return false
   if (prev.onPressTotal !== next.onPressTotal) return false
   if (prev.onPressClearTable !== next.onPressClearTable) return false

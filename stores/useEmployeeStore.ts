@@ -207,7 +207,10 @@ export const useEmployeeStore = create<EmployeeState>()(
       signOut: () => {
         set({ activeEmployeeId: null, loggedInEmployee: null });
         const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
-        useTimeclockStore.getState().setActiveEmployee(null);
+        const tcStore = useTimeclockStore.getState();
+        tcStore.setActiveEmployee(null);
+        // Clear persisted break time to prevent stale data on next sign-in
+        tcStore.setBreakStartTime(null);
       },
 
       // ── Optimistic sign-in flow ───────────────────────────────────────────────

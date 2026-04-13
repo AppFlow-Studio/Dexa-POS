@@ -359,15 +359,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   }, [activeMeal, menus]);
 
   // Pre-warm modifier data for visible items so first tap is instant (deferred to avoid blocking render)
+  // Only pre-warm the first ~15 items (3 rows of 5) to avoid blocking the main thread
   useEffect(() => {
     if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId) return;
+    const visibleItems = filteredMenuItems.slice(0, 15);
     const id = requestAnimationFrame(() => {
       useModifierSidebarStore.getState().preWarmMany(
-        filteredMenuItems,
+        visibleItems,
         currentCategoryId,
         activeMenuId,
       );
-      prefetchMenuItemRemoteImages(filteredMenuItems);
+      prefetchMenuItemRemoteImages(visibleItems);
     });
     return () => cancelAnimationFrame(id);
   }, [filteredMenuItems, currentCategoryId, activeMenuId]);

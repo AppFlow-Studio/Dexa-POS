@@ -1,8 +1,9 @@
 // hooks/useFloorRealtime.ts
 // Real-time updates for floor/table management
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { debounce } from 'lodash';
 import { useRealtimeChannel } from './useRealtimechannel';
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore';
 import { useTableSessionStore } from '@/stores/useTableSessionStore';
@@ -14,7 +15,6 @@ import type {
   OrderPayload,
   RealtimeEventType,
   UseFloorRealtimeOptions,
-  buildChannelTopic,
 } from '@/types/real-time';
 
 // Query keys for cache invalidation
@@ -46,7 +46,7 @@ export function useFloorRealtime({
   onOrderUpdate,
 }: UseFloorRealtimeOptions) {
   const queryClient = useQueryClient();
-  const supabase = useSupabaseClient(); // Call at component level (not inside callbacks)
+  const supabase = useSupabaseClient();
 
   // Events we care about for floor view
   const events: RealtimeEventType[] = useMemo(
@@ -63,6 +63,31 @@ export function useFloorRealtime({
     []
   );
 
+  // ====================================================================
+  // DEBOUNCED INVALIDATION (batch rapid session/table updates)
+  // ====================================================================
+
+  // Debounced 300ms: Session list + table statuses
+  const debouncedInvalidateSessions = useMemo(
+    () =>
+      debounce((locationId: string) => {
+        queryClient.invalidateQueries({
+          queryKey: floorQueryKeys.sessions(locationId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: floorQueryKeys.tableStatuses(locationId),
+        });
+      }, 300),
+    [queryClient]
+  );
+
+  // Cleanup debounced functions on unmount
+  useEffect(() => {
+    return () => {
+      debouncedInvalidateSessions.cancel();
+    };
+  }, [debouncedInvalidateSessions]);
+
   // Handle incoming messages
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
@@ -72,27 +97,16 @@ export function useFloorRealtime({
         case 'INSERT':
         case 'UPDATE':
         case 'DELETE': {
-          // Session changes - invalidate queries and call callback
           const sessionPayload = payload as TableSessionPayload;
 
-          // UPDATE STORE STATE: This ensures UI gets real-time data
-          const store = useFloorPlanStore.getState();
-          store._handleSessionChange(sessionPayload);
-
-          // Propagate to session store so individual events don't lag
+          // UPDATE STORE STATE: ensures UI gets real-time data
+          useFloorPlanStore.getState()._handleSessionChange(sessionPayload);
           useTableSessionStore.getState()._handleSessionChange(sessionPayload);
 
-          // Invalidate floor sessions list
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.sessions(locationId),
-          });
+          // DEBOUNCED: Session list + table statuses (batch rapid updates)
+          debouncedInvalidateSessions(locationId);
 
-          // Invalidate table statuses (for floor plan visual)
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.tableStatuses(locationId),
-          });
-
-          // If we have session ID, also invalidate detail view
+          // IMMEDIATE: Session detail (critical for active table view)
           if (sessionPayload.data?.session?.id) {
             queryClient.invalidateQueries({
               queryKey: floorQueryKeys.sessionDetail(sessionPayload.data.session.id),
@@ -108,14 +122,12 @@ export function useFloorRealtime({
         case 'TABLE_ASSIGNMENT_DELETE': {
           const assignmentPayload = payload as TableAssignmentPayload;
 
-          const store = useFloorPlanStore.getState();
-          store._debouncedRefresh();
+          useFloorPlanStore.getState()._debouncedRefresh();
 
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.sessions(locationId),
-          });
+          // DEBOUNCED: Session list
+          debouncedInvalidateSessions(locationId);
 
-          // Invalidate specific session if available
+          // IMMEDIATE: Specific session if available
           if (assignmentPayload.session_id) {
             queryClient.invalidateQueries({
               queryKey: floorQueryKeys.sessionDetail(assignmentPayload.session_id),
@@ -127,28 +139,23 @@ export function useFloorRealtime({
         }
 
         case 'SESSION_EVENT': {
-          // Timeline event (coursing, flags, etc.)
           const eventPayload = payload as SessionEventPayload;
 
-          // Invalidate session events timeline
+          // IMMEDIATE: Session events timeline + detail
           queryClient.invalidateQueries({
             queryKey: floorQueryKeys.sessionEvents(eventPayload.session_id),
           });
-
-          // Also invalidate session detail for status badge updates
           queryClient.invalidateQueries({
             queryKey: floorQueryKeys.sessionDetail(eventPayload.session_id),
           });
 
-          // If attention or status changed, invalidate floor view
+          // CONDITIONAL + DEBOUNCED: Floor view only for status-affecting events
           if (
             eventPayload.event_type === 'attention_flagged' ||
             eventPayload.event_type === 'attention_cleared' ||
             eventPayload.event_type === 'course_served'
           ) {
-            queryClient.invalidateQueries({
-              queryKey: floorQueryKeys.sessions(locationId),
-            });
+            debouncedInvalidateSessions(locationId);
           }
 
           onSessionEvent?.(eventPayload);
@@ -156,28 +163,25 @@ export function useFloorRealtime({
         }
 
         case 'SESSION_ORDER_UPDATE': {
-          // Order linked to session was updated
           const orderPayload = payload as OrderPayload;
 
-          // Invalidate floor sessions (order amount may have changed)
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.sessions(locationId),
-          });
+          // DEBOUNCED: Floor sessions (order amount may have changed)
+          debouncedInvalidateSessions(locationId);
 
           onOrderUpdate?.(orderPayload);
           break;
         }
       }
     },
-    [locationId, queryClient, onSessionChange, onTableAssignment, onSessionEvent, onOrderUpdate]
+    [locationId, queryClient, debouncedInvalidateSessions, onSessionChange, onTableAssignment, onSessionEvent, onOrderUpdate]
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({
-    supabaseClient: supabase, // Pass supabase client as prop
+    supabaseClient: supabase,
     topic: `location:${locationId}:tables`,
     events,
     onMessage: handleMessage,
-    enabled: enabled && !!locationId && !!supabase, // Add supabase check
+    enabled: enabled && !!locationId && !!supabase,
     ...(maxReconnectAttempts != null && { maxReconnectAttempts }),
   });
 
@@ -204,7 +208,7 @@ export function useSessionEventsRealtime({
   onEvent?: (payload: SessionEventPayload) => void;
 }) {
   const queryClient = useQueryClient();
-  const supabase = useSupabaseClient(); // Call at component level
+  const supabase = useSupabaseClient();
 
   const events: RealtimeEventType[] = useMemo(() => ['SESSION_EVENT'], []);
 
@@ -212,7 +216,6 @@ export function useSessionEventsRealtime({
     (_event: RealtimeEventType, payload: unknown) => {
       const eventPayload = payload as SessionEventPayload;
 
-      // Invalidate session events query
       queryClient.invalidateQueries({
         queryKey: floorQueryKeys.sessionEvents(sessionId),
       });
@@ -222,13 +225,12 @@ export function useSessionEventsRealtime({
     [sessionId, queryClient, onEvent]
   );
 
-  // Note: This subscribes to session-specific channel for granular updates
   const { status, reconnect } = useRealtimeChannel<unknown>({
-    supabaseClient: supabase, // Pass supabase client as prop
+    supabaseClient: supabase,
     topic: `session:${sessionId}:events`,
     events,
     onMessage: handleMessage,
-    enabled: enabled && !!sessionId && !!supabase, // Add supabase check
+    enabled: enabled && !!sessionId && !!supabase,
   });
 
   return {

@@ -184,10 +184,21 @@ export function useTableSession (
   // Also re-claims if the store's activeOrderId was externally cleared while we still have the order
   useEffect(() => {
     if (!activeOrder?.id) return
-    const storeActiveId = useOrderStore.getState().activeOrderId
-    if (activeOrder.id !== lastSetOrderIdRef.current || storeActiveId !== activeOrder.id) {
-      lastSetOrderIdRef.current = activeOrder.id
-      setActiveOrder(activeOrder.id)
+    // Guard: only set activeOrderId if the order actually exists at that key.
+    // During rekey, cachedOrderRef may hold a stale order with old tempId
+    // that no longer exists in ordersById — setting activeOrderId to that
+    // stale key causes ModifierScreen and addItemToActiveOrder to silently fail.
+    const orderState = useOrderStore.getState()
+    const resolvedId = orderState.ordersById[activeOrder.id]
+      ? activeOrder.id
+      : activeOrder.db_order_id
+        ? (orderState.dbOrderIdIndex[activeOrder.db_order_id] ?? activeOrder.db_order_id)
+        : activeOrder.id
+    if (!orderState.ordersById[resolvedId]) return // Order truly gone — don't set stale ID
+    const storeActiveId = orderState.activeOrderId
+    if (resolvedId !== lastSetOrderIdRef.current || storeActiveId !== resolvedId) {
+      lastSetOrderIdRef.current = resolvedId
+      setActiveOrder(resolvedId)
     }
   }, [activeOrder?.id, setActiveOrder])
 

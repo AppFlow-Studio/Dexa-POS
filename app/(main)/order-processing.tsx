@@ -1,9 +1,11 @@
+import { colors } from "@/lib/theme";
 import BillSection from "@/components/bill/BillSection";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import CashDrawerSheet from "@/components/cash-drawer/CashDrawerSheet";
 import CashDrawerStatusBar from "@/components/cash-drawer/CashDrawerStatusBar";
 import NoSaleModal from "@/components/cash-drawer/NoSaleModal";
 import MenuSection from "@/components/menu/MenuSection";
+import BulkCompleteModal from "@/components/order/BulkCompleteModal";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
 import { useLoading } from "@/contexts/LoadingContext";
@@ -17,8 +19,9 @@ import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderSto
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Text, View } from "react-native";
+import { CheckCircle2 } from "lucide-react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { SlideInLeft, SlideOutUp, LinearTransition } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
@@ -35,6 +38,7 @@ const OrderProcessing = () => {
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const orderCompletionMode = useStoreSettingsStore((s) => s.orderCompletionMode);
 
   // OPTIMIZED: Dedicated selector with useStableOrderList for referential stability
   const reversedFilteredOrders = useOrderLineFilteredOrders(daysToShow);
@@ -44,6 +48,7 @@ const OrderProcessing = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isCashDrawerSheetOpen, setCashDrawerSheetOpen] = useState(false);
   const [isNoSaleModalOpen, setNoSaleModalOpen] = useState(false);
+  const [bulkCompleteModalOpen, setBulkCompleteModalOpen] = useState(false);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
@@ -220,6 +225,23 @@ const OrderProcessing = () => {
 
   const displayOrders = renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS;
 
+  // Bulk complete: orders eligible for completion
+  const completableOrders = useMemo(() => {
+    return displayOrders.filter(order => {
+      if (order.order_status === "completed" || order.order_status === "void") return false;
+      if (orderCompletionMode === "auto_on_payment") return order.paid_status === "Paid";
+      return order.paid_status === "Paid" && order.order_status === "ready";
+    });
+  }, [displayOrders, orderCompletionMode]);
+
+  const handleBulkComplete = useCallback(() => {
+    completableOrders.forEach(order => {
+      markAllItemsAsReady(order.id);
+      archiveOrder(order.id);
+    });
+    setBulkCompleteModalOpen(false);
+  }, [completableOrders, markAllItemsAsReady, archiveOrder]);
+
   const renderOrderBadge = useCallback(
     ({ item }: { item: OrderProfile }) => (
       <Animated.View
@@ -296,6 +318,28 @@ const OrderProcessing = () => {
                       </Text>
                     </View>
                   )}
+                  {completableOrders.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setBulkCompleteModalOpen(true)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        backgroundColor: colors.success + "15",
+                        borderWidth: 1,
+                        borderColor: colors.success + "30",
+                        borderRadius: 20,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        marginLeft: 4,
+                      }}
+                    >
+                      <CheckCircle2 size={12} color={colors.success} />
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.success }}>
+                        Complete All ({completableOrders.length})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               }
               headerBelow={
@@ -363,6 +407,12 @@ const OrderProcessing = () => {
       <NoSaleModal
         isOpen={isNoSaleModalOpen}
         onClose={() => setNoSaleModalOpen(false)}
+      />
+      <BulkCompleteModal
+        visible={bulkCompleteModalOpen}
+        orders={completableOrders}
+        onConfirm={handleBulkComplete}
+        onCancel={() => setBulkCompleteModalOpen(false)}
       />
     </View>
   );

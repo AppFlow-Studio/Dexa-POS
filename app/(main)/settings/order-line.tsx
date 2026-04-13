@@ -1,7 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { Check, ChevronDown, ChevronUp, List, Lock } from 'lucide-react-native'
+import { Check, CheckCircle2, ChevronDown, ChevronUp, List, Lock } from 'lucide-react-native'
 import React, { useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
@@ -22,6 +22,12 @@ const DAY_OPTIONS = [
   }
 ]
 
+const ORDER_COMPLETION_OPTIONS: { value: 'manual' | 'auto' | 'auto_on_payment'; label: string; description: string }[] = [
+  { value: 'manual',          label: 'Manual',              description: 'Require "Mark as Done" to complete orders (current behavior)' },
+  { value: 'auto',            label: 'Auto (Paid + Ready)', description: 'Auto-complete when order is fully paid AND kitchen marks ready' },
+  { value: 'auto_on_payment', label: 'Auto on Payment',     description: 'Auto-complete immediately when order is fully paid, regardless of kitchen status' },
+]
+
 const OVERRIDE_TIMEOUT_OPTIONS: { value: 0 | 5 | 15 | 30 | 60; label: string; description: string }[] = [
   { value: 0,  label: 'Always Require PIN',   description: 'PIN required every time a locked menu or category is accessed' },
   { value: 5,  label: 'Stay Unlocked 5 min',  description: 'One PIN entry unlocks for 5 minutes' },
@@ -34,11 +40,13 @@ const OrderLineSettingsScreen = () => {
   const orderLineSettings = useSettingsStore(s => s.orderLineSettings)
   const setOrderLineSettings = useSettingsStore(s => s.setOrderLineSettings)
   const managerOverrideTimeoutMinutes = useStoreSettingsStore(s => s.managerOverrideTimeoutMinutes)
+  const orderCompletionMode = useStoreSettingsStore(s => s.orderCompletionMode)
   const updateField = useStoreSettingsStore(s => s.updateField)
 
   const [expandedSections, setExpandedSections] = useState({
     visibility: true,
     managerOverride: true,
+    orderCompletion: true,
   })
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -245,6 +253,64 @@ const OrderLineSettingsScreen = () => {
                   <TouchableOpacity
                     key={option.value}
                     onPress={() => updateField('managerOverrideTimeoutMinutes', option.value)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 10,
+                      paddingVertical: 9,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      backgroundColor: isSelected ? colors.teal + '10' : colors.screen,
+                      borderColor: isSelected ? colors.teal + '50' : colors.border,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: isSelected ? colors.teal : colors.heading }}>
+                        {option.label}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                        {option.description}
+                      </Text>
+                    </View>
+                    {isSelected && (
+                      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center', marginLeft: 10 }}>
+                        <Check size={13} color={colors.onSolid} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          )}
+        </View>
+
+        {/* ── Order Completion Mode ──────────────────────────────────── */}
+        <View
+          style={{
+            marginTop: 16,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+            backgroundColor: colors.panel,
+          }}
+        >
+          {renderSectionHeader(
+            'Order Completion',
+            <CheckCircle2 size={14} color={colors.teal} />,
+            'orderCompletion',
+          )}
+          {expandedSections.orderCompletion && (
+            <View style={{ padding: 12, gap: 6 }}>
+              <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4, paddingHorizontal: 2 }}>
+                Control how orders transition to "completed" status. Completed orders are finalized for reporting and moved to order history.
+              </Text>
+              {ORDER_COMPLETION_OPTIONS.map(option => {
+                const isSelected = orderCompletionMode === option.value
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    onPress={() => updateField('orderCompletionMode', option.value)}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
