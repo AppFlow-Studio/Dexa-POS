@@ -56,21 +56,10 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const currentTableId = tableId
 
   // --- 1. Base Deferred Rendering State (MUST BE FIRST) ---
-  // For occupied tables where data is already in the store, start at stage 2
-  // immediately so there's no flash. For new/loading tables, start at 0 and
-  // defer heavy sections until after the opening animation settles.
-  const [renderStage, setRenderStage] = useState(() => {
-    const session = useTableSessionStore.getState().sessions[currentTableId]
-    if (session?.order_id) {
-      const found = useOrderStore.getState().getOrder(session.order_id)
-      if (found) return 2
-    }
-    const orderState = useOrderStore.getState()
-    const oid = orderState.activeOrderId
-    const hasOrder =
-      oid && orderState.ordersById[oid]?.service_location_id === currentTableId
-    return hasOrder ? 2 : 0
-  })
+  // Always start at 0 (skeleton) so the heavy bill + menu sections never mount
+  // synchronously during the opening animation. Even for occupied tables where
+  // data is already in store, the skeleton is invisible for <1 frame.
+  const [renderStage, setRenderStage] = useState(0)
 
   // --- 2. Standard Hooks & Context ---
   const { show } = useToast()
@@ -188,25 +177,24 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   // --- 7. Effects ---
   useEffect(() => {
-    // Only need to run the deferred mount when we started at stage 0 (new/loading table).
-    // Occupied tables start at stage 2 and don't need this.
-    if (renderStage >= 2) return
     let cancelled = false
-    setRenderStage(1)
-    // Wait for opening animation to settle before mounting heavy sections.
-    const InteractionManager = require('react-native').InteractionManager
-    const handle = InteractionManager.runAfterInteractions(() => {
-      if (!cancelled) setRenderStage(2)
+    // Stage 0 → 1: mount bill section after the first frame paints (skeleton visible)
+    // Stage 1 → 2: mount menu section one more frame later
+    // Using rAF chains instead of InteractionManager/setTimeout so we don't block
+    // the JS thread and the opening animation stays smooth.
+    const raf1 = requestAnimationFrame(() => {
+      if (cancelled) return
+      setRenderStage(1)
+      const raf2 = requestAnimationFrame(() => {
+        if (cancelled) return
+        setRenderStage(2)
+      })
+      return () => cancelAnimationFrame(raf2)
     })
-    const timeout = setTimeout(() => {
-      if (!cancelled) setRenderStage(2)
-    }, 150)
     return () => {
       cancelled = true
-      handle.cancel()
-      clearTimeout(timeout)
+      cancelAnimationFrame(raf1)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // --- 8. Final Derived UI State ---
