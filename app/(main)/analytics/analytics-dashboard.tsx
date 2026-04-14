@@ -12,13 +12,12 @@ import {
   CreditCard,
   DollarSign,
   Hash,
-  Award,
-  Gift,
+  
   LayoutDashboard,
   Package,
   RefreshCw,
   ShoppingBag,
-  Star,
+  
   Table2,
   TrendingUp,
   User,
@@ -68,7 +67,7 @@ const TABS: { id: TabId; label: string; Icon: TabIconComponent }[] = [
   { id: 'overview', label: 'Overview', Icon: ({ size, color }) => <LayoutDashboard size={size} color={color} /> },
   { id: 'items', label: 'Items', Icon: ({ size, color }) => <Package size={size} color={color} /> },
   { id: 'customers', label: 'Customers', Icon: ({ size, color }) => <User size={size} color={color} /> },
-  { id: 'loyalty', label: 'Loyalty', Icon: ({ size, color }) => <Star size={size} color={color} /> },
+  
   { id: 'staff', label: 'Staff', Icon: ({ size, color }) => <Users size={size} color={color} /> },
   { id: 'payments', label: 'Payments', Icon: ({ size, color }) => <CreditCard size={size} color={color} /> },
 ]
@@ -485,73 +484,6 @@ const CustomersTab: React.FC<{ data: any }> = ({ data }) => {
   )
 }
 
-// ─── Tab: Loyalty ────────────────────────────────────────────────────────────
-
-const LoyaltyTab: React.FC<{ data: any }> = ({ data }) => {
-  const loyalty = data.loyalty
-  if (!loyalty) {
-    return <EmptyState icon={<Star size={32} color={colors.muted} />} message="No loyalty program data available" />
-  }
-
-  return (
-    <>
-      {/* KPI cards */}
-      <SectionCard title="Loyalty Overview" icon={<Star size={14} color={colors.teal} />}>
-        <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <StatCard icon={<Users size={14} color={colors.teal} />} label="Total Members" value={String(loyalty.totalEnrolled)} sub={`${loyalty.activeMembers} active`} />
-            <StatCard icon={<Gift size={14} color={colors.teal} />} label="Rewards Redeemed" value={String(loyalty.totalRewardsRedeemed)} sub={fmtFull$(loyalty.totalRewardValue) + ' value'} />
-            <StatCard icon={<Award size={14} color={colors.teal} />} label="Rewards Earned" value={String(loyalty.totalRewardsEarned)} />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Panel style={{ flex: 1 }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>This Period</Text>
-              <View style={{ gap: 6 }}>
-                {[
-                  { label: 'New Enrollments', value: String(loyalty.newEnrollmentsInPeriod) },
-                  { label: 'Redemptions', value: String(loyalty.redemptionsInPeriod) },
-                ].map((item) => (
-                  <View key={item.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 12, color: colors.label }}>{item.label}</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}>{item.value}</Text>
-                  </View>
-                ))}
-              </View>
-            </Panel>
-          </View>
-        </View>
-      </SectionCard>
-
-      {/* Top loyalty customers */}
-      {loyalty.topLoyaltyCustomers.length > 0 && (
-        <SectionCard title="Top Loyalty Members" icon={<Award size={14} color={colors.teal} />}>
-          <View style={{ gap: 8 }}>
-            {loyalty.topLoyaltyCustomers.map((customer: any, i: number) => (
-              <View key={customer.customerId} style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>{i + 1}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>{customer.name}</Text>
-                    </View>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-end' }}>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>{customer.totalRewardsRedeemed}</Text>
-                      <Text style={{ fontSize: 10, color: colors.muted }}>redeemed</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </View>
-        </SectionCard>
-      )}
-    </>
-  )
-}
 
 // ─── Tab: Staff ───────────────────────────────────────────────────────────────
 
@@ -799,7 +731,7 @@ const AnalyticsDashboardScreen = () => {
             {activeTab === 'overview' && <OverviewTab data={data} />}
             {activeTab === 'items' && <ItemsTab data={data} />}
             {activeTab === 'customers' && <CustomersTab data={data} />}
-            {activeTab === 'loyalty' && <LoyaltyTab data={data} />}
+            
             {activeTab === 'staff' && <StaffTab data={data} />}
             {activeTab === 'payments' && <PaymentsTab data={data} />}
           </>

@@ -47,9 +47,12 @@ export function useRealtimeChannel<T>({
   const statusRef = useRef<ChannelState>('CLOSED');
   const isIntentionalCloseRef = useRef(false);
 
-  // Stabilize onMessage via ref to prevent channel teardown on parent re-renders
+  // Stabilize callbacks and events via refs to prevent channel teardown on parent re-renders
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
+
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
 
   const onStatusChangeRef = useRef(onStatusChange);
   onStatusChangeRef.current = onStatusChange;
@@ -93,7 +96,7 @@ export function useRealtimeChannel<T>({
     });
 
     // Register event handlers
-    events.forEach(event => {
+    eventsRef.current.forEach(event => {
       if (__DEV__) console.log(`[Realtime] Registering handler for event: ${event} on ${topic}`);
       channel.on('broadcast', { event }, (payload) => {
         if (__DEV__) console.log(`[Realtime] Received event: ${event} on ${topic}`);
@@ -145,7 +148,7 @@ export function useRealtimeChannel<T>({
     });
 
     channelRef.current = channel;
-  }, [supabaseClient, topic, events, updateStatus]);
+  }, [supabaseClient, topic, updateStatus]);
 
   // Keep subscribeRef in sync for AppState effect
   subscribeRef.current = subscribe;
@@ -193,9 +196,9 @@ export function useRealtimeChannel<T>({
         console.error('[Realtime] Failed to refresh auth token on reconnect:', error);
       }
       // Re-subscribe
-      subscribe();
+      subscribeRef.current();
     }, delay);
-  }, [supabaseClient, topic, maxReconnectAttempts, reconnectDelay, subscribe, updateStatus]);
+  }, [supabaseClient, topic, maxReconnectAttempts, reconnectDelay, updateStatus]);
 
   // Manual reconnect trigger
   const reconnect = useCallback(() => {
