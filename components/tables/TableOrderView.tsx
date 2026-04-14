@@ -178,18 +178,13 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   // --- 7. Effects ---
   useEffect(() => {
     let cancelled = false
-    // Stage 0 → 1: mount bill section after the first frame paints (skeleton visible)
-    // Stage 1 → 2: mount menu section one more frame later
-    // Using rAF chains instead of InteractionManager/setTimeout so we don't block
-    // the JS thread and the opening animation stays smooth.
+    // Single rAF: let the skeleton paint for one frame, then mount everything together.
+    // Bill + menu sections are both backed by in-memory store data, so there's no
+    // benefit to staggering them across two frames — the extra frame just adds ~16ms
+    // of visible "Loading menu..." before the menu appears.
     const raf1 = requestAnimationFrame(() => {
       if (cancelled) return
-      setRenderStage(1)
-      const raf2 = requestAnimationFrame(() => {
-        if (cancelled) return
-        setRenderStage(2)
-      })
-      return () => cancelAnimationFrame(raf2)
+      setRenderStage(2) // Jump straight to fully-rendered
     })
     return () => {
       cancelled = true
