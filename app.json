@@ -65,8 +65,7 @@
         {
           "url": "https://sentry.io/",
           "project": "dexa-pos",
-          "organization": "appflow-studios",
-          "enableNativeSourceMaps": false
+          "organization": "appflow-studios"
         }
       ]
     ],
