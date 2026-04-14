@@ -7,8 +7,7 @@ import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
-  useItemSyncError,
-  useItemSyncStatus
+  useItemSyncInfo
 } from '@/stores/useSyncStatusStore'
 import { AlertCircle, Banknote, Plus, Trash2 } from 'lucide-react-native'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -27,6 +26,9 @@ interface BillItemProps {
   isEditable?: boolean
   isActive?: boolean // Highlight when being edited in modifier panel
   showPaidBadge?: boolean // Hide per-item paid badges when order-level badge already shows paid
+  // Optional: pass from parent to avoid per-item store subscriptions (improves list mount perf)
+  orderHasPayments?: boolean
+  payments?: any[] | null
 }
 
 const DELETE_BUTTON_WIDTH = 90
@@ -126,7 +128,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   item,
   isEditable = false,
   isActive = false,
-  showPaidBadge = true
+  showPaidBadge = true,
+  orderHasPayments: orderHasPaymentsProp,
+  payments: paymentsProp,
 }) => {
   // FIXED: Use selectors instead of destructuring to avoid subscribing to entire store
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -140,30 +144,35 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     s => s.activeEditingItemId === item.id
   )
 
-  // Phase 7D: Sync status from dedicated store (not from item)
-  // This prevents re-renders of other components when sync status changes
-  const syncStatus = useItemSyncStatus(item.id)
-  const syncError = useItemSyncError(item.id)
-  const orderHasPayments = useOrderStore(s => {
+  // Single subscription for both sync status and error (halves sync store subscriptions per item)
+  const { status: syncStatus, error: syncError } = useItemSyncInfo(item.id)
+
+  // If caller passes payment info, skip the per-item store subscriptions entirely.
+  // Fall back to store subscriptions only when props are not provided (legacy call sites).
+  const orderHasPaymentsFromStore = useOrderStore(s => {
+    if (orderHasPaymentsProp !== undefined) return false // skip — prop wins
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
     return !!order?.payments?.some((p: any) => !p.isVoided)
   })
+  const orderHasPayments = orderHasPaymentsProp ?? orderHasPaymentsFromStore
 
-  // PERF: Only subscribe to payments when the order actually has payments.
-  // During normal table ordering this avoids per-row subscriptions doing extra
-  // payment/refund coverage work on every order mutation.
-  const payments = useOrderStore(s => {
+  const paymentsFromStore = useOrderStore(s => {
+    if (paymentsProp !== undefined) return null // skip — prop wins
     if (!orderHasPayments) return null
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
     return order?.payments ?? null
   })
+  const payments = paymentsProp !== undefined ? paymentsProp : paymentsFromStore
 
   const translateX = useSharedValue(0)
   const [showVoidDialog, setShowVoidDialog] = useState(false)
   const handleIncrementRef = useRef<() => void>(() => {})
   const incrementThrottleRef = useRef(0)
   const swipeActivatedRef = useRef(false)
-  // Stable refs so the worklet always calls the same function pointer
+  // Stable wrapper refs — the functions never change so Reanimated can safely
+  // capture them in worklets without triggering the "tried to modify shareable" warning.
+  // handleIncrementRef itself is NOT passed to worklets — only this stable wrapper is.
+  const callHandleIncrement = useRef(() => { handleIncrementRef.current() })
   const markSwipeActiveRef = useRef(() => { swipeActivatedRef.current = true })
   const resetSwipeActiveRef = useRef(() => {
     // Delay reset so handleNotesPress runs first before the guard clears
@@ -206,7 +215,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
   // Shared value so the worklet can read isKitchenItem on the UI thread
   const isKitchenItemSV = useSharedValue(isKitchenItem)
-  isKitchenItemSV.value = isKitchenItem
+  useEffect(() => {
+    isKitchenItemSV.value = isKitchenItem
+  }, [isKitchenItem])
 
   // Pan gesture to reveal delete (left) or increment (right)
   // OPTIMIZED: Memoize gesture to prevent recreation on each render
@@ -224,7 +235,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         .onEnd(() => {
           if (translateX.value > MAX_RIGHT / 2) {
             translateX.value = withTiming(0, { duration: 150 })
-            runOnJS(handleIncrementRef.current)()
+            runOnJS(callHandleIncrement.current)()
           } else if (translateX.value < MAX_LEFT / 2) {
             translateX.value = withTiming(MAX_LEFT)
           } else {

@@ -56,6 +56,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const currentTableId = tableId
 
   // --- 1. Base Deferred Rendering State (MUST BE FIRST) ---
+  // For occupied tables where data is already in the store, start at stage 2
+  // immediately so there's no flash. For new/loading tables, start at 0 and
+  // defer heavy sections until after the opening animation settles.
   const [renderStage, setRenderStage] = useState(() => {
     const session = useTableSessionStore.getState().sessions[currentTableId]
     if (session?.order_id) {
@@ -185,27 +188,26 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   // --- 7. Effects ---
   useEffect(() => {
-    let cancelled = false
+    // Only need to run the deferred mount when we started at stage 0 (new/loading table).
+    // Occupied tables start at stage 2 and don't need this.
     if (renderStage >= 2) return
-    if (renderStage === 0) {
-      setRenderStage(1)
-    }
-    // Defer menu section mount to avoid competing with modal open animation.
-    // InteractionManager waits for animations to settle; the 100ms fallback
-    // covers cases where no interaction is registered.
+    let cancelled = false
+    setRenderStage(1)
+    // Wait for opening animation to settle before mounting heavy sections.
     const InteractionManager = require('react-native').InteractionManager
     const handle = InteractionManager.runAfterInteractions(() => {
       if (!cancelled) setRenderStage(2)
     })
     const timeout = setTimeout(() => {
       if (!cancelled) setRenderStage(2)
-    }, 100)
+    }, 150)
     return () => {
       cancelled = true
       handle.cancel()
       clearTimeout(timeout)
     }
-  }, [renderStage])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // --- 8. Final Derived UI State ---
   const isFullyPaid = useMemo(() => {
