@@ -55,6 +55,8 @@ const Header = () => {
     pathname === '/online-orders' ||
     pathname === '/customers-list' ||
     pathname === '/host-station' ||
+    pathname === '/loyalty' ||
+    pathname.startsWith('/loyalty/') ||
     pathname.startsWith('/settings') ||
     pathname === '/settings/floor-plan' ||
     pathname.startsWith('/analytics') ||
@@ -74,6 +76,9 @@ const Header = () => {
   )
   const closeModifierSidebar = useModifierSidebarStore(state => state.close)
   const title = useMemo(() => {
+    if (pathname === '/loyalty') return 'Loyalty'
+    if (pathname === '/loyalty/program-form') return 'Loyalty Program'
+    if (pathname === '/loyalty/enroll-customer') return 'Enroll Customer'
     if (pathname === '/' || pathname === '/home') return 'Menu'
     if (pathname === '/host-station') return 'Host Station'
     if (pathname === '/scheduling/reports') return 'Reports'

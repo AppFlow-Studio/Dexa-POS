@@ -4,11 +4,11 @@
  * - Select program
  * - Create enrollment
  */
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useToast } from '@/contexts/ToastContext'
-import type { Database } from '@/database.types'
+import { useLoyaltyDataStore } from '@/stores/useLoyaltyDataStore'
+import type { LoyaltyProgram, CustomerResult } from '@/stores/useLoyaltyDataStore'
 import {
   Award,
   Check,
@@ -20,7 +20,7 @@ import {
   X,
   Zap,
 } from 'lucide-react-native'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   ScrollView,
@@ -30,9 +30,6 @@ import {
   View,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-
-type LoyaltyProgram   = Database['public']['Tables']['loyalty_programs']['Row']
-type Customer = { id: string; name: string | null; phone: string | null; lifetime_spend: number | null; visits: number | null }
 
 const PROGRAM_TYPE_LABELS: Record<string, string> = { points: 'Points', visits: 'Visits', punch: 'Punch Card' }
 
@@ -44,10 +41,11 @@ const ProgramIcon: React.FC<{ type: string; size?: number; color?: string }> = (
 
 export default function EnrollCustomerScreen() {
   const router        = useRouter()
-  const supabase      = useSupabaseClient()
   const { show }      = useToast()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const merchantId    = selectedStore?.merchant_id ?? ''
+
+  const { searchCustomers, fetchActivePrograms, fetchEnrollmentsForCustomer, enrollCustomer } = useLoyaltyDataStore()
 
   // Step: 'search' | 'select-program' | 'done'
   const [step, setStep] = useState<'search' | 'select-program' | 'done'>('search')
@@ -55,8 +53,9 @@ export default function EnrollCustomerScreen() {
   // Search
   const [query,          setQuery]          = useState('')
   const [searching,      setSearching]      = useState(false)
-  const [searchResults,  setSearchResults]  = useState<Customer[]>([])
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [searchResults,  setSearchResults]  = useState<CustomerResult[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Programs
   const [programs,         setPrograms]         = useState<LoyaltyProgram[]>([])
@@ -71,49 +70,34 @@ export default function EnrollCustomerScreen() {
   useEffect(() => {
     if (!merchantId) return
     setLoadingPrograms(true)
-    supabase
-      .from('loyalty_programs')
-      .select('*')
-      .eq('merchant_id', merchantId)
-      .eq('is_active', true)
-      .order('name')
-      .then(({ data }) => {
-        setPrograms((data ?? []) as LoyaltyProgram[])
-        setLoadingPrograms(false)
-      })
-  }, [merchantId, supabase])
+    fetchActivePrograms(merchantId).then(data => {
+      setPrograms(data)
+      setLoadingPrograms(false)
+    })
+  }, [merchantId])
 
-  const handleSearch = async () => {
-    const q = query.trim()
-    if (!q) return
+  const runSearch = async (q: string) => {
+    const trimmed = q.trim()
+    if (!trimmed) { setSearchResults([]); return }
     setSearching(true)
     try {
-      const digits = q.replace(/\D/g, '').slice(-10)
-      const { data } = await supabase
-        .from('customers')
-        .select('id, name, phone, lifetime_spend, visits')
-        .eq('merchant_id', merchantId)
-        .or(
-          digits.length >= 7
-            ? `phone.ilike.%${digits}%,name.ilike.%${q}%`
-            : `name.ilike.%${q}%`
-        )
-        .limit(10)
-      setSearchResults((data ?? []) as Customer[])
+      const results = await searchCustomers(trimmed, merchantId)
+      setSearchResults(results)
     } finally {
       setSearching(false)
     }
   }
 
-  const handleSelectCustomer = async (cust: Customer) => {
+  const handleQueryChange = (text: string) => {
+    setQuery(text)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => runSearch(text), 400)
+  }
+
+  const handleSelectCustomer = async (cust: CustomerResult) => {
     setSelectedCustomer(cust)
-    // Find which programs this customer is already enrolled in
-    const { data } = await supabase
-      .from('loyalty_enrollments')
-      .select('program_id')
-      .eq('customer_id', cust.id)
-      .eq('merchant_id', merchantId)
-    setAlreadyEnrolled((data ?? []).map(e => e.program_id))
+    const enrolled = await fetchEnrollmentsForCustomer(cust.id, merchantId)
+    setAlreadyEnrolled(enrolled)
     setStep('select-program')
   }
 
@@ -121,21 +105,11 @@ export default function EnrollCustomerScreen() {
     if (!selectedCustomer || !selectedProgram) return
     setEnrolling(true)
     try {
-      const { error } = await supabase
-        .from('loyalty_enrollments')
-        .insert({
-          customer_id:   selectedCustomer.id,
-          program_id:    selectedProgram.id,
-          merchant_id:   merchantId,
-          is_active:     true,
-          enrolled_at:   new Date().toISOString(),
-        })
-
-      if (error) {
-        show({ title: 'Error', message: error.message ?? 'Failed to enroll customer', type: 'error' })
+      const result = await enrollCustomer(selectedCustomer.id, selectedProgram.id, merchantId)
+      if (!result.success) {
+        show({ title: 'Error', message: result.error ?? 'Failed to enroll customer', type: 'error' })
         return
       }
-
       setStep('done')
     } finally {
       setEnrolling(false)
@@ -203,22 +177,17 @@ export default function EnrollCustomerScreen() {
                     <Search size={14} color={colors.muted} />
                     <TextInput
                       value={query}
-                      onChangeText={setQuery}
+                      onChangeText={handleQueryChange}
                       placeholder="Name or phone…"
                       placeholderTextColor={colors.muted}
                       style={{ flex: 1, fontSize: 13, color: colors.heading }}
-                      onSubmitEditing={handleSearch}
+                      onSubmitEditing={() => runSearch(query)}
                       returnKeyType="search"
+                      autoFocus
                     />
-                    {query ? <TouchableOpacity onPress={() => { setQuery(''); setSearchResults([]) }}><X size={14} color={colors.muted} /></TouchableOpacity> : null}
+                    {query ? <TouchableOpacity onPress={() => { setQuery(''); setSearchResults([]); if (searchTimer.current) clearTimeout(searchTimer.current) }}><X size={14} color={colors.muted} /></TouchableOpacity> : null}
+                    {searching && <ActivityIndicator color={colors.teal} size="small" />}
                   </View>
-                  <TouchableOpacity
-                    onPress={handleSearch}
-                    disabled={searching || !query.trim()}
-                    style={{ paddingHorizontal: 14, paddingVertical: 9, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', borderRadius: 9, alignItems: 'center', justifyContent: 'center', minWidth: 80 }}
-                  >
-                    {searching ? <ActivityIndicator color={colors.teal} size="small" /> : <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>Search</Text>}
-                  </TouchableOpacity>
                 </View>
               </View>
             </View>

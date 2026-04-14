@@ -59,10 +59,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   // "Offline" = CHANNEL_ERROR (max retries reached) or CLOSED
   // "Syncing..." = actively reconnecting (TIMED_OUT or reconnectAttempts > 0 but not error)
   const isOffline =
-    !floor.isConnected &&
-    (floor.status.state === 'CHANNEL_ERROR' || floor.status.state === 'CLOSED')
+    !floor.isConnected && floor.status.state === 'CHANNEL_ERROR'
   const isSyncing =
-    !floor.isConnected && !isOffline && floor.status.reconnectAttempts > 0
+    !floor.isConnected && !isOffline
 
   // Background periodic retry when channel is in error state
   // This handles both: internet restored AND server restored scenarios
