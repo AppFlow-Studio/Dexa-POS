@@ -316,15 +316,18 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
         createOrder: true,
       })
 
+      // Only proceed if seating was successful
+      if (!result.sessionId) {
+        throw new Error('Failed to seat reservation: no session created')
+      }
+
       // Mark reservation as seated and update local state
       set(state => ({
         reservations: state.reservations.filter(r => r.id !== reservationId),
-        reservationBySessionId: result.sessionId
-          ? {
-              ...state.reservationBySessionId,
-              [result.sessionId]: reservationId
-            }
-          : state.reservationBySessionId
+        reservationBySessionId: {
+          ...state.reservationBySessionId,
+          [result.sessionId]: reservationId
+        }
       }))
 
       // Also update reservation status in DB
@@ -334,12 +337,10 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
         'seated'
       )
 
-      return result.sessionId
-        ? { session_id: result.sessionId, order_id: result.orderId }
-        : null
+      return { session_id: result.sessionId, order_id: result.orderId }
     } catch (err: any) {
       console.error('Failed to seat reservation:', err)
-      return null
+      throw err // Re-throw so caller knows it failed
     }
   },
 

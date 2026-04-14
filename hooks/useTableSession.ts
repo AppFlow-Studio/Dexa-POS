@@ -81,9 +81,9 @@ export function useTableSession (
         // between the old mount's cleanup and the new mount's first effect.
         _mountGeneration++
         mountGenRef.current = _mountGeneration
-        if (orderState.activeOrderId !== found.id) {
-          useOrderStore.getState().setActiveOrder(found.id)
-        }
+        // NOTE: Do NOT call setActiveOrder here — it violates React's render invariant
+        // and causes "Cannot update X while rendering Y" warnings when components
+        // share store subscriptions. Defer this to useEffect below.
         return 'ready' // order in store, render immediately
       }
     }
@@ -179,6 +179,22 @@ export function useTableSession (
       clearActiveTableId()
     }
   }, [tableId])
+
+  // Claim active order on mount if session has one
+  // Must be separate from the render-phase initializer to avoid updating stores during render
+  useEffect(() => {
+    const myGen = mountGenRef.current
+    if (myGen === 0) return // Not the current mount
+
+    const session = useTableSessionStore.getState().sessions[tableId]
+    if (session?.order_id) {
+      const orderState = useOrderStore.getState()
+      const found = orderState.getOrder(session.order_id)
+      if (found && orderState.activeOrderId !== found.id) {
+        setActiveOrder(found.id)
+      }
+    }
+  }, [tableId, setActiveOrder])
 
   // Set active order when we have one (no cleanup on re-run)
   // Also re-claims if the store's activeOrderId was externally cleared while we still have the order

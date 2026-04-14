@@ -8,6 +8,7 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { CustomerWithMeta } from '@/types/customer'
 import { Reservation } from '@/types/db-floor-plan-types'
 import {
+  AlertCircle,
   CalendarClock,
   Check,
   ChevronDown,
@@ -1445,6 +1446,7 @@ const ReservationCard: React.FC<{
   onSeat: () => void
   onCancel: () => void
   tableNames: string[]
+  hasOccupiedTable?: boolean
 }> = ({
   reservation: r,
   isExpanded,
@@ -1453,7 +1455,8 @@ const ReservationCard: React.FC<{
   onMarkArrived,
   onSeat,
   onCancel,
-  tableNames
+  tableNames,
+  hasOccupiedTable = false
 }) => {
   const statusColor = getStatusColor(r.status)
   const isActionable = ![
@@ -1627,6 +1630,35 @@ const ReservationCard: React.FC<{
 
           {isActionable && (
             <View style={{ marginTop: 10, gap: 6 }}>
+              {/* Occupied table warning */}
+              {hasOccupiedTable && r.status === 'arrived' && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: colors.warning + '15',
+                    borderWidth: 1,
+                    borderColor: colors.warning + '40'
+                  }}
+                >
+                  <AlertCircle size={14} color={colors.warning} style={{ marginTop: 2 }} />
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 12,
+                      color: colors.warning,
+                      lineHeight: 16
+                    }}
+                  >
+                    One or more assigned tables are currently occupied. Wait for them to be cleared before seating.
+                  </Text>
+                </View>
+              )}
+
               {/* Row 1: Confirm + Arrived */}
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 {r.status === 'pending' && (
@@ -1688,6 +1720,7 @@ const ReservationCard: React.FC<{
                 {r.status === 'arrived' && (
                   <TouchableOpacity
                     onPress={onSeat}
+                    disabled={hasOccupiedTable}
                     style={{
                       flex: 1,
                       flexDirection: 'row',
@@ -1696,20 +1729,21 @@ const ReservationCard: React.FC<{
                       gap: 5,
                       paddingVertical: 7,
                       borderRadius: 8,
-                      backgroundColor: colors.teal + '20',
+                      backgroundColor: hasOccupiedTable ? colors.muted + '10' : colors.teal + '20',
                       borderWidth: 1,
-                      borderColor: colors.teal + '50'
+                      borderColor: hasOccupiedTable ? colors.muted + '30' : colors.teal + '50',
+                      opacity: hasOccupiedTable ? 0.6 : 1
                     }}
                   >
-                    <Check size={12} color={colors.teal} />
+                    <Check size={12} color={hasOccupiedTable ? colors.muted : colors.teal} />
                     <Text
                       style={{
                         fontSize: 12,
                         fontWeight: '600',
-                        color: colors.teal
+                        color: hasOccupiedTable ? colors.muted : colors.teal
                       }}
                     >
-                      Seat Now
+                      {hasOccupiedTable ? 'Table Occupied' : 'Seat Now'}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -1932,26 +1966,29 @@ const ReservationsPanel: React.FC = () => {
       }
 
       setSeatLoading(true)
-      const result = await seatReservation(r.id, tableIds)
-      setSeatLoading(false)
-      if (result) {
-        show({
-          title: 'Seated',
-          message: `${r.party_name} has been seated`,
-          type: 'success'
-        })
-      } else {
-        const message = 'Please seat the guest manually from the floor plan'
+      try {
+        const result = await seatReservation(r.id, tableIds)
+        if (result) {
+          show({
+            title: 'Seated',
+            message: `${r.party_name} has been seated`,
+            type: 'success'
+          })
+        }
+      } catch (err: any) {
+        const message = err.message || 'Please seat the guest manually from the floor plan'
         show({
           title: 'Could Not Seat',
           message,
-          type: 'warning'
+          type: 'error'
         })
         setFailureModal({
           visible: true,
           title: 'Seating Failed',
           message
         })
+      } finally {
+        setSeatLoading(false)
       }
     },
     [seatReservation, show]
@@ -1964,28 +2001,13 @@ const ReservationsPanel: React.FC = () => {
       setSeatLoading(true)
       try {
         const result = await seatReservation(reservationToSeat.id, [table.id])
-        if (result) {
-          show({
-            title: 'Seated',
-            message: `${reservationToSeat.party_name} seated at ${table.name}`,
-            type: 'success'
-          })
-          setSeatPickerOpen(false)
-          setReservationToSeat(null)
-        } else {
-          const message =
-            'Please try again or seat the guest manually from the floor plan.'
-          show({
-            title: 'Could Not Seat',
-            message,
-            type: 'warning'
-          })
-          setFailureModal({
-            visible: true,
-            title: 'Seating Failed',
-            message
-          })
-        }
+        show({
+          title: 'Seated',
+          message: `${reservationToSeat.party_name} seated at ${table.name}`,
+          type: 'success'
+        })
+        setSeatPickerOpen(false)
+        setReservationToSeat(null)
       } catch (err: any) {
         const message = err.message || 'Could not seat reservation'
         show({
@@ -2170,6 +2192,12 @@ const ReservationsPanel: React.FC = () => {
             const tableNames = (r.assigned_table_ids ?? [])
               .map(id => tableNameById[id])
               .filter(Boolean)
+            // Check if any assigned tables are occupied
+            const assignedTableObjects = (r.assigned_table_ids ?? [])
+              .map(id => availableTables.find(t => t.id === id))
+              .filter(Boolean)
+            const hasOccupiedTable = assignedTableObjects.some((t: any) => t?.occupied)
+
             return (
               <ReservationCard
                 key={r.id}
@@ -2181,6 +2209,7 @@ const ReservationsPanel: React.FC = () => {
                 onSeat={() => handleSeat(r)}
                 onCancel={() => setReservationToCancel(r)}
                 tableNames={tableNames}
+                hasOccupiedTable={hasOccupiedTable}
               />
             )
           })
