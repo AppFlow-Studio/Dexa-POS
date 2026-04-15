@@ -17,6 +17,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { ArrowLeft, Check, Minus, Plus, X } from 'lucide-react-native'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -431,7 +432,7 @@ const immerReducer = (state: State, action: Action): void => {
 // MAIN COMPONENT
 // ============================================================================
 
-const ModifierScreen = () => {
+const ModifierScreenContent = () => {
   const store = useModifierSidebarStore(
     useShallow(s => ({
       isOpen: s.isOpen,
@@ -588,14 +589,15 @@ const ModifierScreen = () => {
     // Render the first batch immediately, then expand to full options next tick.
     setVisibleOptionCount(16)
     setShowSecondarySections(false)
-    const optionTimer = setTimeout(
-      () => setVisibleOptionCount(Number.MAX_SAFE_INTEGER),
-      0
-    )
-    const secondaryTimer = setTimeout(() => setShowSecondarySections(true), 0)
+    const optionFrame = requestAnimationFrame(() => {
+      setVisibleOptionCount(Number.MAX_SAFE_INTEGER)
+    })
+    const secondaryTask = InteractionManager.runAfterInteractions(() => {
+      setShowSecondarySections(true)
+    })
     return () => {
-      clearTimeout(optionTimer)
-      clearTimeout(secondaryTimer)
+      cancelAnimationFrame(optionFrame)
+      secondaryTask.cancel()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
@@ -1780,4 +1782,12 @@ const ModifierScreen = () => {
   )
 }
 
-export default ModifierScreen
+const ModifierScreen = () => {
+  const isOpen = useModifierSidebarStore(s => s.isOpen)
+
+  if (!isOpen) return null
+
+  return <ModifierScreenContent />
+}
+
+export default memo(ModifierScreen)

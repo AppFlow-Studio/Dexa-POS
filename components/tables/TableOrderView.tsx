@@ -23,15 +23,16 @@ import { isActiveSession } from '@/lib/tableStateMachine'
 import { colors } from '@/lib/theme'
 import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
+import { transferTableServer } from '@/services/serverAssignmentService'
 import {
   useHasActivePreAuth,
   useOrderPreAuth,
   useOrderTotals
 } from '@/stores/selectors/orderSelectors'
-import { transferTableServer } from '@/services/serverAssignmentService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useReservationStore } from '@/stores/useReservationStore'
@@ -39,7 +40,14 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { CreditCard } from 'lucide-react-native'
-import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { InteractionManager, Text, TouchableOpacity, View } from 'react-native'
 import { Portal as Teleport } from 'react-native-teleport'
 
@@ -56,8 +64,10 @@ export interface TableOrderViewHandle {
   prepareClose: () => void
 }
 
-const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProps>(
-  ({ tableId, onClose }, ref) => {
+const TableOrderView = React.forwardRef<
+  TableOrderViewHandle,
+  TableOrderViewProps
+>(({ tableId, onClose }, ref) => {
   const currentTableId = tableId
 
   // --- 1. Base Deferred Rendering State (MUST BE FIRST) ---
@@ -73,7 +83,6 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
   const defaultSittingTimeMinutes = useLocationConfigStore(
     s => s.config.dining.defaultSittingTimeMinutes
   )
-
 
   // --- 3. UI State ---
   type NotReadyItem = { id: string; name: string; quantity: number }
@@ -104,9 +113,6 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
     markPaymentSyncing,
     markPaymentSyncDone
   } = useTableSession(currentTableId, undefined, onClose)
-
-  // Expose prepareClose so [tableId].tsx can suppress store reactivity before router.back()
-  useImperativeHandle(ref, () => ({ prepareClose: markNavigatingAway }), [markNavigatingAway])
 
   const enableCoursing = useLocationConfigStore(
     s => s.config.dining.enableCoursing
@@ -146,8 +152,6 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
     enablePerSeatOrdering
   )
 
-
-
   const totals = useOrderTotals(activeOrder?.id ?? null)
   const preAuth = useOrderPreAuth(activeOrder?.id)
   const hasPreAuth = useHasActivePreAuth(activeOrder?.id)
@@ -162,12 +166,27 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
     : storeActiveOrderTotal
   const lastDisplayBalanceDueRef = React.useRef(displayBalanceDueRaw)
   if (totals !== null) lastDisplayBalanceDueRef.current = displayBalanceDueRaw
-  const displayBalanceDue = totals !== null ? displayBalanceDueRaw : lastDisplayBalanceDueRef.current
+  const displayBalanceDue =
+    totals !== null ? displayBalanceDueRaw : lastDisplayBalanceDueRef.current
 
   // --- 6. Bottom sheet refs ---
   const pricingSheetRef = useRef<BottomSheetMethods>(null)
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
+
+  const prepareClose = useCallback(() => {
+    useModifierSidebarStore.getState().cancelAndRemoveDraft()
+    pricingSheetRef.current?.close()
+    moreOptionsSheetRef.current?.close()
+    discountSheetRef.current?.close()
+    setServerSheetOpen(false)
+    setActiveDialog({ type: 'none' })
+    setRenderStage(0)
+    markNavigatingAway()
+  }, [markNavigatingAway])
+
+  // Expose prepareClose so [tableId].tsx can suppress store reactivity before router.back()
+  useImperativeHandle(ref, () => ({ prepareClose }), [prepareClose])
 
   // --- 7. Effects ---
   useEffect(() => {
@@ -229,7 +248,9 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
         return
       }
     }
-    usePaymentStore.getState().open('Card', currentTableId, 'payment-method-selection')
+    usePaymentStore
+      .getState()
+      .open('Card', currentTableId, 'payment-method-selection')
   }, [currentTableId])
 
   const doClearTable = useCallback(async () => {
@@ -252,7 +273,9 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
       sess.status !== 'cleaning' &&
       currentActiveOrder.paid_status === 'Paid'
     ) {
-      useTableSessionStore.getState().dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
+      useTableSessionStore
+        .getState()
+        .dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
     }
 
     const result = await useTableSessionStore.getState().dispatchAction({
@@ -334,13 +357,7 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
         type: 'error'
       })
     }
-  }, [
-    closeDialog,
-    show,
-    markNavigatingAway,
-    onClose,
-    currentTableId
-  ])
+  }, [closeDialog, show, markNavigatingAway, onClose, currentTableId])
 
   const handleCloseCheck = useCallback(async () => {
     const { activeOrderId: oid, ordersById } = useOrderStore.getState()
@@ -379,10 +396,14 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
 
       const sess = useTableSessionStore.getState().getSession(currentTableId)
       if (sess && sess.status !== 'paid' && sess.status !== 'cleaning') {
-        useTableSessionStore.getState().dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
+        useTableSessionStore
+          .getState()
+          .dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
       }
 
-      useOrderStore.getState().updateActiveOrderDetails({ check_status: 'Closed' })
+      useOrderStore
+        .getState()
+        .updateActiveOrderDetails({ check_status: 'Closed' })
       show({
         title: 'Check Closed',
         message: 'The check has been finalized. You can now clear the table.',
@@ -398,12 +419,7 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
     } finally {
       hideLoading()
     }
-  }, [
-    currentTableId,
-    show,
-    showLoading,
-    hideLoading
-  ])
+  }, [currentTableId, show, showLoading, hideLoading])
 
   const handleClearTable = useCallback(async () => {
     const { activeOrderId: oid, ordersById } = useOrderStore.getState()
@@ -474,13 +490,7 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
     } finally {
       hideLoading()
     }
-  }, [
-    closeDialog,
-    showLoading,
-    hideLoading,
-    currentTableId,
-    show
-  ])
+  }, [closeDialog, showLoading, hideLoading, currentTableId, show])
 
   const handleMarkAllReadyForCourse = useCallback(
     (itemIds: string[]) => {
@@ -495,11 +505,7 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
         type: 'success'
       })
     },
-    [
-      selectedCourseIdForTracker,
-      markCourseServed,
-      show
-    ]
+    [selectedCourseIdForTracker, markCourseServed, show]
   )
 
   const finalizeCurrentCourse = useCallback(() => {
@@ -587,12 +593,16 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
       if (result.success) {
         // Set timestamps after success (non-blocking metadata)
         if (!activeOrder.opened_at)
-          useOrderStore.getState().updateActiveOrderDetails({ opened_at: new Date().toISOString() })
+          useOrderStore
+            .getState()
+            .updateActiveOrderDetails({ opened_at: new Date().toISOString() })
         if (!activeOrder.sent_to_kitchen_at)
           useOrderStore.getState().updateActiveOrderDetails({
             sent_to_kitchen_at: new Date().toISOString()
           })
-        const autoPrintKitchenTickets = useLocationConfigStore.getState().config.printing.autoPrintKitchenTickets
+        const autoPrintKitchenTickets =
+          useLocationConfigStore.getState().config.printing
+            .autoPrintKitchenTickets
         const selectedStore = useStoreSettingsStore.getState().selectedStore
         if (autoPrintKitchenTickets && selectedStore) {
           PrinterService.printKitchenTickets(
@@ -904,7 +914,10 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
       // Persist to DB in background (supabase comes from useSupabaseClient() at line 75)
       if (supabase) {
         transferTableServer(supabase, sess.id, staffProfileId).catch(err =>
-          console.warn('[handleSelectServer] Failed to update server_staff_id:', err)
+          console.warn(
+            '[handleSelectServer] Failed to update server_staff_id:',
+            err
+          )
         )
       }
     },
@@ -929,18 +942,24 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
 
   const handleOpenPreAuthCapture = useCallback(() => {
     usePaymentStore.getState().setPreAuthMode('capture')
-    usePaymentStore.getState().open('Card', currentTableId, 'payment-method-selection')
+    usePaymentStore
+      .getState()
+      .open('Card', currentTableId, 'payment-method-selection')
   }, [currentTableId])
 
   const handleOpenPreAuthIncrement = useCallback(() => {
     usePaymentStore.getState().setPreAuthMode('increment')
-    usePaymentStore.getState().open('Card', currentTableId, 'payment-method-selection')
+    usePaymentStore
+      .getState()
+      .open('Card', currentTableId, 'payment-method-selection')
   }, [currentTableId])
 
   const handlePayAnyway = useCallback(() => {
     closeDialog()
     pricingSheetRef.current?.close()
-    usePaymentStore.getState().open('Card', currentTableId, 'payment-method-selection')
+    usePaymentStore
+      .getState()
+      .open('Card', currentTableId, 'payment-method-selection')
   }, [currentTableId, closeDialog])
 
   const handleClearAnyway = useCallback(async () => {
@@ -994,6 +1013,16 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
   // Show skeleton if session has an order but we can't resolve it yet
   // (prevents "No active order" flash during transitional gaps)
   if (!activeOrder && session?.order_id) {
+    return (
+      <View style={{ flex: 1 }} className='bg-screen'>
+        <TableDetailSkeleton />
+      </View>
+    )
+  }
+
+  // Fail-safe: if floor plan marks this table as occupied but activeOrder is not
+  // resolved yet, keep skeleton instead of rendering an empty bill ($0 due).
+  if (!activeOrder && table?.session && table.session.status !== 'available') {
     return (
       <View style={{ flex: 1 }} className='bg-screen'>
         <TableDetailSkeleton />
@@ -1261,7 +1290,6 @@ const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProp
       )}
     </View>
   )
-  }
-)
+})
 
 export default TableOrderView

@@ -1,4 +1,6 @@
-import TableOrderView, { type TableOrderViewHandle } from '@/components/tables/TableOrderView'
+import TableOrderView, {
+  type TableOrderViewHandle
+} from '@/components/tables/TableOrderView'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useRef } from 'react'
 import { StyleSheet, TouchableWithoutFeedback, View } from 'react-native'
@@ -21,7 +23,9 @@ export default function TableScreen () {
     if (isClosingRef.current) return
     isClosingRef.current = true
     tableViewRef.current?.prepareClose()
-    doGoBack()
+    requestAnimationFrame(() => {
+      doGoBack()
+    })
   }, [doGoBack])
 
   return (

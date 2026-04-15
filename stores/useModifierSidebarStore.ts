@@ -521,18 +521,6 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         const stateMenuItem =
           menuItemParam || includeMenuItemInState ? sourceItem : null
 
-        // Create draft instantly for "add" mode (menuItem without cartItem)
-        let draftCreatedId: string | null = null
-        if (menuItemParam && !cartItemParam) {
-          draftCreatedId = _createDraftInOpen(
-            sourceItem,
-            precomputed.itemPrice,
-            precomputed.itemCashPrice,
-            resolvedCatId,
-            resolvedMenuId
-          )
-        }
-
         set({
           isOpen: true,
           isMenuBlocked: true,
@@ -550,9 +538,31 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           activeModifierCategory: precomputed.activeCategory,
           precomputedForItemId: precomputed.forItemId,
           activeEditingItemId: cartItemParam?.id ?? null,
-          draftCreatedId,
+          draftCreatedId: null,
           seatOverride: initialSeatOverride
         })
+
+        // Draft creation is intentionally deferred so the modifier UI opens first.
+        if (menuItemParam && !cartItemParam) {
+          queueMicrotask(() => {
+            const draftCreatedId = _createDraftInOpen(
+              sourceItem,
+              precomputed.itemPrice,
+              precomputed.itemCashPrice,
+              resolvedCatId,
+              resolvedMenuId
+            )
+
+            const state = get()
+            if (
+              state.isOpen &&
+              !state.cartItem &&
+              state.precomputedForItemId === precomputed.forItemId
+            ) {
+              set({ draftCreatedId })
+            }
+          })
+        }
       } else if (cartItemParam) {
         // Fallback: no menu item found, use cart item data directly
         const { useOrderStore: uos } = require('./useOrderStore')
