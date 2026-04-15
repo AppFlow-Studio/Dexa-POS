@@ -59,6 +59,27 @@ import type { AddOrderItemParams } from "@/types/db-order-management-types";
 
 let _supabaseClient: any = null;
 
+function isAlreadyDoneSyncError(
+  error: any,
+  messageMatchers: string[] = [],
+): boolean {
+  if (!error) return false;
+
+  const code = String(error.code ?? "");
+  const message = String(error.message ?? "").toLowerCase();
+
+  if (code === "23505") return true;
+
+  if (code === "P0001") {
+    if (message.includes("already")) return true;
+    if (messageMatchers.some((m) => message.includes(m.toLowerCase()))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // Callback for failed payment notifications
 let _onPaymentFailed: ((payment: OfflineOperation) => void) | null = null;
 
@@ -2227,10 +2248,17 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           });
 
           if (error) {
-            // 23505 = duplicate key — course already exists (idempotent success)
-            if (error.code === '23505') {
+            // Idempotent success: already fired/already exists/already in target state.
+            if (
+              isAlreadyDoneSyncError(error, [
+                "already fired",
+                "already exists",
+                "already in",
+                "already sent",
+              ])
+            ) {
               console.log(
-                `[OfflineSync] fire_course: Course ${courseNumber} already exists for order ${resolvedOrderId} (23505), treating as success`,
+                `[OfflineSync] fire_course: Course ${courseNumber} already fired/exists for order ${resolvedOrderId}, treating as success`,
               );
               return true;
             }
