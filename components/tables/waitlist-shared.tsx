@@ -11,7 +11,7 @@ import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
-  BottomSheetView,
+  BottomSheetView
 } from '@gorhom/bottom-sheet'
 import {
   AlertCircle,
@@ -23,7 +23,7 @@ import {
   Phone,
   StickyNote,
   Users,
-  X,
+  X
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -32,21 +32,21 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withTiming
 } from 'react-native-reanimated'
 
 // ── Helpers ───────────────────────────────────────────────────
 
-export function getElapsedMinutes(createdAt: string): number {
+export function getElapsedMinutes (createdAt: string): number {
   return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000)
 }
 
-export function formatElapsed(minutes: number): string {
+export function formatElapsed (minutes: number): string {
   if (minutes < 60) return `${minutes}m`
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
@@ -56,7 +56,7 @@ export function formatElapsed(minutes: number): string {
 /**
  * Estimate wait time for a new party based on live table data.
  */
-export function estimateWaitMinutes(
+export function estimateWaitMinutes (
   partySize: number,
   tables: FloorPlanObject[],
   waitlist: WaitlistEntry[],
@@ -84,7 +84,9 @@ export function estimateWaitMinutes(
   if (availableNow.length > partiesAhead) return 0
 
   const occupiedTimes = suitableTables
-    .filter(t => t.session && t.session.status !== 'available' && t.session.seated_at)
+    .filter(
+      t => t.session && t.session.status !== 'available' && t.session.seated_at
+    )
     .map(t => {
       const elapsedMins = Math.floor(
         (Date.now() - new Date(t.session!.seated_at).getTime()) / 60_000
@@ -111,135 +113,217 @@ export const WaitlistCard: React.FC<{
   onSeat: () => void
   onNotify: () => void
   onDelete: () => void
-}> = React.memo(({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
-  const elapsed = useMemo(() => getElapsedMinutes(entry.created_at), [entry.created_at])
-  const isOverdue = elapsed > entry.quoted_wait_minutes
-  const badgeBg = isOverdue ? colors.danger + '14' : colors.teal + '12'
-  const badgeBorder = isOverdue ? colors.danger + '45' : colors.teal + '45'
-  const badgeLabel = isOverdue ? colors.danger : colors.teal
+}> = React.memo(
+  ({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
+    const elapsed = useMemo(
+      () => getElapsedMinutes(entry.created_at),
+      [entry.created_at]
+    )
+    const isOverdue = elapsed > entry.quoted_wait_minutes
+    const badgeBg = isOverdue ? colors.danger + '14' : colors.teal + '12'
+    const badgeBorder = isOverdue ? colors.danger + '45' : colors.teal + '45'
+    const badgeLabel = isOverdue ? colors.danger : colors.teal
 
-  const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
-  useEffect(() => {
-    expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
-  }, [isExpanded])
-  const expandedStyle = useAnimatedStyle(() => ({
-    opacity: expandedHeight.value,
-    maxHeight: expandedHeight.value * 300,
-    overflow: 'hidden',
-  }))
+    const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
+    useEffect(() => {
+      expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
+    }, [isExpanded])
+    const expandedStyle = useAnimatedStyle(() => ({
+      opacity: expandedHeight.value,
+      maxHeight: expandedHeight.value * 300,
+      overflow: 'hidden'
+    }))
 
-  return (
-    <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
-      <Pressable onPress={onToggle} className='flex-row items-center px-4 py-3'>
-        <View
-          style={{
-            width: 62,
-            minHeight: 50,
-            borderRadius: 10,
-            paddingHorizontal: 8,
-            paddingVertical: 6,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: badgeBg,
-            borderWidth: 1,
-            borderColor: badgeBorder
-          }}
+    return (
+      <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
+        <Pressable
+          onPress={onToggle}
+          className='flex-row items-center px-4 py-3'
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Clock size={10} color={badgeLabel} />
-            <Text style={{ fontSize: 9, fontWeight: '700', color: badgeLabel }}>
-              WAIT
-            </Text>
-          </View>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: badgeLabel, marginTop: 1 }}>
-            {formatElapsed(elapsed)}
-          </Text>
-        </View>
-
-        <View className='flex-1 ml-3 min-w-0'>
-          <Text className='text-white font-semibold text-base' numberOfLines={1}>
-            {entry.party_name}
-          </Text>
-          <View className='flex-row items-center mt-0.5'>
-            <Users size={12} color={colors.muted} />
-            <Text className='text-muted text-sm ml-1'>
-              {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
-            </Text>
-          </View>
-          {(entry.notification_failures ?? 0) > 0 && (
-            <View className='self-start mt-1 px-2 py-0.5 rounded bg-red-600 border border-red-500'>
-              <Text className='text-white text-xs font-bold'>
-                SMS FAIL {entry.notification_failures}
+          <View
+            style={{
+              width: 62,
+              minHeight: 50,
+              borderRadius: 10,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: badgeBg,
+              borderWidth: 1,
+              borderColor: badgeBorder
+            }}
+          >
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            >
+              <Clock size={10} color={badgeLabel} />
+              <Text
+                style={{ fontSize: 9, fontWeight: '700', color: badgeLabel }}
+              >
+                WAIT
               </Text>
             </View>
-          )}
-        </View>
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: '800',
+                color: badgeLabel,
+                marginTop: 1
+              }}
+            >
+              {formatElapsed(elapsed)}
+            </Text>
+          </View>
 
-        {isExpanded ? (
-          <ChevronUp size={20} color={colors.label} />
-        ) : (
-          <ChevronDown size={20} color={colors.label} />
-        )}
-      </Pressable>
-
-      <Animated.View style={expandedStyle}>
-        <View className='px-4 pb-4 border-t border-border'>
-          <View className='mt-3 gap-2'>
-            {entry.phone ? (
-              <View className='flex-row items-center'>
-                <Phone size={14} color={colors.label} />
-                <Text className='text-label text-sm ml-2'>{entry.phone}</Text>
-              </View>
-            ) : null}
-            {entry.notes ? (
-              <View className='flex-row items-start'>
-                <StickyNote size={14} color={colors.label} style={{ marginTop: 2 }} />
-                <Text className='text-label text-sm ml-2 italic flex-1'>{entry.notes}</Text>
-              </View>
-            ) : null}
-            <View className='flex-row items-center'>
-              <Clock size={14} color={colors.label} />
-              <Text className='text-label text-sm ml-2'>
-                Quoted: {entry.quoted_wait_minutes} min
+          <View className='flex-1 ml-3 min-w-0'>
+            <Text
+              className='text-white font-semibold text-base'
+              numberOfLines={1}
+            >
+              {entry.party_name}
+            </Text>
+            <View className='flex-row items-center mt-0.5'>
+              <Users size={12} color={colors.muted} />
+              <Text className='text-muted text-sm ml-1'>
+                {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
               </Text>
             </View>
             {(entry.notification_failures ?? 0) > 0 && (
-              <View className='flex-row items-center gap-2 px-2.5 py-2 rounded-lg bg-red-600 border border-red-500'>
-                <AlertCircle size={14} color='white' />
-                <Text className='text-white text-sm flex-1 font-semibold'>
-                  SMS failed {entry.notification_failures}x — call guest verbally
+              <View className='self-start mt-1 px-2 py-0.5 rounded bg-red-600 border border-red-500'>
+                <Text className='text-white text-xs font-bold'>
+                  SMS FAIL {entry.notification_failures}
                 </Text>
               </View>
             )}
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
-            <TouchableOpacity
-              onPress={onSeat}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, borderRadius: 8, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
+          {isExpanded ? (
+            <ChevronUp size={20} color={colors.label} />
+          ) : (
+            <ChevronDown size={20} color={colors.label} />
+          )}
+        </Pressable>
+
+        <Animated.View style={expandedStyle}>
+          <View className='px-4 pb-4 border-t border-border'>
+            <View className='mt-3 gap-2'>
+              {entry.phone ? (
+                <View className='flex-row items-center'>
+                  <Phone size={14} color={colors.label} />
+                  <Text className='text-label text-sm ml-2'>{entry.phone}</Text>
+                </View>
+              ) : null}
+              {entry.notes ? (
+                <View className='flex-row items-start'>
+                  <StickyNote
+                    size={14}
+                    color={colors.label}
+                    style={{ marginTop: 2 }}
+                  />
+                  <Text className='text-label text-sm ml-2 italic flex-1'>
+                    {entry.notes}
+                  </Text>
+                </View>
+              ) : null}
+              <View className='flex-row items-center'>
+                <Clock size={14} color={colors.label} />
+                <Text className='text-label text-sm ml-2'>
+                  Quoted: {entry.quoted_wait_minutes} min
+                </Text>
+              </View>
+              {(entry.notification_failures ?? 0) > 0 && (
+                <View className='flex-row items-center gap-2 px-2.5 py-2 rounded-lg bg-red-600 border border-red-500'>
+                  <AlertCircle size={14} color='white' />
+                  <Text className='text-white text-sm flex-1 font-semibold'>
+                    SMS failed {entry.notification_failures}x — call guest
+                    verbally
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 10
+              }}
             >
-              <Check size={13} color={colors.teal} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>Seat</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onNotify}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
-            >
-              <Bell size={13} color={colors.label} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>Notify</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onDelete}
-              style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '30' }}
-            >
-              <X size={13} color={colors.danger} />
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onSeat}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 7,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + '20',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '50'
+                }}
+              >
+                <Check size={13} color={colors.teal} />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: colors.teal
+                  }}
+                >
+                  Seat
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onNotify}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 7,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
+              >
+                <Bell size={13} color={colors.label} />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: colors.label
+                  }}
+                >
+                  Notify
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onDelete}
+                style={{
+                  width: 32,
+                  height: 32,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  backgroundColor: colors.danger + '15',
+                  borderWidth: 1,
+                  borderColor: colors.danger + '30'
+                }}
+              >
+                <X size={13} color={colors.danger} />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Animated.View>
-    </View>
-  )
-})
+        </Animated.View>
+      </View>
+    )
+  }
+)
 
 // ── AddEntryForm ──────────────────────────────────────────────
 
@@ -286,7 +370,7 @@ export const AddEntryForm: React.FC<{
       partySize: parseInt(partySize || '2', 10),
       quotedTime: parseInt(quotedTime || '15', 10),
       notes,
-      phone: phone || undefined,
+      phone: phone || undefined
     })
     setName('')
     setPartySize('')
@@ -303,13 +387,15 @@ export const AddEntryForm: React.FC<{
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.border
   }
 
   return (
     <View className='px-4 pt-2 pb-6 gap-4'>
       <View>
-        <Text className='text-label text-sm mb-1.5 font-medium'>Guest Name</Text>
+        <Text className='text-label text-sm mb-1.5 font-medium'>
+          Guest Name
+        </Text>
         <TextInput
           value={name}
           onChangeText={setName}
@@ -320,7 +406,9 @@ export const AddEntryForm: React.FC<{
       </View>
       <View className='flex-row gap-3'>
         <View className='flex-1'>
-          <Text className='text-label text-sm mb-1.5 font-medium'>Party Size</Text>
+          <Text className='text-label text-sm mb-1.5 font-medium'>
+            Party Size
+          </Text>
           <TextInput
             value={partySize}
             onChangeText={setPartySize}
@@ -334,7 +422,9 @@ export const AddEntryForm: React.FC<{
           <View className='flex-row items-center justify-between mb-1.5'>
             <Text className='text-label text-sm font-medium'>Wait (min)</Text>
             {!quotedTimeEdited && estimatedWait !== null && (
-              <Text style={{ fontSize: 10, color: colors.teal }}>auto-estimated</Text>
+              <Text style={{ fontSize: 10, color: colors.teal }}>
+                auto-estimated
+              </Text>
             )}
           </View>
           <TextInput
@@ -343,18 +433,23 @@ export const AddEntryForm: React.FC<{
               setQuotedTime(v)
               setQuotedTimeEdited(true)
             }}
-            placeholder={estimatedWait !== null ? String(Math.max(estimatedWait, 5)) : '15'}
+            placeholder={
+              estimatedWait !== null ? String(Math.max(estimatedWait, 5)) : '15'
+            }
             placeholderTextColor={colors.muted}
             keyboardType='number-pad'
             style={[
               inputStyle,
-              !quotedTimeEdited && estimatedWait !== null && { borderColor: colors.teal + '80' },
+              !quotedTimeEdited &&
+                estimatedWait !== null && { borderColor: colors.teal + '80' }
             ]}
           />
         </View>
       </View>
       <View>
-        <Text className='text-label text-sm mb-1.5 font-medium'>Phone (optional)</Text>
+        <Text className='text-label text-sm mb-1.5 font-medium'>
+          Phone (optional)
+        </Text>
         <TextInput
           value={phone}
           onChangeText={setPhone}
@@ -365,7 +460,9 @@ export const AddEntryForm: React.FC<{
         />
       </View>
       <View>
-        <Text className='text-label text-sm mb-1.5 font-medium'>Notes (optional)</Text>
+        <Text className='text-label text-sm mb-1.5 font-medium'>
+          Notes (optional)
+        </Text>
         <TextInput
           value={notes}
           onChangeText={setNotes}
@@ -423,7 +520,10 @@ export const TablePickerSheet: React.FC<{
   )
 
   const recommendedTables = useMemo(
-    () => availableTables.filter(t => (t.capacity || 0) >= (entry?.party_size || 0)),
+    () =>
+      availableTables.filter(
+        t => (t.capacity || 0) >= (entry?.party_size || 0)
+      ),
     [availableTables, entry]
   )
 
@@ -466,8 +566,12 @@ export const TablePickerSheet: React.FC<{
             </Text>
             <Text className='text-muted text-base text-center mb-6'>
               Party of {entry?.party_size} at{' '}
-              <Text className='text-white font-semibold'>{pendingTable.name}</Text>
-              {pendingTable.capacity ? ` (capacity ${pendingTable.capacity})` : ''}
+              <Text className='text-white font-semibold'>
+                {pendingTable.name}
+              </Text>
+              {pendingTable.capacity
+                ? ` (capacity ${pendingTable.capacity})`
+                : ''}
             </Text>
             <View className='flex-row gap-3 w-full px-4'>
               <TouchableOpacity
@@ -490,7 +594,8 @@ export const TablePickerSheet: React.FC<{
               Seat {entry?.party_name}
             </Text>
             <Text className='text-muted text-sm mb-4'>
-              Party of {entry?.party_size} — Quoted {entry?.quoted_wait_minutes}m
+              Party of {entry?.party_size} — Quoted {entry?.quoted_wait_minutes}
+              m
             </Text>
             <Text className='text-teal font-semibold text-xs uppercase tracking-wider mb-3'>
               Available Tables
@@ -504,8 +609,12 @@ export const TablePickerSheet: React.FC<{
                   className='bg-card p-4 rounded-xl mb-2.5 flex-row justify-between items-center border border-border'
                 >
                   <View>
-                    <Text className='text-white text-base font-semibold'>{item.name}</Text>
-                    <Text className='text-muted text-sm'>Capacity: {item.capacity}</Text>
+                    <Text className='text-white text-base font-semibold'>
+                      {item.name}
+                    </Text>
+                    <Text className='text-muted text-sm'>
+                      Capacity: {item.capacity}
+                    </Text>
                   </View>
                   <View className='bg-teal px-4 py-2 rounded-lg'>
                     <Text className='text-white font-semibold'>Seat</Text>
