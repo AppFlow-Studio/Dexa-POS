@@ -39,8 +39,8 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { CreditCard } from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { InteractionManager, Text, TouchableOpacity, View } from 'react-native'
 import { Portal as Teleport } from 'react-native-teleport'
 
 // Stable empty array to avoid new reference on every render
@@ -52,7 +52,12 @@ interface TableOrderViewProps {
   onClose: () => void
 }
 
-const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
+export interface TableOrderViewHandle {
+  prepareClose: () => void
+}
+
+const TableOrderView = React.forwardRef<TableOrderViewHandle, TableOrderViewProps>(
+  ({ tableId, onClose }, ref) => {
   const currentTableId = tableId
 
   // --- 1. Base Deferred Rendering State (MUST BE FIRST) ---
@@ -68,10 +73,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const defaultSittingTimeMinutes = useLocationConfigStore(
     s => s.config.dining.defaultSittingTimeMinutes
   )
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const autoPrintKitchenTickets = useLocationConfigStore(
-    s => s.config.printing.autoPrintKitchenTickets
-  )
+
 
   // --- 3. UI State ---
   type NotReadyItem = { id: string; name: string; quantity: number }
@@ -102,6 +104,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     markPaymentSyncing,
     markPaymentSyncDone
   } = useTableSession(currentTableId, undefined, onClose)
+
+  // Expose prepareClose so [tableId].tsx can suppress store reactivity before router.back()
+  useImperativeHandle(ref, () => ({ prepareClose: markNavigatingAway }), [markNavigatingAway])
 
   const enableCoursing = useLocationConfigStore(
     s => s.config.dining.enableCoursing
@@ -141,18 +146,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     enablePerSeatOrdering
   )
 
-  const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
-  const dispatchAction = useTableSessionStore(s => s.dispatchAction)
-  const openPaymentSheet = usePaymentStore(s => s.open)
-  const updateActiveOrderDetails = useOrderStore(
-    s => s.updateActiveOrderDetails
-  )
-  const batchUpdateItemKitchenStatus = useOrderStore(
-    s => s.batchUpdateItemKitchenStatus
-  )
-  const syncOrderStatus = useOrderStore(s => s.syncOrderStatus)
-  const activeOrderId = useOrderStore(s => s.activeOrderId)
-  const setPreAuthMode = usePaymentStore(s => s.setPreAuthMode)
+
 
   const totals = useOrderTotals(activeOrder?.id ?? null)
   const preAuth = useOrderPreAuth(activeOrder?.id)
@@ -177,19 +171,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   // --- 7. Effects ---
   useEffect(() => {
-    let cancelled = false
-    // Single rAF: let the skeleton paint for one frame, then mount everything together.
-    // Bill + menu sections are both backed by in-memory store data, so there's no
-    // benefit to staggering them across two frames — the extra frame just adds ~16ms
-    // of visible "Loading menu..." before the menu appears.
-    const raf1 = requestAnimationFrame(() => {
-      if (cancelled) return
-      setRenderStage(2) // Jump straight to fully-rendered
+    // Defer heavy content until after the navigation push animation finishes.
+    // Skeleton shows during the transition; bill + menu render once the screen
+    // has "landed", keeping the open animation smooth.
+    const task = InteractionManager.runAfterInteractions(() => {
+      setRenderStage(1)
+      requestAnimationFrame(() => setRenderStage(2))
     })
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(raf1)
-    }
+    return () => task.cancel()
   }, [])
 
   // --- 8. Final Derived UI State ---
@@ -240,8 +229,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         return
       }
     }
-    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-  }, [openPaymentSheet, currentTableId])
+    usePaymentStore.getState().open('Card', currentTableId, 'payment-method-selection')
+  }, [currentTableId])
 
   const doClearTable = useCallback(async () => {
     const orderState = useOrderStore.getState()
@@ -263,10 +252,10 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       sess.status !== 'cleaning' &&
       currentActiveOrder.paid_status === 'Paid'
     ) {
-      dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
+      useTableSessionStore.getState().dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
     }
 
-    const result = await dispatchAction({
+    const result = await useTableSessionStore.getState().dispatchAction({
       type: 'CLEAR_TABLE',
       tableId: currentTableId,
       orderId: currentActiveOrder.id
@@ -292,7 +281,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     showLoading,
     markNavigatingAway,
     currentTableId,
-    dispatchAction,
     hideLoading,
     onClose,
     show
@@ -318,7 +306,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
     markNavigatingAway()
 
-    const result = await dispatchAction({
+    const result = await useTableSessionStore.getState().dispatchAction({
       type: 'VOID_ORDER',
       tableId: currentTableId,
       orderId: order.id,
@@ -351,7 +339,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     show,
     markNavigatingAway,
     onClose,
-    dispatchAction,
     currentTableId
   ])
 
@@ -381,7 +368,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
     try {
       showLoading('Closing check...')
-      const result = await dispatchAction({
+      const result = await useTableSessionStore.getState().dispatchAction({
         type: 'CLOSE_CHECK',
         tableId: currentTableId,
         orderId: order.id,
@@ -392,10 +379,10 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
       const sess = useTableSessionStore.getState().getSession(currentTableId)
       if (sess && sess.status !== 'paid' && sess.status !== 'cleaning') {
-        dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
+        useTableSessionStore.getState().dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
       }
 
-      updateActiveOrderDetails({ check_status: 'Closed' })
+      useOrderStore.getState().updateActiveOrderDetails({ check_status: 'Closed' })
       show({
         title: 'Check Closed',
         message: 'The check has been finalized. You can now clear the table.',
@@ -415,9 +402,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     currentTableId,
     show,
     showLoading,
-    hideLoading,
-    dispatchAction,
-    updateActiveOrderDetails
+    hideLoading
   ])
 
   const handleClearTable = useCallback(async () => {
@@ -458,7 +443,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
     try {
       showLoading('Reopening check...')
-      const result = await dispatchAction({
+      const result = await useTableSessionStore.getState().dispatchAction({
         type: 'REOPEN_CHECK',
         tableId: currentTableId,
         orderId: order.id,
@@ -468,11 +453,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       if (!result.success)
         throw new Error(result.error || 'Failed to reopen check')
 
-      updateActiveOrderDetails({
+      useOrderStore.getState().updateActiveOrderDetails({
         paid_status: 'Partial',
         check_status: 'Opened'
       })
-      syncOrderStatus(oid)
+      useOrderStore.getState().syncOrderStatus(oid)
 
       show({
         title: 'Check Reopened',
@@ -493,16 +478,13 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     closeDialog,
     showLoading,
     hideLoading,
-    dispatchAction,
     currentTableId,
-    updateActiveOrderDetails,
-    syncOrderStatus,
     show
   ])
 
   const handleMarkAllReadyForCourse = useCallback(
     (itemIds: string[]) => {
-      batchUpdateItemKitchenStatus(itemIds, 'ready')
+      useOrderStore.getState().batchUpdateItemKitchenStatus(itemIds, 'ready')
       const oid = useOrderStore.getState().activeOrderId
       if (oid && selectedCourseIdForTracker !== null) {
         markCourseServed(oid, selectedCourseIdForTracker)
@@ -514,7 +496,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       })
     },
     [
-      batchUpdateItemKitchenStatus,
       selectedCourseIdForTracker,
       markCourseServed,
       show
@@ -582,7 +563,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         kitchen_status: i.kitchen_status
       }))
 
-      batchUpdateItemKitchenStatus(
+      useOrderStore.getState().batchUpdateItemKitchenStatus(
         itemsInCourse.map(i => i.id),
         getKitchenSentStatus()
       )
@@ -592,7 +573,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         .map(i => i.db_order_item_id)
         .filter((id): id is string => !!id)
 
-      const result = await dispatchAction({
+      const result = await useTableSessionStore.getState().dispatchAction({
         type: 'SEND_TO_KITCHEN',
         tableId: currentTableId,
         courseNumber: course,
@@ -606,11 +587,13 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       if (result.success) {
         // Set timestamps after success (non-blocking metadata)
         if (!activeOrder.opened_at)
-          updateActiveOrderDetails({ opened_at: new Date().toISOString() })
+          useOrderStore.getState().updateActiveOrderDetails({ opened_at: new Date().toISOString() })
         if (!activeOrder.sent_to_kitchen_at)
-          updateActiveOrderDetails({
+          useOrderStore.getState().updateActiveOrderDetails({
             sent_to_kitchen_at: new Date().toISOString()
           })
+        const autoPrintKitchenTickets = useLocationConfigStore.getState().config.printing.autoPrintKitchenTickets
+        const selectedStore = useStoreSettingsStore.getState().selectedStore
         if (autoPrintKitchenTickets && selectedStore) {
           PrinterService.printKitchenTickets(
             activeOrder,
@@ -658,12 +641,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       getForOrder,
       markCourseSent,
       unmarkCourseSent,
-      updateActiveOrderDetails,
-      batchUpdateItemKitchenStatus,
-      dispatchAction,
       currentTableId,
-      autoPrintKitchenTickets,
-      selectedStore,
       show
     ]
   )
@@ -837,18 +815,18 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const handleAddSeat = useCallback(() => {
     const newCount = seatingHook.addSeat()
-    updateActiveOrderDetails({ guest_count: newCount })
+    useOrderStore.getState().updateActiveOrderDetails({ guest_count: newCount })
     useTableSessionStore.getState().dispatch(currentTableId, {
       type: 'PATCH',
       updates: { party_size: newCount }
     })
-  }, [seatingHook.addSeat, updateActiveOrderDetails, currentTableId])
+  }, [seatingHook.addSeat, currentTableId])
 
   const handleRemoveSeat = useCallback(() => {
     const { removedSeat, reassignedItemCount } = seatingHook.removeSeat()
     if (removedSeat === 0) return
     const newCount = removedSeat - 1
-    updateActiveOrderDetails({ guest_count: newCount })
+    useOrderStore.getState().updateActiveOrderDetails({ guest_count: newCount })
     useTableSessionStore.getState().dispatch(currentTableId, {
       type: 'PATCH',
       updates: { party_size: newCount }
@@ -860,7 +838,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         type: 'warning'
       })
     }
-  }, [seatingHook.removeSeat, updateActiveOrderDetails, currentTableId, show])
+  }, [seatingHook.removeSeat, currentTableId, show])
 
   const handleSelectCourse = useCallback(
     (courseId: number | null) => {
@@ -903,7 +881,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   )
   const handleSelectServer = useCallback(
     (name: string) => {
-      updateActiveOrderDetails({ server_name: name })
+      useOrderStore.getState().updateActiveOrderDetails({ server_name: name })
       setServerSheetOpen(false)
 
       // Also update server_staff_id on the session so the server badge on the
@@ -930,7 +908,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         )
       }
     },
-    [updateActiveOrderDetails, currentTableId, supabase]
+    [currentTableId, supabase]
   )
 
   const handleCloseDiscountSheet = useCallback(
@@ -950,20 +928,20 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   }, [markNavigatingAway, show, onClose])
 
   const handleOpenPreAuthCapture = useCallback(() => {
-    setPreAuthMode('capture')
-    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-  }, [setPreAuthMode, openPaymentSheet, currentTableId])
+    usePaymentStore.getState().setPreAuthMode('capture')
+    usePaymentStore.getState().open('Card', currentTableId, 'payment-method-selection')
+  }, [currentTableId])
 
   const handleOpenPreAuthIncrement = useCallback(() => {
-    setPreAuthMode('increment')
-    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-  }, [setPreAuthMode, openPaymentSheet, currentTableId])
+    usePaymentStore.getState().setPreAuthMode('increment')
+    usePaymentStore.getState().open('Card', currentTableId, 'payment-method-selection')
+  }, [currentTableId])
 
   const handlePayAnyway = useCallback(() => {
     closeDialog()
     pricingSheetRef.current?.close()
-    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-  }, [openPaymentSheet, currentTableId, closeDialog])
+    usePaymentStore.getState().open('Card', currentTableId, 'payment-method-selection')
+  }, [currentTableId, closeDialog])
 
   const handleClearAnyway = useCallback(async () => {
     closeDialog()
@@ -998,6 +976,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   }, [activeOrder?.id, sentCourses, currentCourse])
 
   // --- Render ---
+
+  // Collapse to a bare screen during close animation — stops all child
+  // subscriptions from re-rendering while the pop animation plays.
+  if (phase === 'navigating_away') {
+    return <View style={{ flex: 1 }} className='bg-screen' />
+  }
 
   if (!isReady && renderStage === 0) {
     return (
@@ -1277,6 +1261,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       )}
     </View>
   )
-}
+  }
+)
 
 export default TableOrderView
