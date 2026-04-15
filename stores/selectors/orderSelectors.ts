@@ -566,41 +566,31 @@ export const useRemoteOrderCount = useOtherStationOrderCount;
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Filtered orders for order line display (non-dine-in, by daysToShow).
+ * Filtered orders for order line display (today, all active non-dine-in).
  * Uses useStableOrderList for referential stability when content unchanged.
  */
-export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
+export function useOrderLineFilteredOrders(): OrderProfile[] {
   const raw = useOrderStore(
     useShallow((state) => {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
-      cutoffDate.setHours(0, 0, 0, 0);
-      const cutoffTime = cutoffDate.getTime();
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const startTime = startOfToday.getTime();
+
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      const endTime = endOfToday.getTime();
+
       const result: OrderProfile[] = [];
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]];
         if (!o) continue;
-        const isOwnStation = o.station_id === state.currentStationId;
-        const isDraft = o.order_status === "draft";
+        const openedAt = new Date(o.opened_at || 0).getTime();
         if (
-          new Date(o.opened_at || 0).getTime() >= cutoffTime &&
-          o.order_type !== "Dine In" &&
-          o.order_type !== "dine_in" &&
-          o.order_status !== "void" &&
-          o.order_status !== "completed" &&
-          (o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0) &&
-          (
-            // Draft orders: only show own-station ones
-            (isDraft && isOwnStation) ||
-            // Active non-draft orders
-            (!isDraft && (
-              // Still being prepared: always show regardless of payment/check status
-              (o.order_status === "preparing" || o.order_status === "sent_to_kitchen") ||
-              // Not yet paid and check not closed
-              (o.check_status !== "Closed" && (o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial")) ||
-              (o.order_status === "ready" && o.paid_status === "Paid")
-            ))
-          )
+          openedAt >= startTime &&
+          openedAt <= endTime &&
+          !DINE_IN_TYPES.has(o.order_type ?? "") &&
+          !INACTIVE_STATUSES.has(o.order_status ?? "") &&
+          (o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0)
         ) {
           result.push(o);
         }

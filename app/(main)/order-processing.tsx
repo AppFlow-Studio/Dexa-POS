@@ -16,7 +16,6 @@ import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { CheckCircle2 } from "lucide-react-native";
@@ -36,12 +35,11 @@ const OrderProcessing = () => {
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
-  const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const orderCompletionMode = useStoreSettingsStore((s) => s.orderCompletionMode);
 
-  // OPTIMIZED: Dedicated selector with useStableOrderList for referential stability
-  const reversedFilteredOrders = useOrderLineFilteredOrders(daysToShow);
+  // Today-only order line list for current location.
+  const reversedFilteredOrders = useOrderLineFilteredOrders();
 
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
