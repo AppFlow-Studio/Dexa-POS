@@ -4954,9 +4954,13 @@ export const useOrderStore = create<OrderState>()(
             // FAST PATH: Draft items skip all expensive operations
             // ================================================================
             if (newItem.isDraft) {
+              const coursingState = useCoursingStore.getState()
+              const currentCourse =
+                coursingState.getForOrder(activeOrderId)?.workingCourse ?? 1
               const draftCartItem: CartItem = {
                 ...newItem,
-                paidQuantity: 0
+                paidQuantity: 0,
+                courseNumber: newItem.courseNumber ?? currentCourse
                 // No kitchen_status or sync_status for drafts
               }
 
