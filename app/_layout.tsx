@@ -234,13 +234,18 @@ export default Sentry.wrap(function RootLayout() {
 
   // Hide system UI for full-screen immersive POS experience
   React.useEffect(() => {
-    if (Platform.OS === 'android') {
-      NavigationBar.setVisibilityAsync('hidden').catch(() => {})
-      checkForNativeUpdate().then(manifest => {
-        if (manifest) setNativeUpdateManifest(manifest)
-      })
+    async function runUpdateChecks() {
+      if (Platform.OS === 'android') {
+        NavigationBar.setVisibilityAsync('hidden').catch(() => {})
+        const manifest = await checkForNativeUpdate()
+        if (manifest) {
+          setNativeUpdateManifest(manifest)
+          return // skip OTA — native update takes priority
+        }
+      }
+      checkForUpdate()
     }
-    checkForUpdate()
+    runUpdateChecks()
   }, [])
 
   useIsomorphicLayoutEffect(() => {

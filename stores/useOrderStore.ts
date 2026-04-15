@@ -4004,8 +4004,19 @@ export const useOrderStore = create<OrderState>()(
           ) => {
             const dbOrderId = backendOrder.id
 
-            // Check if order already exists (single index lookup)
-            const existing = get().ordersById[dbOrderId]
+            // Check if order already exists — also resolve through dbOrderIdIndex
+            // to find orders stored under a mapped temp key (e.g. "local_order_xxx").
+            // Without this, a broadcast UPDATE for a rekeyed-in-flight order creates
+            // a duplicate entry with empty items at ordersById[dbOrderId].
+            let existing = get().ordersById[dbOrderId]
+            if (!existing) {
+              const indexedKey = get().dbOrderIdIndex[dbOrderId]
+              if (indexedKey && indexedKey !== dbOrderId && get().ordersById[indexedKey]) {
+                // Order exists under a mapped temp key — rekey to DB UUID first
+                get().rekeyOrder(indexedKey, dbOrderId)
+                existing = get().ordersById[dbOrderId]
+              }
+            }
 
             if (existing) {
               // Don't overwrite orders with pending local changes
@@ -11025,6 +11036,22 @@ export const useOrderStore = create<OrderState>()(
                 console.log(
                   `[hydrateOrderFromSeat] Updated local order ${localOrderId} → db ${dbOrderId}, session ${sessionId}`
                 )
+
+                // Rekey temp orders to DB UUID to prevent broadcast duplicates.
+                // Without this, upsertOrder creates a second entry at ordersById[dbOrderId]
+                // with empty items (v2 header-only), overwriting dbOrderIdIndex and causing
+                // useTableSession to resolve to the empty copy → $0.00 totals / broken kitchen.
+                // Same pattern as takeout: ensureOrderCreated → updateOrderDbId → rekeyOrder.
+                if (
+                  localOrderId !== dbOrderId && (
+                    localOrderId.startsWith('order_') ||
+                    localOrderId.startsWith('temp_') ||
+                    localOrderId.startsWith('local_order_')
+                  )
+                ) {
+                  get().rekeyOrder(localOrderId, dbOrderId)
+                }
+
                 return
               }
               // If localOrderId is a temp key, try rekeyOrder pattern
