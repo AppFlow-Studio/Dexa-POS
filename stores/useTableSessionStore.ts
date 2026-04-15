@@ -485,9 +485,17 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               }
             }
 
-            // Apply optimistic state machine transition via internal dispatch
-            const changed = get().dispatch(tableId, { type: event })
-            if (!changed) {
+            // Apply transition to all tables in this session so merged tables stay in sync.
+            const tableIdsForSession = get().sessionTableIndex[session.id] ?? [
+              tableId
+            ]
+            const changed = get().batchDispatch(
+              tableIdsForSession.map(tid => ({
+                tableId: tid,
+                action: { type: event }
+              }))
+            )
+            if (changed === 0) {
               return {
                 success: false,
                 error: 'State machine transition produced no change'
@@ -945,7 +953,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             current_course: 1,
             needs_attention: false,
             is_vip: false,
-            server_staff_id: serverStaffId ?? undefined
+            server_staff_id: serverStaffId ?? undefined,
+            merged_tables:
+              params.tableIds.length > 1 ? [...params.tableIds] : undefined
           }
 
           get().batchDispatch(
