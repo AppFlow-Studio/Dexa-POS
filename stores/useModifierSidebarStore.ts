@@ -1,5 +1,6 @@
 import { CartItem, MenuItemType, ModifierCategory } from '@/lib/types'
 import { create } from 'zustand'
+import { useLocationConfigStore } from './useLocationConfigStore'
 import { useMenuStore } from './useMenuStore'
 import { useSeatingStore } from './useSeatingStore'
 
@@ -17,6 +18,15 @@ export const setMenuBlockedSync = (blocked: boolean) => {
 
 /** Check if menu is blocked synchronously (O(1), no React) */
 export const isMenuBlockedSync = () => menuBlockedSyncRef
+
+const nowMs = () =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+
+let lastModifierOpenStartedAt = 0
+
+export const getLastModifierOpenStartedAt = () => lastModifierOpenStartedAt
 
 // ============================================================================
 // PRE-WARM CACHE - Precompute modifier data ahead of store open()
@@ -92,6 +102,8 @@ interface ModifierSidebarState {
   draftCreatedId: string | null // Draft item ID created by open(), null if not created
 
   seatOverride: number | null // null = shared / use active seat
+  seatCount: number
+  showSeatPicker: boolean
   setSeatOverride: (seat: number | null) => void
 
   preWarm: (item: MenuItemType, categoryId?: string, menuId?: string) => void
@@ -362,6 +374,8 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
 
     // Seat override for per-seat ordering
     seatOverride: null,
+    seatCount: 0,
+    showSeatPicker: false,
     setSeatOverride: (seat: number | null) => set({ seatOverride: seat }),
 
     // Pre-computed data starts empty
@@ -418,6 +432,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
 
       // CRITICAL: Block touches synchronously FIRST (same frame, before React)
       setMenuBlockedSync(true)
+      lastModifierOpenStartedAt = nowMs()
 
       // Resolve the source menu item
       let sourceItem: MenuItemType | null = menuItemParam ?? null
@@ -499,7 +514,20 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         const { useOrderStore } = require('./useOrderStore')
         const { activeOrderId } = useOrderStore.getState()
         let initialSeatOverride: number | null = null
+        let seatCount = 0
+        let showSeatPicker = false
         if (activeOrderId) {
+          const activeOrder = useOrderStore.getState().ordersById[activeOrderId]
+          const enablePerSeatOrdering =
+            useLocationConfigStore.getState().config.dining
+              .enablePerSeatOrdering
+          const isTableOrder = !!activeOrder?.service_location_id
+          seatCount = isTableOrder
+            ? useSeatingStore.getState().getSeatCount(activeOrderId)
+            : 0
+          showSeatPicker =
+            enablePerSeatOrdering && isTableOrder && seatCount > 0
+
           if (cartItemParam) {
             // Edit mode: use the item's current seat
             initialSeatOverride = useSeatingStore
@@ -539,7 +567,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           precomputedForItemId: precomputed.forItemId,
           activeEditingItemId: cartItemParam?.id ?? null,
           draftCreatedId: null,
-          seatOverride: initialSeatOverride
+          seatOverride: initialSeatOverride,
+          seatCount,
+          showSeatPicker
         })
 
         // Draft creation is intentionally deferred so the modifier UI opens first.
@@ -567,6 +597,8 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         // Fallback: no menu item found, use cart item data directly
         const { useOrderStore: uos } = require('./useOrderStore')
         const { activeOrderId: fallbackOrderId } = uos.getState()
+        const enablePerSeatOrdering =
+          useLocationConfigStore.getState().config.dining.enablePerSeatOrdering
         const fallbackSeat = fallbackOrderId
           ? useSeatingStore
               .getState()
@@ -594,7 +626,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           activeModifierCategory: null,
           precomputedForItemId: cartItemParam.menuItemId,
           activeEditingItemId: cartItemParam.id,
-          seatOverride: fallbackSeat
+          seatOverride: fallbackSeat,
+          seatCount: fallbackOrderId
+            ? useSeatingStore.getState().getSeatCount(fallbackOrderId)
+            : 0,
+          showSeatPicker:
+            !!fallbackOrderId &&
+            !!uos.getState().ordersById[fallbackOrderId]?.service_location_id &&
+            enablePerSeatOrdering &&
+            useSeatingStore.getState().getSeatCount(fallbackOrderId) > 0
         })
       }
     },
@@ -617,6 +657,13 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
 
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
+      if (__DEV__ && lastModifierOpenStartedAt > 0) {
+        console.log(
+          `[perf][modifier] close requested at ${Math.round(
+            nowMs() - lastModifierOpenStartedAt
+          )}ms`
+        )
+      }
 
       // Phase 1: hide immediately so UI responds in the same frame.
       set({
@@ -645,7 +692,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           activeModifierCategory: null,
           precomputedForItemId: null,
           draftCreatedId: null,
-          seatOverride: null
+          seatOverride: null,
+          seatCount: 0,
+          showSeatPicker: false
         })
       })
     },
@@ -701,7 +750,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         activeModifierCategory: null,
         precomputedForItemId: null,
         draftCreatedId: null,
-        seatOverride: null
+        seatOverride: null,
+        seatCount: 0,
+        showSeatPicker: false
       })
     },
 

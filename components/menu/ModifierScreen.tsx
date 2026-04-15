@@ -2,9 +2,11 @@ import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
 import { CartItem, ModifierCategory } from '@/lib/types'
 import { OrderService } from '@/services/orderService'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useMenuStore } from '@/stores/useMenuStore'
-import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import {
+  getLastModifierOpenStartedAt,
+  useModifierSidebarStore
+} from '@/stores/useModifierSidebarStore'
 import {
   getOrderStoreSupabaseClient,
   useOrderStore
@@ -35,6 +37,11 @@ interface ModifierSelection {
     [optionId: string]: boolean | 'no'
   }
 }
+
+const nowMs = () =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
 
 // ============================================================================
 // MEMOIZED SUB-COMPONENTS
@@ -451,7 +458,9 @@ const ModifierScreenContent = () => {
       precomputedActiveCategory: s.activeModifierCategory,
       close: s.close,
       seatOverride: s.seatOverride,
-      setSeatOverride: s.setSeatOverride
+      setSeatOverride: s.setSeatOverride,
+      seatCount: s.seatCount,
+      showSeatPicker: s.showSeatPicker
     }))
   )
 
@@ -472,31 +481,12 @@ const ModifierScreenContent = () => {
     precomputedActiveCategory,
     close,
     seatOverride,
-    setSeatOverride
+    setSeatOverride,
+    seatCount,
+    showSeatPicker
   } = store
 
   const showMenuImages = useSettingsStore(s => s.showMenuImages)
-
-  // Per-seat ordering context
-  const enablePerSeatOrdering = useLocationConfigStore(
-    s => s.config.dining.enablePerSeatOrdering
-  )
-  const seatOrderId = useOrderStore(s => s.activeOrderId)
-  const orderSelector = useCallback(
-    (s: any) => (seatOrderId ? s.ordersById[seatOrderId] ?? null : null),
-    [seatOrderId]
-  )
-  const activeOrderForSeat = useOrderStore(orderSelector)
-  const isTableOrder = !!activeOrderForSeat?.service_location_id
-  const seatCountSelector = useCallback(
-    (s: any) => {
-      if (!isTableOrder || !seatOrderId) return 0
-      return s.getSeatCount(seatOrderId)
-    },
-    [isTableOrder, seatOrderId]
-  )
-  const seatCount = useSeatingStore(seatCountSelector)
-  const showSeatPicker = enablePerSeatOrdering && isTableOrder && seatCount > 0
 
   const addItemToActiveOrder = useCallback(
     (item: any) => useOrderStore.getState().addItemToActiveOrder(item),
@@ -569,6 +559,17 @@ const ModifierScreenContent = () => {
   useEffect(() => {
     if (!sessionId || sessionId === prevSessionRef.current) return
     prevSessionRef.current = sessionId
+    if (__DEV__) {
+      const openStartedAt = getLastModifierOpenStartedAt()
+      if (openStartedAt > 0) {
+        console.log(
+          `[perf][modifier] session ready in ${Math.round(
+            nowMs() - openStartedAt
+          )}ms`,
+          { sessionId }
+        )
+      }
+    }
     actionHandledRef.current = false
     draftItemIdRef.current = null
     lastDraftMenuItemIdRef.current = null

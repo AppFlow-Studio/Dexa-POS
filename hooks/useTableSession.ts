@@ -143,25 +143,16 @@ export function useTableSession (
       const found = state.ordersById[localKey]
       if (found) return found
     }
+    // Priority 1.5: resolve via table index (local key for this table)
+    const indexedOrderId = state.tableOrderIdIndex[tableId]
+    if (indexedOrderId) {
+      const indexedOrder = state.ordersById[indexedOrderId]
+      if (indexedOrder?.service_location_id === tableId) return indexedOrder
+    }
     // Priority 2: active order already set and belongs to this table
     if (state.activeOrderId) {
       const active = state.ordersById[state.activeOrderId]
       if (active?.service_location_id === tableId) return active
-    }
-    // Priority 3: scan ordersById for any active order for this table
-    // (handles gaps where activeOrderId is transiently null but order still exists)
-    const keys = Object.keys(state.ordersById)
-    for (let i = 0; i < keys.length; i++) {
-      const o = state.ordersById[keys[i]]
-      if (
-        o.service_location_id === tableId &&
-        o.order_status !== 'completed' &&
-        o.order_status !== 'void' &&
-        o.order_status !== 'voided' &&
-        o.order_status !== 'cancelled'
-      ) {
-        return o
-      }
     }
     return undefined
   })

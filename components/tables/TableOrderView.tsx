@@ -55,6 +55,11 @@ import { Portal as Teleport } from 'react-native-teleport'
 const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] =
   []
 
+const nowMs = () =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+
 interface TableOrderViewProps {
   tableId: string
   onClose: () => void
@@ -69,6 +74,7 @@ const TableOrderView = React.forwardRef<
   TableOrderViewProps
 >(({ tableId, onClose }, ref) => {
   const currentTableId = tableId
+  const openedAtRef = useRef(nowMs())
 
   // --- 1. Base Deferred Rendering State (MUST BE FIRST) ---
   // Always start at 0 (skeleton) so the heavy bill + menu sections never mount
@@ -175,6 +181,14 @@ const TableOrderView = React.forwardRef<
   const discountSheetRef = useRef<BottomSheetMethods>(null)
 
   const prepareClose = useCallback(() => {
+    if (__DEV__) {
+      console.log(
+        `[perf][table-order] prepareClose after ${Math.round(
+          nowMs() - openedAtRef.current
+        )}ms`,
+        { tableId: currentTableId }
+      )
+    }
     useModifierSidebarStore.getState().cancelAndRemoveDraft()
     pricingSheetRef.current?.close()
     moreOptionsSheetRef.current?.close()
@@ -195,10 +209,20 @@ const TableOrderView = React.forwardRef<
     // has "landed", keeping the open animation smooth.
     const task = InteractionManager.runAfterInteractions(() => {
       setRenderStage(1)
-      requestAnimationFrame(() => setRenderStage(2))
+      requestAnimationFrame(() => {
+        setRenderStage(2)
+        if (__DEV__) {
+          console.log(
+            `[perf][table-order] interactive in ${Math.round(
+              nowMs() - openedAtRef.current
+            )}ms`,
+            { tableId: currentTableId }
+          )
+        }
+      })
     })
     return () => task.cancel()
-  }, [])
+  }, [currentTableId])
 
   // --- 8. Final Derived UI State ---
   const isFullyPaid = useMemo(() => {
