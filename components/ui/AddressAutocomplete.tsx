@@ -1,13 +1,13 @@
-import { colors } from "@/lib/theme";
-import { getIsOnline } from "@/services/offlineSyncService";
+import { colors } from '@/lib/theme'
 import {
   fetchAutocompleteSuggestions,
   fetchPlaceDetails,
-  type PlacePrediction,
-} from "@/services/googlePlacesService";
-import type { ParsedAddress } from "@/utils/addressUtils";
-import { MapPin } from "lucide-react-native";
-import React, { useCallback, useRef, useState } from "react";
+  type PlacePrediction
+} from '@/services/googlePlacesService'
+import { getIsOnline } from '@/services/offlineSyncService'
+import type { ParsedAddress } from '@/utils/addressUtils'
+import { MapPin } from 'lucide-react-native'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Text,
@@ -15,100 +15,130 @@ import {
   TouchableOpacity,
   View,
   type StyleProp,
-  type ViewStyle,
-} from "react-native";
-import { v4 as uuidv4 } from "uuid";
+  type ViewStyle
+} from 'react-native'
+import { v4 as uuidv4 } from 'uuid'
 
 interface AddressAutocompleteProps {
-  value: string;
-  onChangeText: (text: string) => void;
-  onAddressSelected: (address: ParsedAddress) => void;
-  placeholder?: string;
-  inputStyle?: StyleProp<ViewStyle>;
+  value: string
+  onChangeText: (text: string) => void
+  onAddressSelected: (address: ParsedAddress) => void
+  placeholder?: string
+  inputStyle?: StyleProp<ViewStyle>
   /** Render suggestions inline (pushes content down) instead of absolute overlay */
-  inline?: boolean;
+  inline?: boolean
+  /** Where to render the suggestions dropdown relative to the input.
+   *  "below" (default) — absolutely positioned below the input.
+   *  "right"           — absolutely positioned to the right of the input,
+   *                      useful inside narrow drawers where the keyboard
+   *                      would cover a below-positioned dropdown.
+   *  "top"             — absolutely positioned above the input, useful
+   *                      when the drawer boundary should contain the popup. */
+  dropdownPosition?: 'below' | 'right' | 'top'
 }
 
 export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   value,
   onChangeText,
   onAddressSelected,
-  placeholder = "Search address...",
+  placeholder = 'Search address...',
   inputStyle,
   inline = false,
+  dropdownPosition = 'below'
 }) => {
-  const [suggestions, setSuggestions] = useState<PlacePrediction[]>([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<PlacePrediction[]>([])
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [inputValue, setInputValue] = useState(value)
 
-  const sessionTokenRef = useRef<string>("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionTokenRef = useRef<string>('')
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastTypedValueRef = useRef(value)
+  const isFocusedRef = useRef(false)
+  const latestExternalValueRef = useRef(value)
+
+  useEffect(() => {
+    latestExternalValueRef.current = value
+    // While the user is actively typing, ignore store echoes entirely.
+    // The parent round-trips each keystroke through Zustand + formatting,
+    // and those updates can arrive out of order relative to fast typing.
+    if (!isFocusedRef.current) {
+      setInputValue(value)
+    }
+  }, [value])
 
   const handleFocus = useCallback(() => {
-    sessionTokenRef.current = uuidv4();
-  }, []);
+    isFocusedRef.current = true
+    sessionTokenRef.current = uuidv4()
+  }, [])
 
   const handleBlur = useCallback(() => {
+    isFocusedRef.current = false
     // Delay to allow tap on suggestion to register
-    setTimeout(() => setShowDropdown(false), 200);
-  }, []);
+    setTimeout(() => setShowDropdown(false), 200)
+  }, [])
 
   const fetchSuggestions = useCallback(async (text: string) => {
     if (!text.trim() || text.length < 3) {
-      setSuggestions([]);
-      setShowDropdown(false);
-      return;
+      setSuggestions([])
+      setShowDropdown(false)
+      return
     }
 
-    if (!getIsOnline()) return;
+    if (!getIsOnline()) return
 
-    setLoading(true);
+    setLoading(true)
     const results = await fetchAutocompleteSuggestions(
       text,
-      sessionTokenRef.current,
-    );
-    setSuggestions(results);
-    setShowDropdown(results.length > 0);
-    setLoading(false);
-  }, []);
+      sessionTokenRef.current
+    )
+    setSuggestions(results)
+    setShowDropdown(results.length > 0)
+    setLoading(false)
+  }, [])
 
   const handleChangeText = useCallback(
     (text: string) => {
-      onChangeText(text);
+      setInputValue(text)
+      lastTypedValueRef.current = text
+      onChangeText(text)
 
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => fetchSuggestions(text), 300);
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => fetchSuggestions(text), 300)
     },
-    [onChangeText, fetchSuggestions],
-  );
+    [onChangeText, fetchSuggestions]
+  )
 
   const handleSelect = useCallback(
     async (prediction: PlacePrediction) => {
-      setShowDropdown(false);
-      setSuggestions([]);
-      setLoading(true);
+      setShowDropdown(false)
+      setSuggestions([])
+      setLoading(true)
 
       const details = await fetchPlaceDetails(
         prediction.place_id,
-        sessionTokenRef.current,
-      );
+        sessionTokenRef.current
+      )
 
       // Reset session token after selection (billing session complete)
-      sessionTokenRef.current = uuidv4();
-      setLoading(false);
+      sessionTokenRef.current = uuidv4()
+      setLoading(false)
 
       if (details) {
-        onAddressSelected(details);
+        lastTypedValueRef.current = ''
+        onAddressSelected(details)
         // Don't call onChangeText — parent updates display via onAddressSelected callback.
         // OrderTypeDrawer: value derives from formatAddress(delivery_address)
         // CustomerSheet: sets addressDisplay in onAddressSelected handler
       } else {
         // Fallback: use the description as plain text
-        onChangeText(prediction.description);
+        setInputValue(prediction.description)
+        lastTypedValueRef.current = prediction.description
+        onChangeText(prediction.description)
       }
     },
-    [onAddressSelected, onChangeText],
-  );
+    [onAddressSelected, onChangeText]
+  )
 
   const dropdownContent = showDropdown && suggestions.length > 0 && (
     <View
@@ -118,36 +148,55 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           borderWidth: 1,
           borderColor: colors.border,
           borderRadius: 8,
-          marginTop: 4,
-          overflow: "hidden",
+          overflow: 'hidden'
         },
-        !inline && {
-          position: "absolute",
-          top: "100%",
-          left: 0,
-          right: 0,
-          zIndex: 999,
-        },
+        !inline &&
+          dropdownPosition === 'right' && {
+            width: 280,
+            position: 'absolute',
+            top: 0,
+            left: '100%',
+            marginLeft: 8,
+            zIndex: 999
+          },
+        !inline &&
+          dropdownPosition === 'top' && {
+            position: 'absolute',
+            bottom: '100%',
+            left: 0,
+            right: 0,
+            marginBottom: 4,
+            zIndex: 999
+          },
+        !inline &&
+          dropdownPosition === 'below' && {
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            marginTop: 4,
+            zIndex: 999
+          }
       ]}
     >
-      {suggestions.map((item, index) => (
+      {suggestions.slice(0, 3).map((item, index) => (
         <TouchableOpacity
           key={item.place_id}
           onPress={() => handleSelect(item)}
           style={{
-            flexDirection: "row",
-            alignItems: "center",
+            flexDirection: 'row',
+            alignItems: 'center',
             paddingHorizontal: 12,
             paddingVertical: 10,
             gap: 10,
             borderTopWidth: index > 0 ? 1 : 0,
-            borderColor: colors.border,
+            borderColor: colors.border
           }}
         >
           <MapPin size={14} color={colors.muted} />
           <View style={{ flex: 1 }}>
             <Text
-              style={{ color: colors.heading, fontSize: 12, fontWeight: "600" }}
+              style={{ color: colors.heading, fontSize: 12, fontWeight: '600' }}
               numberOfLines={1}
             >
               {item.structured_formatting.main_text}
@@ -166,35 +215,35 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           paddingHorizontal: 12,
           paddingVertical: 6,
           borderTopWidth: 1,
-          borderColor: colors.border,
+          borderColor: colors.border
         }}
       >
-        <Text style={{ color: colors.muted, fontSize: 9, textAlign: "right" }}>
+        <Text style={{ color: colors.muted, fontSize: 9, textAlign: 'right' }}>
           Powered by Google
         </Text>
       </View>
     </View>
-  );
+  )
 
   return (
-    <View style={inline ? undefined : { zIndex: 999 }}>
+    <View style={inline ? undefined : { zIndex: 999, position: 'relative' }}>
       <View
         style={[
           {
-            flexDirection: "row",
-            alignItems: "center",
+            flexDirection: 'row',
+            alignItems: 'center',
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border,
             borderRadius: 8,
             height: 38,
-            paddingHorizontal: 12,
+            paddingHorizontal: 12
           },
-          inputStyle,
+          inputStyle
         ]}
       >
         <TextInput
-          value={value}
+          value={inputValue}
           onChangeText={handleChangeText}
           onFocus={handleFocus}
           onBlur={handleBlur}
@@ -204,12 +253,12 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
             flex: 1,
             color: colors.heading,
             fontSize: 13,
-            padding: 0,
+            padding: 0
           }}
         />
         {loading && (
           <ActivityIndicator
-            size="small"
+            size='small'
             color={colors.teal}
             style={{ marginLeft: 6 }}
           />
@@ -217,5 +266,5 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
       </View>
       {dropdownContent}
     </View>
-  );
-};
+  )
+}
