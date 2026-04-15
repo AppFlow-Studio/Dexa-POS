@@ -2,9 +2,11 @@ import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
 import { CartItem, ModifierCategory } from '@/lib/types'
 import { OrderService } from '@/services/orderService'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useMenuStore } from '@/stores/useMenuStore'
-import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import {
+  getLastModifierOpenStartedAt,
+  useModifierSidebarStore
+} from '@/stores/useModifierSidebarStore'
 import {
   getOrderStoreSupabaseClient,
   useOrderStore
@@ -17,6 +19,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { ArrowLeft, Check, Minus, Plus, X } from 'lucide-react-native'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -34,6 +37,11 @@ interface ModifierSelection {
     [optionId: string]: boolean | 'no'
   }
 }
+
+const nowMs = () =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
 
 // ============================================================================
 // MEMOIZED SUB-COMPONENTS
@@ -126,8 +134,14 @@ const ModifierOption = memo(
       onPressIn={() => onToggle(categoryId, option.id)}
       onLongPress={() => onLongPress(categoryId, option.id)}
       delayLongPress={400}
-      className='flex-1 min-w-[110px] max-w-[180px] rounded-lg border py-3 px-2.5 items-center justify-center'
-      style={
+      className='rounded-lg border py-3 px-2.5 items-center justify-center'
+      style={[
+        {
+          flexBasis: '31%',
+          flexGrow: 0,
+          flexShrink: 0,
+          minHeight: 72
+        },
         isNo
           ? {
               backgroundColor: colors.danger + '20',
@@ -142,7 +156,7 @@ const ModifierOption = memo(
               opacity: 0.45
             }
           : { backgroundColor: colors.card, borderColor: colors.border }
-      }
+      ]}
     >
       {isNo && (
         <View
@@ -233,7 +247,7 @@ const NotesInput = memo(
           <TextInput
             editable={!isReadOnly}
             value={localValue}
-            onChangeText={(text) => {
+            onChangeText={text => {
               setLocalValue(text)
               onChange(text)
             }}
@@ -425,7 +439,7 @@ const immerReducer = (state: State, action: Action): void => {
 // MAIN COMPONENT
 // ============================================================================
 
-const ModifierScreen = () => {
+const ModifierScreenContent = () => {
   const store = useModifierSidebarStore(
     useShallow(s => ({
       isOpen: s.isOpen,
@@ -444,7 +458,9 @@ const ModifierScreen = () => {
       precomputedActiveCategory: s.activeModifierCategory,
       close: s.close,
       seatOverride: s.seatOverride,
-      setSeatOverride: s.setSeatOverride
+      setSeatOverride: s.setSeatOverride,
+      seatCount: s.seatCount,
+      showSeatPicker: s.showSeatPicker
     }))
   )
 
@@ -465,31 +481,12 @@ const ModifierScreen = () => {
     precomputedActiveCategory,
     close,
     seatOverride,
-    setSeatOverride
+    setSeatOverride,
+    seatCount,
+    showSeatPicker
   } = store
 
   const showMenuImages = useSettingsStore(s => s.showMenuImages)
-
-  // Per-seat ordering context
-  const enablePerSeatOrdering = useLocationConfigStore(
-    s => s.config.dining.enablePerSeatOrdering
-  )
-  const seatOrderId = useOrderStore(s => s.activeOrderId)
-  const orderSelector = useCallback(
-    (s: any) => (seatOrderId ? s.ordersById[seatOrderId] ?? null : null),
-    [seatOrderId]
-  )
-  const activeOrderForSeat = useOrderStore(orderSelector)
-  const isTableOrder = !!activeOrderForSeat?.service_location_id
-  const seatCountSelector = useCallback(
-    (s: any) => {
-      if (!isTableOrder || !seatOrderId) return 0
-      return s.getSeatCount(seatOrderId)
-    },
-    [isTableOrder, seatOrderId]
-  )
-  const seatCount = useSeatingStore(seatCountSelector)
-  const showSeatPicker = enablePerSeatOrdering && isTableOrder && seatCount > 0
 
   const addItemToActiveOrder = useCallback(
     (item: any) => useOrderStore.getState().addItemToActiveOrder(item),
@@ -562,6 +559,17 @@ const ModifierScreen = () => {
   useEffect(() => {
     if (!sessionId || sessionId === prevSessionRef.current) return
     prevSessionRef.current = sessionId
+    if (__DEV__) {
+      const openStartedAt = getLastModifierOpenStartedAt()
+      if (openStartedAt > 0) {
+        console.log(
+          `[perf][modifier] session ready in ${Math.round(
+            nowMs() - openStartedAt
+          )}ms`,
+          { sessionId }
+        )
+      }
+    }
     actionHandledRef.current = false
     draftItemIdRef.current = null
     lastDraftMenuItemIdRef.current = null
@@ -582,14 +590,15 @@ const ModifierScreen = () => {
     // Render the first batch immediately, then expand to full options next tick.
     setVisibleOptionCount(16)
     setShowSecondarySections(false)
-    const optionTimer = setTimeout(
-      () => setVisibleOptionCount(Number.MAX_SAFE_INTEGER),
-      0
-    )
-    const secondaryTimer = setTimeout(() => setShowSecondarySections(true), 0)
+    const optionFrame = requestAnimationFrame(() => {
+      setVisibleOptionCount(Number.MAX_SAFE_INTEGER)
+    })
+    const secondaryTask = InteractionManager.runAfterInteractions(() => {
+      setShowSecondarySections(true)
+    })
     return () => {
-      clearTimeout(optionTimer)
-      clearTimeout(secondaryTimer)
+      cancelAnimationFrame(optionFrame)
+      secondaryTask.cancel()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
@@ -1566,7 +1575,18 @@ const ModifierScreen = () => {
                 </View>
 
                 {/* Options grid */}
-                <View className='flex-row flex-wrap gap-2'>
+                <ScrollView
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={visibleOptions.length > 9}
+                  style={{ maxHeight: 320 }}
+                  contentContainerStyle={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    alignItems: 'flex-start',
+                    paddingBottom: 2
+                  }}
+                >
                   {visibleOptions.map(
                     (option: ModifierCategory['options'][number]) => {
                       const selVal =
@@ -1591,7 +1611,7 @@ const ModifierScreen = () => {
                       )
                     }
                   )}
-                </View>
+                </ScrollView>
               </View>
             )}
           </View>
@@ -1763,4 +1783,12 @@ const ModifierScreen = () => {
   )
 }
 
-export default ModifierScreen
+const ModifierScreen = () => {
+  const isOpen = useModifierSidebarStore(s => s.isOpen)
+
+  if (!isOpen) return null
+
+  return <ModifierScreenContent />
+}
+
+export default memo(ModifierScreen)

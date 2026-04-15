@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Edit3,
   MapPin,
   Phone,
   Search,
@@ -48,6 +49,17 @@ function formatTime (isoOrTime: string): string {
   const d = new Date(isoOrTime)
   if (isNaN(d.getTime())) return isoOrTime
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+function toEditableTime (isoOrTime: string): string {
+  const d = new Date(isoOrTime)
+  if (!isNaN(d.getTime())) {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(
+      d.getMinutes()
+    ).padStart(2, '0')}`
+  }
+  const match = isoOrTime.match(/(\d{2}:\d{2})/)
+  return match?.[1] ?? '19:00'
 }
 
 function formatDateLabel (date: Date): string {
@@ -324,13 +336,21 @@ const AddReservationModal: React.FC<{
   isLoading: boolean
   defaultDate: Date
   availableTables: { id: string; name: string }[]
+  initialData?: Reservation | null
+  title?: string
+  subtitle?: string
+  submitLabel?: string
 }> = ({
   visible,
   onClose,
   onSubmit,
   isLoading,
   defaultDate,
-  availableTables
+  availableTables,
+  initialData = null,
+  title = 'New Reservation',
+  subtitle = 'Create and assign a booking in one step',
+  submitLabel = 'Reserve'
 }) => {
   const [name, setName] = useState('')
   const [partySize, setPartySize] = useState(2)
@@ -354,6 +374,35 @@ const AddReservationModal: React.FC<{
   )
   const selectedTime = `${selHour}:${selMin}`
   const selectedTimeIndex = Math.max(0, timeOptions.indexOf(selectedTime))
+
+  useEffect(() => {
+    if (!visible) return
+
+    if (initialData) {
+      const nextDate = initialData.reservation_date
+        ? new Date(`${initialData.reservation_date}T00:00:00`)
+        : new Date(initialData.reservation_time)
+      const editableTime = toEditableTime(initialData.reservation_time)
+      const [hour, minute] = editableTime.split(':')
+
+      setName(initialData.party_name ?? '')
+      setPartySize(initialData.party_size ?? 2)
+      setPhone(initialData.phone ?? '')
+      setSelectedDate(
+        Number.isFinite(nextDate.getTime()) ? nextDate : defaultDate
+      )
+      setSelHour(hour ?? '19')
+      setSelMin(minute ?? '00')
+      setSelectedTableIds(initialData.assigned_table_ids ?? [])
+      setNotes(initialData.notes ?? initialData.special_requests ?? '')
+      setIsVip(Boolean(initialData.is_vip))
+      setLinkedCustomer(null)
+      setCustomerQuery('')
+      return
+    }
+
+    resetForm()
+  }, [visible, initialData, defaultDate])
 
   const customerResults = useMemo(() => {
     const q = customerQuery.toLowerCase().trim()
@@ -500,12 +549,12 @@ const AddReservationModal: React.FC<{
                     color: colors.heading
                   }}
                 >
-                  New Reservation
+                  {title}
                 </Text>
                 <Text
                   style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
                 >
-                  Create and assign a booking in one step
+                  {subtitle}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1255,7 +1304,7 @@ const AddReservationModal: React.FC<{
                         color: '#000000'
                       }}
                     >
-                      Reserve
+                      {submitLabel}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -1441,6 +1490,7 @@ const ReservationCard: React.FC<{
   reservation: Reservation
   isExpanded: boolean
   onToggle: () => void
+  onEdit: () => void
   onConfirm: () => void
   onMarkArrived: () => void
   onSeat: () => void
@@ -1451,6 +1501,7 @@ const ReservationCard: React.FC<{
   reservation: r,
   isExpanded,
   onToggle,
+  onEdit,
   onConfirm,
   onMarkArrived,
   onSeat,
@@ -1645,7 +1696,11 @@ const ReservationCard: React.FC<{
                     borderColor: colors.warning + '40'
                   }}
                 >
-                  <AlertCircle size={14} color={colors.warning} style={{ marginTop: 2 }} />
+                  <AlertCircle
+                    size={14}
+                    color={colors.warning}
+                    style={{ marginTop: 2 }}
+                  />
                   <Text
                     style={{
                       flex: 1,
@@ -1654,13 +1709,29 @@ const ReservationCard: React.FC<{
                       lineHeight: 16
                     }}
                   >
-                    One or more assigned tables are currently occupied. Wait for them to be cleared before seating.
+                    One or more assigned tables are currently occupied. Wait for
+                    them to be cleared before seating.
                   </Text>
                 </View>
               )}
 
-              {/* Row 1: Confirm + Arrived */}
+              {/* Row 1: Edit + Confirm + Arrived */}
               <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={onEdit}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 8,
+                    backgroundColor: colors.teal + '15',
+                    borderWidth: 1,
+                    borderColor: colors.teal + '30'
+                  }}
+                >
+                  <Edit3 size={13} color={colors.teal} />
+                </TouchableOpacity>
                 {r.status === 'pending' && (
                   <TouchableOpacity
                     onPress={onConfirm}
@@ -1672,17 +1743,17 @@ const ReservationCard: React.FC<{
                       gap: 5,
                       paddingVertical: 7,
                       borderRadius: 8,
-                      backgroundColor: colors.info + '20',
+                      backgroundColor: colors.teal + '20',
                       borderWidth: 1,
-                      borderColor: colors.info + '50'
+                      borderColor: colors.teal + '50'
                     }}
                   >
-                    <Check size={12} color={colors.info} />
+                    <Check size={12} color={colors.teal} />
                     <Text
                       style={{
                         fontSize: 12,
                         fontWeight: '600',
-                        color: colors.info
+                        color: colors.teal
                       }}
                     >
                       Confirm
@@ -1729,13 +1800,20 @@ const ReservationCard: React.FC<{
                       gap: 5,
                       paddingVertical: 7,
                       borderRadius: 8,
-                      backgroundColor: hasOccupiedTable ? colors.muted + '10' : colors.teal + '20',
+                      backgroundColor: hasOccupiedTable
+                        ? colors.muted + '10'
+                        : colors.teal + '20',
                       borderWidth: 1,
-                      borderColor: hasOccupiedTable ? colors.muted + '30' : colors.teal + '50',
+                      borderColor: hasOccupiedTable
+                        ? colors.muted + '30'
+                        : colors.teal + '50',
                       opacity: hasOccupiedTable ? 0.6 : 1
                     }}
                   >
-                    <Check size={12} color={hasOccupiedTable ? colors.muted : colors.teal} />
+                    <Check
+                      size={12}
+                      color={hasOccupiedTable ? colors.muted : colors.teal}
+                    />
                     <Text
                       style={{
                         fontSize: 12,
@@ -1781,6 +1859,7 @@ const ReservationsPanel: React.FC = () => {
     setSelectedDate,
     fetchReservations,
     createReservation,
+    updateReservation,
     updateStatus,
     cancelReservation,
     seatReservation
@@ -1791,6 +1870,8 @@ const ReservationsPanel: React.FC = () => {
   const { show } = useToast()
 
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingReservation, setEditingReservation] =
+    useState<Reservation | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [reservationToCancel, setReservationToCancel] =
     useState<Reservation | null>(null)
@@ -1810,15 +1891,19 @@ const ReservationsPanel: React.FC = () => {
   const availableTables = useMemo(
     () =>
       tables
-        .filter(t =>
-          ['table', 'booth'].includes(t.category) &&
-          t.session?.status !== 'blocked' &&
-          t.session?.status !== 'not_in_service'
+        .filter(
+          t =>
+            ['table', 'booth'].includes(t.category) &&
+            t.session?.status !== 'blocked' &&
+            t.session?.status !== 'not_in_service'
         )
         .map(t => ({
           id: t.id,
           name: t.name,
-          occupied: !!t.session && t.session.status !== 'available' && t.session.status !== 'cleaning',
+          occupied:
+            !!t.session &&
+            t.session.status !== 'available' &&
+            t.session.status !== 'cleaning'
         }))
         .sort((a, b) =>
           a.name.localeCompare(b.name, undefined, { numeric: true })
@@ -1932,6 +2017,69 @@ const ReservationsPanel: React.FC = () => {
     ]
   )
 
+  const handleEditSubmit = useCallback(
+    async (data: AddReservationData) => {
+      if (!selectedStore?.id || !editingReservation) return
+      setAddLoading(true)
+      try {
+        const dateStr =
+          toIsoDateKeySafe(data.date) ??
+          toIsoDateKeySafe(selectedDate) ??
+          toIsoDateKeySafe(new Date())
+        if (!dateStr) throw new Error('Invalid reservation date')
+
+        const ok = await updateReservation(editingReservation.id, {
+          p_location_id: selectedStore.id,
+          p_party_name: data.name,
+          p_party_size: data.partySize,
+          p_phone: data.phone,
+          p_reservation_date: dateStr,
+          p_reservation_time: data.time,
+          p_assigned_table_ids:
+            data.tableIds.length > 0 ? data.tableIds : undefined,
+          p_duration_minutes: editingReservation.duration_minutes,
+          p_email: editingReservation.email,
+          p_notes: data.notes || undefined,
+          p_preferred_section: editingReservation.preferred_section,
+          p_seating_preference: editingReservation.seating_preference,
+          p_source: editingReservation.source || 'pos',
+          p_special_requests: data.notes || undefined,
+          p_is_vip: data.isVip
+        })
+
+        if (!ok) throw new Error('Could not update reservation')
+
+        show({
+          title: 'Reservation Updated',
+          message: `${data.name} updated for ${formatPreset(data.time)}`,
+          type: 'success'
+        })
+        setEditingReservation(null)
+        if (selectedStore?.id) {
+          fetchReservations(selectedStore.id, selectedDate, { silent: true })
+        }
+      } catch (err: any) {
+        const message = err.message || 'Could not update reservation'
+        show({ title: 'Failed', message, type: 'error' })
+        setFailureModal({
+          visible: true,
+          title: 'Update Failed',
+          message
+        })
+      } finally {
+        setAddLoading(false)
+      }
+    },
+    [
+      selectedStore?.id,
+      editingReservation,
+      selectedDate,
+      updateReservation,
+      show,
+      fetchReservations
+    ]
+  )
+
   const handleConfirm = useCallback(
     async (id: string) => {
       await updateStatus(id, 'confirmed')
@@ -1976,7 +2124,8 @@ const ReservationsPanel: React.FC = () => {
           })
         }
       } catch (err: any) {
-        const message = err.message || 'Please seat the guest manually from the floor plan'
+        const message =
+          err.message || 'Please seat the guest manually from the floor plan'
         show({
           title: 'Could Not Seat',
           message,
@@ -2196,7 +2345,9 @@ const ReservationsPanel: React.FC = () => {
             const assignedTableObjects = (r.assigned_table_ids ?? [])
               .map(id => availableTables.find(t => t.id === id))
               .filter(Boolean)
-            const hasOccupiedTable = assignedTableObjects.some((t: any) => t?.occupied)
+            const hasOccupiedTable = assignedTableObjects.some(
+              (t: any) => t?.occupied
+            )
 
             return (
               <ReservationCard
@@ -2204,6 +2355,7 @@ const ReservationsPanel: React.FC = () => {
                 reservation={r}
                 isExpanded={expandedId === r.id}
                 onToggle={() => handleToggle(r.id)}
+                onEdit={() => setEditingReservation(r)}
                 onConfirm={() => handleConfirm(r.id)}
                 onMarkArrived={() => handleMarkArrived(r.id)}
                 onSeat={() => handleSeat(r)}
@@ -2239,6 +2391,19 @@ const ReservationsPanel: React.FC = () => {
         isLoading={addLoading}
         defaultDate={selectedDate}
         availableTables={availableTables}
+      />
+
+      <AddReservationModal
+        visible={!!editingReservation}
+        onClose={() => setEditingReservation(null)}
+        onSubmit={handleEditSubmit}
+        isLoading={addLoading}
+        defaultDate={selectedDate}
+        availableTables={availableTables}
+        initialData={editingReservation}
+        title='Edit Reservation'
+        subtitle='Update guest details, time, and assigned tables'
+        submitLabel='Save Changes'
       />
 
       <ConfirmationModal
