@@ -126,8 +126,14 @@ const ModifierOption = memo(
       onPressIn={() => onToggle(categoryId, option.id)}
       onLongPress={() => onLongPress(categoryId, option.id)}
       delayLongPress={400}
-      className='flex-1 min-w-[110px] max-w-[180px] rounded-lg border py-3 px-2.5 items-center justify-center'
-      style={
+      className='rounded-lg border py-3 px-2.5 items-center justify-center'
+      style={[
+        {
+          flexBasis: '31%',
+          flexGrow: 0,
+          flexShrink: 0,
+          minHeight: 72
+        },
         isNo
           ? {
               backgroundColor: colors.danger + '20',
@@ -142,7 +148,7 @@ const ModifierOption = memo(
               opacity: 0.45
             }
           : { backgroundColor: colors.card, borderColor: colors.border }
-      }
+      ]}
     >
       {isNo && (
         <View
@@ -233,7 +239,7 @@ const NotesInput = memo(
           <TextInput
             editable={!isReadOnly}
             value={localValue}
-            onChangeText={(text) => {
+            onChangeText={text => {
               setLocalValue(text)
               onChange(text)
             }}
@@ -1566,7 +1572,18 @@ const ModifierScreen = () => {
                 </View>
 
                 {/* Options grid */}
-                <View className='flex-row flex-wrap gap-2'>
+                <ScrollView
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={visibleOptions.length > 9}
+                  style={{ maxHeight: 320 }}
+                  contentContainerStyle={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    alignItems: 'flex-start',
+                    paddingBottom: 2
+                  }}
+                >
                   {visibleOptions.map(
                     (option: ModifierCategory['options'][number]) => {
                       const selVal =
@@ -1591,7 +1608,7 @@ const ModifierScreen = () => {
                       )
                     }
                   )}
-                </View>
+                </ScrollView>
               </View>
             )}
           </View>
