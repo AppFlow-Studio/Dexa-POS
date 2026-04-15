@@ -1696,7 +1696,11 @@ const ReservationCard: React.FC<{
                     borderColor: colors.warning + '40'
                   }}
                 >
-                  <AlertCircle size={14} color={colors.warning} style={{ marginTop: 2 }} />
+                  <AlertCircle
+                    size={14}
+                    color={colors.warning}
+                    style={{ marginTop: 2 }}
+                  />
                   <Text
                     style={{
                       flex: 1,
@@ -1705,7 +1709,8 @@ const ReservationCard: React.FC<{
                       lineHeight: 16
                     }}
                   >
-                    One or more assigned tables are currently occupied. Wait for them to be cleared before seating.
+                    One or more assigned tables are currently occupied. Wait for
+                    them to be cleared before seating.
                   </Text>
                 </View>
               )}
@@ -1795,13 +1800,20 @@ const ReservationCard: React.FC<{
                       gap: 5,
                       paddingVertical: 7,
                       borderRadius: 8,
-                      backgroundColor: hasOccupiedTable ? colors.muted + '10' : colors.teal + '20',
+                      backgroundColor: hasOccupiedTable
+                        ? colors.muted + '10'
+                        : colors.teal + '20',
                       borderWidth: 1,
-                      borderColor: hasOccupiedTable ? colors.muted + '30' : colors.teal + '50',
+                      borderColor: hasOccupiedTable
+                        ? colors.muted + '30'
+                        : colors.teal + '50',
                       opacity: hasOccupiedTable ? 0.6 : 1
                     }}
                   >
-                    <Check size={12} color={hasOccupiedTable ? colors.muted : colors.teal} />
+                    <Check
+                      size={12}
+                      color={hasOccupiedTable ? colors.muted : colors.teal}
+                    />
                     <Text
                       style={{
                         fontSize: 12,
@@ -1879,15 +1891,19 @@ const ReservationsPanel: React.FC = () => {
   const availableTables = useMemo(
     () =>
       tables
-        .filter(t =>
-          ['table', 'booth'].includes(t.category) &&
-          t.session?.status !== 'blocked' &&
-          t.session?.status !== 'not_in_service'
+        .filter(
+          t =>
+            ['table', 'booth'].includes(t.category) &&
+            t.session?.status !== 'blocked' &&
+            t.session?.status !== 'not_in_service'
         )
         .map(t => ({
           id: t.id,
           name: t.name,
-          occupied: !!t.session && t.session.status !== 'available' && t.session.status !== 'cleaning',
+          occupied:
+            !!t.session &&
+            t.session.status !== 'available' &&
+            t.session.status !== 'cleaning'
         }))
         .sort((a, b) =>
           a.name.localeCompare(b.name, undefined, { numeric: true })
@@ -2108,7 +2124,8 @@ const ReservationsPanel: React.FC = () => {
           })
         }
       } catch (err: any) {
-        const message = err.message || 'Please seat the guest manually from the floor plan'
+        const message =
+          err.message || 'Please seat the guest manually from the floor plan'
         show({
           title: 'Could Not Seat',
           message,
@@ -2328,7 +2345,9 @@ const ReservationsPanel: React.FC = () => {
             const assignedTableObjects = (r.assigned_table_ids ?? [])
               .map(id => availableTables.find(t => t.id === id))
               .filter(Boolean)
-            const hasOccupiedTable = assignedTableObjects.some((t: any) => t?.occupied)
+            const hasOccupiedTable = assignedTableObjects.some(
+              (t: any) => t?.occupied
+            )
 
             return (
               <ReservationCard

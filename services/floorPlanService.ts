@@ -623,11 +623,12 @@ export class FloorPlanService {
     if (updateError) return { error: updateError }
 
     const tableIds = params.p_assigned_table_ids ?? []
-    const { error: tableError } = await FloorPlanService.assignReservationTables(
-      client,
-      reservationId,
-      tableIds
-    )
+    const { error: tableError } =
+      await FloorPlanService.assignReservationTables(
+        client,
+        reservationId,
+        tableIds
+      )
 
     return { error: tableError }
   }

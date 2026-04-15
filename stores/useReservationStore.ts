@@ -227,7 +227,9 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       if (!isReservationInFuture(params)) {
-        throw new Error('Reservations must be scheduled for a future date/time.')
+        throw new Error(
+          'Reservations must be scheduled for a future date/time.'
+        )
       }
 
       if ((params.p_assigned_table_ids ?? []).length > 0) {
@@ -282,7 +284,9 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       if (!isReservationInFuture(params)) {
-        throw new Error('Reservations must be scheduled for a future date/time.')
+        throw new Error(
+          'Reservations must be scheduled for a future date/time.'
+        )
       }
 
       if ((params.p_assigned_table_ids ?? []).length > 0) {
@@ -455,7 +459,8 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
     try {
       const reservation = get().reservations.find(r => r.id === reservationId)
       if (!reservation) throw new Error('Reservation not found')
-      if (!tableIds || tableIds.length === 0) throw new Error('No tables provided')
+      if (!tableIds || tableIds.length === 0)
+        throw new Error('No tables provided')
 
       const { useTableSessionStore } =
         require('./useTableSessionStore') as typeof import('./useTableSessionStore')
@@ -468,7 +473,7 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
         guestName: reservation.party_name,
         guestPhone: reservation.phone ?? undefined,
         reservationId,
-        createOrder: true,
+        createOrder: true
       })
 
       // Only proceed if seating was successful
