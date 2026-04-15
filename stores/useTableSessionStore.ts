@@ -58,6 +58,25 @@ import { useStoreSettingsStore } from './useStoreSettingsStore'
 
 const getClient = () => getFloorPlanClient()
 
+function getSelectedTablesCapacity (tableIds: string[]): {
+  totalCapacity: number
+  hasKnownCapacity: boolean
+} {
+  const tablesById = useFloorPlanStore.getState().tablesById
+  let totalCapacity = 0
+  let hasKnownCapacity = false
+
+  for (const tableId of tableIds) {
+    const capacity = tablesById[tableId]?.capacity
+    if (typeof capacity === 'number' && capacity > 0) {
+      totalCapacity += capacity
+      hasKnownCapacity = true
+    }
+  }
+
+  return { totalCapacity, hasKnownCapacity }
+}
+
 // ---------------------------------------------------------------------------
 // SessionAction type
 // ---------------------------------------------------------------------------
@@ -610,9 +629,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             // returns one row per table and doesn't encode merge relationships.
             // Wiping it on every poll causes the merged-table display to flicker.
             const existingSession = currentSessions[row.table_id]
-            const preservedMergedTables = existingSession?.id === row.session_id
-              ? (existingSession.merged_tables ?? [])
-              : []
+            const preservedMergedTables =
+              existingSession?.id === row.session_id
+                ? existingSession.merged_tables ?? []
+                : []
 
             const session: TableSession = {
               id: row.session_id,
@@ -818,9 +838,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // Preserve it from the existing session so the server badge doesn't flicker
           // until the next full loadFloorPlanStatus restores it from the DB.
           const existingSessionForBroadcast =
-            tableIds.length > 0
-              ? get().sessions[tableIds[0]]
-              : undefined
+            tableIds.length > 0 ? get().sessions[tableIds[0]] : undefined
           const preservedServerStaffId =
             existingSessionForBroadcast?.id === sessionId
               ? existingSessionForBroadcast.server_staff_id
@@ -878,6 +896,19 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // ------------------------------------------------------------------
 
         seatGuests: async params => {
+          const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
+            params.tableIds
+          )
+          if (hasKnownCapacity && params.partySize > totalCapacity) {
+            const message = `Party size ${params.partySize} exceeds table capacity ${totalCapacity}.`
+            useToastStore.getState().show({
+              title: 'Table Too Small',
+              message,
+              type: 'warning'
+            })
+            throw new Error(message)
+          }
+
           const isOnline = getIsOnline()
           const supabase = getClient()
 
@@ -931,7 +962,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               tableId: params.tableIds[0],
               guestCount: params.partySize,
               localSessionId: localSessionId,
-              orderId: localOrderId,
+              orderId: localOrderId
             })
             useOrderStore.getState().setActiveOrder(localOrderId)
           }
@@ -1603,7 +1634,8 @@ useTableSessionStore.persist.onFinishHydration(() => {
 
   // Lazy-require to avoid circular deps at module init time
   try {
-    const { useFloorPlanStore, buildTablesById } = require('@/stores/useFloorPlanStore') as typeof import('@/stores/useFloorPlanStore')
+    const { useFloorPlanStore, buildTablesById } =
+      require('@/stores/useFloorPlanStore') as typeof import('@/stores/useFloorPlanStore')
     const currentTables = useFloorPlanStore.getState().tables
     if (currentTables.length === 0) return // floor plan not loaded yet — bridge runs from its own onFinishHydration
 
@@ -1611,7 +1643,11 @@ useTableSessionStore.persist.onFinishHydration(() => {
     const patched = currentTables.map(table => {
       const session = sessions[table.id]
       if (!session) return table
-      if (table.session?.id === session.id && table.session?.status === session.status) return table
+      if (
+        table.session?.id === session.id &&
+        table.session?.status === session.status
+      )
+        return table
       changed = true
       return { ...table, session }
     })
