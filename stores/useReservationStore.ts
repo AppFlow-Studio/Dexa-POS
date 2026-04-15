@@ -1,4 +1,7 @@
-import { findReservationTableConflict } from '@/lib/reservationConflicts'
+import {
+  findReservationTableConflict,
+  findReservationTableConflictForWindow
+} from '@/lib/reservationConflicts'
 import { FloorPlanService } from '@/services/floorPlanService'
 import {
   CreateReservationParams,
@@ -32,6 +35,19 @@ const toLocalDateKey = (date: Date) => {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+const isReservationInFuture = (params: CreateReservationParams): boolean => {
+  const rawTime = (params.p_reservation_time ?? '').trim()
+  if (!params.p_reservation_date || !rawTime) return false
+
+  const hasDatePart = rawTime.includes('T') || rawTime.includes('-')
+  const parsed = hasDatePart
+    ? new Date(rawTime)
+    : new Date(`${params.p_reservation_date}T${rawTime}`)
+
+  if (!Number.isFinite(parsed.getTime())) return false
+  return parsed.getTime() > Date.now()
 }
 
 const getReservationEpoch = (reservation: Reservation): number | null => {
@@ -137,6 +153,10 @@ interface ReservationState {
   createReservation: (
     params: CreateReservationParams
   ) => Promise<{ reservation_id: string; confirmation_number: string } | null>
+  updateReservation: (
+    reservationId: string,
+    params: CreateReservationParams
+  ) => Promise<boolean>
   updateStatus: (reservationId: string, status: string) => Promise<void>
   cancelReservation: (reservationId: string) => Promise<void>
   seatReservation: (
@@ -206,6 +226,10 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
   createReservation: async params => {
     set({ isLoading: true, error: null })
     try {
+      if (!isReservationInFuture(params)) {
+        throw new Error('Reservations must be scheduled for a future date/time.')
+      }
+
       if ((params.p_assigned_table_ids ?? []).length > 0) {
         const { data: existingData, error: existingError } =
           await FloorPlanService.getReservations(
@@ -251,6 +275,137 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
         isLoading: false
       })
       return null
+    }
+  },
+
+  updateReservation: async (reservationId, params) => {
+    set({ isLoading: true, error: null })
+    try {
+      if (!isReservationInFuture(params)) {
+        throw new Error('Reservations must be scheduled for a future date/time.')
+      }
+
+      if ((params.p_assigned_table_ids ?? []).length > 0) {
+        const { data: existingData, error: existingError } =
+          await FloorPlanService.getReservations(
+            getClient(),
+            params.p_location_id,
+            params.p_reservation_date
+          )
+
+        if (!existingError) {
+          const existingReservations = extractReservationRows(
+            existingData,
+            params.p_reservation_date
+          )
+          const conflict = findReservationTableConflictForWindow(
+            {
+              reservationDate: params.p_reservation_date,
+              reservationTime: params.p_reservation_time,
+              durationMinutes: params.p_duration_minutes,
+              tableIds: params.p_assigned_table_ids ?? [],
+              ignoreReservationId: reservationId
+            },
+            existingReservations
+          )
+
+          if (conflict) {
+            throw new Error(
+              `Table already reserved for ${conflict.partyName} at ${conflict.reservationTime}.`
+            )
+          }
+        } else {
+          console.warn(
+            '[useReservationStore.updateReservation] Conflict pre-check skipped:',
+            existingError
+          )
+        }
+      }
+
+      let error: any = null
+      const floorPlanServiceAny = FloorPlanService as any
+
+      if (typeof floorPlanServiceAny.updateReservation === 'function') {
+        const result = await floorPlanServiceAny.updateReservation(
+          getClient(),
+          reservationId,
+          params
+        )
+        error = result?.error
+      } else {
+        console.warn(
+          '[useReservationStore.updateReservation] FloorPlanService.updateReservation missing; using inline fallback'
+        )
+
+        const { error: updateError } = await getClient()
+          .from('reservations')
+          .update({
+            party_name: params.p_party_name,
+            party_size: params.p_party_size,
+            phone: params.p_phone,
+            email: params.p_email ?? null,
+            reservation_date: params.p_reservation_date,
+            reservation_time: params.p_reservation_time,
+            duration_minutes: params.p_duration_minutes ?? null,
+            notes: params.p_notes ?? null,
+            special_requests: params.p_special_requests ?? null,
+            preferred_section: params.p_preferred_section ?? null,
+            seating_preference: params.p_seating_preference ?? null,
+            source: params.p_source ?? null,
+            is_vip: params.p_is_vip ?? false
+          })
+          .eq('id', reservationId)
+
+        if (updateError) {
+          error = updateError
+        } else {
+          const { error: assignError } = await getClient().rpc(
+            'assign_reservation_tables',
+            {
+              p_reservation_id: reservationId,
+              p_table_ids: params.p_assigned_table_ids ?? []
+            }
+          )
+          error = assignError
+        }
+      }
+
+      if (error) throw error
+
+      set(state => ({
+        reservations: state.reservations.map(r =>
+          r.id === reservationId
+            ? {
+                ...r,
+                party_name: params.p_party_name,
+                party_size: params.p_party_size,
+                phone: params.p_phone,
+                reservation_date: params.p_reservation_date,
+                reservation_time: params.p_reservation_time,
+                assigned_table_ids: params.p_assigned_table_ids ?? [],
+                duration_minutes:
+                  params.p_duration_minutes ?? r.duration_minutes,
+                email: params.p_email,
+                notes: params.p_notes,
+                special_requests: params.p_special_requests,
+                preferred_section: params.p_preferred_section,
+                seating_preference: params.p_seating_preference,
+                source: params.p_source ?? r.source,
+                is_vip: params.p_is_vip ?? false
+              }
+            : r
+        ),
+        isLoading: false,
+        error: null
+      }))
+      return true
+    } catch (err: any) {
+      console.error('Failed to update reservation:', err)
+      set({
+        error: err.message || 'Failed to update reservation',
+        isLoading: false
+      })
+      return false
     }
   },
 
