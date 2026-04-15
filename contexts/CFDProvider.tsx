@@ -620,7 +620,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         return
       }
       if (data && Array.isArray(data)) {
-        const imageUrls = data.map((d: any) => d.image_url)
+        const imageUrls = data
+          .map((d: any) => d.image_url)
+          .filter((url: unknown): url is string => typeof url === 'string' && url.length > 0)
         console.log('[CFD] Updating carousel images:', imageUrls.length)
         controllerRef.current.updateCarouselImages(imageUrls)
         useCFDBuiltinStore.getState().update({ carouselImages: imageUrls })
@@ -652,6 +654,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       }
 
       ;(data ?? []).forEach((row: any) => {
+        if (typeof row.image_url !== 'string' || !row.image_url) return
         if (row.panel_slot === 'secondary') {
           orderingPanelImages.secondary.push(row.image_url)
         } else {

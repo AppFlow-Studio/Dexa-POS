@@ -494,8 +494,8 @@ const pendingSyncOperations = new Map<string, Promise<boolean>>()
 const DRAFT_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
 const DRAFT_CLEANUP_INTERVAL_MS = 15 * 60 * 1000 // 15 minutes
 const ORDER_PRUNE_INTERVAL_MS = 2 * 60 * 1000 // 2 minutes
-const COMPLETED_ORDER_MAX_AGE_MS = 30 * 60 * 1000 // 30 minutes
-const MAX_COMPLETED_ORDERS = 20
+const COMPLETED_ORDER_MAX_AGE_MS = 15 * 60 * 1000 // 15 minutes
+const MAX_COMPLETED_ORDERS = 10
 let draftCleanupInterval: ReturnType<typeof setInterval> | null = null
 let orderPruneInterval: ReturnType<typeof setInterval> | null = null
 

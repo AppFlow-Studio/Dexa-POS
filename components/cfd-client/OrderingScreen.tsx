@@ -635,6 +635,7 @@ function RotatingImagePanel ({
         source={{ uri: currentImage }}
         style={styles.mediaImage}
         resizeMode='cover'
+        onError={() => console.warn("[RotatingImagePanel] Image failed:", currentImage)}
       />
       {images.length > 1 && (
         <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
@@ -642,6 +643,7 @@ function RotatingImagePanel ({
             source={{ uri: nextImage }}
             style={styles.mediaImage}
             resizeMode='cover'
+            onError={() => console.warn("[RotatingImagePanel] Next image failed:", nextImage)}
           />
         </Animated.View>
       )}

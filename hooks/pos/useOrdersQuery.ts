@@ -7,7 +7,7 @@ import {
   transformBroadcastToOrder,
   type FetchedOrderData,
 } from "@/utils/orderTransformers";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { queryClient } from "@/contexts/TanstackProvider";
 
 export const orderQueryKeys = {
@@ -46,15 +46,20 @@ export function useOrdersQuery({
     },
     enabled: enabled && !!locationId && !!supabase,
     staleTime: 1000 * 60 * 2, // 2 min (realtime fills the gap)
-    gcTime: 1000 * 60 * 10, // 10 min auto-GC
+    gcTime: 1000 * 60 * 3, // 3 min — Zustand is source of truth, cache only bridges reconnections
     refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false, // useOrderSyncRecovery handles reconnection dedup
     networkMode: "offlineFirst",
   });
 
-  // Hydrate workspace on success
+  // Hydrate workspace on success — skip if data fingerprint is unchanged to avoid
+  // unnecessary Immer draft creation + MMKV serialization on identical refetches.
+  const lastFingerprintRef = useRef<string | null>(null);
   useEffect(() => {
     if (query.data && query.isSuccess && locationId) {
+      const fp = `${query.data.length}:${query.data[0]?.opened_at ?? ""}`;
+      if (fp === lastFingerprintRef.current) return;
+      lastFingerprintRef.current = fp;
       hydrateWorkspace(locationId, query.data);
     }
   }, [query.data, query.isSuccess, locationId]);
@@ -125,9 +130,32 @@ function hydrateWorkspace(
     serverIds.push(key);
   }
 
+  const newOrdersById = { ...preserved, ...serverMap };
+  const newOrderIds = [...new Set([...preservedIds, ...serverIds])];
+
+  // Skip setState if nothing meaningful changed — avoids Immer draft + MMKV serialization.
+  // Server orders are always new object instances (transformBroadcastToOrder creates fresh objects),
+  // so we compare by order count + status + item count as a lightweight content check.
+  if (
+    state.currentLocationId === locationId &&
+    state.orderIds.length === newOrderIds.length &&
+    newOrderIds.every((id) => {
+      const prev = state.ordersById[id];
+      const next = newOrdersById[id];
+      if (!prev || !next) return false;
+      return (
+        prev.order_status === next.order_status &&
+        prev.items.length === next.items.length &&
+        prev.payments?.length === next.payments?.length
+      );
+    })
+  ) {
+    return;
+  }
+
   useOrderStore.setState({
-    ordersById: { ...preserved, ...serverMap },
-    orderIds: [...new Set([...preservedIds, ...serverIds])],
+    ordersById: newOrdersById,
+    orderIds: newOrderIds,
     currentLocationId: locationId,
   });
 }

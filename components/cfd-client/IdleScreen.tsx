@@ -105,6 +105,7 @@ export function IdleScreen() {
             source={{ uri: baseUri }}
             style={[styles.backgroundImage, StyleSheet.absoluteFill]}
             resizeMode="cover"
+            onError={() => console.warn("[IdleScreen] Base image failed:", baseUri)}
           />
 
           {overlayUri ? (
@@ -117,6 +118,13 @@ export function IdleScreen() {
                 style={styles.backgroundImage}
                 resizeMode="cover"
                 onLoad={handleOverlayLoad}
+                onError={() => {
+                  console.warn("[IdleScreen] Overlay image failed:", overlayUri);
+                  setOverlayUri(null);
+                  setPendingIndex(null);
+                  isTransitioningRef.current = false;
+                  fadeOpacity.value = 0;
+                }}
               />
             </Animated.View>
           ) : null}

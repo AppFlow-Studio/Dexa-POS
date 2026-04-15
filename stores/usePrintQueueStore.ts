@@ -39,6 +39,7 @@ const PRIORITY_ORDER: Record<PrintJobPriority, number> = {
 };
 
 const MAX_RETRIES = 3;
+const MAX_FAILED_JOBS = 50;
 const RETRY_DELAYS = [1000, 3000, 9000]; // Exponential backoff
 
 export const usePrintQueueStore = create<PrintQueueStoreState>()(
@@ -92,8 +93,8 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
       },
 
       updateJobStatus: (jobId, status, error) => {
-        set((state) => ({
-          jobs: state.jobs.map((j) => {
+        set((state) => {
+          let jobs = state.jobs.map((j) => {
             if (j.id !== jobId) return j;
             return {
               ...j,
@@ -101,8 +102,22 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
               lastError: error ?? j.lastError,
               attempts: status === "failed" ? j.attempts + 1 : j.attempts,
             };
-          }),
-        }));
+          });
+          // Evict oldest failed jobs when cap exceeded
+          if (status === "failed") {
+            const failedJobs = jobs.filter((j) => j.status === "failed");
+            if (failedJobs.length > MAX_FAILED_JOBS) {
+              const oldest = new Set(
+                failedJobs
+                  .sort((a, b) => a.createdAt - b.createdAt)
+                  .slice(0, failedJobs.length - MAX_FAILED_JOBS)
+                  .map((j) => j.id),
+              );
+              jobs = jobs.filter((j) => !oldest.has(j.id));
+            }
+          }
+          return { jobs };
+        });
       },
 
       retryJob: (jobId) => {

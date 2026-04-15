@@ -166,6 +166,7 @@ const DEAD_LETTER_STORAGE_KEY = "offline_dead_letter_queue";
 const MAX_RETRY_ATTEMPTS = 5;
 const DEBOUNCE_MS = 3000;
 const MAX_QUEUE_SIZE = 500;
+const MAX_DEAD_LETTER_SIZE = 50;
 const OPERATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const OPERATION_TIMEOUT_MS = 30_000;
 
@@ -1284,6 +1285,10 @@ function moveToDeadLetter(operation: OfflineOperation): void {
     ...operation,
     status: "failed" as const,
   });
+  // FIFO eviction: discard oldest entries when cap is exceeded
+  if (deadLetterQueue.length > MAX_DEAD_LETTER_SIZE) {
+    deadLetterQueue = deadLetterQueue.slice(-MAX_DEAD_LETTER_SIZE);
+  }
   saveDeadLetterToStorage();
 }
 
@@ -1291,7 +1296,9 @@ function loadDeadLetterFromStorage(): void {
   try {
     const stored = getSyncJSON<OfflineOperation[]>(DEAD_LETTER_STORAGE_KEY);
     if (stored) {
-      deadLetterQueue = stored;
+      deadLetterQueue = stored.length > MAX_DEAD_LETTER_SIZE
+        ? stored.slice(-MAX_DEAD_LETTER_SIZE)
+        : stored;
     }
   } catch (error) {
     console.error("[OfflineSync] Failed to load dead letter queue:", error);
