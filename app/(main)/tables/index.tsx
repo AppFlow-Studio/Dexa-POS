@@ -1,5 +1,4 @@
 import ServerSectionManager from '@/components/floor-plan/ServerSectionManager'
-import HostStationScreenEnhanced from '@/components/host-station/HostStationScreenEnhanced'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
 import MergeActionBar from '@/components/tables/MergeActionBar'
 import Sidebar from '@/components/tables/Sidebar'
@@ -36,11 +35,10 @@ import {
   Pencil,
   Search,
   Users,
-  UtensilsCrossed,
   X
 } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 const canSeatFromSidebar = (status?: string | null) => {
@@ -94,7 +92,6 @@ const TablesScreen = () => {
   const [isMergeMode, setMergeMode] = useState(false)
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
-  const [isHostStationOpen, setHostStationOpen] = useState(false)
   const [isSectionManagerOpen, setSectionManagerOpen] = useState(false)
   // overlayTableId removed in favor of router.push
 
@@ -712,33 +709,6 @@ const TablesScreen = () => {
               </TouchableOpacity>
             )}
 
-            {/* Host Station */}
-            <TouchableOpacity
-              onPress={() => setHostStationOpen(true)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
-                borderWidth: 1,
-                backgroundColor: colors.info + '15',
-                borderColor: colors.info + '40'
-              }}
-            >
-              <UtensilsCrossed color={colors.info} size={13} />
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: colors.info,
-                  marginLeft: 5
-                }}
-              >
-                Host Station
-              </Text>
-            </TouchableOpacity>
-
             {/* Edit Layout */}
             <TouchableOpacity
               onPress={() => router.push(`/tables/floor-plan` as Href)}
@@ -977,54 +947,6 @@ const TablesScreen = () => {
         isOpen={isSectionManagerOpen}
         onClose={() => setSectionManagerOpen(false)}
       />
-
-      {/* Host Station Modal */}
-      <Modal
-        visible={isHostStationOpen}
-        animationType='fade'
-        transparent
-        onRequestClose={() => setHostStationOpen(false)}
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}
-          onPress={() => setHostStationOpen(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={{
-              width: 480,
-              height: '85%',
-              backgroundColor: colors.screen,
-              borderRadius: 16,
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: colors.border
-            }}
-          >
-            {location_id ? (
-              <HostStationScreenEnhanced location_id={location_id} />
-            ) : (
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  Please select a location
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </View>
   )
 }
