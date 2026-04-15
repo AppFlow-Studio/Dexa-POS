@@ -1,4 +1,6 @@
-import TableOrderView from '@/components/tables/TableOrderView'
+import TableOrderView, {
+  type TableOrderViewHandle
+} from '@/components/tables/TableOrderView'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useRef } from 'react'
 import { StyleSheet, TouchableWithoutFeedback, View } from 'react-native'
@@ -7,6 +9,7 @@ export default function TableScreen () {
   const { tableId } = useLocalSearchParams<{ tableId: string }>()
   const router = useRouter()
   const isClosingRef = useRef(false)
+  const tableViewRef = useRef<TableOrderViewHandle>(null)
 
   const doGoBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -19,7 +22,10 @@ export default function TableScreen () {
   const handleClose = useCallback(() => {
     if (isClosingRef.current) return
     isClosingRef.current = true
-    doGoBack()
+    tableViewRef.current?.prepareClose()
+    requestAnimationFrame(() => {
+      doGoBack()
+    })
   }, [doGoBack])
 
   return (
@@ -31,6 +37,7 @@ export default function TableScreen () {
       </View>
       <View style={styles.card}>
         <TableOrderView
+          ref={tableViewRef}
           tableId={typeof tableId === 'string' ? tableId : ''}
           onClose={handleClose}
         />

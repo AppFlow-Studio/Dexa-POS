@@ -257,10 +257,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         setActiveCategory(null);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeMeal,
     menus,
-    isMenuAvailableNow,
+    // isMenuAvailableNow intentionally omitted: it's a store method whose reference
+    // changes on every store update, causing an infinite loop when included here.
+    // The function itself is stable in behavior — only its JS reference is unstable.
     temporaryActiveMenus,
     availabilityTick,
     lastSelectedMenuId,

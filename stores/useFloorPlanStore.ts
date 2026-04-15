@@ -54,6 +54,24 @@ const getClient = () => {
 /** Expose client getter for useTableSessionStore (avoids duplicate registration) */
 export const getFloorPlanClient = getClient
 
+function getSelectedTablesCapacity (
+  tablesById: Record<string, FloorPlanObject>,
+  tableIds: string[]
+): { totalCapacity: number; hasKnownCapacity: boolean } {
+  let totalCapacity = 0
+  let hasKnownCapacity = false
+
+  for (const tableId of tableIds) {
+    const capacity = tablesById[tableId]?.capacity
+    if (typeof capacity === 'number' && capacity > 0) {
+      totalCapacity += capacity
+      hasKnownCapacity = true
+    }
+  }
+
+  return { totalCapacity, hasKnownCapacity }
+}
+
 interface FloorPlanState {
   // Data
   locationId: string | null
@@ -439,10 +457,13 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                   s?.party_size === sessionWithPreservedFields.party_size &&
                   s?.order_id === sessionWithPreservedFields.order_id &&
                   s?.guest_name === sessionWithPreservedFields.guest_name &&
-                  s?.current_course === sessionWithPreservedFields.current_course &&
-                  s?.needs_attention === sessionWithPreservedFields.needs_attention &&
+                  s?.current_course ===
+                    sessionWithPreservedFields.current_course &&
+                  s?.needs_attention ===
+                    sessionWithPreservedFields.needs_attention &&
                   s?.is_vip === sessionWithPreservedFields.is_vip &&
-                  s?.server_staff_id === sessionWithPreservedFields.server_staff_id
+                  s?.server_staff_id ===
+                    sessionWithPreservedFields.server_staff_id
                 ) {
                   return t // same reference — no change
                 }
@@ -1258,6 +1279,23 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         },
 
         seatFromWaitlist: async (waitlistId: string, tableIds: string[]) => {
+          const waitlistEntry = get().waitlist.find(
+            entry => entry.id === waitlistId
+          )
+          const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
+            get().tablesById,
+            tableIds
+          )
+          if (
+            waitlistEntry &&
+            hasKnownCapacity &&
+            waitlistEntry.party_size > totalCapacity
+          ) {
+            throw new Error(
+              `Party size ${waitlistEntry.party_size} exceeds table capacity ${totalCapacity}.`
+            )
+          }
+
           const supabase = getClient()
           const { data, error } = await FloorPlanService.seatFromWaitlist(
             supabase,
@@ -1392,6 +1430,24 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         },
 
         seatReservation: async (reservationId, tableIds) => {
+          const reservation = get().reservations.find(
+            entry => entry.id === reservationId
+          )
+          const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
+            get().tablesById,
+            tableIds ?? []
+          )
+          if (
+            reservation &&
+            tableIds?.length &&
+            hasKnownCapacity &&
+            reservation.party_size > totalCapacity
+          ) {
+            throw new Error(
+              `Party size ${reservation.party_size} exceeds table capacity ${totalCapacity}.`
+            )
+          }
+
           const supabase = getClient()
           const { data, error } = await FloorPlanService.seatReservation(
             supabase,

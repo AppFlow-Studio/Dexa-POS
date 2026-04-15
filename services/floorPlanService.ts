@@ -596,6 +596,43 @@ export class FloorPlanService {
     return { data, error }
   }
 
+  static async updateReservation (
+    client: SupabaseClient,
+    reservationId: string,
+    params: CreateReservationParams
+  ): Promise<{ error: any }> {
+    const { error: updateError } = await client
+      .from('reservations')
+      .update({
+        party_name: params.p_party_name,
+        party_size: params.p_party_size,
+        phone: params.p_phone,
+        email: params.p_email ?? null,
+        reservation_date: params.p_reservation_date,
+        reservation_time: params.p_reservation_time,
+        duration_minutes: params.p_duration_minutes ?? null,
+        notes: params.p_notes ?? null,
+        special_requests: params.p_special_requests ?? null,
+        preferred_section: params.p_preferred_section ?? null,
+        seating_preference: params.p_seating_preference ?? null,
+        source: params.p_source ?? null,
+        is_vip: params.p_is_vip ?? false
+      })
+      .eq('id', reservationId)
+
+    if (updateError) return { error: updateError }
+
+    const tableIds = params.p_assigned_table_ids ?? []
+    const { error: tableError } =
+      await FloorPlanService.assignReservationTables(
+        client,
+        reservationId,
+        tableIds
+      )
+
+    return { error: tableError }
+  }
+
   static async updateReservationStatus (
     client: SupabaseClient,
     reservationId: string,

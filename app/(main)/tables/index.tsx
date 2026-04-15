@@ -1,5 +1,4 @@
 import ServerSectionManager from '@/components/floor-plan/ServerSectionManager'
-import HostStationScreenEnhanced from '@/components/host-station/HostStationScreenEnhanced'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
 import MergeActionBar from '@/components/tables/MergeActionBar'
 import Sidebar from '@/components/tables/Sidebar'
@@ -36,16 +35,33 @@ import {
   Pencil,
   Search,
   Users,
-  UtensilsCrossed,
   X
 } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 const canSeatFromSidebar = (status?: string | null) => {
   const normalized = status?.toLowerCase()
   return !normalized || normalized === 'available' || normalized === 'reserved'
+}
+
+const getSelectedTablesCapacity = (
+  tablesById: Record<string, FloorPlanObject>,
+  tableIds: string[]
+) => {
+  let totalCapacity = 0
+  let hasKnownCapacity = false
+
+  for (const tableId of tableIds) {
+    const capacity = tablesById[tableId]?.capacity
+    if (typeof capacity === 'number' && capacity > 0) {
+      totalCapacity += capacity
+      hasKnownCapacity = true
+    }
+  }
+
+  return { totalCapacity, hasKnownCapacity }
 }
 
 const TablesScreen = () => {
@@ -89,12 +105,14 @@ const TablesScreen = () => {
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
   const [isGuestModalOpen, setGuestModalOpen] = useState(false)
+  const [seatingErrorMessage, setSeatingErrorMessage] = useState<string | null>(
+    null
+  )
   const [pendingReservation, setPendingReservation] =
     useState<Reservation | null>(null)
   const [isMergeMode, setMergeMode] = useState(false)
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
-  const [isHostStationOpen, setHostStationOpen] = useState(false)
   const [isSectionManagerOpen, setSectionManagerOpen] = useState(false)
   // overlayTableId removed in favor of router.push
 
@@ -179,6 +197,7 @@ const TablesScreen = () => {
 
   const handleCloseGuestModal = useCallback(() => {
     setGuestModalOpen(false)
+    setSeatingErrorMessage(null)
     clearSelection()
   }, [clearSelection])
 
@@ -222,6 +241,7 @@ const TablesScreen = () => {
       setContextTable(null)
       clearSelection()
       toggleTableSelection(table.id)
+      setSeatingErrorMessage(null)
       setGuestModalOpen(true)
     },
     [clearSelection, toggleTableSelection, show]
@@ -244,6 +264,7 @@ const TablesScreen = () => {
       setContextTable(null)
       clearSelection()
       toggleTableSelection(table.id)
+      setSeatingErrorMessage(null)
       setPendingReservation(reservation)
       setGuestModalOpen(true)
     },
@@ -300,6 +321,7 @@ const TablesScreen = () => {
       // For available tables, show guest count modal
       clearSelection()
       toggleTableSelection(table.id)
+      setSeatingErrorMessage(null)
       setGuestModalOpen(true)
     },
     [
@@ -382,6 +404,7 @@ const TablesScreen = () => {
       })
       return
     }
+    setSeatingErrorMessage(null)
     setGuestModalOpen(true)
   }, [availableSelectedTables.length, show])
 
@@ -466,6 +489,7 @@ const TablesScreen = () => {
   }, [clearSelection])
 
   const handleGuestCountSubmit = async (guestCount: number) => {
+    setSeatingErrorMessage(null)
     const primaryTableId = selectedTableIds[0]
     if (!primaryTableId) return
     const activeReservation = pendingReservation
@@ -474,6 +498,7 @@ const TablesScreen = () => {
     // Double-check table is still available
     const freshTable = useFloorPlanStore.getState().getTableById(primaryTableId)
     if (!canSeatFromSidebar(freshTable?.session?.status)) {
+      setSeatingErrorMessage('This table is no longer available.')
       show({
         title: 'Table Occupied',
         message:
@@ -494,24 +519,35 @@ const TablesScreen = () => {
 
     const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId]
 
+    const freshTablesById = useFloorPlanStore.getState().tablesById
+    const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
+      freshTablesById,
+      tableIdsToSeat
+    )
+    if (hasKnownCapacity && guestCount > totalCapacity) {
+      setSeatingErrorMessage(
+        `Party size ${guestCount} exceeds table capacity ${totalCapacity}.`
+      )
+      show({
+        title: 'Table Too Small',
+        message: `Party size ${guestCount} exceeds table capacity ${totalCapacity}.`,
+        type: 'warning'
+      })
+      return
+    }
+
     // 1. Create local order immediately (synchronous — ~0ms)
     const newOrder = startNewOrder({ tableId: primaryTableId, guestCount })
     setActiveOrder(newOrder.id)
 
-    // 2. Navigate immediately — no loading spinner
-    setGuestModalOpen(false)
-    clearSelection()
-    setMergeMode(false)
-    router.push(('/tables/' + primaryTableId) as Href)
-
-    // 3. Register pending creation to prevent ensureOrderCreated from duplicating
+    // 2. Register pending creation to prevent ensureOrderCreated from duplicating
     let resolveCreation: (dbOrderId: string | null) => void
     const creationPromise = new Promise<string | null>(resolve => {
       resolveCreation = resolve
     })
     registerPendingOrderCreation(newOrder.id, creationPromise)
 
-    // 4. Fire seatGuests in background — don't block navigation
+    // 3. Only navigate once seating succeeds.
     try {
       const { orderId } = await useTableSessionStore.getState().seatGuests({
         tableIds: tableIdsToSeat,
@@ -523,6 +559,11 @@ const TablesScreen = () => {
         serverId: assignedServerId,
         reservationId: activeReservation?.id
       })
+
+      setGuestModalOpen(false)
+      clearSelection()
+      setMergeMode(false)
+      router.push(('/tables/' + primaryTableId) as Href)
 
       if (activeReservation?.id && orderId) {
         const sessionId =
@@ -548,7 +589,13 @@ const TablesScreen = () => {
           .catch(() => {})
       }
     } catch (err) {
-      console.error('[GuestCountSubmit] Background seatGuests failed:', err)
+      console.error('[GuestCountSubmit] seatGuests failed:', err)
+      setActiveOrder(null)
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Unable to seat party. Please try again.'
+      setSeatingErrorMessage(message)
       resolveCreation!(null)
     }
   }
@@ -711,33 +758,6 @@ const TablesScreen = () => {
                 </Text>
               </TouchableOpacity>
             )}
-
-            {/* Host Station */}
-            <TouchableOpacity
-              onPress={() => setHostStationOpen(true)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
-                borderWidth: 1,
-                backgroundColor: colors.info + '15',
-                borderColor: colors.info + '40'
-              }}
-            >
-              <UtensilsCrossed color={colors.info} size={13} />
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: colors.info,
-                  marginLeft: 5
-                }}
-              >
-                Host Station
-              </Text>
-            </TouchableOpacity>
 
             {/* Edit Layout */}
             <TouchableOpacity
@@ -970,6 +990,8 @@ const TablesScreen = () => {
         onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
         defaultCount={pendingReservation?.party_size}
+        errorMessage={seatingErrorMessage}
+        onClearError={() => setSeatingErrorMessage(null)}
       />
 
       {/* Server Section Manager */}
@@ -977,54 +999,6 @@ const TablesScreen = () => {
         isOpen={isSectionManagerOpen}
         onClose={() => setSectionManagerOpen(false)}
       />
-
-      {/* Host Station Modal */}
-      <Modal
-        visible={isHostStationOpen}
-        animationType='fade'
-        transparent
-        onRequestClose={() => setHostStationOpen(false)}
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}
-          onPress={() => setHostStationOpen(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={{
-              width: 480,
-              height: '85%',
-              backgroundColor: colors.screen,
-              borderRadius: 16,
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: colors.border
-            }}
-          >
-            {location_id ? (
-              <HostStationScreenEnhanced location_id={location_id} />
-            ) : (
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  Please select a location
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </View>
   )
 }

@@ -67,9 +67,22 @@ export function useTableSession (
     if (!t) return 'initializing'
 
     const session = useTableSessionStore.getState().sessions[tableId]
+    const tableSession = t.session
 
     // No session → available table, auto-create will run, start ready
-    if (!session || session.status === 'available') return 'ready'
+    // If floor plan already marks this table as occupied, wait for session hydration
+    // instead of rendering an empty order view.
+    if (!session) {
+      if (tableSession && tableSession.status !== 'available')
+        return 'initializing'
+      return 'ready'
+    }
+
+    if (session.status === 'available') {
+      if (tableSession && tableSession.status !== 'available')
+        return 'initializing'
+      return 'ready'
+    }
 
     // Session has an order — check if we already have it locally
     if (session.order_id) {
@@ -114,7 +127,9 @@ export function useTableSession (
 
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
   const syncOrderFromDatabase = useOrderStore(s => s.syncOrderFromDatabase)
-  const syncOrderFromBackendComplete = useOrderStore(s => s.syncOrderFromBackendComplete)
+  const syncOrderFromBackendComplete = useOrderStore(
+    s => s.syncOrderFromBackendComplete
+  )
   const activeOrderId = useOrderStore(s => s.activeOrderId)
 
   const setActiveTableId = usePaymentStore(s => s.setActiveTableId)
@@ -128,25 +143,16 @@ export function useTableSession (
       const found = state.ordersById[localKey]
       if (found) return found
     }
+    // Priority 1.5: resolve via table index (local key for this table)
+    const indexedOrderId = state.tableOrderIdIndex[tableId]
+    if (indexedOrderId) {
+      const indexedOrder = state.ordersById[indexedOrderId]
+      if (indexedOrder?.service_location_id === tableId) return indexedOrder
+    }
     // Priority 2: active order already set and belongs to this table
     if (state.activeOrderId) {
       const active = state.ordersById[state.activeOrderId]
       if (active?.service_location_id === tableId) return active
-    }
-    // Priority 3: scan ordersById for any active order for this table
-    // (handles gaps where activeOrderId is transiently null but order still exists)
-    const keys = Object.keys(state.ordersById)
-    for (let i = 0; i < keys.length; i++) {
-      const o = state.ordersById[keys[i]]
-      if (
-        o.service_location_id === tableId &&
-        o.order_status !== 'completed' &&
-        o.order_status !== 'void' &&
-        o.order_status !== 'voided' &&
-        o.order_status !== 'cancelled'
-      ) {
-        return o
-      }
     }
     return undefined
   })
@@ -208,11 +214,15 @@ export function useTableSession (
     const resolvedId = orderState.ordersById[activeOrder.id]
       ? activeOrder.id
       : activeOrder.db_order_id
-        ? (orderState.dbOrderIdIndex[activeOrder.db_order_id] ?? activeOrder.db_order_id)
-        : activeOrder.id
+      ? orderState.dbOrderIdIndex[activeOrder.db_order_id] ??
+        activeOrder.db_order_id
+      : activeOrder.id
     if (!orderState.ordersById[resolvedId]) return // Order truly gone — don't set stale ID
     const storeActiveId = orderState.activeOrderId
-    if (resolvedId !== lastSetOrderIdRef.current || storeActiveId !== resolvedId) {
+    if (
+      resolvedId !== lastSetOrderIdRef.current ||
+      storeActiveId !== resolvedId
+    ) {
       lastSetOrderIdRef.current = resolvedId
       setActiveOrder(resolvedId)
     }
@@ -292,8 +302,13 @@ export function useTableSession (
 
         // Check session store for existing session
         const currentSession = sessionSnap.getSession(tableId)
+        const currentFloorPlanSession = useFloorPlanStore
+          .getState()
+          .getTableById(tableId)?.session
         const hasExistingSession =
-          currentSession?.status && currentSession.status !== 'available'
+          (currentSession?.status && currentSession.status !== 'available') ||
+          (!!currentFloorPlanSession &&
+            currentFloorPlanSession.status !== 'available')
 
         if (!hasExistingSession) {
           // Check if caller already created an order for this table (seatGuests in-flight)
@@ -317,6 +332,9 @@ export function useTableSession (
         // Re-snapshot after potential async work
         sessionSnap = useTableSessionStore.getState()
         const updatedSession = sessionSnap.getSession(tableId)
+        const updatedFloorPlanSession = useFloorPlanStore
+          .getState()
+          .getTableById(tableId)?.session
         const updatedTableStatus = updatedSession?.status || 'available'
 
         console.log('[useTableSession] Auto-session check:', {
@@ -328,13 +346,28 @@ export function useTableSession (
 
         if (!tableId) return
 
+        // If floor plan indicates the table is occupied but session hydration hasn't
+        // landed in useTableSessionStore yet, keep waiting instead of auto-creating.
+        if (
+          !updatedSession &&
+          updatedFloorPlanSession &&
+          updatedFloorPlanSession.status !== 'available'
+        ) {
+          updatePhase('initializing')
+          return
+        }
+
         // Case 1: Session exists with an order
         if (updatedSession?.order_id) {
           const sOrderId = updatedSession.order_id
 
           // Early guard: if getOrder resolves to active order, this is a local→DB UUID swap
           const earlyResolved = useOrderStore.getState().getOrder(sOrderId)
-          if (earlyResolved && earlyResolved.id === useOrderStore.getState().activeOrderId) return
+          if (
+            earlyResolved &&
+            earlyResolved.id === useOrderStore.getState().activeOrderId
+          )
+            return
 
           // Skip if already matched by db_order_id
           if (activeOrder?.db_order_id === sOrderId) return
@@ -413,7 +446,10 @@ export function useTableSession (
                 // Skip if this order is being created right now (same-station seating race)
                 if (!hasPendingOrderCreation(localOrderId)) {
                   syncOrderFromBackendComplete(localOrderId).catch(err =>
-                    console.warn('[useTableSession] Background full sync failed:', err)
+                    console.warn(
+                      '[useTableSession] Background full sync failed:',
+                      err
+                    )
                   )
                 }
               }
@@ -434,6 +470,8 @@ export function useTableSession (
         if (
           !updatedSession &&
           updatedTableStatus === 'available' &&
+          (!updatedFloorPlanSession ||
+            updatedFloorPlanSession.status === 'available') &&
           !hasAutoCreatedRef.current
         ) {
           hasAutoCreatedRef.current = true
@@ -551,7 +589,10 @@ export function useTableSession (
             // Skip if this order is being created right now (same-station seating race)
             if (!hasPendingOrderCreation(localId)) {
               syncOrderFromBackendComplete(localId).catch(err =>
-                console.warn('[useTableSession] Recovery full sync failed:', err)
+                console.warn(
+                  '[useTableSession] Recovery full sync failed:',
+                  err
+                )
               )
             }
           }
