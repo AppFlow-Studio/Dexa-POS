@@ -114,6 +114,9 @@ export const WaitlistCard: React.FC<{
 }> = React.memo(({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
   const elapsed = useMemo(() => getElapsedMinutes(entry.created_at), [entry.created_at])
   const isOverdue = elapsed > entry.quoted_wait_minutes
+  const badgeBg = isOverdue ? colors.danger + '14' : colors.teal + '12'
+  const badgeBorder = isOverdue ? colors.danger + '45' : colors.teal + '45'
+  const badgeLabel = isOverdue ? colors.danger : colors.teal
 
   const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
   useEffect(() => {
@@ -129,11 +132,26 @@ export const WaitlistCard: React.FC<{
     <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
       <Pressable onPress={onToggle} className='flex-row items-center px-4 py-3'>
         <View
-          className={`w-12 h-12 rounded-full items-center justify-center ${
-            isOverdue ? 'bg-red-900/60' : 'bg-teal/20'
-          }`}
+          style={{
+            width: 62,
+            minHeight: 50,
+            borderRadius: 10,
+            paddingHorizontal: 8,
+            paddingVertical: 6,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: badgeBg,
+            borderWidth: 1,
+            borderColor: badgeBorder
+          }}
         >
-          <Text className={`text-sm font-bold ${isOverdue ? 'text-red-400' : 'text-teal'}`}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Clock size={10} color={badgeLabel} />
+            <Text style={{ fontSize: 9, fontWeight: '700', color: badgeLabel }}>
+              WAIT
+            </Text>
+          </View>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: badgeLabel, marginTop: 1 }}>
             {formatElapsed(elapsed)}
           </Text>
         </View>
