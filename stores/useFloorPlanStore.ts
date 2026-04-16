@@ -118,7 +118,7 @@ interface FloorPlanState {
   // Floor Plan Actions
   setActiveFloorPlan: (floorPlanId: string) => Promise<void>
   createFloorPlan: (name: string, description?: string) => Promise<string>
-  updateFloorPlan: (id: string, name: string) => Promise<void>
+  updateFloorPlan: (id: string, updates: Partial<FloorPlan>) => Promise<void>
   deleteFloorPlan: (id: string) => Promise<void>
   loadFloorPlanStatus: () => Promise<void>
   loadFloorPlanStatusIfStale: (ttlMs?: number) => Promise<void>
@@ -622,7 +622,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           return data.floor_plan_id
         },
 
-        updateFloorPlan: async (id: string, name: string) => {
+        updateFloorPlan: async (id: string, updates: Partial<FloorPlan>) => {
           const supabase = getClient()
           const locationId = get().locationId
           if (!locationId) return
@@ -630,7 +630,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const { error } = await FloorPlanService.updateFloorPlan(
             supabase,
             id,
-            { name }
+            updates
           )
           if (error) throw error
 

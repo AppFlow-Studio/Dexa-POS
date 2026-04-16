@@ -13,7 +13,16 @@ import BottomSheet from '@gorhom/bottom-sheet'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Maximize2, Minus, Plus, Redo2, Undo2 } from 'lucide-react-native'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -26,6 +35,10 @@ import Svg, { Defs, Pattern, Rect, Line as SvgLine } from 'react-native-svg'
 
 const SHAPE_SIZE = 100
 const FINGER_Y_OFFSET = 0
+const DEFAULT_CANVAS_WORLD_WIDTH = 2400
+const DEFAULT_CANVAS_WORLD_HEIGHT = 1600
+const MIN_CANVAS_DIMENSION = 600
+const MAX_CANVAS_DIMENSION = 6000
 
 // Shape size lookup for ghost rendering — plain object, accessible in worklets.
 const SHAPE_SIZES: Record<string, { w: number; h: number }> =
@@ -35,6 +48,31 @@ const SHAPE_SIZES: Record<string, { w: number; h: number }> =
       { w: (shape as any).width || 80, h: (shape as any).height || 80 }
     ])
   )
+
+const clamp = (value: number, min: number, max: number) => {
+  'worklet'
+  return Math.min(Math.max(value, min), max)
+}
+
+const clampCanvasTranslation = (
+  tx: number,
+  ty: number,
+  scale: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  worldWidth: number,
+  worldHeight: number
+) => {
+  'worklet'
+
+  const maxOffsetX = Math.max(0, (worldWidth * scale - viewportWidth) / 2)
+  const maxOffsetY = Math.max(0, (worldHeight * scale - viewportHeight) / 2)
+
+  return {
+    x: clamp(tx, -maxOffsetX, maxOffsetX),
+    y: clamp(ty, -maxOffsetY, maxOffsetY)
+  }
+}
 
 const GridPattern = () => (
   <Svg style={StyleSheet.absoluteFill} pointerEvents='none'>
@@ -111,7 +149,8 @@ const LayoutEditorScreenContent = () => {
     past,
     future,
     setActiveFloorPlan,
-    activeFloorPlanId
+    activeFloorPlanId,
+    updateFloorPlan
   } = useFloorPlanStore()
 
   // In edit mode: tapping an object selects only that object (single-select).
@@ -141,6 +180,9 @@ const LayoutEditorScreenContent = () => {
   }, [layoutId, setActiveFloorPlan, clearSelection])
 
   const [isQuickSetupOpen, setQuickSetupOpen] = useState(tables.length === 0)
+  const [isCanvasSizeModalOpen, setCanvasSizeModalOpen] = useState(false)
+  const [canvasWidthInput, setCanvasWidthInput] = useState('')
+  const [canvasHeightInput, setCanvasHeightInput] = useState('')
   const canvasRef = useRef<View>(null)
   const outerViewRef = useRef<View>(null)
   const scale = useSharedValue(1)
@@ -155,9 +197,21 @@ const LayoutEditorScreenContent = () => {
   const canvasOriginYSV = useSharedValue(0)
   const canvasWidthSV = useSharedValue(0)
   const canvasHeightSV = useSharedValue(0)
+  const canvasWorldWidthSV = useSharedValue(DEFAULT_CANVAS_WORLD_WIDTH)
+  const canvasWorldHeightSV = useSharedValue(DEFAULT_CANVAS_WORLD_HEIGHT)
   // Outer view screen offset — needed to correctly position the ghost inside the outer View.
   const outerOffsetX = useSharedValue(0)
   const outerOffsetY = useSharedValue(0)
+
+  useEffect(() => {
+    const nextWidth = activeLayout?.canvas_width || DEFAULT_CANVAS_WORLD_WIDTH
+    const nextHeight =
+      activeLayout?.canvas_height || DEFAULT_CANVAS_WORLD_HEIGHT
+    canvasWorldWidthSV.value = nextWidth
+    canvasWorldHeightSV.value = nextHeight
+    setCanvasWidthInput(String(nextWidth))
+    setCanvasHeightInput(String(nextHeight))
+  }, [activeLayout, canvasWorldHeightSV, canvasWorldWidthSV])
 
   const { draggedShapeId, dragPosition, isDraggingNewObject, dropPending } =
     useDragToAddContext()
@@ -166,8 +220,17 @@ const LayoutEditorScreenContent = () => {
     .activeOffsetX([-8, 8])
     .activeOffsetY([-8, 8])
     .onUpdate(e => {
-      translateX.value = savedTranslateX.value + e.translationX / scale.value
-      translateY.value = savedTranslateY.value + e.translationY / scale.value
+      const next = clampCanvasTranslation(
+        savedTranslateX.value + e.translationX,
+        savedTranslateY.value + e.translationY,
+        scale.value,
+        canvasWidthSV.value,
+        canvasHeightSV.value,
+        canvasWorldWidthSV.value,
+        canvasWorldHeightSV.value
+      )
+      translateX.value = next.x
+      translateY.value = next.y
     })
     .onEnd(() => {
       savedTranslateX.value = translateX.value
@@ -176,10 +239,24 @@ const LayoutEditorScreenContent = () => {
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate(e => {
-      scale.value = Math.max(0.5, Math.min(3, savedScale.value * e.scale))
+      const nextScale = Math.max(0.5, Math.min(3, savedScale.value * e.scale))
+      const next = clampCanvasTranslation(
+        translateX.value,
+        translateY.value,
+        nextScale,
+        canvasWidthSV.value,
+        canvasHeightSV.value,
+        canvasWorldWidthSV.value,
+        canvasWorldHeightSV.value
+      )
+      scale.value = nextScale
+      translateX.value = next.x
+      translateY.value = next.y
     })
     .onEnd(() => {
       savedScale.value = scale.value
+      savedTranslateX.value = translateX.value
+      savedTranslateY.value = translateY.value
     })
 
   const canvasTapGesture = Gesture.Tap().onEnd(() => {
@@ -228,8 +305,21 @@ const LayoutEditorScreenContent = () => {
       0.5,
       Math.min(3, direction === 'in' ? scale.value * 1.2 : scale.value / 1.2)
     )
+    const next = clampCanvasTranslation(
+      translateX.value,
+      translateY.value,
+      clamped,
+      canvasWidthSV.value,
+      canvasHeightSV.value,
+      canvasWorldWidthSV.value,
+      canvasWorldHeightSV.value
+    )
     scale.value = withTiming(clamped)
+    translateX.value = withTiming(next.x)
+    translateY.value = withTiming(next.y)
     savedScale.value = clamped
+    savedTranslateX.value = next.x
+    savedTranslateY.value = next.y
   }
 
   const recenterCanvas = () => {
@@ -239,6 +329,49 @@ const LayoutEditorScreenContent = () => {
     savedScale.value = 1
     savedTranslateX.value = 0
     savedTranslateY.value = 0
+  }
+
+  const handleSaveCanvasSize = async () => {
+    if (!activeLayout) return
+
+    const nextWidth = clamp(
+      parseInt(canvasWidthInput, 10) || activeLayout.canvas_width,
+      MIN_CANVAS_DIMENSION,
+      MAX_CANVAS_DIMENSION
+    )
+    const nextHeight = clamp(
+      parseInt(canvasHeightInput, 10) || activeLayout.canvas_height,
+      MIN_CANVAS_DIMENSION,
+      MAX_CANVAS_DIMENSION
+    )
+
+    try {
+      await updateFloorPlan(activeLayout.id, {
+        canvas_width: nextWidth,
+        canvas_height: nextHeight
+      })
+      canvasWorldWidthSV.value = nextWidth
+      canvasWorldHeightSV.value = nextHeight
+
+      const next = clampCanvasTranslation(
+        translateX.value,
+        translateY.value,
+        scale.value,
+        canvasWidthSV.value,
+        canvasHeightSV.value,
+        nextWidth,
+        nextHeight
+      )
+      translateX.value = withTiming(next.x)
+      translateY.value = withTiming(next.y)
+      savedTranslateX.value = next.x
+      savedTranslateY.value = next.y
+      setCanvasWidthInput(String(nextWidth))
+      setCanvasHeightInput(String(nextHeight))
+      setCanvasSizeModalOpen(false)
+    } catch (e) {
+      console.error('[edit-layout] save canvas size failed', e)
+    }
   }
 
   const handleAddMultipleTables = (
@@ -475,6 +608,23 @@ const LayoutEditorScreenContent = () => {
         {/* Right: Add + Save */}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
+            onPress={() => setCanvasSizeModalOpen(true)}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 8,
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
+          >
+            <Text
+              style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}
+            >
+              Canvas
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => addTableSheetRef.current?.expand()}
             style={{
               flexDirection: 'row',
@@ -610,6 +760,178 @@ const LayoutEditorScreenContent = () => {
         onClose={() => setQuickSetupOpen(false)}
         onAddMultiple={handleAddMultipleTables}
       />
+
+      <Modal
+        visible={isCanvasSizeModalOpen}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setCanvasSizeModalOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View
+              style={{
+                width: 360,
+                backgroundColor: colors.card,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                overflow: 'hidden'
+              }}
+            >
+              <View
+                style={{
+                  paddingHorizontal: 18,
+                  paddingVertical: 14,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: 14,
+                    fontWeight: '700'
+                  }}
+                >
+                  Canvas Size
+                </Text>
+                <Text
+                  style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}
+                >
+                  Set the stored floor plan workspace size.
+                </Text>
+              </View>
+
+              <View style={{ padding: 16, gap: 12 }}>
+                <View>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      marginBottom: 6
+                    }}
+                  >
+                    Width
+                  </Text>
+                  <TextInput
+                    value={canvasWidthInput}
+                    onChangeText={setCanvasWidthInput}
+                    keyboardType='number-pad'
+                    maxLength={4}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      color: colors.heading,
+                      fontSize: 13
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      marginBottom: 6
+                    }}
+                  >
+                    Height
+                  </Text>
+                  <TextInput
+                    value={canvasHeightInput}
+                    onChangeText={setCanvasHeightInput}
+                    keyboardType='number-pad'
+                    maxLength={4}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      color: colors.heading,
+                      fontSize: 13
+                    }}
+                  />
+                </View>
+
+                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  Min {MIN_CANVAS_DIMENSION}, max {MAX_CANVAS_DIMENSION}.
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 8,
+                  padding: 14,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => setCanvasSizeModalOpen(false)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 9,
+                    alignItems: 'center',
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontWeight: '600',
+                      fontSize: 13
+                    }}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveCanvasSize}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 9,
+                    alignItems: 'center',
+                    backgroundColor: colors.teal + '20',
+                    borderWidth: 1,
+                    borderColor: colors.teal + '60'
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.teal,
+                      fontWeight: '700',
+                      fontSize: 13
+                    }}
+                  >
+                    Save
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
 
       {selectedTable && layoutId && (
         <PropertiesPanel table={selectedTable} layoutId={layoutId} />
