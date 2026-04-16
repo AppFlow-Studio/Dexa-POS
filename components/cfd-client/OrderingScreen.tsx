@@ -662,31 +662,36 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
       entering={FadeInDown.duration(300).delay(index * 50)}
       layout={LinearTransition.duration(200)}
       style={{
-        backgroundColor: colors.card,
+        backgroundColor: colors.panel,
         borderRadius: 10,
         borderWidth: 1,
         borderColor: colors.border,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
         marginBottom: 8
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-        {/* Quantity Badge */}
+        {/* Quantity badge (bill style) */}
         <View
           style={{
-            backgroundColor: colors.panel,
-            borderRadius: 8,
-            height: 28,
-            width: 32,
+            minWidth: 22,
+            height: 22,
+            borderRadius: 6,
+            backgroundColor: colors.teal + '18',
+            borderWidth: 1,
+            borderColor: colors.teal + '40',
             alignItems: 'center',
             justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.border
+            marginTop: 1
           }}
         >
           <Text
-            style={{ color: colors.label, fontWeight: '700', fontSize: 13 }}
+            style={{
+              color: colors.teal,
+              fontWeight: '700',
+              fontSize: 11
+            }}
           >
             {item.quantity}
           </Text>
@@ -695,7 +700,7 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
         {/* Item Details */}
         <View style={{ flex: 1 }}>
           {(item.seatNumber || item.courseNumber) && (
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 2 }}>
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 1 }}>
               {item.seatNumber && (
                 <Text
                   style={{
@@ -742,8 +747,8 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
             </Text>
             <Text
               style={{
-                color: colors.label,
-                fontSize: 13,
+                color: colors.teal,
+                fontSize: 11,
                 fontWeight: '600',
                 marginLeft: 8
               }}
@@ -754,24 +759,47 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
 
           {/* Modifiers */}
           {hasModifiers && (
-            <View style={{ marginTop: 4, gap: 2 }}>
+            <View style={{ marginTop: 4, gap: 2, marginLeft: 1 }}>
               {item.modifiers.map((mod, idx) => {
                 const isNegativeModifier = mod.isNo === true
+                const modifierPrice = mod.priceCard || mod.price || 0
 
                 return (
-                  <Text
+                  <View
                     key={idx}
                     style={{
-                      color: isNegativeModifier
-                        ? colors.danger
-                        : colors.heading,
-                      fontSize: 11,
-                      fontWeight: isNegativeModifier ? '600' : '400'
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      paddingLeft: 4,
+                      borderLeftColor: colors.border,
+                      borderLeftWidth: 2,
+                      paddingVertical: 1
                     }}
                   >
-                    {isNegativeModifier ? 'NO ' : ''}
-                    {mod.name}
-                  </Text>
+                    <Text
+                      style={{
+                        color: isNegativeModifier ? colors.danger : '#E0E0E0',
+                        fontSize: 10,
+                        fontWeight: isNegativeModifier ? '600' : '400',
+                        flexShrink: 1
+                      }}
+                    >
+                      {isNegativeModifier ? 'NO ' : ''}
+                      {mod.name}
+                    </Text>
+                    {!isNegativeModifier && modifierPrice > 0 && (
+                      <Text
+                        style={{
+                          color: colors.teal,
+                          fontSize: 10,
+                          fontWeight: '600'
+                        }}
+                      >
+                        +{formatCurrency(modifierPrice)}
+                      </Text>
+                    )}
+                  </View>
                 )
               })}
             </View>
@@ -784,7 +812,8 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
                 color: colors.warning,
                 fontSize: 10,
                 fontStyle: 'italic',
-                marginTop: hasModifiers ? 3 : 4
+                marginTop: hasModifiers ? 3 : 4,
+                marginLeft: hasModifiers ? 6 : 0
               }}
             >
               {item.notes}
