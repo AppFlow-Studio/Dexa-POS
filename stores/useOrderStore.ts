@@ -1293,14 +1293,23 @@ const addItemToBackend = async (
           const currentOrder = state.ordersById[orderKey]
           if (!currentOrder) return
 
-          currentOrder.items = currentOrder.items.map(i =>
-            i.id === item.id
-              ? {
-                  ...i,
-                  db_order_item_id: addResult.order_item_id
-                }
-              : i
-          )
+          // Remove any backend copy (same db_order_item_id, different local ID)
+          // that syncOrderFromBackendComplete may have inserted before this setState ran,
+          // causing a duplicate where one item shows "sent" and one shows "not sent".
+          currentOrder.items = currentOrder.items
+            .filter(
+              i =>
+                i.id === item.id ||
+                i.db_order_item_id !== addResult.order_item_id
+            )
+            .map(i =>
+              i.id === item.id
+                ? {
+                    ...i,
+                    db_order_item_id: addResult.order_item_id
+                  }
+                : i
+            )
         })
         // Phase 7D: Set sync status in dedicated store (not on item)
         useSyncStatusStore.getState().setSyncStatus(item.id, 'synced')
@@ -1605,14 +1614,22 @@ const addItemToBackend = async (
         const currentOrder = state.ordersById[orderKey]
         if (!currentOrder) return
 
-        currentOrder.items = currentOrder.items.map(i =>
-          i.id === item.id
-            ? {
-                ...i,
-                db_order_item_id: addResult.order_item_id
-              }
-            : i
-        )
+        // Remove any backend copy (same db_order_item_id, different local ID)
+        // that syncOrderFromBackendComplete may have inserted before this setState ran,
+        // causing a duplicate where one item shows "sent" and one shows "not sent".
+        currentOrder.items = currentOrder.items
+          .filter(
+            i =>
+              i.id === item.id || i.db_order_item_id !== addResult.order_item_id
+          )
+          .map(i =>
+            i.id === item.id
+              ? {
+                  ...i,
+                  db_order_item_id: addResult.order_item_id
+                }
+              : i
+          )
       })
       // Phase 7D: Set sync status in dedicated store (not on item)
       useSyncStatusStore.getState().setSyncStatus(item.id, 'synced')
@@ -3568,10 +3585,75 @@ export const useOrderStore = create<OrderState>()(
                               !broadcastItemIds.has(item.db_order_item_id)
                           )
 
-                        // Combine: broadcast items + local pending + locally-synced-but-not-yet-in-broadcast
+                        // Absorb local pending items into unmatched broadcast items.
+                        // Race: addItemToBackend committed to DB (triggering this broadcast)
+                        // but hasn't called setState() to stamp db_order_item_id locally yet.
+                        // In that window the broadcast item appears in updatedSyncedItems AND
+                        // the local copy appears in localPendingItems — creating a duplicate.
+                        // Absorbing by unique menuItemId prevents the duplicate being written.
+                        const broadcastClaimedPendingIds = new Set<string>()
+                        {
+                          const localPendingByKey = new Map<
+                            string,
+                            CartItem[]
+                          >()
+                          for (const pendingItem of localPendingItems) {
+                            if (pendingItem.isDraft) continue
+                            const key =
+                              pendingItem.menuItemId || pendingItem.name
+                            if (!localPendingByKey.has(key))
+                              localPendingByKey.set(key, [])
+                            localPendingByKey.get(key)!.push(pendingItem)
+                          }
+
+                          for (let i = 0; i < updatedSyncedItems.length; i++) {
+                            const si = updatedSyncedItems[i]
+                            if (!si.db_order_item_id) continue
+                            // Skip items already matched by db_order_item_id above
+                            const alreadyMatched = existingOrder.items.some(
+                              li =>
+                                li.db_order_item_id === si.db_order_item_id &&
+                                li.db_order_item_id
+                            )
+                            if (alreadyMatched) continue
+
+                            const key = si.menuItemId || si.name
+                            const candidates = (
+                              localPendingByKey.get(key) ?? []
+                            ).filter(c => !broadcastClaimedPendingIds.has(c.id))
+                            // Only absorb when unambiguous (exactly one pending candidate)
+                            if (candidates.length !== 1) continue
+
+                            const pendingItem = candidates[0]
+                            broadcastClaimedPendingIds.add(pendingItem.id)
+
+                            // Absorb: preserve local ID + locally-advanced kitchen_status
+                            const localKRank =
+                              KITCHEN_STATUS_RANK[
+                                pendingItem.kitchen_status ?? 'new'
+                              ] ?? 0
+                            const broadcastKRank =
+                              KITCHEN_STATUS_RANK[si.kitchen_status ?? 'new'] ??
+                              0
+                            updatedSyncedItems[i] = {
+                              ...si,
+                              id: pendingItem.id,
+                              ...(localKRank > broadcastKRank
+                                ? {
+                                    kitchen_status: pendingItem.kitchen_status,
+                                    item_status: pendingItem.item_status
+                                  }
+                                : {})
+                            }
+                          }
+                        }
+
+                        // Combine: broadcast items + local pending (excluding absorbed) + locally-synced-but-not-yet-in-broadcast
                         mergedItems = [
                           ...updatedSyncedItems,
-                          ...localPendingItems,
+                          ...localPendingItems.filter(
+                            item => !broadcastClaimedPendingIds.has(item.id)
+                          ),
                           ...localSyncedNotInBroadcast
                         ]
                       }
@@ -12203,6 +12285,64 @@ export const useOrderStore = create<OrderState>()(
                   }
                 }
 
+                // Absorb local pending items into unmatched backend items.
+                // Race prevention: addItemToBackend may have committed to the DB
+                // but not yet called useOrderStore.setState() to set db_order_item_id
+                // locally. In that window, the backend item appears in transformedItems
+                // but the local item appears in localPendingItems — creating a duplicate.
+                // Absorbing them here (by unique menuItemId match) prevents the duplicate
+                // from ever being written to state. Fix A in addItemToBackend handles any
+                // remaining cases where this absorption couldn't run in time.
+                const claimedPendingIds = new Set<string>()
+                {
+                  // Build menuItemId → pending items map for O(n) lookup
+                  const localPendingByKey = new Map<string, CartItem[]>()
+                  for (const pendingItem of currentOrder.items) {
+                    if (pendingItem.db_order_item_id || pendingItem.isDraft)
+                      continue
+                    const key = pendingItem.menuItemId || pendingItem.name
+                    if (!localPendingByKey.has(key))
+                      localPendingByKey.set(key, [])
+                    localPendingByKey.get(key)!.push(pendingItem)
+                  }
+
+                  for (let i = 0; i < transformedItems.length; i++) {
+                    const ti = transformedItems[i]
+                    if (!ti.db_order_item_id) continue
+                    // Skip items already matched by db_order_item_id (handled above)
+                    if (localItemsByDbId.has(ti.db_order_item_id)) continue
+
+                    const key = ti.menuItemId || ti.name
+                    const candidates = (
+                      localPendingByKey.get(key) ?? []
+                    ).filter(c => !claimedPendingIds.has(c.id))
+                    // Only absorb when there is exactly one candidate — ambiguous
+                    // cases (same item ordered twice while syncing) are left for Fix A.
+                    if (candidates.length !== 1) continue
+
+                    const pendingItem = candidates[0]
+                    claimedPendingIds.add(pendingItem.id)
+
+                    // Absorb: preserve local ID + locally-advanced kitchen_status
+                    const localKRank =
+                      KITCHEN_STATUS_RANK[
+                        pendingItem.kitchen_status ?? 'new'
+                      ] ?? 0
+                    const backendKRank =
+                      KITCHEN_STATUS_RANK[ti.kitchen_status ?? 'new'] ?? 0
+                    transformedItems[i] = {
+                      ...ti,
+                      id: pendingItem.id,
+                      ...(localKRank > backendKRank
+                        ? {
+                            kitchen_status: pendingItem.kitchen_status,
+                            item_status: pendingItem.item_status
+                          }
+                        : {})
+                    }
+                  }
+                }
+
                 // Preserve local payments that haven't synced to backend yet
                 // (e.g. pre-auth payments added optimistically before syncPreAuthToBackend completes)
                 const localPendingPayments =
@@ -12273,7 +12413,10 @@ export const useOrderStore = create<OrderState>()(
                   ...currentOrder,
                   items: [
                     ...transformedItems,
-                    ...localPendingItems,
+                    // Exclude pending items that were absorbed into transformedItems above
+                    ...localPendingItems.filter(
+                      item => !claimedPendingIds.has(item.id)
+                    ),
                     ...localSyncedNotInBackend
                   ],
                   payments: [...mergedPayments, ...localPendingPayments],
