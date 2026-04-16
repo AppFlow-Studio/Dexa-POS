@@ -27,6 +27,17 @@ interface AddToWaitlistFormProps {
   }) => void
   onCancel: () => void
   isLoading: boolean
+  mode?: 'add' | 'edit'
+  initialValues?: {
+    party_name?: string
+    party_size?: number
+    phone?: string
+    email?: string
+    seating_preference?: string
+    preferred_section?: string
+    notes?: string
+    quoted_wait_minutes?: number
+  }
 }
 
 const SEATING_PREFERENCES = ['No Preference', 'Indoor', 'Outdoor', 'Bar']
@@ -68,23 +79,23 @@ const DropdownModal = ({
   </Modal>
 )
 
-export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, onCancel, isLoading }) => {
+export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, onCancel, isLoading, mode = 'add', initialValues }) => {
   const tables = useFloorPlanStore(s => s.tables)
   const waitlist = useWaitlistStore(s => s.waitlist)
 
-  const [partyName, setPartyName] = useState('')
-  const [partySize, setPartySize] = useState(2)
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
-  const [seatingPreference, setSeatingPreference] = useState('No Preference')
-  const [preferredSection, setPreferredSection] = useState('No Preference')
-  const [notes, setNotes] = useState('')
-  const [quotedWait, setQuotedWait] = useState('15')
+  const [partyName, setPartyName] = useState(initialValues?.party_name ?? '')
+  const [partySize, setPartySize] = useState(initialValues?.party_size ?? 2)
+  const [phone, setPhone] = useState(initialValues?.phone ?? '')
+  const [email, setEmail] = useState(initialValues?.email ?? '')
+  const [seatingPreference, setSeatingPreference] = useState(initialValues?.seating_preference ?? 'No Preference')
+  const [preferredSection, setPreferredSection] = useState(initialValues?.preferred_section ?? 'No Preference')
+  const [notes, setNotes] = useState(initialValues?.notes ?? '')
+  const [quotedWait, setQuotedWait] = useState(initialValues?.quoted_wait_minutes != null ? String(initialValues.quoted_wait_minutes) : '15')
   const [showSeatingDropdown, setShowSeatingDropdown] = useState(false)
   const [showSectionDropdown, setShowSectionDropdown] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [autoCalculatedWait, setAutoCalculatedWait] = useState<number | null>(null)
-  const [isWaitOverridden, setIsWaitOverridden] = useState(false)
+  const [isWaitOverridden, setIsWaitOverridden] = useState(mode === 'edit')
   const [estimatedReadyAt, setEstimatedReadyAt] = useState<Date | null>(null)
 
   useEffect(() => {
@@ -313,7 +324,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
         >
           {isLoading
             ? <ActivityIndicator color={colors.teal} size='small' />
-            : <Text style={{ color: colors.teal, fontWeight: '800', fontSize: 13, letterSpacing: 0.3 }}>Add to Waitlist</Text>}
+            : <Text style={{ color: colors.teal, fontWeight: '800', fontSize: 13, letterSpacing: 0.3 }}>{mode === 'edit' ? 'Save Changes' : 'Add to Waitlist'}</Text>}
         </TouchableOpacity>
       </View>
 

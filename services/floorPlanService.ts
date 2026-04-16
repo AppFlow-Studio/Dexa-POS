@@ -471,6 +471,28 @@ export class FloorPlanService {
     return { data: { success: !error }, error }
   }
 
+  static async updateWaitlistEntry (
+    client: SupabaseClient,
+    waitlistId: string,
+    updates: {
+      party_name?: string
+      party_size?: number
+      phone?: string | null
+      email?: string | null
+      seating_preference?: string | null
+      preferred_section?: string | null
+      notes?: string | null
+      quoted_wait_minutes?: number
+      estimated_ready_at?: string | null
+    }
+  ): Promise<{ error: any }> {
+    const { error } = await client
+      .from('waitlist')
+      .update(updates)
+      .eq('id', waitlistId)
+    return { error }
+  }
+
   static async notifyWaitlistParty (
     client: SupabaseClient,
     waitlistId: string

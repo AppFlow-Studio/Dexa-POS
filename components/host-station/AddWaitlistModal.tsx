@@ -21,9 +21,11 @@ interface AddWaitlistModalProps {
   onClose: () => void
   onSubmit: (data: AddWaitlistPayload) => Promise<void> | void
   isLoading: boolean
+  mode?: 'add' | 'edit'
+  initialValues?: Partial<AddWaitlistPayload>
 }
 
-export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(({ visible, onClose, onSubmit, isLoading }) => {
+export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(({ visible, onClose, onSubmit, isLoading, mode = 'add', initialValues }) => {
   const handleCancel = useCallback(() => onClose(), [onClose])
   const handleSubmit = useCallback((data: AddWaitlistPayload) => onSubmit(data), [onSubmit])
 
@@ -60,8 +62,8 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(({ visible, on
             backgroundColor: colors.card,
           }}>
             <View>
-              <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>Add to Waitlist</Text>
-              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}>Fill in the party details below</Text>
+              <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>{mode === 'edit' ? 'Edit Waitlist Entry' : 'Add to Waitlist'}</Text>
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}>{mode === 'edit' ? 'Update the party details below' : 'Fill in the party details below'}</Text>
             </View>
             <TouchableOpacity
               onPress={onClose}
@@ -77,7 +79,7 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(({ visible, on
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
-            <AddToWaitlistForm onSubmit={handleSubmit} onCancel={handleCancel} isLoading={isLoading} />
+            <AddToWaitlistForm onSubmit={handleSubmit} onCancel={handleCancel} isLoading={isLoading} mode={mode} initialValues={initialValues} />
           </ScrollView>
         </View>
       </KeyboardAvoidingView>

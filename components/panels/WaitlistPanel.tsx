@@ -25,6 +25,7 @@ import Animated, { LinearTransition } from 'react-native-reanimated'
 
 const WaitlistPanel: React.FC = () => {
   const { waitlist, isLoading, fetchWaitlist, addToWaitlistAsync, removeFromWaitlistAsync, seatFromWaitlistAsync } = useWaitlistStore()
+    const updateWaitlistEntryAsync = useWaitlistStore(s => s.updateWaitlistEntryAsync)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const tables = useFloorPlanStore(s => s.tables)
   const startNewOrder = useOrderStore(s => s.startNewOrder)
@@ -38,6 +39,8 @@ const WaitlistPanel: React.FC = () => {
   const [isTablePickerOpen, setTablePickerOpen] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<WaitlistEntry | null>(null)
   const [notice, setNotice] = useState<{ title: string; description: string; variant: 'info' | 'warning' | 'error' } | null>(null)
+  const [entryToEdit, setEntryToEdit] = useState<WaitlistEntry | null>(null)
+  const [isEditLoading, setIsEditLoading] = useState(false)
 
   useEffect(() => {
     if (selectedStore?.id) fetchWaitlist(selectedStore.id)
@@ -127,6 +130,29 @@ const WaitlistPanel: React.FC = () => {
     setShowAddModal(false)
   }, [selectedStore?.id, addToWaitlistAsync])
 
+  const handleEditEntry = useCallback(async (data: { party_name: string; party_size: number; phone?: string; email?: string; seating_preference?: string; preferred_section?: string; notes?: string; quoted_wait_minutes?: number }) => {
+    if (!entryToEdit) return
+    setIsEditLoading(true)
+    try {
+      await updateWaitlistEntryAsync(entryToEdit.id, {
+        party_name: data.party_name,
+        party_size: data.party_size,
+        phone: data.phone ?? null,
+        email: data.email ?? null,
+        seating_preference: data.seating_preference ?? null,
+        preferred_section: data.preferred_section ?? null,
+        notes: data.notes ?? null,
+        quoted_wait_minutes: data.quoted_wait_minutes,
+      })
+      show({ title: 'Updated', message: `${data.party_name} has been updated`, type: 'success' })
+    } catch {
+      show({ title: 'Update Failed', message: 'Could not save changes', type: 'error' })
+    } finally {
+      setIsEditLoading(false)
+      setEntryToEdit(null)
+    }
+  }, [entryToEdit, updateWaitlistEntryAsync, show])
+
   return (
     <View style={{ flex: 1, flexDirection: 'column', backgroundColor: colors.screen }}>
       {/* Header */}
@@ -163,6 +189,7 @@ const WaitlistPanel: React.FC = () => {
                   onSeat={() => handleSeat(entry)}
                   onNotify={() => handleNotify(entry)}
                   onDelete={() => setItemToDelete(entry)}
+                  onEdit={() => setEntryToEdit(entry)}
                 />
               ))}
             </Animated.View>
@@ -180,6 +207,23 @@ const WaitlistPanel: React.FC = () => {
         onClose={() => setShowAddModal(false)}
         onSubmit={handleAddEntry}
         isLoading={isLoading}
+      />
+      <AddWaitlistModal
+        visible={!!entryToEdit}
+        onClose={() => setEntryToEdit(null)}
+        onSubmit={handleEditEntry}
+        isLoading={isEditLoading}
+        mode='edit'
+        initialValues={entryToEdit ? {
+          party_name: entryToEdit.party_name,
+          party_size: entryToEdit.party_size,
+          phone: entryToEdit.phone,
+          email: entryToEdit.email,
+          seating_preference: entryToEdit.seating_preference,
+          preferred_section: entryToEdit.preferred_section,
+          notes: entryToEdit.notes,
+          quoted_wait_minutes: entryToEdit.quoted_wait_minutes,
+        } : undefined}
       />
       <TableSelectionSheet
         isOpen={isTablePickerOpen}
