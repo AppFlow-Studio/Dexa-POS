@@ -1,5 +1,4 @@
 import DiscountBottomSheet from '@/components/bill/DiscountBottomSheet'
-import ItemProgressTracker from '@/components/bill/ItemProgressTracker'
 import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
 import TableBillSection from '@/components/bill/TableBillSection'
 import MenuSection from '@/components/menu/MenuSection'
@@ -105,9 +104,6 @@ const TableOrderView = React.forwardRef<
   })
   const closeDialog = useCallback(() => setActiveDialog({ type: 'none' }), [])
   const [serverSheetOpen, setServerSheetOpen] = useState(false)
-  const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
-    number | null
-  >(null)
 
   // --- 4. Domain Hooks ---
   const {
@@ -152,11 +148,11 @@ const TableOrderView = React.forwardRef<
     s => s.config.dining.enablePerSeatOrdering
   )
   const partySize = session?.party_size ?? 2
-  const seatingHook = useTableSeating(
-    activeOrder,
-    partySize,
-    enablePerSeatOrdering
-  )
+  // Seat data is always tracked/persisted. `enablePerSeatOrdering` only
+  // controls whether the bill groups items by seat (see renderOrderView
+  // in TableBillSection). The SeatSelector header bar below and the
+  // BillItem seat pill render independently of the toggle.
+  const seatingHook = useTableSeating(activeOrder, partySize)
 
   const totals = useOrderTotals(activeOrder?.id ?? null)
   const preAuth = useOrderPreAuth(activeOrder?.id)
@@ -240,16 +236,6 @@ const TableOrderView = React.forwardRef<
     totals,
     displayBalanceDue
   ])
-
-  // Items in selected course (for ItemProgressTracker)
-  const itemsInSelectedCourse = useMemo(() => {
-    if (!activeOrder || selectedCourseIdForTracker === null) return []
-    return activeOrder.items.filter(
-      item =>
-        (item.courseNumber ?? itemCourseMap?.[item.id] ?? 1) ===
-        selectedCourseIdForTracker
-    )
-  }, [activeOrder?.items, selectedCourseIdForTracker, itemCourseMap])
 
   // --- Action handlers ---
 
@@ -515,22 +501,6 @@ const TableOrderView = React.forwardRef<
       hideLoading()
     }
   }, [closeDialog, showLoading, hideLoading, currentTableId, show])
-
-  const handleMarkAllReadyForCourse = useCallback(
-    (itemIds: string[]) => {
-      useOrderStore.getState().batchUpdateItemKitchenStatus(itemIds, 'ready')
-      const oid = useOrderStore.getState().activeOrderId
-      if (oid && selectedCourseIdForTracker !== null) {
-        markCourseServed(oid, selectedCourseIdForTracker)
-      }
-      show({
-        title: 'Items Marked Ready',
-        message: 'All items in the course have been marked as ready.',
-        type: 'success'
-      })
-    },
-    [selectedCourseIdForTracker, markCourseServed, show]
-  )
 
   const finalizeCurrentCourse = useCallback(() => {
     if (!enableCoursing) {
@@ -1068,24 +1038,23 @@ const TableOrderView = React.forwardRef<
 
   return (
     <View style={{ flex: 1 }} className='bg-screen'>
-      {/* Header bar */}
-      {enablePerSeatOrdering && (
-        <View
-          style={{ backgroundColor: colors.screen }}
-          className='flex-row items-center px-2 pt-2 pb-1'
-        >
-          <View style={{ flex: 1 }}>
-            <SeatSelector
-              seatCount={seatingHook.seatCount}
-              activeSeat={seatingHook.activeSeat}
-              onSelectSeat={seatingHook.setActiveSeat}
-              onAddSeat={handleAddSeat}
-              onRemoveSeat={handleRemoveSeat}
-              canRemoveSeat={seatingHook.seatCount > 1}
-            />
-          </View>
+      {/* Seat selector — always visible. Per-seat ordering toggle only
+          controls bill grouping, not seat-number assignment. */}
+      <View
+        style={{ backgroundColor: colors.screen }}
+        className='flex-row items-center px-2 pt-2 pb-1'
+      >
+        <View style={{ flex: 1 }}>
+          <SeatSelector
+            seatCount={seatingHook.seatCount}
+            activeSeat={seatingHook.activeSeat}
+            onSelectSeat={seatingHook.setActiveSeat}
+            onAddSeat={handleAddSeat}
+            onRemoveSeat={handleRemoveSeat}
+            canRemoveSeat={seatingHook.seatCount > 1}
+          />
         </View>
-      )}
+      </View>
 
       {/* Stage 1: OrderInfoHeader + TableBillSection (user sees their bill first) */}
       {renderStage >= 1 ? (

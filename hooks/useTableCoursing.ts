@@ -155,13 +155,23 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
             course = state?.workingCourse ?? 1;
           }
 
+          // Skip the backend RPC when: the target course is already fired
+          // (can't edit it) OR the server already has this item mapped to
+          // the same course (no-op RPC wastes a round-trip and adds race
+          // surface against ensure_course_exists on bulk re-sync).
           const courseStatus = state?.courses?.[course]?.status;
+          const existingDbCourse =
+            state?.dbIdToCourseMap?.[item.db_order_item_id];
+          const alreadyMatches = existingDbCourse === course;
+          const skipBackendSync =
+            alreadyMatches || !!(courseStatus && courseStatus !== "open");
+
           setItemCourse(
             orderId,
             item.id,
             course,
             item.db_order_item_id,
-            !!(courseStatus && courseStatus !== "open"),
+            skipBackendSync,
           );
           syncedDbItemsRef.current.add(item.db_order_item_id);
         }

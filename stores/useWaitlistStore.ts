@@ -39,6 +39,19 @@ interface WaitlistState {
     tableIds: string[]
   ) => Promise<{ session_id: string; order_id?: string } | null>
   updateWaitlistStatus: (entryId: string, status: string) => Promise<void>
+  updateWaitlistEntryAsync: (
+    entryId: string,
+    updates: {
+      party_name?: string
+      party_size?: number
+      phone?: string | null
+      email?: string | null
+      seating_preference?: string | null
+      preferred_section?: string | null
+      notes?: string | null
+      quoted_wait_minutes?: number
+    }
+  ) => Promise<void>
   notifyWaitlistPartyAsync: (entryId: string) => Promise<{
     success: boolean
     sms?: boolean
@@ -272,7 +285,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         guestName: entry.party_name,
         guestPhone: entry.phone ?? undefined,
         waitlistId: entryId,
-        createOrder: true,
+        createOrder: true
       })
 
       // Retry accuracy tracking post-seat if pre-seat write did not persist.
@@ -297,7 +310,9 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         waitlist: state.waitlist.filter(entry => entry.id !== entryId)
       }))
 
-      return result.sessionId ? { session_id: result.sessionId, order_id: result.orderId } : null
+      return result.sessionId
+        ? { session_id: result.sessionId, order_id: result.orderId }
+        : null
     } catch (err: any) {
       console.error('Failed to seat from waitlist:', err)
       // Still remove locally
@@ -332,6 +347,28 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
           entry.id === entryId ? { ...entry, status: status as any } : entry
         )
       }))
+    }
+  },
+
+  updateWaitlistEntryAsync: async (entryId, updates) => {
+    // Optimistic local update
+    set(state => ({
+      waitlist: state.waitlist.map(entry =>
+        entry.id === entryId ? { ...entry, ...updates } : entry
+      )
+    }))
+    try {
+      const { error } = await FloorPlanService.updateWaitlistEntry(
+        getClient(),
+        entryId,
+        updates
+      )
+      if (error) throw error
+    } catch (err: any) {
+      console.error('Failed to update waitlist entry:', err)
+      // Revert: refetch to restore server state
+      const locationId = get().waitlist.find(e => e.id === entryId)?.location_id
+      if (locationId) get().fetchWaitlist(locationId, { silent: true })
     }
   },
 

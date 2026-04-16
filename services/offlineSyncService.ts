@@ -2071,6 +2071,9 @@ export async function reconcileOrderWithBackend(
         kitchen_status: backendItem.kitchen_status,
         item_status: backendItem.item_status,
         courseNumber: backendItem.course_number || 1,
+        // Carry seat assignment from backend so the bill seat pill survives
+        // offline reconciliation (matches utils/orderTransformers.ts:250).
+        seatNumber: backendItem.seat_number ?? null,
         category_name: backendItem.category_name || "Uncategorized",
         is_voided: backendItem.is_voided || false,
         sync_status: "synced" as const,

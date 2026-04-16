@@ -1053,6 +1053,11 @@ const TableBillSection = ({
         )}
 
         {(() => {
+          // When coursing is on, sending is handled per-course via the
+          // course-level "Send to Kitchen" button inside CourseGroup /
+          // DenseSeatView. Suppress this bulk-send button to avoid two
+          // competing entry points.
+          if (enableCoursing) return null
           const unsent =
             activeOrder?.items?.filter(
               i => !i.kitchen_status || i.kitchen_status === 'new'

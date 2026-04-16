@@ -68,13 +68,9 @@ export function buildKitchenTicketCommands(
   b.doubleLine(w);
 
   // ── Items ──
-  if (cfg?.groupBySeat) {
-    renderItemsGroupedBySeat(b, data.items, w, cfg);
-  } else if (cfg?.groupByStation) {
-    renderItemsGroupedByStation(b, data.items, w, cfg);
-  } else {
-    renderItemsFlat(b, data.items, w, cfg);
-  }
+  // Wrap existing seat/station/flat rendering with course grouping when the
+  // ticket spans multiple courses (or contains any non-default course).
+  renderItemsGroupedByCourse(b, data.items, w, cfg);
 
   b.doubleLine(w);
 
@@ -90,6 +86,59 @@ export function buildKitchenTicketCommands(
   b.cut();
 
   return b.build();
+}
+
+/**
+ * Top-level course grouping. Prints a prominent "COURSE N" header above each
+ * course's items, then delegates to the existing seat/station/flat layout.
+ * Header is skipped when the ticket only contains the default course (1).
+ */
+function renderItemsGroupedByCourse(
+  b: EscPosBuilder,
+  items: KitchenTicketItemData[],
+  w: number,
+  cfg: KitchenTicketData["templateConfig"],
+): void {
+  const groups = new Map<number, KitchenTicketItemData[]>();
+  for (const item of items) {
+    const course = item.courseNumber ?? 1;
+    if (!groups.has(course)) {
+      groups.set(course, []);
+    }
+    groups.get(course)!.push(item);
+  }
+
+  const courseNumbers = [...groups.keys()].sort((a, b) => a - b);
+  const showCourseHeaders =
+    courseNumbers.length > 1 || courseNumbers.some((n) => n > 1);
+
+  let isFirst = true;
+  for (const course of courseNumbers) {
+    const courseItems = groups.get(course)!;
+
+    if (showCourseHeaders) {
+      if (!isFirst) {
+        b.emptyLine();
+      }
+      b.alignCenter();
+      b.bold(true);
+      b.doubleSize(true);
+      b.textLine(`COURSE ${course}`);
+      b.doubleSize(false);
+      b.bold(false);
+      b.alignLeft();
+      b.doubleLine(w);
+    }
+    isFirst = false;
+
+    if (cfg?.groupBySeat) {
+      renderItemsGroupedBySeat(b, courseItems, w, cfg);
+    } else if (cfg?.groupByStation) {
+      renderItemsGroupedByStation(b, courseItems, w, cfg);
+    } else {
+      renderItemsFlat(b, courseItems, w, cfg);
+    }
+  }
 }
 
 function renderItemsGroupedBySeat(

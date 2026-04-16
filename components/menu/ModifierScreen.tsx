@@ -134,13 +134,13 @@ const ModifierOption = memo(
       onPressIn={() => onToggle(categoryId, option.id)}
       onLongPress={() => onLongPress(categoryId, option.id)}
       delayLongPress={400}
-      className='rounded-lg border py-3 px-2.5 items-center justify-center'
+      className='rounded-lg border py-2 px-2 items-center justify-center'
       style={[
         {
-          flexBasis: '31%',
+          flexBasis: '18%',
           flexGrow: 0,
           flexShrink: 0,
-          minHeight: 72
+          minHeight: 52
         },
         isNo
           ? {
@@ -538,7 +538,9 @@ const ModifierScreenContent = () => {
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
         quantityInput: '',
-        isSeatPickerOpen: false
+        // Auto-open seat picker for dine-in (table) orders so the server can
+        // tap a seat without first expanding the header pill.
+        isSeatPickerOpen: showSeatPicker
       }
     }
   )
@@ -583,7 +585,9 @@ const ModifierScreenContent = () => {
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
         quantityInput: '',
-        isSeatPickerOpen: false
+        // Auto-open seat picker for dine-in (table) orders so the server can
+        // tap a seat without first expanding the header pill.
+        isSeatPickerOpen: showSeatPicker
       }
     })
 
@@ -1584,6 +1588,7 @@ const ModifierScreenContent = () => {
                     flexWrap: 'wrap',
                     gap: 8,
                     alignItems: 'flex-start',
+                    justifyContent: 'center',
                     paddingBottom: 2
                   }}
                 >

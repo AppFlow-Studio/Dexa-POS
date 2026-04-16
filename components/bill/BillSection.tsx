@@ -403,17 +403,9 @@ const BillSectionContent = ({
       {showOrderDetails && <OrderDetails />}
 
       {/* Offline / Sync Status Banner */}
-      {(!isOnline || hasFailedSyncs || pendingSyncCount > 0 || deadLetterCount > 0) && (
+      {(!isOnline || hasFailedSyncs || pendingSyncCount > 0 || deadLetterCount > 0) && 
+      (
         <View className="px-3 py-1.5 gap-y-1" style={{ backgroundColor: colors.background }}>
-          {deadLetterCount > 0 && (
-            <View className="flex-row items-center justify-center bg-orange-700/80 px-2.5 py-1.5 rounded-md">
-              <AlertTriangle size={12} color="#FFFFFF" />
-              <Text className="text-white font-medium ml-1.5" style={{ fontSize: 11 }}>
-                {deadLetterCount} operation{deadLetterCount > 1 ? "s" : ""} need attention — go to Settings
-              </Text>
-            </View>
-          )}
-
           {!isOnline && (
             <View className="flex-row items-center justify-center bg-amber-600 px-2.5 py-1.5 rounded-md">
               <WifiOff size={12} color="#FFFFFF" />

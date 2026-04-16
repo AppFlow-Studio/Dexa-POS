@@ -20,27 +20,45 @@ import Animated, {
   withSpring,
   withTiming
 } from 'react-native-reanimated'
-import Svg, { Line, Path as SvgPath, Rect as SvgRect, Text as SvgText } from 'react-native-svg'
+import Svg, {
+  Line,
+  Path as SvgPath,
+  Rect as SvgRect,
+  Text as SvgText
+} from 'react-native-svg'
 import DraggableTable from './DraggableTable'
 import TableLayoutSkeleton from './TableLayoutSkeleton'
 
 // Precomputed grid paths — built once at module load, not on every render
-const GRID_W = 4000
-const GRID_H = 3000
 const GRID_MINOR = 20
 const GRID_MAJOR = 100
-const GRID_MINOR_PATH = (() => {
-  let d = ''
-  for (let x = GRID_MINOR; x < GRID_W; x += GRID_MINOR) d += `M${x},0 L${x},${GRID_H} `
-  for (let y = GRID_MINOR; y < GRID_H; y += GRID_MINOR) d += `M0,${y} L${GRID_W},${y} `
-  return d
-})()
-const GRID_MAJOR_PATH = (() => {
-  let d = ''
-  for (let x = 0; x <= GRID_W; x += GRID_MAJOR) d += `M${x},0 L${x},${GRID_H} `
-  for (let y = 0; y <= GRID_H; y += GRID_MAJOR) d += `M0,${y} L${GRID_W},${y} `
-  return d
-})()
+const DEFAULT_CANVAS_WORLD_WIDTH = 2400
+const DEFAULT_CANVAS_WORLD_HEIGHT = 1600
+
+const clamp = (value: number, min: number, max: number) => {
+  'worklet'
+  return Math.min(Math.max(value, min), max)
+}
+
+const clampCanvasTranslation = (
+  tx: number,
+  ty: number,
+  scale: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  worldWidth: number,
+  worldHeight: number
+) => {
+  'worklet'
+
+  const maxOffsetX = Math.max(0, (worldWidth * scale - viewportWidth) / 2)
+  const maxOffsetY = Math.max(0, (worldHeight * scale - viewportHeight) / 2)
+
+  return {
+    x: clamp(tx, -maxOffsetX, maxOffsetX),
+    y: clamp(ty, -maxOffsetY, maxOffsetY)
+  }
+}
 
 interface TableLayoutViewProps {
   tables: FloorPlanObject[]
@@ -75,6 +93,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 }) => {
   const toggleTableSelection = useFloorPlanStore(s => s.toggleTableSelection)
   const globallySelectedTableIds = useFloorPlanStore(s => s.selectedTableIds)
+  const floorPlans = useFloorPlanStore(s => s.floorPlans)
 
   // Create O(1) lookup map for tables
   const tablesById = useMemo(() => {
@@ -157,6 +176,48 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     ? [selectedTableId]
     : globallySelectedTableIds
 
+  const activeLayout = useMemo(
+    () => floorPlans.find(plan => plan.id === layoutId) ?? null,
+    [floorPlans, layoutId]
+  )
+
+  const worldDims = useMemo(() => {
+    let contentWidth = activeLayout?.canvas_width || DEFAULT_CANVAS_WORLD_WIDTH
+    let contentHeight =
+      activeLayout?.canvas_height || DEFAULT_CANVAS_WORLD_HEIGHT
+
+    for (const table of tables) {
+      const shapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
+      const tableWidth = table.width ?? shapeDef?.width ?? 100
+      const tableHeight = table.height ?? shapeDef?.height ?? 100
+      contentWidth = Math.max(contentWidth, table.x + tableWidth)
+      contentHeight = Math.max(contentHeight, table.y + tableHeight)
+    }
+
+    return { width: contentWidth, height: contentHeight }
+  }, [activeLayout, tables])
+
+  const gridPaths = useMemo(() => {
+    let minor = ''
+    let major = ''
+
+    for (let x = GRID_MINOR; x < worldDims.width; x += GRID_MINOR) {
+      minor += `M${x},0 L${x},${worldDims.height} `
+    }
+    for (let y = GRID_MINOR; y < worldDims.height; y += GRID_MINOR) {
+      minor += `M0,${y} L${worldDims.width},${y} `
+    }
+
+    for (let x = 0; x <= worldDims.width; x += GRID_MAJOR) {
+      major += `M${x},0 L${x},${worldDims.height} `
+    }
+    for (let y = 0; y <= worldDims.height; y += GRID_MAJOR) {
+      major += `M0,${y} L${worldDims.width},${y} `
+    }
+
+    return { minor, major }
+  }, [worldDims.height, worldDims.width])
+
   // O(1) lookup Set for isSelected checks
   const selectedTableIdsSet = useMemo(
     () => new Set(selectedTableIds),
@@ -164,8 +225,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   )
 
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 })
-  const [contentDims, setContentDims] = useState({ width: 0, height: 0 })
-
   const [isLoading, setIsLoading] = useState(true)
 
   const scale = useSharedValue(1)
@@ -179,13 +238,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const skeletonOpacity = useSharedValue(1)
   const contentOpacity = useSharedValue(0)
 
-  // Position-only fingerprint: only recalc bounding box when tables move, not on session changes
-  const positionFingerprint = useMemo(
-    () =>
-      tables.map(t => `${t.id}:${t.x}:${t.y}:${t.width}:${t.height}`).join('|'),
-    [tables]
-  )
-
   const initialLoadDone = useRef(false)
 
   useEffect(() => {
@@ -193,40 +245,22 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       setIsLoading(true)
       initialLoadDone.current = true
     }
-    if (tables.length > 0) {
-      let maxX = 0
-      let maxY = 0
-      tables.forEach(table => {
-        // Use DB override → shape default → fallback
-        const shapeDef =
-          TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
-        const tableWidth = table.width ?? shapeDef?.width ?? 100
-        const tableHeight = table.height ?? shapeDef?.height ?? 100
-        if (table.x + tableWidth > maxX) {
-          maxX = table.x + tableWidth
-        }
-        if (table.y + tableHeight > maxY) {
-          maxY = table.y + tableHeight
-        }
-      })
-      setContentDims({ width: maxX, height: maxY })
-    } else {
-      setContentDims({ width: 0, height: 0 })
+    if (containerDims.width > 0) {
       setIsLoading(false)
     }
-  }, [positionFingerprint])
+  }, [containerDims.width, worldDims.height, worldDims.width])
 
   // 2. Calculate and set initial scale and position once we have dimensions
   useEffect(() => {
-    if (containerDims.width > 0 && contentDims.width > 0) {
-      const scaleX = containerDims.width / contentDims.width
-      const scaleY = containerDims.height / contentDims.height
+    if (containerDims.width > 0 && worldDims.width > 0) {
+      const scaleX = containerDims.width / worldDims.width
+      const scaleY = containerDims.height / worldDims.height
       const initialScale = Math.min(scaleX, scaleY)
 
       const initialTranslateX =
-        (containerDims.width - contentDims.width * initialScale) / 2
+        (containerDims.width - worldDims.width * initialScale) / 2
       const initialTranslateY =
-        (containerDims.height - contentDims.height * initialScale) / 2
+        (containerDims.height - worldDims.height * initialScale) / 2
 
       scale.value = initialScale
       savedScale.value = initialScale
@@ -250,7 +284,19 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       skeletonOpacity.value = withTiming(0, { duration: 200 })
       contentOpacity.value = withTiming(1, { duration: 300 })
     }
-  }, [containerDims, contentDims])
+  }, [
+    containerDims,
+    worldDims,
+    contentOpacity,
+    opacity,
+    scale,
+    savedScale,
+    savedTranslateX,
+    savedTranslateY,
+    skeletonOpacity,
+    translateX,
+    translateY
+  ])
 
   const onLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout
@@ -262,8 +308,17 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     .activeOffsetX([-10, 10])
     .activeOffsetY([-10, 10])
     .onUpdate(event => {
-      translateX.value = savedTranslateX.value + event.translationX
-      translateY.value = savedTranslateY.value + event.translationY
+      const next = clampCanvasTranslation(
+        savedTranslateX.value + event.translationX,
+        savedTranslateY.value + event.translationY,
+        scale.value,
+        containerDims.width,
+        containerDims.height,
+        worldDims.width,
+        worldDims.height
+      )
+      translateX.value = next.x
+      translateY.value = next.y
     })
     .onEnd(() => {
       savedTranslateX.value = translateX.value
@@ -277,10 +332,23 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         0.5,
         Math.min(3, savedScale.value * event.scale)
       )
+      const next = clampCanvasTranslation(
+        translateX.value,
+        translateY.value,
+        newScale,
+        containerDims.width,
+        containerDims.height,
+        worldDims.width,
+        worldDims.height
+      )
       scale.value = newScale
+      translateX.value = next.x
+      translateY.value = next.y
     })
     .onEnd(() => {
       savedScale.value = scale.value
+      savedTranslateX.value = translateX.value
+      savedTranslateY.value = translateY.value
     })
 
   // Use Simultaneous with minDistance to allow both gestures
@@ -338,10 +406,43 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           >
             {/* Grid overlay — only in edit mode */}
             {isEditMode && (
-              <View style={{ position: 'absolute', top: 0, left: 0, width: GRID_W, height: GRID_H }} pointerEvents='none'>
-                <Svg width={GRID_W} height={GRID_H}>
-                  <SvgPath d={GRID_MINOR_PATH} stroke={colors.border} strokeWidth={0.5} strokeLinecap='square' opacity={0.5} fill='none' />
-                  <SvgPath d={GRID_MAJOR_PATH} stroke={colors.border} strokeWidth={1} strokeLinecap='square' opacity={0.9} fill='none' />
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: worldDims.width,
+                  height: worldDims.height
+                }}
+                pointerEvents='none'
+              >
+                <Svg width={worldDims.width} height={worldDims.height}>
+                  <SvgRect
+                    x={0}
+                    y={0}
+                    width={worldDims.width}
+                    height={worldDims.height}
+                    fill='none'
+                    stroke={colors.border}
+                    strokeWidth={2}
+                    opacity={0.7}
+                  />
+                  <SvgPath
+                    d={gridPaths.minor}
+                    stroke={colors.border}
+                    strokeWidth={0.5}
+                    strokeLinecap='square'
+                    opacity={0.5}
+                    fill='none'
+                  />
+                  <SvgPath
+                    d={gridPaths.major}
+                    stroke={colors.border}
+                    strokeWidth={1}
+                    strokeLinecap='square'
+                    opacity={0.9}
+                    fill='none'
+                  />
                 </Svg>
               </View>
             )}
@@ -488,8 +589,33 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         <TouchableOpacity
           onPress={() => {
             const newScale = Math.min(3, scale.value + 0.2)
-            scale.value = withSpring(newScale, { damping: 12, mass: 1, stiffness: 100 })
+            const next = clampCanvasTranslation(
+              translateX.value,
+              translateY.value,
+              newScale,
+              containerDims.width,
+              containerDims.height,
+              worldDims.width,
+              worldDims.height
+            )
+            scale.value = withSpring(newScale, {
+              damping: 12,
+              mass: 1,
+              stiffness: 100
+            })
+            translateX.value = withSpring(next.x, {
+              damping: 12,
+              mass: 1,
+              stiffness: 100
+            })
+            translateY.value = withSpring(next.y, {
+              damping: 12,
+              mass: 1,
+              stiffness: 100
+            })
             savedScale.value = newScale
+            savedTranslateX.value = next.x
+            savedTranslateY.value = next.y
           }}
           style={{
             pointerEvents: 'auto',
@@ -508,8 +634,33 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         <TouchableOpacity
           onPress={() => {
             const newScale = Math.max(0.5, scale.value - 0.2)
-            scale.value = withSpring(newScale, { damping: 12, mass: 1, stiffness: 100 })
+            const next = clampCanvasTranslation(
+              translateX.value,
+              translateY.value,
+              newScale,
+              containerDims.width,
+              containerDims.height,
+              worldDims.width,
+              worldDims.height
+            )
+            scale.value = withSpring(newScale, {
+              damping: 12,
+              mass: 1,
+              stiffness: 100
+            })
+            translateX.value = withSpring(next.x, {
+              damping: 12,
+              mass: 1,
+              stiffness: 100
+            })
+            translateY.value = withSpring(next.y, {
+              damping: 12,
+              mass: 1,
+              stiffness: 100
+            })
             savedScale.value = newScale
+            savedTranslateX.value = next.x
+            savedTranslateY.value = next.y
           }}
           style={{
             pointerEvents: 'auto',
@@ -556,7 +707,8 @@ export default React.memo(TableLayoutView, (prev, next) => {
       p.section_id !== n.section_id ||
       p.name !== n.name ||
       p.z_index !== n.z_index
-    ) return false
+    )
+      return false
     // Merge connection lines depend on session.merged_tables
     const pm = p.session?.merged_tables
     const nm = n.session?.merged_tables

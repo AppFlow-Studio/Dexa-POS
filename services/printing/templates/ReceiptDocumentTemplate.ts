@@ -702,7 +702,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     const printed = `${validated.printDate}, ${validated.printTime}`;
     nodes.push({
       type: "two_column",
-      left: "Date of Print",
+      left: "Print Date",
       right: truncate(printed, META_VALUE_MAX),
       lineWidth: w,
       labelAlign : 'meta'

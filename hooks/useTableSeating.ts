@@ -7,29 +7,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
  * - Server initialization + loading
  * - New item -> seat assignment
  * - DB item sync
+ *
+ * Seat data (item -> seat mapping, activeSeat) is always tracked and persisted,
+ * regardless of the `enablePerSeatOrdering` dining toggle. That toggle now only
+ * controls bill-view grouping (DenseSeatView vs flat/coursing view) — it does
+ * not gate seat-number assignment, which is a first-class per-item tag shown
+ * by BillItem whenever `seatNumber > 0`.
  */
 export function useTableSeating(
   activeOrder: OrderProfile | undefined,
   partySize: number,
-  isEnabled: boolean,
 ) {
   const orderId = activeOrder?.id;
-
-  // Early return stub when feature is disabled
-  const disabled = {
-    activeSeat: null as number | null,
-    itemSeatMap: undefined as Record<string, number | null> | undefined,
-    seatCount: partySize,
-    seatingInitialized: true,
-    setActiveSeat: (_seat: number | null) => {},
-    setItemSeat: (
-      _itemId: string,
-      _seat: number | null,
-      _dbItemId?: string,
-    ) => {},
-    addSeat: () => partySize,
-    removeSeat: () => ({ removedSeat: 0, reassignedItemCount: 0 }),
-  };
 
   // Granular selectors
   const orderSeating = useSeatingStore(
@@ -63,7 +52,7 @@ export function useTableSeating(
 
   // Init effect
   useEffect(() => {
-    if (!isEnabled || !orderId) {
+    if (!orderId) {
       setSeatingInitialized(false);
       return;
     }
@@ -88,11 +77,11 @@ export function useTableSeating(
     return () => {
       setSeatingInitialized(false);
     };
-  }, [orderId, activeOrder?.db_order_id, isEnabled, partySize]);
+  }, [orderId, activeOrder?.db_order_id, partySize]);
 
   // New items effect — auto-assign to activeSeat
   useEffect(() => {
-    if (!isEnabled || !orderId || !seatingInitialized) return;
+    if (!orderId || !seatingInitialized) return;
 
     const currentIds = itemIds.split(",").filter(Boolean);
     const prevIds = prevItemIdsRef.current;
@@ -155,12 +144,11 @@ export function useTableSeating(
       });
     }
     prevItemIdsRef.current = currentIds;
-  }, [orderId, itemIds, seatingInitialized, isEnabled, activeOrder?.items]);
+  }, [orderId, itemIds, seatingInitialized, activeOrder?.items]);
 
   // DB item sync effect
   useEffect(() => {
-    if (!isEnabled || !orderId || !activeOrder?.items || !seatingInitialized)
-      return;
+    if (!orderId || !activeOrder?.items || !seatingInitialized) return;
 
     activeOrder.items.forEach((item) => {
       if (item.isDraft) return;
@@ -187,9 +175,7 @@ export function useTableSeating(
         syncedDbItemsRef.current.add(item.db_order_item_id);
       }
     });
-  }, [orderId, dbItemIdsHash, seatingInitialized, isEnabled]);
-
-  if (!isEnabled) return disabled;
+  }, [orderId, dbItemIdsHash, seatingInitialized]);
 
   const activeSeat = orderSeating?.activeSeat ?? null;
   const itemSeatMap = orderSeating?.itemSeatMap;

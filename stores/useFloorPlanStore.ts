@@ -118,7 +118,7 @@ interface FloorPlanState {
   // Floor Plan Actions
   setActiveFloorPlan: (floorPlanId: string) => Promise<void>
   createFloorPlan: (name: string, description?: string) => Promise<string>
-  updateFloorPlan: (id: string, name: string) => Promise<void>
+  updateFloorPlan: (id: string, updates: Partial<FloorPlan>) => Promise<void>
   deleteFloorPlan: (id: string) => Promise<void>
   loadFloorPlanStatus: () => Promise<void>
   loadFloorPlanStatusIfStale: (ttlMs?: number) => Promise<void>
@@ -622,7 +622,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           return data.floor_plan_id
         },
 
-        updateFloorPlan: async (id: string, name: string) => {
+        updateFloorPlan: async (id: string, updates: Partial<FloorPlan>) => {
           const supabase = getClient()
           const locationId = get().locationId
           if (!locationId) return
@@ -630,7 +630,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const { error } = await FloorPlanService.updateFloorPlan(
             supabase,
             id,
-            { name }
+            updates
           )
           if (error) throw error
 
@@ -1282,20 +1282,6 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const waitlistEntry = get().waitlist.find(
             entry => entry.id === waitlistId
           )
-          const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
-            get().tablesById,
-            tableIds
-          )
-          if (
-            waitlistEntry &&
-            hasKnownCapacity &&
-            waitlistEntry.party_size > totalCapacity
-          ) {
-            throw new Error(
-              `Party size ${waitlistEntry.party_size} exceeds table capacity ${totalCapacity}.`
-            )
-          }
-
           const supabase = getClient()
           const { data, error } = await FloorPlanService.seatFromWaitlist(
             supabase,
@@ -1433,21 +1419,6 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const reservation = get().reservations.find(
             entry => entry.id === reservationId
           )
-          const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
-            get().tablesById,
-            tableIds ?? []
-          )
-          if (
-            reservation &&
-            tableIds?.length &&
-            hasKnownCapacity &&
-            reservation.party_size > totalCapacity
-          ) {
-            throw new Error(
-              `Party size ${reservation.party_size} exceeds table capacity ${totalCapacity}.`
-            )
-          }
-
           const supabase = getClient()
           const { data, error } = await FloorPlanService.seatReservation(
             supabase,

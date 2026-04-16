@@ -474,6 +474,20 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     return groups
   }, [activeOrder?.items, itemCourseMap])
 
+  // Flat (no-coursing) item list — same filter + sort as groupedItems.
+  // Used when enableCoursing=false so the bill renders without any course header.
+  // Keyed on itemsGroupingKey so we don't recompute on unrelated field updates.
+  const flatItems = useMemo(() => {
+    const items = (activeOrder?.items ?? []).filter(i => !i.is_voided)
+    items.sort((a, b) => {
+      const ka = a.db_order_item_id ?? a.id
+      const kb = b.db_order_item_id ?? b.id
+      return ka < kb ? -1 : ka > kb ? 1 : 0
+    })
+    return items
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsGroupingKey])
+
   // Sort course keys
   const sortedCourses = useMemo(() => {
     const coursesFromItems = Object.keys(groupedItems).map(Number)
@@ -520,6 +534,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
 
   const onSelectCourseRef = useRef(onSelectCourse)
   onSelectCourseRef.current = onSelectCourse
+
+  const expandedCourseIdRef = useRef(expandedCourseId)
+  expandedCourseIdRef.current = expandedCourseId
 
   const handleToggleCourse = useCallback((courseId: number) => {
     setExpandedCourseId(prev => {
@@ -638,22 +655,38 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <Animated.View layout={LinearTransition.duration(250)}>
-          {sortedCourses.length > 0 ? (
-            sortedCourses.map(courseId => (
-              <CourseGroup
-                key={`course-${courseId}`}
-                courseId={courseId}
-                items={groupedItems[courseId] || []}
-                isExpanded={expandedCourseId === courseId}
-                isSent={!!sentCourses?.[courseId]}
-                isCurrent={currentCourse === courseId}
-                onToggle={handleToggleCourse}
-                onDoubleTap={onDoubleTapCourse}
-                onRushCourse={onRushCourse}
-                onPrioritizeCourse={onPrioritizeCourse}
-                onResendCourse={onResendCourse}
-              />
-            ))
+          {enableCoursing ? (
+            sortedCourses.length > 0 ? (
+              sortedCourses.map(courseId => (
+                <CourseGroup
+                  key={`course-${courseId}`}
+                  courseId={courseId}
+                  items={groupedItems[courseId] || []}
+                  isExpanded={expandedCourseId === courseId}
+                  isSent={!!sentCourses?.[courseId]}
+                  isCurrent={currentCourse === courseId}
+                  onToggle={handleToggleCourse}
+                  onDoubleTap={onDoubleTapCourse}
+                  onRushCourse={onRushCourse}
+                  onPrioritizeCourse={onPrioritizeCourse}
+                  onResendCourse={onResendCourse}
+                />
+              ))
+            ) : (
+              <View className='flex-1 items-center justify-center mt-10'>
+                <Text style={{ fontSize: 12, color: colors.muted }}>
+                  Add items to start an order.
+                </Text>
+              </View>
+            )
+          ) : flatItems.length > 0 ? (
+            <View className='gap-y-2'>
+              {flatItems.map(item => (
+                <View key={item.id} className='overflow-hidden'>
+                  <BillItem item={item} isEditable={true} />
+                </View>
+              ))}
+            </View>
           ) : (
             <View className='flex-1 items-center justify-center mt-10'>
               <Text style={{ fontSize: 12, color: colors.muted }}>

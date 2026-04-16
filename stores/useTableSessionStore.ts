@@ -904,19 +904,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // ------------------------------------------------------------------
 
         seatGuests: async params => {
-          const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
-            params.tableIds
-          )
-          if (hasKnownCapacity && params.partySize > totalCapacity) {
-            const message = `Party size ${params.partySize} exceeds table capacity ${totalCapacity}.`
-            useToastStore.getState().show({
-              title: 'Table Too Small',
-              message,
-              type: 'warning'
-            })
-            throw new Error(message)
-          }
-
           const isOnline = getIsOnline()
           const supabase = getClient()
 

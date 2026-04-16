@@ -295,6 +295,7 @@ export interface KitchenTicketItemData {
   station?: string;
   allergyAlert?: string;
   seatNumber?: number | null;
+  courseNumber?: number; // Which course this item belongs to (rendered when > 1)
 }
 
 // ============================================================================

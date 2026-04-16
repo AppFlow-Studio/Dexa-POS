@@ -43,6 +43,7 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  cancelAnimation,
   FadeIn,
   FadeOut,
   useAnimatedStyle,
@@ -72,6 +73,9 @@ const SkeletonBar = ({
       ),
       -1,
     );
+    return () => {
+      cancelAnimation(opacity);
+    };
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({

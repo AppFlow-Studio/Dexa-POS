@@ -441,7 +441,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
   return (
     <View
-      className={`overflow-hidden ${
+      className={`overflow-hidden py-2 ${
         effectiveIsActive
           ? "border-2 border-blue-400 bg-blue-500/5 rounded-lg"
           : isVoided
@@ -458,7 +458,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               shadowRadius: 8,
               elevation: 8,
             }
-          : undefined,
+          : {
+              borderBottomColor: colors.border,
+              borderStyle: "solid",
+              borderBottomWidth: 0.5,
+            },
       ]}
     >
       {isEditable && !isVoided && (

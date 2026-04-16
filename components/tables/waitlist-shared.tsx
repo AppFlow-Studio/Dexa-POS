@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Pencil,
   Phone,
   StickyNote,
   Users,
@@ -113,8 +114,9 @@ export const WaitlistCard: React.FC<{
   onSeat: () => void
   onNotify: () => void
   onDelete: () => void
+  onEdit?: () => void
 }> = React.memo(
-  ({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
+  ({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete, onEdit }) => {
     const elapsed = useMemo(
       () => getElapsedMinutes(entry.created_at),
       [entry.created_at]
@@ -202,6 +204,25 @@ export const WaitlistCard: React.FC<{
             <ChevronUp size={20} color={colors.label} />
           ) : (
             <ChevronDown size={20} color={colors.label} />
+          )}
+          {onEdit && (
+            <TouchableOpacity
+              onPress={e => {
+                e.stopPropagation?.()
+                onEdit()
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                marginLeft: 6,
+                padding: 4,
+                borderRadius: 6,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <Pencil size={13} color={colors.label} />
+            </TouchableOpacity>
           )}
         </Pressable>
 
