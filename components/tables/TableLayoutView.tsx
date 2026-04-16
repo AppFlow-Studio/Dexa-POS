@@ -34,6 +34,17 @@ const GRID_MINOR = 20
 const GRID_MAJOR = 100
 const DEFAULT_CANVAS_WORLD_WIDTH = 2400
 const DEFAULT_CANVAS_WORLD_HEIGHT = 1600
+const INITIAL_ZOOM_MULTIPLIER = 2.0
+
+const getMedian = (values: number[]) => {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2
+  }
+  return sorted[mid]
+}
 
 const clamp = (value: number, min: number, max: number) => {
   'worklet'
@@ -197,6 +208,39 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     return { width: contentWidth, height: contentHeight }
   }, [activeLayout, tables])
 
+  const objectMedian = useMemo(() => {
+    const medianSourceTables = tables.filter(table => {
+      const shapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
+      if (shapeDef?.type) return shapeDef.type === 'table'
+      return table.category === 'table' || table.category === 'booth'
+    })
+
+    if (medianSourceTables.length === 0) {
+      return {
+        hasObjects: false,
+        x: worldDims.width / 2,
+        y: worldDims.height / 2
+      }
+    }
+
+    const centerXs: number[] = []
+    const centerYs: number[] = []
+
+    for (const table of medianSourceTables) {
+      const shapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
+      const width = table.width ?? shapeDef?.width ?? 100
+      const height = table.height ?? shapeDef?.height ?? 100
+      centerXs.push(table.x + width / 2)
+      centerYs.push(table.y + height / 2)
+    }
+
+    return {
+      hasObjects: true,
+      x: getMedian(centerXs),
+      y: getMedian(centerYs)
+    }
+  }, [tables, worldDims.height, worldDims.width])
+
   const gridPaths = useMemo(() => {
     let minor = ''
     let major = ''
@@ -239,6 +283,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const contentOpacity = useSharedValue(0)
 
   const initialLoadDone = useRef(false)
+  const lastCenterKey = useRef('')
 
   useEffect(() => {
     if (!initialLoadDone.current) {
@@ -253,21 +298,51 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   // 2. Calculate and set initial scale and position once we have dimensions
   useEffect(() => {
     if (containerDims.width > 0 && worldDims.width > 0) {
+      const centerKey = `${layoutId}:${containerDims.width}x${containerDims.height}:${worldDims.width}x${worldDims.height}:${objectMedian.x},${objectMedian.y}`
+      if (lastCenterKey.current === centerKey) {
+        return
+      }
+
       const scaleX = containerDims.width / worldDims.width
       const scaleY = containerDims.height / worldDims.height
-      const initialScale = Math.min(scaleX, scaleY)
+      const initialScale = clamp(
+        Math.min(scaleX, scaleY) * INITIAL_ZOOM_MULTIPLIER,
+        0.5,
+        3
+      )
 
-      const initialTranslateX =
-        (containerDims.width - worldDims.width * initialScale) / 2
-      const initialTranslateY =
-        (containerDims.height - worldDims.height * initialScale) / 2
+      const viewportCenterX = containerDims.width / 2
+      const viewportCenterY = containerDims.height / 2
+      const worldCenterX = worldDims.width / 2
+      const worldCenterY = worldDims.height / 2
+      const preferredCenterX = objectMedian.hasObjects
+        ? objectMedian.x
+        : worldCenterX
+      const preferredCenterY = objectMedian.hasObjects
+        ? objectMedian.y
+        : worldCenterY
+
+      const preferredUnclampedTranslateX =
+        (viewportCenterX - preferredCenterX) * initialScale
+      const preferredUnclampedTranslateY =
+        (viewportCenterY - preferredCenterY) * initialScale
+      const initialTranslate = clampCanvasTranslation(
+        preferredUnclampedTranslateX,
+        preferredUnclampedTranslateY,
+        initialScale,
+        containerDims.width,
+        containerDims.height,
+        worldDims.width,
+        worldDims.height
+      )
 
       scale.value = initialScale
       savedScale.value = initialScale
-      translateX.value = initialTranslateX
-      savedTranslateX.value = initialTranslateX
-      translateY.value = initialTranslateY
-      savedTranslateY.value = initialTranslateY
+      translateX.value = initialTranslate.x
+      savedTranslateX.value = initialTranslate.x
+      translateY.value = initialTranslate.y
+      savedTranslateY.value = initialTranslate.y
+      lastCenterKey.current = centerKey
 
       setIsLoading(false)
       opacity.value = withTiming(1)
@@ -286,6 +361,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     }
   }, [
     containerDims,
+    layoutId,
+    objectMedian,
     worldDims,
     contentOpacity,
     opacity,
