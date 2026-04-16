@@ -434,8 +434,9 @@ function handleAppState(nextState: AppStateStatus): void {
 // ============================================================================
 
 export function startStarPrinterHealthCheck(locationId: string): void {
-  // Avoid duplicate starts
-  if (intervalId) {
+  // Avoid duplicate starts — also clean up orphaned listeners from backgrounding
+  // (backgrounding nulls intervalId but leaves appStateSubscription/netInfoUnsubscribe alive)
+  if (intervalId || appStateSubscription || netInfoUnsubscribe) {
     stopStarPrinterHealthCheck();
   }
 

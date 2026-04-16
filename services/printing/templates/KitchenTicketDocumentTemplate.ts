@@ -102,13 +102,9 @@ export function buildKitchenTicketDocument (
   nodes.push({ type: 'divider', style: 'double', lineWidth: w })
 
   // ── Items ──
-  if (cfg?.groupBySeat) {
-    pushItemsGroupedBySeat(nodes, data.items, w, cfg)
-  } else if (cfg?.groupByStation) {
-    pushItemsGroupedByStation(nodes, data.items, w, cfg)
-  } else {
-    pushItemsFlat(nodes, data.items, w, cfg)
-  }
+  // Wrap existing seat/station/flat rendering with course grouping when the
+  // ticket spans multiple courses (or contains any non-default course).
+  pushItemsGroupedByCourse(nodes, data.items, w, cfg)
 
   nodes.push({ type: 'divider', style: 'double', lineWidth: w })
 
@@ -125,6 +121,65 @@ export function buildKitchenTicketDocument (
   nodes.push({ type: 'cut' })
 
   return { nodes, maxCharsPerLine: w }
+}
+
+/**
+ * Top-level course grouping. Prints a prominent "COURSE N" header above each
+ * course's items, then delegates to the existing seat/station/flat layout.
+ * If the ticket only contains the default course (1) and no other course
+ * numbers, the header is skipped to keep single-course tickets clean.
+ */
+function pushItemsGroupedByCourse (
+  nodes: PrintNode[],
+  items: KitchenTicketItemData[],
+  w: number,
+  cfg: KitchenTicketData['templateConfig']
+): void {
+  const groups = new Map<number, KitchenTicketItemData[]>()
+  for (const item of items) {
+    const course = item.courseNumber ?? 1
+    if (!groups.has(course)) {
+      groups.set(course, [])
+    }
+    groups.get(course)!.push(item)
+  }
+
+  // Show course headers only when the ticket spans multiple courses or
+  // contains a non-default course (course > 1).
+  const courseNumbers = [...groups.keys()].sort((a, b) => a - b)
+  const showCourseHeaders =
+    courseNumbers.length > 1 || courseNumbers.some(n => n > 1)
+
+  let isFirst = true
+  for (const course of courseNumbers) {
+    const courseItems = groups.get(course)!
+
+    if (showCourseHeaders) {
+      if (!isFirst) {
+        nodes.push({ type: 'empty_line' })
+      }
+      const headerText = `COURSE ${course}`
+      nodes.push({
+        type: 'text_line',
+        content: headerText,
+        align: 'center',
+        format: scaledFormat(headerText, w, {
+          doubleWidth: true,
+          doubleHeight: true
+        })
+      })
+      nodes.push({ type: 'divider', style: 'double', lineWidth: w })
+    }
+    isFirst = false
+
+    if (cfg?.groupBySeat) {
+      pushItemsGroupedBySeat(nodes, courseItems, w, cfg)
+    } else if (cfg?.groupByStation) {
+      pushItemsGroupedByStation(nodes, courseItems, w, cfg)
+    } else {
+      pushItemsFlat(nodes, courseItems, w, cfg)
+    }
+  }
 }
 
 function pushItemsGroupedByStation (

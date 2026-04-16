@@ -552,11 +552,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           // Refresh stale floor plan data
           floorPlanStore.loadFloorPlanStatusIfStale();
 
-          // Refresh orders when app resumes via query invalidation
+          // Refresh orders when app resumes — only if data is older than staleTime.
+          // useOrderSyncRecovery handles reconnection-triggered refetches separately.
           if (storeSettings.selectedStore?.id) {
-            queryClient.invalidateQueries({
-              queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
-            });
+            const qState = queryClient.getQueryState(
+              orderQueryKeys.active(storeSettings.selectedStore.id),
+            );
+            const dataAge = Date.now() - (qState?.dataUpdatedAt ?? 0);
+            if (dataAge > 2 * 60 * 1000) {
+              queryClient.invalidateQueries({
+                queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+              });
+            }
           }
         }
 

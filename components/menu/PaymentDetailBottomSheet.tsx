@@ -3327,10 +3327,54 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           >
             Reason (Required)
           </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: 6,
+              marginBottom: 8
+            }}
+          >
+            {[
+              'Incorrect amount',
+              'Missing item',
+              'Paid by other means',
+              'Returned/cancelled order'
+            ].map(preset => {
+              const isActive =
+                refundReason.trim().toLowerCase() === preset.toLowerCase()
+              return (
+                <TouchableOpacity
+                  key={preset}
+                  onPress={() => setRefundReason(isActive ? '' : preset)}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    backgroundColor: isActive
+                      ? colors.teal + '15'
+                      : colors.card,
+                    borderColor: isActive ? colors.teal + '50' : colors.border
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      color: isActive ? colors.teal : colors.label
+                    }}
+                  >
+                    {preset}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
           <TextInput
             value={refundReason}
             onChangeText={setRefundReason}
-            placeholder='Enter reason for refund...'
+            placeholder='Or type a custom reason...'
             placeholderTextColor={colors.muted}
             multiline={false}
             numberOfLines={1}

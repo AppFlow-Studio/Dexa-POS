@@ -48,6 +48,8 @@ interface CourseAccordionProps {
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
   enableCoursing?: boolean
+  isOvertime?: boolean
+  overtimeMinutes?: number
 }
 
 interface CourseGroupProps {
@@ -170,18 +172,6 @@ function CourseGroupInner ({
             >
               Course {courseId}
             </Text>
-            {isSent && (
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '600',
-                  color: colors.teal,
-                  marginLeft: 6
-                }}
-              >
-                Sent
-              </Text>
-            )}
             {aggregateStatus && (
               <View
                 className={`ml-2 px-2 py-0.5 rounded ${BADGE_CONFIG[aggregateStatus].bg}`}
@@ -387,8 +377,6 @@ function CourseGroupInner ({
 }
 
 const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
-  // Only re-render when structure changes (IDs, counts, voided) — not on kitchen_status updates
-  // BillItem subscribes directly to the order store for its own kitchen_status display
   if (prev.courseId !== next.courseId) return false
   if (prev.isExpanded !== next.isExpanded) return false
   if (prev.isSent !== next.isSent) return false
@@ -405,7 +393,9 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
     if (
       p.id !== n.id ||
       p.quantity !== n.quantity ||
-      p.is_voided !== n.is_voided
+      p.is_voided !== n.is_voided ||
+      p.price !== n.price ||
+      p.customizations !== n.customizations
     )
       return false
   }
@@ -425,7 +415,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
-  enableCoursing = true
+  enableCoursing = true,
+  isOvertime,
+  overtimeMinutes
 }) => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null)
   const prevItemCount = useRef<number>(0)
@@ -460,7 +452,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       .join(',')
   }, [activeOrder?.items, itemCourseMap])
 
-  // Group items by course — only recalculates when IDs or course assignments change
+  // Group items by course — recalculates when grouping changes OR item content changes
   const groupedItems = useMemo(() => {
     const groups: Record<number, CartItem[]> = {}
     activeOrder?.items?.forEach(item => {
@@ -480,6 +472,19 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       })
     })
     return groups
+  }, [activeOrder?.items, itemCourseMap])
+
+  // Flat (no-coursing) item list — same filter + sort as groupedItems.
+  // Used when enableCoursing=false so the bill renders without any course header.
+  // Keyed on itemsGroupingKey so we don't recompute on unrelated field updates.
+  const flatItems = useMemo(() => {
+    const items = (activeOrder?.items ?? []).filter(i => !i.is_voided)
+    items.sort((a, b) => {
+      const ka = a.db_order_item_id ?? a.id
+      const kb = b.db_order_item_id ?? b.id
+      return ka < kb ? -1 : ka > kb ? 1 : 0
+    })
+    return items
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemsGroupingKey])
 
@@ -530,13 +535,14 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const onSelectCourseRef = useRef(onSelectCourse)
   onSelectCourseRef.current = onSelectCourse
 
-  const expandedCourseIdRef = useRef(expandedCourseId)
-  expandedCourseIdRef.current = expandedCourseId
-
   const handleToggleCourse = useCallback((courseId: number) => {
-    const next = expandedCourseIdRef.current === courseId ? null : courseId
-    setExpandedCourseId(next)
-    onSelectCourseRef.current?.(next)
+    setExpandedCourseId(prev => {
+      const next = prev === courseId ? null : courseId
+      // Defer onSelectCourse to avoid setState-during-render warning
+      // (parent component may call setCurrentCourse in response)
+      queueMicrotask(() => onSelectCourseRef.current?.(next))
+      return next
+    })
   }, [])
 
   if (!activeOrder) {
@@ -619,40 +625,68 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
             ? `#${orderMeta.dbOrderId.substring(0, 8)}`
             : ''}
         </Text>
-        {enableCoursing && (
-          <TouchableOpacity
-            onPress={onPressStartNewCourse}
-            className='flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal'
-            activeOpacity={0.8}
-          >
-            <Plus size={16} color={colors.teal} />
-            <Text
-              style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
+        <View className='flex-row items-center gap-2'>
+          {isOvertime && (
+            <View className='bg-yellow-900/30 px-2.5 py-1 rounded-full'>
+              <Text
+                style={{ fontSize: 10, fontWeight: '600' }}
+                className='text-yellow-400'
+              >
+                {overtimeMinutes}min exceeded
+              </Text>
+            </View>
+          )}
+          {enableCoursing && (
+            <TouchableOpacity
+              onPress={onPressStartNewCourse}
+              className='flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal'
+              activeOpacity={0.8}
             >
-              New Course
-            </Text>
-          </TouchableOpacity>
-        )}
+              <Plus size={16} color={colors.teal} />
+              <Text
+                style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
+              >
+                New Course
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <Animated.View layout={LinearTransition.duration(250)}>
-          {sortedCourses.length > 0 ? (
-            sortedCourses.map(courseId => (
-              <CourseGroup
-                key={`course-${courseId}`}
-                courseId={courseId}
-                items={groupedItems[courseId] || []}
-                isExpanded={expandedCourseId === courseId}
-                isSent={!!sentCourses?.[courseId]}
-                isCurrent={currentCourse === courseId}
-                onToggle={handleToggleCourse}
-                onDoubleTap={onDoubleTapCourse}
-                onRushCourse={onRushCourse}
-                onPrioritizeCourse={onPrioritizeCourse}
-                onResendCourse={onResendCourse}
-              />
-            ))
+          {enableCoursing ? (
+            sortedCourses.length > 0 ? (
+              sortedCourses.map(courseId => (
+                <CourseGroup
+                  key={`course-${courseId}`}
+                  courseId={courseId}
+                  items={groupedItems[courseId] || []}
+                  isExpanded={expandedCourseId === courseId}
+                  isSent={!!sentCourses?.[courseId]}
+                  isCurrent={currentCourse === courseId}
+                  onToggle={handleToggleCourse}
+                  onDoubleTap={onDoubleTapCourse}
+                  onRushCourse={onRushCourse}
+                  onPrioritizeCourse={onPrioritizeCourse}
+                  onResendCourse={onResendCourse}
+                />
+              ))
+            ) : (
+              <View className='flex-1 items-center justify-center mt-10'>
+                <Text style={{ fontSize: 12, color: colors.muted }}>
+                  Add items to start an order.
+                </Text>
+              </View>
+            )
+          ) : flatItems.length > 0 ? (
+            <View className='gap-y-2'>
+              {flatItems.map(item => (
+                <View key={item.id} className='overflow-hidden'>
+                  <BillItem item={item} isEditable={true} />
+                </View>
+              ))}
+            </View>
           ) : (
             <View className='flex-1 items-center justify-center mt-10'>
               <Text style={{ fontSize: 12, color: colors.muted }}>

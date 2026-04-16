@@ -1,5 +1,6 @@
 import * as React from 'react';
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -21,6 +22,9 @@ function Skeleton({
       withSequence(withTiming(0.5, { duration }), withTiming(1, { duration })),
       -1
     );
+    return () => {
+      cancelAnimation(sv);
+    };
   }, []);
 
   const style = useAnimatedStyle(() => ({

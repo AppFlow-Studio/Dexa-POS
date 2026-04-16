@@ -40,6 +40,10 @@ export class WebSocketServer {
     this.onConnect = handlers.onConnect ?? null;
     this.onDisconnect = handlers.onDisconnect ?? null;
 
+    // Clean up stale subscriptions from previous start() calls
+    this.subscriptions.forEach((s) => s.remove());
+    this.subscriptions = [];
+
     // Subscribe to native events
     if (tcpServerEvents) {
       this.subscriptions.push(
@@ -122,8 +126,8 @@ export class WebSocketServer {
     // Append to buffer
     client.buffer = Buffer.concat([client.buffer, chunk]);
 
-    // Guard against runaway buffers (client sending garbage)
-    if (client.buffer.length > MAX_FRAME_SIZE * 2) {
+    // Guard against runaway buffers (client sending garbage or stalling)
+    if (client.buffer.length > MAX_FRAME_SIZE) {
       console.error(`[WS] Client ${clientId} buffer overflow, disconnecting`);
       TcpServer.disconnect(clientId);
       return;

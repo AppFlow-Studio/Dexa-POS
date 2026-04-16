@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useMemo } from 'react'
 import { Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
+  cancelAnimation,
   interpolateColor,
   runOnJS,
   SharedValue,
@@ -99,6 +100,9 @@ const ReservationBadge = React.memo(({
       withSequence(withTiming(minOpacity, { duration }), withTiming(1, { duration })),
       -1
     )
+    return () => {
+      cancelAnimation(opacity)
+    }
   }, [urgent])
 
   const animStyle = useAnimatedStyle(() => ({
@@ -162,6 +166,9 @@ const PulsingBorder = React.memo(
         ),
         -1 // infinite
       )
+      return () => {
+        cancelAnimation(progress)
+      }
     }, [active])
 
     const animatedBorderStyle = useAnimatedStyle(() => {

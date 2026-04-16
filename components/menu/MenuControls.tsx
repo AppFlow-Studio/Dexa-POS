@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 13,
     fontWeight: "500",
-    color: colors.muted,
+    color: 'white',
   },
   tabTextActive: {
     color: colors.teal,

@@ -5,6 +5,7 @@ import { AlertTriangle } from "lucide-react-native";
 import React, { useEffect } from "react";
 import { Text, View } from "react-native";
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -66,6 +67,9 @@ const OverlayShiftChip: React.FC<OverlayShiftChipProps> = ({
       -1,
       true
     );
+    return () => {
+      cancelAnimation(opacity);
+    };
   }, [opacity]);
 
   const animatedStyle = useAnimatedStyle(() => {

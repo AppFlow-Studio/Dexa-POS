@@ -538,7 +538,9 @@ const ModifierScreenContent = () => {
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
         quantityInput: '',
-        isSeatPickerOpen: false
+        // Auto-open seat picker for dine-in (table) orders so the server can
+        // tap a seat without first expanding the header pill.
+        isSeatPickerOpen: showSeatPicker
       }
     }
   )
@@ -583,7 +585,9 @@ const ModifierScreenContent = () => {
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
         quantityInput: '',
-        isSeatPickerOpen: false
+        // Auto-open seat picker for dine-in (table) orders so the server can
+        // tap a seat without first expanding the header pill.
+        isSeatPickerOpen: showSeatPicker
       }
     })
 

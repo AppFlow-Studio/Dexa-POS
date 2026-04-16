@@ -488,24 +488,27 @@ export const PrinterService = {
       totalItemCount: 4,
       items: [
         {
+          name: 'Caesar Salad',
+          quantity: 1,
+          modifiers: ['Extra Dressing'],
+          station: 'Cold Prep',
+          courseNumber: 1
+        },
+        {
           name: 'Classic Burger',
           quantity: 2,
           modifiers: ['No Onions', 'Well Done'],
           notes: 'Allergy: gluten-free bun',
           station: 'Grill',
-          allergyAlert: 'Allergy: gluten-free bun'
-        },
-        {
-          name: 'Caesar Salad',
-          quantity: 1,
-          modifiers: ['Extra Dressing'],
-          station: 'Cold Prep'
+          allergyAlert: 'Allergy: gluten-free bun',
+          courseNumber: 2
         },
         {
           name: 'Fish & Chips',
           quantity: 1,
           modifiers: ['Tartar Sauce on Side'],
-          station: 'Grill'
+          station: 'Grill',
+          courseNumber: 2
         }
       ],
       isVoidTicket: false,
@@ -1059,7 +1062,8 @@ function buildKitchenTicketData (
         useSeatingStore
           .getState()
           .getItemSeat(order.id, item.id, item.db_order_item_id) ??
-        null
+        null,
+      courseNumber: item.courseNumber
     }
   })
 

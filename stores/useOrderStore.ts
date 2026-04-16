@@ -99,6 +99,11 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useFloorPlanStore } from './useFloorPlanStore'
 // Phase 6: Conflict detection imports
 import {
+  clearItemPendingRemoval,
+  isItemPendingRemoval,
+  markItemPendingRemoval
+} from '@/lib/pendingItemRemovals'
+import {
   clearOrderPendingVoid,
   isOrderPendingVoid
 } from '@/lib/pendingVoidOrderIds'
@@ -494,8 +499,8 @@ const pendingSyncOperations = new Map<string, Promise<boolean>>()
 const DRAFT_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
 const DRAFT_CLEANUP_INTERVAL_MS = 15 * 60 * 1000 // 15 minutes
 const ORDER_PRUNE_INTERVAL_MS = 2 * 60 * 1000 // 2 minutes
-const COMPLETED_ORDER_MAX_AGE_MS = 30 * 60 * 1000 // 30 minutes
-const MAX_COMPLETED_ORDERS = 20
+const COMPLETED_ORDER_MAX_AGE_MS = 15 * 60 * 1000 // 15 minutes
+const MAX_COMPLETED_ORDERS = 10
 let draftCleanupInterval: ReturnType<typeof setInterval> | null = null
 let orderPruneInterval: ReturnType<typeof setInterval> | null = null
 
@@ -3069,7 +3074,6 @@ export const useOrderStore = create<OrderState>()(
           return (
             order.order_status !== 'completed' &&
             order.order_status !== 'void' &&
-            order.order_status !== 'voided' &&
             order.order_status !== 'cancelled'
           )
         }
@@ -3079,7 +3083,7 @@ export const useOrderStore = create<OrderState>()(
         ): Record<string, string> => {
           const nextIndex: Record<string, string> = {}
           for (const [orderId, order] of Object.entries(ordersById)) {
-            if (isTableIndexedOrder(order)) {
+            if (isTableIndexedOrder(order) && order.service_location_id) {
               nextIndex[order.service_location_id] = orderId
             }
           }
@@ -3103,7 +3107,10 @@ export const useOrderStore = create<OrderState>()(
           }
 
           const currentOrder = state.ordersById[orderId]
-          if (isTableIndexedOrder(currentOrder)) {
+          if (
+            isTableIndexedOrder(currentOrder) &&
+            currentOrder.service_location_id
+          ) {
             state.tableOrderIdIndex[currentOrder.service_location_id] = orderId
           }
         }
@@ -3324,11 +3331,21 @@ export const useOrderStore = create<OrderState>()(
 
                     // Phase 7D: Check for pending local changes using db_order_item_id
                     // Items without db_order_item_id are pending (not yet synced)
+                    // Also check itemSyncStatus for items whose quantity/update sync is
+                    // in-flight — a stale broadcast must not overwrite their optimistic
+                    // state before the RPC acknowledgement comes back.
                     const hasPendingChanges =
                       !localOrder.db_order_id || // Order not yet created in backend
                       localOrder.items.some(
                         item => !item.db_order_item_id && !item.isDraft
-                      )
+                      ) ||
+                      localOrder.items.some(item => {
+                        if (item.isDraft) return false
+                        const status = useSyncStatusStore
+                          .getState()
+                          .itemSyncStatus.get(item.id)
+                        return status === 'pending' || status === 'syncing'
+                      })
 
                     // PERFORMANCE: Skip update if no meaningful data changed
                     // Compare key fields that actually affect UI
@@ -3648,9 +3665,19 @@ export const useOrderStore = create<OrderState>()(
                           }
                         }
 
-                        // Combine: broadcast items + local pending (excluding absorbed) + locally-synced-but-not-yet-in-broadcast
+                        // Drop items that the user has just removed/voided locally.
+                        // The removal RPC is fire-and-forget; a broadcast fetched before
+                        // the RPC commits still lists the item and would cause it to
+                        // visually reappear until the next broadcast.
+                        const filteredSyncedItems = updatedSyncedItems.filter(
+                          item =>
+                            !item.db_order_item_id ||
+                            !isItemPendingRemoval(item.db_order_item_id)
+                        )
+
+                        // Combine: filtered synced items + local pending (excluding absorbed) + locally-synced-but-not-yet-in-broadcast
                         mergedItems = [
-                          ...updatedSyncedItems,
+                          ...filteredSyncedItems,
                           ...localPendingItems.filter(
                             item => !broadcastClaimedPendingIds.has(item.id)
                           ),
@@ -6334,27 +6361,31 @@ export const useOrderStore = create<OrderState>()(
             if (itemToHandle?.db_order_item_id && _supabaseClient) {
               const dbItemId = itemToHandle.db_order_item_id
 
+              // Mark the item as pending-removal so stale broadcasts arriving
+              // during the RPC window don't re-introduce it into the cart.
+              markItemPendingRemoval(dbItemId)
+
               if (isKitchenItem) {
                 // Item was sent to kitchen - use VOID (soft delete, keeps record)
                 const reason = voidReason || 'User voided'
-                OrderService.voidOrderItem(
-                  _supabaseClient,
-                  dbItemId,
-                  reason
-                ).catch(async err => {
-                  console.error('Failed to void item:', err)
-                  // Queue for offline retry
-                  await queueOperation({
-                    type: 'void_item',
-                    params: { orderItemId: dbItemId, reason },
-                    localOrderId: activeOrderId,
-                    localItemId: itemId
+                OrderService.voidOrderItem(_supabaseClient, dbItemId, reason)
+                  .catch(async err => {
+                    console.error('Failed to void item:', err)
+                    // Queue for offline retry
+                    await queueOperation({
+                      type: 'void_item',
+                      params: { orderItemId: dbItemId, reason },
+                      localOrderId: activeOrderId,
+                      localItemId: itemId
+                    })
                   })
-                })
+                  .finally(() => {
+                    clearItemPendingRemoval(dbItemId)
+                  })
               } else {
                 // Item was NOT sent to kitchen - use REMOVE (hard delete)
-                OrderService.removeOrderItem(_supabaseClient, dbItemId).catch(
-                  async err => {
+                OrderService.removeOrderItem(_supabaseClient, dbItemId)
+                  .catch(async err => {
                     console.error('Failed to remove item:', err)
                     // Queue for offline retry
                     await queueOperation({
@@ -6363,8 +6394,10 @@ export const useOrderStore = create<OrderState>()(
                       localOrderId: activeOrderId,
                       localItemId: itemId
                     })
-                  }
-                )
+                  })
+                  .finally(() => {
+                    clearItemPendingRemoval(dbItemId)
+                  })
               }
             }
           },
@@ -10636,6 +10669,15 @@ export const useOrderStore = create<OrderState>()(
                           // Preserve course number from backend to prevent items being grouped into course 1
                           courseNumber:
                             dbItem.course_number || localItem.courseNumber || 1,
+                          // Sync seat assignment from backend so cross-station seat
+                          // changes propagate. Backend is authoritative — explicit
+                          // null means "Shared" and must win over a stale local
+                          // value. Only fall back to local if the column was
+                          // genuinely missing from the response.
+                          seatNumber:
+                            dbItem.seat_number !== undefined
+                              ? dbItem.seat_number
+                              : localItem.seatNumber ?? null,
                           // Sync discount distribution fields from backend
                           discount_amount: dbItem.discount_amount ?? 0,
                           discount_cash_amount:
@@ -10707,6 +10749,9 @@ export const useOrderStore = create<OrderState>()(
                       paidQuantity: dbItem.paid_quantity || 0,
                       // Preserve course number from backend to prevent items being grouped into course 1
                       courseNumber: dbItem.course_number || 1,
+                      // Carry seat assignment from backend so the bill seat pill
+                      // survives reload (matches utils/orderTransformers.ts:250).
+                      seatNumber: dbItem.seat_number ?? null,
                       category_name: dbItem.category_name || 'Uncategorized',
                       is_voided: dbItem.is_voided || false,
                       sync_status: 'synced' as const,
@@ -12412,7 +12457,13 @@ export const useOrderStore = create<OrderState>()(
                 const updatedOrder: OrderProfile = {
                   ...currentOrder,
                   items: [
-                    ...transformedItems,
+                    // Drop items mid-removal so a backend fetch that still shows
+                    // them can't re-introduce them into the cart.
+                    ...transformedItems.filter(
+                      item =>
+                        !item.db_order_item_id ||
+                        !isItemPendingRemoval(item.db_order_item_id)
+                    ),
                     // Exclude pending items that were absorbed into transformedItems above
                     ...localPendingItems.filter(
                       item => !claimedPendingIds.has(item.id)

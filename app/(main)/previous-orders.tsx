@@ -29,6 +29,7 @@ import {
 
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
@@ -42,6 +43,7 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  cancelAnimation,
   FadeIn,
   FadeOut,
   useAnimatedStyle,
@@ -71,6 +73,9 @@ const SkeletonBar = ({
       ),
       -1,
     );
+    return () => {
+      cancelAnimation(opacity);
+    };
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -264,6 +269,20 @@ const PreviousOrdersScreen = () => {
   const loadMoreOrders = usePreviousOrdersStore((s) => s.loadMoreOrders);
   const isLoadingMore = usePreviousOrdersStore((s) => s._isLoadingMore);
   const hasMore = usePreviousOrdersStore((s) => s._hasMore);
+
+  // Release previous orders from memory when navigating away (~10MB for 500 orders).
+  // Data is re-fetched on next focus via usePreviousOrdersListSync bootstrap.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        usePreviousOrdersStore.setState({
+          previousOrders: [],
+          _orderLookup: {},
+          newOrdersCount: 0,
+        });
+      };
+    }, []),
+  );
 
   const handleLoadMore = useCallback(() => {
     if (hasMore && !isLoadingMore) void loadMoreOrders();

@@ -1,7 +1,10 @@
+import AppUpdateModal from "@/components/AppUpdateModal";
 import { colors } from "@/lib/theme";
+import { checkForNativeUpdate, VersionManifest } from "@/services/appUpdater";
 import { getDeadLetterCount, getPendingCount } from "@/services/offlineSyncService";
 import Constants from "expo-constants";
 import { usePathname, useRouter } from "expo-router";
+import * as Updates from "expo-updates";
 import {
   Banknote,
   BarChart2,
@@ -28,7 +31,7 @@ import {
   Users,
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 interface SidebarItem {
   id: string;
@@ -121,6 +124,64 @@ const SidebarNavigation = () => {
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
+  };
+
+  // Update check (OTA + native APK)
+  type UpdateStatus = "idle" | "checking" | "downloading" | "ready" | "up-to-date" | "error";
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle");
+  const [nativeManifest, setNativeManifest] = useState<VersionManifest | null>(null);
+
+  const applyOtaUpdate = async () => {
+    setUpdateStatus("downloading");
+    try {
+      await Updates.fetchUpdateAsync();
+      setUpdateStatus("ready");
+      setTimeout(() => { Updates.reloadAsync(); }, 1500);
+    } catch {
+      setUpdateStatus("error");
+      setTimeout(() => setUpdateStatus("idle"), 3000);
+    }
+  };
+
+  const handleCheckForUpdate = async () => {
+    if (updateStatus === "checking" || updateStatus === "downloading") return;
+
+    setUpdateStatus("checking");
+    try {
+      // 1. Check native APK update first (Android only)
+      if (Platform.OS === "android") {
+        const manifest = await checkForNativeUpdate();
+        if (manifest) {
+          setUpdateStatus("idle");
+          setNativeManifest(manifest); // opens AppUpdateModal with skip/install + progress
+          return;
+        }
+      }
+
+      // 2. Check Expo OTA update
+      if (!__DEV__) {
+        const result = await Updates.checkForUpdateAsync();
+        if (result.isAvailable) {
+          setUpdateStatus("idle");
+          Alert.alert(
+            "Update Available",
+            "A new update is ready to download. The app will restart after installing.",
+            [
+              { text: "Later", style: "cancel" },
+              { text: "Update Now", onPress: () => applyOtaUpdate() },
+            ]
+          );
+          return;
+        }
+      }
+
+      // 3. No updates found
+      setUpdateStatus("up-to-date");
+      setTimeout(() => setUpdateStatus("idle"), 3000);
+    } catch {
+      setUpdateStatus("error");
+      setTimeout(() => setUpdateStatus("idle"), 3000);
+    }
   };
 
   return (
@@ -247,13 +308,74 @@ const SidebarNavigation = () => {
         </View>
       </ScrollView>
 
-      {/* Footer */}
+      {/* Footer — tap to check for updates */}
       <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <View style={{ backgroundColor: colors.card, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center" }}>Version {Constants.expoConfig?.version ?? "—"}</Text>
-          <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center", marginTop: 2, opacity: 0.7 }}>© 2026 DEXA POS</Text>
-        </View>
+        <TouchableOpacity
+          onPress={handleCheckForUpdate}
+          disabled={updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "ready"}
+          activeOpacity={0.7}
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 8,
+            padding: 10,
+            borderWidth: 1,
+            borderColor:
+              updateStatus === "ready" || updateStatus === "up-to-date"
+                ? colors.success + "60"
+                : updateStatus === "error"
+                  ? colors.danger + "60"
+                  : colors.border,
+          }}
+        >
+          <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center" }}>
+            Version {Constants.expoConfig?.version ?? "—"}
+          </Text>
+
+          {updateStatus === "idle" ? (
+            <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center", marginTop: 2, opacity: 0.7 }}>
+              Tap to check for updates
+            </Text>
+          ) : updateStatus === "checking" ? (
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 3, gap: 4 }}>
+              <ActivityIndicator size="small" color={colors.teal} />
+              <Text style={{ fontSize: 10, color: colors.teal }}>Checking…</Text>
+            </View>
+          ) : updateStatus === "downloading" ? (
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 3, gap: 4 }}>
+              <ActivityIndicator size="small" color={colors.teal} />
+              <Text style={{ fontSize: 10, color: colors.teal }}>Downloading update…</Text>
+            </View>
+          ) : updateStatus === "ready" ? (
+            <Text style={{ fontSize: 10, color: colors.success, textAlign: "center", marginTop: 2, fontWeight: "600" }}>
+              Restarting…
+            </Text>
+          ) : updateStatus === "up-to-date" ? (
+            <Text style={{ fontSize: 10, color: colors.success, textAlign: "center", marginTop: 2 }}>
+              Up to date
+            </Text>
+          ) : updateStatus === "error" ? (
+            <Text style={{ fontSize: 10, color: colors.danger, textAlign: "center", marginTop: 2 }}>
+              Check failed — tap to retry
+            </Text>
+          ) : null}
+
+          {!__DEV__ && Updates.updateId ? (
+            <Text style={{ fontSize: 8, color: colors.muted, textAlign: "center", marginTop: 3, opacity: 0.5, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>
+              {Updates.updateId.slice(0, 8)}
+            </Text>
+          ) : null}
+        </TouchableOpacity>
       </View>
+
+      {/* Native APK Update Modal */}
+      {nativeManifest && (
+        <AppUpdateModal
+          visible
+          manifest={nativeManifest}
+          onSkip={() => setNativeManifest(null)}
+          onInstallComplete={() => setNativeManifest(null)}
+        />
+      )}
     </View>
   );
 };

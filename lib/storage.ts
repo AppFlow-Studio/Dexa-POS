@@ -63,7 +63,7 @@ const ORDER_STORE_KEY = "order-store-storage";
 
 function debouncedSetItem(name: string, value: string): void {
   // Use longer debounce for the order store (large payload)
-  const delay = name === ORDER_STORE_KEY ? 500 : 300;
+  const delay = name === ORDER_STORE_KEY ? 1500 : 300;
   if (!debouncedWriters[name]) {
     debouncedWriters[name] = debounce((v: string) => {
       storage.set(name, v);

@@ -299,8 +299,9 @@ export function startTerminalHealthCheck(
   terminalId: string,
   paymentTerminal: StationPaymentTerminal,
 ): void {
-  // Avoid duplicate starts
-  if (intervalId) {
+  // Avoid duplicate starts — also clean up orphaned listeners from backgrounding
+  // (backgrounding nulls intervalId but leaves appStateSubscription/netInfoUnsubscribe alive)
+  if (intervalId || appStateSubscription || netInfoUnsubscribe) {
     stopTerminalHealthCheck();
   }
 

@@ -103,7 +103,7 @@ function handleAppState(nextState: AppStateStatus): void {
 // ============================================================================
 
 export function startStarPrinterDiscoveryService(): void {
-  if (intervalId || initialTimeoutId) {
+  if (intervalId || initialTimeoutId || appStateSubscription) {
     stopStarPrinterDiscoveryService();
   }
 

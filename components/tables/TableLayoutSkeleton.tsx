@@ -2,6 +2,7 @@ import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -41,6 +42,9 @@ const AnimatedPulse: React.FC<{ style: any }> = ({ style }) => {
       ),
       -1
     );
+    return () => {
+      cancelAnimation(opacity);
+    };
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({

@@ -37,11 +37,6 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
 
-  useEffect(() => {
-    iconOpacity.value = withTiming(1, { duration: 150 })
-    iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 })
-  }, [])
-
   const iconScale = useSharedValue(0.7)
   const iconOpacity = useSharedValue(0)
 

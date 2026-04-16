@@ -46,6 +46,12 @@ const MerchantLoginScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Second factor state
+  const [needsSecondFactor, setNeedsSecondFactor] = useState(false);
+  const [secondFactorCode, setSecondFactorCode] = useState("");
+  const [secondFactorStrategy, setSecondFactorStrategy] = useState<string | null>(null);
+  const [secondFactorHint, setSecondFactorHint] = useState<string | null>(null);
+
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const signInWithGoogle = async () => {
@@ -69,6 +75,58 @@ const MerchantLoginScreen = () => {
     }
   };
 
+  /** Complete sign-in after the session is created. */
+  const completeSignIn = async (createdSessionId: string | null) => {
+    if (!createdSessionId || !setActive) {
+      setError("Sign-in failed — no session created.");
+      return;
+    }
+    await setActive({ session: createdSessionId });
+    router.replace("/store-select");
+  };
+
+  // TODO: Test this out
+
+  /** Pick the best second factor and prepare it (sends SMS if phone_code). */
+  const initiateSecondFactor = async () => {
+    if (!signIn) return;
+    const factors = signIn.supportedSecondFactors;
+    if (!factors || factors.length === 0) {
+      setError("No second factor methods available. Contact your admin.");
+      return;
+    }
+
+    // Prefer TOTP > phone_code > email_code > backup_code
+    const preferred =
+      factors.find((f: any) => f.strategy === "totp") ??
+      factors.find((f: any) => f.strategy === "phone_code") ??
+      factors.find((f: any) => f.strategy === "email_code") ??
+      factors[0];
+
+    const strategy = (preferred as any).strategy as string;
+    setSecondFactorStrategy(strategy);
+
+    // Build a human-readable hint
+    if (strategy === "totp") {
+      setSecondFactorHint("Enter the code from your authenticator app");
+    } else if (strategy === "phone_code") {
+      const safeId = (preferred as any).safeIdentifier ?? "your phone";
+      setSecondFactorHint(`Enter the code sent to ${safeId}`);
+      // Prepare sends the SMS/WhatsApp message
+      await signIn.prepareSecondFactor({ strategy: "phone_code" } as any);
+    } else if (strategy === "email_code") {
+      const safeId = (preferred as any).safeIdentifier ?? "your email";
+      setSecondFactorHint(`Enter the code sent to ${safeId}`);
+      await signIn.prepareSecondFactor({ strategy: "email_code" } as any);
+    } else if (strategy === "backup_code") {
+      setSecondFactorHint("Enter one of your backup codes");
+    } else {
+      setSecondFactorHint("Enter your verification code");
+    }
+
+    setNeedsSecondFactor(true);
+  };
+
   const handleLogin = async () => {
     if (!isLoaded) return;
 
@@ -82,14 +140,39 @@ const MerchantLoginScreen = () => {
     setError(null);
 
     try {
-      const signInAttempt = await signIn.create({ identifier: trimmedEmail, password });
+      if (!signIn) return;
+      // Step 1: Create sign-in attempt
+      const attempt = await signIn.create({ identifier: trimmedEmail });
 
-      if (signInAttempt.status === "complete") {
-        await setActive({ session: signInAttempt.createdSessionId });
-        router.replace("/store-select");
-      } else {
-        setError("Sign-in incomplete. Please try again.");
+      // Some configs complete immediately (e.g. SSO redirect resolved)
+      if (attempt.status === "complete") {
+        await completeSignIn(attempt.createdSessionId);
+        return;
       }
+
+      // Step 2: Verify password as first factor
+      if (attempt.status === "needs_first_factor") {
+        const result = await signIn.attemptFirstFactor({
+          strategy: "password",
+          password,
+        });
+
+        if (result.status === "complete") {
+          await completeSignIn(result.createdSessionId);
+          return;
+        }
+
+        // Step 3: Device not trusted — second factor required
+        if (result.status === "needs_second_factor") {
+          await initiateSecondFactor();
+          return;
+        }
+
+        setError(`Unexpected status: ${result.status}`);
+        return;
+      }
+
+      setError("Sign-in incomplete. Please try again.");
     } catch (err: any) {
       if (err.errors?.length > 0) {
         const code = err.errors[0].code;
@@ -110,9 +193,155 @@ const MerchantLoginScreen = () => {
     }
   };
 
+  /** Submit the second factor verification code. */
+  const handleSecondFactor = async () => {
+    if (!secondFactorStrategy || !secondFactorCode.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      if (!signIn) return;
+      const result = await signIn.attemptSecondFactor({
+        strategy: secondFactorStrategy,
+        code: secondFactorCode.trim(),
+      } as any);
+
+      if (result.status === "complete") {
+        await completeSignIn(result.createdSessionId);
+        return;
+      }
+
+      setError(`Unexpected status: ${result.status}`);
+    } catch (err: any) {
+      if (err.errors?.length > 0) {
+        const code = err.errors[0].code;
+        if (code === "form_code_incorrect") {
+          setError("Incorrect code. Please try again.");
+        } else {
+          setError(err.errors[0].longMessage || err.errors[0].message || "Verification failed.");
+        }
+      } else {
+        setError("Verification failed. Please try again.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetSecondFactor = () => {
+    setNeedsSecondFactor(false);
+    setSecondFactorCode("");
+    setSecondFactorStrategy(null);
+    setSecondFactorHint(null);
+    setError(null);
+  };
+
   const isFormLoading = isLoading || isGoogleLoading;
   const canSubmit = !!emailAddress && !!password && !isFormLoading;
+  const canSubmitCode = !!secondFactorCode.trim() && !isFormLoading;
 
+  // ==================== SECOND FACTOR VERIFICATION UI ====================
+  if (needsSecondFactor) {
+    return (
+      <View style={{ width: "100%" }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginBottom: 4 }}>
+          Verify Your Identity
+        </Text>
+        <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 20 }}>
+          {secondFactorHint ?? "Enter your verification code"}
+        </Text>
+
+        {/* Error banner */}
+        {error && (
+          <View
+            style={{
+              backgroundColor: colors.danger + "15",
+              borderWidth: 1,
+              borderColor: colors.danger + "40",
+              borderRadius: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              marginBottom: 14,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: colors.danger, textAlign: "center" }}>
+              {error}
+            </Text>
+          </View>
+        )}
+
+        {/* Code input */}
+        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 5 }}>
+          Verification Code
+        </Text>
+        <TextInput
+          style={{
+            width: "100%",
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            backgroundColor: colors.screen,
+            color: colors.heading,
+            fontSize: 18,
+            letterSpacing: 4,
+            textAlign: "center",
+          }}
+          placeholder="000000"
+          placeholderTextColor={colors.muted}
+          keyboardType="number-pad"
+          autoCapitalize="none"
+          autoFocus
+          value={secondFactorCode}
+          onChangeText={setSecondFactorCode}
+          editable={!isFormLoading}
+          maxLength={secondFactorStrategy === "backup_code" ? 20 : 6}
+        />
+
+        {/* Verify button */}
+        <TouchableOpacity
+          onPress={handleSecondFactor}
+          disabled={!canSubmitCode}
+          style={{
+            width: "100%",
+            paddingVertical: 11,
+            borderRadius: 10,
+            alignItems: "center",
+            backgroundColor: canSubmitCode ? colors.teal : colors.teal + "30",
+            marginTop: 16,
+          }}
+        >
+          {isLoading ? (
+            <ActivityIndicator color={colors.onSolid} size="small" />
+          ) : (
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: canSubmitCode ? colors.onSolid : colors.muted,
+              }}
+            >
+              Verify
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Back to login */}
+        <TouchableOpacity
+          onPress={resetSecondFactor}
+          style={{ alignSelf: "center", marginTop: 16 }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+            Back to Sign In
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ==================== LOGIN FORM UI ====================
   return (
     <View style={{ width: "100%" }}>
       {/* Title */}

@@ -2109,12 +2109,12 @@ function ReceiptSettings({
   return (
     <>
       <CollapsibleSection title="Branding" subtitle="Logo, header, and footer text" defaultOpen>
-        <ToggleRow
+        {/* <ToggleRow
           label="Show Logo"
           subtitle="Display your business logo at the top"
           value={config.showLogo}
           onToggle={(v) => updateField("showLogo", v)}
-        />
+        /> */}
         <TextRow
           label="Header Text"
           value={config.headerText ?? ""}

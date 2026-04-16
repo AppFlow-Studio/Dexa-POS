@@ -5,7 +5,7 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
-      gcTime: 1000 * 60 * 15, // 15 min default GC
+      gcTime: 1000 * 60 * 5, // 5 min default GC (reduced for 134MB Android heap)
       retry: 2,
     },
   },

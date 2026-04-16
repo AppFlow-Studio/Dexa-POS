@@ -148,11 +148,11 @@ const TableOrderView = React.forwardRef<
     s => s.config.dining.enablePerSeatOrdering
   )
   const partySize = session?.party_size ?? 2
-  const seatingHook = useTableSeating(
-    activeOrder,
-    partySize,
-    enablePerSeatOrdering
-  )
+  // Seat data is always tracked/persisted. `enablePerSeatOrdering` only
+  // controls whether the bill groups items by seat (see renderOrderView
+  // in TableBillSection). The SeatSelector header bar below and the
+  // BillItem seat pill render independently of the toggle.
+  const seatingHook = useTableSeating(activeOrder, partySize)
 
   const totals = useOrderTotals(activeOrder?.id ?? null)
   const preAuth = useOrderPreAuth(activeOrder?.id)
@@ -1038,33 +1038,23 @@ const TableOrderView = React.forwardRef<
 
   return (
     <View style={{ flex: 1 }} className='bg-screen'>
-      {/* Header bar */}
-      {enablePerSeatOrdering && (
-        <View
-          style={{ backgroundColor: colors.screen }}
-          className='flex-row items-center px-2 pt-2 pb-1'
-        >
-          <View style={{ flex: 1 }}>
-            <SeatSelector
-              seatCount={seatingHook.seatCount}
-              activeSeat={seatingHook.activeSeat}
-              onSelectSeat={seatingHook.setActiveSeat}
-              onAddSeat={handleAddSeat}
-              onRemoveSeat={handleRemoveSeat}
-              canRemoveSeat={seatingHook.seatCount > 1}
-            />
-          </View>
+      {/* Seat selector — always visible. Per-seat ordering toggle only
+          controls bill grouping, not seat-number assignment. */}
+      <View
+        style={{ backgroundColor: colors.screen }}
+        className='flex-row items-center px-2 pt-2 pb-1'
+      >
+        <View style={{ flex: 1 }}>
+          <SeatSelector
+            seatCount={seatingHook.seatCount}
+            activeSeat={seatingHook.activeSeat}
+            onSelectSeat={seatingHook.setActiveSeat}
+            onAddSeat={handleAddSeat}
+            onRemoveSeat={handleRemoveSeat}
+            canRemoveSeat={seatingHook.seatCount > 1}
+          />
         </View>
-      )}
-
-      {isOvertime && (
-        <View className='p-2 bg-yellow-500 items-center'>
-          <Text className='text-base font-bold text-yellow-900'>
-            This table has exceeded the default sitting time of{' '}
-            {defaultSittingTimeMinutes} minutes.
-          </Text>
-        </View>
-      )}
+      </View>
 
       {/* Stage 1: OrderInfoHeader + TableBillSection (user sees their bill first) */}
       {renderStage >= 1 ? (
@@ -1173,6 +1163,8 @@ const TableOrderView = React.forwardRef<
               onPrioritizeCourse={handlePrioritizeCourse}
               onResendCourse={handleResendCourse}
               onPressSendAllToKitchen={handleSendAllToKitchen}
+              isOvertime={isOvertime}
+              overtimeMinutes={defaultSittingTimeMinutes}
             />
             <View className='flex-1 p-4 px-3 pt-0'>
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}

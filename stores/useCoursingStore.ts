@@ -15,6 +15,37 @@ export function setCoursingSupabaseClient(client: SupabaseClient | null) {
   _supabaseClient = client;
 }
 
+// Per-order serialization for set_item_course RPCs.
+//
+// The server-side `ensure_course_exists` (called by `set_item_course`) has a
+// TOCTOU race between SELECT and INSERT against the `unique_order_course`
+// constraint. When coursing is toggled ON with multiple items present, the
+// client fires N `set_item_course` calls in parallel and the second+ calls
+// race into ensure_course_exists with a stale NULL SELECT, then collide on
+// INSERT with SQLSTATE 23505.
+//
+// Serializing the RPCs per dbOrderId means each Postgres transaction runs
+// to completion before the next starts, so the SELECT inside subsequent
+// ensure_course_exists calls sees the committed row and skips the INSERT.
+// No DB migration needed.
+const _courseRpcChains = new Map<string, Promise<unknown>>();
+function chainCourseRpc(
+  dbOrderId: string,
+  runRpc: () => Promise<unknown>,
+): Promise<unknown> {
+  const prev = _courseRpcChains.get(dbOrderId) ?? Promise.resolve();
+  // Swallow prior errors so one bad RPC doesn't poison the chain.
+  const next = prev.catch(() => {}).then(runRpc);
+  _courseRpcChains.set(dbOrderId, next);
+  next.finally(() => {
+    // Clear the chain once settled so the Map doesn't grow unbounded.
+    if (_courseRpcChains.get(dbOrderId) === next) {
+      _courseRpcChains.delete(dbOrderId);
+    }
+  });
+  return next;
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -414,17 +445,27 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
       },
     }));
 
-    // Sync to server if we have dbOrderId
+    // Sync to server if we have dbOrderId. Route through the per-order chain
+    // for the same TOCTOU reason as set_item_course — set_working_course also
+    // calls ensure_course_exists internally.
     const dbOrderId = orderData.dbOrderId;
     if (_supabaseClient && dbOrderId) {
-      _supabaseClient
-        .rpc("set_working_course", {
+      const client = _supabaseClient;
+      chainCourseRpc(dbOrderId, async () => {
+        const { error } = await client.rpc("set_working_course", {
           p_order_id: dbOrderId,
           p_course_number: courseNumber,
-        })
-        .then(({ error }) => {
-          if (error) console.error("Failed to sync working course:", error);
         });
+        if (error) {
+          if ((error as any)?.code === "23505") {
+            console.warn(
+              "[Coursing] set_working_course hit unique_order_course race",
+            );
+          } else {
+            console.error("Failed to sync working course:", error);
+          }
+        }
+      });
     }
   },
 
@@ -479,14 +520,27 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     // skipBackendSync is used when updating local map for items in already-fired courses
     const dbOrderId = orderData.dbOrderId;
     if (_supabaseClient && dbOrderId && dbItemId && isValidUUID(dbItemId) && !skipBackendSync) {
-      _supabaseClient
-        .rpc("set_item_course", {
+      // Route through the per-order chain so concurrent calls serialize and
+      // avoid the ensure_course_exists TOCTOU race (see module top comment).
+      const client = _supabaseClient;
+      chainCourseRpc(dbOrderId, async () => {
+        const { error } = await client.rpc("set_item_course", {
           p_order_item_id: dbItemId,
           p_course_number: courseNumber,
-        })
-        .then(({ error }) => {
-          if (error) console.error("Failed to sync item course:", error);
         });
+        if (error) {
+          // 23505 means another transaction already created the course row
+          // between our SELECT and INSERT. With chaining this should be
+          // rare, but keep a quiet log in case it slips through.
+          if ((error as any)?.code === "23505") {
+            console.warn(
+              "[Coursing] set_item_course hit unique_order_course race; item course may be stale",
+            );
+          } else {
+            console.error("Failed to sync item course:", error);
+          }
+        }
+      });
     }
   },
 
