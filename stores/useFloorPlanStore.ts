@@ -1282,20 +1282,6 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const waitlistEntry = get().waitlist.find(
             entry => entry.id === waitlistId
           )
-          const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
-            get().tablesById,
-            tableIds
-          )
-          if (
-            waitlistEntry &&
-            hasKnownCapacity &&
-            waitlistEntry.party_size > totalCapacity
-          ) {
-            throw new Error(
-              `Party size ${waitlistEntry.party_size} exceeds table capacity ${totalCapacity}.`
-            )
-          }
-
           const supabase = getClient()
           const { data, error } = await FloorPlanService.seatFromWaitlist(
             supabase,
@@ -1433,21 +1419,6 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const reservation = get().reservations.find(
             entry => entry.id === reservationId
           )
-          const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
-            get().tablesById,
-            tableIds ?? []
-          )
-          if (
-            reservation &&
-            tableIds?.length &&
-            hasKnownCapacity &&
-            reservation.party_size > totalCapacity
-          ) {
-            throw new Error(
-              `Party size ${reservation.party_size} exceeds table capacity ${totalCapacity}.`
-            )
-          }
-
           const supabase = getClient()
           const { data, error } = await FloorPlanService.seatReservation(
             supabase,
