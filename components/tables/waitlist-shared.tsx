@@ -207,9 +207,19 @@ export const WaitlistCard: React.FC<{
           )}
           {onEdit && (
             <TouchableOpacity
-              onPress={e => { e.stopPropagation?.(); onEdit() }}
+              onPress={e => {
+                e.stopPropagation?.()
+                onEdit()
+              }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{ marginLeft: 6, padding: 4, borderRadius: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+              style={{
+                marginLeft: 6,
+                padding: 4,
+                borderRadius: 6,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
             >
               <Pencil size={13} color={colors.label} />
             </TouchableOpacity>

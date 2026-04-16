@@ -2,7 +2,18 @@ import { colors } from '@/lib/theme'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
-import { AlertCircle, ChevronDown, Clock, Mail, Minus, Phone, Plus, StickyNote, Users, UserCircle } from 'lucide-react-native'
+import {
+  AlertCircle,
+  ChevronDown,
+  Clock,
+  Mail,
+  Minus,
+  Phone,
+  Plus,
+  StickyNote,
+  UserCircle,
+  Users
+} from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -10,7 +21,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native'
 
 interface AddToWaitlistFormProps {
@@ -49,29 +60,101 @@ const labelStyle = {
   fontWeight: '700' as const,
   textTransform: 'uppercase' as const,
   letterSpacing: 0.8,
-  marginBottom: 5,
+  marginBottom: 5
 }
 
-
 const DropdownModal = ({
-  visible, onClose, title, options, selected, onSelect,
+  visible,
+  onClose,
+  title,
+  options,
+  selected,
+  onSelect
 }: {
-  visible: boolean; onClose: () => void; title: string; options: string[]; selected: string; onSelect: (v: string) => void
+  visible: boolean
+  onClose: () => void
+  title: string
+  options: string[]
+  selected: string
+  onSelect: (v: string) => void
 }) => (
-  <Modal visible={visible} transparent animationType='fade' onRequestClose={onClose}>
-    <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center' }}>
-      <TouchableOpacity activeOpacity={1} style={{ width: 260, backgroundColor: colors.card, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-        <View style={{ paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <Text style={{ color: colors.heading, fontSize: 12, fontWeight: '700' }}>{title}</Text>
+  <Modal
+    visible={visible}
+    transparent
+    animationType='fade'
+    onRequestClose={onClose}
+  >
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={onClose}
+      style={{
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        style={{
+          width: 260,
+          backgroundColor: colors.card,
+          borderRadius: 12,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: colors.border
+        }}
+      >
+        <View
+          style={{
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border
+          }}
+        >
+          <Text
+            style={{ color: colors.heading, fontSize: 12, fontWeight: '700' }}
+          >
+            {title}
+          </Text>
         </View>
         {options.map(item => (
           <TouchableOpacity
             key={item}
-            onPress={() => { onSelect(item); onClose() }}
-            style={{ paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border + '50', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+            onPress={() => {
+              onSelect(item)
+              onClose()
+            }}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 11,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border + '50',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
           >
-            <Text style={{ fontSize: 12, color: item === selected ? colors.teal : colors.label, fontWeight: item === selected ? '700' : '400' }}>{item}</Text>
-            {item === selected && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.teal }} />}
+            <Text
+              style={{
+                fontSize: 12,
+                color: item === selected ? colors.teal : colors.label,
+                fontWeight: item === selected ? '700' : '400'
+              }}
+            >
+              {item}
+            </Text>
+            {item === selected && (
+              <View
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 4,
+                  backgroundColor: colors.teal
+                }}
+              />
+            )}
           </TouchableOpacity>
         ))}
       </TouchableOpacity>
@@ -79,7 +162,13 @@ const DropdownModal = ({
   </Modal>
 )
 
-export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, onCancel, isLoading, mode = 'add', initialValues }) => {
+export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
+  onSubmit,
+  onCancel,
+  isLoading,
+  mode = 'add',
+  initialValues
+}) => {
   const tables = useFloorPlanStore(s => s.tables)
   const waitlist = useWaitlistStore(s => s.waitlist)
 
@@ -87,22 +176,35 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
   const [partySize, setPartySize] = useState(initialValues?.party_size ?? 2)
   const [phone, setPhone] = useState(initialValues?.phone ?? '')
   const [email, setEmail] = useState(initialValues?.email ?? '')
-  const [seatingPreference, setSeatingPreference] = useState(initialValues?.seating_preference ?? 'No Preference')
-  const [preferredSection, setPreferredSection] = useState(initialValues?.preferred_section ?? 'No Preference')
+  const [seatingPreference, setSeatingPreference] = useState(
+    initialValues?.seating_preference ?? 'No Preference'
+  )
+  const [preferredSection, setPreferredSection] = useState(
+    initialValues?.preferred_section ?? 'No Preference'
+  )
   const [notes, setNotes] = useState(initialValues?.notes ?? '')
-  const [quotedWait, setQuotedWait] = useState(initialValues?.quoted_wait_minutes != null ? String(initialValues.quoted_wait_minutes) : '15')
+  const [quotedWait, setQuotedWait] = useState(
+    initialValues?.quoted_wait_minutes != null
+      ? String(initialValues.quoted_wait_minutes)
+      : '15'
+  )
   const [showSeatingDropdown, setShowSeatingDropdown] = useState(false)
   const [showSectionDropdown, setShowSectionDropdown] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
-  const [autoCalculatedWait, setAutoCalculatedWait] = useState<number | null>(null)
+  const [autoCalculatedWait, setAutoCalculatedWait] = useState<number | null>(
+    null
+  )
   const [isWaitOverridden, setIsWaitOverridden] = useState(mode === 'edit')
   const [estimatedReadyAt, setEstimatedReadyAt] = useState<Date | null>(null)
 
   useEffect(() => {
     if (tables.length === 0) return
-    const activeAhead = waitlist.filter(w => w.status === 'waiting' || w.status === 'notified').length
+    const activeAhead = waitlist.filter(
+      w => w.status === 'waiting' || w.status === 'notified'
+    ).length
     const calculator = new WaitTimeCalculator(tables, waitlist)
-    const { waitTime, estimatedReadyAt: calculated } = calculator.calculateWaitTimeEnhanced(partySize, activeAhead)
+    const { waitTime, estimatedReadyAt: calculated } =
+      calculator.calculateWaitTimeEnhanced(partySize, activeAhead)
     setAutoCalculatedWait(waitTime)
     setEstimatedReadyAt(calculated)
     if (!isWaitOverridden) setQuotedWait(String(waitTime))
@@ -120,10 +222,13 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
     const newErrors: string[] = []
     if (!partyName.trim()) newErrors.push('Party name is required')
     if (partySize < 1) newErrors.push('Party size must be at least 1')
-    if (phone && !/^[\d\s\-\+\(\)]+$/.test(phone)) newErrors.push('Invalid phone number')
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) newErrors.push('Invalid email address')
+    if (phone && !/^[\d\s\-\+\(\)]+$/.test(phone))
+      newErrors.push('Invalid phone number')
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      newErrors.push('Invalid email address')
     const wait = parseInt(quotedWait, 10)
-    if (isNaN(wait) || wait < 0) newErrors.push('Wait time must be a positive number')
+    if (isNaN(wait) || wait < 0)
+      newErrors.push('Wait time must be a positive number')
     setErrors(newErrors)
     return newErrors.length === 0
   }
@@ -135,11 +240,13 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
       party_size: partySize,
       phone: phone.trim() || undefined,
       email: email.trim() || undefined,
-      seating_preference: seatingPreference !== 'No Preference' ? seatingPreference : undefined,
-      preferred_section: preferredSection !== 'No Preference' ? preferredSection : undefined,
+      seating_preference:
+        seatingPreference !== 'No Preference' ? seatingPreference : undefined,
+      preferred_section:
+        preferredSection !== 'No Preference' ? preferredSection : undefined,
       notes: notes.trim() || undefined,
       quoted_wait_minutes: quotedWait ? parseInt(quotedWait, 10) : undefined,
-      estimated_ready_at: estimatedReadyAt?.toISOString(),
+      estimated_ready_at: estimatedReadyAt?.toISOString()
     })
   }
 
@@ -149,11 +256,34 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
     <View style={{ paddingBottom: 16, paddingHorizontal: 14, paddingTop: 10 }}>
       {/* Errors */}
       {errors.length > 0 && (
-        <View style={{ marginBottom: 12, padding: 10, borderRadius: 8, backgroundColor: colors.danger + '12', borderWidth: 1, borderColor: colors.danger + '40' }}>
+        <View
+          style={{
+            marginBottom: 12,
+            padding: 10,
+            borderRadius: 8,
+            backgroundColor: colors.danger + '12',
+            borderWidth: 1,
+            borderColor: colors.danger + '40'
+          }}
+        >
           {errors.map((error, idx) => (
-            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: idx < errors.length - 1 ? 4 : 0 }}>
-              <AlertCircle size={12} color={colors.danger} style={{ marginTop: 1 }} />
-              <Text style={{ color: colors.danger, fontSize: 12, flex: 1 }}>{error}</Text>
+            <View
+              key={idx}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 6,
+                marginBottom: idx < errors.length - 1 ? 4 : 0
+              }}
+            >
+              <AlertCircle
+                size={12}
+                color={colors.danger}
+                style={{ marginTop: 1 }}
+              />
+              <Text style={{ color: colors.danger, fontSize: 12, flex: 1 }}>
+                {error}
+              </Text>
             </View>
           ))}
         </View>
@@ -162,7 +292,18 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
       {/* ── Party Name ── */}
       <View style={{ marginBottom: 12 }}>
         <Text style={labelStyle}>Guest Name *</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: hasName ? colors.teal + '60' : colors.border, paddingHorizontal: 10, gap: 8 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.screen,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: hasName ? colors.teal + '60' : colors.border,
+            paddingHorizontal: 10,
+            gap: 8
+          }}
+        >
           <UserCircle size={15} color={hasName ? colors.teal : colors.muted} />
           <TextInput
             autoFocus
@@ -171,7 +312,13 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
             placeholder='Guest name or party'
             placeholderTextColor={colors.muted}
             maxLength={100}
-            style={{ flex: 1, fontSize: 14, color: colors.heading, paddingVertical: 9, fontWeight: '600' }}
+            style={{
+              flex: 1,
+              fontSize: 14,
+              color: colors.heading,
+              paddingVertical: 9,
+              fontWeight: '600'
+            }}
           />
         </View>
       </View>
@@ -180,53 +327,170 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
         {/* Party size stepper */}
         <View style={{ flex: 1 }}>
-          <View style={{ height: 14, justifyContent: 'center', marginBottom: 5 }}>
+          <View
+            style={{ height: 14, justifyContent: 'center', marginBottom: 5 }}
+          >
             <Text style={{ ...labelStyle, marginBottom: 0 }}>Party Size *</Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', height: 38 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: colors.screen,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              overflow: 'hidden',
+              height: 38
+            }}
+          >
             <TouchableOpacity
               onPress={() => adjustPartySize(-1)}
-              style={{ width: 36, height: '100%', alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: colors.border }}
+              style={{
+                width: 36,
+                height: '100%',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRightWidth: 1,
+                borderRightColor: colors.border
+              }}
             >
-              <Minus size={13} color={partySize <= 1 ? colors.muted : colors.label} />
+              <Minus
+                size={13}
+                color={partySize <= 1 ? colors.muted : colors.label}
+              />
             </TouchableOpacity>
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+            <View
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 5
+              }}
+            >
               <Users size={12} color={colors.muted} />
-              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.heading, lineHeight: 20 }}>{partySize}</Text>
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: '800',
+                  color: colors.heading,
+                  lineHeight: 20
+                }}
+              >
+                {partySize}
+              </Text>
             </View>
             <TouchableOpacity
               onPress={() => adjustPartySize(1)}
-              style={{ width: 36, height: '100%', alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: colors.border }}
+              style={{
+                width: 36,
+                height: '100%',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderLeftWidth: 1,
+                borderLeftColor: colors.border
+              }}
             >
-              <Plus size={13} color={partySize >= 20 ? colors.muted : colors.label} />
+              <Plus
+                size={13}
+                color={partySize >= 20 ? colors.muted : colors.label}
+              />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Wait time */}
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5, height: 14 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+              marginBottom: 5,
+              height: 14
+            }}
+          >
             <Text style={{ ...labelStyle, marginBottom: 0 }}>Wait (min)</Text>
             {autoCalculatedWait !== null && !isWaitOverridden && (
-              <View style={{ paddingHorizontal: 5, borderRadius: 4, backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '40', height: 14, justifyContent: 'center' }}>
-                <Text style={{ color: colors.teal, fontSize: 8, fontWeight: '700' }}>AUTO</Text>
+              <View
+                style={{
+                  paddingHorizontal: 5,
+                  borderRadius: 4,
+                  backgroundColor: colors.teal + '18',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '40',
+                  height: 14,
+                  justifyContent: 'center'
+                }}
+              >
+                <Text
+                  style={{ color: colors.teal, fontSize: 8, fontWeight: '700' }}
+                >
+                  AUTO
+                </Text>
               </View>
             )}
             {isWaitOverridden && (
-              <View style={{ paddingHorizontal: 5, borderRadius: 4, backgroundColor: colors.warning + '18', borderWidth: 1, borderColor: colors.warning + '40', height: 14, justifyContent: 'center' }}>
-                <Text style={{ color: colors.warning, fontSize: 8, fontWeight: '700' }}>CUSTOM</Text>
+              <View
+                style={{
+                  paddingHorizontal: 5,
+                  borderRadius: 4,
+                  backgroundColor: colors.warning + '18',
+                  borderWidth: 1,
+                  borderColor: colors.warning + '40',
+                  height: 14,
+                  justifyContent: 'center'
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.warning,
+                    fontSize: 8,
+                    fontWeight: '700'
+                  }}
+                >
+                  CUSTOM
+                </Text>
               </View>
             )}
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: isWaitOverridden ? colors.warning + '60' : colors.border, paddingHorizontal: 10, gap: 6, height: 38 }}>
-            <Clock size={13} color={isWaitOverridden ? colors.warning : colors.muted} />
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: colors.screen,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: isWaitOverridden
+                ? colors.warning + '60'
+                : colors.border,
+              paddingHorizontal: 10,
+              gap: 6,
+              height: 38
+            }}
+          >
+            <Clock
+              size={13}
+              color={isWaitOverridden ? colors.warning : colors.muted}
+            />
             <TextInput
               value={quotedWait}
-              onChangeText={text => { setQuotedWait(text); setIsWaitOverridden(text !== String(autoCalculatedWait)) }}
+              onChangeText={text => {
+                setQuotedWait(text)
+                setIsWaitOverridden(text !== String(autoCalculatedWait))
+              }}
               placeholderTextColor={colors.muted}
               keyboardType='number-pad'
               maxLength={3}
-              style={{ flex: 1, fontSize: 16, fontWeight: '800', color: isWaitOverridden ? colors.warning : colors.heading, padding: 0, lineHeight: 20 }}
+              style={{
+                flex: 1,
+                fontSize: 16,
+                fontWeight: '800',
+                color: isWaitOverridden ? colors.warning : colors.heading,
+                padding: 0,
+                lineHeight: 20
+              }}
             />
             <Text style={{ color: colors.muted, fontSize: 11 }}>min</Text>
           </View>
@@ -236,8 +500,25 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
       {/* ── Contact ── */}
       <View style={{ marginBottom: 12 }}>
         <Text style={labelStyle}>Contact (Optional)</Text>
-        <View style={{ borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View
+          style={{
+            borderRadius: 10,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden'
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 10,
+              gap: 8,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border
+            }}
+          >
             <Phone size={13} color={colors.muted} />
             <TextInput
               value={phone}
@@ -246,10 +527,22 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
               placeholderTextColor={colors.muted}
               keyboardType='phone-pad'
               maxLength={20}
-              style={{ flex: 1, fontSize: 13, color: colors.heading, paddingVertical: 10 }}
+              style={{
+                flex: 1,
+                fontSize: 13,
+                color: colors.heading,
+                paddingVertical: 10
+              }}
             />
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 8 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 10,
+              gap: 8
+            }}
+          >
             <Mail size={13} color={colors.muted} />
             <TextInput
               value={email}
@@ -258,7 +551,12 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
               placeholderTextColor={colors.muted}
               keyboardType='email-address'
               maxLength={100}
-              style={{ flex: 1, fontSize: 13, color: colors.heading, paddingVertical: 10 }}
+              style={{
+                flex: 1,
+                fontSize: 13,
+                color: colors.heading,
+                paddingVertical: 10
+              }}
             />
           </View>
         </View>
@@ -272,9 +570,32 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
             <Text style={{ ...labelStyle, marginBottom: 5 }}>Type</Text>
             <TouchableOpacity
               onPress={() => setShowSeatingDropdown(true)}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: seatingPreference !== 'No Preference' ? colors.info + '60' : colors.border, paddingHorizontal: 10, paddingVertical: 10 }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: colors.card,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor:
+                  seatingPreference !== 'No Preference'
+                    ? colors.info + '60'
+                    : colors.border,
+                paddingHorizontal: 10,
+                paddingVertical: 10
+              }}
             >
-              <Text style={{ fontSize: 12, color: seatingPreference !== 'No Preference' ? colors.info : colors.label }}>{seatingPreference}</Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color:
+                    seatingPreference !== 'No Preference'
+                      ? colors.info
+                      : colors.label
+                }}
+              >
+                {seatingPreference}
+              </Text>
               <ChevronDown size={12} color={colors.muted} />
             </TouchableOpacity>
           </View>
@@ -282,9 +603,32 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
             <Text style={{ ...labelStyle, marginBottom: 5 }}>Section</Text>
             <TouchableOpacity
               onPress={() => setShowSectionDropdown(true)}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: preferredSection !== 'No Preference' ? colors.info + '60' : colors.border, paddingHorizontal: 10, paddingVertical: 10 }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: colors.card,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor:
+                  preferredSection !== 'No Preference'
+                    ? colors.info + '60'
+                    : colors.border,
+                paddingHorizontal: 10,
+                paddingVertical: 10
+              }}
             >
-              <Text style={{ fontSize: 12, color: preferredSection !== 'No Preference' ? colors.info : colors.label }}>{preferredSection}</Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color:
+                    preferredSection !== 'No Preference'
+                      ? colors.info
+                      : colors.label
+                }}
+              >
+                {preferredSection}
+              </Text>
               <ChevronDown size={12} color={colors.muted} />
             </TouchableOpacity>
           </View>
@@ -293,7 +637,14 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
 
       {/* ── Notes ── */}
       <View style={{ marginBottom: 16 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            marginBottom: 5
+          }}
+        >
           <StickyNote size={11} color={colors.muted} />
           <Text style={labelStyle}>Special Requests (Optional)</Text>
         </View>
@@ -304,7 +655,18 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
           placeholderTextColor={colors.muted}
           multiline
           maxLength={500}
-          style={{ backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: colors.heading, minHeight: 70, textAlignVertical: 'top' }}
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            fontSize: 13,
+            color: colors.heading,
+            minHeight: 70,
+            textAlignVertical: 'top'
+          }}
         />
       </View>
 
@@ -313,23 +675,70 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({ onSubmit, 
         <TouchableOpacity
           onPress={onCancel}
           disabled={isLoading}
-          style={{ flex: 1, paddingVertical: 11, borderRadius: 9, alignItems: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}
+          style={{
+            flex: 1,
+            paddingVertical: 11,
+            borderRadius: 9,
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.card
+          }}
         >
-          <Text style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}>Cancel</Text>
+          <Text
+            style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}
+          >
+            Cancel
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handleSubmit}
           disabled={isLoading}
-          style={{ flex: 2, paddingVertical: 11, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '60', opacity: isLoading ? 0.5 : 1 }}
+          style={{
+            flex: 2,
+            paddingVertical: 11,
+            borderRadius: 9,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: colors.teal + '20',
+            borderWidth: 1,
+            borderColor: colors.teal + '60',
+            opacity: isLoading ? 0.5 : 1
+          }}
         >
-          {isLoading
-            ? <ActivityIndicator color={colors.teal} size='small' />
-            : <Text style={{ color: colors.teal, fontWeight: '800', fontSize: 13, letterSpacing: 0.3 }}>{mode === 'edit' ? 'Save Changes' : 'Add to Waitlist'}</Text>}
+          {isLoading ? (
+            <ActivityIndicator color={colors.teal} size='small' />
+          ) : (
+            <Text
+              style={{
+                color: colors.teal,
+                fontWeight: '800',
+                fontSize: 13,
+                letterSpacing: 0.3
+              }}
+            >
+              {mode === 'edit' ? 'Save Changes' : 'Add to Waitlist'}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 
-      <DropdownModal visible={showSeatingDropdown} onClose={() => setShowSeatingDropdown(false)} title='Seating Preference' options={SEATING_PREFERENCES} selected={seatingPreference} onSelect={setSeatingPreference} />
-      <DropdownModal visible={showSectionDropdown} onClose={() => setShowSectionDropdown(false)} title='Preferred Section' options={SECTIONS} selected={preferredSection} onSelect={setPreferredSection} />
+      <DropdownModal
+        visible={showSeatingDropdown}
+        onClose={() => setShowSeatingDropdown(false)}
+        title='Seating Preference'
+        options={SEATING_PREFERENCES}
+        selected={seatingPreference}
+        onSelect={setSeatingPreference}
+      />
+      <DropdownModal
+        visible={showSectionDropdown}
+        onClose={() => setShowSectionDropdown(false)}
+        title='Preferred Section'
+        options={SECTIONS}
+        selected={preferredSection}
+        onSelect={setPreferredSection}
+      />
     </View>
   )
 }

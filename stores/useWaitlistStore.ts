@@ -285,7 +285,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         guestName: entry.party_name,
         guestPhone: entry.phone ?? undefined,
         waitlistId: entryId,
-        createOrder: true,
+        createOrder: true
       })
 
       // Retry accuracy tracking post-seat if pre-seat write did not persist.
@@ -310,7 +310,9 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         waitlist: state.waitlist.filter(entry => entry.id !== entryId)
       }))
 
-      return result.sessionId ? { session_id: result.sessionId, order_id: result.orderId } : null
+      return result.sessionId
+        ? { session_id: result.sessionId, order_id: result.orderId }
+        : null
     } catch (err: any) {
       console.error('Failed to seat from waitlist:', err)
       // Still remove locally
