@@ -85,6 +85,8 @@ const MerchantLoginScreen = () => {
     router.replace("/store-select");
   };
 
+  // TODO: Test this out
+
   /** Pick the best second factor and prepare it (sends SMS if phone_code). */
   const initiateSecondFactor = async () => {
     if (!signIn) return;

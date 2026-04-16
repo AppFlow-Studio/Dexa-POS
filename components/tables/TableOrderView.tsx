@@ -876,7 +876,6 @@ const TableOrderView = React.forwardRef<
 
   const handleSelectCourse = useCallback(
     (courseId: number | null) => {
-      setSelectedCourseIdForTracker(courseId)
       if (activeOrder && courseId !== null) {
         setCurrentCourse(activeOrder.id, courseId)
       }
@@ -1088,15 +1087,6 @@ const TableOrderView = React.forwardRef<
         </View>
       )}
 
-      {isOvertime && (
-        <View className='p-2 bg-yellow-500 items-center'>
-          <Text className='text-base font-bold text-yellow-900'>
-            This table has exceeded the default sitting time of{' '}
-            {defaultSittingTimeMinutes} minutes.
-          </Text>
-        </View>
-      )}
-
       {/* Stage 1: OrderInfoHeader + TableBillSection (user sees their bill first) */}
       {renderStage >= 1 ? (
         <>
@@ -1204,6 +1194,8 @@ const TableOrderView = React.forwardRef<
               onPrioritizeCourse={handlePrioritizeCourse}
               onResendCourse={handleResendCourse}
               onPressSendAllToKitchen={handleSendAllToKitchen}
+              isOvertime={isOvertime}
+              overtimeMinutes={defaultSittingTimeMinutes}
             />
             <View className='flex-1 p-4 px-3 pt-0'>
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}
@@ -1260,18 +1252,6 @@ const TableOrderView = React.forwardRef<
       {/* Stage 2: Teleport items that need root-level rendering */}
       {renderStage >= 2 && (
         <Teleport hostName='root'>
-          {selectedCourseIdForTracker !== null && (
-            <ItemProgressTracker
-              selectedCourse={selectedCourseIdForTracker}
-              itemsInSelectedCourse={itemsInSelectedCourse}
-              onMarkAllReady={handleMarkAllReadyForCourse}
-              isCourseSent={isCourseSent(
-                activeOrder?.id || '',
-                selectedCourseIdForTracker
-              )}
-            />
-          )}
-
           <ServerSelectSheet
             isOpen={serverSheetOpen}
             onClose={handleCloseServerSheet}

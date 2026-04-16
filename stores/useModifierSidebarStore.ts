@@ -525,8 +525,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           seatCount = isTableOrder
             ? useSeatingStore.getState().getSeatCount(activeOrderId)
             : 0
-          showSeatPicker =
-            enablePerSeatOrdering && isTableOrder && seatCount > 0
+          showSeatPicker = isTableOrder && seatCount > 0
 
           if (cartItemParam) {
             // Edit mode: use the item's current seat
@@ -633,7 +632,6 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           showSeatPicker:
             !!fallbackOrderId &&
             !!uos.getState().ordersById[fallbackOrderId]?.service_location_id &&
-            enablePerSeatOrdering &&
             useSeatingStore.getState().getSeatCount(fallbackOrderId) > 0
         })
       }

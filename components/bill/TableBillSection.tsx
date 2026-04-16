@@ -336,7 +336,9 @@ const DenseSeatView = React.memo(
     onRushCourse,
     onPrioritizeCourse,
     onResendCourse,
-    enableCoursing = false
+    enableCoursing = false,
+    isOvertime,
+    overtimeMinutes
   }: {
     activeOrder: OrderProfile | undefined
     itemSeatMap?: Record<string, number | null>
@@ -354,6 +356,8 @@ const DenseSeatView = React.memo(
     onPrioritizeCourse?: (courseId: number) => void
     onResendCourse?: (courseId: number) => void
     enableCoursing?: boolean
+    isOvertime?: boolean
+    overtimeMinutes?: number
   }) => {
     const [actionCourse, setActionCourse] = useState<number | null>(null)
     const [collapsedSeats, setCollapsedSeats] = useState<Set<string | number>>(
@@ -685,6 +689,13 @@ const DenseSeatView = React.memo(
               : ''}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {isOvertime && (
+              <View style={{ backgroundColor: 'rgba(120,53,15,0.3)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: '#facc15' }}>
+                  {overtimeMinutes}min exceeded
+                </Text>
+              </View>
+            )}
             {hasItems && (
               <View
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
@@ -902,7 +913,9 @@ const TableBillSection = ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
-  onPressSendAllToKitchen
+  onPressSendAllToKitchen,
+  isOvertime,
+  overtimeMinutes
 }: {
   showOrderDetails?: boolean
   itemCourseMap?: Record<string, number>
@@ -937,6 +950,8 @@ const TableBillSection = ({
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
   onPressSendAllToKitchen?: () => void
+  isOvertime?: boolean
+  overtimeMinutes?: number
 }) => {
   const removeCheckDiscount = useOrderStore(state => state.removeCheckDiscount)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
@@ -972,6 +987,8 @@ const TableBillSection = ({
           onPrioritizeCourse={onPrioritizeCourse}
           onResendCourse={onResendCourse}
           enableCoursing={enableCoursing}
+          isOvertime={isOvertime}
+          overtimeMinutes={overtimeMinutes}
         />
       )
     }
@@ -991,6 +1008,8 @@ const TableBillSection = ({
         onPrioritizeCourse={onPrioritizeCourse}
         onResendCourse={onResendCourse}
         enableCoursing={enableCoursing}
+        isOvertime={isOvertime}
+        overtimeMinutes={overtimeMinutes}
       />
     )
   }

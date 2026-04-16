@@ -48,6 +48,8 @@ interface CourseAccordionProps {
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
   enableCoursing?: boolean
+  isOvertime?: boolean
+  overtimeMinutes?: number
 }
 
 interface CourseGroupProps {
@@ -170,18 +172,6 @@ function CourseGroupInner ({
             >
               Course {courseId}
             </Text>
-            {isSent && (
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '600',
-                  color: colors.teal,
-                  marginLeft: 6
-                }}
-              >
-                Sent
-              </Text>
-            )}
             {aggregateStatus && (
               <View
                 className={`ml-2 px-2 py-0.5 rounded ${BADGE_CONFIG[aggregateStatus].bg}`}
@@ -387,8 +377,6 @@ function CourseGroupInner ({
 }
 
 const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
-  // Only re-render when structure changes (IDs, counts, voided) — not on kitchen_status updates
-  // BillItem subscribes directly to the order store for its own kitchen_status display
   if (prev.courseId !== next.courseId) return false
   if (prev.isExpanded !== next.isExpanded) return false
   if (prev.isSent !== next.isSent) return false
@@ -405,7 +393,9 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
     if (
       p.id !== n.id ||
       p.quantity !== n.quantity ||
-      p.is_voided !== n.is_voided
+      p.is_voided !== n.is_voided ||
+      p.price !== n.price ||
+      p.customizations !== n.customizations
     )
       return false
   }
@@ -425,7 +415,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
-  enableCoursing = true
+  enableCoursing = true,
+  isOvertime,
+  overtimeMinutes
 }) => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null)
   const prevItemCount = useRef<number>(0)
@@ -460,7 +452,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       .join(',')
   }, [activeOrder?.items, itemCourseMap])
 
-  // Group items by course — only recalculates when IDs or course assignments change
+  // Group items by course — recalculates when grouping changes OR item content changes
   const groupedItems = useMemo(() => {
     const groups: Record<number, CartItem[]> = {}
     activeOrder?.items?.forEach(item => {
@@ -480,8 +472,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       })
     })
     return groups
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsGroupingKey])
+  }, [activeOrder?.items, itemCourseMap])
 
   // Sort course keys
   const sortedCourses = useMemo(() => {
@@ -533,7 +524,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const handleToggleCourse = useCallback((courseId: number) => {
     setExpandedCourseId(prev => {
       const next = prev === courseId ? null : courseId
-      onSelectCourseRef.current?.(next)
+      // Defer onSelectCourse to avoid setState-during-render warning
+      // (parent component may call setCurrentCourse in response)
+      queueMicrotask(() => onSelectCourseRef.current?.(next))
       return next
     })
   }, [])
@@ -618,20 +611,29 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
             ? `#${orderMeta.dbOrderId.substring(0, 8)}`
             : ''}
         </Text>
-        {enableCoursing && (
-          <TouchableOpacity
-            onPress={onPressStartNewCourse}
-            className='flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal'
-            activeOpacity={0.8}
-          >
-            <Plus size={16} color={colors.teal} />
-            <Text
-              style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
+        <View className='flex-row items-center gap-2'>
+          {isOvertime && (
+            <View className='bg-yellow-900/30 px-2.5 py-1 rounded-full'>
+              <Text style={{ fontSize: 10, fontWeight: '600' }} className='text-yellow-400'>
+                {overtimeMinutes}min exceeded
+              </Text>
+            </View>
+          )}
+          {enableCoursing && (
+            <TouchableOpacity
+              onPress={onPressStartNewCourse}
+              className='flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal'
+              activeOpacity={0.8}
             >
-              New Course
-            </Text>
-          </TouchableOpacity>
-        )}
+              <Plus size={16} color={colors.teal} />
+              <Text
+                style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
+              >
+                New Course
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>

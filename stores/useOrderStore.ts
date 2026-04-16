@@ -102,6 +102,11 @@ import {
   clearOrderPendingVoid,
   isOrderPendingVoid
 } from '@/lib/pendingVoidOrderIds'
+import {
+  clearItemPendingRemoval,
+  isItemPendingRemoval,
+  markItemPendingRemoval
+} from '@/lib/pendingItemRemovals'
 import { detectConflict } from '@/services/conflictDetectionService'
 import { useConflictStore } from '@/stores/useConflictStore'
 import {
@@ -3307,11 +3312,21 @@ export const useOrderStore = create<OrderState>()(
 
                     // Phase 7D: Check for pending local changes using db_order_item_id
                     // Items without db_order_item_id are pending (not yet synced)
+                    // Also check itemSyncStatus for items whose quantity/update sync is
+                    // in-flight — a stale broadcast must not overwrite their optimistic
+                    // state before the RPC acknowledgement comes back.
                     const hasPendingChanges =
                       !localOrder.db_order_id || // Order not yet created in backend
                       localOrder.items.some(
                         item => !item.db_order_item_id && !item.isDraft
-                      )
+                      ) ||
+                      localOrder.items.some(item => {
+                        if (item.isDraft) return false
+                        const status = useSyncStatusStore
+                          .getState()
+                          .itemSyncStatus.get(item.id)
+                        return status === 'pending' || status === 'syncing'
+                      })
 
                     // PERFORMANCE: Skip update if no meaningful data changed
                     // Compare key fields that actually affect UI
@@ -3568,9 +3583,19 @@ export const useOrderStore = create<OrderState>()(
                               !broadcastItemIds.has(item.db_order_item_id)
                           )
 
+                        // Drop items that the user has just removed/voided locally.
+                        // The removal RPC is fire-and-forget; a broadcast fetched before
+                        // the RPC commits still lists the item and would cause it to
+                        // visually reappear until the next broadcast.
+                        const filteredSyncedItems = updatedSyncedItems.filter(
+                          item =>
+                            !item.db_order_item_id ||
+                            !isItemPendingRemoval(item.db_order_item_id)
+                        )
+
                         // Combine: broadcast items + local pending + locally-synced-but-not-yet-in-broadcast
                         mergedItems = [
-                          ...updatedSyncedItems,
+                          ...filteredSyncedItems,
                           ...localPendingItems,
                           ...localSyncedNotInBroadcast
                         ]
@@ -6252,27 +6277,31 @@ export const useOrderStore = create<OrderState>()(
             if (itemToHandle?.db_order_item_id && _supabaseClient) {
               const dbItemId = itemToHandle.db_order_item_id
 
+              // Mark the item as pending-removal so stale broadcasts arriving
+              // during the RPC window don't re-introduce it into the cart.
+              markItemPendingRemoval(dbItemId)
+
               if (isKitchenItem) {
                 // Item was sent to kitchen - use VOID (soft delete, keeps record)
                 const reason = voidReason || 'User voided'
-                OrderService.voidOrderItem(
-                  _supabaseClient,
-                  dbItemId,
-                  reason
-                ).catch(async err => {
-                  console.error('Failed to void item:', err)
-                  // Queue for offline retry
-                  await queueOperation({
-                    type: 'void_item',
-                    params: { orderItemId: dbItemId, reason },
-                    localOrderId: activeOrderId,
-                    localItemId: itemId
+                OrderService.voidOrderItem(_supabaseClient, dbItemId, reason)
+                  .catch(async err => {
+                    console.error('Failed to void item:', err)
+                    // Queue for offline retry
+                    await queueOperation({
+                      type: 'void_item',
+                      params: { orderItemId: dbItemId, reason },
+                      localOrderId: activeOrderId,
+                      localItemId: itemId
+                    })
                   })
-                })
+                  .finally(() => {
+                    clearItemPendingRemoval(dbItemId)
+                  })
               } else {
                 // Item was NOT sent to kitchen - use REMOVE (hard delete)
-                OrderService.removeOrderItem(_supabaseClient, dbItemId).catch(
-                  async err => {
+                OrderService.removeOrderItem(_supabaseClient, dbItemId)
+                  .catch(async err => {
                     console.error('Failed to remove item:', err)
                     // Queue for offline retry
                     await queueOperation({
@@ -6281,8 +6310,10 @@ export const useOrderStore = create<OrderState>()(
                       localOrderId: activeOrderId,
                       localItemId: itemId
                     })
-                  }
-                )
+                  })
+                  .finally(() => {
+                    clearItemPendingRemoval(dbItemId)
+                  })
               }
             }
           },
@@ -12272,7 +12303,13 @@ export const useOrderStore = create<OrderState>()(
                 const updatedOrder: OrderProfile = {
                   ...currentOrder,
                   items: [
-                    ...transformedItems,
+                    // Drop items mid-removal so a backend fetch that still shows
+                    // them can't re-introduce them into the cart.
+                    ...transformedItems.filter(
+                      item =>
+                        !item.db_order_item_id ||
+                        !isItemPendingRemoval(item.db_order_item_id)
+                    ),
                     ...localPendingItems,
                     ...localSyncedNotInBackend
                   ],
