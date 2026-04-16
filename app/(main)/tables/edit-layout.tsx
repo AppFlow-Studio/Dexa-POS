@@ -6,14 +6,23 @@ import {
   DragToAddProvider,
   useDragToAddContext
 } from '@/contexts/DragToAddContext'
-import { colors } from '@/lib/theme'
 import { SHAPE_OPTIONS, TABLE_SHAPES } from '@/lib/table-shapes'
+import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import BottomSheet from '@gorhom/bottom-sheet'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Maximize2, Minus, Plus, Redo2, Undo2 } from 'lucide-react-native'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -22,21 +31,96 @@ import Animated, {
   useSharedValue,
   withTiming
 } from 'react-native-reanimated'
-import Svg, { Defs, Line as SvgLine, Pattern, Rect } from 'react-native-svg'
+import Svg, { Defs, Pattern, Rect, Line as SvgLine } from 'react-native-svg'
 
 const SHAPE_SIZE = 100
 const FINGER_Y_OFFSET = 0
+const DEFAULT_CANVAS_WORLD_WIDTH = 2400
+const DEFAULT_CANVAS_WORLD_HEIGHT = 1600
+const MIN_CANVAS_DIMENSION = 600
+const MAX_CANVAS_DIMENSION = 6000
+
+// Shape size lookup for ghost rendering — plain object, accessible in worklets.
+const SHAPE_SIZES: Record<string, { w: number; h: number }> =
+  Object.fromEntries(
+    Object.entries(TABLE_SHAPES).map(([id, shape]) => [
+      id,
+      { w: (shape as any).width || 80, h: (shape as any).height || 80 }
+    ])
+  )
+
+const clamp = (value: number, min: number, max: number) => {
+  'worklet'
+  return Math.min(Math.max(value, min), max)
+}
+
+const clampCanvasTranslation = (
+  tx: number,
+  ty: number,
+  scale: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  worldWidth: number,
+  worldHeight: number
+) => {
+  'worklet'
+
+  const maxOffsetX = Math.max(0, (worldWidth * scale - viewportWidth) / 2)
+  const maxOffsetY = Math.max(0, (worldHeight * scale - viewportHeight) / 2)
+
+  return {
+    x: clamp(tx, -maxOffsetX, maxOffsetX),
+    y: clamp(ty, -maxOffsetY, maxOffsetY)
+  }
+}
 
 const GridPattern = () => (
   <Svg style={StyleSheet.absoluteFill} pointerEvents='none'>
     <Defs>
       <Pattern id='grid' width='20' height='20' patternUnits='userSpaceOnUse'>
-        <SvgLine x1='20' y1='0' x2='20' y2='20' stroke={colors.border} strokeWidth='0.5' opacity='0.5' />
-        <SvgLine x1='0' y1='20' x2='20' y2='20' stroke={colors.border} strokeWidth='0.5' opacity='0.5' />
+        <SvgLine
+          x1='20'
+          y1='0'
+          x2='20'
+          y2='20'
+          stroke={colors.border}
+          strokeWidth='0.5'
+          opacity='0.5'
+        />
+        <SvgLine
+          x1='0'
+          y1='20'
+          x2='20'
+          y2='20'
+          stroke={colors.border}
+          strokeWidth='0.5'
+          opacity='0.5'
+        />
       </Pattern>
-      <Pattern id='grid-major' width='100' height='100' patternUnits='userSpaceOnUse'>
-        <SvgLine x1='100' y1='0' x2='100' y2='100' stroke={colors.border} strokeWidth='1' opacity='0.9' />
-        <SvgLine x1='0' y1='100' x2='100' y2='100' stroke={colors.border} strokeWidth='1' opacity='0.9' />
+      <Pattern
+        id='grid-major'
+        width='100'
+        height='100'
+        patternUnits='userSpaceOnUse'
+      >
+        <SvgLine
+          x1='100'
+          y1='0'
+          x2='100'
+          y2='100'
+          stroke={colors.border}
+          strokeWidth='1'
+          opacity='0.9'
+        />
+        <SvgLine
+          x1='0'
+          y1='100'
+          x2='100'
+          y2='100'
+          stroke={colors.border}
+          strokeWidth='1'
+          opacity='0.9'
+        />
       </Pattern>
     </Defs>
     <Rect width='100%' height='100%' fill='url(#grid)' />
@@ -46,10 +130,28 @@ const GridPattern = () => (
 
 const LayoutEditorScreenContent = () => {
   const router = useRouter()
-  const { layoutId: layoutIdParam } = useLocalSearchParams<{ layoutId?: string | string[] }>()
-  const layoutId = Array.isArray(layoutIdParam) ? layoutIdParam[0] : layoutIdParam
+  const { layoutId: layoutIdParam } = useLocalSearchParams<{
+    layoutId?: string | string[]
+  }>()
+  const layoutId = Array.isArray(layoutIdParam)
+    ? layoutIdParam[0]
+    : layoutIdParam
 
-  const { floorPlans, tables: storeTables, selectedTableIds, selectMultipleTables, clearSelection, addTable, undo, redo, past, future, setActiveFloorPlan, activeFloorPlanId } = useFloorPlanStore()
+  const {
+    floorPlans,
+    tables: storeTables,
+    selectedTableIds,
+    selectMultipleTables,
+    clearSelection,
+    addTable,
+    undo,
+    redo,
+    past,
+    future,
+    setActiveFloorPlan,
+    activeFloorPlanId,
+    updateFloorPlan
+  } = useFloorPlanStore()
 
   // In edit mode: tapping an object selects only that object (single-select).
   // Tapping the already-selected object deselects it.
@@ -61,19 +163,28 @@ const LayoutEditorScreenContent = () => {
     }
   }
 
-  const activeLayout = useMemo(() => floorPlans.find(l => l.id === layoutId), [floorPlans, layoutId])
+  const activeLayout = useMemo(
+    () => floorPlans.find(l => l.id === layoutId),
+    [floorPlans, layoutId]
+  )
   const tables = storeTables
 
   useEffect(() => {
-    if (layoutId && layoutId !== useFloorPlanStore.getState().activeFloorPlanId) {
+    if (
+      layoutId &&
+      layoutId !== useFloorPlanStore.getState().activeFloorPlanId
+    ) {
       setActiveFloorPlan(layoutId)
     }
     return () => clearSelection()
   }, [layoutId, setActiveFloorPlan, clearSelection])
 
   const [isQuickSetupOpen, setQuickSetupOpen] = useState(tables.length === 0)
-  const [canvasOrigin, setCanvasOrigin] = useState({ x: 0, y: 0 })
+  const [isCanvasSizeModalOpen, setCanvasSizeModalOpen] = useState(false)
+  const [canvasWidthInput, setCanvasWidthInput] = useState('')
+  const [canvasHeightInput, setCanvasHeightInput] = useState('')
   const canvasRef = useRef<View>(null)
+  const outerViewRef = useRef<View>(null)
   const scale = useSharedValue(1)
   const savedScale = useSharedValue(1)
   const translateX = useSharedValue(0)
@@ -81,15 +192,45 @@ const LayoutEditorScreenContent = () => {
   const savedTranslateX = useSharedValue(0)
   const savedTranslateY = useSharedValue(0)
 
-  const { draggedShapeId, dragPosition, isDraggingNewObject, dropPending } = useDragToAddContext()
+  // Canvas screen bounds — updated via onLayout, read on UI thread for instant drop calc.
+  const canvasOriginXSV = useSharedValue(0)
+  const canvasOriginYSV = useSharedValue(0)
+  const canvasWidthSV = useSharedValue(0)
+  const canvasHeightSV = useSharedValue(0)
+  const canvasWorldWidthSV = useSharedValue(DEFAULT_CANVAS_WORLD_WIDTH)
+  const canvasWorldHeightSV = useSharedValue(DEFAULT_CANVAS_WORLD_HEIGHT)
+  // Outer view screen offset — needed to correctly position the ghost inside the outer View.
+  const outerOffsetX = useSharedValue(0)
+  const outerOffsetY = useSharedValue(0)
 
+  useEffect(() => {
+    const nextWidth = activeLayout?.canvas_width || DEFAULT_CANVAS_WORLD_WIDTH
+    const nextHeight =
+      activeLayout?.canvas_height || DEFAULT_CANVAS_WORLD_HEIGHT
+    canvasWorldWidthSV.value = nextWidth
+    canvasWorldHeightSV.value = nextHeight
+    setCanvasWidthInput(String(nextWidth))
+    setCanvasHeightInput(String(nextHeight))
+  }, [activeLayout, canvasWorldHeightSV, canvasWorldWidthSV])
+
+  const { draggedShapeId, dragPosition, isDraggingNewObject, dropPending } =
+    useDragToAddContext()
   const panGesture = Gesture.Pan()
     .minDistance(8)
     .activeOffsetX([-8, 8])
     .activeOffsetY([-8, 8])
     .onUpdate(e => {
-      translateX.value = savedTranslateX.value + e.translationX / scale.value
-      translateY.value = savedTranslateY.value + e.translationY / scale.value
+      const next = clampCanvasTranslation(
+        savedTranslateX.value + e.translationX,
+        savedTranslateY.value + e.translationY,
+        scale.value,
+        canvasWidthSV.value,
+        canvasHeightSV.value,
+        canvasWorldWidthSV.value,
+        canvasWorldHeightSV.value
+      )
+      translateX.value = next.x
+      translateY.value = next.y
     })
     .onEnd(() => {
       savedTranslateX.value = translateX.value
@@ -97,31 +238,88 @@ const LayoutEditorScreenContent = () => {
     })
 
   const pinchGesture = Gesture.Pinch()
-    .onUpdate(e => { scale.value = Math.max(0.5, Math.min(3, savedScale.value * e.scale)) })
-    .onEnd(() => { savedScale.value = scale.value })
+    .onUpdate(e => {
+      const nextScale = Math.max(0.5, Math.min(3, savedScale.value * e.scale))
+      const next = clampCanvasTranslation(
+        translateX.value,
+        translateY.value,
+        nextScale,
+        canvasWidthSV.value,
+        canvasHeightSV.value,
+        canvasWorldWidthSV.value,
+        canvasWorldHeightSV.value
+      )
+      scale.value = nextScale
+      translateX.value = next.x
+      translateY.value = next.y
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value
+      savedTranslateX.value = translateX.value
+      savedTranslateY.value = translateY.value
+    })
 
-  const canvasInteractionGesture = Gesture.Simultaneous(pinchGesture, panGesture)
+  const canvasTapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(clearSelection)()
+  })
+
+  const canvasInteractionGesture = Gesture.Simultaneous(
+    pinchGesture,
+    panGesture,
+    canvasTapGesture
+  )
 
   const canvasAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }]
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value }
+    ]
   }))
 
-  const ghostShapeAnimatedStyle = useAnimatedStyle(() => ({
-    position: 'absolute',
-    width: SHAPE_SIZE,
-    height: SHAPE_SIZE,
-    left: dragPosition.value.x - SHAPE_SIZE / 2,
-    top: dragPosition.value.y - SHAPE_SIZE / 2 - FINGER_Y_OFFSET,
-    opacity: isDraggingNewObject.value ? 0.8 : 0,
-    zIndex: 99999,
-    elevation: 99999,
-    pointerEvents: 'none'
-  }))
+  const ghostShapeAnimatedStyle = useAnimatedStyle(() => {
+    const shapeId = draggedShapeId.value as string | null
+    const dims = shapeId
+      ? SHAPE_SIZES[shapeId] ?? { w: SHAPE_SIZE, h: SHAPE_SIZE }
+      : { w: SHAPE_SIZE, h: SHAPE_SIZE }
+    const w = dims.w
+    const h = dims.h
+    return {
+      position: 'absolute',
+      width: w,
+      height: h,
+      // Subtract outerView offset: absoluteX/Y are window coords, but left/top are relative to outerView.
+      left: dragPosition.value.x - outerOffsetX.value - w / 2,
+      top: dragPosition.value.y - outerOffsetY.value - h / 2,
+      // Match canvas zoom: preview should represent on-canvas rendered size.
+      transform: [{ scale: scale.value }],
+      opacity: isDraggingNewObject.value ? 0.8 : 0,
+      zIndex: 99999,
+      elevation: 99999,
+      pointerEvents: 'none'
+    }
+  })
 
   const handleZoom = (direction: 'in' | 'out') => {
-    const clamped = Math.max(0.5, Math.min(3, direction === 'in' ? scale.value * 1.2 : scale.value / 1.2))
+    const clamped = Math.max(
+      0.5,
+      Math.min(3, direction === 'in' ? scale.value * 1.2 : scale.value / 1.2)
+    )
+    const next = clampCanvasTranslation(
+      translateX.value,
+      translateY.value,
+      clamped,
+      canvasWidthSV.value,
+      canvasHeightSV.value,
+      canvasWorldWidthSV.value,
+      canvasWorldHeightSV.value
+    )
     scale.value = withTiming(clamped)
+    translateX.value = withTiming(next.x)
+    translateY.value = withTiming(next.y)
     savedScale.value = clamped
+    savedTranslateX.value = next.x
+    savedTranslateY.value = next.y
   }
 
   const recenterCanvas = () => {
@@ -133,8 +331,73 @@ const LayoutEditorScreenContent = () => {
     savedTranslateY.value = 0
   }
 
-  const handleAddMultipleTables = (items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]) => {
-    const additions = items.flatMap(item => Array.from({ length: item.quantity }, () => addTable({ shape_id: item.shapeId as string })))
+  const handleSaveCanvasSize = async () => {
+    if (!activeLayout) return
+
+    const nextWidth = clamp(
+      parseInt(canvasWidthInput, 10) || activeLayout.canvas_width,
+      MIN_CANVAS_DIMENSION,
+      MAX_CANVAS_DIMENSION
+    )
+    const nextHeight = clamp(
+      parseInt(canvasHeightInput, 10) || activeLayout.canvas_height,
+      MIN_CANVAS_DIMENSION,
+      MAX_CANVAS_DIMENSION
+    )
+
+    try {
+      await updateFloorPlan(activeLayout.id, {
+        canvas_width: nextWidth,
+        canvas_height: nextHeight
+      })
+      canvasWorldWidthSV.value = nextWidth
+      canvasWorldHeightSV.value = nextHeight
+
+      const next = clampCanvasTranslation(
+        translateX.value,
+        translateY.value,
+        scale.value,
+        canvasWidthSV.value,
+        canvasHeightSV.value,
+        nextWidth,
+        nextHeight
+      )
+      translateX.value = withTiming(next.x)
+      translateY.value = withTiming(next.y)
+      savedTranslateX.value = next.x
+      savedTranslateY.value = next.y
+      setCanvasWidthInput(String(nextWidth))
+      setCanvasHeightInput(String(nextHeight))
+      setCanvasSizeModalOpen(false)
+    } catch (e) {
+      console.error('[edit-layout] save canvas size failed', e)
+    }
+  }
+
+  const handleAddMultipleTables = (
+    items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
+  ) => {
+    const COLS = 5
+    const CELL_W = 140
+    const CELL_H = 140
+    const ORIGIN_X = 40
+    const ORIGIN_Y = 40
+
+    // Flatten to a list of shapeIds in order
+    const allShapes = items.flatMap(item =>
+      Array.from({ length: item.quantity }, () => item.shapeId)
+    )
+
+    const additions = allShapes.map((shapeId, index) => {
+      const col = index % COLS
+      const row = Math.floor(index / COLS)
+      return addTable({
+        shape_id: shapeId as string,
+        x: ORIGIN_X + col * CELL_W,
+        y: ORIGIN_Y + row * CELL_H
+      })
+    })
+
     Promise.all(additions).catch(() => {})
     setQuickSetupOpen(false)
   }
@@ -152,49 +415,86 @@ const LayoutEditorScreenContent = () => {
     dropPending.value = false
   }
 
-  const getCanvasMeasurements = () =>
-    new Promise<{ x: number; y: number; width: number; height: number }>(resolve => {
-      canvasRef.current?.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }))
-    })
-
-  const performDrop = async (shapeId: string, absX: number, absY: number, currentScale: number, currentTranslateX: number, currentTranslateY: number) => {
-    if (!shapeId || !layoutId) { resetDragToAddState(); return }
+  const performDrop = async (
+    shapeId: string,
+    canvasCenterX: number,
+    canvasCenterY: number
+  ) => {
+    if (!shapeId || !layoutId) {
+      resetDragToAddState()
+      return
+    }
     if (activeFloorPlanId !== layoutId) {
-      try { await setActiveFloorPlan(layoutId) } catch { resetDragToAddState(); return }
+      try {
+        await setActiveFloorPlan(layoutId)
+      } catch {
+        resetDragToAddState()
+        return
+      }
     }
     const shapeDef = TABLE_SHAPES[shapeId as keyof typeof TABLE_SHAPES]
-    if (!shapeDef) { resetDragToAddState(); return }
+    if (!shapeDef) {
+      resetDragToAddState()
+      return
+    }
 
-    const measured = await getCanvasMeasurements()
-    const originX = measured.width > 0 ? measured.x : canvasOrigin.x
-    const originY = measured.height > 0 ? measured.y : canvasOrigin.y
-    const localX = absX - originX
-    const localY = absY - originY - FINGER_Y_OFFSET
-    const finalX = localX / currentScale - currentTranslateX - (shapeDef.width || 80) / 2
-    const finalY = localY / currentScale - currentTranslateY - (shapeDef.height || 80) / 2
+    // canvasCenterX/Y are the canvas-space center of the drop, computed on the UI thread.
+    const finalX = canvasCenterX - (shapeDef.width || 80) / 2
+    const finalY = canvasCenterY - (shapeDef.height || 80) / 2
 
     let defaultName = ''
     if (shapeDef.category === 'table') {
-      const nums = tables.filter(t => t.name.startsWith('T-')).map(t => parseInt(t.name.split('-')[1], 10)).filter(n => !isNaN(n))
+      const nums = tables
+        .filter(t => t.name.startsWith('T-'))
+        .map(t => parseInt(t.name.split('-')[1], 10))
+        .filter(n => !isNaN(n))
       defaultName = `T-${nums.length > 0 ? Math.max(...nums) + 1 : 1}`
     } else {
       const base = shapeDef.label
       const existing = tables.filter(t => t.name.startsWith(base))
-      defaultName = existing.length === 0 ? base : `${base} ${existing.length + 1}`
+      defaultName =
+        existing.length === 0 ? base : `${base} ${existing.length + 1}`
     }
 
+    // Hide the ghost immediately — don't wait for the network call
+    isDraggingNewObject.value = false
     try {
-      await addTable({ name: defaultName, shape_id: shapeId, x: finalX, y: finalY })
+      await addTable({
+        name: defaultName,
+        shape_id: shapeId,
+        x: finalX,
+        y: finalY
+      })
       addTableSheetRef.current?.close()
-    } catch (e) { console.error('[edit-layout] drop failed', e) }
-    finally { resetDragToAddState() }
+    } catch (e) {
+      console.error('[edit-layout] drop failed', e)
+    } finally {
+      resetDragToAddState()
+    }
   }
 
   useAnimatedReaction(
     () => dropPending.value,
     (isPending, wasPending) => {
       if (isPending && !wasPending && draggedShapeId.value) {
-        runOnJS(performDrop)(draggedShapeId.value, dragPosition.value.x, dragPosition.value.y, scale.value, translateX.value, translateY.value)
+        // Compute canvas-space coords on the UI thread — same frame as the drop, no async.
+        const absX = dragPosition.value.x
+        const absY = dragPosition.value.y
+        const s = scale.value
+        const tx = translateX.value
+        const ty = translateY.value
+        const ox = canvasOriginXSV.value
+        const oy = canvasOriginYSV.value
+        const W = canvasWidthSV.value
+        const H = canvasHeightSV.value
+        const localX = absX - ox
+        const localY = absY - oy
+        // Invert: [translateX(tx), translateY(ty), scale(s)] around canvas center (W/2, H/2)
+        // screen_x = originX + tx + s*(canvas_x - W/2) + W/2
+        // canvas_x = (localX - tx - W/2) / s + W/2
+        const cx = W > 0 ? (localX - tx - W / 2) / s + W / 2 : (localX - tx) / s
+        const cy = H > 0 ? (localY - ty - H / 2) / s + H / 2 : (localY - ty) / s
+        runOnJS(performDrop)(draggedShapeId.value, cx, cy)
       }
     },
     []
@@ -205,9 +505,29 @@ const LayoutEditorScreenContent = () => {
 
   if (!activeLayout) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.screen, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: colors.label, fontSize: 14 }}>Loading floor plan…</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.screen,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text style={{ color: colors.label, fontSize: 14 }}>
+          Loading floor plan…
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{
+            marginTop: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            borderRadius: 8,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.border
+          }}
+        >
           <Text style={{ color: colors.label, fontSize: 13 }}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -215,23 +535,71 @@ const LayoutEditorScreenContent = () => {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen }}>
+    <View
+      ref={outerViewRef}
+      style={{ flex: 1, backgroundColor: colors.screen }}
+      onLayout={() =>
+        outerViewRef.current?.measureInWindow((x, y) => {
+          outerOffsetX.value = x
+          outerOffsetY.value = y
+        })
+      }
+    >
       {/* ── Top Bar ── */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, zIndex: 10 }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          backgroundColor: colors.card,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          zIndex: 10
+        }}
+      >
         {/* Left: title */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View>
-            <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>{activeLayout.name}</Text>
-            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 1 }}>{tables.length} object{tables.length !== 1 ? 's' : ''} on canvas</Text>
+            <Text
+              style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}
+            >
+              {activeLayout.name}
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 1 }}>
+              {tables.length} object{tables.length !== 1 ? 's' : ''} on canvas
+            </Text>
           </View>
 
           {/* Undo / Redo */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden' }}>
-            <TouchableOpacity onPress={undo} disabled={!hasHistory} style={{ padding: 8, opacity: hasHistory ? 1 : 0.3 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginLeft: 8,
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              overflow: 'hidden'
+            }}
+          >
+            <TouchableOpacity
+              onPress={undo}
+              disabled={!hasHistory}
+              style={{ padding: 8, opacity: hasHistory ? 1 : 0.3 }}
+            >
               <Undo2 size={15} color={colors.label} />
             </TouchableOpacity>
-            <View style={{ width: 1, height: 20, backgroundColor: colors.border }} />
-            <TouchableOpacity onPress={redo} disabled={!hasFuture} style={{ padding: 8, opacity: hasFuture ? 1 : 0.3 }}>
+            <View
+              style={{ width: 1, height: 20, backgroundColor: colors.border }}
+            />
+            <TouchableOpacity
+              onPress={redo}
+              disabled={!hasFuture}
+              style={{ padding: 8, opacity: hasFuture ? 1 : 0.3 }}
+            >
               <Redo2 size={15} color={colors.label} />
             </TouchableOpacity>
           </View>
@@ -240,17 +608,59 @@ const LayoutEditorScreenContent = () => {
         {/* Right: Add + Save */}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
+            onPress={() => setCanvasSizeModalOpen(true)}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 8,
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
+          >
+            <Text
+              style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}
+            >
+              Canvas
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => addTableSheetRef.current?.expand()}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '60' }}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 8,
+              backgroundColor: colors.teal + '20',
+              borderWidth: 1,
+              borderColor: colors.teal + '60'
+            }}
           >
             <Plus size={14} color={colors.teal} />
-            <Text style={{ color: colors.teal, fontWeight: '700', fontSize: 13 }}>Add Object</Text>
+            <Text
+              style={{ color: colors.teal, fontWeight: '700', fontSize: 13 }}
+            >
+              Add Object
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 8,
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
           >
-            <Text style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}>Save & Exit</Text>
+            <Text
+              style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}
+            >
+              Save & Exit
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -259,14 +669,32 @@ const LayoutEditorScreenContent = () => {
       <GestureDetector gesture={canvasInteractionGesture}>
         <View
           ref={canvasRef}
-          style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: colors.screen }}
-          onLayout={() => canvasRef.current?.measureInWindow((x, y) => { setCanvasOrigin({ x, y }) })}
+          style={{
+            flex: 1,
+            position: 'relative',
+            overflow: 'hidden',
+            backgroundColor: colors.screen
+          }}
+          onLayout={() =>
+            canvasRef.current?.measureInWindow((x, y, w, h) => {
+              canvasOriginXSV.value = x
+              canvasOriginYSV.value = y
+              canvasWidthSV.value = w
+              canvasHeightSV.value = h
+            })
+          }
         >
-          <Animated.View style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]} pointerEvents='none'>
+          <Animated.View
+            style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
+            pointerEvents='none'
+          >
             <GridPattern />
           </Animated.View>
 
-          <Animated.View style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]} pointerEvents='box-none'>
+          <Animated.View
+            style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
+            pointerEvents='box-none'
+          >
             {tables.map(table => (
               <DraggableTable
                 key={table.id}
@@ -283,16 +711,42 @@ const LayoutEditorScreenContent = () => {
           </Animated.View>
 
           {/* ── Zoom Controls ── */}
-          <View style={{ position: 'absolute', bottom: 14, right: 14, gap: 6, zIndex: 20 }}>
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 14,
+              right: 14,
+              gap: 6,
+              zIndex: 20
+            }}
+          >
             {[
-              { icon: <Plus size={15} color={colors.label} />, onPress: () => handleZoom('in') },
-              { icon: <Minus size={15} color={colors.label} />, onPress: () => handleZoom('out') },
-              { icon: <Maximize2 size={15} color={colors.label} />, onPress: recenterCanvas },
+              {
+                icon: <Plus size={15} color={colors.label} />,
+                onPress: () => handleZoom('in')
+              },
+              {
+                icon: <Minus size={15} color={colors.label} />,
+                onPress: () => handleZoom('out')
+              },
+              {
+                icon: <Maximize2 size={15} color={colors.label} />,
+                onPress: recenterCanvas
+              }
             ].map((btn, i) => (
               <TouchableOpacity
                 key={i}
                 onPress={btn.onPress}
-                style={{ width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
               >
                 {btn.icon}
               </TouchableOpacity>
@@ -301,18 +755,207 @@ const LayoutEditorScreenContent = () => {
         </View>
       </GestureDetector>
 
-      <QuickSetupPanel isOpen={isQuickSetupOpen} onClose={() => setQuickSetupOpen(false)} onAddMultiple={handleAddMultipleTables} />
+      <QuickSetupPanel
+        isOpen={isQuickSetupOpen}
+        onClose={() => setQuickSetupOpen(false)}
+        onAddMultiple={handleAddMultipleTables}
+      />
 
-      {selectedTable && layoutId && <PropertiesPanel table={selectedTable} layoutId={layoutId} />}
+      <Modal
+        visible={isCanvasSizeModalOpen}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setCanvasSizeModalOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View
+              style={{
+                width: 360,
+                backgroundColor: colors.card,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                overflow: 'hidden'
+              }}
+            >
+              <View
+                style={{
+                  paddingHorizontal: 18,
+                  paddingVertical: 14,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: 14,
+                    fontWeight: '700'
+                  }}
+                >
+                  Canvas Size
+                </Text>
+                <Text
+                  style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}
+                >
+                  Set the stored floor plan workspace size.
+                </Text>
+              </View>
 
-      <AddTableBottomSheet bottomSheetRef={addTableSheetRef as React.RefObject<BottomSheet>} onClose={() => addTableSheetRef.current?.close()} />
+              <View style={{ padding: 16, gap: 12 }}>
+                <View>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      marginBottom: 6
+                    }}
+                  >
+                    Width
+                  </Text>
+                  <TextInput
+                    value={canvasWidthInput}
+                    onChangeText={setCanvasWidthInput}
+                    keyboardType='number-pad'
+                    maxLength={4}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      color: colors.heading,
+                      fontSize: 13
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      marginBottom: 6
+                    }}
+                  >
+                    Height
+                  </Text>
+                  <TextInput
+                    value={canvasHeightInput}
+                    onChangeText={setCanvasHeightInput}
+                    keyboardType='number-pad'
+                    maxLength={4}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      color: colors.heading,
+                      fontSize: 13
+                    }}
+                  />
+                </View>
+
+                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  Min {MIN_CANVAS_DIMENSION}, max {MAX_CANVAS_DIMENSION}.
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 8,
+                  padding: 14,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => setCanvasSizeModalOpen(false)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 9,
+                    alignItems: 'center',
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontWeight: '600',
+                      fontSize: 13
+                    }}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveCanvasSize}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 9,
+                    alignItems: 'center',
+                    backgroundColor: colors.teal + '20',
+                    borderWidth: 1,
+                    borderColor: colors.teal + '60'
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.teal,
+                      fontWeight: '700',
+                      fontSize: 13
+                    }}
+                  >
+                    Save
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {selectedTable && layoutId && (
+        <PropertiesPanel table={selectedTable} layoutId={layoutId} />
+      )}
+
+      <AddTableBottomSheet
+        bottomSheetRef={addTableSheetRef as React.RefObject<BottomSheet>}
+        onClose={() => addTableSheetRef.current?.close()}
+      />
 
       <Animated.View style={ghostShapeAnimatedStyle} pointerEvents='none'>
         {SHAPE_OPTIONS.map(option => {
           const ShapeComp = option.component
           return (
-            <GhostShapeWrapper key={option.id} id={option.id} currentId={draggedShapeId}>
-              <ShapeComp color={colors.teal} height={SHAPE_SIZE} width={SHAPE_SIZE} />
+            <GhostShapeWrapper
+              key={option.id}
+              id={option.id}
+              currentId={draggedShapeId}
+            >
+              <ShapeComp
+                color={colors.teal}
+                height={SHAPE_SIZES[option.id]?.h ?? SHAPE_SIZE}
+                width={SHAPE_SIZES[option.id]?.w ?? SHAPE_SIZE}
+              />
             </GhostShapeWrapper>
           )
         })}
@@ -321,8 +964,18 @@ const LayoutEditorScreenContent = () => {
   )
 }
 
-const GhostShapeWrapper = ({ id, currentId, children }: { id: string; currentId: any; children: React.ReactNode }) => {
-  const style = useAnimatedStyle(() => ({ display: currentId.value === id ? 'flex' : 'none' }))
+const GhostShapeWrapper = ({
+  id,
+  currentId,
+  children
+}: {
+  id: string
+  currentId: any
+  children: React.ReactNode
+}) => {
+  const style = useAnimatedStyle(() => ({
+    display: currentId.value === id ? 'flex' : 'none'
+  }))
   return <Animated.View style={style}>{children}</Animated.View>
 }
 

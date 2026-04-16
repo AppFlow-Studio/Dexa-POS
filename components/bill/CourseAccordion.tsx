@@ -530,12 +530,13 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const onSelectCourseRef = useRef(onSelectCourse)
   onSelectCourseRef.current = onSelectCourse
 
+  const expandedCourseIdRef = useRef(expandedCourseId)
+  expandedCourseIdRef.current = expandedCourseId
+
   const handleToggleCourse = useCallback((courseId: number) => {
-    setExpandedCourseId(prev => {
-      const next = prev === courseId ? null : courseId
-      onSelectCourseRef.current?.(next)
-      return next
-    })
+    const next = expandedCourseIdRef.current === courseId ? null : courseId
+    setExpandedCourseId(next)
+    onSelectCourseRef.current?.(next)
   }, [])
 
   if (!activeOrder) {

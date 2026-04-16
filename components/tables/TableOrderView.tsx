@@ -1,5 +1,4 @@
 import DiscountBottomSheet from '@/components/bill/DiscountBottomSheet'
-import ItemProgressTracker from '@/components/bill/ItemProgressTracker'
 import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
 import TableBillSection from '@/components/bill/TableBillSection'
 import MenuSection from '@/components/menu/MenuSection'
@@ -105,9 +104,6 @@ const TableOrderView = React.forwardRef<
   })
   const closeDialog = useCallback(() => setActiveDialog({ type: 'none' }), [])
   const [serverSheetOpen, setServerSheetOpen] = useState(false)
-  const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
-    number | null
-  >(null)
 
   // --- 4. Domain Hooks ---
   const {
@@ -240,16 +236,6 @@ const TableOrderView = React.forwardRef<
     totals,
     displayBalanceDue
   ])
-
-  // Items in selected course (for ItemProgressTracker)
-  const itemsInSelectedCourse = useMemo(() => {
-    if (!activeOrder || selectedCourseIdForTracker === null) return []
-    return activeOrder.items.filter(
-      item =>
-        (item.courseNumber ?? itemCourseMap?.[item.id] ?? 1) ===
-        selectedCourseIdForTracker
-    )
-  }, [activeOrder?.items, selectedCourseIdForTracker, itemCourseMap])
 
   // --- Action handlers ---
 
@@ -515,22 +501,6 @@ const TableOrderView = React.forwardRef<
       hideLoading()
     }
   }, [closeDialog, showLoading, hideLoading, currentTableId, show])
-
-  const handleMarkAllReadyForCourse = useCallback(
-    (itemIds: string[]) => {
-      useOrderStore.getState().batchUpdateItemKitchenStatus(itemIds, 'ready')
-      const oid = useOrderStore.getState().activeOrderId
-      if (oid && selectedCourseIdForTracker !== null) {
-        markCourseServed(oid, selectedCourseIdForTracker)
-      }
-      show({
-        title: 'Items Marked Ready',
-        message: 'All items in the course have been marked as ready.',
-        type: 'success'
-      })
-    },
-    [selectedCourseIdForTracker, markCourseServed, show]
-  )
 
   const finalizeCurrentCourse = useCallback(() => {
     if (!enableCoursing) {
@@ -876,7 +846,6 @@ const TableOrderView = React.forwardRef<
 
   const handleSelectCourse = useCallback(
     (courseId: number | null) => {
-      setSelectedCourseIdForTracker(courseId)
       if (activeOrder && courseId !== null) {
         setCurrentCourse(activeOrder.id, courseId)
       }
@@ -1260,18 +1229,6 @@ const TableOrderView = React.forwardRef<
       {/* Stage 2: Teleport items that need root-level rendering */}
       {renderStage >= 2 && (
         <Teleport hostName='root'>
-          {selectedCourseIdForTracker !== null && (
-            <ItemProgressTracker
-              selectedCourse={selectedCourseIdForTracker}
-              itemsInSelectedCourse={itemsInSelectedCourse}
-              onMarkAllReady={handleMarkAllReadyForCourse}
-              isCourseSent={isCourseSent(
-                activeOrder?.id || '',
-                selectedCourseIdForTracker
-              )}
-            />
-          )}
-
           <ServerSelectSheet
             isOpen={serverSheetOpen}
             onClose={handleCloseServerSheet}

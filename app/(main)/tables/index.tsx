@@ -519,23 +519,6 @@ const TablesScreen = () => {
 
     const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId]
 
-    const freshTablesById = useFloorPlanStore.getState().tablesById
-    const { totalCapacity, hasKnownCapacity } = getSelectedTablesCapacity(
-      freshTablesById,
-      tableIdsToSeat
-    )
-    if (hasKnownCapacity && guestCount > totalCapacity) {
-      setSeatingErrorMessage(
-        `Party size ${guestCount} exceeds table capacity ${totalCapacity}.`
-      )
-      show({
-        title: 'Table Too Small',
-        message: `Party size ${guestCount} exceeds table capacity ${totalCapacity}.`,
-        type: 'warning'
-      })
-      return
-    }
-
     // 1. Create local order immediately (synchronous — ~0ms)
     const newOrder = startNewOrder({ tableId: primaryTableId, guestCount })
     setActiveOrder(newOrder.id)

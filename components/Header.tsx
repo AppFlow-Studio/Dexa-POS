@@ -261,7 +261,7 @@ const Header = () => {
       </View>
 
       {/* Right Section */}
-      <View className='flex-shrink-0'>
+      <View className='flex-shrink-0 mr-4'>
         <SessionDock />
       </View>
     </View>
