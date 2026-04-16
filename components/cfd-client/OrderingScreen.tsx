@@ -240,7 +240,11 @@ export function OrderingScreen () {
             data={items}
             keyExtractor={(_, index) => index.toString()}
             renderItem={({ item, index }) => (
-              <CartItemRow item={item} index={index} />
+              <CartItemRow
+                item={item}
+                index={index}
+                isLast={index === items.length - 1}
+              />
             )}
             style={{ flex: 1 }}
             contentContainerStyle={{
@@ -655,7 +659,15 @@ function RotatingImagePanel ({
   )
 }
 
-function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
+function CartItemRow ({
+  item,
+  index,
+  isLast
+}: {
+  item: CFDCartItem
+  index: number
+  isLast: boolean
+}) {
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
   // Check if there are any modifiers to display
@@ -666,13 +678,12 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
       entering={FadeInDown.duration(300).delay(index * 50)}
       layout={LinearTransition.duration(200)}
       style={{
-        backgroundColor: colors.panel,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: colors.border,
-        paddingHorizontal: 10,
+        backgroundColor: colors.screen,
+        paddingHorizontal: 8,
         paddingVertical: 8,
-        marginBottom: 8
+        marginBottom: 0,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: colors.border
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
