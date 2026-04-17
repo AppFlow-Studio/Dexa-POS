@@ -1,6 +1,7 @@
 import * as PopoverPrimitive from '@rn-primitives/popover';
 import { Platform, StyleSheet } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { iosOnly } from '@/lib/safeAnimations';
 import { cn } from '~/lib/utils';
 import { TextClassContext } from '~/components/ui/text';
 
@@ -21,7 +22,7 @@ function PopoverContent({
   return (
     <PopoverPrimitive.Portal hostName={portalHost}>
       <PopoverPrimitive.Overlay style={Platform.OS !== 'web' ? StyleSheet.absoluteFill : undefined}>
-        <Animated.View entering={FadeIn.duration(10)} exiting={FadeOut.duration(10)}>
+        <Animated.View entering={iosOnly(FadeIn.duration(10))} exiting={iosOnly(FadeOut.duration(10))}>
           <TextClassContext.Provider value='text-popover-foreground'>
             <PopoverPrimitive.Content
               align={align}

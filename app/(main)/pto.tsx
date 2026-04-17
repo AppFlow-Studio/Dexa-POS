@@ -11,6 +11,7 @@ import {
   parse,
   parseISO,
 } from "date-fns";
+import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { Calendar } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -90,7 +91,7 @@ const PTOPage = () => {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {showRequestForm && (
-          <Animated.View entering={FadeIn} exiting={FadeOut}>
+          <Animated.View entering={iosOnly(FadeIn)} exiting={iosOnly(FadeOut)}>
             <PTORequestForm
               onClose={() => setShowRequestForm(false)}
               onAddRequest={addPTORequest}

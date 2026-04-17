@@ -22,6 +22,7 @@ import {
   useVoidOrder,
 } from '@/hooks/orders/useOrderActions'
 import { useRealtimeFallbackPolling } from '@/hooks/pos/useRealtimeFallbackPolling'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
@@ -428,7 +429,7 @@ const OrderDetailsScreen = () => {
             }
             showsVerticalScrollIndicator={false}
           >
-            <Animated.View entering={FadeIn.duration(200)}>
+            <Animated.View entering={iosOnly(FadeIn.duration(200))}>
               {activeTab === 'bill' && <BillTab order={order} />}
               {activeTab === 'payments' && <PaymentsTab order={order} />}
               {activeTab === 'refunds' && <RefundsTab order={order} />}
@@ -445,15 +446,15 @@ const OrderDetailsScreen = () => {
           contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View entering={FadeIn.duration(300).delay(100)}>
+          <Animated.View entering={iosOnly(FadeIn.duration(300).delay(100))}>
             <SummaryCards order={order} />
           </Animated.View>
 
-          <Animated.View entering={FadeIn.duration(300).delay(200)}>
+          <Animated.View entering={iosOnly(FadeIn.duration(300).delay(200))}>
             <OrderMetadata order={order} />
           </Animated.View>
 
-          <Animated.View entering={FadeIn.duration(300).delay(300)}>
+          <Animated.View entering={iosOnly(FadeIn.duration(300).delay(300))}>
             <ActionsPanel
               order={profileOrder}
               onRefund={() => refundModalRef.current?.open()}

@@ -1,3 +1,4 @@
+import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import DatePillRow, { type DatePillDef } from "@/components/menu/DatePillRow";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
@@ -764,8 +765,8 @@ const PreviousOrdersScreen = () => {
           {/* New Orders Banner */}
           {newOrdersCount > 0 && (
             <Animated.View
-              entering={FadeIn.duration(200)}
-              exiting={FadeOut.duration(200)}
+              entering={iosOnly(FadeIn.duration(200))}
+              exiting={iosOnly(FadeOut.duration(200))}
               className="absolute top-4 left-0 right-0 items-center z-10"
               pointerEvents="box-none"
             >

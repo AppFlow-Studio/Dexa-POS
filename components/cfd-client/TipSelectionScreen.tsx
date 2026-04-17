@@ -11,6 +11,7 @@ import {
   View
 } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 
 interface Props {
   onTipSelected: (tipAmount: number, tipPercentage: number | null) => void
@@ -102,7 +103,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
     <View style={styles.outer}>
       <View style={styles.body}>
         <Animated.View
-          entering={FadeIn.duration(250)}
+          entering={iosOnly(FadeIn.duration(250))}
           style={styles.titleSection}
         >
           <Text style={styles.title}>Add a tip</Text>
@@ -118,7 +119,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
             return (
               <Animated.View
                 key={pct}
-                entering={FadeInDown.duration(300).delay(80 + index * 60)}
+                entering={iosOnly(FadeInDown.duration(300).delay(80 + index * 60))}
                 style={styles.presetCardWrapper}
               >
                 <Pressable
@@ -151,7 +152,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
         </View>
 
         <Animated.View
-          entering={FadeInDown.duration(300).delay(300)}
+          entering={iosOnly(FadeInDown.duration(300).delay(300))}
           style={styles.actionsSection}
         >
           {tipConfig?.allowCustom !== false && (

@@ -31,6 +31,7 @@ import Animated, {
   withSequence,
   withSpring
 } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 import { useShallow } from 'zustand/react/shallow'
 import BillItem from './BillItem'
 
@@ -229,8 +230,8 @@ function CourseGroupInner ({
       {/* Content with Animation — sent courses get reduced opacity */}
       {isExpanded && (
         <Animated.View
-          entering={FadeIn.duration(200)}
-          exiting={FadeOut.duration(150)}
+          entering={iosOnly(FadeIn.duration(200))}
+          exiting={iosOnly(FadeOut.duration(150))}
           layout={LinearTransition.duration(200)}
           className='pl-4 gap-y-2 overflow-hidden'
           style={undefined}

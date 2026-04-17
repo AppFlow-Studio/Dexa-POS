@@ -15,6 +15,7 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from "react-native-reanimated";
+import { iosOnly } from "@/lib/safeAnimations";
 
 export function PaymentScreen({ processing }: { processing?: boolean }) {
   const {
@@ -88,7 +89,7 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <Animated.View entering={FadeIn.duration(250)} style={styles.header}>
+      <Animated.View entering={iosOnly(FadeIn.duration(250))} style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.iconBox}>
             <UtensilsCrossed size={20} color={colors.teal} />
@@ -147,7 +148,7 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
 
         {/* Amount */}
         <Animated.Text
-          entering={FadeInUp.duration(300).delay(80)}
+          entering={iosOnly(FadeInUp.duration(300).delay(80))}
           style={styles.amount}
         >
           {formatCurrency(amountDue)}
@@ -156,7 +157,7 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
         {/* Tip line */}
         {tipAmount > 0 && (
           <Animated.Text
-            entering={FadeInUp.duration(300).delay(140)}
+            entering={iosOnly(FadeInUp.duration(300).delay(140))}
             style={styles.tipLine}
           >
             Including {formatCurrency(tipAmount)} tip
@@ -166,7 +167,7 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
         {/* Savings line */}
         {isCash && savingsAmount > 0 && (
           <Animated.Text
-            entering={FadeInUp.duration(300).delay(160)}
+            entering={iosOnly(FadeInUp.duration(300).delay(160))}
             style={styles.savingsLine}
           >
             You saved {formatCurrency(savingsAmount)}
@@ -175,7 +176,7 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
 
         {/* Instruction */}
         <Animated.Text
-          entering={FadeInUp.duration(300).delay(200)}
+          entering={iosOnly(FadeInUp.duration(300).delay(200))}
           style={styles.instruction}
         >
           {processing && !isCash && !isManual

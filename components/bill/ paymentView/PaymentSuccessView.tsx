@@ -12,6 +12,7 @@ import { Check, Mail, Printer } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
+import { iosOnly } from "@/lib/safeAnimations";
 
 const PaymentSuccessView = () => {
   const close = usePaymentStore((s) => s.close);
@@ -154,7 +155,7 @@ const PaymentSuccessView = () => {
       <View className="flex-1 justify-center items-center px-6" style={{ paddingTop: 28, paddingBottom: 28 }}>
         {/* Success Icon */}
         <Animated.View
-          entering={FadeIn.delay(100)}
+          entering={iosOnly(FadeIn.delay(100))}
           className="items-center mb-6"
           style={{ marginTop: 8 }}
         >
@@ -171,7 +172,7 @@ const PaymentSuccessView = () => {
 
         {/* Compact Receipt Card */}
         <Animated.View
-          entering={FadeInUp.delay(200)}
+          entering={iosOnly(FadeInUp.delay(200))}
           style={{ width: "100%", maxWidth: 400, backgroundColor: colors.panel, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 22, alignItems: "center" }}
         >
           {/* Use captured payment info from store to prevent real-time sync overwrites */}

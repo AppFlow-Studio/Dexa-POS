@@ -1,9 +1,15 @@
 // services/appUpdater.ts
 import * as Application from 'expo-application';
 import * as FileSystem from 'expo-file-system';
+import * as Updates from 'expo-updates';
 import { startActivityAsync } from 'expo-intent-launcher';
 
-const VERSION_MANIFEST_URL = 'https://dexa-pos-uploads.b-cdn.net/releases/version.json';
+const CDN_BASE = 'https://dexa-pos-uploads.b-cdn.net';
+
+function getVersionManifestUrl(): string {
+  const folder = Updates.channel === 'preview' ? 'releases-preview' : 'releases';
+  return `${CDN_BASE}/${folder}/version.json`;
+}
 
 export interface VersionManifest {
   version: string;
@@ -37,7 +43,7 @@ function isValidManifest(obj: unknown): obj is VersionManifest {
 export async function checkForNativeUpdate(): Promise<VersionManifest | null> {
   if (__DEV__) return null;
   try {
-    const res = await fetch(VERSION_MANIFEST_URL);
+    const res = await fetch(getVersionManifestUrl());
     if (!res.ok) return null;
 
     const raw: unknown = await res.json();

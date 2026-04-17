@@ -26,6 +26,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { iosOnly } from "@/lib/safeAnimations";
 
 const ManualCardEntryView = () => {
   const supabase = useSupabaseClient();
@@ -316,7 +317,7 @@ const ManualCardEntryView = () => {
           {(status === "processing" || status === "success") && (
             <View style={{ marginBottom: 24, alignItems: "center" }}>
               {status === "processing" && (
-                <Animated.View entering={FadeIn} style={{ alignItems: "center" }}>
+                <Animated.View entering={iosOnly(FadeIn)} style={{ alignItems: "center" }}>
                   <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 12, borderWidth: 1, borderColor: `${colors.teal}30` }}>
                     <ActivityIndicator size="large" color={colors.teal} />
                   </View>
@@ -328,7 +329,7 @@ const ManualCardEntryView = () => {
               )}
 
               {status === "success" && (
-                <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center" }}>
+                <Animated.View entering={iosOnly(FadeIn.duration(300))} style={{ alignItems: "center" }}>
                   <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${colors.success}15`, alignItems: "center", justifyContent: "center", marginBottom: 12, borderWidth: 1, borderColor: `${colors.success}30` }}>
                     <CheckCircle2 size={36} color={colors.success} />
                   </View>
@@ -357,7 +358,7 @@ const ManualCardEntryView = () => {
         />
 
         {/* Bottom Section */}
-        <Animated.View entering={FadeInDown.delay(200)} style={{ width: "100%" }}>
+        <Animated.View entering={iosOnly(FadeInDown.delay(200))} style={{ width: "100%" }}>
           {/* Charge Button */}
           {status === "ready" && (
             <TouchableOpacity

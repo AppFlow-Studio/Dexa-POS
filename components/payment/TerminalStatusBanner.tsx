@@ -1,5 +1,6 @@
 import { AlertCircle, AlertTriangle, Loader2, RefreshCcw } from 'lucide-react-native';
 import { Text, TouchableOpacity, View } from 'react-native';
+import { iosOnly } from '@/lib/safeAnimations';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 export type TerminalStatus = 'checking' | 'online' | 'offline' | 'not-configured';
@@ -77,7 +78,7 @@ export function TerminalStatusBanner({
 
   return (
     <Animated.View
-      entering={FadeIn.duration(200)}
+      entering={iosOnly(FadeIn.duration(200))}
       className={`p-4 rounded-xl border flex-row items-center gap-3 ${config.bgColor} ${config.borderColor}`}
     >
       {/* Status Icon */}

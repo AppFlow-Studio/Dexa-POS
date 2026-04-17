@@ -12,7 +12,6 @@ import {
   View
 } from 'react-native'
 import Animated, {
-  FadeInDown,
   LinearTransition,
   runOnJS,
   useAnimatedStyle,
@@ -675,7 +674,6 @@ function CartItemRow ({
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(300).delay(index * 50)}
       layout={LinearTransition.duration(200)}
       style={{
         backgroundColor: colors.screen,

@@ -42,6 +42,7 @@ import {
   View
 } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 const CardPaymentView = () => {
   // Refresh order data on mount and realtime reconnection
   // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
@@ -927,7 +928,7 @@ const CardPaymentView = () => {
             <View style={{ marginBottom: 24, alignItems: 'center' }}>
               {status === 'processing' && (
                 <Animated.View
-                  entering={FadeIn}
+                  entering={iosOnly(FadeIn)}
                   style={{ alignItems: 'center' }}
                 >
                   <View
@@ -974,7 +975,7 @@ const CardPaymentView = () => {
 
               {status === 'tip_adjusting' && (
                 <Animated.View
-                  entering={FadeIn.duration(300)}
+                  entering={iosOnly(FadeIn.duration(300))}
                   style={{ alignItems: 'center' }}
                 >
                   <View
@@ -1006,7 +1007,7 @@ const CardPaymentView = () => {
 
               {status === 'success' && (
                 <Animated.View
-                  entering={FadeIn.duration(300)}
+                  entering={iosOnly(FadeIn.duration(300))}
                   style={{ alignItems: 'center' }}
                 >
                   <View
@@ -1080,7 +1081,7 @@ const CardPaymentView = () => {
 
         {/* Bottom Section */}
         <Animated.View
-          entering={FadeInDown.delay(200)}
+          entering={iosOnly(FadeInDown.delay(200))}
           style={{ width: '100%' }}
         >
           {/* Receipt Breakdown */}

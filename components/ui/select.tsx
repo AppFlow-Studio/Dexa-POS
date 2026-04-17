@@ -2,6 +2,7 @@ import * as SelectPrimitive from "@rn-primitives/select";
 import * as React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { iosOnly } from "@/lib/safeAnimations";
 import { Check } from "~/lib/icons/Check";
 import { ChevronDown } from "~/lib/icons/ChevronDown";
 import { ChevronUp } from "~/lib/icons/ChevronUp";
@@ -108,7 +109,7 @@ function SelectContent({
       <SelectPrimitive.Overlay
         style={Platform.OS !== "web" ? StyleSheet.absoluteFill : undefined}
       >
-        <Animated.View className="z-50" entering={FadeIn} exiting={FadeOut}>
+        <Animated.View className="z-50" entering={iosOnly(FadeIn)} exiting={iosOnly(FadeOut)}>
           <SelectPrimitive.Content
             className={cn(
               "relative z-50 max-h-96 min-w-[8rem] rounded-md border border-border bg-popover shadow-md shadow-foreground/10 py-2 px-1 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",

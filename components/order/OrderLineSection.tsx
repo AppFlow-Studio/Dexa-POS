@@ -9,7 +9,8 @@ import { router } from "expo-router";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import Animated, { SlideInLeft, SlideOutUp, LinearTransition } from "react-native-reanimated";
+import Animated, { SlideInLeft, LinearTransition } from "react-native-reanimated";
+import { iosOnly } from "@/lib/safeAnimations";
 import OrderCard from "./OrderCard";
 import OrderLineItemsModal from "./OrderLineItemsModal";
 import OrderTabs from "./OrderTabs";
@@ -181,8 +182,7 @@ const OrderLineSectionContent: React.FC = () => {
         })}
         renderItem={({ item }) => (
           <Animated.View
-            entering={SlideInLeft.duration(350).springify().damping(16)}
-            exiting={SlideOutUp.duration(250)}
+            entering={iosOnly(SlideInLeft.duration(350).springify().damping(16))}
           >
             <OrderCard
               order={item}

@@ -10,6 +10,7 @@ import { colors } from '@/lib/theme'
 import { StyleSheet, Text, View } from 'react-native'
 
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 
 import { IdleScreen } from './IdleScreen'
 import { LoyaltyConfirmationScreen } from './LoyaltyConfirmationScreen'
@@ -101,8 +102,8 @@ export function CFDScreenRouter ({
   return (
     <Animated.View
       key={transitionKey}
-      entering={FadeIn.duration(260)}
-      exiting={FadeOut.duration(180)}
+      entering={iosOnly(FadeIn.duration(260))}
+      exiting={iosOnly(FadeOut.duration(180))}
       style={styles.container}
     >
       <View style={styles.screenContent}>{renderScreen()}</View>

@@ -1,6 +1,7 @@
 import { useNavigation } from "expo-router";
 import * as React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { iosOnly } from "@/lib/safeAnimations";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -90,7 +91,7 @@ export default function MenuBar() {
                 <Text className="text-2xl">Share</Text>
               </MenubarSubTrigger>
               <MenubarSubContent>
-                <Animated.View entering={FadeIn.duration(200)}>
+                <Animated.View entering={iosOnly(FadeIn.duration(200))}>
                   <MenubarItem>
                     <Text className="text-2xl">Email link</Text>
                   </MenubarItem>
@@ -129,7 +130,7 @@ export default function MenuBar() {
                 <Text className="text-2xl">Find</Text>
               </MenubarSubTrigger>
               <MenubarSubContent>
-                <Animated.View entering={FadeIn.duration(200)}>
+                <Animated.View entering={iosOnly(FadeIn.duration(200))}>
                   <MenubarItem>
                     <Text className="text-2xl">Search the web</Text>
                   </MenubarItem>

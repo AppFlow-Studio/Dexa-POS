@@ -3,7 +3,6 @@ import { CartItem } from "@/lib/types";
 import { colors } from "@/lib/theme";
 import {
   getAutoRetryCount,
-  getDeadLetterCount,
   isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -144,9 +143,6 @@ const BillSectionContent = ({
   const hasPendingSyncs = syncStatus.pending > 0;
   const hasFailedSyncs = syncStatus.failed > 0;
 
-  // Track dead-letter count for banner warning
-  const [deadLetterCount, setDeadLetterCount] = useState(0);
-
   // Track auto-retry state for UI indicator
   const [autoRetryState, setAutoRetryState] = useState({
     isRetrying: false,
@@ -180,14 +176,6 @@ const BillSectionContent = ({
 
     return () => clearInterval(interval);
   }, [hasFailedSyncs, hasPendingSyncs]);
-
-  // Poll dead-letter count (low frequency — informational only)
-  useEffect(() => {
-    const check = () => setDeadLetterCount(getDeadLetterCount());
-    check();
-    const interval = setInterval(check, 10_000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Calculate the amount to display on the Pay button
   // Phase 7: Now uses derived selector which already prioritizes backend values
@@ -402,8 +390,8 @@ const BillSectionContent = ({
     <View className="w-1/3 bg-screen border-r-2 border-border " >
       {showOrderDetails && <OrderDetails />}
 
-      {/* Offline / Sync Status Banner */}
-      {(!isOnline || hasFailedSyncs || pendingSyncCount > 0 || deadLetterCount > 0) && 
+      {/* Offline / Sync Status Banner — only for errors or issues, not routine sync */}
+      {(!isOnline || hasFailedSyncs || activeOrderPayments?.some((p) => p.sync_status === "pending")) &&
       (
         <View className="px-3 py-1.5 gap-y-1" style={{ backgroundColor: colors.background }}>
           {!isOnline && (
@@ -459,14 +447,6 @@ const BillSectionContent = ({
             </View>
           )}
 
-          {isOnline && !hasFailedSyncs && hasPendingSyncs && (
-            <View className="flex-row items-center justify-center bg-teal-600/60 px-2.5 py-1.5 rounded-md">
-              <ActivityIndicator size="small" color="#FFFFFF" />
-              <Text className="text-white font-medium ml-1.5" style={{ fontSize: 11 }}>
-                Syncing {syncStatus.pending} item{syncStatus.pending > 1 ? "s" : ""}...
-              </Text>
-            </View>
-          )}
         </View>
       )}
 

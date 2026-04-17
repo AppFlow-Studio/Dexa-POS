@@ -37,6 +37,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
+import { iosOnly } from '@/lib/safeAnimations'
 import Animated, {
   FadeIn,
   FadeOut,
@@ -1627,8 +1628,8 @@ const ReservationCard: React.FC<{
       {/* Expanded */}
       {isExpanded && (
         <Animated.View
-          entering={FadeIn.duration(150)}
-          exiting={FadeOut.duration(100)}
+          entering={iosOnly(FadeIn.duration(150))}
+          exiting={iosOnly(FadeOut.duration(100))}
           style={{
             paddingHorizontal: 10,
             paddingBottom: 10,

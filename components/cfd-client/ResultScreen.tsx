@@ -10,6 +10,7 @@ import Animated, {
   withSpring,
   withTiming
 } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 
 interface Props {
   success: boolean
@@ -89,7 +90,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
         </Animated.View>
 
         <Animated.Text
-          entering={FadeInUp.duration(280).delay(80)}
+          entering={iosOnly(FadeInUp.duration(280).delay(80))}
           style={[styles.title, success ? styles.successText : styles.failText]}
         >
           {success ? 'Approved' : 'Declined'}
@@ -97,7 +98,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
 
         {success && displayTotal > 0 && (
           <Animated.Text
-            entering={FadeInUp.duration(280).delay(140)}
+            entering={iosOnly(FadeInUp.duration(280).delay(140))}
             style={styles.amount}
           >
             {formatCurrency(displayTotal)}
@@ -106,7 +107,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
 
         {success && tipAmount > 0 && (
           <Animated.Text
-            entering={FadeInUp.duration(280).delay(180)}
+            entering={iosOnly(FadeInUp.duration(280).delay(180))}
             style={styles.tipLine}
           >
             Including {formatCurrency(tipAmount)} tip
@@ -114,7 +115,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
         )}
 
         <Animated.Text
-          entering={FadeInUp.duration(280).delay(220)}
+          entering={iosOnly(FadeInUp.duration(280).delay(220))}
           style={styles.subtitle}
         >
           {success
@@ -123,7 +124,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
         </Animated.Text>
 
         {success ? (
-          <Animated.View entering={FadeInUp.duration(280).delay(280)}>
+          <Animated.View entering={iosOnly(FadeInUp.duration(280).delay(280))}>
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onJoinLoyalty}

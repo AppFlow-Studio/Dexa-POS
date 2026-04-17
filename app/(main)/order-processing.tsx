@@ -8,6 +8,7 @@ import OrderBadge from '@/components/order/OrderBadge'
 import OrderLineItemsModal from '@/components/order/OrderLineItemsModal'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { OrderService } from '@/services/orderService'
@@ -25,8 +26,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   LinearTransition,
-  SlideInLeft,
-  SlideOutUp
+  SlideInLeft
 } from 'react-native-reanimated'
 
 const EMPTY_ORDERS: OrderProfile[] = []
@@ -268,8 +268,7 @@ const OrderProcessing = () => {
   const renderOrderBadge = useCallback(
     ({ item }: { item: OrderProfile }) => (
       <Animated.View
-        entering={SlideInLeft.duration(300).springify().damping(16)}
-        exiting={SlideOutUp.duration(200)}
+        entering={iosOnly(SlideInLeft.duration(300).springify().damping(16))}
       >
         <OrderBadge
           order={item}
