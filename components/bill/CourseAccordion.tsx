@@ -535,9 +535,6 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const onSelectCourseRef = useRef(onSelectCourse)
   onSelectCourseRef.current = onSelectCourse
 
-  const expandedCourseIdRef = useRef(expandedCourseId)
-  expandedCourseIdRef.current = expandedCourseId
-
   const handleToggleCourse = useCallback((courseId: number) => {
     setExpandedCourseId(prev => {
       const next = prev === courseId ? null : courseId
@@ -631,7 +628,10 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         <View className='flex-row items-center gap-2'>
           {isOvertime && (
             <View className='bg-yellow-900/30 px-2.5 py-1 rounded-full'>
-              <Text style={{ fontSize: 10, fontWeight: '600' }} className='text-yellow-400'>
+              <Text
+                style={{ fontSize: 10, fontWeight: '600' }}
+                className='text-yellow-400'
+              >
                 {overtimeMinutes}min exceeded
               </Text>
             </View>
