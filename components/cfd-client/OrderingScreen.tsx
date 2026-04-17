@@ -240,7 +240,11 @@ export function OrderingScreen () {
             data={items}
             keyExtractor={(_, index) => index.toString()}
             renderItem={({ item, index }) => (
-              <CartItemRow item={item} index={index} />
+              <CartItemRow
+                item={item}
+                index={index}
+                isLast={index === items.length - 1}
+              />
             )}
             style={{ flex: 1 }}
             contentContainerStyle={{
@@ -635,7 +639,9 @@ function RotatingImagePanel ({
         source={{ uri: currentImage }}
         style={styles.mediaImage}
         resizeMode='cover'
-        onError={() => console.warn("[RotatingImagePanel] Image failed:", currentImage)}
+        onError={() =>
+          console.warn('[RotatingImagePanel] Image failed:', currentImage)
+        }
       />
       {images.length > 1 && (
         <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
@@ -643,7 +649,9 @@ function RotatingImagePanel ({
             source={{ uri: nextImage }}
             style={styles.mediaImage}
             resizeMode='cover'
-            onError={() => console.warn("[RotatingImagePanel] Next image failed:", nextImage)}
+            onError={() =>
+              console.warn('[RotatingImagePanel] Next image failed:', nextImage)
+            }
           />
         </Animated.View>
       )}
@@ -651,7 +659,15 @@ function RotatingImagePanel ({
   )
 }
 
-function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
+function CartItemRow ({
+  item,
+  index,
+  isLast
+}: {
+  item: CFDCartItem
+  index: number
+  isLast: boolean
+}) {
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
   // Check if there are any modifiers to display
@@ -662,90 +678,104 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
       entering={FadeInDown.duration(300).delay(index * 50)}
       layout={LinearTransition.duration(200)}
       style={{
-        backgroundColor: colors.card,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: colors.border,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        marginBottom: 8
+        backgroundColor: colors.screen,
+        paddingHorizontal: 8,
+        paddingVertical: 8,
+        marginBottom: 0,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: colors.border
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-        {/* Quantity Badge */}
-        <View
-          style={{
-            backgroundColor: colors.panel,
-            borderRadius: 8,
-            height: 28,
-            width: 32,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.border
-          }}
-        >
-          <Text
-            style={{ color: colors.label, fontWeight: '700', fontSize: 13 }}
+        {/* Quantity badge (bill style) */}
+        <View style={{ alignItems: 'center', width: 40 }}>
+          <View
+            style={{
+              minWidth: 22,
+              height: 22,
+              borderRadius: 6,
+              backgroundColor: colors.teal + '18',
+              borderWidth: 1,
+              borderColor: colors.teal + '40',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
-            {item.quantity}
-          </Text>
-        </View>
+            <Text
+              style={{
+                color: colors.teal,
+                fontWeight: '700',
+                fontSize: 11
+              }}
+            >
+              {item.quantity}
+            </Text>
+          </View>
 
-        {/* Item Details */}
-        <View style={{ flex: 1 }}>
           {(item.seatNumber || item.courseNumber) && (
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 2 }}>
+            <View style={{ marginTop: 3, alignItems: 'center', gap: 1 }}>
               {item.seatNumber && (
                 <Text
                   style={{
                     color: colors.teal,
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: '600'
                   }}
+                  numberOfLines={1}
                 >
-                  Seat {item.seatNumber}
+                  S{item.seatNumber}
                 </Text>
               )}
               {item.courseNumber && (
                 <Text
                   style={{
                     color: colors.teal,
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: '600'
                   }}
+                  numberOfLines={1}
                 >
-                  Course {item.courseNumber}
+                  C{item.courseNumber}
                 </Text>
               )}
             </View>
           )}
+        </View>
+
+        {/* Item Details */}
+        <View style={{ flex: 1, paddingTop: 1 }}>
           <View
             style={{
               flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
+              alignItems: 'center',
               marginBottom: 4
             }}
           >
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontWeight: '600',
+                  fontSize: 14,
+                  lineHeight: 16,
+                  includeFontPadding: false
+                }}
+                numberOfLines={1}
+              >
+                {item.name}
+              </Text>
+            </View>
             <Text
+              numberOfLines={1}
               style={{
-                color: colors.heading,
-                fontWeight: '600',
+                color: colors.teal,
                 fontSize: 14,
-                lineHeight: 18,
-                flex: 1
-              }}
-              numberOfLines={2}
-            >
-              {item.name}
-            </Text>
-            <Text
-              style={{
-                color: colors.label,
-                fontSize: 13,
+                lineHeight: 16,
+                includeFontPadding: false,
                 fontWeight: '600',
-                marginLeft: 8
+                marginLeft: 8,
+                flexShrink: 0,
+                textAlign: 'right'
               }}
             >
               {formatCurrency(item.lineTotalCard || item.lineTotal || 0)}
@@ -754,24 +784,47 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
 
           {/* Modifiers */}
           {hasModifiers && (
-            <View style={{ marginTop: 4, gap: 2 }}>
+            <View style={{ marginTop: 4, gap: 2, marginLeft: 1 }}>
               {item.modifiers.map((mod, idx) => {
                 const isNegativeModifier = mod.isNo === true
+                const modifierPrice = mod.priceCard || mod.price || 0
 
                 return (
-                  <Text
+                  <View
                     key={idx}
                     style={{
-                      color: isNegativeModifier
-                        ? colors.danger
-                        : colors.heading,
-                      fontSize: 11,
-                      fontWeight: isNegativeModifier ? '600' : '400'
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      paddingLeft: 4,
+                      borderLeftColor: colors.border,
+                      borderLeftWidth: 1,
+                      paddingVertical: 1
                     }}
                   >
-                    {isNegativeModifier ? 'NO ' : ''}
-                    {mod.name}
-                  </Text>
+                    <Text
+                      style={{
+                        color: isNegativeModifier ? colors.danger : '#E0E0E0',
+                        fontSize: 10,
+                        fontWeight: isNegativeModifier ? '600' : '400',
+                        flexShrink: 1
+                      }}
+                    >
+                      {isNegativeModifier ? 'NO ' : ''}
+                      {mod.name}
+                    </Text>
+                    {!isNegativeModifier && modifierPrice > 0 && (
+                      <Text
+                        style={{
+                          color: colors.teal,
+                          fontSize: 10,
+                          fontWeight: '600'
+                        }}
+                      >
+                        +{formatCurrency(modifierPrice)}
+                      </Text>
+                    )}
+                  </View>
                 )
               })}
             </View>
@@ -784,7 +837,8 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
                 color: colors.warning,
                 fontSize: 10,
                 fontStyle: 'italic',
-                marginTop: hasModifiers ? 3 : 4
+                marginTop: hasModifiers ? 3 : 4,
+                marginLeft: hasModifiers ? 6 : 0
               }}
             >
               {item.notes}

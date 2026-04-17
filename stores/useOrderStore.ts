@@ -99,14 +99,14 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useFloorPlanStore } from './useFloorPlanStore'
 // Phase 6: Conflict detection imports
 import {
-  clearOrderPendingVoid,
-  isOrderPendingVoid
-} from '@/lib/pendingVoidOrderIds'
-import {
   clearItemPendingRemoval,
   isItemPendingRemoval,
   markItemPendingRemoval
 } from '@/lib/pendingItemRemovals'
+import {
+  clearOrderPendingVoid,
+  isOrderPendingVoid
+} from '@/lib/pendingVoidOrderIds'
 import { detectConflict } from '@/services/conflictDetectionService'
 import { useConflictStore } from '@/stores/useConflictStore'
 import {
@@ -3074,7 +3074,6 @@ export const useOrderStore = create<OrderState>()(
           return (
             order.order_status !== 'completed' &&
             order.order_status !== 'void' &&
-            order.order_status !== 'voided' &&
             order.order_status !== 'cancelled'
           )
         }
@@ -3084,7 +3083,7 @@ export const useOrderStore = create<OrderState>()(
         ): Record<string, string> => {
           const nextIndex: Record<string, string> = {}
           for (const [orderId, order] of Object.entries(ordersById)) {
-            if (isTableIndexedOrder(order)) {
+            if (isTableIndexedOrder(order) && order.service_location_id) {
               nextIndex[order.service_location_id] = orderId
             }
           }
@@ -3108,7 +3107,10 @@ export const useOrderStore = create<OrderState>()(
           }
 
           const currentOrder = state.ordersById[orderId]
-          if (isTableIndexedOrder(currentOrder)) {
+          if (
+            isTableIndexedOrder(currentOrder) &&
+            currentOrder.service_location_id
+          ) {
             state.tableOrderIdIndex[currentOrder.service_location_id] = orderId
           }
         }
