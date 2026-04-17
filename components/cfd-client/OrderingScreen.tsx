@@ -688,84 +688,94 @@ function CartItemRow ({
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
         {/* Quantity badge (bill style) */}
-        <View
-          style={{
-            minWidth: 22,
-            height: 22,
-            borderRadius: 6,
-            backgroundColor: colors.teal + '18',
-            borderWidth: 1,
-            borderColor: colors.teal + '40',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginTop: 1
-          }}
-        >
-          <Text
+        <View style={{ alignItems: 'center', width: 40 }}>
+          <View
             style={{
-              color: colors.teal,
-              fontWeight: '700',
-              fontSize: 11
+              minWidth: 22,
+              height: 22,
+              borderRadius: 6,
+              backgroundColor: colors.teal + '18',
+              borderWidth: 1,
+              borderColor: colors.teal + '40',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
-            {item.quantity}
-          </Text>
-        </View>
+            <Text
+              style={{
+                color: colors.teal,
+                fontWeight: '700',
+                fontSize: 11
+              }}
+            >
+              {item.quantity}
+            </Text>
+          </View>
 
-        {/* Item Details */}
-        <View style={{ flex: 1 }}>
           {(item.seatNumber || item.courseNumber) && (
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 1 }}>
+            <View style={{ marginTop: 3, alignItems: 'center', gap: 1 }}>
               {item.seatNumber && (
                 <Text
                   style={{
                     color: colors.teal,
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: '600'
                   }}
+                  numberOfLines={1}
                 >
-                  Seat {item.seatNumber}
+                  S{item.seatNumber}
                 </Text>
               )}
               {item.courseNumber && (
                 <Text
                   style={{
                     color: colors.teal,
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: '600'
                   }}
+                  numberOfLines={1}
                 >
-                  Course {item.courseNumber}
+                  C{item.courseNumber}
                 </Text>
               )}
             </View>
           )}
+        </View>
+
+        {/* Item Details */}
+        <View style={{ flex: 1, paddingTop: 1 }}>
           <View
             style={{
               flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
+              alignItems: 'center',
               marginBottom: 4
             }}
           >
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontWeight: '600',
+                  fontSize: 14,
+                  lineHeight: 16,
+                  includeFontPadding: false
+                }}
+                numberOfLines={1}
+              >
+                {item.name}
+              </Text>
+            </View>
             <Text
-              style={{
-                color: colors.heading,
-                fontWeight: '600',
-                fontSize: 14,
-                lineHeight: 18,
-                flex: 1
-              }}
-              numberOfLines={2}
-            >
-              {item.name}
-            </Text>
-            <Text
+              numberOfLines={1}
               style={{
                 color: colors.teal,
-                fontSize: 11,
+                fontSize: 14,
+                lineHeight: 16,
+                includeFontPadding: false,
                 fontWeight: '600',
-                marginLeft: 8
+                marginLeft: 8,
+                flexShrink: 0,
+                textAlign: 'right'
               }}
             >
               {formatCurrency(item.lineTotalCard || item.lineTotal || 0)}
@@ -788,7 +798,7 @@ function CartItemRow ({
                       gap: 4,
                       paddingLeft: 4,
                       borderLeftColor: colors.border,
-                      borderLeftWidth: 2,
+                      borderLeftWidth: 1,
                       paddingVertical: 1
                     }}
                   >
