@@ -331,7 +331,7 @@ const OrderProcessing = () => {
           </View>
         )}
 
-        <View className='flex-1 bg-screen ml-4'>
+        <View className='flex-1 bg-screen ml-0'>
           {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
           {renderStage >= 2 ? (
             <MenuSection
@@ -379,7 +379,7 @@ const OrderProcessing = () => {
               }
               headerBelow={
                 !isAccordionOpen && displayOrders.length > 0 ? (
-                  <View className='px-3 py-1.5'>
+                  <View className='px-0 py-1.5'>
                     <Animated.FlatList
                       horizontal
                       data={displayOrders}
