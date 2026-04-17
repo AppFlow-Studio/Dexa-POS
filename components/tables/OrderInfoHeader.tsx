@@ -3,6 +3,7 @@ import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -41,7 +42,18 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, on
   const handleGuestCountChange = (newCount: number) => {
     const count = Math.max(1, newCount);
     setNumberOfGuests(count);
-    if (activeOrder) updateActiveOrderDetails({ guest_count: count });
+    if (activeOrder) {
+      updateActiveOrderDetails({ guest_count: count });
+      // Sync to session store so SeatSelector / useTableSeating pick up the
+      // new seat count without waiting for a backend round-trip.
+      const tableId = activeOrder.service_location_id;
+      if (tableId) {
+        useTableSessionStore.getState().dispatch(tableId, {
+          type: 'PATCH',
+          updates: { party_size: count }
+        });
+      }
+    }
   };
 
   const getTableDisplayName = () => {

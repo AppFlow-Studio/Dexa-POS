@@ -147,7 +147,9 @@ const TableOrderView = React.forwardRef<
   const enablePerSeatOrdering = useLocationConfigStore(
     s => s.config.dining.enablePerSeatOrdering
   )
-  const partySize = session?.party_size ?? 2
+  // Prefer activeOrder.guest_count (updated in real-time by header stepper)
+  // over session.party_size (only updated on initial seat or backend sync).
+  const partySize = activeOrder?.guest_count ?? session?.party_size ?? 2
   // Seat data is always tracked/persisted. `enablePerSeatOrdering` only
   // controls whether the bill groups items by seat (see renderOrderView
   // in TableBillSection). The SeatSelector header bar below and the
