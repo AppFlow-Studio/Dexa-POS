@@ -80,12 +80,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     enabled: !!selectedStore?.id && !isKDS,
   });
 
-  usePreviousOrdersBootstrap({
-    locationId: selectedStore?.id ?? null,
-    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
-  });
-
-  // Register Supabase client with order store, floor plan store, coursing store, and offline sync
+  // Register Supabase client with all stores BEFORE bootstrap hooks run,
+  // so store methods have the client available when their effects fire.
   useEffect(() => {
     if (supabase) {
       setOrderStoreSupabaseClient(supabase);
@@ -117,6 +113,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     //   setCoursingSupabaseClient(null);
     // };
   }, [supabase]);
+
+  usePreviousOrdersBootstrap({
+    locationId: selectedStore?.id ?? null,
+    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
+  });
 
   // Device detection & heartbeat lifecycle
   useEffect(() => {

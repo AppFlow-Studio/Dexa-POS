@@ -190,7 +190,12 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
   const handleRegister = useCallback(async () => {
     setIsRegistering(true);
     try {
-      await onRegisterTerminal({ type: registerFormType, ...registerForm });
+      await onRegisterTerminal({
+        type: registerFormType,
+        ...registerForm,
+        ipAddress: registerForm.ipAddress.replace(/\s/g, ''),
+        port: registerForm.port.replace(/\s/g, ''),
+      });
       setShowRegisterForm(false);
       setRegisterForm({
         name: "",
@@ -226,7 +231,11 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
   const handleSaveEditLocal = useCallback(async () => {
     setIsSavingEdit(true);
     try {
-      await onSaveEdit(editForm);
+      await onSaveEdit({
+        ...editForm,
+        ipAddress: editForm.ipAddress.replace(/\s/g, ''),
+        port: editForm.port.replace(/\s/g, ''),
+      });
       setIsEditingTerminal(false);
     } catch {
       // parent handles toast
@@ -237,14 +246,15 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
 
   const runInlineTest = useCallback(
     async (ip: string, port: string, terminalId: string) => {
-      if (!ip.trim()) return;
+      const cleanIp = ip.replace(/\s/g, '');
+      if (!cleanIp) return;
       setQuickTestStatus("testing");
       try {
         const ok = await onTestConnectionWithConfig({
           terminalId,
           terminalType: "castles",
-          ipAddress: ip.trim(),
-          port: parseInt(port, 10) || 8080,
+          ipAddress: cleanIp,
+          port: parseInt(port.replace(/\s/g, ''), 10) || 8080,
         });
         setQuickTestStatus(ok.success ? "online" : "offline");
       } catch {

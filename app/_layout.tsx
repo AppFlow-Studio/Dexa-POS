@@ -372,17 +372,6 @@ export default Sentry.wrap(function RootLayout() {
                                   <Stack.Screen name='(cfd)' />
                                   <Stack.Screen name='(main)' />
                                   <Stack.Screen name='(profiles-and-timeclock)' />
-                                  <Stack.Screen
-                                    name='(main)/tables/[tableId]'
-                                    options={{
-                                      presentation: 'transparentModal',
-                                      animation: 'none'
-                                    }}
-                                  />
-                                  <Stack.Screen
-                                    name='(main)/tables/waitlist'
-                                    options={{ animation: 'none' }}
-                                  />
                                 </Stack>
                                 <PortalHost />
                                 {isPOSMode && <SearchBottomSheet />}

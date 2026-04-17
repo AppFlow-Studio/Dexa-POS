@@ -1587,7 +1587,7 @@ const ModifierScreenContent = () => {
                     flexWrap: 'wrap',
                     gap: 8,
                     alignItems: 'flex-start',
-                    justifyContent: 'center',
+                    justifyContent: 'flex-start',
                     paddingBottom: 2
                   }}
                 >
