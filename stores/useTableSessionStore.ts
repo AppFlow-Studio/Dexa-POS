@@ -20,7 +20,7 @@ import {
   type SessionAction as DispatchableAction
 } from '@/lib/sessionActions'
 import { _fireEffects, type SideEffectContext } from '@/lib/sessionSideEffects'
-import { mmkvStorage } from '@/lib/storage'
+import { createLazyPersistStorage } from '@/lib/storage'
 import {
   canTransition as canTransitionFn,
   isLocalOnlyStatus,
@@ -39,7 +39,6 @@ import {
 import type { TableSessionPayload } from '@/types/real-time'
 import { create } from 'zustand'
 import {
-  createJSONStorage,
   persist,
   subscribeWithSelector
 } from 'zustand/middleware'
@@ -1596,7 +1595,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       })),
       {
         name: 'table-session-storage',
-        storage: createJSONStorage(() => mmkvStorage),
+        storage: createLazyPersistStorage(),
         partialize: state => ({
           // Only persist sessions (not index — rebuilt on hydration)
           sessions: state.sessions

@@ -2,6 +2,7 @@ import { CFDErrorBoundary } from "@/components/cfd-client/CFDErrorBoundary";
 import { CFDClientProvider } from "@/contexts/CFDClientContext";
 import { useCFDWSClient } from "@/hooks/useCFDWSClient";
 import { activateKeepAwakeAsync } from "expo-keep-awake";
+import { POS_SCREEN_OPTIONS } from "@/lib/screenConfig";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
@@ -16,12 +17,7 @@ function CFDLayoutInner() {
   return (
     <CFDClientProvider value={cfdClient}>
       <StatusBar hidden />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: "none",
-        }}
-      />
+      <Stack screenOptions={POS_SCREEN_OPTIONS} />
     </CFDClientProvider>
   );
 }

@@ -13,12 +13,13 @@ interface KitchenPassProps {
 //   - Inner rect = the opening/window area (slightly lighter fill)
 //   - Dashed center line = suggests the window opening plane
 //   - Small tick marks at intervals = shelf support points
-const KitchenPass = ({
+const KitchenPass = React.memo(function KitchenPass({
   color = "#94A3B8",
   width = 180,
   height = 25,
-}: KitchenPassProps) => (
-  <Svg width={width} height={height} viewBox="0 0 180 25" fill="none">
+}: KitchenPassProps) {
+  return (
+    <Svg width={width} height={height} viewBox="0 0 180 25" fill="none">
     {/* Frame / surround */}
     <Rect
       x="0.75"
@@ -60,7 +61,8 @@ const KitchenPass = ({
     <Line x1="96" y1="4" x2="96" y2="21" stroke={color} strokeWidth="0.75" strokeOpacity="0.3" />
     <Line x1="126" y1="4" x2="126" y2="21" stroke={color} strokeWidth="0.75" strokeOpacity="0.3" />
     <Line x1="156" y1="4" x2="156" y2="21" stroke={color} strokeWidth="0.75" strokeOpacity="0.3" />
-  </Svg>
-);
+    </Svg>
+  );
+});
 
 export default KitchenPass;

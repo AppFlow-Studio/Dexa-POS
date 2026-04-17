@@ -19,7 +19,6 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { ArrowLeft, Check, Minus, Plus, X } from 'lucide-react-native'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -597,12 +596,12 @@ const ModifierScreenContent = () => {
     const optionFrame = requestAnimationFrame(() => {
       setVisibleOptionCount(Number.MAX_SAFE_INTEGER)
     })
-    const secondaryTask = InteractionManager.runAfterInteractions(() => {
+    const secondaryFrame = requestAnimationFrame(() => {
       setShowSecondarySections(true)
     })
     return () => {
       cancelAnimationFrame(optionFrame)
-      secondaryTask.cancel()
+      cancelAnimationFrame(secondaryFrame)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])

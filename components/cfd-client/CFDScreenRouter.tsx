@@ -33,7 +33,18 @@ export function CFDScreenRouter ({
   onLoyaltySkip,
   onLoyaltyJoin
 }: Props) {
-  const { screenState, items } = useCFDDisplayData()
+  // Defensive: if context is missing (e.g. during unmount race), fall back
+  // to idle rather than letting the throw escape to the native Presentation
+  // layer where it surfaces as an Android system crash dialog.
+  let screenState: ReturnType<typeof useCFDDisplayData>['screenState'] = 'idle'
+  let items: ReturnType<typeof useCFDDisplayData>['items'] = []
+  try {
+    const data = useCFDDisplayData()
+    screenState = data.screenState
+    items = data.items
+  } catch {
+    // Context not available — render idle (dark screen, invisible to customer)
+  }
 
   const handleLoyaltyJoin = () => {
     if (onLoyaltyJoin) {
@@ -68,34 +79,39 @@ export function CFDScreenRouter ({
       : resolvedState
 
   const renderScreen = () => {
-    switch (resolvedState) {
-      case 'idle':
-        return <IdleScreen />
-      case 'ordering':
-        return <OrderingScreen />
-      case 'tip_selection':
-        return (
-          <TipSelectionScreen onTipSelected={onTipSelected ?? (() => {})} />
-        )
-      case 'payment':
-        return <PaymentScreen />
-      case 'processing':
-        return <PaymentScreen processing />
-      case 'approved':
-        return <ResultScreen success onJoinLoyalty={handleLoyaltyJoin} />
-      case 'declined':
-        return <ResultScreen success={false} />
-      case 'loyalty_prompt':
-        return (
-          <LoyaltyPromptScreen
-            onPhoneSubmitted={onPhoneSubmitted ?? triggerCFDPhoneSubmit}
-            onSkip={onLoyaltySkip ?? triggerCFDLoyaltySkip}
-          />
-        )
-      case 'loyalty_confirmation':
-        return <LoyaltyConfirmationScreen />
-      default:
-        return <IdleScreen />
+    try {
+      switch (resolvedState) {
+        case 'idle':
+          return <IdleScreen />
+        case 'ordering':
+          return <OrderingScreen />
+        case 'tip_selection':
+          return (
+            <TipSelectionScreen onTipSelected={onTipSelected ?? (() => {})} />
+          )
+        case 'payment':
+          return <PaymentScreen />
+        case 'processing':
+          return <PaymentScreen processing />
+        case 'approved':
+          return <ResultScreen success onJoinLoyalty={handleLoyaltyJoin} />
+        case 'declined':
+          return <ResultScreen success={false} />
+        case 'loyalty_prompt':
+          return (
+            <LoyaltyPromptScreen
+              onPhoneSubmitted={onPhoneSubmitted ?? triggerCFDPhoneSubmit}
+              onSkip={onLoyaltySkip ?? triggerCFDLoyaltySkip}
+            />
+          )
+        case 'loyalty_confirmation':
+          return <LoyaltyConfirmationScreen />
+        default:
+          return <IdleScreen />
+      }
+    } catch (err) {
+      console.error('[CFDScreenRouter] Render error, falling back to idle:', err)
+      return <IdleScreen />
     }
   }
 

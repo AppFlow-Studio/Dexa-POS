@@ -7,6 +7,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
+import { deferStoreUpdate } from "@/lib/deferredStoreUpdate";
+import { isRecentlyNavigated } from "@/lib/rootNavigation";
 import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useToastStore } from "@/stores/useToastStore";
@@ -120,32 +122,35 @@ function handleSuccess(): void {
   consecutiveFailures = 0;
   toastShownForCurrentFailureStreak = false;
 
-  // Update terminal store with healthy status
+  // Defer store updates to next frame — avoids interrupting in-progress renders
   if (currentTerminalId) {
-    usePaymentTerminalStore.getState().updateTerminalStatus(currentTerminalId, {
-      isConnected: true,
-      lastConnectionStatus: "Online",
-      lastConnectionTest: new Date().toISOString(),
-      consecutiveFailures: 0,
-      lastErrorMessage: null,
+    const tid = currentTerminalId;
+    const ts = new Date().toISOString();
+    deferStoreUpdate(() => {
+      usePaymentTerminalStore.getState().updateTerminalStatus(tid, {
+        isConnected: true,
+        lastConnectionStatus: "Online",
+        lastConnectionTest: ts,
+        consecutiveFailures: 0,
+        lastErrorMessage: null,
+      });
+      syncToStationStore(true);
     });
   }
 
-  // Sync status to selectedStation.payment_terminal so the UI re-renders
-  syncToStationStore(true);
-
-  // Update database
+  // Update database (async, no store impact)
   updateDatabaseHealth(true, "Online", null);
 
   // If terminal recovered from a failure streak, pre-warm CastlesService and show toast
   if (wasPreviouslyFailing) {
-    // Recovery toast
-    useToastStore.getState().show({
-      title: "Terminal Back Online",
-      message: `${currentPaymentTerminal?.terminal_name ?? "Payment terminal"} reconnected.`,
-      type: "success",
-      duration: 5000,
-    });
+    if (!isRecentlyNavigated(1000)) {
+      useToastStore.getState().show({
+        title: "Terminal Back Online",
+        message: `${currentPaymentTerminal?.terminal_name ?? "Payment terminal"} reconnected.`,
+        type: "success",
+        duration: 5000,
+      });
+    }
 
     // Pre-warm CastlesService singleton if applicable
     if (currentPaymentTerminal?.terminal_type === "castles" && currentTerminalId) {
@@ -159,21 +164,24 @@ function handleSuccess(): void {
 function handleFailure(errorMessage: string): void {
   consecutiveFailures++;
 
-  // Update terminal store with failure status
+  // Defer store updates to next frame — avoids interrupting in-progress renders
   if (currentTerminalId) {
-    usePaymentTerminalStore.getState().updateTerminalStatus(currentTerminalId, {
-      isConnected: false,
-      lastConnectionStatus: "Offline",
-      lastConnectionTest: new Date().toISOString(),
-      consecutiveFailures,
-      lastErrorMessage: errorMessage,
+    const tid = currentTerminalId;
+    const ts = new Date().toISOString();
+    const failures = consecutiveFailures;
+    deferStoreUpdate(() => {
+      usePaymentTerminalStore.getState().updateTerminalStatus(tid, {
+        isConnected: false,
+        lastConnectionStatus: "Offline",
+        lastConnectionTest: ts,
+        consecutiveFailures: failures,
+        lastErrorMessage: errorMessage,
+      });
+      syncToStationStore(false);
     });
   }
 
-  // Sync status to selectedStation.payment_terminal so the UI re-renders
-  syncToStationStore(false);
-
-  // Update database
+  // Update database (async, no store impact)
   updateDatabaseHealth(false, "Offline", errorMessage);
 
   console.warn(
@@ -186,12 +194,14 @@ function handleFailure(errorMessage: string): void {
     !toastShownForCurrentFailureStreak
   ) {
     toastShownForCurrentFailureStreak = true;
-    useToastStore.getState().show({
-      title: "Terminal Offline",
-      message: `Payment terminal has been unreachable for ${consecutiveFailures} consecutive checks. Please verify the terminal connection.`,
-      type: "warning",
-      duration: 8000,
-    });
+    if (!isRecentlyNavigated(1000)) {
+      useToastStore.getState().show({
+        title: "Terminal Offline",
+        message: `Payment terminal has been unreachable for ${consecutiveFailures} consecutive checks. Please verify the terminal connection.`,
+        type: "warning",
+        duration: 8000,
+      });
+    }
   }
 }
 

@@ -32,7 +32,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Clock, CreditCard, Receipt, RotateCcw } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  InteractionManager,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -130,12 +129,13 @@ const OrderDetailsScreen = () => {
     }
   }, [orderIdParam])
 
-  // Deferred rendering for smooth navigation
+  // With animation: 'none', navigation is synchronous — no transition to wait for.
+  // Single rAF yields to Fabric's commit phase, then mark ready.
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
+    const id = requestAnimationFrame(() => {
       setIsReady(true)
     })
-    return () => task.cancel()
+    return () => cancelAnimationFrame(id)
   }, [])
 
   const handleRefresh = useCallback(async () => {

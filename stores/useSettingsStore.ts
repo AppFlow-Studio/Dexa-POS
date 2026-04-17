@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { mmkvStorage } from "@/lib/storage";
+import { persist } from "zustand/middleware";
+import { createLazyPersistStorage } from "@/lib/storage";
 
 export interface DeliveryPartner {
   id: string;
@@ -335,7 +335,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "settings-storage",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: (state) => ({
         // Dining
         tablePrefix: state.tablePrefix,

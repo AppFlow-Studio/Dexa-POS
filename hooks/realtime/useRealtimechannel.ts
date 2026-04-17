@@ -100,7 +100,11 @@ export function useRealtimeChannel<T>({
       if (__DEV__) console.log(`[Realtime] Registering handler for event: ${event} on ${topic}`);
       channel.on('broadcast', { event }, (payload) => {
         if (__DEV__) console.log(`[Realtime] Received event: ${event} on ${topic}`);
-        onMessageRef.current(event, payload.payload as T);
+        // Defer to next frame to avoid re-render storms when broadcasts
+        // arrive during screen transitions or reconnect hydration.
+        requestAnimationFrame(() => {
+          onMessageRef.current(event, payload.payload as T);
+        });
       });
     });
 

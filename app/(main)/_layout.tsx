@@ -24,6 +24,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  unstable_batchedUpdates,
   View
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -165,9 +166,13 @@ export default function MainLayout () {
       })
     }
 
-    useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
-    useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
-    usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
+    // Batch all three store mutations so React processes them as a single
+    // render cycle instead of three separate re-render passes.
+    unstable_batchedUpdates(() => {
+      useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
+      useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
+      usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
+    });
 
     // Play notification sound for external orders (not POS-originated)
     if (broadcastPayload.operation === 'INSERT') {
@@ -264,7 +269,7 @@ export default function MainLayout () {
             bottomSheetRef={
               notificationSheetRef as React.RefObject<BottomSheetMethods>
             }
-            onClose={() => notificationSheetRef.current?.close()}
+            onClose={() => { /* sheet is already closed when onClose fires */ }}
           />
           {/* Payment sheet — Modal-based, self-manages visibility via isOpen */}
           <PaymentBottomSheet />

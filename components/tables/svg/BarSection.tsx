@@ -12,12 +12,13 @@ interface BarSectionProps {
 //   - Large rect = bar top surface (back of bar, against wall)
 //   - Thinner rect at front = bar ledge/overhang
 //   - 4 bar stools (circles) along the front edge
-const BarSection = ({
+const BarSection = React.memo(function BarSection({
   color = "#94A3B8",
   width = 170,
   height = 100,
-}: BarSectionProps) => (
-  <Svg width={width} height={height} viewBox="0 0 170 100" fill="none">
+}: BarSectionProps) {
+  return (
+    <Svg width={width} height={height} viewBox="0 0 170 100" fill="none">
     {/* Bar back body — deep storage/counter area */}
     <Rect
       x="5"
@@ -119,7 +120,8 @@ const BarSection = ({
     <Circle cx="63" cy="83" r="3" fill={color} fillOpacity="0.2" />
     <Circle cx="107" cy="83" r="3" fill={color} fillOpacity="0.2" />
     <Circle cx="145" cy="83" r="3" fill={color} fillOpacity="0.2" />
-  </Svg>
-);
+    </Svg>
+  );
+});
 
 export default BarSection;

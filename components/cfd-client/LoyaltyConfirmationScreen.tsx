@@ -8,6 +8,7 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeInUp,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -27,6 +28,10 @@ export function LoyaltyConfirmationScreen () {
   useEffect(() => {
     iconOpacity.value = withTiming(1, { duration: 150 })
     iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 })
+    return () => {
+      cancelAnimation(iconScale)
+      cancelAnimation(iconOpacity)
+    }
   }, [])
 
   const iconStyle = useAnimatedStyle(() => ({

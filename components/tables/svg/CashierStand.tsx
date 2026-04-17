@@ -1,3 +1,4 @@
+import * as React from 'react'
 import Svg, { Rect } from 'react-native-svg'
 
 interface CashierStandProps {
@@ -12,12 +13,13 @@ interface CashierStandProps {
 //   - Screen rect = monitor/display (upper portion)
 //   - Keyboard rect = input device below screen
 //   - Base strip = counter edge closest to customer
-const CashierStand = ({
+const CashierStand = React.memo(function CashierStand({
   color = '#94A3B8',
   width = 100,
   height = 100
-}: CashierStandProps) => (
-  <Svg width={width} height={height} viewBox='0 0 80 240' fill='none'>
+}: CashierStandProps) {
+  return (
+    <Svg width={width} height={height} viewBox='0 0 80 240' fill='none'>
     {/* Counter body */}
     <Rect
       x='0.75'
@@ -152,7 +154,8 @@ const CashierStand = ({
       strokeWidth='0.75'
       strokeOpacity='0.4'
     />
-  </Svg>
-)
+    </Svg>
+  )
+})
 
 export default CashierStand

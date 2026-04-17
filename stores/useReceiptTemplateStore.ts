@@ -1,4 +1,4 @@
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import {
   DEFAULT_RECEIPT_TEMPLATE,
   ReceiptTemplateConfig,
@@ -8,7 +8,7 @@ import {
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import * as FileSystem from "expo-file-system";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 interface ReceiptTemplateStoreState {
   templates: ReceiptTemplateConfig[];
@@ -228,7 +228,7 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
     }),
     {
       name: "receipt-template-store-storage",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: (state) => ({
         templates: state.templates,
         lastFetchedAt: state.lastFetchedAt,

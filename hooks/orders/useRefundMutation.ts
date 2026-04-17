@@ -9,7 +9,7 @@ import { getIsOnline } from "@/services/offlineSyncService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { orderHistoryKeys } from "./useOrderHistory";
-import { ordersQueryKeys } from "@/hooks/realtime/useOrdersRealtime";
+import { orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
 import { applyOptimisticPatch } from "./applyOptimisticPatch";
 import type { RefundReasonType, RefundRequest, ReversalRecord, OrderRefundItemRecord } from "@/types/refunds";
 import type { OrderProfile, OrderProfilePayment, PreviousOrder } from "@/lib/types";
@@ -384,15 +384,15 @@ export function useRefundMutation() {
         });
       }
 
-      // Cache invalidation — scoped to list/counts, not individual detail queries
+      // Cache invalidation — history list/counts + active orders for workspace sync
       queryClient.invalidateQueries({ queryKey: ["orderHistory", "list"] });
       queryClient.invalidateQueries({ queryKey: ["orderHistory", "filterCounts"] });
-      queryClient.invalidateQueries({
-        queryKey: ordersQueryKeys.detail(input.dbOrderId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: ordersQueryKeys.payments(input.dbOrderId),
-      });
+      const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+      if (locationId) {
+        queryClient.invalidateQueries({
+          queryKey: orderQueryKeys.active(locationId),
+        });
+      }
     },
 
     onError: (error: Error) => {

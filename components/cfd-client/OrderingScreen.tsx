@@ -13,11 +13,13 @@ import {
 } from 'react-native'
 import Animated, {
   LinearTransition,
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming
 } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 
 export function OrderingScreen () {
   const {
@@ -590,32 +592,43 @@ function RotatingImagePanel ({
   images: string[]
   style?: any
 }) {
-  const [currentIndex, setCurrentIndex] = React.useState(0)
+  const currentIndexRef = React.useRef(0)
+  const [displayIndex, setDisplayIndex] = React.useState(0)
   const [nextIndex, setNextIndex] = React.useState(0)
   const fadeOpacity = useSharedValue(0)
 
   useEffect(() => {
-    setCurrentIndex(0)
+    currentIndexRef.current = 0
+    setDisplayIndex(0)
     setNextIndex(0)
+    cancelAnimation(fadeOpacity)
     fadeOpacity.value = 0
   }, [images, fadeOpacity])
+
+  const advanceIndex = React.useCallback((next: number) => {
+    currentIndexRef.current = next
+    setDisplayIndex(next)
+    fadeOpacity.value = 0
+  }, [fadeOpacity])
 
   useEffect(() => {
     if (!images || images.length <= 1) return
 
     const interval = setInterval(() => {
-      const next = (currentIndex + 1) % images.length
+      const next = (currentIndexRef.current + 1) % images.length
       setNextIndex(next)
       fadeOpacity.value = withTiming(1, { duration: 900 }, finished => {
         if (finished) {
-          runOnJS(setCurrentIndex)(next)
-          fadeOpacity.value = 0
+          runOnJS(advanceIndex)(next)
         }
       })
     }, 8000)
 
-    return () => clearInterval(interval)
-  }, [currentIndex, images, fadeOpacity])
+    return () => {
+      clearInterval(interval)
+      cancelAnimation(fadeOpacity)
+    }
+  }, [images, fadeOpacity, advanceIndex])
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: fadeOpacity.value
@@ -629,7 +642,7 @@ function RotatingImagePanel ({
     )
   }
 
-  const currentImage = images[currentIndex] ?? images[0]
+  const currentImage = images[displayIndex] ?? images[0]
   const nextImage = images[nextIndex] ?? images[0]
 
   return (
@@ -658,7 +671,7 @@ function RotatingImagePanel ({
   )
 }
 
-function CartItemRow ({
+const CartItemRow = React.memo(function CartItemRow ({
   item,
   index,
   isLast
@@ -674,7 +687,7 @@ function CartItemRow ({
 
   return (
     <Animated.View
-      layout={LinearTransition.duration(200)}
+      layout={iosOnly(LinearTransition.duration(200))}
       style={{
         backgroundColor: colors.screen,
         paddingHorizontal: 8,
@@ -846,7 +859,7 @@ function CartItemRow ({
       </View>
     </Animated.View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   rightPanelSingle: {

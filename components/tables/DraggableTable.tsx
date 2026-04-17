@@ -359,40 +359,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return preAuth?.preAuthAmount ?? null
   }, [effectiveOrder?.payments])
 
-  const reservations = useReservationStore(s => s.reservations)
-
-  const liveNextReservation = useMemo(() => {
-    const nowMs = Date.now()
-
-    return reservations
-      .filter(r => {
-        const epoch = getReservationTimeMs({
-          date: r.reservation_date,
-          time: r.reservation_time
-        })
-
-        return (
-          ['pending', 'confirmed', 'reminded'].includes(r.status) &&
-          (r.assigned_table_ids ?? []).includes(table.id) &&
-          epoch !== null &&
-          epoch > nowMs
-        )
-      })
-      .sort((a, b) => {
-        const aEpoch = getReservationTimeMs({
-          date: a.reservation_date,
-          time: a.reservation_time
-        })
-        const bEpoch = getReservationTimeMs({
-          date: b.reservation_date,
-          time: b.reservation_time
-        })
-        return (
-          (aEpoch ?? Number.MAX_SAFE_INTEGER) -
-          (bEpoch ?? Number.MAX_SAFE_INTEGER)
-        )
-      })[0]
-  }, [reservations, table.id])
+  // O(1) lookup from precomputed map — no per-table filter/sort on every reservation poll
+  const liveNextReservation = useReservationStore(
+    s => s.nextReservationByTableId[table.id] ?? null
+  )
 
   // Subscribe only to the specific merged table names needed, not the entire tablesById map
   const mergedTableIds = liveSession?.merged_tables ?? []

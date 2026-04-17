@@ -15,13 +15,12 @@ const NotificationBottomSheet: React.FC<NotificationBottomSheetProps> = ({
   bottomSheetRef,
   onClose,
 }) => {
-  // Define snap points. Starting with 50% and 85% as discussed in previous plans.
   const snapPoints = useMemo(() => ["50%", "85%"], []);
 
   return (
     <BottomSheet
       ref={bottomSheetRef}
-      index={-1} // Start closed
+      index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}

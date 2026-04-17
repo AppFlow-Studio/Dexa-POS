@@ -259,7 +259,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   )
   const totals = useOrderTotals(resolvedOrderId)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const reservations = useReservationStore(s => s.reservations)
+  const upcomingReservation = useReservationStore(
+    s => table ? (s.nextReservationByTableId[table.id] ?? null) : null
+  )
   const isOccupied = !!order
   const { minutes: minutesSeated } = useSessionDuration(table?.id ?? '')
 
@@ -366,40 +368,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
 
   const partySize = liveSession?.party_size ?? table?.session?.party_size
 
-  // Reservation for this table (if any upcoming)
-  const upcomingReservation = useMemo(() => {
-    if (!table) return null
-    const nowMs = Date.now()
-
-    const toEpoch = (r: Reservation) => {
-      const direct = new Date(r.reservation_time).getTime()
-      if (Number.isFinite(direct)) return direct
-      if (r.reservation_date) {
-        const combined = new Date(
-          `${r.reservation_date}T${r.reservation_time}`
-        ).getTime()
-        if (Number.isFinite(combined)) return combined
-      }
-      return null
-    }
-
-    const upcoming = reservations
-      .filter(r => {
-        const epoch = toEpoch(r)
-        return (
-          ['pending', 'confirmed', 'reminded'].includes(r.status) &&
-          (r.assigned_table_ids ?? []).includes(table.id) &&
-          epoch !== null &&
-          epoch > nowMs
-        )
-      })
-      .sort(
-        (a, b) =>
-          (toEpoch(a) ?? Number.MAX_SAFE_INTEGER) -
-          (toEpoch(b) ?? Number.MAX_SAFE_INTEGER)
-      )
-    return upcoming[0] ?? null
-  }, [table, reservations])
+  // upcomingReservation is now read from the precomputed store map (line 262)
 
   const handleMarkArrived = useCallback(async (reservationId: string) => {
     await useReservationStore.getState().updateStatus(reservationId, 'arrived')

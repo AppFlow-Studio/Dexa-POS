@@ -1,4 +1,4 @@
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import {
   PrintJob,
   PrintJobPriority,
@@ -8,7 +8,7 @@ import {
   serializePrintJob,
 } from "@/types/printer";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 interface PrintQueueStoreState {
   jobs: SerializedPrintJob[];
@@ -200,7 +200,7 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
     }),
     {
       name: "print-queue-storage",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: (state) => ({
         // Persist queued, failed, AND processing jobs (processing saved as queued for crash recovery)
         jobs: state.jobs

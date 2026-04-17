@@ -13,8 +13,8 @@
 
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import { persist, createJSONStorage } from 'zustand/middleware'
-import { mmkvStorage } from '@/lib/storage'
+import { persist } from 'zustand/middleware'
+import { createLazyPersistStorage } from '@/lib/storage'
 import { debounce } from 'lodash'
 import type {
   LocationPosConfig,
@@ -186,7 +186,7 @@ export const useLocationConfigStore = create<LocationConfigState>()(
     })),
     {
       name: 'location-config-storage',
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: (state) => ({
         config: state.config,
         _locationId: state._locationId,

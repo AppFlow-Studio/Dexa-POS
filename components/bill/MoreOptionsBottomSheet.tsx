@@ -30,7 +30,7 @@ import {
   User,
   X
 } from 'lucide-react-native'
-import React, { forwardRef, useEffect, useMemo, useState } from 'react'
+import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -68,6 +68,26 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false)
   const [isPrintingKitchen, setIsPrintingKitchen] = useState(false)
   const { show } = useToast()
+
+  // Pending action to execute after the sheet finishes closing (index === -1).
+  // Replaces fragile setTimeout(250) delays that could race with Reanimated animations.
+  const pendingActionRef = useRef<(() => void) | null>(null)
+
+  const handleSheetChange = useCallback((index: number) => {
+    if (index === -1 && pendingActionRef.current) {
+      const action = pendingActionRef.current
+      pendingActionRef.current = null
+      action()
+    }
+  }, [])
+
+  /** Close sheet, then execute `action` once the close animation completes. */
+  const closeAndThen = useCallback((action: () => void) => {
+    pendingActionRef.current = action
+    if (ref && 'current' in ref && ref.current) {
+      ref.current.close()
+    }
+  }, [ref])
 
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const supabase = useSupabaseClient()
@@ -133,12 +153,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   }
 
   const handleVoidOrderClick = () => {
-    if (ref && 'current' in ref && ref.current) {
-      ref.current.close()
-    }
-    setTimeout(() => {
-      setVoidConfirmOpen(true)
-    }, 250)
+    closeAndThen(() => setVoidConfirmOpen(true))
   }
 
   const onConfirmVoid = async () => {
@@ -219,27 +234,16 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   }
 
   const handleAddCustomer = () => {
-    if (ref && 'current' in ref && ref.current) {
-      ref.current.close()
-    }
-    setTimeout(() => {
-      openSheet()
-    }, 250)
+    closeAndThen(() => openSheet())
   }
 
   const handleOpenDiscounts = () => {
-    // Show dialog if order has refunds
     if (!canApplyDiscount) {
       setShowRefundedDiscountDialog(true)
       return
     }
 
-    if (ref && 'current' in ref && ref.current) {
-      ref.current.close()
-    }
-    setTimeout(() => {
-      discountSheetRef?.current?.expand()
-    }, 250)
+    closeAndThen(() => discountSheetRef?.current?.expand())
   }
 
   const handlePrintReceipt = async () => {
@@ -418,6 +422,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose={true}
+        onChange={handleSheetChange}
         {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
       >
@@ -476,10 +481,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           {/* Close Check */}
           {isBalanceZero && activeOrder?.check_status == 'Opened' ? (
             <TouchableOpacity
-              onPress={() => {
-                closeSheet()
-                setTimeout(() => onCloseCheck?.(), 250)
-              }}
+              onPress={() => closeAndThen(() => onCloseCheck?.())}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -534,10 +536,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
           {activeOrder?.check_status == 'Closed' ? (
             <TouchableOpacity
-              onPress={() => {
-                closeSheet()
-                setTimeout(() => onCloseCheck?.(), 250)
-              }}
+              onPress={() => closeAndThen(() => onCloseCheck?.())}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -1097,10 +1096,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           {/* No Sale row */}
           {onNoSale && (
             <TouchableOpacity
-              onPress={() => {
-                closeSheet()
-                setTimeout(() => onNoSale(), 250)
-              }}
+              onPress={() => closeAndThen(() => onNoSale!())}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',

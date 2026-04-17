@@ -39,7 +39,6 @@ import {
   Dimensions,
   FlatList,
   GestureResponderEvent,
-  InteractionManager,
   Pressable,
   Animated as RNAnimated,
   Text,
@@ -1384,12 +1383,13 @@ const KitchenDisplayScreen = () => {
   // Dynamic column count from KDS display config
   const columnCount = kdsDisplayConfig?.columns ?? 4
 
-  // Deferred loading after navigation animation
+  // With animation: 'none', navigation is synchronous — no transition to wait for.
+  // Single rAF yields to Fabric's commit phase, then mark ready.
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const id = requestAnimationFrame(() => {
       setIsReady(true)
     })
-    return () => handle.cancel()
+    return () => cancelAnimationFrame(id)
   }, [])
 
   // Track realtime connection in a ref to avoid polling teardown on flaps

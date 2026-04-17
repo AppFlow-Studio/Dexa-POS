@@ -9,12 +9,12 @@
  * NOT persisted: sessions (hydrated from backend), shift history (fetched on demand), UI state
  */
 
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import { ShiftHistoryEntry, PTOAccrualEntry } from "@/lib/types";
 import { TimeClockAction, TimeClockStatus } from "@/types/time-clock";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
 import { useLocationConfigStore } from "./useLocationConfigStore";
@@ -770,7 +770,7 @@ export const useTimeclockStore = create<TimeclockState>()(
     })),
     {
       name: "dexa-pos-timeclock",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: (state) => ({
         // Only persist device state + offline queue
         status: state.status,

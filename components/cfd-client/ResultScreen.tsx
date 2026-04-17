@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   FadeInUp,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -44,6 +45,10 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
   useEffect(() => {
     iconOpacity.value = withTiming(1, { duration: 150 })
     iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 })
+    return () => {
+      cancelAnimation(iconScale)
+      cancelAnimation(iconOpacity)
+    }
   }, [])
 
   const iconStyle = useAnimatedStyle(() => ({

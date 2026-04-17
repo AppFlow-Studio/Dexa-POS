@@ -4,7 +4,7 @@ import { queryClient } from "@/contexts/TanstackProvider";
 import { orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
 import { useRealtimeFallbackPolling } from "@/hooks/pos/useRealtimeFallbackPolling";
 
-const MIN_INVALIDATION_GAP_MS = 5_000;
+const MIN_INVALIDATION_GAP_MS = 15_000;
 
 /**
  * Recovers order sync when the realtime WebSocket drops.

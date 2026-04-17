@@ -12,14 +12,15 @@ interface HostStandProps {
 //   - Outer rect = podium body
 //   - Angled inner shape = reading/writing surface (tapered toward front)
 //   - Small rect = book/tablet resting on surface
-const HostStand = ({
+const HostStand = React.memo(function HostStand({
   color = "#94A3B8",
   width = 40,
   height = 35,
-}: HostStandProps) => (
-  <Svg width={width} height={height} viewBox="0 0 40 35" fill="none">
-    {/* Podium outer body */}
-    <Rect
+}: HostStandProps) {
+  return (
+    <Svg width={width} height={height} viewBox="0 0 40 35" fill="none">
+      {/* Podium outer body */}
+      <Rect
       x="0.75"
       y="0.75"
       width="38.5"
@@ -61,7 +62,8 @@ const HostStand = ({
       fill={color}
       fillOpacity="0.3"
     />
-  </Svg>
-);
+    </Svg>
+  );
+});
 
 export default HostStand;

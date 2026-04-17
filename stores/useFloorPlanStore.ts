@@ -1,5 +1,5 @@
 import { findReservationTableConflictForWindow } from '@/lib/reservationConflicts'
-import { mmkvStorage } from '@/lib/storage'
+import { createLazyPersistStorage } from '@/lib/storage'
 import { TABLE_SHAPES } from '@/lib/table-shapes'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { FloorPlanService } from '@/services/floorPlanService'
@@ -17,7 +17,6 @@ import type { TableSessionPayload } from '@/types/real-time'
 import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import {
-  createJSONStorage,
   persist,
   subscribeWithSelector
 } from 'zustand/middleware'
@@ -1618,7 +1617,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
       }),
       {
         name: 'floor-plan-db-storage',
-        storage: createJSONStorage(() => mmkvStorage),
+        storage: createLazyPersistStorage(),
         partialize: state => ({
           floorPlans: state.floorPlans,
           activeFloorPlanId: state.activeFloorPlanId,

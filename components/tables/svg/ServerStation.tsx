@@ -12,12 +12,13 @@ interface ServerStationProps {
 //   - Outer rect = station body
 //   - Two inner shelf/compartment rects (stacked) suggesting storage cubbies
 //   - A small rect on the right side = POS terminal / ticket printer
-const ServerStation = ({
+const ServerStation = React.memo(function ServerStation({
   color = "#94A3B8",
   width = 60,
   height = 40,
-}: ServerStationProps) => (
-  <Svg width={width} height={height} viewBox="0 0 60 40" fill="none">
+}: ServerStationProps) {
+  return (
+    <Svg width={width} height={height} viewBox="0 0 60 40" fill="none">
     {/* Station body */}
     <Rect
       x="0.75"
@@ -87,7 +88,8 @@ const ServerStation = ({
       fill={color}
       fillOpacity="0.3"
     />
-  </Svg>
-);
+    </Svg>
+  );
+});
 
 export default ServerStation;

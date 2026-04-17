@@ -1,4 +1,4 @@
-import React from "react";
+import * as React from "react";
 import Svg, { Path, Ellipse, Rect } from "react-native-svg";
 
 interface DecorativePlantProps {
@@ -7,11 +7,11 @@ interface DecorativePlantProps {
   height?: number;
 }
 
-const DecorativePlant: React.FC<DecorativePlantProps> = ({
+const DecorativePlant = React.memo(function DecorativePlant({
   darkMode = true,
   width = 50,
   height = 60,
-}) => {
+}: DecorativePlantProps) {
   const leafPrimary = darkMode ? "#4ADE80" : "#22C55E";
   const leafSecondary = darkMode ? "#22C55E" : "#16A34A";
   const leafHighlight = darkMode ? "#86EFAC" : "#4ADE80";
@@ -214,6 +214,6 @@ const DecorativePlant: React.FC<DecorativePlantProps> = ({
       />
     </Svg>
   );
-};
+});
 
 export default DecorativePlant;

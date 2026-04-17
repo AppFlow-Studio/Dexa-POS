@@ -15,7 +15,7 @@ interface WallSectionProps {
  * Architectural wall segment. Per-edge stroke flags allow connected walls
  * to suppress the shared border so they visually merge into one solid mass.
  */
-const WallSection = ({
+const WallSection = React.memo(function WallSection({
   color = "#94A3B8",
   width = 200,
   height = 10,
@@ -23,7 +23,7 @@ const WallSection = ({
   hideRight = false,
   hideBottom = false,
   hideLeft = false,
-}: WallSectionProps) => {
+}: WallSectionProps) {
   const sw = 1.5; // stroke width
 
   // Build individual edge line paths so we can suppress each independently
@@ -87,6 +87,6 @@ const WallSection = ({
       />
     </Svg>
   );
-};
+});
 
 export default WallSection;

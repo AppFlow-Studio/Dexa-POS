@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -42,6 +43,7 @@ export function IdleScreen() {
     setOverlayUri(null);
     setPendingIndex(null);
     isTransitioningRef.current = false;
+    cancelAnimation(fadeOpacity);
     fadeOpacity.value = 0;
   }, [carouselImages]);
 
@@ -61,7 +63,10 @@ export function IdleScreen() {
       fadeOpacity.value = 0;
     }, ROTATION_MS);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      cancelAnimation(fadeOpacity);
+    };
   }, [baseUri, carouselImages, currentIndex, fadeOpacity]);
 
   const completeTransition = (nextIndex: number, nextUri: string) => {

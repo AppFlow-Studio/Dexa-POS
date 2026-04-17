@@ -9,7 +9,8 @@ import type {
   CFDPayload,
   CFDScreenState
 } from '@/types/cfd.types'
-import React, { createContext, useContext } from 'react'
+import React, { createContext, useContext, useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 export interface CFDDisplayData {
   // Connection
@@ -77,9 +78,44 @@ export function CFDExternalDisplayProvider ({
 }: {
   children: React.ReactNode
 }) {
-  const store = useCFDClientStore()
+  const store = useCFDClientStore(useShallow(s => ({
+    connectionStatus: s.connectionStatus,
+    latency: s.latency,
+    screenState: s.screenState,
+    serverName: s.serverName,
+    customerName: s.customerName,
+    customerPhone: s.customerPhone,
+    orderNumber: s.orderNumber,
+    orderType: s.orderType,
+    tableName: s.tableName,
+    guestCount: s.guestCount,
+    items: s.items,
+    subtotal: s.subtotal,
+    subtotalCash: s.subtotalCash,
+    subtotalCard: s.subtotalCard,
+    discountAmount: s.discountAmount,
+    taxAmount: s.taxAmount,
+    taxCash: s.taxCash,
+    taxCard: s.taxCard,
+    tipAmount: s.tipAmount,
+    tipPercentage: s.tipPercentage,
+    total: s.total,
+    totalCash: s.totalCash,
+    totalCard: s.totalCard,
+    savingsAmount: s.savingsAmount,
+    outstandingTotal: s.outstandingTotal,
+    amountPaid: s.amountPaid,
+    branding: s.branding,
+    layout: s.layout,
+    orderingPanelImages: s.orderingPanelImages,
+    tipConfig: s.tipConfig,
+    carouselImages: s.carouselImages,
+    loyaltyPrompt: s.loyaltyPrompt,
+    loyaltyResult: s.loyaltyResult,
+    paymentMethod: s.paymentMethod
+  })))
 
-  const data: CFDDisplayData = {
+  const data = useMemo<CFDDisplayData>(() => ({
     connectionStatus: store.connectionStatus,
     latency: store.latency,
     screenState: store.screenState,
@@ -114,7 +150,7 @@ export function CFDExternalDisplayProvider ({
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
     paymentMethod: store.paymentMethod ?? null
-  }
+  }), [store])
 
   return (
     <CFDDisplayDataContext.Provider value={data}>
@@ -129,11 +165,44 @@ export function CFDBuiltinDisplayProvider ({
 }: {
   children: React.ReactNode
 }) {
-  const store = useCFDBuiltinStore()
+  const store = useCFDBuiltinStore(useShallow(s => ({
+    screenState: s.screenState,
+    serverName: s.serverName,
+    customerName: s.customerName,
+    customerPhone: s.customerPhone,
+    orderNumber: s.orderNumber,
+    orderType: s.orderType,
+    tableName: s.tableName,
+    guestCount: s.guestCount,
+    items: s.items,
+    subtotal: s.subtotal,
+    subtotalCash: s.subtotalCash,
+    subtotalCard: s.subtotalCard,
+    discountAmount: s.discountAmount,
+    taxAmount: s.taxAmount,
+    taxCash: s.taxCash,
+    taxCard: s.taxCard,
+    tipAmount: s.tipAmount,
+    tipPercentage: s.tipPercentage,
+    total: s.total,
+    totalCash: s.totalCash,
+    totalCard: s.totalCard,
+    savingsAmount: s.savingsAmount,
+    outstandingTotal: s.outstandingTotal,
+    amountPaid: s.amountPaid,
+    branding: s.branding,
+    layout: s.layout,
+    orderingPanelImages: s.orderingPanelImages,
+    tipConfig: s.tipConfig,
+    carouselImages: s.carouselImages,
+    loyaltyPrompt: s.loyaltyPrompt,
+    loyaltyResult: s.loyaltyResult,
+    paymentMethod: s.paymentMethod
+  })))
 
-  const data: CFDDisplayData = {
-    connectionStatus: 'connected', // Always connected for built-in
-    latency: null, // No network latency
+  const data = useMemo<CFDDisplayData>(() => ({
+    connectionStatus: 'connected',
+    latency: null,
     screenState: store.screenState,
     serverName: store.serverName,
     customerName: store.customerName ?? null,
@@ -166,7 +235,7 @@ export function CFDBuiltinDisplayProvider ({
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
     paymentMethod: store.paymentMethod ?? null
-  }
+  }), [store])
 
   return (
     <CFDDisplayDataContext.Provider value={data}>

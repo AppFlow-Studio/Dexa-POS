@@ -4,17 +4,9 @@
 // ============================================================
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { createMMKV } from 'react-native-mmkv';
+import { persist } from 'zustand/middleware';
+import { createLazyPersistStorage } from '@/lib/storage';
 import { DejavooService } from '@/services/payments/dejavoo';
-
-const storage = createMMKV({ id: 'payment-terminal' });
-
-const mmkvStorage = {
-  getItem: (name: string) => storage.getString(name) ?? null,
-  setItem: (name: string, value: string) => storage.set(name, value),
-  removeItem: (name: string) => storage.remove(name),
-};
 
 interface PaymentTerminal {
   id: string;
@@ -90,7 +82,7 @@ export const usePaymentTerminalStore = create<PaymentTerminalState>()(
     }),
     {
       name: 'payment-terminal-store',
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: (state) => ({
         activeTerminalId: state.activeTerminalId,
       }),
