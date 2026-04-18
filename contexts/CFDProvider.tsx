@@ -1678,7 +1678,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       }
 
       const customerName =
-        fallbackCustomerName ?? order?.customer_name ?? frozen?.customerName ?? null
+        fallbackCustomerName ??
+        order?.customer_name ??
+        frozen?.customerName ??
+        null
       const customerPhone =
         fallbackCustomerPhone ??
         order?.customer_phone ??
@@ -2051,7 +2054,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         showPhonePrompt('auto-flow-error')
       }
     })()
-  }, [queueDeferredLoyaltyEarn, selectedStore?.merchant_id, selectedStore?.name, supabase])
+  }, [
+    queueDeferredLoyaltyEarn,
+    selectedStore?.merchant_id,
+    selectedStore?.name,
+    supabase
+  ])
 
   const handleBuiltinPhoneSubmit = useCallback(
     async (phone: string) => {
@@ -2206,7 +2214,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         ctrl.showIdle()
       }
     },
-    [queueDeferredLoyaltyEarn, selectedStore?.id, selectedStore?.merchant_id, supabase]
+    [
+      queueDeferredLoyaltyEarn,
+      selectedStore?.id,
+      selectedStore?.merchant_id,
+      supabase
+    ]
   )
 
   const handleBuiltinLoyaltySkip = useCallback(() => {
