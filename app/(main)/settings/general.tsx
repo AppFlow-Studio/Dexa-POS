@@ -9,6 +9,7 @@ import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getDeviceId } from '@/lib/deviceId'
 import { replaceRoute } from '@/lib/rootNavigation'
 import { colors, spinnerColor } from '@/lib/theme'
+import { secureStorage } from '@/lib/storage'
 import { toastService } from '@/lib/toastService'
 import type { MerchantRole } from '@/lib/types'
 import { clearLocationData, clearStationData } from '@/services/cacheService'
@@ -491,6 +492,7 @@ const GeneralSettingsScreen = () => {
       clearStationSession()
       clearSelectedStore()
       clearLocationData()
+      secureStorage.remove('clerk_was_signed_in')
       await signOut()
       setShowLogoutModal(false)
       replaceRoute('(auth)', 'login')

@@ -1,3 +1,4 @@
+import { secureStorage } from "@/lib/storage";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useClerk } from "@clerk/clerk-expo";
 import { replaceRoute } from "@/lib/rootNavigation";
@@ -32,6 +33,7 @@ export const SignOutButton = ({
       setIsLoading(true);
       // Clear the selected store from persistent storage
       clearSelectedStore();
+      secureStorage.remove('clerk_was_signed_in');
       await signOut();
       // Redirect to login page after sign out
       replaceRoute('(auth)', 'login');
