@@ -67,6 +67,13 @@ export function useTableSeating(
       return;
     }
 
+    // Skip server load if data was fetched recently (e.g., user re-tapped same table)
+    const existing = useSeatingStore.getState().byOrderId[orderId];
+    if (existing?.lastSyncAt && Date.now() - existing.lastSyncAt.getTime() < 10_000) {
+      setSeatingInitialized(true);
+      return;
+    }
+
     loadFromServer(orderId)
       .then(() => setSeatingInitialized(true))
       .catch((error) => {
