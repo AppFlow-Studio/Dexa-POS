@@ -696,8 +696,8 @@ const CartItemRow = React.memo(function CartItemRow ({
         paddingHorizontal: 8,
         paddingVertical: 8,
         marginBottom: 0,
-        borderBottomWidth: isLast ? 0 : 1,
-        borderBottomColor: colors.border
+        borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
+        borderBottomColor: colors.border + '55'
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
