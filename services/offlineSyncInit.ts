@@ -44,6 +44,10 @@ import {
 } from '@/services/offlineSyncService'
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { AddOpenItemParams, OrderService } from '@/services/orderService'
+import {
+  earnLoyaltyForOrder,
+  findOrCreateCustomerByPhone
+} from '@/services/loyalty/loyaltyService'
 import { useCoursingStore } from '@/stores/useCoursingStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -3052,6 +3056,107 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           return true
         } catch (err) {
           console.error('[OfflineSync:update_order_details] Error:', err)
+          return false
+        }
+      }
+
+      // ================================================================
+      // EARN LOYALTY (Deferred sync after reconnect)
+      // ================================================================
+      case 'earn_loyalty': {
+        const {
+          db_order_id,
+          local_order_id,
+          customer_id,
+          customer_phone,
+          merchant_id
+        } = op.params
+
+        const resolvedOrderId =
+          db_order_id && isValidUUID(db_order_id)
+            ? db_order_id
+            : resolveOrderId(local_order_id || op.localOrderId)
+
+        if (!resolvedOrderId) {
+          console.log('[OfflineSync:earn_loyalty] BLOCKED - Order not synced yet')
+          return false
+        }
+
+        console.log(
+          `[OfflineSync:earn_loyalty] Processing loyalty for order ${resolvedOrderId}`
+        )
+
+        try {
+          let effectiveCustomerId: string | null =
+            customer_id && isValidUUID(customer_id) ? customer_id : null
+
+          // Fetch latest order customer fields when needed.
+          if (!effectiveCustomerId) {
+            const { data: orderRow, error: orderError } = await _supabaseClient
+              .from('orders')
+              .select('customer_id, customer_phone, merchant_id')
+              .eq('id', resolvedOrderId)
+              .maybeSingle()
+
+            if (orderError) {
+              console.warn(
+                '[OfflineSync:earn_loyalty] Failed to fetch order customer fields:',
+                orderError
+              )
+            } else if (orderRow?.customer_id && isValidUUID(orderRow.customer_id)) {
+              effectiveCustomerId = orderRow.customer_id
+            }
+
+            // If no customer_id yet, resolve via phone and attach to order.
+            if (!effectiveCustomerId) {
+              const effectivePhone =
+                (customer_phone as string | null | undefined)?.replace(/\D/g, '') ||
+                (orderRow?.customer_phone as string | null | undefined)?.replace(
+                  /\D/g,
+                  ''
+                ) ||
+                ''
+              const effectiveMerchantId =
+                (merchant_id as string | null | undefined) ||
+                (orderRow?.merchant_id as string | null | undefined) ||
+                null
+
+              if (effectiveMerchantId && effectivePhone.length >= 10) {
+                const { id: resolvedCustomerId } = await findOrCreateCustomerByPhone(
+                  effectivePhone,
+                  effectiveMerchantId,
+                  _supabaseClient
+                )
+                effectiveCustomerId = resolvedCustomerId
+
+                const { error: updateCustomerError } = await _supabaseClient
+                  .from('orders')
+                  .update({ customer_id: resolvedCustomerId })
+                  .eq('id', resolvedOrderId)
+                if (updateCustomerError) {
+                  console.warn(
+                    '[OfflineSync:earn_loyalty] Failed to persist resolved customer_id:',
+                    updateCustomerError
+                  )
+                }
+              }
+            }
+          }
+
+          if (!effectiveCustomerId) {
+            console.log(
+              '[OfflineSync:earn_loyalty] BLOCKED - Missing customer context, will retry'
+            )
+            return false
+          }
+
+          const results = await earnLoyaltyForOrder(resolvedOrderId, _supabaseClient)
+          console.log(
+            `[OfflineSync:earn_loyalty] SUCCESS - programs processed: ${results.length}`
+          )
+          return true
+        } catch (err) {
+          console.error('[OfflineSync:earn_loyalty] Error:', err)
           return false
         }
       }

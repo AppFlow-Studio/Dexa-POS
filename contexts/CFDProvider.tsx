@@ -13,6 +13,7 @@ import {
   findOrCreateCustomerByPhone,
   type LoyaltyEarnResult
 } from '@/services/loyalty/loyaltyService'
+import { queueOperation } from '@/services/offlineSyncService'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useCFDBuiltinStore } from '@/stores/useCFDBuiltinStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
@@ -209,6 +210,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     outstandingTotal: number
     amountPaid: number
     paymentMethod: 'cash' | 'card' | 'manual' | null
+    localOrderId: string | null
     dbOrderId: string | null
     customerId: string | null
     customerPhone: string | null
@@ -238,6 +240,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loyaltyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loyaltyFlowRequestIdRef = useRef(0)
+  const queuedLoyaltyOrderIdsRef = useRef<Set<string>>(new Set())
   const debouncedUpdateRef = useRef(
     debounce((ctrl: CFDController, params: any) => {
       const hash = JSON.stringify(params)
@@ -465,6 +468,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             if (!dbOrderId) {
               const fallbackCustomerName =
                 order?.customer_name ?? frozen?.customerName ?? undefined
+              void queueDeferredLoyaltyEarn({
+                order,
+                frozen,
+                fallbackCustomerName,
+                fallbackCustomerPhone: phone
+              })
               logLoyaltyTrace(
                 'external-phone-submitted:missing-db-order-id-fallback-confirmation',
                 {
@@ -1519,6 +1528,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           ? 0
           : Math.round((activeOrder?.amount_paid ?? 0) * 100),
         paymentMethod: paymentMethod ?? null,
+        localOrderId: activeOrder?.id ?? activeOrderIdRef.current ?? null,
         dbOrderId: activeOrder?.db_order_id ?? null,
         customerId: activeOrder?.customer_id ?? null,
         customerPhone: activeOrder?.customer_phone ?? null,
@@ -1638,6 +1648,76 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     controllerRef.current?.showIdle()
   }, [])
 
+  const queueDeferredLoyaltyEarn = useCallback(
+    async ({
+      order,
+      frozen,
+      fallbackCustomerName,
+      fallbackCustomerPhone,
+      fallbackCustomerId
+    }: {
+      order: any
+      frozen: any
+      fallbackCustomerName?: string
+      fallbackCustomerPhone?: string
+      fallbackCustomerId?: string
+    }) => {
+      const localOrderId =
+        order?.id ?? activeOrderIdRef.current ?? frozen?.localOrderId ?? null
+      const dbOrderId = order?.db_order_id ?? frozen?.dbOrderId ?? null
+
+      if (!localOrderId && !dbOrderId) {
+        logLoyaltyTrace('deferred-earn:skip-no-order-identity')
+        return
+      }
+
+      const dedupeKey = localOrderId || dbOrderId
+      if (dedupeKey && queuedLoyaltyOrderIdsRef.current.has(dedupeKey)) {
+        logLoyaltyTrace('deferred-earn:skip-already-queued', { dedupeKey })
+        return
+      }
+
+      const customerName =
+        fallbackCustomerName ?? order?.customer_name ?? frozen?.customerName ?? null
+      const customerPhone =
+        fallbackCustomerPhone ??
+        order?.customer_phone ??
+        frozen?.customerPhone ??
+        null
+      const customerId =
+        fallbackCustomerId ?? order?.customer_id ?? frozen?.customerId ?? null
+
+      const queuedId = await queueOperation({
+        type: 'earn_loyalty',
+        params: {
+          local_order_id: localOrderId,
+          db_order_id: dbOrderId,
+          customer_id: customerId,
+          customer_phone: customerPhone,
+          customer_name: customerName,
+          merchant_id: selectedStore?.merchant_id ?? null
+        },
+        localOrderId: localOrderId || dbOrderId,
+        contextSnapshot: {
+          source: 'cfd_loyalty_fallback',
+          customer_id: customerId,
+          customer_phone: customerPhone,
+          customer_name: customerName
+        }
+      })
+
+      if (dedupeKey) queuedLoyaltyOrderIdsRef.current.add(dedupeKey)
+      logLoyaltyTrace('deferred-earn:queued', {
+        queuedId,
+        localOrderId,
+        dbOrderId,
+        hasCustomerId: !!customerId,
+        hasCustomerPhone: !!customerPhone
+      })
+    },
+    [selectedStore?.merchant_id]
+  )
+
   const showLoyaltyPrompt = useCallback(() => {
     const currentScreenState = activeScreenStateRef.current
     if (
@@ -1677,6 +1757,13 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     })
 
     if (!dbOrderId && hasKnownCustomerContext) {
+      void queueDeferredLoyaltyEarn({
+        order,
+        frozen,
+        fallbackCustomerName: candidateCustomerName,
+        fallbackCustomerPhone: candidatePhone,
+        fallbackCustomerId: candidateCustomerId
+      })
       logLoyaltyTrace(
         'show-loyalty-prompt:no-db-order-id-fallback-confirmation',
         {
@@ -1964,7 +2051,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         showPhonePrompt('auto-flow-error')
       }
     })()
-  }, [selectedStore?.merchant_id, selectedStore?.name, supabase])
+  }, [queueDeferredLoyaltyEarn, selectedStore?.merchant_id, selectedStore?.name, supabase])
 
   const handleBuiltinPhoneSubmit = useCallback(
     async (phone: string) => {
@@ -1989,6 +2076,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       if (!dbOrderId) {
         const fallbackCustomerName =
           order?.customer_name ?? frozen?.customerName ?? undefined
+        void queueDeferredLoyaltyEarn({
+          order,
+          frozen,
+          fallbackCustomerName,
+          fallbackCustomerPhone: phone
+        })
         logLoyaltyTrace(
           'builtin-phone-submitted:missing-db-order-id-fallback-confirmation',
           {
@@ -2113,7 +2206,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         ctrl.showIdle()
       }
     },
-    [selectedStore?.id, selectedStore?.merchant_id, supabase]
+    [queueDeferredLoyaltyEarn, selectedStore?.id, selectedStore?.merchant_id, supabase]
   )
 
   const handleBuiltinLoyaltySkip = useCallback(() => {

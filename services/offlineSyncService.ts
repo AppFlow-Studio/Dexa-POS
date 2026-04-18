@@ -71,7 +71,9 @@ export type OperationType =
   // Tip adjust DB fallback
   | "tip_adjust_db"              // Persist tip adjustment to DB after terminal success
   // Order detail sync
-  | "update_order_details";      // Sync customer/order details to backend
+  | "update_order_details"      // Sync customer/order details to backend
+  // Loyalty sync
+  | "earn_loyalty";              // Process loyalty earn after order/payment sync
 
 /**
  * Priority levels for operation processing.
@@ -126,6 +128,9 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
 
   // Order detail sync (after items, before payments)
   update_order_details: 3,
+
+  // Loyalty earn after payment/order sync
+  earn_loyalty: 6,
 };
 
 export interface OfflineOperation {
