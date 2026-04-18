@@ -123,8 +123,9 @@ export default function CFDPairingScreen() {
   };
 
   const handleManualConnect = () => {
-    const [ipRaw, portStr] = manualIp.split(":");
-    const ip = ipRaw?.trim() ?? "";
+    const cleaned = manualIp.replace(/\s/g, '');
+    const [ipRaw, portStr] = cleaned.split(":");
+    const ip = ipRaw ?? "";
     const port = parseInt(portStr, 10);
 
     if (!ip || !Number.isFinite(port) || port <= 0 || port >= 65536) {

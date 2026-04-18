@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { useShallow } from "zustand/react/shallow";
+import { iosOnly } from "@/lib/safeAnimations";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 import OrderActionsMenu from "./OrderActionsMenu";
@@ -369,8 +370,8 @@ const PreviousOrdersSection = () => {
         {/* New Orders Banner - Floating */}
         {newOrdersCount > 0 && (
           <Animated.View
-            entering={FadeIn.duration(200)}
-            exiting={FadeOut.duration(200)}
+            entering={iosOnly(FadeIn.duration(200))}
+            exiting={iosOnly(FadeOut.duration(200))}
             className="absolute top-4 left-0 right-0 items-center z-10"
             pointerEvents="box-none"
           >

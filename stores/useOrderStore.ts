@@ -3,7 +3,7 @@ import {
   getKitchenSentStatus,
   getOrderSentStatus
 } from '@/lib/kitchenStatusUtils'
-import { getSyncJSON, mmkvStorage, setSyncJSON } from '@/lib/storage'
+import { createLazyPersistStorage, getSyncJSON, setSyncJSON } from '@/lib/storage'
 import { toastService } from '@/lib/toastService'
 import {
   CartItem,
@@ -32,7 +32,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { current, freeze, original } from 'immer'
 import { create } from 'zustand'
 import {
-  createJSONStorage,
   persist,
   subscribeWithSelector
 } from 'zustand/middleware'
@@ -2677,9 +2676,6 @@ interface OrderState {
   recalculateOrder: (orderId: string) => OrderTotals
   // Mark items as paid after a successful payment
   markItemsPaid: (orderId: string, allocations: ItemPaymentAllocation[]) => void
-  // Sync order from backend after payment to ensure consistency
-  syncOrderFromBackend: (orderId: string) => Promise<void>
-
   // === QUEUED UPDATE ACTIONS (Phase 3: Race Condition Prevention) ===
   // Apply queued backend updates after local sync completes
   applyQueuedUpdates: (orderId: string) => void
@@ -3574,6 +3570,13 @@ export const useOrderStore = create<OrderState>()(
                               return {
                                 ...broadcastItem,
                                 id: localItem.id, // Keep local ID
+                                // Preserve seat assignment: broadcast wins when
+                                // non-null; fall back to local for stale broadcasts
+                                // where set_item_seat hasn't committed yet.
+                                seatNumber:
+                                  broadcastItem.seatNumber ??
+                                  localItem.seatNumber ??
+                                  null,
                                 ...(hasPendingQuantitySync
                                   ? { quantity: localItem.quantity }
                                   : {}),
@@ -3655,6 +3658,12 @@ export const useOrderStore = create<OrderState>()(
                             updatedSyncedItems[i] = {
                               ...si,
                               id: pendingItem.id,
+                              // Preserve seat from broadcast if set, else from
+                              // local pending item (may not have synced yet).
+                              seatNumber:
+                                si.seatNumber ??
+                                pendingItem.seatNumber ??
+                                null,
                               ...(localKRank > broadcastKRank
                                 ? {
                                     kitchen_status: pendingItem.kitchen_status,
@@ -3683,6 +3692,21 @@ export const useOrderStore = create<OrderState>()(
                           ),
                           ...localSyncedNotInBroadcast
                         ]
+
+                        // Preserve local item ordering — broadcasts may return
+                        // items in a different order than the user added them.
+                        // Items not in the local order (new from broadcast) sort
+                        // to the end.
+                        const localIdOrder = new Map(
+                          existingOrder.items.map((item, idx) => [item.id, idx])
+                        )
+                        mergedItems.sort((a, b) => {
+                          const aIdx =
+                            localIdOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER
+                          const bIdx =
+                            localIdOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER
+                          return aIdx - bIdx
+                        })
                       }
 
                       // Detect locally-advanced payment state to avoid stale broadcast reverting paid_status
@@ -8395,6 +8419,10 @@ export const useOrderStore = create<OrderState>()(
            * keeping only active, unsynced, working-set, and own-station orders.
            */
           clearInactiveOrders: () => {
+            // Skip pruning if user just navigated — avoid store mutations mid-transition
+            const { isRecentlyNavigated } = require('@/lib/rootNavigation') as typeof import('@/lib/rootNavigation')
+            if (isRecentlyNavigated()) return
+
             const state = get()
             const keepSet = new Set<string>()
             const now = Date.now()
@@ -11773,120 +11801,6 @@ export const useOrderStore = create<OrderState>()(
           },
 
           /**
-           * Sync order from backend after payment to ensure consistency.
-           * Fetches fresh data from backend and updates local state.
-           *
-           * @param orderId - The local order ID to sync
-           */
-          syncOrderFromBackend: async (orderId: string): Promise<void> => {
-            const order = get().ordersById[orderId]
-            if (!order?.db_order_id) {
-              console.log(
-                '[syncOrderFromBackend] Order not found or not synced to DB'
-              )
-              return
-            }
-
-            const supabase = _supabaseClient
-            if (!supabase || !getIsOnline()) {
-              console.log('[syncOrderFromBackend] Offline or no client')
-              return
-            }
-
-            try {
-              // Fetch fresh order data
-              const { data: dbOrder, error: orderError } = await supabase
-                .from('orders')
-                .select(
-                  `
-                  id, total_amount, subtotal, tax_amount, discount_amount,
-                  amount_paid, amount_due, payment_status,
-                  card_total, cash_total, cash_amount_due,check_status
-                `
-                )
-                .eq('id', order.db_order_id)
-                .single()
-
-              if (orderError) throw orderError
-
-              // Fetch fresh item data
-              const { data: dbItems, error: itemsError } = await supabase
-                .from('order_items')
-                .select(
-                  'id, paid_quantity, subtotal, tax_amount, discount_amount'
-                )
-                .eq('order_id', order.db_order_id)
-
-              if (itemsError) throw itemsError
-
-              // Update local state with backend values
-              set(state => {
-                const currentOrder = state.ordersById[orderId]
-                if (!currentOrder) return
-
-                // Update items with backend paid_quantity
-                const updatedItems = currentOrder.items.map(item => {
-                  const dbItem = dbItems?.find(
-                    di => di.id === item.db_order_item_id
-                  )
-                  if (!dbItem) return item
-                  return {
-                    ...item,
-                    // FIX: Use the HIGHER of local vs backend paidQuantity
-                    // This prevents backend's stale paid_quantity=0 from overwriting
-                    // the correct local value that was updated by addPaymentToOrder
-                    paidQuantity: Math.max(
-                      item.paidQuantity || 0,
-                      dbItem.paid_quantity || 0
-                    ),
-                    subtotal: dbItem.subtotal ?? item.subtotal,
-                    taxAmount: dbItem.tax_amount ?? item.taxAmount,
-                    discount_amount:
-                      dbItem.discount_amount ?? item.discount_amount
-                  }
-                })
-
-                const paidStatus =
-                  dbOrder.payment_status === 'paid'
-                    ? 'Paid'
-                    : dbOrder.payment_status === 'partial'
-                    ? 'Partial'
-                    : 'Pending'
-
-                currentOrder.items = updatedItems
-                currentOrder.total_amount =
-                  dbOrder.card_total ?? dbOrder.total_amount
-                currentOrder.total_tax = dbOrder.tax_amount
-                currentOrder.total_discount = dbOrder.discount_amount
-                currentOrder.amount_paid = dbOrder.amount_paid
-                currentOrder.amount_due = dbOrder.amount_due
-                currentOrder.cash_amount_due = dbOrder.cash_amount_due
-                currentOrder.paid_status = paidStatus
-
-                // Update active order derived state if this is the active order
-                if (orderId === state.activeOrderId) {
-                  state.activeOrderTotal =
-                    dbOrder.card_total ?? dbOrder.total_amount
-                  state.activeOrderTax = dbOrder.tax_amount
-                  state.activeOrderDiscount = dbOrder.discount_amount
-                  state.activeOrderOutstandingTotal = dbOrder.amount_due
-                  state.activeOrderOutstandingCash = dbOrder.cash_amount_due
-                }
-              })
-
-              // Invalidate cache
-              paymentPreviewService.invalidateCache(orderId)
-
-              console.log(
-                '[syncOrderFromBackend] Successfully synced order',
-                orderId
-              )
-            } catch (error: any) {
-              console.error('[syncOrderFromBackend] Error:', error)
-            }
-          },
-
-          /**
            * Sync complete order from backend using get_order_details RPC.
            * Fetches ALL order data: items, modifiers, payments, status_history.
            *
@@ -12678,7 +12592,7 @@ export const useOrderStore = create<OrderState>()(
       }),
       {
         name: 'order-store-storage',
-        storage: createJSONStorage(() => mmkvStorage),
+        storage: createLazyPersistStorage(),
         partialize: (state: OrderState) => {
           // Fast path: combine persistableOrderIds + always-persist sets (all O(1) per entry)
           const filteredOrdersById: Record<string, OrderProfile> = {}

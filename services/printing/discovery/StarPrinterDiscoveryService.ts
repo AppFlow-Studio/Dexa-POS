@@ -4,6 +4,7 @@
 // Singleton pattern matching starPrinterHealthCheck.ts.
 
 import { AppState, AppStateStatus } from "react-native";
+import { isRecentlyNavigated } from "@/lib/rootNavigation";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { discoverStarPrinters } from "./StarPrinterDiscovery";
 import { useToastStore } from "@/stores/useToastStore";
@@ -64,12 +65,14 @@ async function performDiscoveryRound(): Promise<void> {
           networkAddress: match.ipAddress,
         });
 
-        useToastStore.getState().show({
-          title: "Printer IP Updated",
-          message: `${printer.printerName} moved to ${match.ipAddress}.`,
-          type: "success",
-          duration: 5000,
-        });
+        if (!isRecentlyNavigated(1000)) {
+          useToastStore.getState().show({
+            title: "Printer IP Updated",
+            message: `${printer.printerName} moved to ${match.ipAddress}.`,
+            type: "success",
+            duration: 5000,
+          });
+        }
       }
     }
   } catch (e) {

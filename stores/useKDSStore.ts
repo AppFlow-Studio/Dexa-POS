@@ -6,7 +6,7 @@ import type {
 import { getKitchenSentStatus } from '@/lib/kitchenStatusUtils'
 import { normalizePlatform } from '@/lib/platformAliases'
 import { isHeaderOnlyBroadcast } from '@/utils/orderTransformers'
-import { mmkvStorage } from '@/lib/storage'
+import { createLazyPersistStorage } from '@/lib/storage'
 import { OrderService } from '@/services/orderService'
 import {
   KDSDisplayConfig,
@@ -17,7 +17,7 @@ import {
 } from '@/types/kds'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
 import { useOrderStore } from './useOrderStore'
 import { useStoreSettingsStore } from './useStoreSettingsStore'
 import { useTableSessionStore } from './useTableSessionStore'
@@ -2154,7 +2154,7 @@ export const useKDSStore = create<KDSState>()(
     }),
     {
       name: 'kds-ticket-storage',
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: state => ({
         // Only persist _ticketsById — ticketsByStatus/tickets/counts are derived on rehydrate.
         // This avoids serializing 3 copies of the same ticket data on every bump.

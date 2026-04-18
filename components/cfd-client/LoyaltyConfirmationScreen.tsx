@@ -8,11 +8,13 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeInUp,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming
 } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 
 export function LoyaltyConfirmationScreen () {
   const { loyaltyResult, branding } = useCFDDisplayData()
@@ -26,6 +28,10 @@ export function LoyaltyConfirmationScreen () {
   useEffect(() => {
     iconOpacity.value = withTiming(1, { duration: 150 })
     iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 })
+    return () => {
+      cancelAnimation(iconScale)
+      cancelAnimation(iconOpacity)
+    }
   }, [])
 
   const iconStyle = useAnimatedStyle(() => ({
@@ -35,7 +41,7 @@ export function LoyaltyConfirmationScreen () {
 
   return (
     <View style={styles.container}>
-      <Animated.View entering={FadeIn.duration(250)} style={styles.header}>
+      <Animated.View entering={iosOnly(FadeIn.duration(250))} style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.headerIconBox}>
             <UtensilsCrossed size={20} color={colors.teal} />
@@ -53,14 +59,14 @@ export function LoyaltyConfirmationScreen () {
         </Animated.View>
 
         <Animated.Text
-          entering={FadeInUp.duration(280).delay(80)}
+          entering={iosOnly(FadeInUp.duration(280).delay(80))}
           style={styles.title}
         >
           Thank you!
         </Animated.Text>
 
         <Animated.Text
-          entering={FadeInUp.duration(280).delay(120)}
+          entering={iosOnly(FadeInUp.duration(280).delay(120))}
           style={styles.subtitle}
         >
           Loyalty points were added to your account.
@@ -68,7 +74,7 @@ export function LoyaltyConfirmationScreen () {
 
         {customerName ? (
           <Animated.Text
-            entering={FadeInUp.duration(280).delay(150)}
+            entering={iosOnly(FadeInUp.duration(280).delay(150))}
             style={styles.welcomeText}
           >
             Welcome back, {customerName}
@@ -77,7 +83,7 @@ export function LoyaltyConfirmationScreen () {
 
         {hasUnlockedReward ? (
           <Animated.View
-            entering={FadeInDown.duration(260).delay(300)}
+            entering={iosOnly(FadeInDown.duration(260).delay(300))}
             style={styles.rewardBanner}
           >
             <Gift size={18} color={colors.teal} />

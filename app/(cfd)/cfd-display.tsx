@@ -1,6 +1,7 @@
 import { CFDScreenRouter } from '@/components/cfd-client/CFDScreenRouter'
 import { useCFDClient } from '@/contexts/CFDClientContext'
 import { CFDExternalDisplayProvider } from '@/contexts/CFDDisplayDataContext'
+import { iosOnly } from '@/lib/safeAnimations'
 import { replaceRoute } from '@/lib/rootNavigation'
 import { colors } from '@/lib/theme'
 import { useCFDClientStore } from '@/stores/useCFDClientStore'
@@ -160,7 +161,7 @@ export default function CFDDisplayScreen () {
 
         {/* Error content */}
         <Animated.View
-          entering={FadeIn.duration(300)}
+          entering={iosOnly(FadeIn.duration(300))}
           style={{
             flex: 1,
             alignItems: 'center',
@@ -262,7 +263,7 @@ export default function CFDDisplayScreen () {
 
         {/* Connecting content */}
         <Animated.View
-          entering={FadeIn.duration(300)}
+          entering={iosOnly(FadeIn.duration(300))}
           style={{
             flex: 1,
             alignItems: 'center',
@@ -355,7 +356,7 @@ export default function CFDDisplayScreen () {
             }}
           >
             <Animated.View
-              entering={FadeIn.duration(200)}
+              entering={iosOnly(FadeIn.duration(200))}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',

@@ -6,7 +6,7 @@ import "@/global.css";
 
 import { CFDScreenRouter } from "@/components/cfd-client/CFDScreenRouter";
 import { CFDBuiltinDisplayProvider } from "@/contexts/CFDDisplayDataContext";
-import React from "react";
+import React, { useEffect } from "react";
 import { AppRegistry, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -51,7 +51,39 @@ class CFDBuiltinErrorBoundary extends React.Component<
   }
 }
 
+/**
+ * Installs a global handler that swallows unhandled promise rejections
+ * originating from the CFD display tree. React error boundaries only catch
+ * synchronous render errors — async throws (useEffect, setTimeout, promises)
+ * propagate to the native layer as JavascriptExceptions, causing Android to
+ * briefly show a system crash dialog on the Presentation window.
+ *
+ * This is a last-resort safety net, not a substitute for proper error handling
+ * in individual effects/callbacks.
+ */
+function useCFDGlobalErrorGuard() {
+  useEffect(() => {
+    const prevHandler = (globalThis as any).ErrorUtils?.getGlobalHandler?.();
+    const guard = (error: Error, isFatal?: boolean) => {
+      // Log but don't crash the secondary display
+      console.error("[CFDBuiltinDisplay] Caught unhandled error:", error);
+      // Let non-CFD fatal errors propagate to the main app's handler
+      if (isFatal && prevHandler) {
+        prevHandler(error, isFatal);
+      }
+    };
+    (globalThis as any).ErrorUtils?.setGlobalHandler?.(guard);
+    return () => {
+      if (prevHandler) {
+        (globalThis as any).ErrorUtils?.setGlobalHandler?.(prevHandler);
+      }
+    };
+  }, []);
+}
+
 function CFDBuiltinDisplay() {
+  useCFDGlobalErrorGuard();
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <CFDBuiltinErrorBoundary>

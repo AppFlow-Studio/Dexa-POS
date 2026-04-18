@@ -1,4 +1,5 @@
 import { useToast } from '@/contexts/ToastContext'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useMenuStore } from '@/stores/useMenuStore'
@@ -303,8 +304,8 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
 
   return (
     <Animated.View
-      entering={FadeIn.duration(200)}
-      exiting={FadeOut.duration(100)}
+      entering={iosOnly(FadeIn.duration(200))}
+      exiting={iosOnly(FadeOut.duration(100))}
       className='mt-3 pl-6 py-2 bg-blue-900/20'
     >
       <Text className='text-xl font-bold text-white mb-2'>

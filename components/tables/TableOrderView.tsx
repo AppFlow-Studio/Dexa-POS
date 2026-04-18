@@ -47,7 +47,7 @@ import React, {
   useRef,
   useState
 } from 'react'
-import { InteractionManager, Text, TouchableOpacity, View } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
 import { Portal as Teleport } from 'react-native-teleport'
 
 // Stable empty array to avoid new reference on every render
@@ -76,10 +76,17 @@ const TableOrderView = React.forwardRef<
   const openedAtRef = useRef(nowMs())
 
   // --- 1. Base Deferred Rendering State (MUST BE FIRST) ---
-  // Always start at 0 (skeleton) so the heavy bill + menu sections never mount
-  // synchronously during the opening animation. Even for occupied tables where
-  // data is already in store, the skeleton is invisible for <1 frame.
-  const [renderStage, setRenderStage] = useState(0)
+  // Fast-path: if the order is already in the store, skip skeleton entirely
+  // and render fully interactive on the very first frame.
+  const [renderStage, setRenderStage] = useState(() => {
+    const session = useTableSessionStore.getState().sessions[currentTableId]
+    if (!session || session.status === 'available') return 2
+    if (session.order_id) {
+      const found = useOrderStore.getState().getOrder(session.order_id)
+      if (found) return 2
+    }
+    return 0
+  })
 
   // --- 2. Standard Hooks & Context ---
   const { show } = useToast()
@@ -147,7 +154,9 @@ const TableOrderView = React.forwardRef<
   const enablePerSeatOrdering = useLocationConfigStore(
     s => s.config.dining.enablePerSeatOrdering
   )
-  const partySize = session?.party_size ?? 2
+  // Prefer activeOrder.guest_count (updated in real-time by header stepper)
+  // over session.party_size (only updated on initial seat or backend sync).
+  const partySize = activeOrder?.guest_count ?? session?.party_size ?? 2
   // Seat data is always tracked/persisted. `enablePerSeatOrdering` only
   // controls whether the bill groups items by seat (see renderOrderView
   // in TableBillSection). The SeatSelector header bar below and the
@@ -200,25 +209,33 @@ const TableOrderView = React.forwardRef<
 
   // --- 7. Effects ---
   useEffect(() => {
-    // Defer heavy content until after the navigation push animation finishes.
-    // Skeleton shows during the transition; bill + menu render once the screen
-    // has "landed", keeping the open animation smooth.
-    const task = InteractionManager.runAfterInteractions(() => {
-      setRenderStage(1)
-      requestAnimationFrame(() => {
-        setRenderStage(2)
-        if (__DEV__) {
-          console.log(
-            `[perf][table-order] interactive in ${Math.round(
-              nowMs() - openedAtRef.current
-            )}ms`,
-            { tableId: currentTableId }
-          )
-        }
-      })
+    // If lazy initializer already fast-pathed to stage 2, skip progressive hydration.
+    if (renderStage >= 2) {
+      if (__DEV__) {
+        console.log(
+          `[perf][table-order] instant (cached) in ${Math.round(
+            nowMs() - openedAtRef.current
+          )}ms`,
+          { tableId: currentTableId }
+        )
+      }
+      return
+    }
+    // Fallback: progressive hydration for uncached orders.
+    setRenderStage(1)
+    const id = requestAnimationFrame(() => {
+      setRenderStage(2)
+      if (__DEV__) {
+        console.log(
+          `[perf][table-order] interactive in ${Math.round(
+            nowMs() - openedAtRef.current
+          )}ms`,
+          { tableId: currentTableId }
+        )
+      }
     })
-    return () => task.cancel()
-  }, [currentTableId])
+    return () => cancelAnimationFrame(id)
+  }, [currentTableId]) // renderStage intentionally NOT in deps
 
   // --- 8. Final Derived UI State ---
   const isFullyPaid = useMemo(() => {

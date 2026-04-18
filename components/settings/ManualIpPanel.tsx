@@ -14,7 +14,8 @@ import { colors } from "@/lib/theme";
 // ---------------------------------------------------------------------------
 
 export const isValidIpv4 = (ip: string): boolean => {
-  const parts = ip.split(".");
+  const clean = ip.replace(/\s/g, '');
+  const parts = clean.split(".");
   if (parts.length !== 4) return false;
   return parts.every((p) => {
     const n = Number(p);
@@ -58,7 +59,7 @@ export function ManualIpPanel({
   const isReceipt = forRole === "receipt";
   const accentColor = isReceipt ? colors.teal : "#f97316";
 
-  const trimmedIp = manualIp.trim();
+  const trimmedIp = manualIp.replace(/\s/g, '');
   const ipValid = isValidIpv4(trimmedIp);
   const connectDisabled = isProbing || !trimmedIp || !ipValid;
 

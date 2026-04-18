@@ -24,6 +24,7 @@ type OrderSeating = {
   seatCount: number; // from party_size
   syncing: boolean;
   dbOrderId?: string;
+  lastSyncAt?: Date;
 };
 
 type SeatingState = {
@@ -186,6 +187,7 @@ export const useSeatingStore = create<SeatingState>((set, get) => ({
               ...(prev.byOrderId[orderId]?.dbIdToSeatMap || {}),
             },
             syncing: false,
+            lastSyncAt: new Date(),
           },
         },
       }));

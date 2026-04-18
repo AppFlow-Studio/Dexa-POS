@@ -11,18 +11,19 @@ interface PillarProps {
 // Outer rect = pillar perimeter with neon stroke
 // Inner concentric rect = suggests wall thickness / depth / hollow core
 // Corner fill rects at each corner = corner chamfers for structural look
-const Pillar = ({
+const Pillar = React.memo(function Pillar({
   color = "#94A3B8",
   width = 40,
   height = 40,
-}: PillarProps) => (
-  <Svg
-    width={width}
-    height={height}
-    viewBox="0 0 40 40"
-    fill="none"
-    preserveAspectRatio="none"
-  >
+}: PillarProps) {
+  return (
+    <Svg
+      width={width}
+      height={height}
+      viewBox="0 0 40 40"
+      fill="none"
+      preserveAspectRatio="none"
+    >
     {/* Outer pillar body */}
     <Rect
       x="0.75"
@@ -57,7 +58,8 @@ const Pillar = ({
       fill={color}
       fillOpacity="0.1"
     />
-  </Svg>
-);
+    </Svg>
+  );
+});
 
 export default Pillar;

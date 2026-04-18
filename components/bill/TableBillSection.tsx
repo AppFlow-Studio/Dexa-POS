@@ -313,6 +313,8 @@ type SeatListRow =
       item: CartItem
       isSent: boolean
       indentLeft: number
+      seatKey?: string | number
+      courseKey?: string
     }
 
 // ============================================================================
@@ -445,7 +447,8 @@ const DenseSeatView = React.memo(
     const orderPayments = activeOrder?.payments ?? null
     const orderHasPayments = !!orderPayments?.some(payment => !payment.isVoided)
 
-    const rows = useMemo<SeatListRow[]>(() => {
+    // Memo 1: Structure — expensive grouping, only recomputes when items/seats/courses change
+    const structuredRows = useMemo<SeatListRow[]>(() => {
       if (!activeOrder) return []
       if (!activeOrder.items?.length) {
         return [{ id: 'empty-order', type: 'empty' }]
@@ -456,7 +459,6 @@ const DenseSeatView = React.memo(
       sortedSeatKeys.forEach(seatKey => {
         const seatNumber = seatKey === 'shared' ? null : (seatKey as number)
         const label = seatKey === 'shared' ? 'Shared' : `Seat ${seatKey}`
-        const isCurrent = activeSeat === seatNumber
         const courseGroups =
           seatGroups[seatKey === 'shared' ? 'shared' : String(seatKey)] || {}
         const sortedCourses = Object.keys(courseGroups)
@@ -475,7 +477,6 @@ const DenseSeatView = React.memo(
           (sum, item) => sum + item.quantity,
           0
         )
-        const seatExpanded = !collapsedSeats.has(seatKey)
 
         nextRows.push({
           id: `seat-${seatKey}`,
@@ -483,13 +484,11 @@ const DenseSeatView = React.memo(
           seatKey,
           seatNumber,
           label,
-          isCurrent,
-          expanded: seatExpanded,
+          isCurrent: false, // set in visibility pass
+          expanded: true,   // set in visibility pass
           itemCount: seatItemCount,
           total: seatTotal
         })
-
-        if (!seatExpanded || allItems.length === 0) return
 
         if (enableCoursing) {
           sortedCourses.forEach(course => {
@@ -501,8 +500,6 @@ const DenseSeatView = React.memo(
             )
             const isSent = !!sentCourses?.[course]
             const isCurrentCourse = currentCourse === course
-            const courseKey = `${seatKey}-${course}`
-            const courseExpanded = !collapsedCourses.has(courseKey)
 
             nextRows.push({
               id: `course-${seatKey}-${course}`,
@@ -512,12 +509,10 @@ const DenseSeatView = React.memo(
               itemCount: courseItemCount,
               isSent,
               isCurrentCourse,
-              expanded: courseExpanded,
+              expanded: true, // set in visibility pass
               status: deriveAggregateStatus(items),
               sentAt: courseSentAtMap?.[course]
             })
-
-            if (!courseExpanded) return
 
             items.forEach(item => {
               nextRows.push({
@@ -525,7 +520,9 @@ const DenseSeatView = React.memo(
                 type: 'item',
                 item,
                 isSent: isSentToKitchen(item) && !item.is_voided,
-                indentLeft: 14
+                indentLeft: 14,
+                seatKey,
+                courseKey: `${seatKey}-${course}`
               })
             })
           })
@@ -538,7 +535,8 @@ const DenseSeatView = React.memo(
             type: 'item',
             item,
             isSent: isSentToKitchen(item) && !item.is_voided,
-            indentLeft: 6
+            indentLeft: 6,
+            seatKey
           })
         })
       })
@@ -548,17 +546,80 @@ const DenseSeatView = React.memo(
       activeOrder,
       seatGroups,
       sortedSeatKeys,
-      activeSeat,
-      collapsedSeats,
-      collapsedCourses,
       enableCoursing,
       sentCourses,
       currentCourse,
       courseSentAtMap
     ])
 
+    // Memo 2: Visibility — cheap pass that sets expanded flags and filters collapsed children
+    const rows = useMemo<SeatListRow[]>(() => {
+      if (structuredRows.length <= 1) return structuredRows // empty or single empty-order row
+
+      const result: SeatListRow[] = []
+      for (const row of structuredRows) {
+        if (row.type === 'empty') {
+          result.push(row)
+          continue
+        }
+
+        if (row.type === 'seat-header') {
+          const seatExpanded = !collapsedSeats.has(row.seatKey)
+          result.push(
+            seatExpanded === row.expanded && (activeSeat === row.seatNumber) === row.isCurrent
+              ? row
+              : { ...row, expanded: seatExpanded, isCurrent: activeSeat === row.seatNumber }
+          )
+          continue
+        }
+
+        if (row.type === 'course-header') {
+          // Skip if parent seat is collapsed
+          if (collapsedSeats.has(row.seatKey)) continue
+          const courseKey = `${row.seatKey}-${row.course}`
+          const courseExpanded = !collapsedCourses.has(courseKey)
+          result.push(
+            courseExpanded === row.expanded ? row : { ...row, expanded: courseExpanded }
+          )
+          continue
+        }
+
+        // type === 'item'
+        if (row.seatKey !== undefined && collapsedSeats.has(row.seatKey)) continue
+        if (row.courseKey && collapsedCourses.has(row.courseKey)) continue
+
+        result.push(row)
+      }
+      return result
+    }, [structuredRows, collapsedSeats, collapsedCourses, activeSeat])
+
+    // Stable ref for volatile data so renderRow doesn't need these as deps
+    const renderDataRef = useRef({
+      enableCoursing,
+      orderHasPayments,
+      orderPayments,
+      toggleSeat,
+      toggleCourse,
+      onSelectSeat,
+      onDoubleTapCourse,
+      setActionCourse
+    })
+    renderDataRef.current = {
+      enableCoursing,
+      orderHasPayments,
+      orderPayments,
+      toggleSeat,
+      toggleCourse,
+      onSelectSeat,
+      onDoubleTapCourse,
+      setActionCourse
+    }
+
+    // Stable renderRow — reads volatile data from ref, no deps to invalidate
     const renderRow = useCallback(
       ({ item: row }: { item: SeatListRow }) => {
+        const d = renderDataRef.current
+
         if (row.type === 'empty') {
           return (
             <View
@@ -584,8 +645,8 @@ const DenseSeatView = React.memo(
               isCurrent={row.isCurrent}
               expanded={row.expanded}
               onPress={() => {
-                toggleSeat(row.seatKey)
-                onSelectSeat?.(row.seatNumber)
+                d.toggleSeat(row.seatKey)
+                d.onSelectSeat?.(row.seatNumber)
               }}
             />
           )
@@ -601,14 +662,14 @@ const DenseSeatView = React.memo(
               expanded={row.expanded}
               status={row.status}
               sentAt={row.sentAt}
-              onPress={() => toggleCourse(row.seatKey, row.course)}
+              onPress={() => d.toggleCourse(row.seatKey, row.course)}
               onSend={
-                onDoubleTapCourse
-                  ? () => onDoubleTapCourse(row.course)
+                d.onDoubleTapCourse
+                  ? () => d.onDoubleTapCourse!(row.course)
                   : undefined
               }
               onLongPress={
-                row.isSent ? () => setActionCourse(row.course) : undefined
+                row.isSent ? () => d.setActionCourse(row.course) : undefined
               }
             />
           )
@@ -619,28 +680,20 @@ const DenseSeatView = React.memo(
             style={{
               paddingLeft: row.indentLeft,
               paddingRight: 4,
-              paddingVertical: enableCoursing ? 2 : 3,
-              opacity: enableCoursing && row.isSent ? 0.55 : 1
+              paddingVertical: d.enableCoursing ? 2 : 3,
+              opacity: d.enableCoursing && row.isSent ? 0.55 : 1
             }}
           >
             <BillItem
               item={row.item}
               isEditable={!row.isSent}
-              orderHasPayments={orderHasPayments}
-              payments={orderPayments}
+              orderHasPayments={d.orderHasPayments}
+              payments={d.orderPayments}
             />
           </View>
         )
       },
-      [
-        enableCoursing,
-        onDoubleTapCourse,
-        onSelectSeat,
-        orderHasPayments,
-        orderPayments,
-        toggleCourse,
-        toggleSeat
-      ]
+      [] // stable — reads from renderDataRef
     )
 
     if (!activeOrder) {

@@ -1,6 +1,7 @@
 import ReceiptModal from '@/components/receipts/ReceiptModal'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableDuration } from '@/hooks/useTableDuration'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import {
@@ -475,8 +476,8 @@ const ExpandedView: React.FC<{
 
   return (
     <Animated.View
-      entering={FadeIn.duration(200)}
-      exiting={FadeOut.duration(100)}
+      entering={iosOnly(FadeIn.duration(200))}
+      exiting={iosOnly(FadeOut.duration(100))}
       style={{
         marginTop: 10,
         borderTopWidth: 1,

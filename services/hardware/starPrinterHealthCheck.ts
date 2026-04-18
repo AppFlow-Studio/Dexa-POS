@@ -4,6 +4,8 @@
 import { AppState, AppStateStatus } from "react-native";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { StarIO10InUseError } from "react-native-star-io10";
+import { deferStoreUpdate } from "@/lib/deferredStoreUpdate";
+import { isRecentlyNavigated } from "@/lib/rootNavigation";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { useToastStore } from "@/stores/useToastStore";
@@ -217,14 +219,17 @@ function handlePrinterOnline(printer: PrinterConfig, result?: ProbeResult): void
   // Reset DHCP recovery flag on successful check
   dhcpRecoveryAttempted.delete(printer.id);
 
-  // Update store + backend
-  usePrinterStore.getState().syncPrinterStatus(printer.id, {
-    isConnected: true,
-    lastStatus: "Online",
-    errorCount: 0,
+  // Defer store update to next frame — avoids interrupting in-progress renders
+  const pid = printer.id;
+  deferStoreUpdate(() => {
+    usePrinterStore.getState().syncPrinterStatus(pid, {
+      isConnected: true,
+      lastStatus: "Online",
+      errorCount: 0,
+    });
   });
 
-  if (wasDown && isDefaultPrinter(printer)) {
+  if (wasDown && isDefaultPrinter(printer) && !isRecentlyNavigated(1000)) {
     useToastStore.getState().show({
       title: "Printer Back Online",
       message: `${printer.printerName} is now online.`,
@@ -234,7 +239,7 @@ function handlePrinterOnline(printer: PrinterConfig, result?: ProbeResult): void
   }
 
   // Warn about paper running low on default printers
-  if (result?.paperNearEmpty && isDefaultPrinter(printer)) {
+  if (result?.paperNearEmpty && isDefaultPrinter(printer) && !isRecentlyNavigated(1000)) {
     useToastStore.getState().show({
       title: "Paper Running Low",
       message: `${printer.printerName} paper is running low. Replace soon.`,
@@ -251,11 +256,15 @@ function handlePrinterOffline(printer: PrinterConfig, errorMessage: string): voi
   state.consecutiveFailures++;
   state.lastCheckAt = Date.now();
 
-  // Update store + backend
-  usePrinterStore.getState().syncPrinterStatus(printer.id, {
-    isConnected: false,
-    lastStatus: errorMessage,
-    errorCount: state.consecutiveFailures,
+  // Defer store update to next frame — avoids interrupting in-progress renders
+  const pid = printer.id;
+  const failures = state.consecutiveFailures;
+  deferStoreUpdate(() => {
+    usePrinterStore.getState().syncPrinterStatus(pid, {
+      isConnected: false,
+      lastStatus: errorMessage,
+      errorCount: failures,
+    });
   });
 
   console.warn(
@@ -277,12 +286,14 @@ function handlePrinterOffline(printer: PrinterConfig, errorMessage: string): voi
       ? `Consider switching to "${alt.printerName}" as an alternative.`
       : "Please check the printer connection.";
 
-    useToastStore.getState().show({
-      title: "Printer Offline",
-      message: `Default ${role} printer "${printer.printerName}" is unreachable. ${suggestion}`,
-      type: "warning",
-      duration: 8000,
-    });
+    if (!isRecentlyNavigated(1000)) {
+      useToastStore.getState().show({
+        title: "Printer Offline",
+        message: `Default ${role} printer "${printer.printerName}" is unreachable. ${suggestion}`,
+        type: "warning",
+        duration: 8000,
+      });
+    }
   }
 
   // DHCP IP Auto-Recovery: after threshold failures, if printer has MAC address,

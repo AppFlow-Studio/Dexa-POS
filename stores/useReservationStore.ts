@@ -138,8 +138,60 @@ const extractReservationRows = (
   return []
 }
 
+/**
+ * Build a map of tableId → nearest upcoming reservation.
+ * Computed once when reservations change instead of O(n) per-table in components.
+ */
+function buildNextReservationByTableId(
+  reservations: Reservation[],
+  oldMap?: Record<string, Reservation>
+): Record<string, Reservation> {
+  const nowMs = Date.now()
+
+  const active = reservations.filter(r => {
+    const epoch = getReservationEpoch(r)
+    return (
+      ['pending', 'confirmed', 'reminded'].includes(r.status) &&
+      epoch !== null &&
+      epoch > nowMs
+    )
+  })
+
+  active.sort((a, b) => {
+    const aE = getReservationEpoch(a) ?? Number.MAX_SAFE_INTEGER
+    const bE = getReservationEpoch(b) ?? Number.MAX_SAFE_INTEGER
+    return aE - bE
+  })
+
+  const map: Record<string, Reservation> = {}
+  for (const r of active) {
+    for (const tableId of r.assigned_table_ids ?? []) {
+      if (!map[tableId]) map[tableId] = r
+    }
+  }
+
+  // Stabilize: reuse old object references when reservation hasn't changed,
+  // so zustand's Object.is check on s.nextReservationByTableId[tableId]
+  // returns true for tables with no change → prevents unnecessary re-renders.
+  if (oldMap) {
+    let same = true
+    const allKeys = new Set([...Object.keys(map), ...Object.keys(oldMap)])
+    for (const key of allKeys) {
+      if (map[key]?.id === oldMap[key]?.id) {
+        if (oldMap[key]) map[key] = oldMap[key]
+      } else {
+        same = false
+      }
+    }
+    if (same) return oldMap
+  }
+
+  return map
+}
+
 interface ReservationState {
   reservations: Reservation[]
+  nextReservationByTableId: Record<string, Reservation>
   reservationBySessionId: Record<string, string>
   selectedDate: Date
   isLoading: boolean
@@ -171,6 +223,7 @@ interface ReservationState {
 
 export const useReservationStore = create<ReservationState>((set, get) => ({
   reservations: [],
+  nextReservationByTableId: {},
   reservationBySessionId: {},
   selectedDate: new Date(),
   isLoading: false,
@@ -211,6 +264,10 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
 
       set({
         reservations: reservationRows,
+        nextReservationByTableId: buildNextReservationByTableId(
+          reservationRows,
+          get().nextReservationByTableId
+        ),
         isLoading: false,
         error: null
       })
@@ -376,8 +433,8 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
 
       if (error) throw error
 
-      set(state => ({
-        reservations: state.reservations.map(r =>
+      set(state => {
+        const reservations = state.reservations.map(r =>
           r.id === reservationId
             ? {
                 ...r,
@@ -398,10 +455,17 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
                 is_vip: params.p_is_vip ?? false
               }
             : r
-        ),
-        isLoading: false,
-        error: null
-      }))
+        )
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          ),
+          isLoading: false,
+          error: null
+        }
+      })
       return true
     } catch (err: any) {
       console.error('Failed to update reservation:', err)
@@ -422,13 +486,20 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       )
       if (error) throw error
 
-      set(state => ({
-        reservations: state.reservations.map(r =>
+      set(state => {
+        const reservations = state.reservations.map(r =>
           r.id === reservationId
             ? { ...r, status: status as Reservation['status'] }
             : r
         )
-      }))
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          )
+        }
+      })
     } catch (err: any) {
       console.error('Failed to update reservation status:', err)
     }
@@ -443,15 +514,29 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       )
       if (error) throw error
 
-      set(state => ({
-        reservations: state.reservations.filter(r => r.id !== reservationId)
-      }))
+      set(state => {
+        const reservations = state.reservations.filter(r => r.id !== reservationId)
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          )
+        }
+      })
     } catch (err: any) {
       console.error('Failed to cancel reservation:', err)
       // Remove locally for UX
-      set(state => ({
-        reservations: state.reservations.filter(r => r.id !== reservationId)
-      }))
+      set(state => {
+        const reservations = state.reservations.filter(r => r.id !== reservationId)
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          )
+        }
+      })
     }
   },
 
@@ -482,13 +567,20 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       }
 
       // Mark reservation as seated and update local state
-      set(state => ({
-        reservations: state.reservations.filter(r => r.id !== reservationId),
-        reservationBySessionId: {
-          ...state.reservationBySessionId,
-          [result.sessionId]: reservationId
+      set(state => {
+        const reservations = state.reservations.filter(r => r.id !== reservationId)
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          ),
+          reservationBySessionId: {
+            ...state.reservationBySessionId,
+            [result.sessionId]: reservationId
+          }
         }
-      }))
+      })
 
       // Also update reservation status in DB
       await FloorPlanService.updateReservationStatus(
@@ -554,12 +646,17 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       set(state => {
         const nextMap = { ...state.reservationBySessionId }
         delete nextMap[sessionId]
+        const reservations = state.reservations.map(r =>
+          r.id === mappedReservationId
+            ? { ...r, status: 'completed' as Reservation['status'] }
+            : r
+        )
         return {
           reservationBySessionId: nextMap,
-          reservations: state.reservations.map(r =>
-            r.id === mappedReservationId
-              ? { ...r, status: 'completed' as Reservation['status'] }
-              : r
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
           )
         }
       })

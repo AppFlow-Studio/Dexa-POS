@@ -12,6 +12,7 @@ import Animated, {
   useDerivedValue,
   withTiming,
 } from "react-native-reanimated";
+import { iosOnly } from "@/lib/safeAnimations";
 import { TextClassContext } from "~/components/ui/text";
 import { ChevronDown } from "~/lib/icons/ChevronDown";
 import { cn } from "~/lib/utils";
@@ -141,8 +142,8 @@ function InnerContent({
     // --- FIX IS HERE ---
     <Animated.View
       layout={LinearTransition.duration(200)} // This line makes the animation smooth
-      entering={FadeIn}
-      exiting={FadeOutUp.duration(200)}
+      entering={iosOnly(FadeIn)}
+      exiting={iosOnly(FadeOutUp.duration(200))}
       className={cn("pb-4", className)}
     >
       {children}

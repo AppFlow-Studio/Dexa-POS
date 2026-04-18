@@ -1,4 +1,4 @@
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import {
   PrinterConfig,
   type PrinterRole,
@@ -12,7 +12,7 @@ import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPr
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 interface PrinterStoreState {
   printers: PrinterConfig[];
@@ -591,7 +591,7 @@ export const usePrinterStore = create<PrinterStoreState>()(
     })),
     {
       name: "printer-store-storage",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: (state) => ({
         printers: state.printers,
         routeRules: state.routeRules,

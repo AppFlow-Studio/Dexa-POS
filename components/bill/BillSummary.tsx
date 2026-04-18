@@ -2,7 +2,8 @@ import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useEffect, useMemo, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
-import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-reanimated";
+import Animated, { FadeInDown, LinearTransition } from "react-native-reanimated";
+import { iosOnly } from "@/lib/safeAnimations";
 import BillItem from "./BillItem";
 
 interface BillSummaryProps {
@@ -150,8 +151,7 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                         return (
                           <Animated.View
                             key={item.id}
-                            entering={FadeInDown.duration(200)}
-                            exiting={FadeOutUp.duration(150)}
+                            entering={iosOnly(FadeInDown.duration(200))}
                             layout={LinearTransition.duration(200)}
                             className={`rounded-xl mb-1 ${
                               isCourseActive ? "border border-blue-500" : ""

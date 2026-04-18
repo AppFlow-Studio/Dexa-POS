@@ -5,11 +5,13 @@ import { useEffect } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   FadeInUp,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming
 } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 
 interface Props {
   success: boolean
@@ -43,6 +45,10 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
   useEffect(() => {
     iconOpacity.value = withTiming(1, { duration: 150 })
     iconScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 })
+    return () => {
+      cancelAnimation(iconScale)
+      cancelAnimation(iconOpacity)
+    }
   }, [])
 
   const iconStyle = useAnimatedStyle(() => ({
@@ -89,7 +95,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
         </Animated.View>
 
         <Animated.Text
-          entering={FadeInUp.duration(280).delay(80)}
+          entering={iosOnly(FadeInUp.duration(280).delay(80))}
           style={[styles.title, success ? styles.successText : styles.failText]}
         >
           {success ? 'Approved' : 'Declined'}
@@ -97,7 +103,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
 
         {success && displayTotal > 0 && (
           <Animated.Text
-            entering={FadeInUp.duration(280).delay(140)}
+            entering={iosOnly(FadeInUp.duration(280).delay(140))}
             style={styles.amount}
           >
             {formatCurrency(displayTotal)}
@@ -106,7 +112,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
 
         {success && tipAmount > 0 && (
           <Animated.Text
-            entering={FadeInUp.duration(280).delay(180)}
+            entering={iosOnly(FadeInUp.duration(280).delay(180))}
             style={styles.tipLine}
           >
             Including {formatCurrency(tipAmount)} tip
@@ -114,7 +120,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
         )}
 
         <Animated.Text
-          entering={FadeInUp.duration(280).delay(220)}
+          entering={iosOnly(FadeInUp.duration(280).delay(220))}
           style={styles.subtitle}
         >
           {success
@@ -123,7 +129,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
         </Animated.Text>
 
         {success ? (
-          <Animated.View entering={FadeInUp.duration(280).delay(280)}>
+          <Animated.View entering={iosOnly(FadeInUp.duration(280).delay(280))}>
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onJoinLoyalty}

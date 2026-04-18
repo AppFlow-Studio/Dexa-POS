@@ -22,6 +22,7 @@ import {
   useVoidOrder,
 } from '@/hooks/orders/useOrderActions'
 import { useRealtimeFallbackPolling } from '@/hooks/pos/useRealtimeFallbackPolling'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
@@ -31,7 +32,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Clock, CreditCard, Receipt, RotateCcw } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  InteractionManager,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -129,12 +129,13 @@ const OrderDetailsScreen = () => {
     }
   }, [orderIdParam])
 
-  // Deferred rendering for smooth navigation
+  // With animation: 'none', navigation is synchronous — no transition to wait for.
+  // Single rAF yields to Fabric's commit phase, then mark ready.
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
+    const id = requestAnimationFrame(() => {
       setIsReady(true)
     })
-    return () => task.cancel()
+    return () => cancelAnimationFrame(id)
   }, [])
 
   const handleRefresh = useCallback(async () => {
@@ -428,7 +429,7 @@ const OrderDetailsScreen = () => {
             }
             showsVerticalScrollIndicator={false}
           >
-            <Animated.View entering={FadeIn.duration(200)}>
+            <Animated.View entering={iosOnly(FadeIn.duration(200))}>
               {activeTab === 'bill' && <BillTab order={order} />}
               {activeTab === 'payments' && <PaymentsTab order={order} />}
               {activeTab === 'refunds' && <RefundsTab order={order} />}
@@ -445,15 +446,15 @@ const OrderDetailsScreen = () => {
           contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View entering={FadeIn.duration(300).delay(100)}>
+          <Animated.View entering={iosOnly(FadeIn.duration(300).delay(100))}>
             <SummaryCards order={order} />
           </Animated.View>
 
-          <Animated.View entering={FadeIn.duration(300).delay(200)}>
+          <Animated.View entering={iosOnly(FadeIn.duration(300).delay(200))}>
             <OrderMetadata order={order} />
           </Animated.View>
 
-          <Animated.View entering={FadeIn.duration(300).delay(300)}>
+          <Animated.View entering={iosOnly(FadeIn.duration(300).delay(300))}>
             <ActionsPanel
               order={profileOrder}
               onRefund={() => refundModalRef.current?.open()}

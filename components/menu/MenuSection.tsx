@@ -413,11 +413,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   return (
     <>
       <View
-        className={`mt-0 flex-1 bg-background relative overflow-hidden ${isTableOrder ? "rounded-tl-3xl" : ""}`}
+        className={`mt-0 flex-1 bg-panel relative overflow-hidden px-2 ${isTableOrder ? "rounded-tl-3xl" : ""}`}
       >
         {/* Row 1: Header (Order Line) + Toolbar */}
         <View
-          className={`${isTableOrder ? "px-3 py-2" : "px-2 py-2"} flex-row items-center`}
+          className={`${isTableOrder ? "px-0 py-2" : "px-0 py-2"} flex-row items-center`}
         >
           {headerLeft}
           <View

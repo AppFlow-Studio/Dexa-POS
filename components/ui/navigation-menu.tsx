@@ -120,8 +120,8 @@ function NavigationMenuContent({
         {...props}
       >
         <Animated.View
-          entering={Platform.OS !== 'web' ? FadeInLeft : undefined}
-          exiting={Platform.OS !== 'web' ? FadeOutLeft : undefined}
+          entering={Platform.OS === 'ios' ? FadeInLeft : undefined}
+          exiting={Platform.OS === 'ios' ? FadeOutLeft : undefined}
         >
           {children}
         </Animated.View>

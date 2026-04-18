@@ -18,6 +18,7 @@ import {
   View
 } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 import BillItem from './BillItem'
 
 // --- Types ---
@@ -276,7 +277,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                 {/* Expanded: course sub-groups */}
                 {isExpanded && (
                   <Animated.View
-                    entering={FadeIn.duration(80)}
+                    entering={iosOnly(FadeIn.duration(80))}
                     className='pl-3'
                   >
                     {sortedCourses.map(course => {
@@ -404,7 +405,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                               shouldAnimateCourse ? (
                                 <Animated.View
                                   key={item.id}
-                                  entering={FadeIn.duration(70)}
+                                  entering={iosOnly(FadeIn.duration(70))}
                                 >
                                   <BillItem item={item} isEditable={true} />
                                 </Animated.View>

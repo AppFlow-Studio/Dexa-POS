@@ -53,6 +53,15 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
       return;
     }
 
+    // Skip server load if data was fetched recently (e.g., user re-tapped same table).
+    // 10s threshold: short enough to catch updates from other stations,
+    // long enough to avoid redundant RPCs on back-to-back opens.
+    const existing = useCoursingStore.getState().byOrderId[orderId];
+    if (existing?.lastSyncAt && Date.now() - existing.lastSyncAt.getTime() < 10_000) {
+      setCoursingInitialized(true);
+      return;
+    }
+
     loadFromServer(orderId)
       .then(() => setCoursingInitialized(true))
       .catch((error) => {

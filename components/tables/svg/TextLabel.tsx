@@ -1,7 +1,7 @@
-import React from "react";
+import * as React from "react";
 import { Svg, Text as SvgText } from "react-native-svg";
 
-const TextLabel = ({ color = "#94A3B8", width = 100, height = 50, label = "Label" }) => {
+const TextLabel = React.memo(function TextLabel({ color = "#94A3B8", width = 100, height = 50, label = "Label" }: { color?: string; width?: number; height?: number; label?: string }) {
   const defaultHeight = 50;
   const scaleY = (height || defaultHeight) / defaultHeight;
 
@@ -21,6 +21,6 @@ const TextLabel = ({ color = "#94A3B8", width = 100, height = 50, label = "Label
       </SvgText>
     </Svg>
   );
-};
+});
 
 export default TextLabel;

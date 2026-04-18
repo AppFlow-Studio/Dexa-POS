@@ -280,77 +280,89 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     s => s.activeOrderOutstandingTotal
   )
 
-  // Transform cart items to CFD format with dual pricing
+  // Transform cart items to CFD format with dual pricing.
+  // Wrapped in try-catch: an unhandled throw here propagates to the secondary
+  // display's React surface, which has no Sentry wrapper — the native layer
+  // surfaces it as a brief Android system crash dialog on Landi devices.
   const cfdItems: CFDCartItem[] = useMemo(() => {
-    if (!activeOrder?.items) return []
-    const hideCourseNumbersOnCfd = pathname.includes('order-processing')
+    try {
+      if (!activeOrder?.items) return []
+      const hideCourseNumbersOnCfd = pathname.includes('order-processing')
 
-    return activeOrder.items
-      .filter(item => !item.is_voided && item.quantity > 0)
-      .map(item => {
-        const cardUnitPrice = item.unitPrice || item.price || 0
-        const cashUnitPrice = item.cashPrice || cardUnitPrice
-        const cardLineTotal = item.subtotal || cardUnitPrice * item.quantity
-        const cashLineTotal = item.cashSubtotal || cashUnitPrice * item.quantity
+      const result: CFDCartItem[] = []
+      for (const item of activeOrder.items) {
+        if (item.is_voided || item.quantity <= 0) continue
+        try {
+          const cardUnitPrice = item.unitPrice || item.price || 0
+          const cashUnitPrice = item.cashPrice || cardUnitPrice
+          const cardLineTotal = item.subtotal || cardUnitPrice * item.quantity
+          const cashLineTotal = item.cashSubtotal || cashUnitPrice * item.quantity
 
-
-        return {
-          id: item.id,
-          name: item.is_open_item
-            ? item.open_item_name ?? 'Open Item'
-            : item.name,
-          quantity: item.quantity,
-          unitPrice: Math.round(cardUnitPrice * 100),
-          seatNumber:
-            activeOrderSeating?.itemSeatMap?.[item.id] ??
-            (item.db_order_item_id
-              ? activeOrderSeating?.dbIdToSeatMap?.[item.db_order_item_id]
-              : undefined) ??
-            item.seatNumber ??
-            null,
-          courseNumber: hideCourseNumbersOnCfd ? undefined : item.courseNumber,
-          cashPrice: Math.round(cashUnitPrice * 100),
-          cardPrice: Math.round(cardUnitPrice * 100),
-          lineTotal: Math.round(cardLineTotal * 100),
-          lineTotalCash: Math.round(cashLineTotal * 100),
-          lineTotalCard: Math.round(cardLineTotal * 100),
-          modifiers: [
-            ...(item.customizations?.size
-              ? [
-                  {
-                    name: item.customizations.size.name,
-                    price: Math.round(
-                      (item.customizations.size.priceModifier || 0) * 100
-                    ),
-                    priceCash: Math.round(
-                      (item.customizations.size.priceModifier || 0) * 100
-                    ),
-                    priceCard: Math.round(
-                      (item.customizations.size.priceModifier || 0) * 100
-                    )
-                  }
-                ]
-              : []),
-            ...(item.customizations?.addOns?.map(a => ({
-              name: a.name,
-              price: Math.round((a.price || 0) * 100),
-              priceCash: Math.round((a.price || 0) * 100),
-              priceCard: Math.round((a.price || 0) * 100)
-            })) ?? []),
-            ...(item.customizations?.modifiers?.flatMap(m =>
-              m.options.map(o => ({
-                name: o.name,
-                price: Math.round((o.price || 0) * 100),
-                priceCash: Math.round((o.price || 0) * 100),
-                priceCard: Math.round((o.price || 0) * 100),
-                isNo: o.isNo,
-                categoryName: m.categoryName
-              }))
-            ) ?? [])
-          ],
-          notes: item.customizations?.notes
+          result.push({
+            id: item.id,
+            name: item.is_open_item
+              ? item.open_item_name ?? 'Open Item'
+              : item.name || 'Item',
+            quantity: item.quantity,
+            unitPrice: Math.round(cardUnitPrice * 100),
+            seatNumber:
+              activeOrderSeating?.itemSeatMap?.[item.id] ??
+              (item.db_order_item_id
+                ? activeOrderSeating?.dbIdToSeatMap?.[item.db_order_item_id]
+                : undefined) ??
+              item.seatNumber ??
+              null,
+            courseNumber: hideCourseNumbersOnCfd ? undefined : item.courseNumber,
+            cashPrice: Math.round(cashUnitPrice * 100),
+            cardPrice: Math.round(cardUnitPrice * 100),
+            lineTotal: Math.round(cardLineTotal * 100),
+            lineTotalCash: Math.round(cashLineTotal * 100),
+            lineTotalCard: Math.round(cardLineTotal * 100),
+            modifiers: [
+              ...(item.customizations?.size
+                ? [
+                    {
+                      name: item.customizations.size.name,
+                      price: Math.round(
+                        (item.customizations.size.priceModifier || 0) * 100
+                      ),
+                      priceCash: Math.round(
+                        (item.customizations.size.priceModifier || 0) * 100
+                      ),
+                      priceCard: Math.round(
+                        (item.customizations.size.priceModifier || 0) * 100
+                      )
+                    }
+                  ]
+                : []),
+              ...(item.customizations?.addOns?.map(a => ({
+                name: a.name,
+                price: Math.round((a.price || 0) * 100),
+                priceCash: Math.round((a.price || 0) * 100),
+                priceCard: Math.round((a.price || 0) * 100)
+              })) ?? []),
+              ...(item.customizations?.modifiers?.flatMap(m =>
+                m.options.map(o => ({
+                  name: o.name,
+                  price: Math.round((o.price || 0) * 100),
+                  priceCash: Math.round((o.price || 0) * 100),
+                  priceCard: Math.round((o.price || 0) * 100),
+                  isNo: o.isNo,
+                  categoryName: m.categoryName
+                }))
+              ) ?? [])
+            ],
+            notes: item.customizations?.notes
+          })
+        } catch (itemErr) {
+          console.warn('[CFD] Skipping item due to transform error:', item.id, itemErr)
         }
-      })
+      }
+      return result
+    } catch (err) {
+      console.error('[CFD] cfdItems transform failed:', err)
+      return []
+    }
   }, [activeOrder?.items, activeOrderSeating, pathname])
 
   // Initialize CFD controller
@@ -1013,8 +1025,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     }
   }, [hasBuiltinCfd])
 
-  // Sync order data to built-in display via useCFDBuiltinStore
+  // Sync order data to built-in display via useCFDBuiltinStore.
+  // Entire effect is wrapped in try-catch: unhandled exceptions here propagate
+  // to the native Presentation layer as a JavascriptException, causing Android
+  // to show a brief system crash dialog on the secondary display.
   useEffect(() => {
+    try {
     if (!hasBuiltinCfd) return
     // Loyalty screens are managed directly — don't overwrite with order sync
     if (
@@ -1041,6 +1057,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       // Debounce idle transition to prevent flicker during screen navigation
       if (!builtinIdleTimerRef.current) {
         builtinIdleTimerRef.current = setTimeout(() => {
+          try {
           const s = activeScreenStateRef.current
           const storeState = useCFDBuiltinStore.getState().screenState
           if (
@@ -1093,6 +1110,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             }
           })
           builtinIdleTimerRef.current = null
+          } catch (err) {
+            console.error('[CFD] Builtin idle transition error:', err)
+            builtinIdleTimerRef.current = null
+          }
         }, 500)
       }
       return () => {
@@ -1235,6 +1256,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           : null,
       loyaltyResult: null
     })
+    } catch (err) {
+      console.error('[CFD] Builtin display sync effect error:', err)
+    }
   }, [
     hasBuiltinCfd,
     activeOrder,

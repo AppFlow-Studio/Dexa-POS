@@ -16,6 +16,7 @@
 
 import { debounce } from "lodash";
 import { createMMKV } from "react-native-mmkv";
+import type { PersistStorage, StorageValue } from "zustand/middleware";
 import { StateStorage } from "zustand/middleware";
 
 // ============================================================================
@@ -80,6 +81,12 @@ export function flushAllPendingWrites(): void {
   for (const key of Object.keys(debouncedWriters)) {
     debouncedWriters[key]?.flush();
   }
+  // Flush lazy writers synchronously — the app may be about to suspend.
+  isFlushing = true;
+  for (const key of Object.keys(lazyWriters)) {
+    lazyWriters[key]?.flush();
+  }
+  isFlushing = false;
 }
 
 /**
@@ -89,11 +96,91 @@ export function flushAllPendingWrites(): void {
  */
 export function flushPendingWrite(name: string): void {
   debouncedWriters[name]?.flush();
+  isFlushing = true;
+  lazyWriters[name]?.flush();
+  isFlushing = false;
 }
+
+// ============================================================================
+// LAZY PERSIST STORAGE (deferred stringify)
+// ============================================================================
+
+/**
+ * Debounced writers that accept raw objects (not pre-stringified).
+ * JSON.stringify happens inside the debounce — only once per debounce window
+ * instead of on every state mutation.
+ *
+ * Why this matters: createJSONStorage calls JSON.stringify on EVERY state change
+ * before passing to our debounced setItem. For useOrderStore (50-300KB payload),
+ * 10 rapid item additions produce 10 stringifies (~150ms of JS thread blocking)
+ * even though only 1 MMKV write fires. This adapter eliminates those 9 wasted
+ * stringifies.
+ */
+const lazyWriters: Record<string, ReturnType<typeof debounce>> = {};
+
+/** When true, lazy writers skip setImmediate and write synchronously. */
+let isFlushing = false;
+
+function lazyDebouncedWrite(name: string, value: unknown): void {
+  const delay = name === ORDER_STORE_KEY ? 1500 : 300;
+  if (!lazyWriters[name]) {
+    lazyWriters[name] = debounce((v: unknown) => {
+      const str = JSON.stringify(v);
+      if (isFlushing) {
+        // Synchronous write during flush (app backgrounding) — must complete
+        // before the OS suspends the process.
+        storage.set(name, str);
+      } else {
+        // Yield to the JS thread between stringify and MMKV write.
+        // This lets pending React renders and Reanimated worklet callbacks
+        // complete, preventing the "batch commit on unmounted view" crash.
+        setImmediate(() => {
+          storage.set(name, str);
+        });
+      }
+    }, delay);
+  }
+  lazyWriters[name](value);
+}
+
+/**
+ * Create a lazy PersistStorage that defers JSON.stringify into the debounce.
+ *
+ * Unlike createJSONStorage(() => mmkvStorage) which stringifies on EVERY
+ * state change, this only stringifies once per debounce window.
+ *
+ * Usage: storage: createLazyPersistStorage()  (replaces createJSONStorage(() => mmkvStorage))
+ */
+export function createLazyPersistStorage<S>(): PersistStorage<S> {
+  return {
+    getItem: (name: string): StorageValue<S> | null => {
+      const str = storage.getString(name);
+      if (!str) return null;
+      try {
+        return JSON.parse(str) as StorageValue<S>;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (name: string, value: StorageValue<S>): void => {
+      lazyDebouncedWrite(name, value);
+    },
+    removeItem: (name: string): void => {
+      lazyWriters[name]?.flush();
+      delete lazyWriters[name];
+      storage.remove(name);
+    },
+  };
+}
+
+// ============================================================================
+// ZUSTAND STORAGE ADAPTERS (legacy — used by stores not yet migrated)
+// ============================================================================
 
 /**
  * Zustand-compatible storage adapter for general storage.
  * Use with: createJSONStorage(() => mmkvStorage)
+ * @deprecated Use createLazyPersistStorage() instead for better performance.
  */
 export const mmkvStorage: StateStorage = {
   getItem: (name: string): string | null => {

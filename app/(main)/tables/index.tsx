@@ -214,10 +214,21 @@ const TablesScreen = () => {
         return
       }
 
+      // Eager prefetch: if table is occupied, start loading order now
+      // so it's cached by the time the user taps "View Order" in the context sheet
+      const liveSession = useTableSessionStore.getState().sessions[table.id]
+      const activeSession = liveSession ?? table.session
+      if (activeSession?.order_id && activeSession.status !== 'available') {
+        const existing = useOrderStore.getState().getOrder(activeSession.order_id)
+        if (!existing) {
+          syncOrderFromDatabase(activeSession.order_id).catch(() => {})
+        }
+      }
+
       // NORMAL MODE: Open context sheet regardless of session state
       setContextTable(table)
     },
-    [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection]
+    [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection, syncOrderFromDatabase]
   )
 
   const handleSheetSeatGuests = useCallback(
@@ -275,15 +286,24 @@ const TablesScreen = () => {
     (tableId: string) => {
       setContextTable(null)
       const table = tables.find(t => t.id === tableId)
-      if (table?.session?.order_id) {
-        const existingOrder = getOrder(table.session.order_id)
+      const orderId = table?.session?.order_id
+      if (orderId) {
+        const existingOrder = getOrder(orderId)
         if (existingOrder) {
           setActiveOrder(existingOrder.id)
         }
+        router.push(('/tables/' + tableId) as Href)
+        // Background sync for fresh data if order wasn't cached
+        if (!existingOrder) {
+          syncOrderFromDatabase(orderId)
+            .then(localOrderId => { if (localOrderId) setActiveOrder(localOrderId) })
+            .catch(() => {})
+        }
+      } else {
+        router.push(('/tables/' + tableId) as Href)
       }
-      router.push(('/tables/' + tableId) as Href)
     },
-    [tables, getOrder, setActiveOrder]
+    [tables, getOrder, setActiveOrder, syncOrderFromDatabase]
   )
 
   const handleTableLongPress = useCallback(

@@ -510,7 +510,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   ? {
                       borderLeftWidth: 3,
                       borderLeftColor: kitchenBorderColor,
-                      borderRadius: 5,
+                      // borderRadius: 5,
                     }
                   : undefined
               }

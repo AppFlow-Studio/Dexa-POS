@@ -2,6 +2,8 @@ import { colors } from '@/lib/theme'
 import { CartItem, OrderProfile } from '@/lib/types'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useMenuStore } from '@/stores/useMenuStore'
+import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import {
   ArrowUpToLine,
@@ -22,8 +24,6 @@ import {
 } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
-  FadeIn,
-  FadeOut,
   LinearTransition,
   runOnJS,
   useAnimatedStyle,
@@ -196,8 +196,8 @@ function CourseGroupInner ({
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 6,
-                  paddingHorizontal: 12,
-                  paddingVertical: 7,
+                  paddingHorizontal: 9,
+                  paddingVertical: 4,
                   borderRadius: 8,
                   backgroundColor: colors.teal + '18',
                   borderWidth: 1,
@@ -226,21 +226,15 @@ function CourseGroupInner ({
         </Animated.View>
       </GestureDetector>
 
-      {/* Content with Animation — sent courses get reduced opacity */}
+      {/* Content — no enter/exit animations for instant expand */}
       {isExpanded && (
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          exiting={FadeOut.duration(150)}
-          layout={LinearTransition.duration(200)}
-          className='pl-4 gap-y-2 overflow-hidden'
-          style={undefined}
-        >
+        <View className='pl-4 gap-y-2'>
           {items.map(item => (
-            <View key={item.id} className='overflow-hidden'>
+            <View key={item.id}>
               <BillItem item={item} isEditable={true} />
             </View>
           ))}
-        </Animated.View>
+        </View>
       )}
 
       {/* Long-press action menu for sent courses */}
@@ -419,7 +413,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   isOvertime,
   overtimeMinutes
 }) => {
-  const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null)
+  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(new Set())
   const prevItemCount = useRef<number>(0)
   // Narrow selectors — subscribe only to the specific fields we display, not the whole order
   const orderMeta = useOrderStore(
@@ -512,8 +506,12 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       currentItemCount > prevItemCount.current &&
       currentCourse !== undefined
     ) {
-      // Auto-expand the current working course, collapsing others
-      setExpandedCourseId(currentCourse)
+      setExpandedCourseIds(prev => {
+        if (prev.has(currentCourse)) return prev
+        const next = new Set(prev)
+        next.add(currentCourse)
+        return next
+      })
     }
 
     prevItemCount.current = currentItemCount
@@ -521,13 +519,17 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
 
   // Also auto-expand when currentCourse changes (e.g., "Start New Course")
   useEffect(() => {
-    // Only trigger when currentCourse actually changes to a new value
     if (
       currentCourse !== undefined &&
       currentCourse !== null &&
       currentCourse !== prevCurrentCourse.current
     ) {
-      setExpandedCourseId(currentCourse)
+      setExpandedCourseIds(prev => {
+        if (prev.has(currentCourse)) return prev
+        const next = new Set(prev)
+        next.add(currentCourse)
+        return next
+      })
       prevCurrentCourse.current = currentCourse
     }
   }, [currentCourse])
@@ -535,15 +537,42 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const onSelectCourseRef = useRef(onSelectCourse)
   onSelectCourseRef.current = onSelectCourse
 
+  // Toggle: explicitly close on tap, leave others open
   const handleToggleCourse = useCallback((courseId: number) => {
-    setExpandedCourseId(prev => {
-      const next = prev === courseId ? null : courseId
+    setExpandedCourseIds(prev => {
+      const next = new Set(prev)
+      if (next.has(courseId)) {
+        next.delete(courseId)
+      } else {
+        next.add(courseId)
+      }
       // Defer onSelectCourse to avoid setState-during-render warning
-      // (parent component may call setCurrentCourse in response)
-      queueMicrotask(() => onSelectCourseRef.current?.(next))
+      queueMicrotask(() => onSelectCourseRef.current?.(next.has(courseId) ? courseId : null))
       return next
     })
   }, [])
+
+  // Pre-warm modifier cache for ALL items regardless of accordion state.
+  // BillItem's own preWarm only fires when mounted (expanded). This ensures
+  // the cache is warm before the user taps any course → item.
+  const allItemIds = useMemo(
+    () => (activeOrder?.items ?? []).map(i => i.menuItemId).filter(Boolean),
+    [activeOrder?.items]
+  )
+  useEffect(() => {
+    if (allItemIds.length === 0) return
+    const handle = setTimeout(() => {
+      const store = useModifierSidebarStore.getState()
+      const menuStore = useMenuStore.getState()
+      for (const menuItemId of allItemIds) {
+        const menuItem = menuStore.getMenuItemById(menuItemId)
+        if (menuItem?.modifierGroupIds?.length) {
+          store.preWarm(menuItem)
+        }
+      }
+    }, 50) // slight delay to not block initial render
+    return () => clearTimeout(handle)
+  }, [allItemIds])
 
   if (!activeOrder) {
     return (
@@ -662,7 +691,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                   key={`course-${courseId}`}
                   courseId={courseId}
                   items={groupedItems[courseId] || []}
-                  isExpanded={expandedCourseId === courseId}
+                  isExpanded={expandedCourseIds.has(courseId)}
                   isSent={!!sentCourses?.[courseId]}
                   isCurrent={currentCourse === courseId}
                   onToggle={handleToggleCourse}

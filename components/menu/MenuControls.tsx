@@ -22,7 +22,7 @@ const styles = StyleSheet.create({
   wrapper: {
     width: "100%",
     paddingTop: 10,
-    paddingHorizontal: 4,
+    paddingHorizontal: 0,
     borderBottomWidth: 1,
     borderBottomColor: `${colors.border}50`,
   },

@@ -5,9 +5,9 @@
  * Works with cash_drawers, cash_drawer_sessions, and cash_drawer_operations tables.
  */
 
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
 // ============================================================================
@@ -196,7 +196,7 @@ export const useCashDrawerStore = create<CashDrawerState>()(
     })),
     {
       name: "dexa-pos-cash-drawer",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: (state) => ({
         activeSession: state.activeSession,
         drawerId: state.drawerId,

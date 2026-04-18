@@ -2,6 +2,7 @@ import * as AlertDialogPrimitive from '@rn-primitives/alert-dialog';
 import * as React from 'react';
 import { Platform, View, type ViewProps } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { iosOnly } from '@/lib/safeAnimations';
 import { buttonTextVariants, buttonVariants } from '~/components/ui/button';
 import { TextClassContext } from '~/components/ui/text';
 import { cn } from '~/lib/utils';
@@ -47,7 +48,7 @@ function AlertDialogOverlayNative({
       {...props}
       asChild
     >
-      <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)}>
+      <Animated.View entering={iosOnly(FadeIn.duration(150))} exiting={iosOnly(FadeOut.duration(150))}>
         {children}
       </Animated.View>
     </AlertDialogPrimitive.Overlay>

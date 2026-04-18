@@ -1,3 +1,4 @@
+import '@/lib/screenConfig' // must be first — calls enableFreeze() before any Screen mounts
 import '@/global.css'
 import { PortalHost } from '@rn-primitives/portal'
 import { PortalProvider } from 'react-native-teleport'
@@ -22,7 +23,8 @@ import { ToastProvider } from '@/contexts/ToastContext'
 import { NAV_THEME } from '@/lib/constants'
 import { initImmer } from '@/lib/initImmer'
 import { initLogCollector } from '@/lib/logCollector'
-import { setRootNavigationRef } from '@/lib/rootNavigation'
+import { markNavigationEvent, setRootNavigationRef } from '@/lib/rootNavigation'
+import { POS_SCREEN_OPTIONS } from '@/lib/screenConfig'
 import { flushAllPendingWrites, secureStorage } from '@/lib/storage'
 import { colors } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
@@ -77,10 +79,10 @@ Sentry.init({
   // Offline: cache up to 100 envelopes on disk (default 30)
   maxCacheItems: 100,
 
-  // Sample 100% of transactions — tune down if volume gets too high
-  tracesSampleRate: 1.0,
+  // 100% in dev for debugging, 30% in production to reduce overhead
+  tracesSampleRate: __DEV__ ? 1.0 : 0.3,
 
-  integrations: [Sentry.feedbackIntegration(), navigationIntegration],
+  integrations: [navigationIntegration],
   enableNativeFramesTracking: !isRunningInExpoGo(),
 
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
@@ -232,6 +234,15 @@ export default Sentry.wrap(function RootLayout() {
     }
   }, [navigationRef])
 
+  // Track navigation events so background services can skip non-critical work
+  // (order pruning, toasts) during the brief window after a screen transition.
+  React.useEffect(() => {
+    const unsubscribe = navigationRef.addListener('state', () => {
+      markNavigationEvent()
+    })
+    return unsubscribe
+  }, [navigationRef])
+
   // Hide system UI for full-screen immersive POS experience
   React.useEffect(() => {
     async function runUpdateChecks() {
@@ -355,23 +366,12 @@ export default Sentry.wrap(function RootLayout() {
                                     }}
                                   />
                                 )}
-                                <Stack screenOptions={{ headerShown: false }}>
+                                <Stack screenOptions={POS_SCREEN_OPTIONS}>
                                   <Stack.Screen name='index' />
                                   <Stack.Screen name='(auth)' />
                                   <Stack.Screen name='(cfd)' />
                                   <Stack.Screen name='(main)' />
                                   <Stack.Screen name='(profiles-and-timeclock)' />
-                                  <Stack.Screen
-                                    name='(main)/tables/[tableId]'
-                                    options={{
-                                      presentation: 'transparentModal',
-                                      animation: 'none'
-                                    }}
-                                  />
-                                  <Stack.Screen
-                                    name='(main)/tables/waitlist'
-                                    options={{ animation: 'none' }}
-                                  />
                                 </Stack>
                                 <PortalHost />
                                 {isPOSMode && <SearchBottomSheet />}

@@ -8,8 +8,7 @@ import type {
   UseOrdersRealtimeOptions,
 } from "@/types/real-time";
 import { useQueryClient } from "@tanstack/react-query";
-import { debounce } from "lodash";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useRealtimeChannel } from "./useRealtimechannel";
 
 // Modifier data in broadcast payload (Phase 2.5: Order Item Sync with Modifiers)
@@ -297,80 +296,16 @@ export function useOrdersRealtime({
   onOrderChange,
   onPaymentChange,
 }: UseOrdersRealtimeOptions) {
-  const queryClient = useQueryClient();
-  const supabase = useSupabaseClient(); // Call at component level (not inside callbacks)
+  const supabase = useSupabaseClient();
 
   const events: RealtimeEventType[] = useMemo(
     () => ["INSERT", "UPDATE", "DELETE"],
     [],
   );
 
-  // ====================================================================
-  // DEBOUNCED INVALIDATION FUNCTIONS (Phase 1.2: Reduce cache thrashing)
-  // ====================================================================
-
-  // Debounced 300ms: Lists and aggregates (batch multiple updates)
-  const debouncedInvalidateList = useMemo(
-    () =>
-      debounce((locationId: string) => {
-        queryClient.invalidateQueries({
-          queryKey: ordersQueryKeys.list(locationId),
-        });
-        queryClient.invalidateQueries({
-          queryKey: ordersQueryKeys.openOrders(locationId),
-        });
-      }, 300),
-    [queryClient],
-  );
-
-  // Debounced 300ms: Kitchen queue
-  const debouncedInvalidateKitchen = useMemo(
-    () =>
-      debounce((locationId: string) => {
-        queryClient.invalidateQueries({
-          queryKey: ordersQueryKeys.kitchenQueue(locationId),
-        });
-      }, 300),
-    [queryClient],
-  );
-
-  // Debounced 500ms: Stats (less time-sensitive)
-  const debouncedInvalidateStats = useMemo(
-    () =>
-      debounce((locationId: string) => {
-        queryClient.invalidateQueries({
-          queryKey: ordersQueryKeys.stats(locationId),
-        });
-      }, 500),
-    [queryClient],
-  );
-
-  // IMMEDIATE: Single order detail (critical for UI responsiveness)
-  const invalidateOrderDetail = useCallback(
-    (orderId: string) => {
-      queryClient.invalidateQueries({
-        queryKey: ordersQueryKeys.detail(orderId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: ordersQueryKeys.payments(orderId),
-      });
-    },
-    [queryClient],
-  );
-
-  // Cleanup debounced functions on unmount
-  useEffect(() => {
-    return () => {
-      debouncedInvalidateList.cancel();
-      debouncedInvalidateKitchen.cancel();
-      debouncedInvalidateStats.cancel();
-    };
-  }, [
-    debouncedInvalidateList,
-    debouncedInvalidateKitchen,
-    debouncedInvalidateStats,
-  ]);
-
+  // Broadcasts update Zustand stores directly via onOrderChange callback.
+  // TanStack Query is only used for cold-start bootstrap + reconnection recovery
+  // (handled by useOrderSyncRecovery), not per-broadcast invalidation.
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
       if (__DEV__) console.log(`[OrdersRealtime] Received ${event} event:`, {
@@ -379,65 +314,23 @@ export function useOrdersRealtime({
         operation: (payload as any)?.operation,
       });
 
-      // Handle order events (all events on orders channel are order events)
       if (event === "INSERT" || event === "UPDATE" || event === "DELETE") {
-        // Backend sends OrderBroadcastPayload with full order data including items
         const broadcastPayload = payload as OrderBroadcastPayload;
-        const order = broadcastPayload.data?.order;
 
-        // IMMEDIATE: Specific order (< 50ms perceived latency)
-        if (order?.id) {
-          invalidateOrderDetail(order.id);
-        }
-
-        // DEBOUNCED: Lists and aggregates (300ms batch window)
-        debouncedInvalidateList(locationId);
-
-        // CONDITIONAL + DEBOUNCED: Kitchen queue
-        if (
-          order?.status === "pending" ||
-          order?.status === "preparing" ||
-          order?.status === "ready"
-        ) {
-          debouncedInvalidateKitchen(locationId);
-        }
-
-        // CONDITIONAL + DEBOUNCED: Stats
-        if (order?.status === "completed") {
-          debouncedInvalidateStats(locationId);
-        }
-
-        // Call the callback with the full broadcast payload
-        // Cast to OrderPayload for type compatibility (contains same data structure)
-        // DEFENSIVE EXECUTION (NEW): Ensure callback fires reliably
         if (onOrderChange) {
           try {
             onOrderChange(broadcastPayload as unknown as OrderPayload);
           } catch (error) {
             console.error("[OrdersRealtime] Callback execution error:", error);
-            console.error("[OrdersRealtime] Failed payload:", broadcastPayload);
           }
-        } else {
+        } else if (__DEV__) {
           console.warn(
-            "[OrdersRealtime] No onOrderChange callback registered! Order update will not reach store.",
+            "[OrdersRealtime] No onOrderChange callback registered!",
           );
-          console.warn("[OrdersRealtime] Order details:", {
-            orderId: order?.id,
-            orderNumber: order?.order_number,
-            stationId: order?.station_id,
-            operation: broadcastPayload.operation,
-          });
         }
       }
     },
-    [
-      locationId,
-      invalidateOrderDetail,
-      debouncedInvalidateList,
-      debouncedInvalidateKitchen,
-      debouncedInvalidateStats,
-      onOrderChange,
-    ],
+    [onOrderChange],
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({

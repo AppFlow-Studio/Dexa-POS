@@ -1,10 +1,10 @@
-import { mmkvStorage } from '@/lib/storage'
+import { createLazyPersistStorage } from '@/lib/storage'
 import { toastService } from '@/lib/toastService'
 import { TaxRate, TaxRatesMap } from '@/types/menu'
 import { SelectedStation } from '@/types/station'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
 
 // Selected location from Supabase
 export interface SelectedLocation {
@@ -550,7 +550,7 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
     }),
     {
       name: 'store-settings-storage',
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: state => ({
         // Only persist these fields
         selectedStore: state.selectedStore,

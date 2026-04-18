@@ -3,6 +3,7 @@ import { usePaymentStore } from '@/stores/usePaymentStore'
 import { ArrowRight, Check } from 'lucide-react-native'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated'
+import { iosOnly } from '@/lib/safeAnimations'
 
 const SplitPaymentSuccessView = () => {
   const splits = usePaymentStore(s => s.splits)
@@ -24,7 +25,7 @@ const SplitPaymentSuccessView = () => {
     >
       {/* Success Icon */}
       <Animated.View
-        entering={FadeIn.delay(100)}
+        entering={iosOnly(FadeIn.delay(100))}
         style={{ alignItems: 'center', marginBottom: 20, marginTop: 20 }}
       >
         <View
@@ -69,7 +70,7 @@ const SplitPaymentSuccessView = () => {
       {/* Next Guest Info */}
       {nextSplit && (
         <Animated.View
-          entering={FadeInUp.delay(200)}
+          entering={iosOnly(FadeInUp.delay(200))}
           style={{
             width: '100%',
             backgroundColor: colors.panel,

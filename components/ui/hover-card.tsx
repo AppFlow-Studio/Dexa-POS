@@ -2,6 +2,7 @@ import * as HoverCardPrimitive from '@rn-primitives/hover-card';
 import * as React from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { iosOnly } from '@/lib/safeAnimations';
 import { cn } from '~/lib/utils';
 import { TextClassContext } from '~/components/ui/text';
 
@@ -23,7 +24,7 @@ function HoverCardContent({
       <HoverCardPrimitive.Overlay
         style={Platform.OS !== 'web' ? StyleSheet.absoluteFill : undefined}
       >
-        <Animated.View entering={FadeIn}>
+        <Animated.View entering={iosOnly(FadeIn)}>
           <TextClassContext.Provider value='text-popover-foreground'>
             <HoverCardPrimitive.Content
               align={align}

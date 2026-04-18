@@ -1,3 +1,4 @@
+import { iosOnly } from "@/lib/safeAnimations";
 import { colors as themeColors } from "@/lib/theme";
 import React, { FC, useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -148,8 +149,8 @@ const Tooltip: FC<{ item: PieChartDataItem }> = ({ item }) => {
   if (!item) return null;
   return (
     <Animated.View
-      entering={FadeIn.duration(200)}
-      exiting={FadeOut.duration(200)}
+      entering={iosOnly(FadeIn.duration(200))}
+      exiting={iosOnly(FadeOut.duration(200))}
       style={{
         position: 'absolute',
         top: -20,

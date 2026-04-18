@@ -147,7 +147,7 @@ const MyProfileScreen = () => {
       </View>
       <NotificationBottomSheet
         bottomSheetRef={notificationSheetRef as React.RefObject<BottomSheetMethods>}
-        onClose={() => notificationSheetRef.current?.close()}
+        onClose={() => { /* sheet is already closed when onClose fires */ }}
       />
     </SafeAreaView>
   );
