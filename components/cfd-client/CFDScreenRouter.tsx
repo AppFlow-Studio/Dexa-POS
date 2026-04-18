@@ -41,15 +41,22 @@ export function CFDScreenRouter ({
   let items: ReturnType<typeof useCFDDisplayData>['items'] = []
   let loyaltyProgramCount = 0
   let loyaltyCustomerName: string | null = null
+  let customerName: string | null = null
+  let customerPhone: string | null = null
   try {
     const data = useCFDDisplayData()
     screenState = data.screenState
     items = data.items
     loyaltyProgramCount = data.loyaltyResult?.programs?.length ?? 0
     loyaltyCustomerName = data.loyaltyResult?.customerName ?? null
+    customerName = data.customerName ?? null
+    customerPhone = data.customerPhone ?? null
   } catch {
     // Context not available — render idle (dark screen, invisible to customer)
   }
+
+  const hasLoyaltyCustomerContext =
+    !!loyaltyCustomerName || !!customerName || !!customerPhone
 
   const handleLoyaltyJoin = () => {
     if (onLoyaltyJoin) {
@@ -93,7 +100,8 @@ export function CFDScreenRouter ({
       rawScreenState: screenState,
       itemCount: items.length,
       loyaltyProgramCount,
-      hasLoyaltyCustomer: !!loyaltyCustomerName
+      hasLoyaltyCustomer: hasLoyaltyCustomerContext,
+      hasLoyaltyResultCustomer: !!loyaltyCustomerName
     })
     prevResolvedStateRef.current = resolvedState
   }, [
@@ -101,7 +109,10 @@ export function CFDScreenRouter ({
     screenState,
     items.length,
     loyaltyProgramCount,
-    loyaltyCustomerName
+    loyaltyCustomerName,
+    customerName,
+    customerPhone,
+    hasLoyaltyCustomerContext
   ])
 
   const renderScreen = () => {

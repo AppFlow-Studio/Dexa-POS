@@ -695,9 +695,7 @@ const CartItemRow = React.memo(function CartItemRow ({
         backgroundColor: colors.screen,
         paddingHorizontal: 8,
         paddingVertical: 8,
-        marginBottom: 0,
-        borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
-        borderBottomColor: colors.border + '55'
+        marginBottom: 0
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
@@ -860,6 +858,16 @@ const CartItemRow = React.memo(function CartItemRow ({
           )}
         </View>
       </View>
+      {!isLast && (
+        <View
+          style={{
+            height: StyleSheet.hairlineWidth,
+            backgroundColor: colors.border + '55',
+            marginTop: 8,
+            marginLeft: 40
+          }}
+        />
+      )}
     </Animated.View>
   )
 })
