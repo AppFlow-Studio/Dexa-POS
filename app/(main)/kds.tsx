@@ -407,9 +407,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
     // Memoize expensive item filtering/aggregation/sorting for large ticket volumes.
     const { doneItemCount, visibleItems } = useMemo(() => {
-      const doneCount = ticketItems.filter(
-        i => i.kitchen_status === 'ready'
-      ).length
+      const doneCount = ticketItems
+        .filter(i => i.kitchen_status === 'ready')
+        .reduce((sum, i) => sum + (i.quantity || 0), 0)
 
       let processed: KDSTicketItem[] = shouldHideDoneItems
         ? ticketItems.filter(i => i.kitchen_status !== 'ready')
@@ -454,9 +454,40 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         mod: KDSTicketItem['modifiers'][number]
         allergen: { label: string; color: string } | null
       }
+      type VisibleItem = {
+        item: KDSTicketItem
+        sortedModifiers: ModWithMeta[]
+        representedItemIds: string[]
+      }
       const withSortedMods = processed.map(item => {
+        const representedItemIds = displaySettings.aggregateIdenticalItems
+          ? ticketItems
+              .filter(orig => {
+                const itemModKey = item.modifiers
+                  .map(m => m.modifier_name)
+                  .sort()
+                  .join('|')
+                const origModKey = orig.modifiers
+                  .map(m => m.modifier_name)
+                  .sort()
+                  .join('|')
+                return (
+                  orig.name === item.name &&
+                  origModKey === itemModKey &&
+                  (orig.special_instructions ?? '') ===
+                    (item.special_instructions ?? '') &&
+                  orig.kitchen_status === item.kitchen_status
+                )
+              })
+              .map(orig => orig.id)
+          : [item.id]
+
         if (item.modifiers.length === 0)
-          return { item, sortedModifiers: [] as ModWithMeta[] }
+          return {
+            item,
+            sortedModifiers: [] as ModWithMeta[],
+            representedItemIds
+          } as VisibleItem
         const sorted = displaySettings.exclusionsAtTop
           ? [...item.modifiers].sort((a, b) => {
               const aR =
@@ -478,7 +509,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           mod,
           allergen: detectAllergen(mod.modifier_name)
         }))
-        return { item, sortedModifiers }
+        return { item, sortedModifiers, representedItemIds } as VisibleItem
       })
 
       return { doneItemCount: doneCount, visibleItems: withSortedMods }
@@ -699,14 +730,20 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
           {/* Items list */}
           <View style={{ padding: 10, backgroundColor: '#FFFFFF' }}>
-            {visibleItems.map(({ item, sortedModifiers }, index) => {
+            {visibleItems.map(({ item, sortedModifiers, representedItemIds }, index) => {
               const isItemDone = item.kitchen_status === 'ready'
               return (
                 <Pressable
                   key={item.id}
                   onPress={() => {
                     if (!isItemDone && onItemPress) {
-                      onItemPress(ticket.ticket_id, item.id)
+                      const idsToMark =
+                        representedItemIds.length > 0
+                          ? representedItemIds
+                          : [item.id]
+                      for (const id of idsToMark) {
+                        onItemPress(ticket.ticket_id, id)
+                      }
                     }
                   }}
                   style={
