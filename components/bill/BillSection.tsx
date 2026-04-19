@@ -284,26 +284,6 @@ const BillSectionContent = ({
     return hasPayments && (activeOrderPaidStatus !== 'Paid' || hasDue)
   }, [activeOrderPayments, activeOrderPaidStatus, orderTotals?.amountDue])
 
-  // Calculate cash savings for dual-price display
-  // Phase 7: Now uses derived selector which already prioritizes backend values
-  // console.log("orderTotals", orderTotals);
-  const { cashBalanceDue, cashSavings } = useMemo(() => {
-    if (!orderTotals) {
-      return { cashBalanceDue: 0, cashSavings: 0 }
-    }
-
-    // if (!activeOrder?.payments?.length) {
-    //   return { cashBalanceDue: orderTotals.cashAmountDue, cashSavings: 0 };
-    // }
-    // Derived selector's cashAmountDue already prioritizes backend cash_amount_due
-    const cashDue = orderTotals.cashAmountDue
-    const savings = displayBalanceDue - cashDue
-    return {
-      cashBalanceDue: cashDue,
-      cashSavings: savings > 0.01 ? savings : 0
-    }
-  }, [orderTotals, displayBalanceDue])
-
   const [isProcessing, setIsProcessing] = useState(false)
   const [orderNoteDraft, setOrderNoteDraft] = useState('')
   const isPaymentSheetOpen = usePaymentStore(state => state.isOpen)
@@ -1279,22 +1259,6 @@ const BillSectionContent = ({
                   Pay
                 </Text>
               </TouchableOpacity>
-            </View>
-            <View className='mt-1.5 h-4 items-center justify-center'>
-              <Text
-                style={{
-                  fontSize: 10,
-                  lineHeight: 12,
-                  color: colors.teal,
-                  opacity: cashSavings > 0 ? 1 : 0
-                }}
-              >
-                {cashSavings > 0
-                  ? `Cash: $${cashBalanceDue?.toFixed(
-                      2
-                    )} · save $${cashSavings?.toFixed(2)}`
-                  : ' '}
-              </Text>
             </View>
           </View>
         )}

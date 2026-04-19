@@ -148,7 +148,8 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           borderWidth: 1,
           borderColor: colors.border,
           borderRadius: 8,
-          overflow: 'hidden'
+          overflow: 'hidden',
+          elevation: 24
         },
         !inline &&
           dropdownPosition === 'right' && {
@@ -226,7 +227,13 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   )
 
   return (
-    <View style={inline ? undefined : { zIndex: 999, position: 'relative' }}>
+    <View
+      style={
+        inline
+          ? undefined
+          : { zIndex: 999, elevation: 24, position: 'relative' }
+      }
+    >
       <View
         style={[
           {
@@ -253,7 +260,9 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
             flex: 1,
             color: colors.heading,
             fontSize: 13,
-            padding: 0
+            padding: 0,
+            includeFontPadding: false,
+            textAlignVertical: 'center'
           }}
         />
         {loading && (

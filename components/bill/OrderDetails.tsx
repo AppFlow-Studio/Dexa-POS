@@ -2,6 +2,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { formatAddress } from '@/utils/addressUtils'
 import { Edit3, User } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import {
@@ -13,6 +14,7 @@ import {
   View
 } from 'react-native'
 import { useShallow } from 'zustand/react/shallow'
+import { AddressAutocomplete } from '../ui/AddressAutocomplete'
 import {
   Dialog,
   DialogContent,
@@ -34,7 +36,8 @@ const OrderDetailsComponent: React.FC<{
     customerName,
     customerPhone,
     orderType,
-    serviceLocationId
+    serviceLocationId,
+    deliveryAddress
   } = useOrderStore(
     useShallow(s => {
       const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
@@ -44,7 +47,8 @@ const OrderDetailsComponent: React.FC<{
         customerName: order?.customer_name || null,
         customerPhone: order?.customer_phone || null,
         orderType: type,
-        serviceLocationId: order?.service_location_id || null
+        serviceLocationId: order?.service_location_id || null,
+        deliveryAddress: order?.delivery_address || ''
       }
     })
   )
@@ -182,11 +186,16 @@ const OrderDetailsComponent: React.FC<{
   }
 
   const isDineInSelected = orderType === 'dine_in'
+  const isDeliverySelected = orderType === 'delivery'
 
   return (
     <View className='px-3 pb-2 z-20'>
       <View className='flex-row w-full gap-x-2'>
-        <View className={isDineInSelected ? 'w-[56%]' : 'w-full'}>
+        <View
+          className={
+            isDineInSelected || isDeliverySelected ? 'w-[56%]' : 'w-full'
+          }
+        >
           <TouchableOpacity
             onPress={openSheet}
             className='flex-row w-full items-center px-2.5 rounded-lg h-12'
@@ -249,6 +258,51 @@ const OrderDetailsComponent: React.FC<{
                 {tableLabel || 'Select Table'}
               </Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {isDeliverySelected && (
+          <View className='w-[44%] h-12' style={{ zIndex: 50 }}>
+            <View
+              className='w-full rounded-lg h-12 px-2.5 justify-center'
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <AddressAutocomplete
+                value={formatAddress(deliveryAddress) || ''}
+                onChangeText={text => {
+                  if (activeOrderId)
+                    updateActiveOrderDetails({
+                      delivery_address: JSON.stringify({
+                        street: text,
+                        city: '',
+                        state: '',
+                        zip: ''
+                      })
+                    })
+                }}
+                onAddressSelected={addr => {
+                  if (activeOrderId)
+                    updateActiveOrderDetails({
+                      delivery_address: JSON.stringify(addr)
+                    })
+                }}
+                placeholder='Enter address'
+                inputStyle={{
+                  backgroundColor: 'transparent',
+                  borderWidth: 0,
+                  borderRadius: 0,
+                  height: 46,
+                  minHeight: 46,
+                  maxHeight: 46,
+                  paddingHorizontal: 0
+                }}
+                dropdownPosition='below'
+              />
+            </View>
           </View>
         )}
       </View>
