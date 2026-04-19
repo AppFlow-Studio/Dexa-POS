@@ -19,8 +19,10 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useOrderSyncCounts } from '@/stores/useSyncStatusStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
-import type { FloorPlanObject } from '@/types/db-floor-plan-types'
-import type { ServerSection } from '@/types/db-floor-plan-types'
+import type {
+  FloorPlanObject,
+  ServerSection
+} from '@/types/db-floor-plan-types'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import {
   AlertTriangle,
@@ -353,8 +355,12 @@ const BillSectionContent = ({
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false)
   const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false)
   const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false)
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
-  const [pendingFloorPlanId, setPendingFloorPlanId] = useState<string | null>(null)
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
+    null
+  )
+  const [pendingFloorPlanId, setPendingFloorPlanId] = useState<string | null>(
+    null
+  )
   const billSectionRef = useRef<View>(null)
   const [tableDrawerAnchor, setTableDrawerAnchor] = useState({
     left: 0,
@@ -431,7 +437,10 @@ const BillSectionContent = ({
   )
 
   const floorPlanOptions = useMemo(
-    () => [...floorPlans].sort((left, right) => left.name.localeCompare(right.name)),
+    () =>
+      [...floorPlans].sort((left, right) =>
+        left.name.localeCompare(right.name)
+      ),
     [floorPlans]
   )
 
@@ -451,8 +460,9 @@ const BillSectionContent = ({
             name: 'Section',
             color: colors.muted,
             assigned_staff_id: null,
-            floor_plan_id: tableOptions.find(table => table.section_id === sectionId)
-              ?.floor_plan_id || ''
+            floor_plan_id:
+              tableOptions.find(table => table.section_id === sectionId)
+                ?.floor_plan_id || ''
           }
         )
       })
@@ -468,7 +478,8 @@ const BillSectionContent = ({
   }, [selectedSectionId, tableOptions])
 
   const selectedSection = useMemo(
-    () => sectionOptions.find(section => section.id === selectedSectionId) ?? null,
+    () =>
+      sectionOptions.find(section => section.id === selectedSectionId) ?? null,
     [sectionOptions, selectedSectionId]
   )
 
@@ -891,7 +902,8 @@ const BillSectionContent = ({
                     }}
                   >
                     {floorPlanOptions.map(plan => {
-                      const isActive = (pendingFloorPlanId ?? activeFloorPlanId) === plan.id
+                      const isActive =
+                        (pendingFloorPlanId ?? activeFloorPlanId) === plan.id
 
                       return (
                         <TouchableOpacity
@@ -944,64 +956,66 @@ const BillSectionContent = ({
                       gap: 8
                     }}
                   >
-                  <TouchableOpacity
-                    onPress={() => setSelectedSectionId(null)}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      backgroundColor:
-                        selectedSectionId === null
-                          ? `${colors.teal}16`
-                          : colors.card,
-                      borderColor:
-                        selectedSectionId === null ? colors.teal : colors.border
-                    }}
-                  >
-                    <Text
+                    <TouchableOpacity
+                      onPress={() => setSelectedSectionId(null)}
                       style={{
-                        color:
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        backgroundColor:
                           selectedSectionId === null
-                            ? colors.teal
-                            : colors.label,
-                        fontSize: 12,
-                        fontWeight: '700'
-                      }}
-                    >
-                      All Sections
-                    </Text>
-                  </TouchableOpacity>
-                  {sectionOptions.map((section: ServerSection) => {
-                    const isActive = selectedSectionId === section.id
-
-                    return (
-                      <TouchableOpacity
-                        key={section.id}
-                        onPress={() => setSelectedSectionId(section.id)}
-                        style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 7,
-                          borderRadius: 999,
-                          borderWidth: 1,
-                          backgroundColor: isActive
                             ? `${colors.teal}16`
                             : colors.card,
-                          borderColor: isActive ? colors.teal : colors.border
+                        borderColor:
+                          selectedSectionId === null
+                            ? colors.teal
+                            : colors.border
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            selectedSectionId === null
+                              ? colors.teal
+                              : colors.label,
+                          fontSize: 12,
+                          fontWeight: '700'
                         }}
                       >
-                        <Text
+                        All Sections
+                      </Text>
+                    </TouchableOpacity>
+                    {sectionOptions.map((section: ServerSection) => {
+                      const isActive = selectedSectionId === section.id
+
+                      return (
+                        <TouchableOpacity
+                          key={section.id}
+                          onPress={() => setSelectedSectionId(section.id)}
                           style={{
-                            color: isActive ? colors.teal : colors.label,
-                            fontSize: 12,
-                            fontWeight: '700'
+                            paddingHorizontal: 12,
+                            paddingVertical: 7,
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            backgroundColor: isActive
+                              ? `${colors.teal}16`
+                              : colors.card,
+                            borderColor: isActive ? colors.teal : colors.border
                           }}
                         >
-                          {section.name}
-                        </Text>
-                      </TouchableOpacity>
-                    )
-                  })}
+                          <Text
+                            style={{
+                              color: isActive ? colors.teal : colors.label,
+                              fontSize: 12,
+                              fontWeight: '700'
+                            }}
+                          >
+                            {section.name}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
                   </View>
                 </View>
               )}
