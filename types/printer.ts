@@ -267,6 +267,7 @@ export interface ReceiptPaymentData {
   entryMode?: string;    // "chip", "swipe", "contactless", "manual"
   aid?: string;              // Card Application ID (AID) from terminal
   tipAmount?: number;        // Tip amount (shown separately so amount is clearly pre-tip)
+  originalTipAmount?: number; // Original tip before adjustment (for audit display)
   amountTendered?: number;   // Cash amount customer handed over
   changeGiven?: number;      // Change returned to customer
 }

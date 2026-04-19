@@ -926,6 +926,9 @@ function buildReceiptTemplateData (
           dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode,
         aid: castles?.cardAID ?? (td as Record<string, any>)?.cardAID,
         tipAmount: p.tip_amount || undefined,
+        originalTipAmount: p.original_tip_amount != null && p.original_tip_amount !== p.tip_amount
+          ? p.original_tip_amount
+          : undefined,
         amountTendered: p.amountTendered ?? td?.amountTendered,
         changeGiven: p.changeGiven ?? td?.changeGiven,
       }

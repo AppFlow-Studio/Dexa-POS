@@ -510,8 +510,8 @@ const BillSectionContent = ({
                 isPayButtonDisabled
                   ? "bg-gray-600"
                   : isPartiallyPaid
-                    ? "bg-teal-400"
-                    : "bg-teal-400"
+                    ? "bg-teal"
+                    : "bg-teal"
               }`}
             >
               {hasPendingSyncs || isProcessing ? (

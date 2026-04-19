@@ -105,6 +105,7 @@ export interface CFDPayload {
     subtotalForTip: number // Base amount for tip calculation
     presetPercentages: number[] // e.g., [15, 18, 20, 25]
     allowCustom: boolean
+    maxTipPercentage?: number // Cap on custom tip as % of subtotal (default 100)
   }
 
   carouselImages?: string[]

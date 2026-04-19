@@ -459,9 +459,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               elevation: 8,
             }
           : {
-              borderBottomColor: colors.border,
-              borderStyle: "solid",
-              borderBottomWidth: 0.5,
+              // borderBottomColor: colors.border,
+              // borderStyle: "solid",
+              // borderBottomWidth: 0.5,
             },
       ]}
     >

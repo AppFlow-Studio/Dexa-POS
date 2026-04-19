@@ -16,6 +16,7 @@ import {
   Calculator,
   Check,
   CheckCircle,
+  ChevronLeft,
   ChevronRight,
   DollarSign,
   Edit3,
@@ -87,6 +88,8 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     s => s.updateDetailAdjustment
   )
   const reset = useTipDistributionStore(s => s.reset)
+  const storeError = useTipDistributionStore(s => s.error)
+  const clearError = useTipDistributionStore(s => s.clearError)
 
   const employees = useEmployeeStore(s => s.employees)
   const loggedInEmployee = useEmployeeStore(s => s.loggedInEmployee)
@@ -100,6 +103,8 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
   const [isLoadingClockedInStaff, setIsLoadingClockedInStaff] = useState(false)
   // Tips pulled from payments, keyed by staff profile id
   const [cardTipsByStaff, setCardTipsByStaff] = useState<Record<string, number>>({})
+  // Tracks which staff already declared cash tips at clock-out (from employee_daily_tips)
+  const [preDeclaredStaff, setPreDeclaredStaff] = useState<Set<string>>(new Set())
 
 
   // Fixed pixel height for the scrollable list cards
@@ -115,6 +120,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
 
     setClockedInStaffProfileIds(new Set())
     setCardTipsByStaff({})
+    setPreDeclaredStaff(new Set())
 
     const startOfDay = new Date(`${date}T00:00:00`).toISOString()
     const endOfDay = new Date(`${date}T23:59:59.999`).toISOString()
@@ -123,8 +129,8 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     const loadData = async () => {
       setIsLoadingClockedInStaff(true)
       try {
-        // Load clocked-in staff and card tips in parallel
-        const [shiftsRes, paymentsRes] = await Promise.all([
+        // Load shifts, employee_daily_tips (pre-declared), and card tips in parallel
+        const [shiftsRes, dailyTipsRes, paymentsRes] = await Promise.all([
           supabase
             .from('staff_shifts')
             .select('staff_profile_id')
@@ -132,76 +138,74 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
             .gte('clock_in_time', startOfDay)
             .lte('clock_in_time', endOfDay),
           supabase
+            .from('employee_daily_tips')
+            .select('staff_profile_id, charged_tips, cash_tips_declared')
+            .eq('location_id', selectedStore.id)
+            .eq('shift_date', date),
+          supabase
             .from('order_payments')
             .select('tip_amount, order_id, payment_method, status, is_voided, is_returned')
             .eq('location_id', selectedStore.id)
-            .or(`initiated_at.gte.${startOfDay},initiated_at.is.null`),
+            .neq('payment_method', 'cash')
+            .gte('initiated_at', startOfDay)
+            .lte('initiated_at', endOfDay),
         ])
 
-        if (shiftsRes.error) {
-          console.error('[TipDist] Failed to load clocked-in staff:', shiftsRes.error)
-        }
-        if (paymentsRes.error) {
-          console.error('[TipDist] Failed to load payments:', paymentsRes.error)
-        }
-        console.log('[TipDist] raw payments count:', paymentsRes.data?.length, 'date range:', startOfDay, '-', endOfDay)
+        if (shiftsRes.error) console.error('[TipDist] Failed to load shifts:', shiftsRes.error)
+        if (dailyTipsRes.error) console.error('[TipDist] Failed to load daily tips:', dailyTipsRes.error)
+        if (paymentsRes.error) console.error('[TipDist] Failed to load payments:', paymentsRes.error)
 
-        if (!isCancelled) {
-          const ids = new Set<string>(
-            (shiftsRes.data || [])
-              .map((row: { staff_profile_id: string | null }) => row.staff_profile_id)
-              .filter((id): id is string => Boolean(id))
-          )
-          setClockedInStaffProfileIds(ids)
-        }
+        if (isCancelled) return
 
-        // Split payments into card vs cash, filter out failed/void
-        const validPayments: any[] = (paymentsRes.data || []).filter(
+        // Set clocked-in staff IDs
+        const ids = new Set<string>(
+          (shiftsRes.data || [])
+            .map((row: { staff_profile_id: string | null }) => row.staff_profile_id)
+            .filter((id): id is string => Boolean(id))
+        )
+        setClockedInStaffProfileIds(ids)
+
+        // Pre-populate cash declarations from employee_daily_tips (declared at clock-out)
+        const declared = new Set<string>()
+        ;(dailyTipsRes.data || []).forEach((row: any) => {
+          const staffId = row.staff_profile_id
+          const cashDeclared = Number(row.cash_tips_declared) || 0
+          if (staffId && cashDeclared > 0) {
+            declareCashTips(staffId, cashDeclared)
+            declared.add(staffId)
+          }
+        })
+        setPreDeclaredStaff(declared)
+
+        // Build card tips map from payments
+        const validPayments = (paymentsRes.data || []).filter(
           (p: any) =>
             !p.is_voided &&
             !p.is_returned &&
             !['pending', 'processing', 'failed', 'declined', 'void'].includes(p.status)
         )
-        const cardPayments = validPayments.filter((p: any) => p.payment_method !== 'cash')
-        const cashPayments = validPayments.filter((p: any) => p.payment_method === 'cash')
+        const orderIds = [...new Set(validPayments.map((p: any) => p.order_id).filter(Boolean))]
 
-        console.log('[TipDist] valid payments:', validPayments.length, 'card:', cardPayments.length, 'cash:', cashPayments.length)
-
-        const allOrderIds = [...new Set(validPayments.map((p: any) => p.order_id).filter(Boolean))]
-
-        if (allOrderIds.length > 0 && !isCancelled) {
-          // Build per-order tip maps for card and cash
-          const cardOrderTipMap = new Map<string, number>()
-          cardPayments.forEach((p: any) => {
+        if (orderIds.length > 0 && !isCancelled) {
+          const orderTipMap = new Map<string, number>()
+          validPayments.forEach((p: any) => {
             if (!p.order_id) return
-            cardOrderTipMap.set(p.order_id, (cardOrderTipMap.get(p.order_id) || 0) + Number(p.tip_amount || 0))
-          })
-          const cashOrderTipMap = new Map<string, number>()
-          cashPayments.forEach((p: any) => {
-            if (!p.order_id) return
-            cashOrderTipMap.set(p.order_id, (cashOrderTipMap.get(p.order_id) || 0) + Number(p.tip_amount || 0))
+            orderTipMap.set(p.order_id, (orderTipMap.get(p.order_id) || 0) + Number(p.tip_amount || 0))
           })
 
           const { data: ordersRaw } = await supabase
             .from('orders')
             .select('id, assigned_server_id, created_by_staff_id')
-            .in('id', allOrderIds)
+            .in('id', orderIds)
 
           if (!isCancelled) {
             const cardMap: Record<string, number> = {}
-            const cashMap: Record<string, number> = {}
             ;(ordersRaw || []).forEach((o: any) => {
               const sid = o.assigned_server_id || o.created_by_staff_id
               if (!sid) return
-              if (cardOrderTipMap.has(o.id)) cardMap[sid] = (cardMap[sid] || 0) + cardOrderTipMap.get(o.id)!
-              if (cashOrderTipMap.has(o.id)) cashMap[sid] = (cashMap[sid] || 0) + cashOrderTipMap.get(o.id)!
+              if (orderTipMap.has(o.id)) cardMap[sid] = (cardMap[sid] || 0) + orderTipMap.get(o.id)!
             })
-            console.log('[TipDist] cardMap:', cardMap, 'cashMap:', cashMap)
             setCardTipsByStaff(cardMap)
-            // Pre-populate cash declarations with amounts from payments
-            Object.entries(cashMap).forEach(([staffId, amount]) => {
-              if (amount > 0) declareCashTips(staffId, amount)
-            })
           }
         }
       } finally {
@@ -222,84 +226,16 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
   const handleCalculate = useCallback(async () => {
     if (!selectedStore || !loggedInEmployee) return
 
-    const startOfDay = new Date(`${date}T00:00:00`).toISOString()
-    const endOfDay = new Date(`${date}T23:59:59.999`).toISOString()
-
-    // ── Sync card tips from paid orders ──────────────────────────────────────
-    // Pull all approved card payments for the day and sum tips per server
-    const { data: paymentsRaw } = await supabase
-      .from('order_payments')
-      .select('tip_amount, order_id, payment_method, is_voided, is_returned, status')
-      .eq('location_id', selectedStore.id)
-      .neq('payment_method', 'cash')
-      .gte('initiated_at', startOfDay)
-      .lte('initiated_at', endOfDay)
-
-    const filteredPayments = (paymentsRaw || []).filter(
-      (p: any) =>
-        !p.is_voided &&
-        !p.is_returned &&
-        !['pending', 'processing', 'failed', 'declined', 'void'].includes(p.status)
-    )
-    const orderIds: string[] = filteredPayments.map((p: any) => p.order_id).filter(Boolean)
-
-    // Map order → tip amount
-    const orderTipMap = new Map<string, number>()
-    filteredPayments.forEach((p: any) => {
-      if (!p.order_id) return
-      orderTipMap.set(p.order_id, (orderTipMap.get(p.order_id) || 0) + Number(p.tip_amount || 0))
-    })
-
-    // Look up server per order
-    if (orderIds.length > 0) {
-      const { data: ordersRaw } = await supabase
-        .from('orders')
-        .select('id, assigned_server_id, created_by_staff_id')
-        .in('id', orderIds)
-
-      // Sum card tips per staff profile
-      const cardTipsByStaff = new Map<string, number>()
-      ;(ordersRaw || []).forEach((o: any) => {
-        const sid = o.assigned_server_id || o.created_by_staff_id
-        if (!sid) return
-        const tip = orderTipMap.get(o.id) || 0
-        cardTipsByStaff.set(sid, (cardTipsByStaff.get(sid) || 0) + tip)
+    // Rebuild employee_daily_tips from orders + shifts (server-side)
+    // This picks up both charged tips from payments and cash declarations from staff_shifts
+    try {
+      const { error: rebuildErr } = await supabase.rpc('rebuild_employee_daily_tips', {
+        p_location_id: selectedStore.id,
+        p_shift_date: date,
       })
-
-      // Upsert charged_tips for each staff member that has card tips
-      if (cardTipsByStaff.size > 0) {
-        const cardUpdates = Array.from(cardTipsByStaff.entries()).map(([staffProfileId, charged_tips]) => ({
-          staff_profile_id: staffProfileId,
-          merchant_id: selectedStore.merchant_id,
-          location_id: selectedStore.id,
-          shift_date: date,
-          charged_tips,
-        }))
-        console.log('[TipDist] upserting card tips:', cardUpdates)
-        const { error: cardUpsertErr } = await supabase
-          .from('employee_daily_tips')
-          .upsert(cardUpdates, { onConflict: 'staff_profile_id,location_id,shift_date' })
-        if (cardUpsertErr) console.error('[TipDist] card tips upsert error:', cardUpsertErr)
-      }
-    }
-
-    // ── Save cash tip declarations ────────────────────────────────────────────
-    const declarations = Object.entries(cashTipDeclarations).filter(
-      ([_, amount]) => amount > 0
-    )
-    if (declarations.length > 0) {
-      const cashUpdates = declarations.map(([staffProfileId, amount]) => ({
-        staff_profile_id: staffProfileId,
-        merchant_id: selectedStore.merchant_id,
-        location_id: selectedStore.id,
-        shift_date: date,
-        cash_tips_declared: amount,
-      }))
-      console.log('[TipDist] upserting cash tips:', cashUpdates)
-      const { error: cashUpsertErr } = await supabase
-        .from('employee_daily_tips')
-        .upsert(cashUpdates, { onConflict: 'staff_profile_id,location_id,shift_date' })
-      if (cashUpsertErr) console.error('[TipDist] cash tips upsert error:', cashUpsertErr)
+      if (rebuildErr) console.error('[TipDist] rebuild_employee_daily_tips error:', rebuildErr)
+    } catch (e) {
+      console.error('[TipDist] rebuild failed:', e)
     }
 
     await calculateDistribution(
@@ -315,7 +251,6 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     loggedInEmployee,
     date,
     calculateDistribution,
-    cashTipDeclarations
   ])
 
   const handleApprove = useCallback(async () => {
@@ -333,35 +268,58 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
   }, [reset, onClose])
 
   // ── Numpad helpers ──────────────────────────────────────────────────────────
+  // Track raw string to preserve trailing dots/zeros during entry
+  const [cashTipRaw, setCashTipRaw] = useState<string>('0')
+  const [adjustmentRaw, setAdjustmentRaw] = useState<string>('0')
+
+  // Sync raw string when focused employee changes
+  useEffect(() => {
+    if (focusedEmployeeId) {
+      const val = cashTipDeclarations[focusedEmployeeId] ?? 0
+      setCashTipRaw(val === 0 ? '0' : String(val))
+    }
+  }, [focusedEmployeeId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (focusedDetailId && currentSession) {
+      const detail = currentSession.details.find(d => d.id === focusedDetailId)
+      const val = detail?.manualAdjustment ?? 0
+      setAdjustmentRaw(val === 0 ? '0' : String(val))
+    }
+  }, [focusedDetailId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isValidCurrencyAppend = (current: string, digit: string): string | null => {
+    const next = current === '0' && digit !== '.' ? digit : current + digit
+    // Allow valid currency format: digits with at most one dot and 2 decimal places
+    if (/^\d*\.?\d{0,2}$/.test(next)) return next
+    return null
+  }
+
   const handleNumpadInput = (digit: string) => {
     if (!focusedEmployeeId) return
-    const cur = cashTipDeclarations[focusedEmployeeId] ?? 0
-    const str = cur === 0 ? digit : String(cur) + digit
-    const num = parseFloat(str)
-    declareCashTips(focusedEmployeeId, isNaN(num) ? 0 : num)
+    const next = isValidCurrencyAppend(cashTipRaw, digit)
+    if (next === null) return
+    setCashTipRaw(next)
+    declareCashTips(focusedEmployeeId, parseFloat(next) || 0)
   }
   const handleNumpadBackspace = () => {
     if (!focusedEmployeeId) return
-    const str = String(cashTipDeclarations[focusedEmployeeId] ?? 0)
-    declareCashTips(focusedEmployeeId, parseFloat(str.slice(0, -1)) || 0)
+    const next = cashTipRaw.length <= 1 ? '0' : cashTipRaw.slice(0, -1)
+    setCashTipRaw(next)
+    declareCashTips(focusedEmployeeId, parseFloat(next) || 0)
   }
   const handleAdjustmentInput = (digit: string) => {
     if (!focusedDetailId || !currentSession) return
-    const detail = currentSession.details.find(d => d.id === focusedDetailId)
-    if (!detail) return
-    const cur = detail.manualAdjustment ?? 0
-    const str = cur === 0 ? digit : String(cur) + digit
-    const num = parseFloat(str)
-    updateDetailAdjustment(focusedDetailId, isNaN(num) ? 0 : num)
+    const next = isValidCurrencyAppend(adjustmentRaw, digit)
+    if (next === null) return
+    setAdjustmentRaw(next)
+    updateDetailAdjustment(focusedDetailId, parseFloat(next) || 0)
   }
   const handleAdjustmentBackspace = () => {
     if (!focusedDetailId || !currentSession) return
-    const detail = currentSession.details.find(d => d.id === focusedDetailId)
-    if (!detail) return
-    updateDetailAdjustment(
-      focusedDetailId,
-      parseFloat(String(detail.manualAdjustment ?? 0).slice(0, -1)) || 0
-    )
+    const next = adjustmentRaw.length <= 1 ? '0' : adjustmentRaw.slice(0, -1)
+    setAdjustmentRaw(next)
+    updateDetailAdjustment(focusedDetailId, parseFloat(next) || 0)
   }
 
   // ── Step indicator ──────────────────────────────────────────────────────────
@@ -703,7 +661,14 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
                       paddingVertical: 6,
                       paddingHorizontal: 10,
                     }}>
-                      <Text style={{ fontSize: 9, color: isSelected ? colors.teal : colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>Cash Tips</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                        <Text style={{ fontSize: 9, color: isSelected ? colors.teal : colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Cash Tips</Text>
+                        {preDeclaredStaff.has(emp.profileId) && (
+                          <View style={{ backgroundColor: colors.success + '20', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
+                            <Text style={{ fontSize: 7, fontWeight: '700', color: colors.success }}>DECLARED</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={{ fontSize: 13, fontWeight: '700', color: cashAmount > 0 ? colors.teal : colors.muted }}>
                         ${cashAmount.toFixed(2)}
                       </Text>
@@ -1180,6 +1145,49 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     </View>
   )
 
+  // ── Footer with Back navigation ─────────────────────────────────────────────
+  const renderFooter = () => {
+    // No footer on calculate (auto-transitions) or approve (has inline Done)
+    if (wizardStep === 'calculate' || wizardStep === 'approve') return null
+
+    const canGoBack = wizardStep === 'review'
+
+    return (
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+        }}
+      >
+        {canGoBack ? (
+          <TouchableOpacity
+            onPress={() => setWizardStep('declare')}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingVertical: 10,
+              paddingHorizontal: 14,
+              borderRadius: 10,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <ChevronLeft size={16} color={colors.label} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.label, marginLeft: 4 }}>
+              Back to Declare
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <View />
+        )}
+      </View>
+    )
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <Modal
@@ -1208,10 +1216,34 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
           }}
         >
           {renderStepIndicator()}
+          {!!storeError && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.danger + '55',
+                backgroundColor: colors.danger + '12',
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ flex: 1, fontSize: 12, color: colors.danger, fontWeight: '600' }}>
+                {storeError}
+              </Text>
+              <TouchableOpacity onPress={clearError} hitSlop={8}>
+                <X size={16} color={colors.danger} />
+              </TouchableOpacity>
+            </View>
+          )}
           {wizardStep === 'declare' && renderDeclareStep()}
           {wizardStep === 'calculate' && renderCalculateStep()}
           {wizardStep === 'review' && renderReviewStep()}
           {wizardStep === 'approve' && renderApproveStep()}
+          {renderFooter()}
         </View>
       </TouchableOpacity>
     </Modal>

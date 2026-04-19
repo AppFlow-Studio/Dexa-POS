@@ -5,7 +5,9 @@
  * Supports both individual tips (with tip-outs) AND tip pooling.
  */
 
+import { createLazyPersistStorage } from "@/lib/storage";
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
 // ============================================================================
@@ -102,11 +104,16 @@ interface TipDistributionState {
   // Cash tip declarations (staff_id -> declared amount)
   cashTipDeclarations: Record<string, number>;
 
-  // Loading
+  // Date tracking for persistence — auto-clears stale wizard data
+  _wizardSessionDate: string | null;
+
+  // Loading & error
   isLoading: boolean;
   isCalculating: boolean;
+  error: string | null;
 
   // Actions
+  clearError: () => void;
   setTipOutRules: (rules: TipOutRule[]) => void;
   setTipPoolConfigs: (configs: TipPoolConfig[]) => void;
   setTipPoolRoleShares: (shares: TipPoolRoleShare[]) => void;
@@ -139,7 +146,10 @@ interface TipDistributionState {
 // STORE
 // ============================================================================
 
+const _todayStr = () => new Date().toISOString().split("T")[0];
+
 export const useTipDistributionStore = create<TipDistributionState>()(
+  persist(
   immer((set, get) => ({
     tipOutRules: [],
     tipPoolConfigs: [],
@@ -147,8 +157,12 @@ export const useTipDistributionStore = create<TipDistributionState>()(
     currentSession: null,
     wizardStep: "declare" as TipWizardStep,
     cashTipDeclarations: {},
+    _wizardSessionDate: null,
     isLoading: false,
     isCalculating: false,
+    error: null,
+
+    clearError: () => set({ error: null }),
 
     setTipOutRules: (rules) => set({ tipOutRules: rules }),
     setTipPoolConfigs: (configs) => set({ tipPoolConfigs: configs }),
@@ -159,6 +173,9 @@ export const useTipDistributionStore = create<TipDistributionState>()(
     declareCashTips: (staffId, amount) => {
       set((state) => {
         state.cashTipDeclarations[staffId] = amount;
+        if (!state._wizardSessionDate) {
+          state._wizardSessionDate = new Date().toISOString().split("T")[0];
+        }
       });
     },
 
@@ -188,11 +205,13 @@ export const useTipDistributionStore = create<TipDistributionState>()(
         currentSession: null,
         wizardStep: "declare",
         cashTipDeclarations: {},
+        _wizardSessionDate: null,
         isCalculating: false,
+        error: null,
       }),
 
     fetchTipConfig: async (supabase, locationId) => {
-      set({ isLoading: true });
+      set({ isLoading: true, error: null });
 
       try {
         const [rulesRes, poolsRes, sharesRes] = await Promise.all([
@@ -248,9 +267,9 @@ export const useTipDistributionStore = create<TipDistributionState>()(
           })),
           isLoading: false,
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error("[TipDist] Failed to fetch config:", error);
-        set({ isLoading: false });
+        set({ isLoading: false, error: error?.message || "Failed to load tip configuration." });
       }
     },
 
@@ -262,7 +281,7 @@ export const useTipDistributionStore = create<TipDistributionState>()(
       calculatedBy,
       shiftPeriod
     ) => {
-      set({ isCalculating: true });
+      set({ isCalculating: true, error: null });
 
       try {
         const { data, error } = await supabase.rpc(
@@ -319,9 +338,9 @@ export const useTipDistributionStore = create<TipDistributionState>()(
           wizardStep: "review",
           isCalculating: false,
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error("[TipDist] Calculate failed:", error);
-        set({ isCalculating: false });
+        set({ isCalculating: false, error: error?.message || "Tip distribution calculation failed." });
       }
     },
 
@@ -346,9 +365,34 @@ export const useTipDistributionStore = create<TipDistributionState>()(
           }
           state.wizardStep = "approve";
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error("[TipDist] Approve failed:", error);
+        set({ error: error?.message || "Failed to approve tip distribution." });
       }
     },
-  }))
+  })),
+  {
+    name: "tip-distribution-wizard",
+    storage: createLazyPersistStorage(),
+    partialize: (state) => ({
+      cashTipDeclarations: state.cashTipDeclarations,
+      wizardStep: state.wizardStep,
+      currentSession: state.currentSession,
+      _wizardSessionDate: state._wizardSessionDate,
+    }),
+    merge: (persisted: any, current: TipDistributionState) => {
+      // Auto-clear stale wizard data from a different day
+      if (!persisted?._wizardSessionDate || persisted._wizardSessionDate !== _todayStr()) {
+        return current;
+      }
+      return {
+        ...current,
+        cashTipDeclarations: persisted.cashTipDeclarations ?? {},
+        wizardStep: persisted.wizardStep ?? "declare",
+        currentSession: persisted.currentSession ?? null,
+        _wizardSessionDate: persisted._wizardSessionDate,
+      };
+    },
+  },
+  )
 );

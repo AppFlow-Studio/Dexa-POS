@@ -47,6 +47,8 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
 
   const subtotal = tipConfig?.subtotalForTip ?? 0
   const presets = tipConfig?.presetPercentages ?? [15, 20, 25]
+  const maxTipPct = tipConfig?.maxTipPercentage ?? 100
+  const maxTipCents = subtotal > 0 ? Math.round(subtotal * (maxTipPct / 100)) : Infinity
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
   const customAmountCents = Math.round((parseFloat(customAmount) || 0) * 100)
   const selectedTipAmount = showCustom
@@ -76,7 +78,8 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
 
   const handleConfirmTip = () => {
     if (showCustom) {
-      onTipSelected(selectedTipAmount, null)
+      const capped = Math.min(selectedTipAmount, maxTipCents)
+      onTipSelected(capped, null)
       setShowModal(false)
       return
     }

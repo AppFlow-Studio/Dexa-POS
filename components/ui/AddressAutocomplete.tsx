@@ -125,11 +125,12 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
       setLoading(false)
 
       if (details) {
+        const formatted = [details.street, details.city, details.state, details.zip]
+          .filter(Boolean)
+          .join(', ')
+        setInputValue(formatted)
         lastTypedValueRef.current = ''
         onAddressSelected(details)
-        // Don't call onChangeText — parent updates display via onAddressSelected callback.
-        // OrderTypeDrawer: value derives from formatAddress(delivery_address)
-        // CustomerSheet: sets addressDisplay in onAddressSelected handler
       } else {
         // Fallback: use the description as plain text
         setInputValue(prediction.description)

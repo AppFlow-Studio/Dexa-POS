@@ -166,7 +166,7 @@ export const useTimeclockStore = create<TimeclockState>()(
         return { ok: true };
       },
 
-      signIn: (employeeId: string) => {
+      signIn: (employeeId: string, clockInTime?: Date) => {
         const { sessions } = get();
         if (sessions[employeeId]) {
           return undefined;
@@ -175,7 +175,7 @@ export const useTimeclockStore = create<TimeclockState>()(
         const newSession: ShiftSession = {
           employeeId,
           status: "clockedIn",
-          clockInTime: new Date(),
+          clockInTime: clockInTime ?? new Date(),
           breakStartTime: null,
           breakEndTime: null,
         };
@@ -660,6 +660,19 @@ export const useTimeclockStore = create<TimeclockState>()(
               }
             }
           });
+
+          // Sync shiftStatus to employee store so components like
+          // ServerSelectSheet see hydrated employees as "clocked_in"
+          const hydratedIds = new Set(Object.keys(newSessions));
+          if (hydratedIds.size > 0) {
+            useEmployeeStore.setState((prev) => ({
+              employees: prev.employees.map((e) =>
+                hydratedIds.has(e.id)
+                  ? { ...e, shiftStatus: "clocked_in" as const }
+                  : e
+              ),
+            }));
+          }
 
           console.log(
             `[Timeclock] Hydrated ${Object.keys(newSessions).length} active shifts`
