@@ -5,7 +5,6 @@ import type {
 } from '@/hooks/realtime/useOrdersRealtime'
 import { getKitchenSentStatus } from '@/lib/kitchenStatusUtils'
 import { normalizePlatform } from '@/lib/platformAliases'
-import { isHeaderOnlyBroadcast } from '@/utils/orderTransformers'
 import { createLazyPersistStorage } from '@/lib/storage'
 import { OrderService } from '@/services/orderService'
 import {
@@ -15,6 +14,7 @@ import {
   KDSTicket,
   KDSTicketItem
 } from '@/types/kds'
+import { isHeaderOnlyBroadcast } from '@/utils/orderTransformers'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -132,7 +132,10 @@ let _refetchTimeout: ReturnType<typeof setTimeout> | null = null
 // Per-order broadcast debounce — absorbs rapid-fire broadcasts from row-level triggers
 // (bulk_update_order_item_status fires one trigger per row, producing N partial-state
 // broadcasts. We hold each for 80ms and only apply the last one.)
-const _broadcastDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const _broadcastDebounceTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>()
 const BROADCAST_DEBOUNCE_MS = 80
 
 // ─── Fetch sequence counter + in-flight guard ───────────────────
@@ -249,7 +252,10 @@ function pendingActionSatisfied (
     if (expectedStatus && item.kitchen_status !== expectedStatus) {
       return false
     }
-    if (pending.rushOverride != null && Boolean(item.rush) !== pending.rushOverride) {
+    if (
+      pending.rushOverride != null &&
+      Boolean(item.rush) !== pending.rushOverride
+    ) {
       return false
     }
   }
@@ -382,7 +388,10 @@ function normalizeKdsTicket (ticket: KDSTicket): KDSTicket {
   return {
     ...ticket,
     items,
-    delivery_platform: normalizePlatform(ticket.delivery_platform) ?? ticket.delivery_platform ?? null,
+    delivery_platform:
+      normalizePlatform(ticket.delivery_platform) ??
+      ticket.delivery_platform ??
+      null,
     item_count:
       typeof ticket.item_count === 'number'
         ? ticket.item_count
@@ -532,6 +541,7 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
       delivery_platform: normalizePlatform(order.delivery_platform) ?? null,
       table_name: order.table_number,
       customer_name: order.customer_name ?? null,
+      order_notes: order.special_instructions ?? null,
       start_time: fireTime ?? order.sent_to_kitchen_at,
       start_time_epoch:
         fireTimeMs || safeParseUtcTimestamp(order.sent_to_kitchen_at),
@@ -561,6 +571,7 @@ function ticketDeepEqual (a: KDSTicket, b: KDSTicket): boolean {
     return false
   if (a.display_number !== b.display_number || a.table_name !== b.table_name)
     return false
+  if (a.order_notes !== b.order_notes) return false
   if (a.customer_name !== b.customer_name || a.start_time !== b.start_time)
     return false
   if (a.items.length !== b.items.length) return false
@@ -620,12 +631,16 @@ function mergeTickets (
     // Preserve customer_name/table_name from existing ticket when broadcast omits them
     const normalizedIncoming = normalizeKdsTicket(ticket)
     const enriched =
-      prev && (ticket.customer_name === null || ticket.table_name === null)
+      prev &&
+      (ticket.customer_name === null ||
+        ticket.table_name === null ||
+        ticket.order_notes == null)
         ? {
             ...normalizedIncoming,
             customer_name:
               normalizedIncoming.customer_name ?? prev.customer_name,
-            table_name: normalizedIncoming.table_name ?? prev.table_name
+            table_name: normalizedIncoming.table_name ?? prev.table_name,
+            order_notes: normalizedIncoming.order_notes ?? prev.order_notes
           }
         : normalizedIncoming
     const stabilized = prev ? preserveCompletedItems(prev, enriched) : enriched
@@ -1297,9 +1312,11 @@ export const useKDSStore = create<KDSState>()(
                   )
 
                   // Auto-complete if paid and completion mode allows (Path B: kitchen finishes after payment)
-                  const completionMode = useStoreSettingsStore.getState().orderCompletionMode
+                  const completionMode =
+                    useStoreSettingsStore.getState().orderCompletionMode
                   if (completionMode === 'auto') {
-                    const { ordersById, dbOrderIdIndex } = useOrderStore.getState()
+                    const { ordersById, dbOrderIdIndex } =
+                      useOrderStore.getState()
                     const localId = dbOrderIdIndex[orderId]
                     const localOrder = localId ? ordersById[localId] : null
                     if (localOrder?.paid_status === 'Paid') {
@@ -1332,7 +1349,8 @@ export const useKDSStore = create<KDSState>()(
               sessionId = match?.id ?? null
             }
             if (sessionId) {
-              useTableSessionStore.getState()
+              useTableSessionStore
+                .getState()
                 .updateSessionStatus(sessionId, 'served')
                 .catch(err => {
                   console.error(
@@ -1599,9 +1617,12 @@ export const useKDSStore = create<KDSState>()(
 
       scheduleRefetch: (locationId: string, immediate?: boolean) => {
         if (_refetchTimeout) clearTimeout(_refetchTimeout)
-        _refetchTimeout = setTimeout(() => {
-          get()._backgroundFetchTickets(locationId)
-        }, immediate ? 300 : 1500)
+        _refetchTimeout = setTimeout(
+          () => {
+            get()._backgroundFetchTickets(locationId)
+          },
+          immediate ? 300 : 1500
+        )
       },
 
       // ─── Long-Press Actions ─────────────────────────────────────────

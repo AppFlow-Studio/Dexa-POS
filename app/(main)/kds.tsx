@@ -282,6 +282,7 @@ function detectAllergen (
 // ─── Display Settings Interface ───────────────────────────────────
 interface KDSTicketDisplaySettings {
   highlightNotes: boolean
+  showOrderNotes: boolean
   itemNameLines: number // 0 = unlimited
   modifierGroupName: 'for_group_priced' | 'always' | 'never'
   exclusionsAtTop: boolean
@@ -402,6 +403,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const ticketItems = getTicketItems(ticket)
     const hasRush = ticketItems.some(item => item.rush)
     const hasRefire = ticketItems.some(item => item.recalled)
+    const orderNote = ticket.order_notes?.trim() ?? ''
 
     const shouldHideDoneItems = hideDoneItems && !onItemPress
 
@@ -728,186 +730,231 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
 
+          {displaySettings.showOrderNotes && orderNote.length > 0 && (
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor: displaySettings.highlightNotes
+                  ? colors.warning + '14'
+                  : '#F9FAFB',
+                borderBottomWidth: 1,
+                borderBottomColor: '#E5E7EB'
+              }}
+            >
+              <Text
+                style={{
+                  color: displaySettings.highlightNotes ? '#92400E' : '#6B7280',
+                  fontSize: 10,
+                  fontWeight: '800',
+                  letterSpacing: 0.6,
+                  marginBottom: 2
+                }}
+              >
+                ORDER NOTE
+              </Text>
+              <Text
+                style={{
+                  color: '#111827',
+                  fontSize: 11,
+                  lineHeight: 16,
+                  fontWeight: '600'
+                }}
+                numberOfLines={3}
+              >
+                {orderNote}
+              </Text>
+            </View>
+          )}
+
           {/* Items list */}
           <View style={{ padding: 10, backgroundColor: '#FFFFFF' }}>
-            {visibleItems.map(({ item, sortedModifiers, representedItemIds }, index) => {
-              const isItemDone = item.kitchen_status === 'ready'
-              return (
-                <Pressable
-                  key={item.id}
-                  onPress={() => {
-                    if (!isItemDone && onItemPress) {
-                      const idsToMark =
-                        representedItemIds.length > 0
-                          ? representedItemIds
-                          : [item.id]
-                      for (const id of idsToMark) {
-                        onItemPress(ticket.ticket_id, id)
+            {visibleItems.map(
+              ({ item, sortedModifiers, representedItemIds }, index) => {
+                const isItemDone = item.kitchen_status === 'ready'
+                return (
+                  <Pressable
+                    key={item.id}
+                    onPress={() => {
+                      if (!isItemDone && onItemPress) {
+                        const idsToMark =
+                          representedItemIds.length > 0
+                            ? representedItemIds
+                            : [item.id]
+                        for (const id of idsToMark) {
+                          onItemPress(ticket.ticket_id, id)
+                        }
                       }
-                    }
-                  }}
-                  style={
-                    index < visibleItems.length - 1
-                      ? { marginBottom: 6 }
-                      : undefined
-                  }
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'flex-start',
-                      opacity: isItemDone ? 0.5 : 1
                     }}
+                    style={
+                      index < visibleItems.length - 1
+                        ? { marginBottom: 6 }
+                        : undefined
+                    }
                   >
                     <View
                       style={{
-                        backgroundColor: isItemDone
-                          ? colors.success
-                          : '#E5E7EB',
-                        width: 22,
-                        height: 22,
-                        borderRadius: 4,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 8,
-                        minWidth: 22
+                        flexDirection: 'row',
+                        alignItems: 'flex-start',
+                        opacity: isItemDone ? 0.5 : 1
                       }}
                     >
-                      <Text
+                      <View
                         style={{
-                          color: isItemDone ? '#fff' : '#111827',
-                          fontSize: 12,
-                          fontWeight: '700'
+                          backgroundColor: isItemDone
+                            ? colors.success
+                            : '#E5E7EB',
+                          width: 22,
+                          height: 22,
+                          borderRadius: 4,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: 8,
+                          minWidth: 22
                         }}
                       >
-                        {item.quantity}
-                      </Text>
-                    </View>
-                    {item.seat_number != null && (
-                      <Text
-                        style={{
-                          color: '#0D9488',
-                          fontSize: 11,
-                          fontWeight: '700',
-                          marginRight: 6
-                        }}
-                      >
-                        [S{item.seat_number}]
-                      </Text>
-                    )}
-                    <Text
-                      style={{
-                        color: isItemDone ? '#9CA3AF' : '#111827',
-                        fontSize: 13,
-                        fontWeight: '600',
-                        flex: 1,
-                        textDecorationLine: isItemDone ? 'line-through' : 'none'
-                      }}
-                      numberOfLines={displaySettings.itemNameLines || undefined}
-                    >
-                      {item.name}
-                    </Text>
-                  </View>
-                  {/* Modifiers */}
-                  {sortedModifiers.length > 0 &&
-                    sortedModifiers.map(({ mod, allergen }, mi) => {
-                      const isRemoval =
-                        mod.is_no ||
-                        mod.modifier_group_name
-                          ?.toLowerCase()
-                          .includes('remove') ||
-                        mod.modifier_name?.toLowerCase().startsWith('no ')
-                      // Modifier group name prefix with ✕ or +
-                      let prefix = isRemoval ? '✕ ' : '+ '
-                      if (
-                        displaySettings.modifierGroupName === 'always' &&
-                        mod.modifier_group_name
-                      ) {
-                        prefix = `${prefix}${mod.modifier_group_name}: `
-                      } else if (
-                        displaySettings.modifierGroupName ===
-                          'for_group_priced' &&
-                        mod.modifier_group_name &&
-                        mod.price_modifier !== 0
-                      ) {
-                        prefix = `${prefix}${mod.modifier_group_name}: `
-                      }
-                      return (
-                        <View
-                          key={`${item.id}_m${mi}`}
+                        <Text
                           style={{
-                            marginTop: 2,
-                            flexDirection: 'row',
-                            alignItems: 'flex-start',
-                            gap: 6
+                            color: isItemDone ? '#fff' : '#111827',
+                            fontSize: 12,
+                            fontWeight: '700'
                           }}
                         >
-                          <Text
+                          {item.quantity}
+                        </Text>
+                      </View>
+                      {item.seat_number != null && (
+                        <Text
+                          style={{
+                            color: '#0D9488',
+                            fontSize: 11,
+                            fontWeight: '700',
+                            marginRight: 6
+                          }}
+                        >
+                          [S{item.seat_number}]
+                        </Text>
+                      )}
+                      <Text
+                        style={{
+                          color: isItemDone ? '#9CA3AF' : '#111827',
+                          fontSize: 13,
+                          fontWeight: '600',
+                          flex: 1,
+                          textDecorationLine: isItemDone
+                            ? 'line-through'
+                            : 'none'
+                        }}
+                        numberOfLines={
+                          displaySettings.itemNameLines || undefined
+                        }
+                      >
+                        {item.name}
+                      </Text>
+                    </View>
+                    {/* Modifiers */}
+                    {sortedModifiers.length > 0 &&
+                      sortedModifiers.map(({ mod, allergen }, mi) => {
+                        const isRemoval =
+                          mod.is_no ||
+                          mod.modifier_group_name
+                            ?.toLowerCase()
+                            .includes('remove') ||
+                          mod.modifier_name?.toLowerCase().startsWith('no ')
+                        // Modifier group name prefix with ✕ or +
+                        let prefix = isRemoval ? '✕ ' : '+ '
+                        if (
+                          displaySettings.modifierGroupName === 'always' &&
+                          mod.modifier_group_name
+                        ) {
+                          prefix = `${prefix}${mod.modifier_group_name}: `
+                        } else if (
+                          displaySettings.modifierGroupName ===
+                            'for_group_priced' &&
+                          mod.modifier_group_name &&
+                          mod.price_modifier !== 0
+                        ) {
+                          prefix = `${prefix}${mod.modifier_group_name}: `
+                        }
+                        return (
+                          <View
+                            key={`${item.id}_m${mi}`}
                             style={{
-                              color: isRemoval
-                                ? colors.danger
-                                : MODIFIER_ADD_COLOR,
-                              fontSize: 12,
-                              fontWeight: '600',
-                              lineHeight: 16,
-                              marginLeft: 30,
-                              opacity: isItemDone ? 0.4 : 1,
-                              textDecorationLine: isItemDone
-                                ? 'line-through'
-                                : 'none',
-                              flex: 1
+                              marginTop: 2,
+                              flexDirection: 'row',
+                              alignItems: 'flex-start',
+                              gap: 6
                             }}
                           >
-                            {prefix}
-                            {mod.modifier_name}
-                          </Text>
-                          {allergen && (
-                            <View
+                            <Text
                               style={{
-                                backgroundColor: allergen.color + '20',
-                                paddingHorizontal: 6,
-                                paddingVertical: 2,
-                                borderRadius: 4,
-                                borderWidth: 1,
-                                borderColor: allergen.color
+                                color: isRemoval
+                                  ? colors.danger
+                                  : MODIFIER_ADD_COLOR,
+                                fontSize: 12,
+                                fontWeight: '600',
+                                lineHeight: 16,
+                                marginLeft: 30,
+                                opacity: isItemDone ? 0.4 : 1,
+                                textDecorationLine: isItemDone
+                                  ? 'line-through'
+                                  : 'none',
+                                flex: 1
                               }}
                             >
-                              <Text
+                              {prefix}
+                              {mod.modifier_name}
+                            </Text>
+                            {allergen && (
+                              <View
                                 style={{
-                                  color: allergen.color,
-                                  fontSize: 8,
-                                  fontWeight: '700'
+                                  backgroundColor: allergen.color + '20',
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderRadius: 4,
+                                  borderWidth: 1,
+                                  borderColor: allergen.color
                                 }}
                               >
-                                {allergen.label}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      )
-                    })}
-                  {/* Special instructions */}
-                  {item.special_instructions && (
-                    <Text
-                      style={{
-                        color: displaySettings.highlightNotes
-                          ? colors.warning
-                          : colors.muted,
-                        fontSize: 10,
-                        fontStyle: 'italic',
-                        marginLeft: 30,
-                        marginTop: 3,
-                        opacity: isItemDone ? 0.4 : 1,
-                        textDecorationLine: isItemDone ? 'line-through' : 'none'
-                      }}
-                      numberOfLines={2}
-                    >
-                      "{item.special_instructions}"
-                    </Text>
-                  )}
-                </Pressable>
-              )
-            })}
+                                <Text
+                                  style={{
+                                    color: allergen.color,
+                                    fontSize: 8,
+                                    fontWeight: '700'
+                                  }}
+                                >
+                                  {allergen.label}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        )
+                      })}
+                    {/* Special instructions */}
+                    {item.special_instructions && (
+                      <Text
+                        style={{
+                          color: displaySettings.highlightNotes
+                            ? colors.warning
+                            : colors.muted,
+                          fontSize: 10,
+                          fontStyle: 'italic',
+                          marginLeft: 30,
+                          marginTop: 3,
+                          opacity: isItemDone ? 0.4 : 1,
+                          textDecorationLine: isItemDone
+                            ? 'line-through'
+                            : 'none'
+                        }}
+                        numberOfLines={2}
+                      >
+                        "{item.special_instructions}"
+                      </Text>
+                    )}
+                  </Pressable>
+                )
+              }
+            )}
             {/* Hidden done items indicator */}
             {hasHiddenDoneItems && (
               <Text
@@ -970,6 +1017,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       pt.order_number !== nt.order_number ||
       pt.table_name !== nt.table_name ||
       pt.customer_name !== nt.customer_name ||
+      pt.order_notes !== nt.order_notes ||
       pt.order_type !== nt.order_type ||
       pt.start_time_epoch !== nt.start_time_epoch ||
       pt.items.length !== nt.items.length
@@ -1189,7 +1237,6 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
               </View>
             ))}
           </View>
-
         </View>
       </Pressable>
     )
@@ -1264,6 +1311,7 @@ const KitchenDisplayScreen = () => {
 
   // KDS display settings (from unified config)
   const kdsHighlightNotes = kdsConfig.highlightNotes
+  const kdsShowOrderNotes = kdsConfig.showOrderNotes
   const kdsItemNameLines = kdsConfig.itemNameLines
   const kdsDisplayModifierGroupName = kdsConfig.displayModifierGroupName
   const kdsDisplayExclusionsAtTop = kdsConfig.displayExclusionsAtTop
@@ -1289,6 +1337,7 @@ const KitchenDisplayScreen = () => {
   const displaySettings = useMemo<KDSTicketDisplaySettings>(
     () => ({
       highlightNotes: kdsHighlightNotes,
+      showOrderNotes: kdsShowOrderNotes !== false,
       itemNameLines: kdsItemNameLines,
       modifierGroupName: kdsDisplayModifierGroupName,
       exclusionsAtTop: kdsDisplayExclusionsAtTop,
@@ -1297,6 +1346,7 @@ const KitchenDisplayScreen = () => {
     }),
     [
       kdsHighlightNotes,
+      kdsShowOrderNotes,
       kdsItemNameLines,
       kdsDisplayModifierGroupName,
       kdsDisplayExclusionsAtTop,
@@ -2412,9 +2462,7 @@ const KitchenDisplayScreen = () => {
       {!isReady || (isInitialLoading && !hasHydrated) ? (
         renderSkeletons()
       ) : (
-        <Pressable
-          style={{ flex: 1, position: 'relative' }}
-        >
+        <Pressable style={{ flex: 1, position: 'relative' }}>
           {(['pending', 'cooking', 'ready'] as const).map(status => {
             const isActive = activeStatus === status
             return (
@@ -2503,7 +2551,6 @@ const KitchenDisplayScreen = () => {
           </View>
         </Pressable>
       )}
-
 
       {/* ─── Action Menu Overlay ─── */}
       {actionMenu && (
@@ -2747,12 +2794,20 @@ const KitchenDisplayScreen = () => {
                     const ticket = actionMenu.ticket
                     if (ticket) {
                       const itemIds = getTicketItems(ticket).map(i => i.id)
-                      let newStatus: 'preparing' | 'ready' | 'served' | undefined
+                      let newStatus:
+                        | 'preparing'
+                        | 'ready'
+                        | 'served'
+                        | undefined
                       if (ticket.status === 'pending') newStatus = 'preparing'
                       else if (ticket.status === 'cooking') newStatus = 'ready'
                       else if (ticket.status === 'ready') newStatus = 'served'
                       if (newStatus) {
-                        advanceTicketStatus(ticket.ticket_id, itemIds, newStatus)
+                        advanceTicketStatus(
+                          ticket.ticket_id,
+                          itemIds,
+                          newStatus
+                        )
                         handleDismissActionMenu()
                       }
                     }
