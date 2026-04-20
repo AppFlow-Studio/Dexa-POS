@@ -23,14 +23,18 @@ function getPaymentBadgeStatus (
   if (!order) return null
 
   const hasCashPayments =
-    order.payments?.some(payment => !payment.isVoided && payment.isCashPriced) ??
-    false
+    order.payments?.some(
+      payment => !payment.isVoided && payment.isCashPriced
+    ) ?? false
 
   if (order.paid_status === 'Refunded') return 'Refunded'
   if (order.paid_status === 'Paid' && (order.amount_due ?? 0) <= 0.01) {
     return 'Paid'
   }
-  if (hasCashPayments && (order.cash_amount_due ?? Number.POSITIVE_INFINITY) <= 0.01) {
+  if (
+    hasCashPayments &&
+    (order.cash_amount_due ?? Number.POSITIVE_INFINITY) <= 0.01
+  ) {
     return 'Paid'
   }
 
