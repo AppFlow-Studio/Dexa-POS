@@ -429,6 +429,17 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       item.customizations.modifiers.length > 0) ||
     item.customizations.notes
 
+  const baseLineTotal = item.price * item.quantity
+  const effectiveLineTotal =
+    typeof item.subtotal === 'number' ? item.subtotal : baseLineTotal
+  const itemDiscountAmount = Math.max(0, baseLineTotal - effectiveLineTotal)
+  const hasVisibleDiscount =
+    !isVoided &&
+    (itemDiscountAmount > 0.005 ||
+      (typeof item.discount_amount === 'number' &&
+        item.discount_amount > 0.005) ||
+      !!item.appliedDiscount)
+
   const effectiveIsActive =
     isActive || isModifierActive || item.isDraft === true
 
@@ -685,6 +696,18 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     marginLeft: 6
                   }}
                 >
+                  {hasVisibleDiscount && (
+                    <Text
+                      style={{
+                        fontSize: 9,
+                        fontWeight: '600',
+                        color: colors.muted,
+                        textDecorationLine: 'line-through'
+                      }}
+                    >
+                      ${baseLineTotal.toFixed(2)}
+                    </Text>
+                  )}
                   <Text
                     style={{
                       fontSize: 11,
@@ -693,8 +716,19 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       textDecorationLine: isVoided ? 'line-through' : 'none'
                     }}
                   >
-                    ${(item.price * item.quantity).toFixed(2)}
+                    ${effectiveLineTotal.toFixed(2)}
                   </Text>
+                  {hasVisibleDiscount && itemDiscountAmount > 0.005 && (
+                    <Text
+                      style={{
+                        fontSize: 8,
+                        fontWeight: '700',
+                        color: colors.success
+                      }}
+                    >
+                      -${itemDiscountAmount.toFixed(2)}
+                    </Text>
+                  )}
                 </View>
               </View>
 

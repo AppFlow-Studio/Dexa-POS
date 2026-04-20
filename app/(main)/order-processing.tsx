@@ -1,4 +1,5 @@
 import BillSection from '@/components/bill/BillSection'
+import DiscountBottomSheet from '@/components/bill/DiscountBottomSheet'
 import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
 import CashDrawerSheet from '@/components/cash-drawer/CashDrawerSheet'
 import NoSaleModal from '@/components/cash-drawer/NoSaleModal'
@@ -32,6 +33,7 @@ import Animated, {
   LinearTransition,
   SlideInLeft
 } from 'react-native-reanimated'
+import { Portal as Teleport } from 'react-native-teleport'
 
 const EMPTY_ORDERS: OrderProfile[] = []
 const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const
@@ -555,16 +557,24 @@ const OrderProcessing = () => {
         </View>
       </View>
 
-      {/* Stage 2: Defer MoreOptionsBottomSheet — starts closed (index={-1}), safe to delay */}
+      {/* Stage 2: Mount in root portal so the sheet layers above BillSection controls */}
       {renderStage >= 2 && (
-        <MoreOptionsBottomSheet
-          ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-          discountSheetRef={
-            discountSheetRef as React.RefObject<BottomSheetMethods>
-          }
-          onCloseCheck={handleCloseCheck}
-          onNoSale={handleNoSale}
-        />
+        <Teleport hostName='root'>
+          <>
+            <MoreOptionsBottomSheet
+              ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+              discountSheetRef={
+                discountSheetRef as React.RefObject<BottomSheetMethods>
+              }
+              onCloseCheck={handleCloseCheck}
+              onNoSale={handleNoSale}
+            />
+            <DiscountBottomSheet
+              ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
+              onClose={() => discountSheetRef?.current?.close()}
+            />
+          </>
+        </Teleport>
       )}
 
       {isItemsModalOpen && (
