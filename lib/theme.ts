@@ -5,10 +5,23 @@
  *   import { colors, bottomSheetTheme, spinnerColor } from '@/lib/theme';
  */
 
-import { colors as _colors } from './theme-colors'
+import { darkColors, getThemeColors } from './theme-colors'
+
+type ThemeMode = 'dark' | 'light'
+type ThemeColors = typeof darkColors
+
+let activeColors: ThemeColors = darkColors
+
+export function setThemeMode (mode: ThemeMode) {
+  activeColors = getThemeColors(mode) as ThemeColors
+}
 
 /** Full typed palette — mirrors lib/theme-colors.js exactly. */
-export const colors = _colors as {
+export const colors = new Proxy({} as ThemeColors, {
+  get (_, prop: keyof ThemeColors) {
+    return activeColors[prop]
+  }
+}) as {
   // Backgrounds
   screen: string
   panel: string
@@ -83,8 +96,12 @@ export const colors = _colors as {
 
 /** Spread onto <BottomSheetModal> or <BottomSheet> */
 export const bottomSheetTheme = {
-  backgroundStyle: { backgroundColor: colors.panel },
-  handleIndicatorStyle: { backgroundColor: colors.muted },
+  get backgroundStyle () {
+    return { backgroundColor: colors.panel }
+  },
+  get handleIndicatorStyle () {
+    return { backgroundColor: colors.muted }
+  },
   style: { zIndex: 999, elevation: 999 }
 } as const
 
@@ -93,8 +110,12 @@ export const spinnerColor = colors.teal
 
 /** Switch trackColor prop */
 export const switchTrackColors = {
-  false: colors.border,
-  true: colors.teal
+  get false () {
+    return colors.border
+  },
+  get true () {
+    return colors.teal
+  }
 } as const
 
 // ── Status color maps ─────────────────────────────────────────

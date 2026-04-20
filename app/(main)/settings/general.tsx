@@ -5,20 +5,21 @@ import ConfirmationModal from '@/components/settings/reset-application/Confirmat
 import { FailedSyncsPanel } from '@/components/settings/sync-status/FailedSyncsPanel'
 import { SyncQueuePanel } from '@/components/settings/sync-status/SyncQueuePanel'
 import { Switch } from '@/components/ui/switch'
+import { useSessionKick } from '@/contexts/SessionKickListenerProvider'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getDeviceId } from '@/lib/deviceId'
 import { replaceRoute } from '@/lib/rootNavigation'
 import { colors, spinnerColor } from '@/lib/theme'
 import { toastService } from '@/lib/toastService'
 import type { MerchantRole } from '@/lib/types'
+import { useColorScheme } from '@/lib/useColorScheme'
 import { clearLocationData, clearStationData } from '@/services/cacheService'
 import { FloorPlanService } from '@/services/floorPlanService'
 import { syncNow } from '@/services/offlineSyncService'
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useSessionKick } from '@/contexts/SessionKickListenerProvider'
 import { useClerk } from '@clerk/clerk-expo'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -223,6 +224,7 @@ const GeneralSettingsScreen = () => {
 
   const showMenuImages = useSettingsStore(s => s.showMenuImages)
   const setShowMenuImages = useSettingsStore(s => s.setShowMenuImages)
+  const { colorScheme, setColorScheme } = useColorScheme()
 
   // ── Derived display values ──────────────────────────────────────────────
   const displayStoreName = selectedStore?.name || 'No store selected'
@@ -289,7 +291,7 @@ const GeneralSettingsScreen = () => {
       await FloorPlanService.getLocationFloorPlans(supabase, locationId)
     if (error) throw error
 
-    const defaultPlan = floorPlans?.find((fp) => fp.is_default) || floorPlans?.[0]
+    const defaultPlan = floorPlans?.find(fp => fp.is_default) || floorPlans?.[0]
     useFloorPlanStore.getState().setFloorPlans(floorPlans || [])
     useFloorPlanStore.getState().setActiveFloorPlanId(defaultPlan?.id || null)
 
@@ -799,59 +801,96 @@ const GeneralSettingsScreen = () => {
                 </View>
               </View>
 
-              {/* Theme: coming soon placeholder */}
+              {/* Theme */}
               <View
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  paddingVertical: 10,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingVertical: 10
                 }}
               >
                 <View style={{ flex: 1, marginRight: 16 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>App Theme</Text>
-                    <View
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                  >
+                    <Text
                       style={{
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        backgroundColor: colors.card,
-                        borderRadius: 4,
+                        fontSize: 13,
+                        color: colors.heading,
+                        fontWeight: '500'
                       }}
                     >
-                      <Text style={{ fontSize: 10, color: colors.muted }}>Coming Soon</Text>
-                    </View>
+                      App Theme
+                    </Text>
                   </View>
-                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                  <Text
+                    style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                  >
                     Choose between Dark and Light mode
                   </Text>
                 </View>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <View
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => setColorScheme('dark')}
                     style={{
                       paddingHorizontal: 12,
                       paddingVertical: 6,
-                      backgroundColor: colors.teal + "20",
+                      backgroundColor:
+                        colorScheme === 'dark'
+                          ? colors.teal + '20'
+                          : 'transparent',
                       borderWidth: 1,
-                      borderColor: colors.teal + "50",
-                      borderRadius: 8,
+                      borderColor:
+                        colorScheme === 'dark'
+                          ? colors.teal + '50'
+                          : colors.border,
+                      borderRadius: 8
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "500" }}>Dark</Text>
-                  </View>
-                  <View
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color:
+                          colorScheme === 'dark' ? colors.teal : colors.label,
+                        fontWeight: '500'
+                      }}
+                    >
+                      Dark
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setColorScheme('light')}
                     style={{
                       paddingHorizontal: 12,
                       paddingVertical: 6,
-                      backgroundColor: "transparent",
+                      backgroundColor:
+                        colorScheme === 'light'
+                          ? colors.teal + '20'
+                          : 'transparent',
                       borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 8,
-                      opacity: 0.4,
+                      borderColor:
+                        colorScheme === 'light'
+                          ? colors.teal + '50'
+                          : colors.border,
+                      borderRadius: 8
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.label }}>Light</Text>
-                  </View>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color:
+                          colorScheme === 'light' ? colors.teal : colors.label,
+                        fontWeight: '500'
+                      }}
+                    >
+                      Light
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -1005,7 +1044,7 @@ const GeneralSettingsScreen = () => {
                 />
               </View>
 
-              {/* Theme: coming soon placeholder */}
+              {/* Theme */}
               <View
                 style={{
                   flexDirection: 'row',
@@ -1031,18 +1070,6 @@ const GeneralSettingsScreen = () => {
                     >
                       App Theme
                     </Text>
-                    <View
-                      style={{
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        backgroundColor: colors.card,
-                        borderRadius: 4
-                      }}
-                    >
-                      <Text style={{ fontSize: 10, color: colors.muted }}>
-                        Coming Soon
-                      </Text>
-                    </View>
                   </View>
                   <Text
                     style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
@@ -1051,41 +1078,62 @@ const GeneralSettingsScreen = () => {
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View
+                  <TouchableOpacity
+                    onPress={() => setColorScheme('dark')}
                     style={{
                       paddingHorizontal: 12,
                       paddingVertical: 6,
-                      backgroundColor: colors.teal + '20',
+                      backgroundColor:
+                        colorScheme === 'dark'
+                          ? colors.teal + '20'
+                          : 'transparent',
                       borderWidth: 1,
-                      borderColor: colors.teal + '50',
+                      borderColor:
+                        colorScheme === 'dark'
+                          ? colors.teal + '50'
+                          : colors.border,
                       borderRadius: 8
                     }}
                   >
                     <Text
                       style={{
                         fontSize: 12,
-                        color: colors.teal,
+                        color:
+                          colorScheme === 'dark' ? colors.teal : colors.label,
                         fontWeight: '500'
                       }}
                     >
                       Dark
                     </Text>
-                  </View>
-                  <View
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setColorScheme('light')}
                     style={{
                       paddingHorizontal: 12,
                       paddingVertical: 6,
-                      backgroundColor: 'transparent',
+                      backgroundColor:
+                        colorScheme === 'light'
+                          ? colors.teal + '20'
+                          : 'transparent',
                       borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 8,
-                      opacity: 0.4
+                      borderColor:
+                        colorScheme === 'light'
+                          ? colors.teal + '50'
+                          : colors.border,
+                      borderRadius: 8
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.label }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color:
+                          colorScheme === 'light' ? colors.teal : colors.label,
+                        fontWeight: '500'
+                      }}
+                    >
                       Light
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
