@@ -36,6 +36,7 @@ export interface KDSTicket {
   delivery_platform?: string | null
   table_name: string | null
   customer_name: string | null
+  order_notes?: string | null
   start_time: string | null
   start_time_epoch: number
   done_time_epoch?: number

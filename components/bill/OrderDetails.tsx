@@ -1,35 +1,124 @@
-import { useToast } from "@/contexts/ToastContext";
-import { colors } from "@/lib/theme";
-import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
-import { Edit3, Plus, User } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useToast } from '@/contexts/ToastContext'
+import { calculatePaidStatus } from '@/lib/order-calculator'
+import { colors } from '@/lib/theme'
+import type { OrderProfile } from '@/lib/types'
+import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
+import { useOrderStore } from '@/stores/useOrderStore'
+import { formatAddress } from '@/utils/addressUtils'
+import { Edit3, MapPin, User } from 'lucide-react-native'
+import React, { useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,
   Platform,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useShallow } from "zustand/react/shallow";
+  View
+} from 'react-native'
+import Svg, { Rect } from 'react-native-svg'
+
+function getPaymentBadgeStatus (
+  order: OrderProfile | null
+): OrderProfile['paid_status'] | null {
+  if (!order) return null
+
+  const hasCashPayments =
+    order.payments?.some(
+      payment => !payment.isVoided && payment.isCashPriced
+    ) ?? false
+
+  if (order.paid_status === 'Refunded') return 'Refunded'
+  if (order.paid_status === 'Paid' && (order.amount_due ?? 0) <= 0.01) {
+    return 'Paid'
+  }
+  if (
+    hasCashPayments &&
+    (order.cash_amount_due ?? Number.POSITIVE_INFINITY) <= 0.01
+  ) {
+    return 'Paid'
+  }
+
+  const hasItems = (order.items?.length ?? 0) > 0
+  const hasPayments =
+    order.payments?.some(
+      payment =>
+        !payment.isVoided &&
+        ((payment.amount ?? 0) > 0 || (payment.refundedAmount ?? 0) > 0)
+    ) ?? false
+
+  const derivedTotal = Math.max(
+    order.total_amount ?? 0,
+    (order.amount_paid ?? 0) + Math.max(order.amount_due ?? 0, 0)
+  )
+  const hasBillableTotal = derivedTotal > 0.01
+
+  if (!hasItems && !hasBillableTotal && !hasPayments) return null
+
+  if (hasPayments && hasBillableTotal) {
+    return calculatePaidStatus(order.payments, derivedTotal)
+  }
+
+  if (order.amount_due != null) {
+    const amountPaid = order.amount_paid ?? 0
+
+    if (order.amount_due <= 0.01 && (hasBillableTotal || amountPaid > 0)) {
+      return 'Paid'
+    }
+
+    if (amountPaid > 0 && order.amount_due > 0.01) {
+      return 'Partial'
+    }
+  }
+
+  if (hasBillableTotal) {
+    return order.paid_status || 'Pending'
+  }
+
+  return order.paid_status || null
+}
+
+const DiningTableIcon: React.FC<{ color: string; size?: number }> = ({
+  color,
+  size = 16
+}) => (
+  <Svg width={size} height={size} viewBox='0 0 24 24' fill='none'>
+    {/* Table top */}
+    <Rect x='3' y='6' width='18' height='4' rx='1.5' fill={color} />
+
+    {/* Left leg */}
+    <Rect x='6' y='10' width='2' height='8' rx='1' fill={color} />
+
+    {/* Right leg */}
+    <Rect x='16' y='10' width='2' height='8' rx='1' fill={color} />
+
+    {/* Bottom support (optional, cleaner look) */}
+    <Rect
+      x='5'
+      y='17'
+      width='14'
+      height='2'
+      rx='1'
+      fill={color}
+      opacity={0.9}
+    />
+  </Svg>
+)
+
+import { useShallow } from 'zustand/react/shallow'
+import { AddressAutocomplete } from '../ui/AddressAutocomplete'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import { Label } from "../ui/label";
+  DialogTitle
+} from '../ui/dialog'
 
-// Define a consistent type for our dropdown options
-type SelectOption = { label: string; value: string };
-
-const OrderDetailsComponent: React.FC = () => {
-  const { show } = useToast();
+const OrderDetailsComponent: React.FC<{
+  tableLabel?: string
+  onOpenTableSelector?: () => void
+}> = ({ tableLabel, onOpenTableSelector }) => {
+  const { show } = useToast()
 
   // PERF: Single useShallow selector - runs 1 function instead of 11
   // useShallow compares values shallowly, so primitive returns prevent unnecessary re-renders
@@ -39,164 +128,80 @@ const OrderDetailsComponent: React.FC = () => {
     customerPhone,
     orderType,
     serviceLocationId,
+    deliveryAddress,
     orderStatus,
-    paidStatus,
-    checkStatus,
-    hasRefunds,
-    isSplitPayment,
-    hasAnyPayments,
+    paymentStatus
   } = useOrderStore(
-    useShallow((s) => {
-      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-      const type = order?.order_type || "takeout";
-      const labels: Record<string, string> = {
-        dine_in: "Dine In",
-        takeout: "Takeaway",
-        delivery: "Delivery",
-      };
-      const activePayments = order?.payments?.filter((p) => !p.isVoided) ?? [];
+    useShallow(s => {
+      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+      const type = order?.order_type || 'takeout'
       return {
         activeOrderId: s.activeOrderId,
         customerName: order?.customer_name || null,
         customerPhone: order?.customer_phone || null,
-        orderType: labels[type] || type,
+        orderType: type,
         serviceLocationId: order?.service_location_id || null,
-        orderStatus: order?.order_status || "draft",
-        paidStatus: order?.paid_status || "Unpaid",
-        checkStatus: order?.check_status || "Opened",
-        hasRefunds: (order?.order_refund_items?.length ?? 0) > 0,
-        isSplitPayment: activePayments.some((p) => p.method === "Cash") && activePayments.some((p) => p.method === "Card"),
-        hasAnyPayments: activePayments.length > 0,
-      };
+        deliveryAddress: order?.delivery_address || '',
+        orderStatus: order?.order_status || null,
+        paymentStatus: getPaymentBadgeStatus(order)
+      }
     })
-  );
+  )
 
   // Actions - stable function references
   const updateActiveOrderDetails = useOrderStore(
-    (s) => s.updateActiveOrderDetails,
-  );
-  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
+    s => s.updateActiveOrderDetails
+  )
+  const addItemToActiveOrder = useOrderStore(s => s.addItemToActiveOrder)
 
-  const { openDrawer } = useOrderTypeDrawerStore();
-  const { openSheet } = useCustomerSheetStore();
-
-  // The state now reflects the data from the global store
-  const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
-    undefined,
-  );
-  // Temporary storage for selected table (not yet assigned to order)
-  const [pendingTableSelection, setLocalPendingTableSelection] = useState<
-    SelectOption | undefined
-  >(undefined);
+  const { openSheet } = useCustomerSheetStore()
 
   // Open Item Modal State
-  const [isOpenItemModalVisible, setIsOpenItemModalVisible] = useState(false);
-  const [openItemName, setOpenItemName] = useState("");
-  const [openItemPrice, setOpenItemPrice] = useState("");
+  const [isOpenItemModalVisible, setIsOpenItemModalVisible] = useState(false)
+  const [openItemName, setOpenItemName] = useState('')
+  const [openItemPrice, setOpenItemPrice] = useState('')
 
   // Local state for editing customer name
-  const [localCustomerName, setLocalCustomerName] = useState("");
+  const [localCustomerName, setLocalCustomerName] = useState('')
   const [isCustomerNameModalVisible, setIsCustomerNameModalVisible] =
-    useState(false);
-  const [tempCustomerName, setTempCustomerName] = useState("");
-
-  // FIXED: Don't compute available tables at all - not used in this component
-  // Only compute when actually needed for display
-  const availableTableOptions = useMemo(() => {
-    const tablesById = useFloorPlanStore.getState().tablesById;
-    return Object.values(tablesById)
-      .filter(
-        (t) => t.session?.status === "available" || t.id === serviceLocationId,
-      )
-      .map((t) => ({ label: t.name, value: t.id }));
-  }, [serviceLocationId]);
-
-  // Track the last processed service location to avoid redundant updates
-  const lastProcessedServiceLocationRef = useRef<string | null>(null);
-
-  // FIXED: Only run when service location ID actually changes
-  useEffect(() => {
-    // Skip if we've already processed this service location
-    if (lastProcessedServiceLocationRef.current === serviceLocationId) {
-      return;
-    }
-
-    // Only update if conditions are met and value is different
-    if (serviceLocationId && orderStatus === "preparing") {
-      // Use O(1) lookup directly from store
-      const table = useFloorPlanStore
-        .getState()
-        .getTableById(serviceLocationId);
-      if (table) {
-        setSelectedTable({ label: table.name, value: table.id });
-        lastProcessedServiceLocationRef.current = serviceLocationId;
-      }
-    } else if (!serviceLocationId) {
-      // Reset tracking when no service location
-      lastProcessedServiceLocationRef.current = null;
-    }
-  }, [serviceLocationId, orderStatus]);
-
-  // FIXED: Separate effect for pending table selection - also use ref to avoid loops
-  const lastProcessedPendingRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const pendingValue = pendingTableSelection?.value;
-
-    // Skip if we've already processed this pending value
-    if (!pendingValue || lastProcessedPendingRef.current === pendingValue) {
-      return;
-    }
-
-    const table = useFloorPlanStore.getState().getTableById(pendingValue);
-    if (table) {
-      setSelectedTable({ label: table.name, value: table.id });
-      lastProcessedPendingRef.current = pendingValue;
-    }
-  }, [pendingTableSelection?.value]);
-
-  useEffect(() => {
-    setSelectedTable(undefined);
-    // Reset refs when order changes
-    lastProcessedServiceLocationRef.current = null;
-    lastProcessedPendingRef.current = null;
-  }, [activeOrderId]);
+    useState(false)
+  const [tempCustomerName, setTempCustomerName] = useState('')
 
   // Initialize local customer name from store customer name
   useEffect(() => {
-    setLocalCustomerName(customerName || "");
-  }, [activeOrderId, customerName]);
+    setLocalCustomerName(customerName || '')
+  }, [activeOrderId, customerName])
 
   const handleAddOpenItem = () => {
     if (!openItemName.trim()) {
       show({
-        title: "Item Name Required",
-        message: "Please enter a name for the open item.",
-        type: "error",
-      });
-      return;
+        title: 'Item Name Required',
+        message: 'Please enter a name for the open item.',
+        type: 'error'
+      })
+      return
     }
 
-    const price = parseFloat(openItemPrice);
+    const price = parseFloat(openItemPrice)
     if (isNaN(price) || price <= 0) {
       show({
-        title: "Invalid Price",
-        message: "Please enter a valid, positive price for the item.",
-        type: "error",
-      });
-      return;
+        title: 'Invalid Price',
+        message: 'Please enter a valid, positive price for the item.',
+        type: 'error'
+      })
+      return
     }
 
     // Check if the active order is closed - O(1) lookup from store directly
-    const ordersById = useOrderStore.getState().ordersById;
-    const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
-    if (currentOrder?.order_status === "completed") {
+    const ordersById = useOrderStore.getState().ordersById
+    const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined
+    if (currentOrder?.order_status === 'completed') {
       show({
-        title: "Order Closed",
-        message: "Cannot add items to a closed order. Please reopen it first.",
-        type: "error",
-      });
-      return;
+        title: 'Order Closed',
+        message: 'Cannot add items to a closed order. Please reopen it first.',
+        type: 'error'
+      })
+      return
     }
 
     // Create a new cart item for the open item
@@ -209,7 +214,7 @@ const OrderDetailsComponent: React.FC = () => {
       originalPrice: price,
       price: price,
       customizations: {
-        notes: "Open Item",
+        notes: 'Open Item'
       },
       availableDiscount: undefined,
       appliedDiscount: null,
@@ -223,160 +228,386 @@ const OrderDetailsComponent: React.FC = () => {
       cashSubtotal: price,
       taxRate: 0,
       taxAmount: 0,
-      cashTaxAmount: 0,
-    };
+      cashTaxAmount: 0
+    }
 
-    addItemToActiveOrder(newOpenItem);
+    addItemToActiveOrder(newOpenItem)
 
     show({
-      title: "Item Added",
+      title: 'Item Added',
       message: `${openItemName.trim()} for $${price.toFixed(
-        2,
+        2
       )} has been added to the order.`,
-      type: "success",
-    });
+      type: 'success'
+    })
 
     // Reset form and close modal
-    setOpenItemName("");
-    setOpenItemPrice("");
-    setIsOpenItemModalVisible(false);
-  };
+    setOpenItemName('')
+    setOpenItemPrice('')
+    setIsOpenItemModalVisible(false)
+  }
 
   const handleCancelOpenItem = () => {
-    setOpenItemName("");
-    setOpenItemPrice("");
-    setIsOpenItemModalVisible(false);
-  };
+    setOpenItemName('')
+    setOpenItemPrice('')
+    setIsOpenItemModalVisible(false)
+  }
 
   // Customer name modal handlers
   const handleAddCustomerName = () => {
-    setTempCustomerName(localCustomerName);
-    setIsCustomerNameModalVisible(true);
-  };
+    setTempCustomerName(localCustomerName)
+    setIsCustomerNameModalVisible(true)
+  }
 
   const handleSaveCustomerName = () => {
     if (activeOrderId) {
-      const trimmedName = tempCustomerName.trim();
-      setLocalCustomerName(trimmedName);
-      updateActiveOrderDetails({ customer_name: trimmedName });
-      setIsCustomerNameModalVisible(false);
+      const trimmedName = tempCustomerName.trim()
+      setLocalCustomerName(trimmedName)
+      updateActiveOrderDetails({ customer_name: trimmedName })
+      setIsCustomerNameModalVisible(false)
       show({
-        title: "Customer Name Updated",
+        title: 'Customer Name Updated',
         message: trimmedName
           ? `Order is now under the name: ${trimmedName}`
-          : "Customer name has been removed from the order.",
-        type: "success",
-      });
+          : 'Customer name has been removed from the order.',
+        type: 'success'
+      })
     }
-  };
+  }
 
   const handleCancelCustomerName = () => {
-    setTempCustomerName(localCustomerName);
-    setIsCustomerNameModalVisible(false);
-  };
+    setTempCustomerName(localCustomerName)
+    setIsCustomerNameModalVisible(false)
+  }
 
-  const insets = useSafeAreaInsets();
-  const contentInsets = {
-    top: insets.top,
-    bottom: insets.bottom,
-    left: 12,
-    right: 12,
-  };
+  const isDineInSelected = orderType === 'dine_in'
+  const isDeliverySelected = orderType === 'delivery'
 
   return (
-    <View className=" px-4 overflow-hidden ">
-      {/* Header */}
-      <View className="flex-row flex items-center justify-center w-full gap-x-4">
-        <View className="w-[50%] flex items-start justify-center flex-col gap-y-1">
-          <Label className="text-label font-small text-xs ml-2 mt-1">Customer</Label>
+    <View className='px-3 pb-2 z-20'>
+      <View className='flex-row w-full gap-x-2'>
+        <View style={{ flex: 1 }}>
           <TouchableOpacity
             onPress={openSheet}
-            className="flex-row w-full items-center px-2.5 rounded-lg h-10"
-            style={customerName ? {
-              backgroundColor: colors.card,
+            className='flex-row w-full items-center px-2.5 rounded-lg h-12'
+            style={{
+              backgroundColor: colors.panel,
               borderWidth: 1,
-              borderColor: colors.border,
-            } : {
-              backgroundColor: colors.teal + '20',
-              borderWidth: 1,
-              borderColor: colors.teal + '50',
+              borderColor: colors.border
             }}
           >
-            {customerName ? (
-              <>
-                <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
-                  <User color={colors.teal} size={14} />
-                </View>
-                <View className="ml-2 flex-1">
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>
-                    {customerName}
-                  </Text>
-                  {customerPhone && (
-                    <Text style={{ fontSize: 11, color: colors.label }}>
-                      {customerPhone}
-                    </Text>
-                  )}
-                </View>
-                <Edit3 color={colors.teal} size={13} />
-              </>
-            ) : (
-              <>
-                <Plus color={colors.teal} size={15} />
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal, marginLeft: 6 }}>
-                  Add Customer
-                </Text>
-              </>
-            )}
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 7,
+                backgroundColor: colors.card,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <User color={colors.label} size={13} />
+            </View>
+            <View className='ml-2 flex-1'>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.heading
+                }}
+                numberOfLines={1}
+              >
+                {customerName || 'Add Customer'}
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.muted }}>
+                {customerPhone || 'Optional'}
+              </Text>
+            </View>
+            <Edit3 color={colors.label} size={12} />
           </TouchableOpacity>
         </View>
-        <View className="w-[50%] flex items-start justify-center flex-col gap-y-1">
-          <Label className="text-label font-medium text-xs ml-2 mt-1">Order Type</Label>
-          {/* --- Order Type Button --- */}
-          <TouchableOpacity
-            className="w-full flex-row items-center justify-between p-2 rounded-xl h-10 bg-surface"
-            onPress={openDrawer}
-          >
-            <Text className="ml-2 text-sm font-medium text-white">
-              {orderType}
-            </Text>
-            <Text className="text-white text-sm">▼</Text>
-          </TouchableOpacity>
-        </View>
+
+        {isDineInSelected && (
+          <View style={{ flex: 1 }}>
+            <TouchableOpacity
+              onPress={onOpenTableSelector}
+              className='w-full rounded-lg h-12 px-2.5 flex-row items-center gap-2'
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <DiningTableIcon color={colors.label} size={14} />
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  flex: 1
+                }}
+                numberOfLines={1}
+              >
+                {tableLabel || 'Select Table'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {isDeliverySelected && (
+          <View style={{ flex: 1, height: 48, zIndex: 50 }}>
+            <View
+              className='w-full rounded-lg h-12 px-2.5 flex-row items-center'
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <MapPin
+                color={colors.label}
+                size={13}
+                style={{ marginRight: 6 }}
+              />
+              <View style={{ flex: 1 }}>
+                <AddressAutocomplete
+                  value={formatAddress(deliveryAddress) || ''}
+                  onChangeText={text => {
+                    if (activeOrderId)
+                      updateActiveOrderDetails({
+                        delivery_address: JSON.stringify({
+                          street: text,
+                          city: '',
+                          state: '',
+                          zip: ''
+                        })
+                      })
+                  }}
+                  onAddressSelected={addr => {
+                    if (activeOrderId)
+                      updateActiveOrderDetails({
+                        delivery_address: JSON.stringify(addr)
+                      })
+                  }}
+                  placeholder='Enter address'
+                  inputStyle={{
+                    backgroundColor: 'transparent',
+                    borderWidth: 0,
+                    borderRadius: 0,
+                    height: 46,
+                    minHeight: 46,
+                    maxHeight: 46,
+                    paddingHorizontal: 0
+                  }}
+                  dropdownPosition='below'
+                />
+              </View>
+            </View>
+          </View>
+        )}
       </View>
 
+      <View
+        className='flex-row mt-1.5 rounded-lg p-0.5'
+        style={{
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border
+        }}
+      >
+        {[
+          { label: 'Dine In', value: 'dine in', dbValue: 'dine_in' },
+          { label: 'Takeout', value: 'takeaway', dbValue: 'takeout' },
+          { label: 'Delivery', value: 'delivery', dbValue: 'delivery' }
+        ].map(type => {
+          const isActive = orderType === type.dbValue
 
-      {/* Customer Name Modal */}
+          return (
+            <TouchableOpacity
+              key={type.dbValue}
+              onPress={() => {
+                if (activeOrderId) {
+                  updateActiveOrderDetails({ order_type: type.dbValue as any })
+                }
+              }}
+              className='flex-1 h-7 rounded-md items-center justify-center'
+              style={{
+                backgroundColor: isActive ? colors.teal : 'transparent'
+              }}
+            >
+              <Text
+                style={{
+                  color: isActive ? colors.onSolid : colors.label,
+                  fontSize: 11,
+                  fontWeight: '600'
+                }}
+              >
+                {type.label}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+
+      {/* Status badges */}
+      {(orderStatus || paymentStatus) && (
+        <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
+          {orderStatus &&
+            (() => {
+              const cfg: Record<
+                string,
+                { label: string; color: string; bg: string }
+              > = {
+                draft: {
+                  label: 'Draft',
+                  color: '#9CA3AF',
+                  bg: 'rgba(156,163,175,0.12)'
+                },
+                sent_to_kitchen: {
+                  label: 'In Kitchen',
+                  color: '#818CF8',
+                  bg: 'rgba(129,140,248,0.12)'
+                },
+                preparing: {
+                  label: 'Preparing',
+                  color: '#F59E0B',
+                  bg: 'rgba(245,158,11,0.12)'
+                },
+                ready: {
+                  label: 'Ready',
+                  color: '#22C55E',
+                  bg: 'rgba(34,197,94,0.12)'
+                },
+                completed: {
+                  label: 'Completed',
+                  color: '#3B82F6',
+                  bg: 'rgba(59,130,246,0.12)'
+                },
+                void: {
+                  label: 'Void',
+                  color: '#EF4444',
+                  bg: 'rgba(239,68,68,0.12)'
+                },
+                cancelled: {
+                  label: 'Cancelled',
+                  color: '#EF4444',
+                  bg: 'rgba(239,68,68,0.12)'
+                }
+              }
+              const s = cfg[orderStatus] ?? {
+                label: orderStatus,
+                color: '#9CA3AF',
+                bg: 'rgba(156,163,175,0.12)'
+              }
+              return (
+                <View
+                  style={{
+                    backgroundColor: s.bg,
+                    borderRadius: 5,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderWidth: 1,
+                    borderColor: `${s.color}33`
+                  }}
+                >
+                  <Text
+                    style={{ fontSize: 9, fontWeight: '600', color: s.color }}
+                  >
+                    {s.label}
+                  </Text>
+                </View>
+              )
+            })()}
+          {paymentStatus &&
+            paymentStatus !== 'Pending' &&
+            (() => {
+              const cfg: Record<
+                string,
+                { label: string; color: string; bg: string }
+              > = {
+                Paid: {
+                  label: 'Paid',
+                  color: '#22C55E',
+                  bg: 'rgba(34,197,94,0.12)'
+                },
+                Partial: {
+                  label: 'Partial',
+                  color: '#F59E0B',
+                  bg: 'rgba(245,158,11,0.12)'
+                },
+                Unpaid: {
+                  label: 'Unpaid',
+                  color: '#EF4444',
+                  bg: 'rgba(239,68,68,0.12)'
+                },
+                Pending: {
+                  label: 'Pending',
+                  color: '#9CA3AF',
+                  bg: 'rgba(156,163,175,0.12)'
+                },
+                Refunded: {
+                  label: 'Refunded',
+                  color: '#EF4444',
+                  bg: 'rgba(239,68,68,0.12)'
+                }
+              }
+              const s = cfg[paymentStatus] ?? {
+                label: paymentStatus,
+                color: '#9CA3AF',
+                bg: 'rgba(156,163,175,0.12)'
+              }
+              return (
+                <View
+                  style={{
+                    backgroundColor: s.bg,
+                    borderRadius: 5,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderWidth: 1,
+                    borderColor: `${s.color}33`
+                  }}
+                >
+                  <Text
+                    style={{ fontSize: 9, fontWeight: '600', color: s.color }}
+                  >
+                    {s.label}
+                  </Text>
+                </View>
+              )
+            })()}
+        </View>
+      )}
       <Dialog
         open={isCustomerNameModalVisible}
         onOpenChange={setIsCustomerNameModalVisible}
       >
-        <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-screen border-none">
+        <DialogContent className='p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-screen border-none'>
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
             {/* Dark Header */}
-            <View className="p-6 rounded-lg ">
-              <DialogTitle className="text-heading text-3xl font-bold text-center">
-                {localCustomerName ? "Edit Customer Name" : "Add Customer Name"}
+            <View className='p-6 rounded-lg '>
+              <DialogTitle className='text-heading text-3xl font-bold text-center'>
+                {localCustomerName ? 'Edit Customer Name' : 'Add Customer Name'}
               </DialogTitle>
             </View>
 
             {/* White Content */}
-            <View className="rounded-t-lg rounded-b-lg p-6 bg-background-100">
+            <View className='rounded-t-lg rounded-b-lg p-6 bg-background-100'>
               <DialogHeader>
-                <Text className="text-accent-500 text-2xl text-center mb-4">
+                <Text className='text-accent-500 text-2xl text-center mb-4'>
                   Enter the customer's name for this order
                 </Text>
               </DialogHeader>
 
               {/* Customer Name Input */}
-              <View className="mb-6">
-                <Text className="text-accent-500 text-xl font-semibold mb-2">
+              <View className='mb-6'>
+                <Text className='text-accent-500 text-xl font-semibold mb-2'>
                   Customer Name
                 </Text>
                 <TextInput
-                  className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500 h-20"
-                  placeholder="Enter customer name"
+                  className='w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500 h-20'
+                  placeholder='Enter customer name'
                   placeholderTextColor={colors.muted}
                   value={tempCustomerName}
                   onChangeText={setTempCustomerName}
@@ -385,21 +616,21 @@ const OrderDetailsComponent: React.FC = () => {
               </View>
 
               {/* Footer with Buttons */}
-              <DialogFooter className="flex-row gap-4">
+              <DialogFooter className='flex-row gap-4'>
                 <TouchableOpacity
                   onPress={handleCancelCustomerName}
-                  className="flex-1 py-4 border border-gray-300 rounded-lg"
+                  className='flex-1 py-4 border border-gray-300 rounded-lg'
                 >
-                  <Text className="font-bold text-2xl text-gray-700 text-center">
+                  <Text className='font-bold text-2xl text-gray-700 text-center'>
                     Cancel
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveCustomerName}
-                  className="flex-1 py-4 bg-white rounded-lg  border border-blue-400"
+                  className='flex-1 py-4 bg-white rounded-lg  border border-blue-400'
                 >
-                  <Text className="font-bold text-2xl text-gray-800 text-center">
-                    {localCustomerName ? "Update" : "Add"}
+                  <Text className='font-bold text-2xl text-gray-800 text-center'>
+                    {localCustomerName ? 'Update' : 'Add'}
                   </Text>
                 </TouchableOpacity>
               </DialogFooter>
@@ -408,10 +639,10 @@ const OrderDetailsComponent: React.FC = () => {
         </DialogContent>
       </Dialog>
     </View>
-  );
-};
+  )
+}
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
-const OrderDetails = React.memo(OrderDetailsComponent);
+const OrderDetails = React.memo(OrderDetailsComponent)
 
-export default OrderDetails;
+export default OrderDetails

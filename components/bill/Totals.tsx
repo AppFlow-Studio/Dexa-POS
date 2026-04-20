@@ -1,21 +1,22 @@
-import { CartItem } from "@/lib/types";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
-import React, { useMemo } from "react";
-import { Text, View } from "react-native";
+import { colors } from '@/lib/theme'
+import { CartItem } from '@/lib/types'
+import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
+import { useOrderStore } from '@/stores/useOrderStore'
+import React, { useMemo } from 'react'
+import { Text, View } from 'react-native'
 
 interface TotalsProps {
-  cart: CartItem[];
+  cart: CartItem[]
 }
 
 const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
   // Phase 7: Use derived selector instead of 6 individual store selectors
-  const totals = useActiveOrderTotals();
+  const totals = useActiveOrderTotals()
 
   // PERF: Single selector for active order - avoids subscribing to entire ordersById
-  const activeOrder = useOrderStore((s) =>
+  const activeOrder = useOrderStore(s =>
     s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
-  );
+  )
 
   // Calculate amount paid and balance due
   const paymentInfo = useMemo(() => {
@@ -25,138 +26,159 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         isPaid: false,
         balanceDue: 0,
         cashBalanceDue: 0,
+        cardTotal: 0,
+        cashTotal: 0,
         cashSavings: 0,
         amountPaid: 0,
-      };
+        totalRefunded: 0
+      }
     }
 
-    const hasPayments = (activeOrder?.payments?.length ?? 0) > 0;
-    const isPaid = activeOrder?.paid_status === "Paid" && totals.amountDue <= 0.01;
+    const hasPayments = (activeOrder?.payments?.length ?? 0) > 0
+    const hasCashPayments =
+      activeOrder?.payments?.some(
+        (payment: any) => !payment.isVoided && payment.isCashPriced
+      ) ?? false
+    const isPaid =
+      activeOrder?.paid_status === 'Refunded'
+        ? false
+        : activeOrder?.paid_status === 'Paid' && totals.amountDue <= 0.01
+        ? true
+        : hasCashPayments
+        ? totals.cashAmountDue <= 0.01
+        : hasPayments
+        ? totals.amountDue <= 0.01
+        : false
 
     const totalRefunded = (activeOrder?.payments ?? [])
       .filter((p: any) => !p.isVoided)
-      .reduce((sum: number, p: any) => sum + (p.refundedAmount || 0), 0);
+      .reduce((sum: number, p: any) => sum + (p.refundedAmount || 0), 0)
 
     // Derived selector already prioritizes backend values for amountDue
-    const balanceDue = totals.amountDue;
-    const cashBalanceDue = totals.cashAmountDue;
+    const balanceDue = totals.amountDue
+    const cashBalanceDue = totals.cashAmountDue
+    const cardTotal = totals.total
+    const cashTotal = totals.cashTotal
 
     const amountPaid =
       activeOrder?.amount_paid !== undefined
         ? activeOrder.amount_paid
-        : totals.total - totals.amountDue;
+        : totals.total - totals.amountDue
 
     // Calculate savings if paying cash
-    const cashSavings = balanceDue - cashBalanceDue;
+    const cashSavings = balanceDue - cashBalanceDue
 
     return {
       hasPayments,
       isPaid,
       balanceDue,
       cashBalanceDue,
+      cardTotal,
+      cashTotal,
       cashSavings: cashSavings > 0.01 ? cashSavings : 0,
       amountPaid: Math.max(0, amountPaid),
-      totalRefunded,
-    };
-  }, [totals, activeOrder]);
+      totalRefunded
+    }
+  }, [totals, activeOrder])
 
   if (!totals) {
-    return null;
+    return null
   }
 
+  const taxRatePct =
+    totals.subtotal > 0 ? (totals.tax / totals.subtotal) * 100 : 0
+
   return (
-    <View className="px-4 py-0.5 ">
-      <View className="gap-y-0.5 border-t border-gray-600/50 pt-0.5">
-        {/* <View className="flex-row justify-between items-center">
-          <Text className="text-lg text-gray-300">Subtotal</Text>
-          <Text className="text-lg font-medium text-white">
-            ${totals.subtotal.toFixed(2)}
-          </Text>
-        </View> */}
-        {totals.discount > 0 && (
-          <View className="flex-row justify-between items-center">
-            <Text className="text-xs text-green-400">Discount</Text>
-            <Text className="text-xs font-medium text-green-400">
-              -${totals.discount.toFixed(2)}
-            </Text>
-          </View>
-        )}
-
-        <View className="flex-row justify-between items-center">
-          <Text className="text-xs text-gray-300">Tax</Text>
-          <Text className="text-xs font-medium text-white">
-            ${totals.tax.toFixed(2)}
-          </Text>
-        </View>
-
-        {/* <View className="flex-row justify-between items-center">
-          <Text className="text-lg text-gray-300">Voucher</Text>
-          <Text className="text-lg font-medium text-white">
-            ${voucher.toFixed(2)}
-          </Text>
-        </View> */}
-      </View>
-
-      {/* Total Line */}
-      <View className="flex-row justify-between items-center mt-0.5 pt-0.5 border-t border-gray-600/50">
-        <Text className="text-xs font-bold text-white">Total</Text>
-        <Text className="text-xs font-bold text-white">
-          ${totals.total.toFixed(2)}
+    <View className='px-5 pt-4 pb-1.5'>
+      <View className='flex-row justify-between items-center mb-1'>
+        <Text style={{ color: colors.label, fontSize: 11 }}>Subtotal</Text>
+        <Text
+          style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+        >
+          ${totals.subtotal.toFixed(2)}
         </Text>
       </View>
 
-      {/* Amount Paid (only show if partial payment made) */}
-      {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
-        <View className="flex-row justify-between items-center mt-1">
-          <Text className="text-xs text-teal-400">Paid</Text>
-          <Text className="text-xs font-medium text-teal-400">
-            ${paymentInfo.amountPaid.toFixed(2)}
-          </Text>
-        </View>
-      )}
+      <View className='flex-row justify-between items-center mb-1.5'>
+        <Text style={{ color: colors.label, fontSize: 11 }}>
+          Tax ({taxRatePct.toFixed(2)}%)
+        </Text>
+        <Text
+          style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+        >
+          ${totals.tax.toFixed(2)}
+        </Text>
+      </View>
 
-      {/* Refunded amount */}
-      {paymentInfo?.totalRefunded > 0 && (
-        <View className="flex-row justify-between items-center mt-1">
-          <Text className="text-xs text-red-400">Refunded</Text>
-          <Text className="text-xs font-medium text-red-400">
-            +${paymentInfo?.totalRefunded?.toFixed(2)}
-          </Text>
-        </View>
-      )}
+      <View className='flex-row justify-between items-end mt-2'>
+        <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
+          Cash Total
+        </Text>
+        <Text
+          style={{
+            color: colors.heading,
+            fontSize: 16,
+            lineHeight: 18,
+            fontWeight: '800'
+          }}
+        >
+          ${paymentInfo.cashTotal.toFixed(2)}
+        </Text>
+      </View>
 
-      {/* Balance Due (only show if there's a remaining balance after payment) */}
-      {paymentInfo.hasPayments && !paymentInfo.isPaid && paymentInfo.balanceDue > 0.01 && (
-        <View className="flex-row justify-between items-center mt-1 pt-1 border-t border-yellow-600/50">
-          <Text className="text-xs font-bold text-yellow-400">Balance Due</Text>
-          <Text className="text-xs font-bold text-yellow-400">
+      <View className='flex-row justify-between items-end mt-1.5'>
+        <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
+          Card Total
+        </Text>
+        <Text
+          style={{
+            color: colors.teal,
+            fontSize: 16,
+            lineHeight: 18,
+            fontWeight: '800'
+          }}
+        >
+          ${paymentInfo.cardTotal.toFixed(2)}
+        </Text>
+      </View>
+
+      {paymentInfo.hasPayments && paymentInfo.balanceDue > 0.01 && (
+        <View className='flex-row justify-between items-center mt-1'>
+          <Text style={{ color: colors.label, fontSize: 11 }}>Balance Due</Text>
+          <Text
+            style={{ color: colors.warning, fontSize: 11, fontWeight: '700' }}
+          >
             ${paymentInfo.balanceDue.toFixed(2)}
           </Text>
         </View>
       )}
 
-      {/* Cash Discount Option (show when not fully paid and cash price is lower) */}
-      {/* {!paymentInfo.isPaid && paymentInfo.cashSavings > 0 && paymentInfo.balanceDue > 0.01 && (
-        <View className="flex-row justify-between items-center mt-1">
-          <Text className="text-sm text-green-400">Cash Price</Text>
-          <Text className="text-sm font-medium text-green-400">
-            ${paymentInfo.cashBalanceDue.toFixed(2)} (save ${paymentInfo.cashSavings.toFixed(2)})
+      {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
+        <View className='flex-row justify-between items-center mt-2'>
+          <Text style={{ color: colors.label, fontSize: 11 }}>Paid</Text>
+          <Text
+            style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}
+          >
+            ${paymentInfo.amountPaid.toFixed(2)}
           </Text>
         </View>
-      )} */}
+      )}
 
-      {/* Fully Paid indicator */}
-      {paymentInfo.isPaid && (
-        <View className="flex-row justify-between items-center mt-1 pt-1 border-t border-teal-600/50">
-          <Text className="text-xs font-bold text-teal-400">Fully Paid</Text>
-          <Text className="text-xs font-bold text-teal-400">✓</Text>
+      {paymentInfo?.totalRefunded > 0 && (
+        <View className='flex-row justify-between items-center mt-0.5'>
+          <Text style={{ color: colors.label, fontSize: 11 }}>Refunded</Text>
+          <Text
+            style={{ color: colors.danger, fontSize: 11, fontWeight: '700' }}
+          >
+            +${paymentInfo.totalRefunded.toFixed(2)}
+          </Text>
         </View>
       )}
     </View>
-  );
-};
+  )
+}
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
-const Totals = React.memo(TotalsComponent);
+const Totals = React.memo(TotalsComponent)
 
-export default Totals;
+export default Totals

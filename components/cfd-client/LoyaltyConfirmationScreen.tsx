@@ -1,5 +1,6 @@
 // components/cfd-client/LoyaltyConfirmationScreen.tsx
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { Check, Gift, UtensilsCrossed } from 'lucide-react-native'
 import { useEffect } from 'react'
@@ -14,11 +15,11 @@ import Animated, {
   withSpring,
   withTiming
 } from 'react-native-reanimated'
-import { iosOnly } from '@/lib/safeAnimations'
 
 export function LoyaltyConfirmationScreen () {
   const { loyaltyResult, branding } = useCFDDisplayData()
   const programs = loyaltyResult?.programs ?? []
+  const hasProgramResults = programs.length > 0
   const customerName = loyaltyResult?.customerName
   const hasUnlockedReward = programs.some(p => p.rewardUnlocked)
 
@@ -41,7 +42,10 @@ export function LoyaltyConfirmationScreen () {
 
   return (
     <View style={styles.container}>
-      <Animated.View entering={iosOnly(FadeIn.duration(250))} style={styles.header}>
+      <Animated.View
+        entering={iosOnly(FadeIn.duration(250))}
+        style={styles.header}
+      >
         <View style={styles.headerLeft}>
           <View style={styles.headerIconBox}>
             <UtensilsCrossed size={20} color={colors.teal} />
@@ -69,7 +73,9 @@ export function LoyaltyConfirmationScreen () {
           entering={iosOnly(FadeInUp.duration(280).delay(120))}
           style={styles.subtitle}
         >
-          Loyalty points were added to your account.
+          {hasProgramResults
+            ? 'Loyalty points were added to your account.'
+            : 'Your loyalty information was received.'}
         </Animated.Text>
 
         {customerName ? (
