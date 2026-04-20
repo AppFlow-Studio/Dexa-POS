@@ -286,9 +286,7 @@ const OrderDetailsComponent: React.FC<{
   return (
     <View className='px-3 pb-2 z-20'>
       <View className='flex-row w-full gap-x-2'>
-        <View
-          style={{ flex: 1 }}
-        >
+        <View style={{ flex: 1 }}>
           <TouchableOpacity
             onPress={openSheet}
             className='flex-row w-full items-center px-2.5 rounded-lg h-12'
@@ -520,7 +518,8 @@ const OrderDetailsComponent: React.FC<{
                 </View>
               )
             })()}
-          {paymentStatus && paymentStatus !== 'Pending' &&
+          {paymentStatus &&
+            paymentStatus !== 'Pending' &&
             (() => {
               const cfg: Record<
                 string,
