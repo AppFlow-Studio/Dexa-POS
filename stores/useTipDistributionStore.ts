@@ -72,6 +72,9 @@ export interface TipDistributionSession {
   sessionDate: string;
   shiftPeriod?: "full_day" | "lunch" | "dinner" | "custom";
   status: "draft" | "calculated" | "approved" | "exported" | "voided";
+  sequenceNumber: number;
+  dataStartAfter: string | null;
+  dataCutoffAt: string | null;
   totalTipsCollected: number;
   totalTipsPooled: number;
   totalTipOuts: number;
@@ -83,6 +86,16 @@ export interface TipDistributionSession {
   approvedBy?: string;
   approvalNotes?: string;
   details: TipDistributionDetail[];
+}
+
+export interface TipDistributionSessionSummary {
+  id: string;
+  sequenceNumber: number;
+  status: string;
+  totalDistributed: number;
+  dataStartAfter: string | null;
+  dataCutoffAt: string | null;
+  approvedAt: string | null;
 }
 
 export type TipWizardStep = "declare" | "calculate" | "review" | "approve";
@@ -100,6 +113,9 @@ interface TipDistributionState {
   // Current distribution session
   currentSession: TipDistributionSession | null;
   wizardStep: TipWizardStep;
+
+  // Multi-session: prior sessions for the same day
+  previousSessions: TipDistributionSessionSummary[];
 
   // Cash tip declarations (staff_id -> declared amount)
   cashTipDeclarations: Record<string, number>;
@@ -123,9 +139,11 @@ interface TipDistributionState {
   clearDeclarations: () => void;
   updateDetailAdjustment: (detailId: string, adjustment: number) => void;
   reset: () => void;
+  resetForNewSession: () => void;
 
   // Fetching
   fetchTipConfig: (supabase: any, locationId: string) => Promise<void>;
+  fetchPreviousSessions: (supabase: any, locationId: string, date: string) => Promise<void>;
   calculateDistribution: (
     supabase: any,
     locationId: string,
@@ -156,6 +174,7 @@ export const useTipDistributionStore = create<TipDistributionState>()(
     tipPoolRoleShares: [],
     currentSession: null,
     wizardStep: "declare" as TipWizardStep,
+    previousSessions: [] as TipDistributionSessionSummary[],
     cashTipDeclarations: {},
     _wizardSessionDate: null,
     isLoading: false,
@@ -203,12 +222,50 @@ export const useTipDistributionStore = create<TipDistributionState>()(
     reset: () =>
       set({
         currentSession: null,
+        previousSessions: [],
         wizardStep: "declare",
         cashTipDeclarations: {},
         _wizardSessionDate: null,
         isCalculating: false,
         error: null,
       }),
+
+    resetForNewSession: () =>
+      set({
+        currentSession: null,
+        wizardStep: "declare",
+        cashTipDeclarations: {},
+        isCalculating: false,
+        error: null,
+        // Keep _wizardSessionDate and previousSessions — same day, new session
+      }),
+
+    fetchPreviousSessions: async (supabase, locationId, date) => {
+      try {
+        const { data, error } = await supabase
+          .from("tip_distribution_sessions")
+          .select("id, sequence_number, status, total_distributed, data_start_after, data_cutoff_at, approved_at")
+          .eq("location_id", locationId)
+          .eq("session_date", date)
+          .order("sequence_number", { ascending: true });
+
+        if (error) throw error;
+
+        set({
+          previousSessions: (data || []).map((s: any) => ({
+            id: s.id,
+            sequenceNumber: s.sequence_number,
+            status: s.status,
+            totalDistributed: Number(s.total_distributed) || 0,
+            dataStartAfter: s.data_start_after,
+            dataCutoffAt: s.data_cutoff_at,
+            approvedAt: s.approved_at,
+          })),
+        });
+      } catch (e: any) {
+        console.error("[TipDist] Failed to fetch previous sessions:", e);
+      }
+    },
 
     fetchTipConfig: async (supabase, locationId) => {
       set({ isLoading: true, error: null });
@@ -299,13 +356,16 @@ export const useTipDistributionStore = create<TipDistributionState>()(
 
         const result = data as any;
 
-        // Map response to session
+        // Map response to session (includes multi-session fields)
         const session: TipDistributionSession = {
           id: result.session_id,
           locationId,
           sessionDate,
           shiftPeriod: shiftPeriod as TipDistributionSession["shiftPeriod"],
           status: "calculated",
+          sequenceNumber: Number(result.sequence_number) || 1,
+          dataStartAfter: result.data_start_after || null,
+          dataCutoffAt: result.data_cutoff_at || null,
           totalTipsCollected: Number(result.total_tips_collected || 0),
           totalTipsPooled: Number(result.total_tips_pooled || 0),
           totalTipOuts: Number(result.total_tip_outs || 0),

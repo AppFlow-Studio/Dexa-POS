@@ -76,8 +76,51 @@ export interface TodayTipSummary {
   cashTips: number
   totalTips: number
   periodStart: string | null // "YYYY-MM-DD" — first day included in totals
+  lastCutoffAt: string | null // timestamp of last approved session's data_cutoff_at
   /** Prior-day sessions (since last approved) that are not approved/exported/voided */
   pendingPriorDaySessions: { date: string; status: string }[]
+}
+
+export interface TodaySessionRow {
+  id: string
+  sequenceNumber: number
+  status: string
+  totalDistributed: number
+  dataStartAfter: string | null
+  dataCutoffAt: string | null
+  approvedAt: string | null
+  calculatedAt: string | null
+}
+
+/**
+ * Fetch all tip distribution sessions for a given location and date.
+ * Used by EodStepTips to show the multi-session history.
+ */
+export async function fetchTodaySessions(
+  supabase: SupabaseClient,
+  locationId: string,
+  date: string,
+): Promise<TodaySessionRow[]> {
+  const { data, error } = await supabase
+    .from('tip_distribution_sessions')
+    .select('id, sequence_number, status, total_distributed, data_start_after, data_cutoff_at, approved_at, calculated_at')
+    .eq('location_id', locationId)
+    .eq('session_date', date)
+    .not('status', 'eq', 'voided')
+    .order('sequence_number', { ascending: true })
+
+  if (error) throw error
+
+  return (data || []).map((s: any) => ({
+    id: s.id,
+    sequenceNumber: s.sequence_number,
+    status: s.status,
+    totalDistributed: Number(s.total_distributed) || 0,
+    dataStartAfter: s.data_start_after,
+    dataCutoffAt: s.data_cutoff_at,
+    approvedAt: s.approved_at,
+    calculatedAt: s.calculated_at,
+  }))
 }
 
 /**
@@ -137,14 +180,16 @@ export async function fetchUnsettledTipSummary (
 
   const lastSettledRes = await supabase
     .from('tip_distribution_sessions')
-    .select('session_date')
+    .select('session_date, data_cutoff_at')
     .eq('location_id', locationId)
     .in('status', ['approved', 'exported'])
     .order('session_date', { ascending: false })
+    .order('sequence_number', { ascending: false })
     .limit(1)
 
   let startOfPeriod: string
   let periodStart: string
+  const lastCutoffAt: string | null = lastSettledRes.data?.[0]?.data_cutoff_at ?? null
 
   if (lastSettledRes.data?.[0]?.session_date) {
     const lastDate = lastSettledRes.data[0].session_date
@@ -204,6 +249,7 @@ export async function fetchUnsettledTipSummary (
     cashTips,
     totalTips: cardTips + cashTips,
     periodStart,
+    lastCutoffAt,
     pendingPriorDaySessions: (priorSessionsRes.data || []).map((s: any) => ({
       date: s.session_date,
       status: s.status

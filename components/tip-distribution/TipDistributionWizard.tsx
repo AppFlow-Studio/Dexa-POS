@@ -88,6 +88,9 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     s => s.updateDetailAdjustment
   )
   const reset = useTipDistributionStore(s => s.reset)
+  const resetForNewSession = useTipDistributionStore(s => s.resetForNewSession)
+  const previousSessions = useTipDistributionStore(s => s.previousSessions)
+  const fetchPreviousSessions = useTipDistributionStore(s => s.fetchPreviousSessions)
   const storeError = useTipDistributionStore(s => s.error)
   const clearError = useTipDistributionStore(s => s.clearError)
 
@@ -214,6 +217,11 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     }
 
     void loadData()
+
+    // Also load previous sessions for multi-session context
+    if (selectedStore?.id) {
+      fetchPreviousSessions(supabase, selectedStore.id, date)
+    }
 
     return () => { isCancelled = true }
   }, [date, isOpen, selectedStore?.id, supabase])
@@ -1120,28 +1128,47 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     >
       <CheckCircle size={56} color={colors.success} />
       <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}>
-        Distribution Approved
+        Session #{currentSession?.sequenceNumber ?? 1} Approved
       </Text>
       <Text style={{ fontSize: 12, color: colors.label, textAlign: 'center' }}>
-        Tips distributed for {date}.{'\n'}Total:{' '}
-        {formatCurrency(currentSession?.totalDistributed || 0)}
+        {currentSession?.dataStartAfter
+          ? `Covers activity since ${new Date(currentSession.dataStartAfter).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          : `All activity for ${date}`}
+        {'\n'}Total: {formatCurrency(currentSession?.totalDistributed || 0)}
       </Text>
-      <TouchableOpacity
-        onPress={handleClose}
-        style={{
-          marginTop: 8,
-          paddingVertical: 11,
-          paddingHorizontal: 28,
-          borderRadius: 10,
-          backgroundColor: colors.teal
-        }}
-      >
-        <Text
-          style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+        <TouchableOpacity
+          onPress={handleClose}
+          style={{
+            paddingVertical: 11,
+            paddingHorizontal: 24,
+            borderRadius: 10,
+            backgroundColor: colors.teal,
+          }}
         >
-          Done
-        </Text>
-      </TouchableOpacity>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}>
+            Done
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            resetForNewSession()
+            fetchPreviousSessions(supabase, selectedStore?.id || '', date)
+          }}
+          style={{
+            paddingVertical: 11,
+            paddingHorizontal: 24,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.teal + '50',
+            backgroundColor: colors.teal + '12',
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>
+            Start Another Close-Out
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   )
 
@@ -1239,6 +1266,38 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
               </TouchableOpacity>
             </View>
           )}
+          {/* Multi-session context banner */}
+          {(() => {
+            const approvedPrev = previousSessions.filter(s => s.status === 'approved')
+            const seqNum = currentSession?.sequenceNumber ?? (approvedPrev.length + 1)
+            const startAfter = currentSession?.dataStartAfter
+            const lastApproved = approvedPrev[approvedPrev.length - 1]
+
+            return (
+              <View
+                style={{
+                  borderRadius: 10,
+                  backgroundColor: colors.teal + '08',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '25',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}>
+                  Session #{seqNum} · {startAfter
+                    ? `Since ${new Date(startAfter).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    : 'All activity today'}
+                </Text>
+                {lastApproved && (
+                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+                    Prior: Session #{lastApproved.sequenceNumber} (Approved, {formatCurrency(lastApproved.totalDistributed)} distributed)
+                  </Text>
+                )}
+              </View>
+            )
+          })()}
           {wizardStep === 'declare' && renderDeclareStep()}
           {wizardStep === 'calculate' && renderCalculateStep()}
           {wizardStep === 'review' && renderReviewStep()}
