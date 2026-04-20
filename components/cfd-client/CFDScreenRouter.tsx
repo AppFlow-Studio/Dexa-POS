@@ -7,10 +7,11 @@ import {
   triggerCFDPhoneSubmit
 } from '@/contexts/CFDProvider'
 import { colors } from '@/lib/theme'
+import { useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
 import { iosOnly } from '@/lib/safeAnimations'
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
 
 import { IdleScreen } from './IdleScreen'
 import { LoyaltyConfirmationScreen } from './LoyaltyConfirmationScreen'
@@ -38,13 +39,24 @@ export function CFDScreenRouter ({
   // layer where it surfaces as an Android system crash dialog.
   let screenState: ReturnType<typeof useCFDDisplayData>['screenState'] = 'idle'
   let items: ReturnType<typeof useCFDDisplayData>['items'] = []
+  let loyaltyProgramCount = 0
+  let loyaltyCustomerName: string | null = null
+  let customerName: string | null = null
+  let customerPhone: string | null = null
   try {
     const data = useCFDDisplayData()
     screenState = data.screenState
     items = data.items
+    loyaltyProgramCount = data.loyaltyResult?.programs?.length ?? 0
+    loyaltyCustomerName = data.loyaltyResult?.customerName ?? null
+    customerName = data.customerName ?? null
+    customerPhone = data.customerPhone ?? null
   } catch {
     // Context not available — render idle (dark screen, invisible to customer)
   }
+
+  const hasLoyaltyCustomerContext =
+    !!loyaltyCustomerName || !!customerName || !!customerPhone
 
   const handleLoyaltyJoin = () => {
     if (onLoyaltyJoin) {
@@ -78,6 +90,31 @@ export function CFDScreenRouter ({
       ? 'payment-flow'
       : resolvedState
 
+  const prevResolvedStateRef = useRef<string>('init')
+  useEffect(() => {
+    if (!__DEV__) return
+    if (prevResolvedStateRef.current === resolvedState) return
+    console.log('[CFD Router Trace] state-transition', {
+      from: prevResolvedStateRef.current,
+      to: resolvedState,
+      rawScreenState: screenState,
+      itemCount: items.length,
+      loyaltyProgramCount,
+      hasLoyaltyCustomer: hasLoyaltyCustomerContext,
+      hasLoyaltyResultCustomer: !!loyaltyCustomerName
+    })
+    prevResolvedStateRef.current = resolvedState
+  }, [
+    resolvedState,
+    screenState,
+    items.length,
+    loyaltyProgramCount,
+    loyaltyCustomerName,
+    customerName,
+    customerPhone,
+    hasLoyaltyCustomerContext
+  ])
+
   const renderScreen = () => {
     try {
       switch (resolvedState) {
@@ -110,7 +147,10 @@ export function CFDScreenRouter ({
           return <IdleScreen />
       }
     } catch (err) {
-      console.error('[CFDScreenRouter] Render error, falling back to idle:', err)
+      console.error(
+        '[CFDScreenRouter] Render error, falling back to idle:',
+        err
+      )
       return <IdleScreen />
     }
   }

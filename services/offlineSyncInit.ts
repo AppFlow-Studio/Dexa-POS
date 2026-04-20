@@ -29,6 +29,10 @@ import {
 } from '@/lib/offlineIdRegistry'
 import { FloorPlanService } from '@/services/floorPlanService'
 import {
+  earnLoyaltyForOrder,
+  findOrCreateCustomerByPhone
+} from '@/services/loyalty/loyaltyService'
+import {
   getFailedPayments,
   getIsOnline,
   getOfflineDurationMs,
@@ -436,7 +440,7 @@ function resolveItemId (
   // Fall back to store lookup
   const store = _getOrderStore().getState()
   const order = store.ordersById[localOrderId]
-  const item = order?.items.find(i => i.id === localItemId)
+  const item = order?.items.find((i: any) => i.id === localItemId)
   return item?.db_order_item_id || null
 }
 
@@ -602,7 +606,7 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
 
         if (result.success && result.order_discount_id) {
           // Mark local discount as synced with backend order_discount_id
-          _getOrderStore().setState(state => {
+          _getOrderStore().setState((state: any) => {
             const existingOrder = state.ordersById[localOrderId]
             if (!existingOrder?.applied_discounts) return state
             return {
@@ -1107,13 +1111,13 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
             )
 
             // Update order status and item statuses
-            const updatedItems = order.items.map(item => ({
+            const updatedItems = order.items.map((item: any) => ({
               ...item,
               kitchen_status: getKitchenSentStatus(),
               item_status: 'Preparing' as const
             }))
 
-            _getOrderStore().setState(state => {
+            _getOrderStore().setState((state: any) => {
               const currentOrder = state.ordersById[localOrderId]
               if (!currentOrder) return state
 
@@ -1146,7 +1150,7 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
               responseData.order_amount_paid !== undefined ||
               responseData.order_amount_due !== undefined)
           ) {
-            _getOrderStore().setState(state => {
+            _getOrderStore().setState((state: any) => {
               const currentOrder = state.ordersById[localOrderId]
               if (!currentOrder) return state
 
@@ -1634,7 +1638,9 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           // Retroactively send to kitchen if item was fired during offline sync
           const latestStore = _getOrderStore().getState()
           const latestOrder = latestStore.ordersById[storeKey]
-          const latestItem = latestOrder?.items.find(i => i.id === localItemId)
+          const latestItem = latestOrder?.items.find(
+            (i: any) => i.id === localItemId
+          )
           if (
             latestItem?.kitchen_status === getKitchenSentStatus() &&
             data.order_item_id
@@ -2174,11 +2180,11 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
             if (resolvedItemIds.length === 0) {
               const storeOrders = _getOrderStore().getState().ordersById
               const liveOrder = Object.values(storeOrders).find(
-                o => o.db_order_id === resolvedOrderId
+                (o: any) => o.db_order_id === resolvedOrderId
               )
               if (liveOrder) {
                 for (const localItemId of unresolvedLocalItemIds) {
-                  const liveItem = liveOrder.items.find(
+                  const liveItem = (liveOrder as any).items.find(
                     (i: any) => i.id === localItemId && i.db_order_item_id
                   )
                   if (liveItem?.db_order_item_id) {
@@ -2202,11 +2208,11 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           if (resolvedItemIds.length > 0) {
             const storeOrders = _getOrderStore().getState().ordersById
             const liveOrder = Object.values(storeOrders).find(
-              o => o.db_order_id === resolvedOrderId
+              (o: any) => o.db_order_id === resolvedOrderId
             )
-            if (liveOrder?.items) {
+            if ((liveOrder as any)?.items) {
               const alreadySentIds = new Set(
-                liveOrder.items
+                (liveOrder as any).items
                   .filter(
                     (i: any) =>
                       i.kitchen_status &&
@@ -2247,8 +2253,8 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           // So we must transition the order out of 'draft' before updating items.
           const currentOrder = Object.values(
             _getOrderStore().getState().ordersById
-          ).find(o => o.db_order_id === resolvedOrderId)
-          const currentStatus = currentOrder?.order_status
+          ).find((o: any) => o.db_order_id === resolvedOrderId)
+          const currentStatus = (currentOrder as any)?.order_status
           const targetOrderStatus = getOrderSentStatus()
           const backendStatus =
             currentStatus === 'draft'
@@ -2606,10 +2612,10 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           preauthResult.payment_id &&
           localOrderId
         ) {
-          _getOrderStore().setState(state => {
+          _getOrderStore().setState((state: any) => {
             const order = state.ordersById[localOrderId]
             if (!order?.payments) return state
-            const payments = order.payments.map(p =>
+            const payments = order.payments.map((p: any) =>
               p.isPreAuth && !p.db_payment_id
                 ? {
                     ...p,
@@ -3056,6 +3062,118 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
         }
       }
 
+      // ================================================================
+      // EARN LOYALTY (Deferred sync after reconnect)
+      // ================================================================
+      case 'earn_loyalty': {
+        const {
+          db_order_id,
+          local_order_id,
+          customer_id,
+          customer_phone,
+          merchant_id
+        } = op.params
+
+        const resolvedOrderId =
+          db_order_id && isValidUUID(db_order_id)
+            ? db_order_id
+            : resolveOrderId(local_order_id || op.localOrderId)
+
+        if (!resolvedOrderId) {
+          console.log(
+            '[OfflineSync:earn_loyalty] BLOCKED - Order not synced yet'
+          )
+          return false
+        }
+
+        console.log(
+          `[OfflineSync:earn_loyalty] Processing loyalty for order ${resolvedOrderId}`
+        )
+
+        try {
+          let effectiveCustomerId: string | null =
+            customer_id && isValidUUID(customer_id) ? customer_id : null
+
+          // Fetch latest order customer fields when needed.
+          if (!effectiveCustomerId) {
+            const { data: orderRow, error: orderError } = await _supabaseClient
+              .from('orders')
+              .select('customer_id, customer_phone, merchant_id')
+              .eq('id', resolvedOrderId)
+              .maybeSingle()
+
+            if (orderError) {
+              console.warn(
+                '[OfflineSync:earn_loyalty] Failed to fetch order customer fields:',
+                orderError
+              )
+            } else if (
+              orderRow?.customer_id &&
+              isValidUUID(orderRow.customer_id)
+            ) {
+              effectiveCustomerId = orderRow.customer_id
+            }
+
+            // If no customer_id yet, resolve via phone and attach to order.
+            if (!effectiveCustomerId) {
+              const effectivePhone =
+                (customer_phone as string | null | undefined)?.replace(
+                  /\D/g,
+                  ''
+                ) ||
+                (
+                  orderRow?.customer_phone as string | null | undefined
+                )?.replace(/\D/g, '') ||
+                ''
+              const effectiveMerchantId =
+                (merchant_id as string | null | undefined) ||
+                (orderRow?.merchant_id as string | null | undefined) ||
+                null
+
+              if (effectiveMerchantId && effectivePhone.length >= 10) {
+                const { id: resolvedCustomerId } =
+                  await findOrCreateCustomerByPhone(
+                    effectivePhone,
+                    effectiveMerchantId,
+                    _supabaseClient
+                  )
+                effectiveCustomerId = resolvedCustomerId
+
+                const { error: updateCustomerError } = await _supabaseClient
+                  .from('orders')
+                  .update({ customer_id: resolvedCustomerId })
+                  .eq('id', resolvedOrderId)
+                if (updateCustomerError) {
+                  console.warn(
+                    '[OfflineSync:earn_loyalty] Failed to persist resolved customer_id:',
+                    updateCustomerError
+                  )
+                }
+              }
+            }
+          }
+
+          if (!effectiveCustomerId) {
+            console.log(
+              '[OfflineSync:earn_loyalty] BLOCKED - Missing customer context, will retry'
+            )
+            return false
+          }
+
+          const results = await earnLoyaltyForOrder(
+            resolvedOrderId,
+            _supabaseClient
+          )
+          console.log(
+            `[OfflineSync:earn_loyalty] SUCCESS - programs processed: ${results.length}`
+          )
+          return true
+        } catch (err) {
+          console.error('[OfflineSync:earn_loyalty] Error:', err)
+          return false
+        }
+      }
+
       default:
         console.warn('[OfflineSync] Unknown operation type:', op.type)
         return false
@@ -3096,8 +3214,8 @@ export async function reconcileRelationships (): Promise<void> {
     // PASS 1: Find orders missing session_id
     // ================================================================
     const { ordersById } = _getOrderStore().getState()
-    const orphanedOrders = Object.values(ordersById).filter(
-      order => order.local_session_id && !order.session_id
+    const orphanedOrders = (Object.values(ordersById) as any[]).filter(
+      (order: any) => order.local_session_id && !order.session_id
     )
 
     console.log(
@@ -3137,7 +3255,7 @@ export async function reconcileRelationships (): Promise<void> {
             )
 
             // Update local state
-            _getOrderStore().setState(state => ({
+            _getOrderStore().setState((state: any) => ({
               ordersById: {
                 ...state.ordersById,
                 [order.id]: {

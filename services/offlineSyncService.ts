@@ -11,67 +11,64 @@
  * - Full context capture for reliable replay
  */
 
-import { getSyncJSON, setSyncJSON } from "@/lib/storage";
-import {
-  isValidUUID,
-  resolveToBackendId,
-  isSynced,
-} from "@/lib/offlineIdRegistry";
-import { isLocalOrder } from "@/utils/orderIdHelpers";
-import { v4 as uuidv4 } from "uuid";
+import { isSynced, isValidUUID } from '@/lib/offlineIdRegistry'
+import { getSyncJSON, setSyncJSON } from '@/lib/storage'
+import { v4 as uuidv4 } from 'uuid'
 // @ts-ignore - NetInfo types not recognized but package is installed
-import NetInfo from "@react-native-community/netinfo";
+import NetInfo from '@react-native-community/netinfo'
 // @ts-ignore
-import type { NetInfoState } from "@react-native-community/netinfo";
-import { AppState } from "react-native";
+import type { NetInfoState } from '@react-native-community/netinfo'
+import { AppState } from 'react-native'
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 export type OperationType =
-  | "create_order"
-  | "add_item"
-  | "update_item_quantity"
-  | "update_item"
-  | "replace_modifiers"
-  | "remove_item"
-  | "void_item"
-  | "update_order_status"
-  | "apply_discount"
-  | "void_discount"         // Void/remove a discount via RPC
+  | 'create_order'
+  | 'add_item'
+  | 'update_item_quantity'
+  | 'update_item'
+  | 'replace_modifiers'
+  | 'remove_item'
+  | 'void_item'
+  | 'update_order_status'
+  | 'apply_discount'
+  | 'void_discount' // Void/remove a discount via RPC
   // Kitchen operations
-  | "send_to_kitchen"       // Updates order status + item statuses
+  | 'send_to_kitchen' // Updates order status + item statuses
   // Payment operations (unified + legacy)
-  | "process_payment"       // Unified payment via process_payment_v2
-  | "process_cash_payment"  // Legacy - routes to process_payment handler
-  | "process_card_payment"  // Legacy - routes to process_payment handler
+  | 'process_payment' // Unified payment via process_payment_v2
+  | 'process_cash_payment' // Legacy - routes to process_payment handler
+  | 'process_card_payment' // Legacy - routes to process_payment handler
   // Floor plan operations
-  | "seat_guests"
-  | "update_session_status"
-  | "merge_table"            // Merge additional table into existing session
-  | "unmerge_table"          // Remove table from merged session
-  | "link_order_to_session"  // Bidirectional order-session linking
+  | 'seat_guests'
+  | 'update_session_status'
+  | 'merge_table' // Merge additional table into existing session
+  | 'unmerge_table' // Remove table from merged session
+  | 'link_order_to_session' // Bidirectional order-session linking
   // Check status operations
-  | "close_check"           // Close check (lock from edits)
-  | "reopen_check"          // Reopen closed check
+  | 'close_check' // Close check (lock from edits)
+  | 'reopen_check' // Reopen closed check
   // Coursing operations
-  | "fire_course"
+  | 'fire_course'
   // Seating operations
-  | "set_item_seat"
+  | 'set_item_seat'
   // Pre-auth operations (terminal call must be online; only backend sync queued)
-  | "process_preauth"
-  | "capture_preauth"
-  | "increment_preauth"
-  | "void_preauth"
+  | 'process_preauth'
+  | 'capture_preauth'
+  | 'increment_preauth'
+  | 'void_preauth'
   // Cash drawer operations
-  | "record_cash_drawer_operation"
+  | 'record_cash_drawer_operation'
   // Offline refund operations
-  | "process_cash_refund"        // Cash refund (no terminal needed)
+  | 'process_cash_refund' // Cash refund (no terminal needed)
   // Tip adjust DB fallback
-  | "tip_adjust_db"              // Persist tip adjustment to DB after terminal success
+  | 'tip_adjust_db' // Persist tip adjustment to DB after terminal success
   // Order detail sync
-  | "update_order_details";      // Sync customer/order details to backend
+  | 'update_order_details' // Sync customer/order details to backend
+  // Loyalty sync
+  | 'earn_loyalty' // Process loyalty earn after order/payment sync
 
 /**
  * Priority levels for operation processing.
@@ -82,14 +79,14 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   create_order: 1,
   seat_guests: 1,
   update_session_status: 1,
-  merge_table: 1,            // Seating sub-operation, same priority
-  unmerge_table: 1,          // Seating sub-operation, same priority
-  link_order_to_session: 1,  // Relationship operation, high priority
+  merge_table: 1, // Seating sub-operation, same priority
+  unmerge_table: 1, // Seating sub-operation, same priority
+  link_order_to_session: 1, // Relationship operation, high priority
 
   // Item operations after order exists
   add_item: 2,
   apply_discount: 2,
-  void_discount: 2,         // Same priority as apply_discount
+  void_discount: 2, // Same priority as apply_discount
   update_item: 3,
   update_item_quantity: 3,
   replace_modifiers: 3,
@@ -100,11 +97,11 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   fire_course: 4,
   set_item_seat: 3,
   update_order_status: 4,
-  send_to_kitchen: 4,       // Kitchen send after items synced
-  
+  send_to_kitchen: 4, // Kitchen send after items synced
+
   // Check status operations (after items/payments)
-  close_check: 4,           // Close check
-  reopen_check: 4,          // Reopen check
+  close_check: 4, // Close check
+  reopen_check: 4, // Reopen check
 
   // Pre-auth operations (process before capture)
   process_preauth: 4,
@@ -113,9 +110,9 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   void_preauth: 5,
 
   // Payments last (after everything else synced)
-  process_payment: 5,       // Unified payment via process_payment_v2
-  process_cash_payment: 5,  // Legacy support
-  process_card_payment: 5,  // Legacy support
+  process_payment: 5, // Unified payment via process_payment_v2
+  process_cash_payment: 5, // Legacy support
+  process_card_payment: 5, // Legacy support
 
   // Cash drawer operations (same priority as payments)
   record_cash_drawer_operation: 5,
@@ -126,59 +123,62 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
 
   // Order detail sync (after items, before payments)
   update_order_details: 3,
-};
+
+  // Loyalty earn after payment/order sync
+  earn_loyalty: 6
+}
 
 export interface OfflineOperation {
-  id: string;
-  type: OperationType;
-  params: Record<string, any>;
-  localOrderId: string;
-  localItemId?: string;
-  timestamp: string;
-  retryCount: number;
-  status: "pending" | "processing" | "failed" | "discarded" | "blocked";
+  id: string
+  type: OperationType
+  params: Record<string, any>
+  localOrderId: string
+  localItemId?: string
+  timestamp: string
+  retryCount: number
+  status: 'pending' | 'processing' | 'failed' | 'discarded' | 'blocked'
   // Enhanced fields for dependency tracking
-  priority: number;
-  dependsOn?: string; // ID of operation this depends on (must complete first)
-  entityKey?: string; // Unique key for collapsing (e.g., "item:localItemId")
-  contextSnapshot?: Record<string, any>; // Full context at time of queueing
+  priority: number
+  dependsOn?: string // ID of operation this depends on (must complete first)
+  entityKey?: string // Unique key for collapsing (e.g., "item:localItemId")
+  contextSnapshot?: Record<string, any> // Full context at time of queueing
   // Phase 6: Operation bundling for atomic execution
-  bundleId?: string;           // Groups related operations for atomic execution
-  bundleSequence?: number;     // Order within bundle (0-indexed)
-  rollbackOnBundleFailure?: boolean; // Whether to rollback if bundle fails
-  expectedVersion?: number;    // For optimistic locking checks
-  idempotencyKey?: string;      // UUID for server-side dedup, auto-generated if not provided
+  bundleId?: string // Groups related operations for atomic execution
+  bundleSequence?: number // Order within bundle (0-indexed)
+  rollbackOnBundleFailure?: boolean // Whether to rollback if bundle fails
+  expectedVersion?: number // For optimistic locking checks
+  idempotencyKey?: string // UUID for server-side dedup, auto-generated if not provided
 }
 
 export interface SyncResult {
-  success: boolean;
-  operationId: string;
-  error?: string;
-  backendId?: string; // Backend ID returned from successful operation
+  success: boolean
+  operationId: string
+  error?: string
+  backendId?: string // Backend ID returned from successful operation
 }
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const STORAGE_KEY = "offline_operations_queue";
-const DEAD_LETTER_STORAGE_KEY = "offline_dead_letter_queue";
-const MAX_RETRY_ATTEMPTS = 5;
-const DEBOUNCE_MS = 3000;
-const MAX_QUEUE_SIZE = 500;
-const MAX_DEAD_LETTER_SIZE = 50;
-const OPERATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const OPERATION_TIMEOUT_MS = 30_000;
+const STORAGE_KEY = 'offline_operations_queue'
+const DEAD_LETTER_STORAGE_KEY = 'offline_dead_letter_queue'
+const MAX_RETRY_ATTEMPTS = 5
+const DEBOUNCE_MS = 3000
+const MAX_QUEUE_SIZE = 500
+const MAX_DEAD_LETTER_SIZE = 50
+const OPERATION_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+const OPERATION_TIMEOUT_MS = 30_000
 
 const PAYMENT_TYPES: OperationType[] = [
-  "process_payment",
-  "process_cash_payment",
-  "process_card_payment",
-  "process_preauth",
-  "capture_preauth",
-  "increment_preauth",
-  "void_preauth",
-];
+  'process_payment',
+  'process_cash_payment',
+  'process_card_payment',
+  'process_preauth',
+  'capture_preauth',
+  'increment_preauth',
+  'void_preauth'
+]
 
 // ============================================================================
 // ERROR CLASSIFICATION
@@ -190,123 +190,129 @@ const PAYMENT_TYPES: OperationType[] = [
  * Transient: network timeouts, 5xx, 408, 429
  * Permanent: 400, 401, 403, 404, 409, 422 (validation/auth errors)
  */
-export function isTransientError(error: any): boolean {
-  if (!error) return true; // No error info → assume transient
+export function isTransientError (error: any): boolean {
+  if (!error) return true // No error info → assume transient
   const status =
-    error.status ?? error.code ?? error.statusCode ?? error.httpStatus;
-  if (typeof status === "number") {
-    if (status >= 500) return true;
-    if (status === 408 || status === 429) return true;
-    return false; // 4xx are permanent
+    error.status ?? error.code ?? error.statusCode ?? error.httpStatus
+  if (typeof status === 'number') {
+    if (status >= 500) return true
+    if (status === 408 || status === 429) return true
+    return false // 4xx are permanent
   }
-  const msg = (error.message ?? error.msg ?? "").toLowerCase();
+  const msg = (error.message ?? error.msg ?? '').toLowerCase()
   if (
-    msg.includes("network") ||
-    msg.includes("timeout") ||
-    msg.includes("econnrefused") ||
-    msg.includes("enotfound") ||
-    msg.includes("fetch failed")
+    msg.includes('network') ||
+    msg.includes('timeout') ||
+    msg.includes('econnrefused') ||
+    msg.includes('enotfound') ||
+    msg.includes('fetch failed')
   ) {
-    return true;
+    return true
   }
-  return true; // Default: assume transient so we retry
+  return true // Default: assume transient so we retry
 }
 
 // ============================================================================
 // AUTO-RETRY CONFIGURATION (Exponential Backoff)
 // ============================================================================
 const RETRY_CONFIG = {
-  baseDelayMs: 2000,      // Initial retry delay: 2 seconds
-  maxDelayMs: 60000,      // Maximum delay: 1 minute
-  multiplier: 2,          // Double the delay each retry
-  jitterMs: 1000,         // Random jitter up to 1 second
-};
+  baseDelayMs: 2000, // Initial retry delay: 2 seconds
+  maxDelayMs: 60000, // Maximum delay: 1 minute
+  multiplier: 2, // Double the delay each retry
+  jitterMs: 1000 // Random jitter up to 1 second
+}
 
 /**
  * Calculate exponential backoff delay with jitter
  * Formula: min(maxDelay, baseDelay * multiplier^retryCount) + random(0, jitter)
  */
-function calculateBackoffDelay(retryCount: number): number {
+function calculateBackoffDelay (retryCount: number): number {
   const delay = Math.min(
     RETRY_CONFIG.maxDelayMs,
     RETRY_CONFIG.baseDelayMs * Math.pow(RETRY_CONFIG.multiplier, retryCount)
-  );
-  const jitter = Math.random() * RETRY_CONFIG.jitterMs;
-  return Math.round(delay + jitter);
+  )
+  const jitter = Math.random() * RETRY_CONFIG.jitterMs
+  return Math.round(delay + jitter)
 }
 
 // Track scheduled retry timers for cleanup
-let autoRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+let autoRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map()
 
 // ============================================================================
 // STATE
 // ============================================================================
 
-let isOnline = true;
-let forceOfflineOverride = false; // DEV-only: force offline mode for testing
-let _offlineSinceTs: number | null = null;
-let isInitialized = false;
-let isInitializing = false;
-let pendingOperations: OfflineOperation[] = [];
-let deadLetterQueue: OfflineOperation[] = [];
-let syncInProgress = false;
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let unsubscribeNetInfo: (() => void) | null = null;
-let periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
-let netInfoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-let netInfoPollTimer: ReturnType<typeof setInterval> | null = null;
-let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
+let isOnline = true
+let forceOfflineOverride = false // DEV-only: force offline mode for testing
+let _offlineSinceTs: number | null = null
+let isInitialized = false
+let isInitializing = false
+let pendingOperations: OfflineOperation[] = []
+let deadLetterQueue: OfflineOperation[] = []
+let syncInProgress = false
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let unsubscribeNetInfo: (() => void) | null = null
+let periodicSyncTimer: ReturnType<typeof setInterval> | null = null
+let netInfoRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let netInfoPollTimer: ReturnType<typeof setInterval> | null = null
+let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null =
+  null
 
 // Indexes for O(1) lookups instead of linear scans
-const entityKeyIndex = new Map<string, Set<string>>(); // entityKey -> Set<operationId>
-const localOrderIdIndex = new Map<string, Set<string>>(); // localOrderId -> Set<operationId>
+const entityKeyIndex = new Map<string, Set<string>>() // entityKey -> Set<operationId>
+const localOrderIdIndex = new Map<string, Set<string>>() // localOrderId -> Set<operationId>
 
-function addToIndex(op: OfflineOperation): void {
-  const ek = op.entityKey ?? generateEntityKey(op);
+function addToIndex (op: OfflineOperation): void {
+  const ek = op.entityKey ?? generateEntityKey(op)
   if (ek) {
-    let set = entityKeyIndex.get(ek);
-    if (!set) { set = new Set(); entityKeyIndex.set(ek, set); }
-    set.add(op.id);
+    let set = entityKeyIndex.get(ek)
+    if (!set) {
+      set = new Set()
+      entityKeyIndex.set(ek, set)
+    }
+    set.add(op.id)
   }
   if (op.localOrderId) {
-    let set = localOrderIdIndex.get(op.localOrderId);
-    if (!set) { set = new Set(); localOrderIdIndex.set(op.localOrderId, set); }
-    set.add(op.id);
+    let set = localOrderIdIndex.get(op.localOrderId)
+    if (!set) {
+      set = new Set()
+      localOrderIdIndex.set(op.localOrderId, set)
+    }
+    set.add(op.id)
   }
 }
 
-function removeFromIndex(op: OfflineOperation): void {
-  const ek = op.entityKey ?? generateEntityKey(op);
+function removeFromIndex (op: OfflineOperation): void {
+  const ek = op.entityKey ?? generateEntityKey(op)
   if (ek) {
-    const set = entityKeyIndex.get(ek);
+    const set = entityKeyIndex.get(ek)
     if (set) {
-      set.delete(op.id);
-      if (set.size === 0) entityKeyIndex.delete(ek);
+      set.delete(op.id)
+      if (set.size === 0) entityKeyIndex.delete(ek)
     }
   }
   if (op.localOrderId) {
-    const set = localOrderIdIndex.get(op.localOrderId);
+    const set = localOrderIdIndex.get(op.localOrderId)
     if (set) {
-      set.delete(op.id);
-      if (set.size === 0) localOrderIdIndex.delete(op.localOrderId);
+      set.delete(op.id)
+      if (set.size === 0) localOrderIdIndex.delete(op.localOrderId)
     }
   }
 }
 
-function rebuildIndexes(): void {
-  entityKeyIndex.clear();
-  localOrderIdIndex.clear();
+function rebuildIndexes (): void {
+  entityKeyIndex.clear()
+  localOrderIdIndex.clear()
   for (const op of pendingOperations) {
-    addToIndex(op);
+    addToIndex(op)
   }
 }
 
 // Callbacks for store integration
-let onStatusChange: ((isOnline: boolean) => void) | null = null;
-let onQueueChange: ((count: number) => void) | null = null;
-let onOperationFailed: ((op: OfflineOperation) => void) | null = null;
-let executeOperation: ((op: OfflineOperation) => Promise<boolean>) | null =
-  null;
+let onStatusChange: ((isOnline: boolean) => void) | null = null
+let onQueueChange: ((count: number) => void) | null = null
+let onOperationFailed: ((op: OfflineOperation) => void) | null = null
+let executeOperation: ((op: OfflineOperation) => Promise<boolean>) | null = null
 
 // ============================================================================
 // INITIALIZATION
@@ -316,169 +322,181 @@ let executeOperation: ((op: OfflineOperation) => Promise<boolean>) | null =
  * Initialize the offline sync service.
  * Call this once at app startup.
  */
-export async function initOfflineSyncService(config: {
-  onStatusChange: (isOnline: boolean) => void;
-  onQueueChange: (count: number) => void;
-  onOperationFailed?: (op: OfflineOperation) => void;
-  executeOperation: (op: OfflineOperation) => Promise<boolean>;
+export async function initOfflineSyncService (config: {
+  onStatusChange: (isOnline: boolean) => void
+  onQueueChange: (count: number) => void
+  onOperationFailed?: (op: OfflineOperation) => void
+  executeOperation: (op: OfflineOperation) => Promise<boolean>
 }): Promise<void> {
   // Self-guard: prevent double-init from concurrent calls or re-renders.
   // isInitializing is set synchronously so a second call within the same tick is blocked.
   if (isInitialized || isInitializing) {
-    return;
+    return
   }
-  isInitializing = true;
+  isInitializing = true
 
-  onStatusChange = config.onStatusChange;
-  onQueueChange = config.onQueueChange;
-  onOperationFailed = config.onOperationFailed ?? null;
-  executeOperation = config.executeOperation;
+  onStatusChange = config.onStatusChange
+  onQueueChange = config.onQueueChange
+  onOperationFailed = config.onOperationFailed ?? null
+  executeOperation = config.executeOperation
 
   // Configure NetInfo to actively probe reachability (required on Android for
   // isInternetReachable to resolve to true/false instead of staying null).
   NetInfo.configure({
-    reachabilityUrl: "https://clients3.google.com/generate_204",
+    reachabilityUrl: 'https://clients3.google.com/generate_204',
     reachabilityTest: async (response: any) => response.status === 204,
-    reachabilityLongTimeout: 60 * 1000,    // 60s — periodic re-probe
-    reachabilityShortTimeout: 5 * 1000,    // 5s  — fast initial probe
+    reachabilityLongTimeout: 60 * 1000, // 60s — periodic re-probe
+    reachabilityShortTimeout: 5 * 1000, // 5s  — fast initial probe
     reachabilityRequestTimeout: 15 * 1000, // 15s — per-request timeout
     reachabilityShouldRun: () => true,
-    shouldFetchWiFiSSID: false,
-  });
+    shouldFetchWiFiSSID: false
+  })
 
   // Load persisted queue
-  await loadQueueFromStorage();
+  await loadQueueFromStorage()
 
   // Start network listener
-  startNetworkListener();
-  startNetInfoPolling();
-  startAppStateListener();
+  startNetworkListener()
+  startNetInfoPolling()
+  startAppStateListener()
 
-  isInitializing = false;
-  isInitialized = true;
+  isInitializing = false
+  isInitialized = true
 
   // Check initial state
-  const state = await NetInfo.fetch();
-  handleNetworkChange(state);
+  const state = await NetInfo.fetch()
+  handleNetworkChange(state)
 
   // Start periodic sync fallback (every 60s) to guard against missed NetInfo events
-  startPeriodicSync();
+  startPeriodicSync()
 
   // Catch missed transitions: if we're online and have pending ops that
   // weren't triggered by handleNetworkChange (e.g. network came online
   // before init completed), schedule a sync now.
-  const pendingCount = getActivePendingCount();
+  const pendingCount = getActivePendingCount()
   if (isOnline && pendingCount > 0) {
-    console.log(`[OfflineSync] Init complete: online with ${pendingCount} pending ops, scheduling sync`);
-    scheduleSync();
+    console.log(
+      `[OfflineSync] Init complete: online with ${pendingCount} pending ops, scheduling sync`
+    )
+    scheduleSync()
   }
 
   console.log(
-    "[OfflineSync] Initialized with",
+    '[OfflineSync] Initialized with',
     pendingOperations.length,
-    "pending operations"
-  );
+    'pending operations'
+  )
 }
 
 /**
  * Cleanup when service is no longer needed.
  */
-export function destroyOfflineSyncService(): void {
+export function destroyOfflineSyncService (): void {
   if (unsubscribeNetInfo) {
-    unsubscribeNetInfo();
-    unsubscribeNetInfo = null;
+    unsubscribeNetInfo()
+    unsubscribeNetInfo = null
   }
   if (debounceTimer) {
-    clearTimeout(debounceTimer);
-    debounceTimer = null;
+    clearTimeout(debounceTimer)
+    debounceTimer = null
   }
   if (periodicSyncTimer) {
-    clearInterval(periodicSyncTimer);
-    periodicSyncTimer = null;
+    clearInterval(periodicSyncTimer)
+    periodicSyncTimer = null
   }
   if (netInfoRefreshTimer) {
-    clearTimeout(netInfoRefreshTimer);
-    netInfoRefreshTimer = null;
+    clearTimeout(netInfoRefreshTimer)
+    netInfoRefreshTimer = null
   }
   if (netInfoPollTimer) {
-    clearInterval(netInfoPollTimer);
-    netInfoPollTimer = null;
+    clearInterval(netInfoPollTimer)
+    netInfoPollTimer = null
   }
   if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
+    appStateSubscription.remove()
+    appStateSubscription = null
   }
   // Clear all auto-retry timers
   for (const timer of autoRetryTimers.values()) {
-    clearTimeout(timer);
+    clearTimeout(timer)
   }
-  autoRetryTimers.clear();
-  isInitializing = false;
-  isInitialized = false;
+  autoRetryTimers.clear()
+  isInitializing = false
+  isInitialized = false
 }
 
 /** Check if the service has been initialized or is currently initializing. */
-export function isServiceInitialized(): boolean {
-  return isInitialized || isInitializing;
+export function isServiceInitialized (): boolean {
+  return isInitialized || isInitializing
 }
 
 /**
  * Periodic sync fallback — guards against missed NetInfo events.
  * Checks every 60s if there are pending operations and we're online, then triggers sync.
  */
-const PERIODIC_SYNC_INTERVAL_MS = 60_000;
+const PERIODIC_SYNC_INTERVAL_MS = 60_000
 
-function startPeriodicSync(): void {
-  if (periodicSyncTimer) clearInterval(periodicSyncTimer);
+function startPeriodicSync (): void {
+  if (periodicSyncTimer) clearInterval(periodicSyncTimer)
   periodicSyncTimer = setInterval(() => {
-    if (!isInitialized || !isOnline || syncInProgress) return;
+    if (!isInitialized || !isOnline || syncInProgress) return
     const activePending = pendingOperations.filter(
-      (op) => op.status === "pending" || op.status === "blocked",
-    );
+      op => op.status === 'pending' || op.status === 'blocked'
+    )
     if (activePending.length > 0) {
       console.log(
-        `[OfflineSync] Periodic sync: ${activePending.length} pending ops, triggering sync`,
-      );
-      processQueue();
+        `[OfflineSync] Periodic sync: ${activePending.length} pending ops, triggering sync`
+      )
+      processQueue()
     }
-  }, PERIODIC_SYNC_INTERVAL_MS);
+  }, PERIODIC_SYNC_INTERVAL_MS)
 }
 
 /**
  * Schedule an automatic retry for a specific operation with exponential backoff.
  */
-function scheduleAutoRetry(operation: OfflineOperation): void {
+function scheduleAutoRetry (operation: OfflineOperation): void {
   // Clear any existing timer for this operation
-  const existingTimer = autoRetryTimers.get(operation.id);
+  const existingTimer = autoRetryTimers.get(operation.id)
   if (existingTimer) {
-    clearTimeout(existingTimer);
+    clearTimeout(existingTimer)
   }
 
-  const delay = calculateBackoffDelay(operation.retryCount);
-  console.log(`[OfflineSync] Scheduling auto-retry for ${operation.type} (${operation.id}) in ${delay}ms (attempt ${operation.retryCount + 1}/${MAX_RETRY_ATTEMPTS})`);
+  const delay = calculateBackoffDelay(operation.retryCount)
+  console.log(
+    `[OfflineSync] Scheduling auto-retry for ${operation.type} (${
+      operation.id
+    }) in ${delay}ms (attempt ${
+      operation.retryCount + 1
+    }/${MAX_RETRY_ATTEMPTS})`
+  )
 
   const timer = setTimeout(async () => {
-    autoRetryTimers.delete(operation.id);
+    autoRetryTimers.delete(operation.id)
 
     // Check if still online and operation still exists
     if (!isOnline) {
-      console.log(`[OfflineSync] Auto-retry cancelled: offline`);
-      return;
+      console.log(`[OfflineSync] Auto-retry cancelled: offline`)
+      return
     }
 
-    const op = pendingOperations.find(o => o.id === operation.id);
-    if (!op || op.status === "discarded" || op.status === "failed") {
-      console.log(`[OfflineSync] Auto-retry cancelled: operation no longer pending`);
-      return;
+    const op = pendingOperations.find(o => o.id === operation.id)
+    if (!op || op.status === 'discarded' || op.status === 'failed') {
+      console.log(
+        `[OfflineSync] Auto-retry cancelled: operation no longer pending`
+      )
+      return
     }
 
-    console.log(`[OfflineSync] Auto-retrying: ${operation.type} (${operation.id})`);
+    console.log(
+      `[OfflineSync] Auto-retrying: ${operation.type} (${operation.id})`
+    )
 
     // Trigger queue processing
-    processQueue();
-  }, delay);
+    processQueue()
+  }, delay)
 
-  autoRetryTimers.set(operation.id, timer);
+  autoRetryTimers.set(operation.id, timer)
 }
 
 /**
@@ -487,157 +505,184 @@ function scheduleAutoRetry(operation: OfflineOperation): void {
  * when many operations are queued (e.g. 100 ops would previously create 100 timers,
  * 99 of which just hit the syncInProgress guard).
  */
-function scheduleAllAutoRetries(): void {
+function scheduleAllAutoRetries (): void {
   const pendingOps = pendingOperations.filter(
-    op => op.status === "pending" && op.retryCount > 0
-  );
+    op => op.status === 'pending' && op.retryCount > 0
+  )
 
-  if (pendingOps.length === 0) return;
+  if (pendingOps.length === 0) return
 
   // Clear all existing auto-retry timers
-  for (const t of autoRetryTimers.values()) clearTimeout(t);
-  autoRetryTimers.clear();
+  for (const t of autoRetryTimers.values()) clearTimeout(t)
+  autoRetryTimers.clear()
 
   // Single timer at the shortest needed delay
   const minDelay = Math.min(
     ...pendingOps.map(op => calculateBackoffDelay(op.retryCount))
-  );
+  )
   const timer = setTimeout(() => {
-    autoRetryTimers.clear();
-    if (isOnline) processQueue();
-  }, minDelay);
-  autoRetryTimers.set("coalesced", timer);
+    autoRetryTimers.clear()
+    if (isOnline) processQueue()
+  }, minDelay)
+  autoRetryTimers.set('coalesced', timer)
 
-  console.log(`[OfflineSync] Scheduled coalesced auto-retry for ${pendingOps.length} operations (delay: ${minDelay}ms)`);
+  console.log(
+    `[OfflineSync] Scheduled coalesced auto-retry for ${pendingOps.length} operations (delay: ${minDelay}ms)`
+  )
 }
 
 // ============================================================================
 // NETWORK MONITORING
 // ============================================================================
 
-function startNetworkListener(): void {
-  unsubscribeNetInfo = NetInfo.addEventListener(handleNetworkChange);
+function startNetworkListener (): void {
+  unsubscribeNetInfo = NetInfo.addEventListener(handleNetworkChange)
 }
 
-const NETINFO_POLL_INTERVAL_MS = 10_000;
+const NETINFO_POLL_INTERVAL_MS = 10_000
 
-function startNetInfoPolling(): void {
-  if (netInfoPollTimer) clearInterval(netInfoPollTimer);
+function startNetInfoPolling (): void {
+  if (netInfoPollTimer) clearInterval(netInfoPollTimer)
   netInfoPollTimer = setInterval(() => {
-    if (!isInitialized) return;
-    NetInfo.fetch().then(handleNetworkChange).catch(() => {});
-  }, NETINFO_POLL_INTERVAL_MS);
+    if (!isInitialized) return
+    NetInfo.fetch()
+      .then(handleNetworkChange)
+      .catch(() => {})
+  }, NETINFO_POLL_INTERVAL_MS)
 }
 
-function startAppStateListener(): void {
-  appStateSubscription?.remove();
-  appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+function startAppStateListener (): void {
+  appStateSubscription?.remove()
+  appStateSubscription = AppState.addEventListener('change', nextAppState => {
     if (nextAppState === 'active' && isInitialized) {
       // Evict stale business day cache on foreground (handles rollover)
       try {
-        const { getCurrentBusinessDay } = require('@/lib/businessDay');
-        const { todayOrdersCache } = require('@/stores/todayOrdersCache');
-        const { useStoreSettingsStore } = require('@/stores/useStoreSettingsStore');
-        const store = useStoreSettingsStore.getState().selectedStore;
+        const { getCurrentBusinessDay } = require('@/lib/businessDay')
+        const { todayOrdersCache } = require('@/stores/todayOrdersCache')
+        const {
+          useStoreSettingsStore
+        } = require('@/stores/useStoreSettingsStore')
+        const store = useStoreSettingsStore.getState().selectedStore
         if (store?.id && store?.timezone) {
-          const config = { timezone: store.timezone, rolloverHour: store.business_day_start_hour ?? 0 };
-          todayOrdersCache.evictStale(store.id, getCurrentBusinessDay(config));
+          const config = {
+            timezone: store.timezone,
+            rolloverHour: store.business_day_start_hour ?? 0
+          }
+          todayOrdersCache.evictStale(store.id, getCurrentBusinessDay(config))
         }
-      } catch { /* non-critical */ }
+      } catch {
+        /* non-critical */
+      }
 
-      NetInfo.fetch().then(handleNetworkChange).catch(() => {});
+      NetInfo.fetch()
+        .then(handleNetworkChange)
+        .catch(() => {})
     }
-  });
+  })
 }
 
-function handleNetworkChange(state: NetInfoState): void {
+function handleNetworkChange (state: NetInfoState): void {
   // DEV override: force offline regardless of NetInfo state
   if (__DEV__ && forceOfflineOverride) {
     if (isOnline) {
-      isOnline = false;
-      console.log("[OfflineSync] FORCED OFFLINE (dev override)");
+      isOnline = false
+      console.log('[OfflineSync] FORCED OFFLINE (dev override)')
       if (onStatusChange) {
-        Promise.resolve(onStatusChange(false)).catch((err) => {
-          console.error("[OfflineSync] onStatusChange error:", err);
-        });
+        Promise.resolve(onStatusChange(false)).catch(err => {
+          console.error('[OfflineSync] onStatusChange error:', err)
+        })
       }
-      notifyOnlineStatusListeners();
+      notifyOnlineStatusListeners()
     }
-    return;
+    return
   }
 
-  const wasOnline = isOnline;
+  const wasOnline = isOnline
 
   if (state.isConnected === false) {
-    isOnline = false;
+    isOnline = false
   } else if (state.isConnected === true && state.isInternetReachable === true) {
-    isOnline = true;
-    if (netInfoRefreshTimer) { clearTimeout(netInfoRefreshTimer); netInfoRefreshTimer = null; }
-  } else if (state.isConnected === true && state.isInternetReachable === false) {
-    isOnline = false;
+    isOnline = true
+    if (netInfoRefreshTimer) {
+      clearTimeout(netInfoRefreshTimer)
+      netInfoRefreshTimer = null
+    }
+  } else if (
+    state.isConnected === true &&
+    state.isInternetReachable === false
+  ) {
+    isOnline = false
   } else {
     // isConnected=true but isInternetReachable=null (ambiguous — common on Android emulator).
     // Treat as offline immediately (pessimistic). NetInfo will fire again when
     // reachability resolves to true after its probe (configured above).
-    isOnline = false;
-    if (netInfoRefreshTimer) { clearTimeout(netInfoRefreshTimer); netInfoRefreshTimer = null; }
+    isOnline = false
+    if (netInfoRefreshTimer) {
+      clearTimeout(netInfoRefreshTimer)
+      netInfoRefreshTimer = null
+    }
   }
 
   if (wasOnline !== isOnline) {
     // Track offline duration
     if (!isOnline) {
-      _offlineSinceTs = Date.now();
+      _offlineSinceTs = Date.now()
     } else {
-      _offlineSinceTs = null;
+      _offlineSinceTs = null
     }
 
-    console.log("[OfflineSync] Network status changed:", isOnline ? "ONLINE" : "OFFLINE");
+    console.log(
+      '[OfflineSync] Network status changed:',
+      isOnline ? 'ONLINE' : 'OFFLINE'
+    )
 
     // Fire the callback (async, fire-and-forget with error catching)
     if (onStatusChange) {
-      Promise.resolve(onStatusChange(isOnline)).catch((err) => {
-        console.error("[OfflineSync] onStatusChange error:", err);
-      });
+      Promise.resolve(onStatusChange(isOnline)).catch(err => {
+        console.error('[OfflineSync] onStatusChange error:', err)
+      })
     } else if (isOnline) {
       // Fallback: callback not registered yet (init timing) — flush queue directly
-      console.warn("[OfflineSync] onStatusChange not registered — flushing queue directly");
-      processQueueNow().catch((err) => {
-        console.error("[OfflineSync] Direct queue flush error:", err);
-      });
+      console.warn(
+        '[OfflineSync] onStatusChange not registered — flushing queue directly'
+      )
+      processQueueNow().catch(err => {
+        console.error('[OfflineSync] Direct queue flush error:', err)
+      })
     }
 
     // Protect against listener errors killing the rest of the function
     try {
-      notifyOnlineStatusListeners();
+      notifyOnlineStatusListeners()
     } catch (err) {
-      console.error("[OfflineSync] Online status listener error:", err);
+      console.error('[OfflineSync] Online status listener error:', err)
     }
 
     if (!isOnline) {
       // Cancel auto-retry timers — they'll reschedule when online returns
-      for (const t of autoRetryTimers.values()) clearTimeout(t);
-      autoRetryTimers.clear();
+      for (const t of autoRetryTimers.values()) clearTimeout(t)
+      autoRetryTimers.clear()
     } else if (pendingOperations.length > 0) {
-      scheduleSync();
-      scheduleAllAutoRetries();
+      scheduleSync()
+      scheduleAllAutoRetries()
     }
   }
 }
 
-function scheduleSync(): void {
-  if (!isInitialized) return;
+function scheduleSync (): void {
+  if (!isInitialized) return
 
   // Clear existing timer
   if (debounceTimer) {
-    clearTimeout(debounceTimer);
+    clearTimeout(debounceTimer)
   }
 
   // Debounce 3 seconds before syncing
   debounceTimer = setTimeout(() => {
-    processQueue();
-  }, DEBOUNCE_MS);
+    processQueue()
+  }, DEBOUNCE_MS)
 
-  console.log("[OfflineSync] Sync scheduled in", DEBOUNCE_MS, "ms");
+  console.log('[OfflineSync] Sync scheduled in', DEBOUNCE_MS, 'ms')
 }
 
 // ============================================================================
@@ -647,27 +692,27 @@ function scheduleSync(): void {
 /**
  * Generate an entity key for operation collapsing.
  */
-function generateEntityKey(op: Partial<OfflineOperation>): string | undefined {
+function generateEntityKey (op: Partial<OfflineOperation>): string | undefined {
   switch (op.type) {
-    case "create_order":
-      return `order:${op.localOrderId}`;
-    case "add_item":
-    case "update_item":
-    case "update_item_quantity":
-    case "replace_modifiers":
-    case "void_item":
-    case "remove_item":
-      return op.localItemId ? `item:${op.localItemId}` : undefined;
-    case "update_order_status":
-      return `order_status:${op.localOrderId}`;
-    case "update_order_details":
-      return `order_details:${op.localOrderId}`;
-    case "process_cash_payment":
-    case "process_card_payment":
+    case 'create_order':
+      return `order:${op.localOrderId}`
+    case 'add_item':
+    case 'update_item':
+    case 'update_item_quantity':
+    case 'replace_modifiers':
+    case 'void_item':
+    case 'remove_item':
+      return op.localItemId ? `item:${op.localItemId}` : undefined
+    case 'update_order_status':
+      return `order_status:${op.localOrderId}`
+    case 'update_order_details':
+      return `order_details:${op.localOrderId}`
+    case 'process_cash_payment':
+    case 'process_card_payment':
       // Each payment is unique, don't collapse
-      return undefined;
+      return undefined
     default:
-      return undefined;
+      return undefined
   }
 }
 
@@ -675,80 +720,79 @@ function generateEntityKey(op: Partial<OfflineOperation>): string | undefined {
  * Check if an operation can be collapsed into an existing one.
  * Returns the operation to collapse into, or null if no collapsing possible.
  */
-function findCollapseTarget(
+function findCollapseTarget (
   entityKey: string,
   newType: OperationType
 ): OfflineOperation | null {
   // Only collapse updates, not creates or deletes
   const collapsibleTypes: OperationType[] = [
-    "update_item",
-    "update_item_quantity",
-    "replace_modifiers",
-    "update_order_status",
-    "update_order_details",
-  ];
+    'update_item',
+    'update_item_quantity',
+    'replace_modifiers',
+    'update_order_status',
+    'update_order_details'
+  ]
 
   if (!collapsibleTypes.includes(newType)) {
-    return null;
+    return null
   }
 
   // Use entityKeyIndex for O(1) lookup instead of scanning all pendingOperations
-  const opIds = entityKeyIndex.get(entityKey);
-  if (!opIds || opIds.size === 0) return null;
+  const opIds = entityKeyIndex.get(entityKey)
+  if (!opIds || opIds.size === 0) return null
 
-  let best: OfflineOperation | null = null;
-  let bestTime = -1;
+  let best: OfflineOperation | null = null
+  let bestTime = -1
   for (const opId of opIds) {
-    const op = pendingOperations.find((o) => o.id === opId);
-    if (
-      op &&
-      op.status === "pending" &&
-      collapsibleTypes.includes(op.type)
-    ) {
-      const t = new Date(op.timestamp).getTime();
+    const op = pendingOperations.find(o => o.id === opId)
+    if (op && op.status === 'pending' && collapsibleTypes.includes(op.type)) {
+      const t = new Date(op.timestamp).getTime()
       if (t > bestTime) {
-        bestTime = t;
-        best = op;
+        bestTime = t
+        best = op
       }
     }
   }
-  return best;
+  return best
 }
 
 /**
  * Add an operation to the offline queue.
  * Supports priority ordering, dependency tracking, and operation collapsing.
  */
-export async function queueOperation(
-  op: Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status" | "priority">
+export async function queueOperation (
+  op: Omit<
+    OfflineOperation,
+    'id' | 'timestamp' | 'retryCount' | 'status' | 'priority'
+  >
 ): Promise<string> {
   // Phase 5: All visible orders can have operations queued
   // Local orders (order_xxx) need CREATE_ORDER first
   // Backend orders (UUIDs) already exist and can accept item operations directly
 
-  const priority = OPERATION_PRIORITY[op.type] ?? 99;
-  const entityKey = generateEntityKey(op);
+  const priority = OPERATION_PRIORITY[op.type] ?? 99
+  const entityKey = generateEntityKey(op)
 
   // Check for operation collapsing
   if (entityKey) {
-    const collapseTarget = findCollapseTarget(entityKey, op.type);
+    const collapseTarget = findCollapseTarget(entityKey, op.type)
     if (collapseTarget) {
       // Merge params into existing operation
-      collapseTarget.params = { ...collapseTarget.params, ...op.params };
-      collapseTarget.timestamp = new Date().toISOString();
+      collapseTarget.params = { ...collapseTarget.params, ...op.params }
+      collapseTarget.timestamp = new Date().toISOString()
       if (op.contextSnapshot) {
         collapseTarget.contextSnapshot = {
           ...collapseTarget.contextSnapshot,
-          ...op.contextSnapshot,
-        };
+          ...op.contextSnapshot
+        }
       }
-      await saveQueueToStorage();
+      await saveQueueToStorage()
       console.log(
-        "[OfflineSync] Collapsed operation into:",
+        '[OfflineSync] Collapsed operation into:',
         collapseTarget.id,
         collapseTarget.type
-      );
-      return collapseTarget.id;
+      )
+      return collapseTarget.id
     }
   }
 
@@ -757,41 +801,44 @@ export async function queueOperation(
     id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     timestamp: new Date().toISOString(),
     retryCount: 0,
-    status: "pending",
+    status: 'pending',
     priority,
     entityKey,
-    idempotencyKey: op.idempotencyKey || uuidv4(),
-  };
+    idempotencyKey: op.idempotencyKey || uuidv4()
+  }
 
-  pendingOperations.push(operation);
-  addToIndex(operation);
-  await saveQueueToStorage();
-  onQueueChange?.(getActivePendingCount());
+  pendingOperations.push(operation)
+  addToIndex(operation)
+  await saveQueueToStorage()
+  onQueueChange?.(getActivePendingCount())
 
   console.log(
-    "[OfflineSync] Queued operation:",
+    '[OfflineSync] Queued operation:',
     operation.type,
     operation.id,
     `(priority: ${priority})`
-  );
+  )
 
   // If online, schedule immediate sync
   if (isOnline) {
-    scheduleSync();
+    scheduleSync()
   }
 
-  return operation.id;
+  return operation.id
 }
 
 /**
  * Queue an operation with explicit dependency on another operation.
  */
-export async function queueDependentOperation(
-  op: Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status" | "priority">,
+export async function queueDependentOperation (
+  op: Omit<
+    OfflineOperation,
+    'id' | 'timestamp' | 'retryCount' | 'status' | 'priority'
+  >,
   dependsOnOperationId: string
 ): Promise<string> {
-  const opWithDep = { ...op, dependsOn: dependsOnOperationId };
-  return queueOperation(opWithDep);
+  const opWithDep = { ...op, dependsOn: dependsOnOperationId }
+  return queueOperation(opWithDep)
 }
 
 // ============================================================================
@@ -802,8 +849,8 @@ export async function queueDependentOperation(
  * Bundle options for atomic operation execution.
  */
 export interface BundleOptions {
-  rollbackOnFailure?: boolean;  // If true, mark all ops as failed if any fail
-  expectedVersion?: number;     // Version check before executing bundle
+  rollbackOnFailure?: boolean // If true, mark all ops as failed if any fail
+  expectedVersion?: number // Version check before executing bundle
 }
 
 /**
@@ -815,28 +862,35 @@ export interface BundleOptions {
  * @param options Bundle execution options
  * @returns Array of operation IDs in bundle order
  */
-export async function queueOperationBundle(
-  operations: Array<Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status" | "priority">>,
+export async function queueOperationBundle (
+  operations: Array<
+    Omit<
+      OfflineOperation,
+      'id' | 'timestamp' | 'retryCount' | 'status' | 'priority'
+    >
+  >,
   options: BundleOptions = {}
 ): Promise<string[]> {
   if (operations.length === 0) {
-    return [];
+    return []
   }
 
-  const bundleId = `bundle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const operationIds: string[] = [];
+  const bundleId = `bundle_${Date.now()}_${Math.random()
+    .toString(36)
+    .substr(2, 9)}`
+  const operationIds: string[] = []
 
   for (let i = 0; i < operations.length; i++) {
-    const op = operations[i];
-    const priority = OPERATION_PRIORITY[op.type] ?? 99;
-    const entityKey = generateEntityKey(op);
+    const op = operations[i]
+    const priority = OPERATION_PRIORITY[op.type] ?? 99
+    const entityKey = generateEntityKey(op)
 
     const operation: OfflineOperation = {
       ...op,
       id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       timestamp: new Date().toISOString(),
       retryCount: 0,
-      status: "pending",
+      status: 'pending',
       priority,
       entityKey,
       idempotencyKey: op.idempotencyKey || uuidv4(),
@@ -846,111 +900,120 @@ export async function queueOperationBundle(
       rollbackOnBundleFailure: options.rollbackOnFailure ?? true,
       expectedVersion: i === 0 ? options.expectedVersion : undefined, // Only first op checks version
       // Chain dependency within bundle
-      dependsOn: i > 0 ? operationIds[i - 1] : op.dependsOn,
-    };
+      dependsOn: i > 0 ? operationIds[i - 1] : op.dependsOn
+    }
 
-    pendingOperations.push(operation);
-    addToIndex(operation);
-    operationIds.push(operation.id);
+    pendingOperations.push(operation)
+    addToIndex(operation)
+    operationIds.push(operation.id)
 
     console.log(
-      "[OfflineSync] Bundled operation:",
+      '[OfflineSync] Bundled operation:',
       operation.type,
       operation.id,
       `(bundle: ${bundleId}, seq: ${i})`
-    );
+    )
   }
 
-  await saveQueueToStorage();
-  onQueueChange?.(getActivePendingCount());
+  await saveQueueToStorage()
+  onQueueChange?.(getActivePendingCount())
 
   // If online, schedule immediate sync
   if (isOnline) {
-    scheduleSync();
+    scheduleSync()
   }
 
-  return operationIds;
+  return operationIds
 }
 
 /**
  * Get all operations in a bundle.
  */
-export function getBundleOperations(bundleId: string): OfflineOperation[] {
+export function getBundleOperations (bundleId: string): OfflineOperation[] {
   return pendingOperations
-    .filter((op) => op.bundleId === bundleId)
-    .sort((a, b) => (a.bundleSequence ?? 0) - (b.bundleSequence ?? 0));
+    .filter(op => op.bundleId === bundleId)
+    .sort((a, b) => (a.bundleSequence ?? 0) - (b.bundleSequence ?? 0))
 }
 
 /**
  * Mark all remaining operations in a bundle as failed.
  * Called when a bundle operation fails and rollbackOnBundleFailure is true.
  */
-export async function failBundle(bundleId: string, failedOpId: string): Promise<void> {
-  pendingOperations = pendingOperations.map((op) => {
-    if (op.bundleId === bundleId && op.id !== failedOpId && op.status === "pending") {
-      return { ...op, status: "discarded" as const };
+export async function failBundle (
+  bundleId: string,
+  failedOpId: string
+): Promise<void> {
+  pendingOperations = pendingOperations.map(op => {
+    if (
+      op.bundleId === bundleId &&
+      op.id !== failedOpId &&
+      op.status === 'pending'
+    ) {
+      return { ...op, status: 'discarded' as const }
     }
-    return op;
-  });
+    return op
+  })
 
-  await saveQueueToStorage();
-  console.log("[OfflineSync] Bundle failed, discarded remaining ops:", bundleId);
+  await saveQueueToStorage()
+  console.log('[OfflineSync] Bundle failed, discarded remaining ops:', bundleId)
 }
 
 /**
  * Check if all operations in a bundle have completed successfully.
  */
-export function isBundleComplete(bundleId: string): boolean {
-  const bundleOps = getBundleOperations(bundleId);
-  if (bundleOps.length === 0) return true;
+export function isBundleComplete (bundleId: string): boolean {
+  const bundleOps = getBundleOperations(bundleId)
+  if (bundleOps.length === 0) return true
 
-  return bundleOps.every((op) => op.status !== "pending" && op.status !== "processing");
+  return bundleOps.every(
+    op => op.status !== 'pending' && op.status !== 'processing'
+  )
 }
 
 /**
  * Get count of active pending operations (excluding blocked).
  */
-function getActivePendingCount(): number {
+function getActivePendingCount (): number {
   return pendingOperations.filter(
-    (op) => op.status === "pending" || op.status === "blocked"
-  ).length;
+    op => op.status === 'pending' || op.status === 'blocked'
+  ).length
 }
 
 /**
  * Remove an operation from the queue (after success or permanent failure).
  */
-export async function removeOperation(operationId: string): Promise<void> {
-  const removed = pendingOperations.find((op) => op.id === operationId);
-  if (removed) removeFromIndex(removed);
-  pendingOperations = pendingOperations.filter((op) => op.id !== operationId);
-  await saveQueueToStorage();
-  onQueueChange?.(getActivePendingCount());
+export async function removeOperation (operationId: string): Promise<void> {
+  const removed = pendingOperations.find(op => op.id === operationId)
+  if (removed) removeFromIndex(removed)
+  pendingOperations = pendingOperations.filter(op => op.id !== operationId)
+  await saveQueueToStorage()
+  onQueueChange?.(getActivePendingCount())
 }
 
 /**
  * Mark an operation as discarded (conflict resolution).
  */
-export async function discardOperation(operationId: string): Promise<void> {
-  pendingOperations = pendingOperations.map((op) =>
-    op.id === operationId ? { ...op, status: "discarded" as const } : op
-  );
-  await saveQueueToStorage();
-  onQueueChange?.(getActivePendingCount());
+export async function discardOperation (operationId: string): Promise<void> {
+  pendingOperations = pendingOperations.map(op =>
+    op.id === operationId ? { ...op, status: 'discarded' as const } : op
+  )
+  await saveQueueToStorage()
+  onQueueChange?.(getActivePendingCount())
 }
 
 /**
  * Retry a failed operation.
  */
-export async function retryFailedOperation(operationId: string): Promise<void> {
-  const op = pendingOperations.find((o) => o.id === operationId);
-  if (op && op.status === "failed") {
-    op.status = "pending";
-    op.retryCount = 0;
-    await saveQueueToStorage();
-    onQueueChange?.(getActivePendingCount());
+export async function retryFailedOperation (operationId: string): Promise<void> {
+  const op = pendingOperations.find(o => o.id === operationId)
+  if (op && op.status === 'failed') {
+    op.status = 'pending'
+    op.retryCount = 0
+    await saveQueueToStorage()
+    onQueueChange?.(getActivePendingCount())
 
     if (isOnline) {
-      scheduleSync();
+      scheduleSync()
     }
   }
 }
@@ -958,191 +1021,211 @@ export async function retryFailedOperation(operationId: string): Promise<void> {
 /**
  * Get count of pending operations.
  */
-export function getPendingCount(): number {
-  return pendingOperations.filter((op) => op.status === "pending").length;
+export function getPendingCount (): number {
+  return pendingOperations.filter(op => op.status === 'pending').length
 }
 
 /**
  * Get count of failed operations.
  */
-export function getFailedCount(): number {
-  return pendingOperations.filter((op) => op.status === "failed").length;
+export function getFailedCount (): number {
+  return pendingOperations.filter(op => op.status === 'failed').length
 }
 
 /**
  * Get all failed operations (for UI display).
  */
-export function getFailedOperations(): OfflineOperation[] {
-  return pendingOperations.filter((op) => op.status === "failed");
+export function getFailedOperations (): OfflineOperation[] {
+  return pendingOperations.filter(op => op.status === 'failed')
 }
 
 /**
  * Get pending payment operations count.
  */
-export function getPendingPaymentsCount(): number {
+export function getPendingPaymentsCount (): number {
   return pendingOperations.filter(
-    (op) =>
-      (op.type === "process_payment" || op.type === "process_cash_payment" || op.type === "process_card_payment") &&
-      (op.status === "pending" || op.status === "blocked" || op.status === "processing")
-  ).length;
+    op =>
+      (op.type === 'process_payment' ||
+        op.type === 'process_cash_payment' ||
+        op.type === 'process_card_payment') &&
+      (op.status === 'pending' ||
+        op.status === 'blocked' ||
+        op.status === 'processing')
+  ).length
 }
 
 /**
  * Get failed payment operations.
  */
-export function getFailedPayments(): OfflineOperation[] {
+export function getFailedPayments (): OfflineOperation[] {
   return pendingOperations.filter(
-    (op) =>
-      (op.type === "process_payment" || op.type === "process_cash_payment" || op.type === "process_card_payment") &&
-      op.status === "failed"
-  );
+    op =>
+      (op.type === 'process_payment' ||
+        op.type === 'process_cash_payment' ||
+        op.type === 'process_card_payment') &&
+      op.status === 'failed'
+  )
 }
 
 /**
  * Get all operations for a specific order.
  */
-export function getOperationsForOrder(localOrderId: string): OfflineOperation[] {
-  return pendingOperations.filter((op) => op.localOrderId === localOrderId);
+export function getOperationsForOrder (
+  localOrderId: string
+): OfflineOperation[] {
+  return pendingOperations.filter(op => op.localOrderId === localOrderId)
 }
 
 /**
  * Check if there's a pending create_order operation for a given order.
  * Used to block items/payments until order is created.
  */
-export function hasPendingOrderCreation(localOrderId: string): boolean {
+export function hasPendingOrderCreation (localOrderId: string): boolean {
   return pendingOperations.some(
-    (op) =>
+    op =>
       op.localOrderId === localOrderId &&
-      op.type === "create_order" &&
-      (op.status === "pending" || op.status === "processing" || op.status === "blocked")
-  );
+      op.type === 'create_order' &&
+      (op.status === 'pending' ||
+        op.status === 'processing' ||
+        op.status === 'blocked')
+  )
 }
 
 /**
  * Get the create_order operation ID for a given order, if it exists.
  */
-export function getOrderCreationOperationId(localOrderId: string): string | null {
+export function getOrderCreationOperationId (
+  localOrderId: string
+): string | null {
   const op = pendingOperations.find(
-    (op) =>
+    op =>
       op.localOrderId === localOrderId &&
-      op.type === "create_order" &&
-      (op.status === "pending" || op.status === "processing" || op.status === "blocked")
-  );
-  return op?.id || null;
+      op.type === 'create_order' &&
+      (op.status === 'pending' ||
+        op.status === 'processing' ||
+        op.status === 'blocked')
+  )
+  return op?.id || null
 }
 
 /**
  * Cancel all operations for an order (e.g., when order is voided).
  */
-export async function cancelOrderOperations(localOrderId: string): Promise<void> {
+export async function cancelOrderOperations (
+  localOrderId: string
+): Promise<void> {
   const opsToCancel = pendingOperations.filter(
-    (op) => op.localOrderId === localOrderId && op.status !== "discarded"
-  );
+    op => op.localOrderId === localOrderId && op.status !== 'discarded'
+  )
 
   for (const op of opsToCancel) {
-    op.status = "discarded";
+    op.status = 'discarded'
   }
 
-  await saveQueueToStorage();
-  onQueueChange?.(getActivePendingCount());
+  await saveQueueToStorage()
+  onQueueChange?.(getActivePendingCount())
   console.log(
     `[OfflineSync] Cancelled ${opsToCancel.length} operations for order:`,
     localOrderId
-  );
+  )
 }
 
 /**
  * Update operation params (e.g., after ID resolution).
  */
-export async function updateOperationParams(
+export async function updateOperationParams (
   operationId: string,
   params: Record<string, any>
 ): Promise<void> {
-  const op = pendingOperations.find((o) => o.id === operationId);
+  const op = pendingOperations.find(o => o.id === operationId)
   if (op) {
-    op.params = { ...op.params, ...params };
-    await saveQueueToStorage();
+    op.params = { ...op.params, ...params }
+    await saveQueueToStorage()
   }
 }
 
 // Online status subscribers (for useSyncExternalStore in hooks)
-const onlineStatusListeners = new Set<() => void>();
+const onlineStatusListeners = new Set<() => void>()
 
-export function subscribeOnlineStatus(listener: () => void): () => void {
-  onlineStatusListeners.add(listener);
-  return () => { onlineStatusListeners.delete(listener); };
+export function subscribeOnlineStatus (listener: () => void): () => void {
+  onlineStatusListeners.add(listener)
+  return () => {
+    onlineStatusListeners.delete(listener)
+  }
 }
 
-function notifyOnlineStatusListeners(): void {
-  for (const listener of onlineStatusListeners) listener();
+function notifyOnlineStatusListeners (): void {
+  for (const listener of onlineStatusListeners) listener()
 }
 
 /**
  * Get current online status.
  */
-export function getIsOnline(): boolean {
-  return isOnline;
+export function getIsOnline (): boolean {
+  return isOnline
 }
 
 /**
  * Get how long the app has been offline (in ms). Returns 0 if currently online.
  */
-export function getOfflineDurationMs(): number {
-  if (_offlineSinceTs === null) return 0;
-  return Date.now() - _offlineSinceTs;
+export function getOfflineDurationMs (): number {
+  if (_offlineSinceTs === null) return 0
+  return Date.now() - _offlineSinceTs
 }
 
 /**
  * DEV-only: Force the app into offline mode for testing.
  * When enabled, NetInfo polling/listeners are suppressed and the app stays offline.
  */
-export function setForceOffline(force: boolean): void {
-  if (!__DEV__) return;
-  forceOfflineOverride = force;
+export function setForceOffline (force: boolean): void {
+  if (!__DEV__) return
+  forceOfflineOverride = force
   if (force) {
-    isOnline = false;
-    console.log("[OfflineSync] FORCED OFFLINE (dev override)");
+    isOnline = false
+    console.log('[OfflineSync] FORCED OFFLINE (dev override)')
     if (onStatusChange) {
-      Promise.resolve(onStatusChange(false)).catch((err) => {
-        console.error("[OfflineSync] onStatusChange error:", err);
-      });
+      Promise.resolve(onStatusChange(false)).catch(err => {
+        console.error('[OfflineSync] onStatusChange error:', err)
+      })
     }
-    notifyOnlineStatusListeners();
+    notifyOnlineStatusListeners()
   } else {
-    console.log("[OfflineSync] Force offline CLEARED — re-checking network");
-    NetInfo.fetch().then(handleNetworkChange).catch(() => {});
+    console.log('[OfflineSync] Force offline CLEARED — re-checking network')
+    NetInfo.fetch()
+      .then(handleNetworkChange)
+      .catch(() => {})
   }
 }
 
 /**
  * DEV-only: Check if force-offline override is active.
  */
-export function getForceOffline(): boolean {
-  return __DEV__ ? forceOfflineOverride : false;
+export function getForceOffline (): boolean {
+  return __DEV__ ? forceOfflineOverride : false
 }
 
 /**
  * Check if auto-retry is in progress (for UI indicator).
  */
-export function isAutoRetryInProgress(): boolean {
-  return autoRetryTimers.size > 0;
+export function isAutoRetryInProgress (): boolean {
+  return autoRetryTimers.size > 0
 }
 
 /**
  * Get count of operations scheduled for auto-retry.
  */
-export function getAutoRetryCount(): number {
-  return autoRetryTimers.size;
+export function getAutoRetryCount (): number {
+  return autoRetryTimers.size
 }
 
 /**
  * Force sync now (for manual retry button).
  */
-export async function syncNow(): Promise<void> {
+export async function syncNow (): Promise<void> {
   if (isOnline) {
-    await processQueue();
+    await processQueue()
   } else {
-    console.warn("[OfflineSync] syncNow — skipped: isOnline=false");
+    console.warn('[OfflineSync] syncNow — skipped: isOnline=false')
   }
 }
 
@@ -1150,129 +1233,145 @@ export async function syncNow(): Promise<void> {
  * Immediately flush the queue, cancelling any pending debounce timer.
  * Used by onStatusChange to ensure create_order ops complete before reconciliation.
  */
-export async function processQueueNow(options?: { force?: boolean }): Promise<void> {
+export async function processQueueNow (options?: {
+  force?: boolean
+}): Promise<void> {
   if (debounceTimer) {
-    clearTimeout(debounceTimer);
-    debounceTimer = null;
+    clearTimeout(debounceTimer)
+    debounceTimer = null
   }
 
   if (options?.force) {
     // User-initiated: clear force-offline override if set
     if (forceOfflineOverride) {
-      console.warn("[OfflineSync] processQueueNow(force) — clearing forceOfflineOverride");
-      forceOfflineOverride = false;
+      console.warn(
+        '[OfflineSync] processQueueNow(force) — clearing forceOfflineOverride'
+      )
+      forceOfflineOverride = false
     }
     // Refresh network state before processing
     try {
-      const netState = await NetInfo.fetch();
-      handleNetworkChange(netState);
+      const netState = await NetInfo.fetch()
+      handleNetworkChange(netState)
     } catch {}
     // Reset stuck processing state
     if (syncInProgress) {
-      console.warn("[OfflineSync] processQueueNow(force) — clearing stuck syncInProgress lock");
-      syncInProgress = false;
+      console.warn(
+        '[OfflineSync] processQueueNow(force) — clearing stuck syncInProgress lock'
+      )
+      syncInProgress = false
     }
     for (const op of pendingOperations) {
-      if (op.status === "processing") { op.status = "pending"; }
+      if (op.status === 'processing') {
+        op.status = 'pending'
+      }
     }
   }
 
   if (options?.force && !executeOperation) {
-    console.warn("[OfflineSync] processQueueNow(force) — executeOperation not registered. Service may need re-initialization.");
+    console.warn(
+      '[OfflineSync] processQueueNow(force) — executeOperation not registered. Service may need re-initialization.'
+    )
   }
 
   if (isOnline) {
-    await processQueue();
+    await processQueue()
   } else {
-    console.warn("[OfflineSync] processQueueNow — skipped: isOnline=false");
+    console.warn('[OfflineSync] processQueueNow — skipped: isOnline=false')
   }
 }
 
 /** Reset stuck "processing" ops + force-clear syncInProgress lock, then trigger sync. */
-export async function forceRetryAllPending(): Promise<void> {
-  let changed = false;
+export async function forceRetryAllPending (): Promise<void> {
+  let changed = false
   for (const op of pendingOperations) {
-    if (op.status === "processing") { op.status = "pending"; changed = true; }
+    if (op.status === 'processing') {
+      op.status = 'pending'
+      changed = true
+    }
   }
   if (syncInProgress) {
-    console.warn("[OfflineSync] forceRetryAllPending: force-clearing syncInProgress lock (was stuck)");
+    console.warn(
+      '[OfflineSync] forceRetryAllPending: force-clearing syncInProgress lock (was stuck)'
+    )
   }
-  syncInProgress = false;
-  if (changed) await saveQueueToStorage();
-  if (isOnline) scheduleSync();
+  syncInProgress = false
+  if (changed) await saveQueueToStorage()
+  if (isOnline) scheduleSync()
 }
 
 /** Expose all non-discarded ops for UI inspection (blocked/processing counts). */
-export function getPendingOperations(): OfflineOperation[] {
-  return pendingOperations.filter((op) => op.status !== "discarded");
+export function getPendingOperations (): OfflineOperation[] {
+  return pendingOperations.filter(op => op.status !== 'discarded')
 }
 
 /**
  * Get a read-only snapshot of the current queue for inspection.
  * Used by tableSessionRealtimeSync to check for pending seat_guests ops.
  */
-export function getQueueSnapshot(): readonly OfflineOperation[] {
-  return pendingOperations;
+export function getQueueSnapshot (): readonly OfflineOperation[] {
+  return pendingOperations
 }
 
 /**
  * Get a detailed status of the queue for debugging.
  */
-export function getQueueStatus(): {
-  total: number;
-  pending: number;
-  blocked: number;
-  processing: number;
-  failed: number;
-  byType: Record<string, number>;
-  byOrder: Record<string, { types: string[]; hasCreateOrder: boolean }>;
+export function getQueueStatus (): {
+  total: number
+  pending: number
+  blocked: number
+  processing: number
+  failed: number
+  byType: Record<string, number>
+  byOrder: Record<string, { types: string[]; hasCreateOrder: boolean }>
 } {
-  const allOps = pendingOperations.filter((op) => op.status !== "discarded");
-  const byType: Record<string, number> = {};
-  const byOrder: Record<string, { types: string[]; hasCreateOrder: boolean }> = {};
+  const allOps = pendingOperations.filter(op => op.status !== 'discarded')
+  const byType: Record<string, number> = {}
+  const byOrder: Record<string, { types: string[]; hasCreateOrder: boolean }> =
+    {}
 
   for (const op of allOps) {
-    byType[op.type] = (byType[op.type] || 0) + 1;
+    byType[op.type] = (byType[op.type] || 0) + 1
 
     if (op.localOrderId) {
       if (!byOrder[op.localOrderId]) {
-        byOrder[op.localOrderId] = { types: [], hasCreateOrder: false };
+        byOrder[op.localOrderId] = { types: [], hasCreateOrder: false }
       }
-      byOrder[op.localOrderId].types.push(`${op.type}(${op.status})`);
-      if (op.type === "create_order") {
-        byOrder[op.localOrderId].hasCreateOrder = true;
+      byOrder[op.localOrderId].types.push(`${op.type}(${op.status})`)
+      if (op.type === 'create_order') {
+        byOrder[op.localOrderId].hasCreateOrder = true
       }
     }
   }
 
   return {
     total: allOps.length,
-    pending: allOps.filter((op) => op.status === "pending").length,
-    blocked: allOps.filter((op) => op.status === "blocked").length,
-    processing: allOps.filter((op) => op.status === "processing").length,
-    failed: allOps.filter((op) => op.status === "failed").length,
+    pending: allOps.filter(op => op.status === 'pending').length,
+    blocked: allOps.filter(op => op.status === 'blocked').length,
+    processing: allOps.filter(op => op.status === 'processing').length,
+    failed: allOps.filter(op => op.status === 'failed').length,
     byType,
-    byOrder,
-  };
+    byOrder
+  }
 }
 
 /**
  * Log the current queue status to console (for debugging).
  */
-export function logQueueStatus(): void {
-  const status = getQueueStatus();
-  console.log("[OfflineSync] ====== QUEUE STATUS ======");
-  console.log(`[OfflineSync] Total: ${status.total}`);
-  console.log(`[OfflineSync]   Pending: ${status.pending}`);
-  console.log(`[OfflineSync]   Blocked: ${status.blocked}`);
-  console.log(`[OfflineSync]   Processing: ${status.processing}`);
-  console.log(`[OfflineSync]   Failed: ${status.failed}`);
-  console.log("[OfflineSync] By type:", JSON.stringify(status.byType));
-  console.log("[OfflineSync] By order:");
+export function logQueueStatus (): void {
+  const status = getQueueStatus()
+  console.log('[OfflineSync] ====== QUEUE STATUS ======')
+  console.log(`[OfflineSync] Total: ${status.total}`)
+  console.log(`[OfflineSync]   Pending: ${status.pending}`)
+  console.log(`[OfflineSync]   Blocked: ${status.blocked}`)
+  console.log(`[OfflineSync]   Processing: ${status.processing}`)
+  console.log(`[OfflineSync]   Failed: ${status.failed}`)
+  console.log('[OfflineSync] By type:', JSON.stringify(status.byType))
+  console.log('[OfflineSync] By order:')
   for (const [orderId, info] of Object.entries(status.byOrder)) {
-    console.log(`[OfflineSync]   ${orderId}:`);
-    console.log(`[OfflineSync]     hasCreateOrder: ${info.hasCreateOrder}`);
-    console.log(`[OfflineSync]     operations: ${info.types.join(", ")}`);
+    console.log(`[OfflineSync]   ${orderId}:`)
+    console.log(`[OfflineSync]     hasCreateOrder: ${info.hasCreateOrder}`)
+    console.log(`[OfflineSync]     operations: ${info.types.join(', ')}`)
   }
 }
 
@@ -1280,81 +1379,84 @@ export function logQueueStatus(): void {
 // DEAD LETTER QUEUE MANAGEMENT
 // ============================================================================
 
-function moveToDeadLetter(operation: OfflineOperation): void {
+function moveToDeadLetter (operation: OfflineOperation): void {
   deadLetterQueue.push({
     ...operation,
-    status: "failed" as const,
-  });
+    status: 'failed' as const
+  })
   // FIFO eviction: discard oldest entries when cap is exceeded
   if (deadLetterQueue.length > MAX_DEAD_LETTER_SIZE) {
-    deadLetterQueue = deadLetterQueue.slice(-MAX_DEAD_LETTER_SIZE);
+    deadLetterQueue = deadLetterQueue.slice(-MAX_DEAD_LETTER_SIZE)
   }
-  saveDeadLetterToStorage();
+  saveDeadLetterToStorage()
 }
 
-function loadDeadLetterFromStorage(): void {
+function loadDeadLetterFromStorage (): void {
   try {
-    const stored = getSyncJSON<OfflineOperation[]>(DEAD_LETTER_STORAGE_KEY);
+    const stored = getSyncJSON<OfflineOperation[]>(DEAD_LETTER_STORAGE_KEY)
     if (stored) {
-      deadLetterQueue = stored.length > MAX_DEAD_LETTER_SIZE
-        ? stored.slice(-MAX_DEAD_LETTER_SIZE)
-        : stored;
+      deadLetterQueue =
+        stored.length > MAX_DEAD_LETTER_SIZE
+          ? stored.slice(-MAX_DEAD_LETTER_SIZE)
+          : stored
     }
   } catch (error) {
-    console.error("[OfflineSync] Failed to load dead letter queue:", error);
-    deadLetterQueue = [];
+    console.error('[OfflineSync] Failed to load dead letter queue:', error)
+    deadLetterQueue = []
   }
 }
 
-function saveDeadLetterToStorage(): void {
+function saveDeadLetterToStorage (): void {
   try {
-    setSyncJSON(DEAD_LETTER_STORAGE_KEY, deadLetterQueue);
+    setSyncJSON(DEAD_LETTER_STORAGE_KEY, deadLetterQueue)
   } catch (error) {
-    console.error("[OfflineSync] Failed to save dead letter queue:", error);
+    console.error('[OfflineSync] Failed to save dead letter queue:', error)
   }
 }
 
 /**
  * Get all dead-lettered operations for operator inspection.
  */
-export function getDeadLetterOperations(): OfflineOperation[] {
-  return [...deadLetterQueue];
+export function getDeadLetterOperations (): OfflineOperation[] {
+  return [...deadLetterQueue]
 }
 
 /**
  * Get count of dead-lettered operations.
  */
-export function getDeadLetterCount(): number {
-  return deadLetterQueue.length;
+export function getDeadLetterCount (): number {
+  return deadLetterQueue.length
 }
 
 /**
  * Retry a dead-lettered operation by moving it back to the pending queue.
  */
-export async function retryDeadLetterOperation(operationId: string): Promise<void> {
-  const idx = deadLetterQueue.findIndex((op) => op.id === operationId);
-  if (idx === -1) return;
+export async function retryDeadLetterOperation (
+  operationId: string
+): Promise<void> {
+  const idx = deadLetterQueue.findIndex(op => op.id === operationId)
+  if (idx === -1) return
 
-  const op = deadLetterQueue[idx];
-  deadLetterQueue.splice(idx, 1);
-  saveDeadLetterToStorage();
+  const op = deadLetterQueue[idx]
+  deadLetterQueue.splice(idx, 1)
+  saveDeadLetterToStorage()
 
-  op.status = "pending";
-  op.retryCount = 0;
-  pendingOperations.push(op);
-  addToIndex(op);
-  await saveQueueToStorage();
-  onQueueChange?.(getActivePendingCount());
+  op.status = 'pending'
+  op.retryCount = 0
+  pendingOperations.push(op)
+  addToIndex(op)
+  await saveQueueToStorage()
+  onQueueChange?.(getActivePendingCount())
 
-  if (isOnline) scheduleSync();
+  if (isOnline) scheduleSync()
 }
 
 /**
  * Permanently discard a dead-lettered operation.
  */
-export function discardDeadLetterOperation(operationId: string): void {
-  deadLetterQueue = deadLetterQueue.filter((op) => op.id !== operationId);
-  saveDeadLetterToStorage();
+export function discardDeadLetterOperation (operationId: string): void {
+  deadLetterQueue = deadLetterQueue.filter(op => op.id !== operationId)
+  saveDeadLetterToStorage()
 }
 
 /**
@@ -1362,66 +1464,70 @@ export function discardDeadLetterOperation(operationId: string): void {
  * Non-payment ops older than OPERATION_TTL_MS are discarded.
  * Payment ops are moved to dead letter for manual review.
  */
-export async function pruneExpiredOperations(): Promise<number> {
-  const cutoff = Date.now() - OPERATION_TTL_MS;
-  let pruned = 0;
+export async function pruneExpiredOperations (): Promise<number> {
+  const cutoff = Date.now() - OPERATION_TTL_MS
+  let pruned = 0
 
-  pendingOperations = pendingOperations.filter((op) => {
-    if (op.status === "discarded") return false;
-    const opTime = new Date(op.timestamp).getTime();
-    if (opTime >= cutoff) return true;
+  pendingOperations = pendingOperations.filter(op => {
+    if (op.status === 'discarded') return false
+    const opTime = new Date(op.timestamp).getTime()
+    if (opTime >= cutoff) return true
 
-    pruned++;
+    pruned++
     if (PAYMENT_TYPES.includes(op.type)) {
-      moveToDeadLetter(op);
-      console.log(`[OfflineSync] Expired payment op moved to dead letter: ${op.id}`);
+      moveToDeadLetter(op)
+      console.log(
+        `[OfflineSync] Expired payment op moved to dead letter: ${op.id}`
+      )
     } else {
-      console.log(`[OfflineSync] Expired op discarded: ${op.type} (${op.id})`);
+      console.log(`[OfflineSync] Expired op discarded: ${op.type} (${op.id})`)
     }
-    return false;
-  });
+    return false
+  })
 
   if (pruned > 0) {
-    rebuildIndexes();
-    await saveQueueToStorage();
-    onQueueChange?.(getActivePendingCount());
+    rebuildIndexes()
+    await saveQueueToStorage()
+    onQueueChange?.(getActivePendingCount())
   }
-  return pruned;
+  return pruned
 }
 
 /**
  * Enforce queue size limit. Drops oldest non-critical operations when exceeded.
  */
-async function enforceQueueSizeLimit(): Promise<void> {
+async function enforceQueueSizeLimit (): Promise<void> {
   const active = pendingOperations.filter(
-    (op) => op.status !== "discarded" && op.status !== "failed"
-  );
-  if (active.length <= MAX_QUEUE_SIZE) return;
+    op => op.status !== 'discarded' && op.status !== 'failed'
+  )
+  if (active.length <= MAX_QUEUE_SIZE) return
 
-  const excess = active.length - MAX_QUEUE_SIZE;
+  const excess = active.length - MAX_QUEUE_SIZE
   const nonCriticalTypes: OperationType[] = [
-    "update_order_status",
-    "fire_course",
-    "update_session_status",
-  ];
+    'update_order_status',
+    'fire_course',
+    'update_session_status'
+  ]
 
-  let dropped = 0;
-  pendingOperations = pendingOperations.map((op) => {
+  let dropped = 0
+  pendingOperations = pendingOperations.map(op => {
     if (
       dropped < excess &&
-      op.status === "pending" &&
+      op.status === 'pending' &&
       nonCriticalTypes.includes(op.type)
     ) {
-      dropped++;
-      return { ...op, status: "discarded" as const };
+      dropped++
+      return { ...op, status: 'discarded' as const }
     }
-    return op;
-  });
+    return op
+  })
 
   if (dropped > 0) {
-    console.warn(`[OfflineSync] Queue size limit exceeded, dropped ${dropped} non-critical ops`);
-    await saveQueueToStorage();
-    onQueueChange?.(getActivePendingCount());
+    console.warn(
+      `[OfflineSync] Queue size limit exceeded, dropped ${dropped} non-critical ops`
+    )
+    await saveQueueToStorage()
+    onQueueChange?.(getActivePendingCount())
   }
 }
 
@@ -1432,73 +1538,75 @@ async function enforceQueueSizeLimit(): Promise<void> {
 /**
  * Sort operations by priority and timestamp for processing order.
  */
-function sortOperationsByPriority(ops: OfflineOperation[]): OfflineOperation[] {
+function sortOperationsByPriority (ops: OfflineOperation[]): OfflineOperation[] {
   return [...ops].sort((a, b) => {
     // First by priority (lower = higher priority)
-    const priorityDiff = (a.priority ?? 99) - (b.priority ?? 99);
-    if (priorityDiff !== 0) return priorityDiff;
+    const priorityDiff = (a.priority ?? 99) - (b.priority ?? 99)
+    if (priorityDiff !== 0) return priorityDiff
 
     // Then by timestamp (older first)
-    return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-  });
+    return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  })
 }
 
 /**
  * Check if an operation's dependencies are satisfied.
- * 
+ *
  * IMPLICIT DEPENDENCIES:
  * - add_item, process_payment, process_cash_payment, process_card_payment
  *   all implicitly depend on create_order for the same localOrderId.
  * - These operations will be blocked until create_order completes.
  */
-function areDependenciesSatisfied(op: OfflineOperation): boolean {
+function areDependenciesSatisfied (op: OfflineOperation): boolean {
   // EXPLICIT dependency check
   if (op.dependsOn) {
-    const dependency = pendingOperations.find((o) => o.id === op.dependsOn);
+    const dependency = pendingOperations.find(o => o.id === op.dependsOn)
 
     // If dependency doesn't exist in queue, it's either completed or never existed
     if (!dependency) {
       // Check if it was removed (completed) - continue
     } else if (
-      dependency.status === "pending" ||
-      dependency.status === "processing" ||
-      dependency.status === "blocked"
+      dependency.status === 'pending' ||
+      dependency.status === 'processing' ||
+      dependency.status === 'blocked'
     ) {
-      return false;
+      return false
     }
   }
 
   // IMPLICIT dependency: items and payments must wait for order creation
   const typesRequiringOrder = [
-    "add_item",
-    "apply_discount",
-    "void_discount",
-    "process_payment",
-    "process_cash_payment",
-    "process_card_payment",
-    "process_preauth",
-    "capture_preauth",
-    "increment_preauth",
-    "void_preauth",
-    "update_order_status",
-    "fire_course",
-    "send_to_kitchen",
-  ];
+    'add_item',
+    'apply_discount',
+    'void_discount',
+    'process_payment',
+    'process_cash_payment',
+    'process_card_payment',
+    'process_preauth',
+    'capture_preauth',
+    'increment_preauth',
+    'void_preauth',
+    'update_order_status',
+    'fire_course',
+    'send_to_kitchen'
+  ]
 
   if (typesRequiringOrder.includes(op.type) && op.localOrderId) {
     // Use localOrderIdIndex for O(1) lookup instead of scanning all pendingOperations
-    const siblingIds = localOrderIdIndex.get(op.localOrderId);
-    let orderCreationPending = false;
+    const siblingIds = localOrderIdIndex.get(op.localOrderId)
+    let orderCreationPending = false
     if (siblingIds) {
       for (const sibId of siblingIds) {
-        const sib = pendingOperations.find((o) => o.id === sibId);
+        const sib = pendingOperations.find(o => o.id === sibId)
         if (
           sib &&
-          sib.type === "create_order" &&
-          (sib.status === "pending" || sib.status === "processing" || sib.status === "blocked")
+          sib.type === 'create_order' &&
+          (sib.status === 'pending' ||
+            sib.status === 'processing' ||
+            sib.status === 'blocked')
         ) {
-          orderCreationPending = true;
-          break;
+          orderCreationPending = true
+          break
         }
       }
     }
@@ -1506,8 +1614,8 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
     if (orderCreationPending) {
       console.log(
         `[OfflineSync] ${op.type} blocked - waiting for create_order of ${op.localOrderId}`
-      );
-      return false;
+      )
+      return false
     }
   }
 
@@ -1517,93 +1625,97 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
   // Check if referenced entities have been synced (have backend UUIDs)
 
   // link_order_to_session needs both order AND session to be synced
-  if (op.type === "link_order_to_session") {
-    const { orderId, sessionId } = op.params;
+  if (op.type === 'link_order_to_session') {
+    const { orderId, sessionId } = op.params
 
     // Check if order has been synced (has backend UUID)
-    const orderReady = isValidUUID(orderId) || isSynced(orderId);
+    const orderReady = isValidUUID(orderId) || isSynced(orderId)
     if (!orderReady) {
       console.log(
         `[OfflineSync] link_order_to_session blocked - order ${orderId} not synced yet`
-      );
-      return false;
+      )
+      return false
     }
 
     // Check if session has been synced (has backend UUID)
-    const sessionReady = isValidUUID(sessionId) || isSynced(sessionId);
+    const sessionReady = isValidUUID(sessionId) || isSynced(sessionId)
     if (!sessionReady) {
       console.log(
         `[OfflineSync] link_order_to_session blocked - session ${sessionId} not synced yet`
-      );
-      return false;
+      )
+      return false
     }
   }
 
   // Item operations need parent order synced (additional check beyond create_order)
   if (
-    (op.type === "add_item" ||
-      op.type === "update_item" ||
-      op.type === "update_item_quantity" ||
-      op.type === "replace_modifiers" ||
-      op.type === "remove_item" ||
-      op.type === "void_item") &&
+    (op.type === 'add_item' ||
+      op.type === 'update_item' ||
+      op.type === 'update_item_quantity' ||
+      op.type === 'replace_modifiers' ||
+      op.type === 'remove_item' ||
+      op.type === 'void_item') &&
     op.localOrderId
   ) {
     // If localOrderId is still local (not a UUID), check if it's been synced
     if (!isValidUUID(op.localOrderId)) {
-      const orderSynced = isSynced(op.localOrderId);
+      const orderSynced = isSynced(op.localOrderId)
       if (!orderSynced) {
         console.log(
           `[OfflineSync] ${op.type} blocked - parent order ${op.localOrderId} not synced yet`
-        );
-        return false;
+        )
+        return false
       }
     }
   }
 
-  return true;
+  return true
 }
 
 /**
  * Get all operations that are ready to process (pending + dependencies satisfied).
  */
-function getReadyOperations(): OfflineOperation[] {
-  const pending = pendingOperations.filter((op) => op.status === "pending");
-  const ready = pending.filter((op) => areDependenciesSatisfied(op));
-  return sortOperationsByPriority(ready);
+function getReadyOperations (): OfflineOperation[] {
+  const pending = pendingOperations.filter(op => op.status === 'pending')
+  const ready = pending.filter(op => areDependenciesSatisfied(op))
+  return sortOperationsByPriority(ready)
 }
 
 /**
  * Mark operations as blocked if their dependencies aren't satisfied.
  */
-async function updateBlockedOperations(): Promise<void> {
-  let changed = false;
-  const timedOutOps: OfflineOperation[] = [];
+async function updateBlockedOperations (): Promise<void> {
+  let changed = false
+  const timedOutOps: OfflineOperation[] = []
 
   for (const op of pendingOperations) {
-    if (op.status === "pending" && !areDependenciesSatisfied(op)) {
-      op.status = "blocked";
-      changed = true;
-    } else if (op.status === "blocked") {
+    if (op.status === 'pending' && !areDependenciesSatisfied(op)) {
+      op.status = 'blocked'
+      changed = true
+    } else if (op.status === 'blocked') {
       if (areDependenciesSatisfied(op)) {
-        op.status = "pending";
-        changed = true;
+        op.status = 'pending'
+        changed = true
       } else {
         // Timeout: if blocked >5min and parent is dead/missing, dead-letter it
-        const BLOCKED_TIMEOUT_MS = 5 * 60 * 1000;
-        const blockedDuration = Date.now() - new Date(op.timestamp).getTime();
+        const BLOCKED_TIMEOUT_MS = 5 * 60 * 1000
+        const blockedDuration = Date.now() - new Date(op.timestamp).getTime()
         if (blockedDuration > BLOCKED_TIMEOUT_MS) {
           const parent = op.dependsOn
-            ? pendingOperations.find((p) => p.id === op.dependsOn)
-            : null;
-          const parentDead = parent && (parent.status === "failed" || parent.status === "discarded");
+            ? pendingOperations.find(p => p.id === op.dependsOn)
+            : null
+          const parentDead =
+            parent &&
+            (parent.status === 'failed' || parent.status === 'discarded')
           if (parentDead || !parent) {
             console.log(
-              `[OfflineSync] Blocked operation timed out (${Math.round(blockedDuration / 1000)}s): ${op.type} (${op.id})`
-            );
-            moveToDeadLetter(op);
-            timedOutOps.push(op);
-            changed = true;
+              `[OfflineSync] Blocked operation timed out (${Math.round(
+                blockedDuration / 1000
+              )}s): ${op.type} (${op.id})`
+            )
+            moveToDeadLetter(op)
+            timedOutOps.push(op)
+            changed = true
           }
         }
       }
@@ -1612,14 +1724,14 @@ async function updateBlockedOperations(): Promise<void> {
 
   // Remove timed-out operations from pendingOperations
   if (timedOutOps.length > 0) {
-    const timedOutIds = new Set(timedOutOps.map((o) => o.id));
-    pendingOperations = pendingOperations.filter((op) => !timedOutIds.has(op.id));
+    const timedOutIds = new Set(timedOutOps.map(o => o.id))
+    pendingOperations = pendingOperations.filter(op => !timedOutIds.has(op.id))
     // Rebuild indexes after bulk removal
-    rebuildIndexes();
+    rebuildIndexes()
   }
 
   if (changed) {
-    await saveQueueToStorage();
+    await saveQueueToStorage()
   }
 }
 
@@ -1627,181 +1739,203 @@ async function updateBlockedOperations(): Promise<void> {
  * Handle a failed operation: classify the error and decide between
  * retry (transient), dead-letter (permanent or max retries), or discard.
  */
-async function handleOperationFailure(
+async function handleOperationFailure (
   operation: OfflineOperation,
-  error: any,
+  error: any
 ): Promise<void> {
-  const permanent = error && !isTransientError(error);
+  const permanent = error && !isTransientError(error)
 
   if (permanent || operation.retryCount >= MAX_RETRY_ATTEMPTS) {
-    const reason = permanent ? "permanent error" : "max retries";
+    const reason = permanent ? 'permanent error' : 'max retries'
     console.log(
       `[OfflineSync] ✗ DEAD-LETTERED (${reason}): ${operation.type} (${operation.id})`
-    );
+    )
     // Remove from active queue and move to dead letter
-    removeFromIndex(operation);
-    pendingOperations = pendingOperations.filter((op) => op.id !== operation.id);
-    moveToDeadLetter(operation);
-    await saveQueueToStorage();
-    onOperationFailed?.(operation);
+    removeFromIndex(operation)
+    pendingOperations = pendingOperations.filter(op => op.id !== operation.id)
+    moveToDeadLetter(operation)
+    await saveQueueToStorage()
+    onOperationFailed?.(operation)
   } else {
-    operation.status = "pending";
-    await saveQueueToStorage();
+    operation.status = 'pending'
+    await saveQueueToStorage()
     console.log(
       `[OfflineSync] ⟳ RETRY: ${operation.type} (${operation.id}) - attempt ${operation.retryCount}/${MAX_RETRY_ATTEMPTS}`
-    );
-    scheduleAutoRetry(operation);
+    )
+    scheduleAutoRetry(operation)
   }
 }
 
 /**
  * Process all pending operations in priority order with dependency tracking.
  */
-async function executeWithTimeout(op: OfflineOperation): Promise<boolean> {
+async function executeWithTimeout (op: OfflineOperation): Promise<boolean> {
   return Promise.race([
     executeOperation!(op),
     new Promise<boolean>((_, reject) =>
       setTimeout(
-        () => reject(new Error(`Operation timeout after ${OPERATION_TIMEOUT_MS}ms`)),
+        () =>
+          reject(
+            new Error(`Operation timeout after ${OPERATION_TIMEOUT_MS}ms`)
+          ),
         OPERATION_TIMEOUT_MS
       )
-    ),
-  ]);
+    )
+  ])
 }
 
-async function processQueue(): Promise<void> {
+async function processQueue (): Promise<void> {
   if (syncInProgress) {
-    console.log("[OfflineSync] Sync already in progress, skipping");
-    return;
+    console.log('[OfflineSync] Sync already in progress, skipping')
+    return
   }
 
   if (!isOnline) {
-    console.log("[OfflineSync] Offline, skipping sync");
-    return;
+    console.log('[OfflineSync] Offline, skipping sync')
+    return
   }
 
   if (!executeOperation) {
-    console.warn("[OfflineSync] executeOperation handler not registered yet, scheduling deferred retry");
+    console.warn(
+      '[OfflineSync] executeOperation handler not registered yet, scheduling deferred retry'
+    )
     setTimeout(() => {
       if (executeOperation && isOnline) {
-        console.log("[OfflineSync] executeOperation now available, retrying queue");
-        processQueue();
+        console.log(
+          '[OfflineSync] executeOperation now available, retrying queue'
+        )
+        processQueue()
       }
-    }, 2000);
-    return;
+    }, 2000)
+    return
   }
 
   // Acquire lock immediately after guard checks — before any async work —
   // to prevent the race window where two callers both pass the guard.
-  syncInProgress = true;
+  syncInProgress = true
 
   try {
     // ========================================================================
     // COMPREHENSIVE QUEUE STATUS LOGGING
     // ========================================================================
     const allOps = pendingOperations.filter(
-      (op) => op.status !== "discarded" && op.status !== "failed"
-    );
-    const byType: Record<string, number> = {};
-    const byOrder: Record<string, string[]> = {};
+      op => op.status !== 'discarded' && op.status !== 'failed'
+    )
+    const byType: Record<string, number> = {}
+    const byOrder: Record<string, string[]> = {}
 
     for (const op of allOps) {
-      byType[op.type] = (byType[op.type] || 0) + 1;
+      byType[op.type] = (byType[op.type] || 0) + 1
       if (!byOrder[op.localOrderId]) {
-        byOrder[op.localOrderId] = [];
+        byOrder[op.localOrderId] = []
       }
-      byOrder[op.localOrderId].push(`${op.type}(${op.status})`);
+      byOrder[op.localOrderId].push(`${op.type}(${op.status})`)
     }
 
-    console.log("[OfflineSync] ====== QUEUE STATUS ======");
-    console.log("[OfflineSync] Total operations:", allOps.length);
-    console.log("[OfflineSync] By type:", JSON.stringify(byType));
-    console.log("[OfflineSync] By order:", JSON.stringify(byOrder));
+    console.log('[OfflineSync] ====== QUEUE STATUS ======')
+    console.log('[OfflineSync] Total operations:', allOps.length)
+    console.log('[OfflineSync] By type:', JSON.stringify(byType))
+    console.log('[OfflineSync] By order:', JSON.stringify(byOrder))
 
     // Update blocked status before processing
-    await updateBlockedOperations();
+    await updateBlockedOperations()
 
-    const readyOps = getReadyOperations();
-    const blocked = pendingOperations.filter((op) => op.status === "blocked");
-    const pending = pendingOperations.filter((op) => op.status === "pending");
+    const readyOps = getReadyOperations()
+    const blocked = pendingOperations.filter(op => op.status === 'blocked')
+    const pending = pendingOperations.filter(op => op.status === 'pending')
 
-    console.log("[OfflineSync] Ready:", readyOps.length, "| Blocked:", blocked.length, "| Pending:", pending.length);
+    console.log(
+      '[OfflineSync] Ready:',
+      readyOps.length,
+      '| Blocked:',
+      blocked.length,
+      '| Pending:',
+      pending.length
+    )
 
     if (readyOps.length === 0) {
       if (blocked.length > 0) {
-        console.log("[OfflineSync] Blocked operations:");
+        console.log('[OfflineSync] Blocked operations:')
         for (const op of blocked.slice(0, 5)) {
-          console.log(`  - ${op.type} (${op.id}) for order ${op.localOrderId}`);
+          console.log(`  - ${op.type} (${op.id}) for order ${op.localOrderId}`)
         }
       } else {
-        console.log("[OfflineSync] No pending operations");
+        console.log('[OfflineSync] No pending operations')
       }
-      return; // finally will release lock
+      return // finally will release lock
     }
 
-    console.log("[OfflineSync] ====== PROCESSING ======");
-    console.log("[OfflineSync] Processing", readyOps.length, "operations (by priority)");
+    console.log('[OfflineSync] ====== PROCESSING ======')
+    console.log(
+      '[OfflineSync] Processing',
+      readyOps.length,
+      'operations (by priority)'
+    )
 
-    let successCount = 0;
-    let failCount = 0;
+    let successCount = 0
+    let failCount = 0
 
     for (const operation of readyOps) {
       // Check if still online before each operation
       if (!isOnline) {
-        console.log("[OfflineSync] Went offline during sync, stopping");
-        break;
+        console.log('[OfflineSync] Went offline during sync, stopping')
+        break
       }
 
       // Mark as processing
-      operation.status = "processing";
-      await saveQueueToStorage();
+      operation.status = 'processing'
+      await saveQueueToStorage()
 
       try {
-        console.log(`[OfflineSync] Executing: ${operation.type} (${operation.id})`);
-        console.log(`[OfflineSync]   Order: ${operation.localOrderId || 'N/A'}`);
-        console.log(`[OfflineSync]   Item: ${operation.localItemId || 'N/A'}`);
+        console.log(
+          `[OfflineSync] Executing: ${operation.type} (${operation.id})`
+        )
+        console.log(`[OfflineSync]   Order: ${operation.localOrderId || 'N/A'}`)
+        console.log(`[OfflineSync]   Item: ${operation.localItemId || 'N/A'}`)
 
-        const success = await executeWithTimeout(operation);
+        const success = await executeWithTimeout(operation)
 
         if (success) {
-          console.log(`[OfflineSync] ✓ SUCCESS: ${operation.type} (${operation.id})`);
-          await removeOperation(operation.id);
-          successCount++;
+          console.log(
+            `[OfflineSync] ✓ SUCCESS: ${operation.type} (${operation.id})`
+          )
+          await removeOperation(operation.id)
+          successCount++
 
           // After completing an operation, unblock dependent operations
-          await updateBlockedOperations();
+          await updateBlockedOperations()
         } else {
-          operation.retryCount++;
-          failCount++;
-          handleOperationFailure(operation, null);
+          operation.retryCount++
+          failCount++
+          handleOperationFailure(operation, null)
         }
       } catch (error) {
         console.error(
-          "[OfflineSync] Error executing operation:",
+          '[OfflineSync] Error executing operation:',
           operation.id,
           error
-        );
-        operation.retryCount++;
-        failCount++;
-        handleOperationFailure(operation, error);
+        )
+        operation.retryCount++
+        failCount++
+        handleOperationFailure(operation, error)
       }
     }
 
     console.log(
       `[OfflineSync] Sync complete: ${successCount} succeeded, ${failCount} failed`
-    );
+    )
 
     // If we had failures but there are still ready operations, try again
-    const stillReady = getReadyOperations();
+    const stillReady = getReadyOperations()
     if (stillReady.length > 0 && isOnline) {
       console.log(
-        "[OfflineSync] Still have ready operations, scheduling retry..."
-      );
-      scheduleSync();
+        '[OfflineSync] Still have ready operations, scheduling retry...'
+      )
+      scheduleSync()
     }
   } finally {
-    syncInProgress = false;
-    onQueueChange?.(getActivePendingCount());
+    syncInProgress = false
+    onQueueChange?.(getActivePendingCount())
   }
 }
 
@@ -1809,56 +1943,56 @@ async function processQueue(): Promise<void> {
 // PERSISTENCE
 // ============================================================================
 
-async function loadQueueFromStorage(): Promise<void> {
+async function loadQueueFromStorage (): Promise<void> {
   try {
     // Synchronous read from MMKV
-    const stored = getSyncJSON<OfflineOperation[]>(STORAGE_KEY);
+    const stored = getSyncJSON<OfflineOperation[]>(STORAGE_KEY)
     if (stored) {
-      pendingOperations = stored;
+      pendingOperations = stored
       // Reset any "processing" status to "pending" (in case app crashed during sync)
       // Also backfill idempotencyKey for operations loaded from storage pre-upgrade
-      pendingOperations = pendingOperations.map((op) => ({
+      pendingOperations = pendingOperations.map(op => ({
         ...op,
-        status: op.status === "processing" ? ("pending" as const) : op.status,
-        idempotencyKey: op.idempotencyKey || uuidv4(),
-      }));
+        status: op.status === 'processing' ? ('pending' as const) : op.status,
+        idempotencyKey: op.idempotencyKey || uuidv4()
+      }))
       console.log(
-        "[OfflineSync] Loaded",
+        '[OfflineSync] Loaded',
         pendingOperations.length,
-        "operations from storage"
-      );
+        'operations from storage'
+      )
       // Build indexes for O(1) lookups
-      rebuildIndexes();
+      rebuildIndexes()
     }
 
     // Load dead letter queue
-    loadDeadLetterFromStorage();
+    loadDeadLetterFromStorage()
     if (deadLetterQueue.length > 0) {
       console.log(
-        "[OfflineSync] Dead letter queue:",
+        '[OfflineSync] Dead letter queue:',
         deadLetterQueue.length,
-        "operations"
-      );
+        'operations'
+      )
     }
 
     // Prune expired operations on load
-    await pruneExpiredOperations();
-    await enforceQueueSizeLimit();
+    await pruneExpiredOperations()
+    await enforceQueueSizeLimit()
   } catch (error) {
-    console.error("[OfflineSync] Failed to load queue from storage:", error);
-    pendingOperations = [];
-    rebuildIndexes(); // Clear indexes when queue is cleared
+    console.error('[OfflineSync] Failed to load queue from storage:', error)
+    pendingOperations = []
+    rebuildIndexes() // Clear indexes when queue is cleared
   }
 }
 
-async function saveQueueToStorage(): Promise<void> {
+async function saveQueueToStorage (): Promise<void> {
   try {
     // Only persist non-discarded operations
     // Synchronous write to MMKV
-    const toSave = pendingOperations.filter((op) => op.status !== "discarded");
-    setSyncJSON(STORAGE_KEY, toSave);
+    const toSave = pendingOperations.filter(op => op.status !== 'discarded')
+    setSyncJSON(STORAGE_KEY, toSave)
   } catch (error) {
-    console.error("[OfflineSync] Failed to save queue to storage:", error);
+    console.error('[OfflineSync] Failed to save queue to storage:', error)
   }
 }
 
@@ -1867,11 +2001,11 @@ async function saveQueueToStorage(): Promise<void> {
 // ============================================================================
 
 export interface ReconciliationResult {
-  success: boolean;
-  itemsAdded: number;
-  itemsRemoved: number;
-  itemsUpdated: number;
-  errors: string[];
+  success: boolean
+  itemsAdded: number
+  itemsRemoved: number
+  itemsUpdated: number
+  errors: string[]
 }
 
 /**
@@ -1884,7 +2018,7 @@ export interface ReconciliationResult {
  * @param getLocalOrder - Function to get local order state
  * @param updateLocalOrder - Function to update local order with backend state
  */
-export async function reconcileOrderWithBackend(
+export async function reconcileOrderWithBackend (
   supabase: any,
   localOrderId: string,
   dbOrderId: string,
@@ -1896,117 +2030,123 @@ export async function reconcileOrderWithBackend(
     itemsAdded: 0,
     itemsRemoved: 0,
     itemsUpdated: 0,
-    errors: [],
-  };
+    errors: []
+  }
 
   if (!supabase || !dbOrderId) {
-    result.errors.push("Missing Supabase client or order ID");
-    return result;
+    result.errors.push('Missing Supabase client or order ID')
+    return result
   }
 
   try {
-    console.log("[Reconciliation] Starting reconciliation for order:", dbOrderId);
+    console.log(
+      '[Reconciliation] Starting reconciliation for order:',
+      dbOrderId
+    )
 
     // Fetch backend order state
-    const { data, error } = await supabase.rpc("get_order_details", {
-      p_order_id: dbOrderId,
-    });
+    const { data, error } = await supabase.rpc('get_order_details', {
+      p_order_id: dbOrderId
+    })
 
     if (error) {
-      result.errors.push(`Failed to fetch backend order: ${error.message}`);
-      return result;
+      result.errors.push(`Failed to fetch backend order: ${error.message}`)
+      return result
     }
 
     if (!data) {
-      result.errors.push("No order data returned from backend");
-      return result;
+      result.errors.push('No order data returned from backend')
+      return result
     }
 
-    const localOrder = getLocalOrder();
+    const localOrder = getLocalOrder()
     if (!localOrder) {
-      result.errors.push("Local order not found");
-      return result;
+      result.errors.push('Local order not found')
+      return result
     }
 
     // ═══════════════════════════════════════════════════════════════════════
     // Phase 6: Version-based reconciliation
     // ═══════════════════════════════════════════════════════════════════════
-    const localVersion = (localOrder as any).sync_version ?? 0;
-    const serverVersion = data.sync_version ?? 0;
+    const localVersion = (localOrder as any).sync_version ?? 0
+    const serverVersion = data.sync_version ?? 0
 
     // Check for pending local changes
     const hasPendingLocalChanges =
-      localOrder.sync_status === "pending" ||
-      localOrder.items?.some((item: any) => item.sync_status === "pending");
+      localOrder.sync_status === 'pending' ||
+      localOrder.items?.some((item: any) => item.sync_status === 'pending')
 
     // Track version mismatch for reporting
     if (serverVersion > localVersion) {
       console.log(
-        "[Reconciliation] Version mismatch - local:",
+        '[Reconciliation] Version mismatch - local:',
         localVersion,
-        "server:",
+        'server:',
         serverVersion
-      );
+      )
 
       if (hasPendingLocalChanges) {
         // Check if we can merge (non-overlapping changes)
-        const localPendingItems = localOrder.items?.filter(
-          (item: any) => item.sync_status === "pending" || !item.db_order_item_id
-        ) || [];
+        const localPendingItems =
+          localOrder.items?.filter(
+            (item: any) =>
+              item.sync_status === 'pending' || !item.db_order_item_id
+          ) || []
 
         const serverItemIds = new Set(
           (data.items || []).map((item: any) => item.id)
-        );
+        )
 
         // Local pending items that don't exist on server can be pushed
         const nonConflictingLocalItems = localPendingItems.filter(
-          (item: any) => !item.db_order_item_id || !serverItemIds.has(item.db_order_item_id)
-        );
+          (item: any) =>
+            !item.db_order_item_id || !serverItemIds.has(item.db_order_item_id)
+        )
 
         if (nonConflictingLocalItems.length > 0) {
           console.log(
-            "[Reconciliation] Merge possible - pushing",
+            '[Reconciliation] Merge possible - pushing',
             nonConflictingLocalItems.length,
-            "non-conflicting local items"
-          );
+            'non-conflicting local items'
+          )
           // These will be synced in the next queue processing
         }
       }
     } else if (serverVersion < localVersion && !hasPendingLocalChanges) {
       console.log(
-        "[Reconciliation] Local version newer - skipping server merge"
-      );
+        '[Reconciliation] Local version newer - skipping server merge'
+      )
       // Local is newer and synced - no need to pull from server
-      result.success = true;
-      return result;
+      result.success = true
+      return result
     }
 
     // Build a map of backend items by their ID
-    const backendItemsMap = new Map<string, any>();
-    (data.items || []).forEach((item: any) => {
-      backendItemsMap.set(item.id, item);
-    });
+    const backendItemsMap = new Map<string, any>()
+    ;(data.items || []).forEach((item: any) => {
+      backendItemsMap.set(item.id, item)
+    })
 
     // Build a map of local items by their db_order_item_id
-    const localItemsMap = new Map<string, any>();
-    (localOrder.items || []).forEach((item: any) => {
+    const localItemsMap = new Map<string, any>()
+    ;(localOrder.items || []).forEach((item: any) => {
       if (item.db_order_item_id) {
-        localItemsMap.set(item.db_order_item_id, item);
+        localItemsMap.set(item.db_order_item_id, item)
       }
-    });
+    })
 
     // Detect differences
-    const itemsToAdd: any[] = [];
-    const itemsToUpdate: any[] = [];
-    const itemIdsToRemove = new Set<string>();
+    const itemsToAdd: any[] = []
+    const itemsToUpdate: any[] = []
+    const itemIdsToRemove = new Set<string>()
 
     // Check backend items against local
     backendItemsMap.forEach((backendItem, backendItemId) => {
-      const localItem = localItemsMap.get(backendItemId);
+      const localItem = localItemsMap.get(backendItemId)
       if (!localItem) {
         // Item in backend but not local - add it
-        itemsToAdd.push(backendItem);
-        result.itemsAdded++;
+        itemsToAdd.push(backendItem)
+        result.itemsAdded++
       } else {
         // Item exists in both - check for updates
         if (
@@ -2018,51 +2158,68 @@ export async function reconcileOrderWithBackend(
             updates: {
               quantity: backendItem.quantity,
               kitchen_status: backendItem.kitchen_status,
-              item_status: backendItem.item_status,
-            },
-          });
-          result.itemsUpdated++;
+              item_status: backendItem.item_status
+            }
+          })
+          result.itemsUpdated++
         }
       }
-    });
+    })
 
     // Check local items that are not in backend (should be removed)
     localItemsMap.forEach((localItem, dbItemId) => {
       if (!backendItemsMap.has(dbItemId)) {
         // Item in local but not backend - mark for removal
-        itemIdsToRemove.add(localItem.id);
-        result.itemsRemoved++;
+        itemIdsToRemove.add(localItem.id)
+        result.itemsRemoved++
       }
-    });
+    })
 
     // Apply reconciliation updates
     const reconciledItems = localOrder.items
       .filter((item: any) => !itemIdsToRemove.has(item.id))
       .map((item: any) => {
-        const update = itemsToUpdate.find((u) => u.localId === item.id);
+        const update = itemsToUpdate.find(u => u.localId === item.id)
         if (update) {
-          return { ...item, ...update.updates, sync_status: "synced" as const };
+          return { ...item, ...update.updates, sync_status: 'synced' as const }
         }
         // Mark existing items as synced
         return item.db_order_item_id
-          ? { ...item, sync_status: "synced" as const }
-          : item;
-      });
+          ? { ...item, sync_status: 'synced' as const }
+          : item
+      })
 
     // Add new items from backend
-    itemsToAdd.forEach((backendItem) => {
+    itemsToAdd.forEach(backendItem => {
       reconciledItems.push({
         id: `sync_${backendItem.id}`,
         db_order_item_id: backendItem.id,
-        menuItemId: backendItem.menu_item_id || "",
+        menuItemId: backendItem.menu_item_id || '',
         // For open items, use open_item_name; otherwise use item_name
-        name: backendItem.is_open_item ? (backendItem.open_item_name || "Open Item") : (backendItem.item_name || "Unknown Item"),
+        name: backendItem.is_open_item
+          ? backendItem.open_item_name || 'Open Item'
+          : backendItem.item_name || 'Unknown Item',
         quantity: backendItem.quantity || 1,
         // For open items, use open_item_price; otherwise use unit_price
-        price: backendItem.is_open_item ? (backendItem.open_item_price || 0) : (backendItem.unit_price || 0),
-        unitPrice: backendItem.is_open_item ? (backendItem.open_item_price || 0) : (backendItem.unit_price || 0),
-        cashPrice: backendItem.cash_price || backendItem.cash_unit_price || (backendItem.is_open_item ? backendItem.open_item_price : backendItem.unit_price) || 0,
-        originalPrice: backendItem.cash_price || (backendItem.is_open_item ? backendItem.open_item_price : backendItem.unit_price) || 0,
+        price: backendItem.is_open_item
+          ? backendItem.open_item_price || 0
+          : backendItem.unit_price || 0,
+        unitPrice: backendItem.is_open_item
+          ? backendItem.open_item_price || 0
+          : backendItem.unit_price || 0,
+        cashPrice:
+          backendItem.cash_price ||
+          backendItem.cash_unit_price ||
+          (backendItem.is_open_item
+            ? backendItem.open_item_price
+            : backendItem.unit_price) ||
+          0,
+        originalPrice:
+          backendItem.cash_price ||
+          (backendItem.is_open_item
+            ? backendItem.open_item_price
+            : backendItem.unit_price) ||
+          0,
         paidQuantity: backendItem.paid_quantity || 0,
         // Open item support
         is_open_item: backendItem.is_open_item || false,
@@ -2074,24 +2231,33 @@ export async function reconcileOrderWithBackend(
         // Carry seat assignment from backend so the bill seat pill survives
         // offline reconciliation (matches utils/orderTransformers.ts:250).
         seatNumber: backendItem.seat_number ?? null,
-        category_name: backendItem.category_name || "Uncategorized",
+        category_name: backendItem.category_name || 'Uncategorized',
         is_voided: backendItem.is_voided || false,
-        sync_status: "synced" as const,
+        sync_status: 'synced' as const,
         customizations: {
           notes: backendItem.special_instructions || undefined,
-          modifiers: [], // Would need more data to populate
+          modifiers: [] // Would need more data to populate
         },
         // Financial fields
-        subtotal: backendItem.subtotal || ((backendItem.is_open_item ? backendItem.open_item_price : backendItem.unit_price) * backendItem.quantity) || 0,
-        cashSubtotal: backendItem.cash_subtotal || (backendItem.cash_price * backendItem.quantity) || 0,
+        subtotal:
+          backendItem.subtotal ||
+          (backendItem.is_open_item
+            ? backendItem.open_item_price
+            : backendItem.unit_price) * backendItem.quantity ||
+          0,
+        cashSubtotal:
+          backendItem.cash_subtotal ||
+          backendItem.cash_price * backendItem.quantity ||
+          0,
         taxRate: backendItem.tax_rate || 0,
         taxAmount: backendItem.tax_amount || 0,
         cashTaxAmount: backendItem.cash_tax_amount || 0,
         // Discount distribution fields
         discount_amount: backendItem.discount_amount ?? 0,
-        discount_cash_amount: backendItem.discount_cash_amount ?? backendItem.discount_amount ?? 0,
-      });
-    });
+        discount_cash_amount:
+          backendItem.discount_cash_amount ?? backendItem.discount_amount ?? 0
+      })
+    })
 
     // Update local order with reconciled state
     // Phase 6: Include sync_version in reconciled state
@@ -2103,39 +2269,44 @@ export async function reconcileOrderWithBackend(
       sync_version: serverVersion, // Phase 6: Update local version to match server
       amount_paid: data.amount_paid,
       amount_due: data.amount_due,
-      cash_amount_due: data.cash_amount_due,
-    });
+      cash_amount_due: data.cash_amount_due
+    })
 
-    result.success = true;
-    console.log("[Reconciliation] Complete:", result, "- sync_version updated to:", serverVersion);
+    result.success = true
+    console.log(
+      '[Reconciliation] Complete:',
+      result,
+      '- sync_version updated to:',
+      serverVersion
+    )
 
-    return result;
+    return result
   } catch (err: any) {
-    result.errors.push(`Reconciliation error: ${err?.message || "Unknown"}`);
-    console.error("[Reconciliation] Error:", err);
-    return result;
+    result.errors.push(`Reconciliation error: ${err?.message || 'Unknown'}`)
+    console.error('[Reconciliation] Error:', err)
+    return result
   }
 }
 
 /**
  * Trigger reconciliation for all orders with failed sync status.
  */
-export async function reconcileFailedOrders(
+export async function reconcileFailedOrders (
   supabase: any,
   getOrdersWithFailedSyncs: () => Array<{ localId: string; dbId: string }>,
   getLocalOrder: (id: string) => any,
   updateLocalOrder: (id: string, updates: any) => void
 ): Promise<void> {
-  const failedOrders = getOrdersWithFailedSyncs();
+  const failedOrders = getOrdersWithFailedSyncs()
 
   if (failedOrders.length === 0) {
-    console.log("[Reconciliation] No orders with failed syncs");
-    return;
+    console.log('[Reconciliation] No orders with failed syncs')
+    return
   }
 
   console.log(
     `[Reconciliation] Reconciling ${failedOrders.length} orders with failed syncs`
-  );
+  )
 
   for (const order of failedOrders) {
     await reconcileOrderWithBackend(
@@ -2143,7 +2314,7 @@ export async function reconcileFailedOrders(
       order.localId,
       order.dbId,
       () => getLocalOrder(order.localId),
-      (updates) => updateLocalOrder(order.localId, updates)
-    );
+      updates => updateLocalOrder(order.localId, updates)
+    )
   }
 }

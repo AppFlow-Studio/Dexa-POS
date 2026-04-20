@@ -1,4 +1,5 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import type { CFDCartItem } from '@/types/cfd.types'
 import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
@@ -12,14 +13,13 @@ import {
   View
 } from 'react-native'
 import Animated, {
-  LinearTransition,
   cancelAnimation,
+  LinearTransition,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming
 } from 'react-native-reanimated'
-import { iosOnly } from '@/lib/safeAnimations'
 
 export function OrderingScreen () {
   const {
@@ -605,11 +605,14 @@ function RotatingImagePanel ({
     fadeOpacity.value = 0
   }, [images, fadeOpacity])
 
-  const advanceIndex = React.useCallback((next: number) => {
-    currentIndexRef.current = next
-    setDisplayIndex(next)
-    fadeOpacity.value = 0
-  }, [fadeOpacity])
+  const advanceIndex = React.useCallback(
+    (next: number) => {
+      currentIndexRef.current = next
+      setDisplayIndex(next)
+      fadeOpacity.value = 0
+    },
+    [fadeOpacity]
+  )
 
   useEffect(() => {
     if (!images || images.length <= 1) return
@@ -692,9 +695,7 @@ const CartItemRow = React.memo(function CartItemRow ({
         backgroundColor: colors.screen,
         paddingHorizontal: 8,
         paddingVertical: 8,
-        marginBottom: 0,
-        borderBottomWidth: isLast ? 0 : 1,
-        borderBottomColor: colors.border
+        marginBottom: 0
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
@@ -857,6 +858,16 @@ const CartItemRow = React.memo(function CartItemRow ({
           )}
         </View>
       </View>
+      {!isLast && (
+        <View
+          style={{
+            height: StyleSheet.hairlineWidth,
+            backgroundColor: colors.border + '55',
+            marginTop: 8,
+            marginLeft: 40
+          }}
+        />
+      )}
     </Animated.View>
   )
 })

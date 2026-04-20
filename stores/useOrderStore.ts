@@ -3,7 +3,11 @@ import {
   getKitchenSentStatus,
   getOrderSentStatus
 } from '@/lib/kitchenStatusUtils'
-import { createLazyPersistStorage, getSyncJSON, setSyncJSON } from '@/lib/storage'
+import {
+  createLazyPersistStorage,
+  getSyncJSON,
+  setSyncJSON
+} from '@/lib/storage'
 import { toastService } from '@/lib/toastService'
 import {
   CartItem,
@@ -31,10 +35,7 @@ import type { Station } from '@/types/station'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { current, freeze, original } from 'immer'
 import { create } from 'zustand'
-import {
-  persist,
-  subscribeWithSelector
-} from 'zustand/middleware'
+import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { useCoursingStore } from './useCoursingStore'
 import { useEmployeeStore } from './useEmployeeStore'
@@ -3661,9 +3662,7 @@ export const useOrderStore = create<OrderState>()(
                               // Preserve seat from broadcast if set, else from
                               // local pending item (may not have synced yet).
                               seatNumber:
-                                si.seatNumber ??
-                                pendingItem.seatNumber ??
-                                null,
+                                si.seatNumber ?? pendingItem.seatNumber ?? null,
                               ...(localKRank > broadcastKRank
                                 ? {
                                     kitchen_status: pendingItem.kitchen_status,
@@ -6502,10 +6501,23 @@ export const useOrderStore = create<OrderState>()(
                   supabase,
                   dbItemId,
                   latestQuantity
-                )
+                ).then(response => ({ response, latestQuantity }))
               })
-              .then(response => {
+              .then(({ response, latestQuantity }) => {
                 if (response.data?.success) {
+                  // Ignore stale response if local quantity has advanced further.
+                  // This prevents visual rollback when users increment repeatedly
+                  // while an earlier quantity sync is still in flight.
+                  const currentQuantity =
+                    get().ordersById[activeOrderId]?.items.find(
+                      i => i.id === itemId
+                    )?.quantity ?? latestQuantity
+                  const isStaleResponse = currentQuantity !== latestQuantity
+
+                  if (isStaleResponse) {
+                    return true
+                  }
+
                   get().applyBackendItemData(itemId, {
                     quantity: response.data.quantity,
                     card_subtotal: response.data.card_subtotal,
@@ -6527,16 +6539,28 @@ export const useOrderStore = create<OrderState>()(
               .catch(async err => {
                 console.error('[incrementItemQuantity] sync failed:', err)
                 useSyncStatusStore.getState().setSyncStatus(itemId, 'synced') // unblock kitchen send
+                const latestQueuedQuantity =
+                  get().ordersById[activeOrderId]?.items.find(
+                    i => i.id === itemId
+                  )?.quantity ?? newQuantity
                 await queueOperation({
                   type: 'update_item_quantity',
-                  params: { orderItemId: dbItemId, quantity: newQuantity },
+                  params: {
+                    orderItemId: dbItemId,
+                    quantity: latestQueuedQuantity
+                  },
                   localOrderId: activeOrderId,
                   localItemId: itemId
                 })
                 return false
               })
               .finally(() => {
-                get().unregisterSyncOperation(itemId)
+                // Only clear if this promise is still the latest one for this item.
+                if (
+                  pendingSyncOperations.get(itemId) === quantityUpdatePromise
+                ) {
+                  get().unregisterSyncOperation(itemId)
+                }
               })
             get().registerSyncOperation(itemId, quantityUpdatePromise)
           },
@@ -6770,7 +6794,8 @@ export const useOrderStore = create<OrderState>()(
                     service_location_id: order.service_location_id,
                     db_order_id: order.db_order_id,
                     order_type: details.order_type,
-                    delivery_address: details.delivery_address
+                    delivery_address: details.delivery_address,
+                    notes: details.notes
                   },
                   activeOrderId
                 )
@@ -6865,6 +6890,20 @@ export const useOrderStore = create<OrderState>()(
                 else syncNeeded = true
               } catch (error) {
                 console.error('Failed to sync delivery_address:', error)
+              }
+            }
+
+            // Sync order notes to orders.special_instructions
+            if (details.notes !== undefined) {
+              try {
+                const { error } = await supabase
+                  .from('orders')
+                  .update({ special_instructions: details.notes || null })
+                  .eq('id', order.db_order_id)
+                if (error) console.error('Failed to sync notes:', error)
+                else syncNeeded = true
+              } catch (error) {
+                console.error('Failed to sync notes:', error)
               }
             }
 
@@ -8044,11 +8083,11 @@ export const useOrderStore = create<OrderState>()(
               currentOrder.order_status = newOrderStatus
               // Set opened_at timestamp when transitioning
               currentOrder.opened_at = newOpenedAt
-              // Optimistic update — derive from actual payments (handles Partial)
-              currentOrder.paid_status = calculatePaidStatus(
-                newPayments,
-                totals.total_amount
-              )
+              // Optimistic update — cash-priced full settlement should read Paid
+              // even when card-equivalent reconciliation still depends on cashSavings.
+              currentOrder.paid_status = isFullyPaid
+                ? ('Paid' as const)
+                : calculatePaidStatus(newPayments, totals.total_amount)
               currentOrder.check_status = currentOrder.check_status || 'Opened'
               // Sync amount_paid/amount_due to prevent stale values
               currentOrder.amount_paid =
@@ -8420,7 +8459,8 @@ export const useOrderStore = create<OrderState>()(
            */
           clearInactiveOrders: () => {
             // Skip pruning if user just navigated — avoid store mutations mid-transition
-            const { isRecentlyNavigated } = require('@/lib/rootNavigation') as typeof import('@/lib/rootNavigation')
+            const { isRecentlyNavigated } =
+              require('@/lib/rootNavigation') as typeof import('@/lib/rootNavigation')
             if (isRecentlyNavigated()) return
 
             const state = get()

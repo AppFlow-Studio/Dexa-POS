@@ -14,6 +14,56 @@ export interface LoyaltyEarnResult {
   can_redeem_now?: boolean | null
 }
 
+function mapToLoyaltyEarnResult (raw: any): LoyaltyEarnResult {
+  return {
+    program_name: raw?.program_name ?? raw?.programName ?? raw?.name ?? '',
+    program_type: raw?.program_type ?? raw?.programType ?? raw?.type ?? '',
+    earned: Number(raw?.earned ?? 0),
+    new_balance: Number(raw?.new_balance ?? raw?.newBalance ?? 0),
+    reward_unlocked: Boolean(raw?.reward_unlocked ?? raw?.rewardUnlocked),
+    progress_percent:
+      raw?.progress_percent ?? raw?.progressPercent ?? raw?.progress ?? null,
+    remaining_to_reward:
+      raw?.remaining_to_reward ?? raw?.remainingToReward ?? null,
+    reward_threshold: raw?.reward_threshold ?? raw?.rewardThreshold ?? null,
+    reward_label: raw?.reward_label ?? raw?.rewardLabel ?? null,
+    can_redeem_now: raw?.can_redeem_now ?? raw?.canRedeemNow ?? null
+  }
+}
+
+function normalizeEarnPayload (data: unknown): LoyaltyEarnResult[] {
+  if (!data) return []
+
+  let payload: any = data
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload)
+    } catch {
+      return []
+    }
+  }
+
+  if (Array.isArray(payload)) {
+    return payload.map(mapToLoyaltyEarnResult)
+  }
+
+  if (payload && typeof payload === 'object') {
+    const candidates = [
+      payload.results,
+      payload.data,
+      payload.programs,
+      payload.earnings
+    ]
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return candidate.map(mapToLoyaltyEarnResult)
+      }
+    }
+  }
+
+  return []
+}
+
 /**
  * Check if a merchant has any active loyalty programs.
  * Used to gate the loyalty prompt after payment.
@@ -83,9 +133,12 @@ export async function earnLoyaltyForOrder (
     p_order_id: dbOrderId
   })
   if (error) throw error
-  if (!Array.isArray(data)) {
-    console.warn('[Loyalty] loyalty_earn_on_order returned non-array:', data)
-    return []
+  const normalized = normalizeEarnPayload(data)
+  if (normalized.length === 0 && data) {
+    console.warn(
+      '[Loyalty] loyalty_earn_on_order returned unrecognized payload:',
+      data
+    )
   }
-  return (data as LoyaltyEarnResult[]) ?? []
+  return normalized
 }
