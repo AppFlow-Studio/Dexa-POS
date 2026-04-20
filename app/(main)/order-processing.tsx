@@ -26,7 +26,7 @@ import {
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { CheckCircle2, Search, X } from 'lucide-react-native'
+import { CheckCircle2, Plus, Search, X } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
@@ -425,21 +425,22 @@ const OrderProcessing = () => {
               rightToolbarSlot={
                 <TouchableOpacity
                   onPress={() => setIsCustomItemModuleOpen(true)}
-                  className='flex-row items-center rounded-lg px-3 py-2.5 justify-start'
+                  className='flex-row items-center rounded-lg px-3 py-2.5 gap-2'
                   style={{
+                    backgroundColor: colors.teal,
                     borderWidth: 1,
-                    borderColor: colors.teal + '45',
-                    backgroundColor: colors.teal + '15'
+                    borderColor: colors.teal
                   }}
                 >
+                  <Plus size={16} color='#000000' strokeWidth={2.5} />
                   <Text
                     style={{
-                      color: colors.teal,
+                      color: '#000000',
                       fontSize: 12,
                       fontWeight: '700'
                     }}
                   >
-                    Create Custom Item
+                    Custom Item
                   </Text>
                 </TouchableOpacity>
               }
@@ -619,7 +620,7 @@ const OrderProcessing = () => {
           <Pressable
             onPress={() => {}}
             style={{
-              width: 300,
+              width: 500,
               maxWidth: '92%',
               alignSelf: 'center',
               maxHeight: '92%',

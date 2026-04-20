@@ -3,6 +3,11 @@ import OptimizedListImage, {
 } from '@/components/ui/OptimizedListImage'
 import { useToast } from '@/contexts/ToastContext'
 import { resolveMenuItemImageSource } from '@/lib/menuItemImageSource'
+import {
+  extractMenuItemPlaceholderIconKey,
+  getMenuItemPlaceholderIcon,
+  type MenuItemPlaceholderIconKey
+} from '@/lib/menuItemPlaceholderIcon'
 import { colors } from '@/lib/theme'
 import { MenuItemType } from '@/lib/types'
 import {
@@ -13,7 +18,6 @@ import {
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
-import { Utensils } from 'lucide-react-native'
 import React, { useCallback, useMemo } from 'react'
 import {
   ImageSourcePropType,
@@ -123,11 +127,11 @@ const styles = StyleSheet.create({
   cashPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(6, 78, 59, 0.9)',
+    backgroundColor: 'rgba(17, 24, 39, 0.86)',
     borderWidth: 1,
-    borderColor: 'rgba(167, 243, 208, 0.35)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
     borderRadius: 5,
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
     paddingVertical: 1
   },
   cashLabel: {
@@ -140,7 +144,7 @@ const styles = StyleSheet.create({
   cashAmount: {
     fontSize: 8,
     fontWeight: '700',
-    color: '#D1FAE5'
+    color: colors.teal
   },
   // Divider between image and content
   divider: {
@@ -149,11 +153,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 10
   }
 })
-
-const PlaceholderIcon = React.memo(() => (
-  <Utensils color={`${colors.label}60`} size={16} />
-))
-PlaceholderIcon.displayName = 'PlaceholderIcon'
 
 interface MenuItemProps {
   item: MenuItemType
@@ -249,6 +248,14 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const resolvedImageSource =
     imageSource ?? resolveMenuItemImageSource(item.image)
+  const PlaceholderIcon = useMemo(() => {
+    const iconKey =
+      item.placeholderIcon ??
+      extractMenuItemPlaceholderIconKey(item.cardBgColor)
+    return getMenuItemPlaceholderIcon(
+      iconKey as MenuItemPlaceholderIconKey | undefined
+    )
+  }, [item.placeholderIcon, item.cardBgColor])
 
   return (
     <TouchableOpacity
@@ -302,7 +309,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
             />
           ) : (
             <View style={styles.placeholderContainer}>
-              <PlaceholderIcon />
+              <PlaceholderIcon
+                color={`${colors.label}72`}
+                size={26}
+                strokeWidth={2}
+              />
             </View>
           )}
         </View>
@@ -334,6 +345,8 @@ export default React.memo(MenuItem, (prevProps, nextProps) => {
     prevProps.item.stockQuantity === nextProps.item.stockQuantity &&
     prevProps.item.name === nextProps.item.name &&
     prevProps.item.image === nextProps.item.image &&
+    prevProps.item.cardBgColor === nextProps.item.cardBgColor &&
+    prevProps.item.placeholderIcon === nextProps.item.placeholderIcon &&
     prevProps.categoryId === nextProps.categoryId &&
     prevProps.imageSource === nextProps.imageSource &&
     prevProps.imagePriority === nextProps.imagePriority

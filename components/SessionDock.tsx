@@ -203,7 +203,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 width: 30,
                 height: 30,
                 borderRadius: 21,
-                backgroundColor: '#2DD4BF',
+                backgroundColor: colors.teal,
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
@@ -250,7 +250,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     width: 46,
                     height: 46,
                     borderRadius: 23,
-                    backgroundColor: '#2DD4BF',
+                    backgroundColor: colors.teal,
                     alignItems: 'center',
                     justifyContent: 'center'
                   }}
