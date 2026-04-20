@@ -751,7 +751,7 @@ const BillSectionContent = ({
               style={{ color: colors.heading, fontWeight: '700', fontSize: 18 }}
             >
               {activeOrderDisplayNumber
-                ? `Order #${activeOrderDisplayNumber}`
+                ? `Order ${activeOrderDisplayNumber}`
                 : 'New Order'}
             </Text>
             <TouchableOpacity
