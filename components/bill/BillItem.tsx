@@ -428,6 +428,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     (item.customizations.modifiers &&
       item.customizations.modifiers.length > 0) ||
     item.customizations.notes
+<<<<<<< jaffal-dev-2
 
   const baseLineTotal = item.price * item.quantity
   const effectiveLineTotal =
@@ -439,6 +440,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       (typeof item.discount_amount === 'number' &&
         item.discount_amount > 0.005) ||
       !!item.appliedDiscount)
+=======
+>>>>>>> Table-And-Order-Syncing
 
   const effectiveIsActive =
     isActive || isModifierActive || item.isDraft === true
@@ -696,6 +699,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     marginLeft: 6
                   }}
                 >
+<<<<<<< jaffal-dev-2
                   {hasVisibleDiscount && (
                     <Text
                       style={{
@@ -708,6 +712,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       ${baseLineTotal.toFixed(2)}
                     </Text>
                   )}
+=======
+>>>>>>> Table-And-Order-Syncing
                   <Text
                     style={{
                       fontSize: 11,
@@ -716,6 +722,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       textDecorationLine: isVoided ? 'line-through' : 'none'
                     }}
                   >
+<<<<<<< jaffal-dev-2
                     ${effectiveLineTotal.toFixed(2)}
                   </Text>
                   {hasVisibleDiscount && itemDiscountAmount > 0.005 && (
@@ -729,6 +736,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       -${itemDiscountAmount.toFixed(2)}
                     </Text>
                   )}
+=======
+                    ${(item.price * item.quantity).toFixed(2)}
+                  </Text>
+>>>>>>> Table-And-Order-Syncing
                 </View>
               </View>
 
