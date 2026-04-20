@@ -287,9 +287,7 @@ const OrderDetailsComponent: React.FC<{
     <View className='px-3 pb-2 z-20'>
       <View className='flex-row w-full gap-x-2'>
         <View
-          className={
-            isDineInSelected || isDeliverySelected ? 'w-[56%]' : 'w-full'
-          }
+          style={{ flex: 1 }}
         >
           <TouchableOpacity
             onPress={openSheet}
@@ -332,7 +330,7 @@ const OrderDetailsComponent: React.FC<{
         </View>
 
         {isDineInSelected && (
-          <View className='w-[44%]'>
+          <View style={{ flex: 1 }}>
             <TouchableOpacity
               onPress={onOpenTableSelector}
               className='w-full rounded-lg h-12 px-2.5 flex-row items-center gap-2'
@@ -359,7 +357,7 @@ const OrderDetailsComponent: React.FC<{
         )}
 
         {isDeliverySelected && (
-          <View className='w-[44%] h-12' style={{ zIndex: 50 }}>
+          <View style={{ flex: 1, height: 48, zIndex: 50 }}>
             <View
               className='w-full rounded-lg h-12 px-2.5 flex-row items-center'
               style={{
@@ -522,7 +520,7 @@ const OrderDetailsComponent: React.FC<{
                 </View>
               )
             })()}
-          {paymentStatus &&
+          {paymentStatus && paymentStatus !== 'Pending' &&
             (() => {
               const cfg: Record<
                 string,

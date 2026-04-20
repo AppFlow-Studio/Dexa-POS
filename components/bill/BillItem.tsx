@@ -31,6 +31,7 @@ interface BillItemProps {
 
 const DELETE_BUTTON_WIDTH = 90
 const INCREMENT_BUTTON_WIDTH = 90
+const PRICE_COLUMN_WIDTH = 72
 
 // Type for modifier structure
 interface ModifierDisplay {
@@ -43,8 +44,11 @@ interface ModifierDisplay {
  * ModifiersList - Memoized component for rendering item modifiers
  * PERFORMANCE: Extracted to avoid recreating nested maps on every render
  */
-const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
-  ({ modifiers }) => (
+const ModifiersList = React.memo<{
+  modifiers: ModifierDisplay[]
+  isVoided?: boolean
+}>(
+  ({ modifiers, isVoided = false }) => (
     <View>
       {modifiers.map(
         (modifier, index) =>
@@ -55,6 +59,7 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
               className='flex-row items-center my-0.5'
               style={{
                 paddingLeft: 4,
+                paddingRight: 12,
                 borderLeftColor: colors.border,
                 borderLeftWidth: 2,
                 paddingVertical: 1
@@ -69,14 +74,20 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
               >
                 {option.isNo ? `NO ${option.name}` : option.name}
               </Text>
-              {!option.isNo && option.price > 0 && (
-                <Text
-                  style={{ fontSize: 10, marginLeft: 4 }}
-                  className='text-teal-500'
-                >
-                  +${option.price.toFixed(2)}
-                </Text>
-              )}
+              <Text
+                style={{
+                  width: PRICE_COLUMN_WIDTH,
+                  fontSize: 10,
+                  textAlign: 'right',
+                  color: isVoided ? colors.muted : colors.teal,
+                  opacity: 0.5,
+                  textDecorationLine: isVoided ? 'line-through' : 'none'
+                }}
+              >
+                {!option.isNo && option.price > 0
+                  ? `+$${option.price.toFixed(2)}`
+                  : ''}
+              </Text>
             </View>
           ))
       )}
@@ -101,7 +112,7 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
       }
     }
 
-    return true
+    return prev.isVoided === next.isVoided
   }
 )
 
@@ -665,17 +676,26 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   </View>
                 )}
 
-                {/* Price */}
-                <Text
+                {/* Price + modifier upcharge */}
+                <View
                   style={{
-                    fontSize: 11,
-                    fontWeight: '600',
-                    color: isVoided ? colors.muted : colors.teal,
-                    textDecorationLine: isVoided ? 'line-through' : 'none'
+                    width: PRICE_COLUMN_WIDTH,
+                    alignItems: 'flex-end',
+                    justifyContent: 'flex-end',
+                    marginLeft: 6
                   }}
                 >
-                  ${(item.price * item.quantity).toFixed(2)}
-                </Text>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '600',
+                      color: isVoided ? colors.muted : colors.teal,
+                      textDecorationLine: isVoided ? 'line-through' : 'none'
+                    }}
+                  >
+                    ${(item.price * item.quantity).toFixed(2)}
+                  </Text>
+                </View>
               </View>
 
               {/* Modifiers / Notes — indented under item name */}
@@ -689,6 +709,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     item.customizations.modifiers.length > 0 && (
                       <ModifiersList
                         modifiers={item.customizations.modifiers}
+                        isVoided={isVoided}
                       />
                     )}
                   {item.customizations.notes && (

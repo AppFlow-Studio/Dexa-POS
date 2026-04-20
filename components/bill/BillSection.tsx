@@ -30,6 +30,7 @@ import {
   Clock,
   CreditCard,
   MoreHorizontal,
+  NotebookPen,
   Plus,
   Printer,
   RefreshCw,
@@ -89,13 +90,16 @@ const BillItemsAndTotals = React.memo(
         />
         <View className='px-3 pb-1'>
           <View
-            className='h-9 px-3 rounded-lg justify-center mb-1'
+            className='h-9 rounded-lg flex-row items-center mb-1'
             style={{
               backgroundColor: colors.panel,
               borderWidth: 1,
-              borderColor: colors.border
+              borderColor: colors.border,
+              paddingHorizontal: 10,
+              gap: 7
             }}
           >
+            <NotebookPen size={13} color={colors.muted} />
             <TextInput
               value={orderNote ?? ''}
               onChangeText={onChangeOrderNote}
@@ -107,6 +111,7 @@ const BillItemsAndTotals = React.memo(
               numberOfLines={1}
               textAlignVertical='center'
               style={{
+                flex: 1,
                 color: colors.heading,
                 fontSize: 12,
                 lineHeight: 16,
