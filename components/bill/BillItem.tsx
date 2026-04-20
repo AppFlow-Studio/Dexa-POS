@@ -52,7 +52,7 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
           modifier.options.map((option, optionIndex) => (
             <View
               key={`mod-${index}-opt-${optionIndex}`}
-              className='flex-row items-center gap-1 my-0.5'
+              className='flex-row items-center my-0.5'
               style={{
                 paddingLeft: 4,
                 borderLeftColor: colors.border,
@@ -63,13 +63,17 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
               <Text
                 style={{
                   fontSize: 10,
-                  color: option.isNo ? colors.danger : '#E0E0E0'
+                  color: option.isNo ? colors.danger : '#E0E0E0',
+                  flex: 1
                 }}
               >
                 {option.isNo ? `NO ${option.name}` : option.name}
               </Text>
               {!option.isNo && option.price > 0 && (
-                <Text style={{ fontSize: 10 }} className='text-teal-500'>
+                <Text
+                  style={{ fontSize: 10, marginLeft: 4 }}
+                  className='text-teal-500'
+                >
                   +${option.price.toFixed(2)}
                 </Text>
               )}
