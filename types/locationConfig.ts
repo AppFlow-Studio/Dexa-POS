@@ -91,6 +91,13 @@ export interface OnlineOrderingConfig {
 export interface TipsConfig {
   presetPercentages: number[]
   openDrawerOnTip: boolean
+  allowCustom: boolean
+  maxTipPercentage: number
+  tipAdjustTimeoutSeconds: number
+  defaultTipOption: 'none' | 'first' | null
+  highTipWarningThreshold: number
+  requireTipOnCard: boolean
+  enableTipOnCash: boolean
 }
 
 export interface PreAuthConfig {
@@ -241,6 +248,13 @@ export const DEFAULT_ONLINE_ORDERING_CONFIG: OnlineOrderingConfig = {
 export const DEFAULT_TIPS_CONFIG: TipsConfig = {
   presetPercentages: [18, 20, 25],
   openDrawerOnTip: false,
+  allowCustom: true,
+  maxTipPercentage: 100,
+  tipAdjustTimeoutSeconds: 30,
+  defaultTipOption: null,
+  highTipWarningThreshold: 30,
+  requireTipOnCard: false,
+  enableTipOnCash: true,
 }
 
 export const DEFAULT_PRE_AUTH_CONFIG: PreAuthConfig = {

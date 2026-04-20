@@ -1,3 +1,4 @@
+import CashTipDeclarationModal from "@/components/timeclock/CashTipDeclarationModal";
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -17,7 +18,7 @@ import { PosStaffLoginResponse } from "@/types/station";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -39,6 +40,8 @@ const PinLoginScreen = () => {
   const { forceTakeover } = useLocalSearchParams<{ forceTakeover?: string }>();
   const [pin, setPin] = useState("");
   const [deviceId, setDeviceId] = useState<string>("");
+  const [showCashDeclaration, setShowCashDeclaration] = useState(false);
+  const pendingClockOutPinRef = useRef<string | null>(null);
   const [cachedDeviceInfo, setCachedDeviceInfo] = useState<Awaited<
     ReturnType<typeof getDeviceInfo>
   > | null>(null);
@@ -85,7 +88,7 @@ const PinLoginScreen = () => {
   const setStationSessionId = useStoreSettingsStore(
     (state) => state.setStationSessionId,
   );
-  const { getSession, clockIn: timeclockClockIn, queueAction } = useTimeclockStore();
+  const { getSession, clockIn: timeclockClockIn, queueAction, currentStaffId, employeeName: tcEmployeeName, sessions, activeEmployeeId } = useTimeclockStore();
   const { isOnline } = useNetworkStatus();
 
   const timeClock = useTimeClock();
@@ -541,15 +544,40 @@ const PinLoginScreen = () => {
       return;
     }
 
-    try {
-      // useTimeClock updates state optimistically; success/error toasts handled by the hook
-      await timeClock.clockOut(pin, selectedStore.id, deviceId);
-      setPin("");
-    } catch {
-      triggerShakeAnimation();
-      setPin("");
-    }
+    // Show cash tip declaration modal before clocking out
+    pendingClockOutPinRef.current = pin;
+    setPin("");
+    setShowCashDeclaration(true);
   };
+
+  const handleClockOutDeclarationComplete = useCallback(async (declaredAmount: number) => {
+    setShowCashDeclaration(false);
+    const clockOutPin = pendingClockOutPinRef.current;
+    pendingClockOutPinRef.current = null;
+    if (!clockOutPin || !selectedStore) return;
+
+    // Declare cash tips (non-blocking)
+    const shiftId = timeClock.shiftId;
+    if (shiftId) {
+      try {
+        await timeClock.declareCashTips(shiftId, declaredAmount, selectedStore.id, deviceId);
+      } catch (e) {
+        console.warn("[PinLogin] Cash tip declaration failed, proceeding:", e);
+      }
+    }
+
+    // Clock out
+    try {
+      await timeClock.clockOut(clockOutPin, selectedStore.id, deviceId);
+    } catch (e) {
+      console.warn("[PinLogin] clockOut RPC failed:", e);
+    }
+  }, [selectedStore, timeClock, deviceId]);
+
+  const handleClockOutDeclarationCancel = useCallback(() => {
+    setShowCashDeclaration(false);
+    pendingClockOutPinRef.current = null;
+  }, []);
 
   const handleOpenTimeclock = async () => {
     if (!canSubmit || !selectedStore) {
@@ -859,6 +887,20 @@ const PinLoginScreen = () => {
           </View>
         </DialogContent>
       </Dialog>
+
+      <CashTipDeclarationModal
+        isOpen={showCashDeclaration}
+        shiftId={timeClock.shiftId || ''}
+        staffProfileId={currentStaffId || ''}
+        locationId={selectedStore?.id || ''}
+        employeeName={tcEmployeeName || 'Employee'}
+        clockInTime={(() => {
+          const activeSession = activeEmployeeId ? sessions[activeEmployeeId] : null;
+          return activeSession?.clockInTime ? new Date(activeSession.clockInTime) : new Date();
+        })()}
+        onComplete={handleClockOutDeclarationComplete}
+        onCancel={handleClockOutDeclarationCancel}
+      />
     </>
   );
 };

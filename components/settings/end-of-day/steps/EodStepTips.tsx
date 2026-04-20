@@ -12,6 +12,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import React from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import EodChecklistRow from "../EodChecklistRow";
+import EodShiftTipReview from "../EodShiftTipReview";
 
 const resolveItem = (
   list: ChecklistItem[],
@@ -23,11 +24,14 @@ function fmt(n: number) {
 }
 
 function formatRuleValue(rule: TipDistributionRulesOverview["rules"][number]) {
-  if (rule.tipOutType === "flat") {
-    return `${rule.tipOutValue.toFixed(2)} fixed`;
+  if (rule.tipOutType === "flat_amount") {
+    return `$${rule.tipOutValue.toFixed(2)} flat`;
   }
-  if (rule.tipOutType === "percent" || rule.tipOutType === "percentage") {
-    return `${rule.tipOutValue.toFixed(1)}%`;
+  if (rule.tipOutType === "percentage_of_tips") {
+    return `${rule.tipOutValue.toFixed(1)}% of tips`;
+  }
+  if (rule.tipOutType === "percentage_of_sales") {
+    return `${rule.tipOutValue.toFixed(1)}% of sales`;
   }
   return `${rule.tipOutValue} ${rule.tipOutType}`;
 }
@@ -75,6 +79,13 @@ export default function EodStepTips({
 
   return (
     <View style={{ gap: 10 }}>
+      {/* Shift Declaration Review — manager can declare for undeclared staff */}
+      <EodShiftTipReview
+        supabase={supabase}
+        locationId={locationId}
+        date={todayStr}
+      />
+
       <View
         style={{
           borderRadius: 16,

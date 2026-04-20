@@ -263,9 +263,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const cfdOrderingRightPanelMode = useStoreSettingsStore(
     s => s.cfdOrderingRightPanelMode
   )
-  const tipPresetPercentages = useLocationConfigStore(
-    s => s.config.tips.presetPercentages
-  )
+  const tipsConfig = useLocationConfigStore(s => s.config.tips)
+  const tipPresetPercentages = tipsConfig.presetPercentages
 
   // Loyalty
   const merchantHasLoyalty = useLoyaltyStore(s => s.merchantHasLoyalty)
@@ -1418,7 +1417,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       const config = {
         subtotalForTip: Math.round(currentBase * 100), // CONVERT TO CENTS
         presetPercentages: presetPercentages || tipPresetPercentages,
-        allowCustom: true
+        allowCustom: tipsConfig.allowCustom ?? true,
+        maxTipPercentage: tipsConfig.maxTipPercentage ?? 100,
       }
       tipConfigRef.current = config
       controllerRef.current?.showTipSelection(
@@ -1426,7 +1426,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         config.presetPercentages
       )
     },
-    [activeOrderSubtotal, tipPresetPercentages]
+    [activeOrderSubtotal, tipPresetPercentages, tipsConfig.allowCustom]
   )
 
   const updateTip = useCallback((amount: number, percentage: number | null) => {

@@ -151,10 +151,9 @@ const CardPaymentView = () => {
     selectedStation?.payment_terminal
   )
 
-  const tipPresetPercentages = useLocationConfigStore(
-    s => s.config.tips.presetPercentages
-  )
-  const TIP_PRESETS = tipPresetPercentages
+  const tipsConfig = useLocationConfigStore(s => s.config.tips)
+  const TIP_PRESETS = tipsConfig.presetPercentages
+  const tipAdjustTimeoutMs = (tipsConfig.tipAdjustTimeoutSeconds ?? 30) * 1000
 
   // Get the active order for backend amount_due
   const activeOrder = useActiveOrder()
@@ -490,7 +489,7 @@ const CardPaymentView = () => {
               setTimeout(() => showIdle(), 3000)
               setStatus('success')
               tipAdjustTimeoutRef.current = null
-            }, 30_000)
+            }, tipAdjustTimeoutMs)
             return
           }
 
@@ -701,7 +700,7 @@ const CardPaymentView = () => {
               setTimeout(() => showIdle(), 3000)
               setStatus('success')
               tipAdjustTimeoutRef.current = null
-            }, 30_000)
+            }, tipAdjustTimeoutMs)
           }
         } catch (error) {
           console.error('[CardPayment] Error processing payment:', error)

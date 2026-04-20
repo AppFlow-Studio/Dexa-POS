@@ -23,6 +23,7 @@ import {
   List,
   MapPin,
   Monitor,
+  Percent,
   Printer,
   Receipt,
   Settings,
@@ -68,6 +69,7 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
     items: [
       { id: "general", label: "General Settings", icon: Settings, route: "/settings/general" },
       { id: "payment-processing", label: "Payment Processing", icon: CreditCard, route: "/settings/payment-processing" },
+      { id: "tip-settings", label: "Tip Settings", icon: Percent, route: "/settings/tip-settings" },
       { id: "end-of-day", label: "End of Day", icon: Clover, route: "/settings/end-of-day" },
     ],
   },

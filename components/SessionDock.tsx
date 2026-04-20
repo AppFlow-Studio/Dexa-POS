@@ -11,10 +11,11 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { useRouter } from 'expo-router'
 import { ArrowLeftRight, Bell, Coffee, LogOut, User } from 'lucide-react-native'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import SwitchAccountModal from './settings/security-and-login/SwitchAccountModal'
 import BreakEndedModal from './timeclock/BreakEndedModal'
+import CashTipDeclarationModal from './timeclock/CashTipDeclarationModal'
 import PinInputModal from './timeclock/PinInputModal'
 import {
   DropdownMenu,
@@ -92,6 +93,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false)
   const [isBreakPinModalOpen, setBreakPinModalOpen] = useState(false)
   const [deviceId, setDeviceId] = useState<string>('unknown')
+  const [showCashDeclaration, setShowCashDeclaration] = useState(false)
 
   // Backend hook for time clock actions
   const timeClock = useTimeClock()
@@ -180,9 +182,39 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   }
 
   const handleLogout = () => {
-    useTimeclockStore.getState().clockOut(employee.id)
-    replaceRoute('(auth)', 'pin-login')
+    setShowCashDeclaration(true)
   }
+
+  const handleDeclarationComplete = useCallback(async (declaredAmount: number) => {
+    setShowCashDeclaration(false)
+    const locationId = selectedStore?.id
+    if (!locationId) return
+
+    // Declare cash tips (non-blocking)
+    const shiftId = timeClock.shiftId
+    if (shiftId) {
+      try {
+        await timeClock.declareCashTips(shiftId, declaredAmount, locationId, deviceId)
+      } catch (e) {
+        console.warn('[SessionDock] Cash tip declaration failed, proceeding:', e)
+      }
+    }
+
+    // Clock out via RPC (same flow as UserProfileCard)
+    try {
+      // Need PIN for RPC — but SessionDock doesn't have it.
+      // Fall back to local-only clock-out (matches original handleLogout behavior)
+      useTimeclockStore.getState().clockOut(employee.id)
+    } catch (e) {
+      console.warn('[SessionDock] clockOut failed:', e)
+    }
+
+    replaceRoute('(auth)', 'pin-login')
+  }, [selectedStore?.id, timeClock, deviceId, employee.id])
+
+  const handleDeclarationCancel = useCallback(() => {
+    setShowCashDeclaration(false)
+  }, [])
 
   const initials = employee.fullName
     .split(' ')
@@ -412,6 +444,16 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           subtitle='Enter your PIN to confirm'
           onConfirm={handleBreakPinConfirm}
           onCancel={() => setBreakPinModalOpen(false)}
+        />
+        <CashTipDeclarationModal
+          isOpen={showCashDeclaration}
+          shiftId={timeClock.shiftId || ''}
+          staffProfileId={employee?.profileId || ''}
+          locationId={selectedStore?.id || ''}
+          employeeName={employee?.fullName || ''}
+          clockInTime={session?.clockInTime ? new Date(session.clockInTime) : new Date()}
+          onComplete={handleDeclarationComplete}
+          onCancel={handleDeclarationCancel}
         />
       </>
     )

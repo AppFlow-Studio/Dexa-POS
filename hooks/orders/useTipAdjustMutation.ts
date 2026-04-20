@@ -9,6 +9,7 @@ import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
+import { queueFailedOperation } from "@/services/offlineSyncInit";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { orderHistoryKeys } from "./useOrderHistory";
@@ -166,6 +167,7 @@ export function useTipAdjustMutation() {
           new_tip_amount: payment.newTip,
         }));
 
+      let dbPersistFailed = false;
       if (dbAdjustments.length > 0 && input.dbOrderId) {
         try {
           await adjustTips(
@@ -176,7 +178,7 @@ export function useTipAdjustMutation() {
           );
         } catch (tipDbError) {
           console.warn("[TipAdjust] adjustTips RPC failed, queuing for retry:", tipDbError);
-          const { queueFailedOperation } = require("@/services/offlineSyncInit");
+          dbPersistFailed = true;
           await queueFailedOperation(
             "tip_adjust_db",
             {
@@ -226,13 +228,20 @@ export function useTipAdjustMutation() {
           .catch(err => console.warn("[TipAdjust] Background sync failed:", err));
       }
 
-      return { isOffline: !ordersRealtime.isConnected };
+      return { isOffline: !ordersRealtime.isConnected, dbPersistFailed };
     },
 
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (data.isOffline) {
+      if (data.dbPersistFailed) {
+        show({
+          title: "Tips Adjusted (Sync Pending)",
+          message:
+            "Tip adjusted on terminal. Database sync pending — will retry automatically.",
+          type: "warning",
+        });
+      } else if (data.isOffline) {
         show({
           title: "Tips Adjusted",
           message:
