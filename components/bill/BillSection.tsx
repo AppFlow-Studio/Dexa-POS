@@ -57,6 +57,10 @@ import {
   DialogTitle
 } from '../ui/dialog'
 import BillSummary from './BillSummary'
+<<<<<<< jaffal-dev-2
+=======
+import DiscountBottomSheet from './DiscountBottomSheet'
+>>>>>>> Table-And-Order-Syncing
 import DiscountOverlay from './DiscountOverlay'
 import OrderDetails from './OrderDetails'
 import Totals from './Totals'
@@ -1396,6 +1400,14 @@ const BillSectionContent = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+<<<<<<< jaffal-dev-2
+=======
+
+      <DiscountBottomSheet
+        ref={discountSheetRef}
+        onClose={() => discountSheetRef?.current?.close()}
+      />
+>>>>>>> Table-And-Order-Syncing
     </View>
   )
 }
