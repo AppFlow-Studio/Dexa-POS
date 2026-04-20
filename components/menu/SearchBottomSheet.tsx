@@ -9,7 +9,13 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { Search, X } from 'lucide-react-native'
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import SearchResultItem from './SearchResultItem'
 
@@ -52,6 +58,7 @@ interface SearchSection {
 
 const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const searchSheetRef = useRef<BottomSheetMethods>(null)
+  const inputRef = useRef<any>(null)
   const snapPoints = useMemo(() => ['85%'], [])
   const [searchText, setSearchText] = useState('')
 
@@ -159,6 +166,15 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
     []
   )
 
+  const handleSheetChange = useCallback((index: number) => {
+    if (index >= 0) {
+      // Delay focus slightly so Android opens keyboard after expand animation starts.
+      setTimeout(() => {
+        inputRef.current?.focus?.()
+      }, 80)
+    }
+  }, [])
+
   return (
     <BottomSheet
       ref={searchSheetRef}
@@ -166,6 +182,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       snapPoints={snapPoints}
       enablePanDownToClose={true}
       onClose={closeSearch}
+      onChange={handleSheetChange}
       backdropComponent={renderBackdrop}
       keyboardBehavior='extend'
       {...bottomSheetTheme}
@@ -198,6 +215,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
           >
             <Search color={colors.label} size={16} />
             <BottomSheetTextInput
+              ref={inputRef}
               value={searchText}
               onChangeText={setSearchText}
               placeholder='Search items...'

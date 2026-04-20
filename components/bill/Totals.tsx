@@ -99,6 +99,17 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         </Text>
       </View>
 
+      {totals.discount > 0.001 && (
+        <View className='flex-row justify-between items-center mb-1'>
+          <Text style={{ color: colors.label, fontSize: 11 }}>Discount</Text>
+          <Text
+            style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}
+          >
+            -${totals.discount.toFixed(2)}
+          </Text>
+        </View>
+      )}
+
       <View className='flex-row justify-between items-center mb-1.5'>
         <Text style={{ color: colors.label, fontSize: 11 }}>
           Tax ({taxRatePct.toFixed(2)}%)
