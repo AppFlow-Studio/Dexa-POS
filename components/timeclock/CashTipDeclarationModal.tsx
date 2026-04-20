@@ -9,7 +9,9 @@
 
 import { fetchShiftTipSummary, ShiftTipSummary } from '@/services/cashTipDeclarationService'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { getCurrentBusinessDay } from '@/lib/businessDay'
 import { colors } from '@/lib/theme'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { formatCurrency } from '@/utils/currency'
 import {
   AlertTriangle,
@@ -81,8 +83,13 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
   const [summary, setSummary] = useState<ShiftTipSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
 
+  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const declaredAmount = parseFloat(rawInput) || 0
-  const today = new Date().toISOString().split('T')[0]
+  const bdConfig = {
+    timezone: selectedStore?.timezone || 'UTC',
+    rolloverHour: selectedStore?.business_day_start_hour ?? 0,
+  }
+  const today = getCurrentBusinessDay(bdConfig)
 
   // Reset state when modal opens
   useEffect(() => {
@@ -91,7 +98,7 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
       setRawInput('0')
       setSummary(null)
       setSummaryLoading(true)
-      fetchShiftTipSummary(supabase, staffProfileId, locationId, today)
+      fetchShiftTipSummary(supabase, staffProfileId, locationId, today, bdConfig)
         .then(setSummary)
         .catch(() => setSummary(null))
         .finally(() => setSummaryLoading(false))

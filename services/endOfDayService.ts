@@ -111,16 +111,36 @@ export async function fetchTodaySessions(
 
   if (error) throw error
 
-  return (data || []).map((s: any) => ({
+  const mapped = (data || []).map((s: any) => ({
     id: s.id,
-    sequenceNumber: s.sequence_number,
-    status: s.status,
+    sequenceNumber: Number(s.sequence_number) || 1,
+    status: s.status as string,
     totalDistributed: Number(s.total_distributed) || 0,
-    dataStartAfter: s.data_start_after,
-    dataCutoffAt: s.data_cutoff_at,
-    approvedAt: s.approved_at,
-    calculatedAt: s.calculated_at,
+    dataStartAfter: s.data_start_after as string | null,
+    dataCutoffAt: s.data_cutoff_at as string | null,
+    approvedAt: s.approved_at as string | null,
+    calculatedAt: s.calculated_at as string | null,
   }))
+
+  // Deduplicate: keep only the latest row per sequence_number
+  // (recalculations can create multiple rows with the same sequence)
+  const bySeq = new Map<number, TodaySessionRow>()
+  for (const s of mapped) {
+    const existing = bySeq.get(s.sequenceNumber)
+    if (!existing || statusPriority(s.status) > statusPriority(existing.status)) {
+      bySeq.set(s.sequenceNumber, s)
+    }
+  }
+  return Array.from(bySeq.values()).sort((a, b) => a.sequenceNumber - b.sequenceNumber)
+}
+
+function statusPriority(status: string): number {
+  switch (status) {
+    case 'approved': return 3
+    case 'calculated': return 2
+    case 'draft': return 1
+    default: return 0
+  }
 }
 
 /**

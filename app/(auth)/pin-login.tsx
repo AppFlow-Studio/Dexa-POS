@@ -42,6 +42,12 @@ const PinLoginScreen = () => {
   const [deviceId, setDeviceId] = useState<string>("");
   const [showCashDeclaration, setShowCashDeclaration] = useState(false);
   const pendingClockOutPinRef = useRef<string | null>(null);
+  const [clockOutEmployee, setClockOutEmployee] = useState<{
+    name: string;
+    profileId: string;
+    shiftId: string;
+    clockInTime: Date;
+  } | null>(null);
   const [cachedDeviceInfo, setCachedDeviceInfo] = useState<Awaited<
     ReturnType<typeof getDeviceInfo>
   > | null>(null);
@@ -544,35 +550,76 @@ const PinLoginScreen = () => {
       return;
     }
 
-    // Show cash tip declaration modal before clocking out
-    pendingClockOutPinRef.current = pin;
+    // Call the actual clock-out RPC first — it validates the PIN and returns
+    // the staff_id + shift_id. Then show the declaration modal with correct info.
+    // The clock-out completes on the backend, but we still need the declaration.
+    const enteredPin = pin;
     setPin("");
-    setShowCashDeclaration(true);
+
+    try {
+      const result = await timeClock.clockOut(enteredPin, selectedStore.id, deviceId);
+      const staffId = result?.staff_id;
+      const staffName = result?.employee_name;
+      const shiftId = result?.shift_id;
+
+      if (!staffId) {
+        triggerShakeAnimation();
+        return;
+      }
+
+      // Find clock-in time from their shift
+      const { employees } = useEmployeeStore.getState();
+      const emp = employees.find(e => e.profileId === staffId);
+      const empSession = emp ? sessions[emp.id] : null;
+      let clockInTime = empSession?.clockInTime ? new Date(empSession.clockInTime) : new Date();
+
+      // Try to get accurate clock-in time from backend
+      try {
+        const { data: shiftData } = await supabase
+          .from("staff_shifts")
+          .select("clock_in_time")
+          .eq("id", shiftId)
+          .single();
+        if (shiftData?.clock_in_time) {
+          clockInTime = new Date(shiftData.clock_in_time);
+        }
+      } catch {}
+
+      setClockOutEmployee({
+        name: staffName || emp?.fullName || 'Employee',
+        profileId: staffId,
+        shiftId: shiftId || '',
+        clockInTime,
+      });
+
+      // Update local store
+      if (emp) {
+        useTimeclockStore.getState().clockOut(emp.id);
+      }
+
+      pendingClockOutPinRef.current = enteredPin;
+      setShowCashDeclaration(true);
+    } catch {
+      triggerShakeAnimation();
+    }
   };
 
   const handleClockOutDeclarationComplete = useCallback(async (declaredAmount: number) => {
     setShowCashDeclaration(false);
-    const clockOutPin = pendingClockOutPinRef.current;
     pendingClockOutPinRef.current = null;
-    if (!clockOutPin || !selectedStore) return;
+    if (!selectedStore) return;
 
-    // Declare cash tips (non-blocking)
-    const shiftId = timeClock.shiftId;
+    // Clock-out already happened in handleClockOut — just declare tips
+    const shiftId = clockOutEmployee?.shiftId;
     if (shiftId) {
       try {
         await timeClock.declareCashTips(shiftId, declaredAmount, selectedStore.id, deviceId);
       } catch (e) {
-        console.warn("[PinLogin] Cash tip declaration failed, proceeding:", e);
+        console.warn("[PinLogin] Cash tip declaration failed:", e);
       }
     }
-
-    // Clock out
-    try {
-      await timeClock.clockOut(clockOutPin, selectedStore.id, deviceId);
-    } catch (e) {
-      console.warn("[PinLogin] clockOut RPC failed:", e);
-    }
-  }, [selectedStore, timeClock, deviceId]);
+    setClockOutEmployee(null);
+  }, [selectedStore, timeClock, deviceId, clockOutEmployee]);
 
   const handleClockOutDeclarationCancel = useCallback(() => {
     setShowCashDeclaration(false);
@@ -890,16 +937,16 @@ const PinLoginScreen = () => {
 
       <CashTipDeclarationModal
         isOpen={showCashDeclaration}
-        shiftId={timeClock.shiftId || ''}
-        staffProfileId={currentStaffId || ''}
+        shiftId={clockOutEmployee?.shiftId || timeClock.shiftId || ''}
+        staffProfileId={clockOutEmployee?.profileId || currentStaffId || ''}
         locationId={selectedStore?.id || ''}
-        employeeName={tcEmployeeName || 'Employee'}
-        clockInTime={(() => {
-          const activeSession = activeEmployeeId ? sessions[activeEmployeeId] : null;
-          return activeSession?.clockInTime ? new Date(activeSession.clockInTime) : new Date();
-        })()}
+        employeeName={clockOutEmployee?.name || 'Employee'}
+        clockInTime={clockOutEmployee?.clockInTime || new Date()}
         onComplete={handleClockOutDeclarationComplete}
-        onCancel={handleClockOutDeclarationCancel}
+        onCancel={() => {
+          handleClockOutDeclarationCancel();
+          setClockOutEmployee(null);
+        }}
       />
     </>
   );

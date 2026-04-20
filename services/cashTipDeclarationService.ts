@@ -5,6 +5,7 @@
  * for shift summary data (charged tips, gross sales) and declaration status.
  */
 
+import { getBusinessDayBounds, BusinessDayConfig } from "@/lib/businessDay";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -64,41 +65,23 @@ export async function fetchShiftTipSummary(
   staffProfileId: string,
   locationId: string,
   date: string, // YYYY-MM-DD
+  businessDayConfig?: BusinessDayConfig,
 ): Promise<ShiftTipSummary> {
-  const startOfDay = `${date}T00:00:00`;
-  const endOfDay = `${date}T23:59:59.999`;
+  let startOfDay: string;
+  let endOfDay: string;
+  if (businessDayConfig) {
+    const bounds = getBusinessDayBounds(date, businessDayConfig);
+    startOfDay = bounds.startUtc;
+    endOfDay = bounds.endUtc;
+  } else {
+    startOfDay = `${date}T00:00:00`;
+    endOfDay = `${date}T23:59:59.999`;
+  }
 
-  // All tips from this server's orders today (split by payment method)
-  const { data: tipData, error: tipError } = await supabase
-    .from("order_payments")
-    .select("tip_amount, payment_method, orders!inner(assigned_server_id, created_by_staff_id)")
-    .eq("orders.location_id", locationId)
-    .eq("status", "captured")
-    .gte("initiated_at", startOfDay)
-    .lte("initiated_at", endOfDay)
-    .or(
-      `assigned_server_id.eq.${staffProfileId},created_by_staff_id.eq.${staffProfileId}`,
-      { referencedTable: "orders" },
-    );
-
-  if (tipError) throw tipError;
-
-  let cardTips = 0;
-  let cashPaymentTips = 0;
-  (tipData || []).forEach((p: any) => {
-    const tip = Number(p.tip_amount) || 0;
-    if (tip <= 0) return;
-    if (p.payment_method === "cash") {
-      cashPaymentTips += tip;
-    } else {
-      cardTips += tip;
-    }
-  });
-
-  // Gross sales: sum of subtotal from this server's orders today
-  const { data: salesData, error: salesError } = await supabase
+  // Step 1: Get this server's order IDs for today
+  const { data: orderData, error: orderError } = await supabase
     .from("orders")
-    .select("subtotal")
+    .select("id, subtotal")
     .eq("location_id", locationId)
     .or(
       `assigned_server_id.eq.${staffProfileId},created_by_staff_id.eq.${staffProfileId}`,
@@ -107,12 +90,37 @@ export async function fetchShiftTipSummary(
     .lte("created_at", endOfDay)
     .not("status", "in", '("cancelled","void","refunded")');
 
-  if (salesError) throw salesError;
+  if (orderError) throw orderError;
 
-  const grossSales = (salesData || []).reduce(
+  const orderIds = (orderData || []).map((o: any) => o.id).filter(Boolean);
+  const grossSales = (orderData || []).reduce(
     (sum, o: any) => sum + (Number(o.subtotal) || 0),
     0,
   );
+
+  // Step 2: Get tips from those orders only
+  let cardTips = 0;
+  let cashPaymentTips = 0;
+
+  if (orderIds.length > 0) {
+    const { data: tipData, error: tipError } = await supabase
+      .from("order_payments")
+      .select("tip_amount, payment_method")
+      .in("order_id", orderIds)
+      .eq("status", "captured");
+
+    if (tipError) throw tipError;
+
+    (tipData || []).forEach((p: any) => {
+      const tip = Number(p.tip_amount) || 0;
+      if (tip <= 0) return;
+      if (p.payment_method === "cash") {
+        cashPaymentTips += tip;
+      } else {
+        cardTips += tip;
+      }
+    });
+  }
 
   return { cardTips, cashPaymentTips, grossSales };
 }
@@ -125,11 +133,21 @@ export async function fetchShiftDeclarationStatus(
   supabase: SupabaseClient,
   locationId: string,
   date: string, // YYYY-MM-DD
+  businessDayConfig?: BusinessDayConfig,
+  afterCutoff?: string | null, // If provided, only show shifts started after cutoff OR still active
 ): Promise<ShiftDeclarationRow[]> {
-  const startOfDay = `${date}T00:00:00`;
-  const endOfDay = `${date}T23:59:59.999`;
+  let startOfDay: string;
+  let endOfDay: string;
+  if (businessDayConfig) {
+    const bounds = getBusinessDayBounds(date, businessDayConfig);
+    startOfDay = bounds.startUtc;
+    endOfDay = bounds.endUtc;
+  } else {
+    startOfDay = `${date}T00:00:00`;
+    endOfDay = `${date}T23:59:59.999`;
+  }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("staff_shifts")
     .select(
       "id, staff_profile_id, status, clock_in_time, clock_out_time, declared_cash_tips, tips_declared_at, staff_profiles!inner(display_name)",
@@ -138,6 +156,13 @@ export async function fetchShiftDeclarationStatus(
     .gte("clock_in_time", startOfDay)
     .lte("clock_in_time", endOfDay)
     .order("clock_in_time", { ascending: true });
+
+  // Multi-session: filter to shifts in current window or still active
+  if (afterCutoff) {
+    query = query.or(`clock_in_time.gte.${afterCutoff},clock_out_time.is.null,clock_out_time.gt.${afterCutoff}`);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 

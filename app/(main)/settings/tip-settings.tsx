@@ -83,6 +83,15 @@ export default function TipSettingsScreen() {
     updateTips({ presetPercentages: updated })
   }
 
+  const formatTipSource = (raw: string) => {
+    switch (raw) {
+      case 'charged_tips': return 'Charged Tips'
+      case 'all_tips': return 'All Tips'
+      case 'cash_only': return 'Cash Only'
+      default: return raw.replace(/_/g, ' ')
+    }
+  }
+
   const formatRuleValue = (rule: TipDistributionRulesOverview['rules'][number]) => {
     if (rule.tipOutType === 'flat_amount') return `$${rule.tipOutValue.toFixed(2)} flat`
     if (rule.tipOutType === 'percentage_of_tips') return `${rule.tipOutValue.toFixed(1)}% of tips`
@@ -530,6 +539,14 @@ export default function TipSettingsScreen() {
                           </Text>
                         </View>
                       </View>
+                      <Text style={{ fontSize: 11, color: colors.label }}>
+                        Source: {formatTipSource(config.tipSource)} · {config.sourcePercentage}%
+                      </Text>
+                      {config.contributingRoleCodes.length > 0 && (
+                        <Text style={{ fontSize: 11, color: colors.label }}>
+                          Contributing: {config.contributingRoleCodes.join(', ')}
+                        </Text>
+                      )}
                       {config.description ? (
                         <Text style={{ fontSize: 11, color: colors.muted }}>{config.description}</Text>
                       ) : null}

@@ -16,7 +16,6 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
   CheckCircle2,
   Clock,
-  Package,
   PauseCircle,
   PlayCircle,
   Utensils
@@ -668,7 +667,15 @@ const OnlineOrderingScreen = () => {
                             onCheckedChange={v =>
                               updatePrepAdjustment(item.key as any, v)
                             }
-                            className='border-gray-500 data-[state=checked]:bg-teal-600 data-[state=checked]:border-teal-600'
+                            className='border-gray-500'
+                            style={{
+                              backgroundColor: item.checked
+                                ? colors.teal
+                                : 'transparent',
+                              borderColor: item.checked
+                                ? colors.teal
+                                : undefined
+                            }}
                           />
                           <Text style={{ fontSize: 12, color: colors.label }}>
                             {item.label}

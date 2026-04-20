@@ -13,6 +13,7 @@ import {
 } from '@/services/cashTipDeclarationService'
 import { colors } from '@/lib/theme'
 import { formatCurrency } from '@/utils/currency'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { SupabaseClient } from '@supabase/supabase-js'
 import {
   AlertTriangle,
@@ -38,6 +39,7 @@ interface EodShiftTipReviewProps {
   supabase: SupabaseClient
   locationId: string
   date: string // YYYY-MM-DD
+  afterCutoff?: string | null // Last approved session cutoff — scope to current window
 }
 
 const NUM_PAD_ROWS = [
@@ -53,7 +55,13 @@ export default function EodShiftTipReview({
   supabase,
   locationId,
   date,
+  afterCutoff,
 }: EodShiftTipReviewProps) {
+  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const bdConfig = {
+    timezone: selectedStore?.timezone || 'UTC',
+    rolloverHour: selectedStore?.business_day_start_hour ?? 0,
+  }
   const [shifts, setShifts] = useState<ShiftDeclarationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -67,7 +75,7 @@ export default function EodShiftTipReview({
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchShiftDeclarationStatus(supabase, locationId, date)
+      const data = await fetchShiftDeclarationStatus(supabase, locationId, date, bdConfig, afterCutoff)
       setShifts(data)
     } catch (e: any) {
       setError(e?.message || 'Failed to load shifts')
@@ -310,18 +318,19 @@ export default function EodShiftTipReview({
       )}
 
       {/* Manager declare-for-them modal */}
-      <Modal visible={!!declareForShift} transparent animationType='fade'>
+      <Modal visible={!!declareForShift} transparent animationType='fade' onRequestClose={() => setDeclareForShift(null)}>
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
+            backgroundColor: 'rgba(0,0,0,0.7)',
             justifyContent: 'center',
             alignItems: 'center',
           }}
         >
           <View
             style={{
-              width: 360,
+              width: 420,
+              maxHeight: '80%',
               backgroundColor: colors.panel,
               borderRadius: 16,
               padding: 20,

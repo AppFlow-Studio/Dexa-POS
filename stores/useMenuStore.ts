@@ -1,3 +1,4 @@
+import { extractMenuItemPlaceholderIconKey } from '@/lib/menuItemPlaceholderIcon'
 import {
   Category,
   CustomPricing,
@@ -289,6 +290,9 @@ const transformMenuItemsFromSync = (
       category: (dbItem.categories || []).map((c: any) => c.name || c), // Fallback if categories logic differs
       allergens: dbItem.allergens ?? undefined,
       cardBgColor: dbItem.card_bg_color ?? undefined,
+      placeholderIcon: extractMenuItemPlaceholderIconKey(
+        dbItem.card_bg_color ?? undefined
+      ),
       availability: dbItem.effective_availability,
       stockQuantity: dbItem.current_stock ?? undefined,
       stockTrackingMode: dbItem.stock_tracking_mode,

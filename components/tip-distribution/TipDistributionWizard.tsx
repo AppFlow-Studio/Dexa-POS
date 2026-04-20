@@ -4,6 +4,7 @@
  */
 
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { getBusinessDayBounds } from '@/lib/businessDay'
 import { colors } from '@/lib/theme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -41,7 +42,7 @@ interface TipDistributionWizardProps {
 
 const STEPS: { key: TipWizardStep; label: string }[] = [
   { key: 'declare', label: 'Declare' },
-  { key: 'calculate', label: 'Calculate' },
+  { key: 'calculate', label: 'Preview' },
   { key: 'review', label: 'Review' },
   { key: 'approve', label: 'Approve' }
 ]
@@ -78,8 +79,8 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
   const isCalculating = useTipDistributionStore(s => s.isCalculating)
   const declareCashTips = useTipDistributionStore(s => s.declareCashTips)
   const setWizardStep = useTipDistributionStore(s => s.setWizardStep)
-  const calculateDistribution = useTipDistributionStore(
-    s => s.calculateDistribution
+  const previewDistribution = useTipDistributionStore(
+    s => s.previewDistribution
   )
   const approveDistribution = useTipDistributionStore(
     s => s.approveDistribution
@@ -112,7 +113,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
 
   // Fixed pixel height for the scrollable list cards
   // 96% sheet - 32px padding top/bottom - ~58px step indicator - 14px margin
-  const listHeight = screenHeight * 0.96 - 32 - 58 - 14
+  const listHeight = screenHeight * 0.9 - 32 - 58 - 14
 
   useEffect(() => {
     if (!isOpen || !selectedStore?.id) {
@@ -125,21 +126,43 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     setCardTipsByStaff({})
     setPreDeclaredStaff(new Set())
 
-    const startOfDay = new Date(`${date}T00:00:00`).toISOString()
-    const endOfDay = new Date(`${date}T23:59:59.999`).toISOString()
+    const tz = selectedStore?.timezone || 'UTC'
+    const rollover = (selectedStore as any)?.business_day_start_hour ?? 0
+    const bounds = getBusinessDayBounds(date, { timezone: tz, rolloverHour: rollover })
     let isCancelled = false
 
     const loadData = async () => {
       setIsLoadingClockedInStaff(true)
       try {
+        // Fetch previous sessions first to determine the time window
+        await fetchPreviousSessions(supabase, selectedStore.id, date)
+        const sessions = useTipDistributionStore.getState().previousSessions
+        const approved = sessions.filter(s => s.status === 'approved')
+        const lastCutoff = approved.length > 0
+          ? approved[approved.length - 1].dataCutoffAt
+          : null
+        const windowStart = lastCutoff || bounds.startUtc
+        const windowEnd = bounds.endUtc
+
         // Load shifts, employee_daily_tips (pre-declared), and card tips in parallel
+        // Shifts: include those started in window OR still active (no clock_out)
+        const shiftsQuery = lastCutoff
+          ? supabase
+              .from('staff_shifts')
+              .select('staff_profile_id')
+              .eq('location_id', selectedStore.id)
+              .gte('clock_in_time', bounds.startUtc)
+              .lte('clock_in_time', windowEnd)
+              .or(`clock_in_time.gte.${windowStart},clock_out_time.is.null,clock_out_time.gt.${windowStart}`)
+          : supabase
+              .from('staff_shifts')
+              .select('staff_profile_id')
+              .eq('location_id', selectedStore.id)
+              .gte('clock_in_time', windowStart)
+              .lte('clock_in_time', windowEnd)
+
         const [shiftsRes, dailyTipsRes, paymentsRes] = await Promise.all([
-          supabase
-            .from('staff_shifts')
-            .select('staff_profile_id')
-            .eq('location_id', selectedStore.id)
-            .gte('clock_in_time', startOfDay)
-            .lte('clock_in_time', endOfDay),
+          shiftsQuery,
           supabase
             .from('employee_daily_tips')
             .select('staff_profile_id, charged_tips, cash_tips_declared')
@@ -150,8 +173,8 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
             .select('tip_amount, order_id, payment_method, status, is_voided, is_returned')
             .eq('location_id', selectedStore.id)
             .neq('payment_method', 'cash')
-            .gte('initiated_at', startOfDay)
-            .lte('initiated_at', endOfDay),
+            .gte('initiated_at', windowStart)
+            .lte('initiated_at', windowEnd),
         ])
 
         if (shiftsRes.error) console.error('[TipDist] Failed to load shifts:', shiftsRes.error)
@@ -218,11 +241,6 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
 
     void loadData()
 
-    // Also load previous sessions for multi-session context
-    if (selectedStore?.id) {
-      fetchPreviousSessions(supabase, selectedStore.id, date)
-    }
-
     return () => { isCancelled = true }
   }, [date, isOpen, selectedStore?.id, supabase])
 
@@ -231,44 +249,35 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     [clockedInStaffProfileIds, employees]
   )
 
-  const handleCalculate = useCallback(async () => {
-    if (!selectedStore || !loggedInEmployee) return
+  const handlePreview = useCallback(async () => {
+    if (!selectedStore) return
 
-    // Rebuild employee_daily_tips from orders + shifts (server-side)
-    // This picks up both charged tips from payments and cash declarations from staff_shifts
-    try {
-      const { error: rebuildErr } = await supabase.rpc('rebuild_employee_daily_tips', {
-        p_location_id: selectedStore.id,
-        p_shift_date: date,
-      })
-      if (rebuildErr) console.error('[TipDist] rebuild_employee_daily_tips error:', rebuildErr)
-    } catch (e) {
-      console.error('[TipDist] rebuild failed:', e)
-    }
-
-    await calculateDistribution(
+    // Preview runs the full calculation in a rolled-back subtransaction — no DB writes
+    // rebuild_employee_daily_tips is called internally by the preview RPC
+    await previewDistribution(
       supabase,
       selectedStore.id,
       selectedStore.merchant_id,
       date,
-      loggedInEmployee.profileId
     )
   }, [
     supabase,
     selectedStore,
-    loggedInEmployee,
     date,
-    calculateDistribution,
+    previewDistribution,
   ])
 
   const handleApprove = useCallback(async () => {
-    if (!currentSession || !loggedInEmployee) return
+    if (!selectedStore || !loggedInEmployee) return
+    // Real calculate + approve in one step (preview was a dry-run)
     await approveDistribution(
       supabase,
-      currentSession.id,
-      loggedInEmployee.profileId
+      selectedStore.id,
+      selectedStore.merchant_id,
+      date,
+      loggedInEmployee.profileId,
     )
-  }, [supabase, currentSession, loggedInEmployee, approveDistribution])
+  }, [supabase, selectedStore, date, loggedInEmployee, approveDistribution])
 
   const handleClose = useCallback(() => {
     reset()
@@ -696,7 +705,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
           handleNumpadInput,
           handleNumpadBackspace,
           <TouchableOpacity
-            onPress={handleCalculate}
+            onPress={handlePreview}
             disabled={isCalculating}
             style={{
               paddingVertical: 14,
@@ -720,7 +729,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
                     color: colors.onSolid
                   }}
                 >
-                  Calculate
+                  Preview
                 </Text>
               </>
             )}
@@ -742,10 +751,10 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     >
       <Calculator size={48} color={colors.teal} />
       <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
-        Calculating Distribution...
+        Previewing Distribution...
       </Text>
       <Text style={{ fontSize: 12, color: colors.label }}>
-        Processing tip-out rules and pool configurations.
+        Running preview — no changes saved until you approve.
       </Text>
     </View>
   )
@@ -753,365 +762,166 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
   // ── Step 3: Review & Adjust ─────────────────────────────────────────────────
   const renderReviewStep = () => {
     if (!currentSession) return null
-    const focusedDetail = currentSession.details.find(
-      d => d.id === focusedDetailId
-    )
-    const focusedAdjustment = focusedDetail
-      ? (focusedDetail.manualAdjustment ?? 0).toFixed(2)
-      : '0.00'
+
+    const fmtCell = (v: number) => v === 0 ? '-' : formatCurrency(v)
+    const fmtPoolCell = (v: number, positive: boolean) =>
+      v === 0 ? '-' : `${positive ? '+' : '-'}${formatCurrency(v)}`
+
+    const COL = { name: 2.2, role: 1.2, hrs: 0.7, tips: 0.9, poolIn: 0.9, poolOut: 0.9, net: 1 }
 
     return (
-      <View style={{ flexDirection: 'row', gap: 14 }}>
-        {/* Left card */}
+      <View style={{ flex: 1, gap: 8 }}>
+        {currentSession.status === 'preview' && (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderRadius: 8,
+              backgroundColor: colors.warning + '12',
+              borderWidth: 1,
+              borderColor: colors.warning + '30',
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.warning }}>
+              Preview — no changes saved yet. Approve to finalize.
+            </Text>
+          </View>
+        )}
+
+        {/* Summary tiles */}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {[
+            { label: 'Tips Collected', value: currentSession.totalTipsCollected },
+            { label: 'Pooled', value: currentSession.totalTipsPooled },
+            { label: 'Tip-Outs', value: currentSession.totalTipOuts },
+            { label: 'Total Distributed', value: currentSession.totalDistributed, highlight: true },
+          ].map(({ label, value, highlight }) => (
+            <View
+              key={label}
+              style={{
+                flex: 1,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: highlight ? colors.teal + '40' : colors.border,
+                backgroundColor: highlight ? colors.teal + '10' : colors.card,
+                padding: 10,
+              }}
+            >
+              <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                {label}
+              </Text>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: highlight ? colors.teal : colors.heading, marginTop: 3 }}>
+                {formatCurrency(value)}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Table */}
         <View
           style={{
             flex: 1,
-            height: listHeight,
-            borderRadius: 14,
+            borderRadius: 12,
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.card,
-            overflow: 'hidden'
+            overflow: 'hidden',
           }}
         >
+          {/* Header row */}
           <View
             style={{
-              padding: 14,
+              flexDirection: 'row',
+              paddingVertical: 8,
+              paddingHorizontal: 12,
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
-              backgroundColor: colors.panel
+              backgroundColor: colors.panel,
             }}
           >
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
-            >
-              Review Distribution
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.label, marginTop: 3 }}>
-              Tap an employee to adjust their tip amount.
-            </Text>
+            <Text style={{ flex: COL.name, fontSize: 10, fontWeight: '700', color: colors.muted }}>Employee</Text>
+            <Text style={{ flex: COL.role, fontSize: 10, fontWeight: '700', color: colors.muted }}>Role</Text>
+            <Text style={{ flex: COL.hrs, fontSize: 10, fontWeight: '700', color: colors.muted, textAlign: 'right' }}>Hours</Text>
+            <Text style={{ flex: COL.tips, fontSize: 10, fontWeight: '700', color: colors.muted, textAlign: 'right' }}>Own Tips</Text>
+            <Text style={{ flex: COL.poolIn, fontSize: 10, fontWeight: '700', color: colors.muted, textAlign: 'right' }}>Pool In</Text>
+            <Text style={{ flex: COL.poolOut, fontSize: 10, fontWeight: '700', color: colors.muted, textAlign: 'right' }}>Pool Out</Text>
+            <Text style={{ flex: COL.net, fontSize: 10, fontWeight: '700', color: colors.teal, textAlign: 'right' }}>Net Tips</Text>
           </View>
+
+          {/* Data rows */}
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 10, gap: 8 }}
             showsVerticalScrollIndicator={false}
-            scrollEnabled
             nestedScrollEnabled
           >
-            {/* Summary */}
-            <View
-              style={{
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.panel,
-                padding: 12
-              }}
-            >
-              {[
-                {
-                  label: 'Tips Collected',
-                  value: currentSession.totalTipsCollected
-                },
-                { label: 'Tip-Outs', value: currentSession.totalTipOuts },
-                { label: 'Pooled', value: currentSession.totalTipsPooled }
-              ].map(({ label, value }) => (
-                <View
-                  key={label}
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    marginBottom: 6
-                  }}
-                >
-                  <Text style={{ fontSize: 12, color: colors.label }}>
-                    {label}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '600',
-                      color: colors.heading
-                    }}
-                  >
-                    {formatCurrency(value)}
-                  </Text>
-                </View>
-              ))}
+            {currentSession.details.map((detail, idx) => (
               <View
+                key={detail.id}
                 style={{
-                  borderTopWidth: 1,
-                  borderTopColor: colors.border,
-                  paddingTop: 8,
-                  marginTop: 2,
                   flexDirection: 'row',
-                  justifyContent: 'space-between'
+                  alignItems: 'center',
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  borderBottomWidth: idx < currentSession.details.length - 1 ? 1 : 0,
+                  borderBottomColor: colors.border,
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color: colors.heading
-                  }}
-                >
-                  Total Distributed
+                <Text style={{ flex: COL.name, fontSize: 12, fontWeight: '600', color: colors.heading }} numberOfLines={1}>
+                  {detail.staffName || detail.staffProfileId.slice(0, 8)}
                 </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '700',
-                    color: colors.teal
-                  }}
-                >
-                  {formatCurrency(currentSession.totalDistributed)}
+                <View style={{ flex: COL.role }}>
+                  <View style={{
+                    alignSelf: 'flex-start',
+                    backgroundColor: colors.panel,
+                    borderRadius: 4,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    paddingHorizontal: 5,
+                    paddingVertical: 1,
+                  }}>
+                    <Text style={{ fontSize: 9, color: colors.label }}>{detail.roleCode.replace('merchant.', '')}</Text>
+                  </View>
+                </View>
+                <Text style={{ flex: COL.hrs, fontSize: 11, color: colors.heading, textAlign: 'right' }}>
+                  {detail.hoursWorked.toFixed(1)}
+                </Text>
+                <Text style={{ flex: COL.tips, fontSize: 11, color: colors.heading, textAlign: 'right' }}>
+                  {fmtCell(detail.individualTipsEarned)}
+                </Text>
+                <Text style={{ flex: COL.poolIn, fontSize: 11, color: detail.tipPoolReceived > 0 ? colors.success : colors.muted, textAlign: 'right', fontWeight: detail.tipPoolReceived > 0 ? '600' : '400' }}>
+                  {fmtPoolCell(detail.tipPoolReceived, true)}
+                </Text>
+                <Text style={{ flex: COL.poolOut, fontSize: 11, color: detail.tipPoolContributed > 0 ? colors.danger : colors.muted, textAlign: 'right', fontWeight: detail.tipPoolContributed > 0 ? '600' : '400' }}>
+                  {fmtPoolCell(detail.tipPoolContributed, false)}
+                </Text>
+                <Text style={{ flex: COL.net, fontSize: 12, fontWeight: '700', color: colors.teal, textAlign: 'right' }}>
+                  {formatCurrency(detail.netTips)}
                 </Text>
               </View>
-            </View>
-
-            {currentSession.details.map(detail => {
-              const isSelected = focusedDetailId === detail.id
-              return (
-                <TouchableOpacity
-                  key={detail.id}
-                  onPress={() => setFocusedDetailId(detail.id)}
-                  style={{
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: isSelected ? colors.teal : colors.border,
-                    backgroundColor: isSelected
-                      ? colors.teal + '12'
-                      : colors.panel,
-                    padding: 12
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 10,
-                      marginBottom: 8
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 34,
-                        height: 34,
-                        borderRadius: 17,
-                        backgroundColor: isSelected
-                          ? colors.teal + '25'
-                          : colors.card,
-                        borderWidth: 1,
-                        borderColor: isSelected ? colors.teal : colors.border,
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: '700',
-                          color: isSelected ? colors.teal : colors.label
-                        }}
-                      >
-                        {initials(detail.staffName || detail.staffProfileId)}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontSize: 13,
-                          fontWeight: '600',
-                          color: colors.heading
-                        }}
-                      >
-                        {detail.staffName || detail.staffProfileId}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 10,
-                          color: colors.label,
-                          marginTop: 1
-                        }}
-                      >
-                        {detail.roleCode.replace('merchant.', '')}
-                      </Text>
-                    </View>
-                    <Text
-                      style={{
-                        fontSize: 15,
-                        fontWeight: '700',
-                        color: colors.teal
-                      }}
-                    >
-                      {formatCurrency(detail.netTips)}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      gap: 6,
-                      marginBottom: 8
-                    }}
-                  >
-                    {detail.individualTipsEarned > 0 && (
-                      <View
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 20,
-                          backgroundColor: colors.teal + '18',
-                          borderWidth: 1,
-                          borderColor: colors.teal + '40'
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: '600',
-                            color: colors.teal
-                          }}
-                        >
-                          Earned {formatCurrency(detail.individualTipsEarned)}
-                        </Text>
-                      </View>
-                    )}
-                    {detail.tipOutGiven > 0 && (
-                      <View
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 20,
-                          backgroundColor: colors.danger + '12',
-                          borderWidth: 1,
-                          borderColor: colors.danger + '40'
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: '600',
-                            color: colors.danger
-                          }}
-                        >
-                          Tip-out -{formatCurrency(detail.tipOutGiven)}
-                        </Text>
-                      </View>
-                    )}
-                    {detail.tipOutReceived > 0 && (
-                      <View
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 20,
-                          backgroundColor: colors.teal + '18',
-                          borderWidth: 1,
-                          borderColor: colors.teal + '40'
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: '600',
-                            color: colors.teal
-                          }}
-                        >
-                          +{formatCurrency(detail.tipOutReceived)}
-                        </Text>
-                      </View>
-                    )}
-                    {detail.tipPoolReceived > 0 && (
-                      <View
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 20,
-                          backgroundColor: colors.info + '15',
-                          borderWidth: 1,
-                          borderColor: colors.info + '40'
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: '600',
-                            color: colors.info
-                          }}
-                        >
-                          Pool +{formatCurrency(detail.tipPoolReceived)}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, color: colors.label }}>
-                      Adjustment:
-                    </Text>
-                    <View
-                      style={{
-                        flex: 1,
-                        backgroundColor: colors.inset,
-                        borderWidth: 1,
-                        borderColor: isSelected ? colors.teal : colors.border,
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '600',
-                          color: colors.heading,
-                          textAlign: 'right'
-                        }}
-                      >
-                        ${(detail.manualAdjustment ?? 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )
-            })}
+            ))}
           </ScrollView>
         </View>
 
-        {/* Right — numpad */}
-        {renderNumpad(
-          focusedDetail
-            ? focusedDetail.staffName || 'Employee'
-            : 'Select an employee',
-          `$${focusedAdjustment}`,
-          !!focusedDetailId,
-          handleAdjustmentInput,
-          handleAdjustmentBackspace,
-          <TouchableOpacity
-            onPress={handleApprove}
-            style={{
-              paddingVertical: 14,
-              borderRadius: 10,
-              alignItems: 'center',
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 8,
-              backgroundColor: colors.teal
-            }}
-          >
-            <Check size={15} color={colors.onSolid} />
-            <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}
-            >
-              Approve
-            </Text>
-          </TouchableOpacity>
-        )}
+        {/* Approve button */}
+        <TouchableOpacity
+          onPress={handleApprove}
+          style={{
+            paddingVertical: 14,
+            borderRadius: 10,
+            alignItems: 'center',
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+            backgroundColor: colors.teal,
+          }}
+        >
+          <Check size={15} color={colors.onSolid} />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.onSolid }}>
+            Approve
+          </Text>
+        </TouchableOpacity>
       </View>
     )
   }
@@ -1223,23 +1033,23 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
       animationType='slide'
       onRequestClose={handleClose}
     >
-      {/* Backdrop */}
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={handleClose}
+      {/* Backdrop — non-dismissible, only X button closes */}
+      <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
+          backgroundColor: 'rgba(0,0,0,0.6)',
           justifyContent: 'flex-end'
         }}
       >
         <View
           style={{
-            height: '96%',
+            height: '100%',
             borderTopLeftRadius: 20,
             borderTopRightRadius: 20,
             backgroundColor: colors.screen,
-            padding: 16
+            paddingTop: 16,
+            paddingHorizontal: 16,
+            paddingBottom: 8,
           }}
         >
           {renderStepIndicator()}
@@ -1269,9 +1079,12 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
           {/* Multi-session context banner */}
           {(() => {
             const approvedPrev = previousSessions.filter(s => s.status === 'approved')
-            const seqNum = currentSession?.sequenceNumber ?? (approvedPrev.length + 1)
-            const startAfter = currentSession?.dataStartAfter
             const lastApproved = approvedPrev[approvedPrev.length - 1]
+            const seqNum = currentSession?.sequenceNumber ?? (approvedPrev.length + 1)
+            // Use currentSession's start if available, otherwise derive from last approved cutoff
+            const windowStart = currentSession?.dataStartAfter
+              ?? lastApproved?.dataCutoffAt
+              ?? null
 
             return (
               <View
@@ -1286,8 +1099,8 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
                 }}
               >
                 <Text style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}>
-                  Session #{seqNum} · {startAfter
-                    ? `Since ${new Date(startAfter).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  Session #{seqNum} · {windowStart
+                    ? `Since ${new Date(windowStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                     : 'All activity today'}
                 </Text>
                 {lastApproved && (
@@ -1304,7 +1117,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
           {wizardStep === 'approve' && renderApproveStep()}
           {renderFooter()}
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
   )
 }

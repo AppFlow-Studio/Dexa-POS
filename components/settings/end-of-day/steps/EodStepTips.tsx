@@ -8,6 +8,7 @@ import {
   fetchTodaySessions,
   fetchUnsettledTipSummary,
 } from "@/services/endOfDayService";
+import { getCurrentBusinessDay } from "@/lib/businessDay";
 import { formatCurrency } from "@/utils/currency";
 import { colors } from "@/lib/theme";
 import { useQuery } from "@tanstack/react-query";
@@ -24,6 +25,15 @@ const resolveItem = (
 
 function fmt(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function formatTipSource(raw: string) {
+  switch (raw) {
+    case "charged_tips": return "Charged Tips";
+    case "all_tips": return "All Tips";
+    case "cash_only": return "Cash Only";
+    default: return raw.replace(/_/g, " ");
+  }
 }
 
 function formatRuleValue(rule: TipDistributionRulesOverview["rules"][number]) {
@@ -71,8 +81,10 @@ export default function EodStepTips({
     queryFn: () => fetchTipDistributionRulesOverview(supabase, locationId),
   });
 
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const todayStr = getCurrentBusinessDay({
+    timezone: selectedStore?.timezone || "UTC",
+    rolloverHour: selectedStore?.business_day_start_hour ?? 0,
+  });
 
   const { data: todaySessions, refetch: refetchSessions } = useQuery({
     queryKey: ["eod-today-sessions", locationId, todayStr],
@@ -89,6 +101,12 @@ export default function EodStepTips({
   const pendingSessions = tipSummary?.pendingPriorDaySessions ?? [];
   const hasPendingPrior = pendingSessions.length > 0;
 
+  // Multi-session: find the last approved session's cutoff for scoping
+  const approvedToday = (todaySessions || []).filter(s => s.status === "approved");
+  const lastApprovedCutoff = approvedToday.length > 0
+    ? approvedToday[approvedToday.length - 1].dataCutoffAt
+    : null;
+
   return (
     <View style={{ gap: 10 }}>
       {/* Shift Declaration Review — manager can declare for undeclared staff */}
@@ -96,6 +114,7 @@ export default function EodStepTips({
         supabase={supabase}
         locationId={locationId}
         date={todayStr}
+        afterCutoff={lastApprovedCutoff}
       />
 
       {/* Today's Sessions — multi-session history */}
@@ -431,6 +450,14 @@ export default function EodStepTips({
                         </Text>
                       </View>
                     </View>
+                    <Text style={{ fontSize: 10, color: colors.label }}>
+                      Source: {formatTipSource(config.tipSource)} · {config.sourcePercentage}%
+                    </Text>
+                    {config.contributingRoleCodes?.length > 0 && (
+                      <Text style={{ fontSize: 10, color: colors.label }}>
+                        Contributing: {config.contributingRoleCodes.join(", ")}
+                      </Text>
+                    )}
                     {!!config.description ? (
                       <Text style={{ fontSize: 11, color: colors.label }}>
                         {config.description}

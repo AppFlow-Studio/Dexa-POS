@@ -71,7 +71,7 @@ export interface TipDistributionSession {
   locationId: string;
   sessionDate: string;
   shiftPeriod?: "full_day" | "lunch" | "dinner" | "custom";
-  status: "draft" | "calculated" | "approved" | "exported" | "voided";
+  status: "draft" | "preview" | "calculated" | "approved" | "exported" | "voided";
   sequenceNumber: number;
   dataStartAfter: string | null;
   dataCutoffAt: string | null;
@@ -144,18 +144,20 @@ interface TipDistributionState {
   // Fetching
   fetchTipConfig: (supabase: any, locationId: string) => Promise<void>;
   fetchPreviousSessions: (supabase: any, locationId: string, date: string) => Promise<void>;
-  calculateDistribution: (
+  previewDistribution: (
     supabase: any,
     locationId: string,
     merchantId: string,
     sessionDate: string,
-    calculatedBy: string,
     shiftPeriod?: string
   ) => Promise<void>;
   approveDistribution: (
     supabase: any,
-    sessionId: string,
+    locationId: string,
+    merchantId: string,
+    sessionDate: string,
     approvedBy: string,
+    shiftPeriod?: string,
     notes?: string
   ) => Promise<void>;
 }
@@ -330,25 +332,23 @@ export const useTipDistributionStore = create<TipDistributionState>()(
       }
     },
 
-    calculateDistribution: async (
+    previewDistribution: async (
       supabase,
       locationId,
       merchantId,
       sessionDate,
-      calculatedBy,
       shiftPeriod
     ) => {
       set({ isCalculating: true, error: null });
 
       try {
         const { data, error } = await supabase.rpc(
-          "calculate_tip_distribution_v2",
+          "preview_tip_distribution",
           {
-            p_location_id: locationId,
             p_merchant_id: merchantId,
+            p_location_id: locationId,
             p_session_date: sessionDate,
-            p_shift_period: shiftPeriod || null,
-            p_calculated_by: calculatedBy,
+            p_shift_period: shiftPeriod || "full_day",
           }
         );
 
@@ -356,13 +356,12 @@ export const useTipDistributionStore = create<TipDistributionState>()(
 
         const result = data as any;
 
-        // Map response to session (includes multi-session fields)
         const session: TipDistributionSession = {
-          id: result.session_id,
+          id: result.session_id || "preview",
           locationId,
           sessionDate,
           shiftPeriod: shiftPeriod as TipDistributionSession["shiftPeriod"],
-          status: "calculated",
+          status: "preview",
           sequenceNumber: Number(result.sequence_number) || 1,
           dataStartAfter: result.data_start_after || null,
           dataCutoffAt: result.data_cutoff_at || null,
@@ -372,10 +371,9 @@ export const useTipDistributionStore = create<TipDistributionState>()(
           totalDistributed: Number(result.total_distributed || 0),
           roundingAdjustment: Number(result.rounding_adjustment || 0),
           calculatedAt: new Date().toISOString(),
-          calculatedBy,
           details: (result.details || []).map((d: any) => ({
-            id: d.id,
-            sessionId: result.session_id,
+            id: d.id || "preview",
+            sessionId: result.session_id || "preview",
             staffProfileId: d.staff_profile_id,
             staffName: d.staff_name,
             roleCode: d.role_code,
@@ -399,14 +397,34 @@ export const useTipDistributionStore = create<TipDistributionState>()(
           isCalculating: false,
         });
       } catch (error: any) {
-        console.error("[TipDist] Calculate failed:", error);
-        set({ isCalculating: false, error: error?.message || "Tip distribution calculation failed." });
+        console.error("[TipDist] Preview failed:", error);
+        set({ isCalculating: false, error: error?.message || "Tip distribution preview failed." });
       }
     },
 
-    approveDistribution: async (supabase, sessionId, approvedBy, notes) => {
+    approveDistribution: async (supabase, locationId, merchantId, sessionDate, approvedBy, shiftPeriod, notes) => {
+      set({ error: null });
+
       try {
-        const { data, error } = await supabase.rpc(
+        // Step 1: Run the REAL calculation (creates session in DB)
+        const { data: calcData, error: calcError } = await supabase.rpc(
+          "calculate_tip_distribution_v2",
+          {
+            p_merchant_id: merchantId,
+            p_location_id: locationId,
+            p_session_date: sessionDate,
+            p_shift_period: shiftPeriod || "full_day",
+            p_calculated_by: approvedBy,
+          }
+        );
+
+        if (calcError) throw calcError;
+
+        const sessionId = (calcData as any)?.session_id;
+        if (!sessionId) throw new Error("No session_id returned from calculation");
+
+        // Step 2: Approve the newly created session
+        const { error: approveError } = await supabase.rpc(
           "approve_tip_distribution",
           {
             p_session_id: sessionId,
@@ -414,10 +432,11 @@ export const useTipDistributionStore = create<TipDistributionState>()(
           }
         );
 
-        if (error) throw error;
+        if (approveError) throw approveError;
 
         set((state) => {
           if (state.currentSession) {
+            state.currentSession.id = sessionId;
             state.currentSession.status = "approved";
             state.currentSession.approvedAt = new Date().toISOString();
             state.currentSession.approvedBy = approvedBy;

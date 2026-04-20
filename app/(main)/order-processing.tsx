@@ -1,11 +1,14 @@
 import BillSection from '@/components/bill/BillSection'
+import DiscountBottomSheet from '@/components/bill/DiscountBottomSheet'
 import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
 import CashDrawerSheet from '@/components/cash-drawer/CashDrawerSheet'
 import NoSaleModal from '@/components/cash-drawer/NoSaleModal'
 import MenuSection from '@/components/menu/MenuSection'
+import OpenItemAdder from '@/components/menu/OpenItemAdder'
 import BulkCompleteModal from '@/components/order/BulkCompleteModal'
 import OrderBadge from '@/components/order/OrderBadge'
 import OrderLineItemsModal from '@/components/order/OrderLineItemsModal'
+import OrderLineMinimalCard from '@/components/order/OrderLineMinimalCard'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { iosOnly } from '@/lib/safeAnimations'
@@ -13,24 +16,28 @@ import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
+import { useSearchStore } from '@/stores/searchStore'
 import { useOrderLineFilteredOrders } from '@/stores/selectors/orderSelectors'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import {
   getOrderStoreSupabaseClient,
   useOrderStore
 } from '@/stores/useOrderStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { CheckCircle2 } from 'lucide-react-native'
+import { CheckCircle2, Plus, Search, X } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   LinearTransition,
   SlideInLeft
 } from 'react-native-reanimated'
+import { Portal as Teleport } from 'react-native-teleport'
 
 const EMPTY_ORDERS: OrderProfile[] = []
 const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const
+const cardContentStyle = { padding: 10, gap: 12 } as const
 
 const OrderProcessing = () => {
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
@@ -45,16 +52,22 @@ const OrderProcessing = () => {
   )
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const orderCompletionMode = useStoreSettingsStore(s => s.orderCompletionMode)
+  const orderLineViewMode = useSettingsStore(
+    s => s.orderLineSettings.viewMode ?? 'default'
+  )
+  const openSearch = useSearchStore(s => s.openSearch)
 
   // Today-only order line list for current location.
   const reversedFilteredOrders = useOrderLineFilteredOrders()
 
   const [isAccordionOpen, setIsAccordionOpen] = useState(false)
+  const [isOrdersModuleOpen, setIsOrdersModuleOpen] = useState(false)
   const [isItemsModalOpen, setItemsModalOpen] = useState(false)
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [isCashDrawerSheetOpen, setCashDrawerSheetOpen] = useState(false)
   const [isNoSaleModalOpen, setNoSaleModalOpen] = useState(false)
   const [bulkCompleteModalOpen, setBulkCompleteModalOpen] = useState(false)
+  const [isCustomItemModuleOpen, setIsCustomItemModuleOpen] = useState(false)
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
 
@@ -296,10 +309,32 @@ const OrderProcessing = () => {
     []
   )
 
+  useEffect(() => {
+    if (orderLineViewMode !== 'minimal') {
+      setIsOrdersModuleOpen(false)
+    }
+  }, [orderLineViewMode])
+
   const handleCloseItemsModal = useCallback(() => setItemsModalOpen(false), [])
 
   const handleManageDrawer = useCallback(() => setCashDrawerSheetOpen(true), [])
   const handleNoSale = useCallback(() => setNoSaleModalOpen(true), [])
+
+  const renderOrderCard = useCallback(
+    ({ item }: { item: OrderProfile }) => (
+      <Animated.View
+        entering={iosOnly(SlideInLeft.duration(300).springify().damping(16))}
+      >
+        <OrderLineMinimalCard
+          order={item}
+          onMarkDone={() => handleMarkDone(item.id)}
+          onViewItems={() => handleViewItems(item.id)}
+          onPrintReceipt={() => handlePrintReceipt(item)}
+        />
+      </Animated.View>
+    ),
+    [handlePrintReceipt, handleViewItems, handleMarkDone]
+  )
 
   return (
     <View className='flex-1 flex-col bg-screen px-2 py-1'>
@@ -334,66 +369,173 @@ const OrderProcessing = () => {
           {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
           {renderStage >= 2 ? (
             <MenuSection
-              headerLeft={
-                <View className='flex-row items-center gap-x-2'>
-                  <Text className='text-lg font-semibold text-white'>
-                    Order Line
-                  </Text>
-                  {displayOrders?.length > 0 && (
-                    <View className='ml-1 bg-panel border border-border rounded-full px-2.5 py-0.5 items-center justify-center'>
-                      <Text className='text-xs font-bold text-label'>
+              showSearchButton={false}
+              placeMenuSelectorInMenuRow={true}
+              showMenuTabButton={false}
+              showOpenItemButton={false}
+              showTablesButton={false}
+              showPreviousOrdersSection={false}
+              toolbarSearchSlot={
+                orderLineViewMode === 'minimal' ? (
+                  <TouchableOpacity
+                    onPress={() => setIsOrdersModuleOpen(true)}
+                    className='flex-row items-center rounded-lg px-3 py-2.5 justify-start'
+                    style={{
+                      backgroundColor: colors.info + '16',
+                      borderWidth: 1,
+                      borderColor: colors.info + '35'
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: colors.heading
+                      }}
+                    >
+                      Orders
+                    </Text>
+                    <View
+                      style={{
+                        minWidth: 20,
+                        height: 20,
+                        borderRadius: 10,
+                        marginLeft: 6,
+                        backgroundColor: colors.info + '30',
+                        borderWidth: 1,
+                        borderColor: colors.info + '55',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        paddingHorizontal: 5
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.heading,
+                          fontSize: 10,
+                          fontWeight: '800'
+                        }}
+                      >
                         {displayOrders.length}
                       </Text>
                     </View>
-                  )}
-                  {completableOrders.length > 0 && (
-                    <TouchableOpacity
-                      onPress={() => setBulkCompleteModalOpen(true)}
+                  </TouchableOpacity>
+                ) : undefined
+              }
+              rightToolbarSlot={
+                <TouchableOpacity
+                  onPress={() => setIsCustomItemModuleOpen(true)}
+                  className='flex-row items-center rounded-lg px-3 py-2.5 gap-2'
+                  style={{
+                    backgroundColor: colors.teal,
+                    borderWidth: 1,
+                    borderColor: colors.teal
+                  }}
+                >
+                  <Plus size={16} color='#000000' strokeWidth={2.5} />
+                  <Text
+                    style={{
+                      color: '#000000',
+                      fontSize: 12,
+                      fontWeight: '700'
+                    }}
+                  >
+                    Custom Item
+                  </Text>
+                </TouchableOpacity>
+              }
+              headerLeft={
+                <View className='flex-row items-center gap-x-2'>
+                  <TouchableOpacity
+                    onPress={openSearch}
+                    className='flex-row items-center rounded-lg px-3 py-2.5 justify-start'
+                    style={{
+                      width: orderLineViewMode === 'minimal' ? 300 : 300,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.screen
+                    }}
+                  >
+                    <Search size={14} color={colors.muted} />
+                    <Text
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 4,
-                        backgroundColor: colors.success + '15',
-                        borderWidth: 1,
-                        borderColor: colors.success + '30',
-                        borderRadius: 20,
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        marginLeft: 4
+                        marginLeft: 7,
+                        fontSize: 12,
+                        fontWeight: '500',
+                        color: colors.muted
                       }}
                     >
-                      <CheckCircle2 size={12} color={colors.success} />
-                      <Text
+                      Search menu...
+                    </Text>
+                  </TouchableOpacity>
+
+                  {orderLineViewMode !== 'minimal' &&
+                    completableOrders.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() => setBulkCompleteModalOpen(true)}
                         style={{
-                          fontSize: 11,
-                          fontWeight: '600',
-                          color: colors.success
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 4,
+                          backgroundColor: colors.success + '15',
+                          borderWidth: 1,
+                          borderColor: colors.success + '30',
+                          borderRadius: 20,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2
                         }}
                       >
-                        Complete All ({completableOrders.length})
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                        <CheckCircle2 size={10} color={colors.success} />
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: '600',
+                            color: colors.success
+                          }}
+                        >
+                          Complete All ({completableOrders.length})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                 </View>
               }
               headerBelow={
-                !isAccordionOpen && displayOrders.length > 0 ? (
-                  <View className='px-0 py-1.5'>
-                    <Animated.FlatList
-                      horizontal
-                      data={displayOrders}
-                      keyExtractor={badgeKeyExtractor}
-                      className='mt-1 max-h-12'
-                      contentContainerStyle={badgeContentStyle}
-                      showsHorizontalScrollIndicator={false}
-                      itemLayoutAnimation={LinearTransition.springify()
-                        .damping(18)
-                        .stiffness(120)}
-                      initialNumToRender={10}
-                      maxToRenderPerBatch={10}
-                      windowSize={3}
-                      renderItem={renderOrderBadge}
-                    />
+                orderLineViewMode !== 'minimal' && !isAccordionOpen ? (
+                  <View className='px-0 py-1.5 flex-row items-center'>
+                    <View style={{ gap: 4 }}>
+                      <View className='flex-row items-center gap-x-2'>
+                        <Text className='text-lg font-semibold text-white'>
+                          Order Line
+                        </Text>
+                        {displayOrders?.length > 0 && (
+                          <View className='ml-1 bg-panel border border-border rounded-full px-2.5 py-0.5 items-center justify-center'>
+                            <Text className='text-xs font-bold text-label'>
+                              {displayOrders.length}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    {displayOrders.length > 0 && (
+                      <View className='flex-1 ml-2 justify-center'>
+                        <Animated.FlatList
+                          horizontal
+                          data={displayOrders}
+                          keyExtractor={badgeKeyExtractor}
+                          className='max-h-10'
+                          contentContainerStyle={badgeContentStyle}
+                          showsHorizontalScrollIndicator={false}
+                          itemLayoutAnimation={LinearTransition.springify()
+                            .damping(18)
+                            .stiffness(120)}
+                          initialNumToRender={10}
+                          maxToRenderPerBatch={10}
+                          windowSize={3}
+                          renderItem={renderOrderBadge}
+                        />
+                      </View>
+                    )}
                   </View>
                 ) : null
               }
@@ -416,16 +558,24 @@ const OrderProcessing = () => {
         </View>
       </View>
 
-      {/* Stage 2: Defer MoreOptionsBottomSheet — starts closed (index={-1}), safe to delay */}
+      {/* Stage 2: Mount in root portal so the sheet layers above BillSection controls */}
       {renderStage >= 2 && (
-        <MoreOptionsBottomSheet
-          ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-          discountSheetRef={
-            discountSheetRef as React.RefObject<BottomSheetMethods>
-          }
-          onCloseCheck={handleCloseCheck}
-          onNoSale={handleNoSale}
-        />
+        <Teleport hostName='root'>
+          <>
+            <MoreOptionsBottomSheet
+              ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+              discountSheetRef={
+                discountSheetRef as React.RefObject<BottomSheetMethods>
+              }
+              onCloseCheck={handleCloseCheck}
+              onNoSale={handleNoSale}
+            />
+            <DiscountBottomSheet
+              ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
+              onClose={() => discountSheetRef?.current?.close()}
+            />
+          </>
+        </Teleport>
       )}
 
       {isItemsModalOpen && (
@@ -450,6 +600,237 @@ const OrderProcessing = () => {
         onConfirm={handleBulkComplete}
         onCancel={() => setBulkCompleteModalOpen(false)}
       />
+
+      <Modal
+        visible={isOrdersModuleOpen}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setIsOrdersModuleOpen(false)}
+      >
+        <Pressable
+          onPress={() => setIsOrdersModuleOpen(false)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'center',
+            paddingHorizontal: 24,
+            paddingVertical: 20
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              width: 500,
+              maxWidth: '92%',
+              alignSelf: 'center',
+              maxHeight: '92%',
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.info + '35',
+              backgroundColor: colors.screen,
+              overflow: 'hidden'
+            }}
+          >
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}
+            >
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: 15,
+                    fontWeight: '800'
+                  }}
+                >
+                  Orders
+                </Text>
+                <View
+                  style={{
+                    minWidth: 22,
+                    height: 22,
+                    borderRadius: 11,
+                    backgroundColor: colors.info + '30',
+                    borderWidth: 1,
+                    borderColor: colors.info + '55',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 6
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontSize: 11,
+                      fontWeight: '800'
+                    }}
+                  >
+                    {displayOrders.length}
+                  </Text>
+                </View>
+              </View>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
+                {completableOrders.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setBulkCompleteModalOpen(true)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      backgroundColor: colors.success + '15',
+                      borderWidth: 1,
+                      borderColor: colors.success + '30',
+                      borderRadius: 20,
+                      paddingHorizontal: 8,
+                      paddingVertical: 4
+                    }}
+                  >
+                    <CheckCircle2 size={12} color={colors.success} />
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '600',
+                        color: colors.success
+                      }}
+                    >
+                      Complete All ({completableOrders.length})
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={() => setIsOrdersModuleOpen(false)}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 15,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: colors.panel,
+                    borderWidth: 1,
+                    borderColor: colors.border
+                  }}
+                >
+                  <X size={16} color={colors.label} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {displayOrders.length > 0 ? (
+              <Animated.FlatList
+                data={displayOrders}
+                keyExtractor={badgeKeyExtractor}
+                contentContainerStyle={cardContentStyle}
+                showsVerticalScrollIndicator={false}
+                itemLayoutAnimation={LinearTransition.springify()
+                  .damping(18)
+                  .stiffness(120)}
+                initialNumToRender={5}
+                maxToRenderPerBatch={5}
+                windowSize={4}
+                renderItem={renderOrderCard}
+              />
+            ) : (
+              <View
+                style={{
+                  paddingVertical: 28,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                  No active orders.
+                </Text>
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={isCustomItemModuleOpen}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setIsCustomItemModuleOpen(false)}
+      >
+        <Pressable
+          onPress={() => setIsCustomItemModuleOpen(false)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'center',
+            paddingHorizontal: 24,
+            paddingVertical: 20
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              width: 360,
+              maxWidth: '92%',
+              alignSelf: 'center',
+              maxHeight: '92%',
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.teal + '45',
+              backgroundColor: colors.screen,
+              overflow: 'hidden'
+            }}
+          >
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: 14,
+                  fontWeight: '800'
+                }}
+              >
+                Create Custom Item
+              </Text>
+              <TouchableOpacity
+                onPress={() => setIsCustomItemModuleOpen(false)}
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 15,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
+              >
+                <X size={16} color={colors.label} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ height: 620 }}>
+              <OpenItemAdder
+                onCreated={() => setIsCustomItemModuleOpen(false)}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   )
 }

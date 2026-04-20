@@ -57,7 +57,6 @@ import {
   DialogTitle
 } from '../ui/dialog'
 import BillSummary from './BillSummary'
-import DiscountBottomSheet from './DiscountBottomSheet'
 import DiscountOverlay from './DiscountOverlay'
 import OrderDetails from './OrderDetails'
 import Totals from './Totals'
@@ -1384,11 +1383,6 @@ const BillSectionContent = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <DiscountBottomSheet
-        ref={discountSheetRef}
-        onClose={() => discountSheetRef?.current?.close()}
-      />
     </View>
   )
 }

@@ -130,7 +130,8 @@ const OrderDetailsComponent: React.FC<{
     serviceLocationId,
     deliveryAddress,
     orderStatus,
-    paymentStatus
+    paymentStatus,
+    checkStatus
   } = useOrderStore(
     useShallow(s => {
       const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
@@ -143,7 +144,8 @@ const OrderDetailsComponent: React.FC<{
         serviceLocationId: order?.service_location_id || null,
         deliveryAddress: order?.delivery_address || '',
         orderStatus: order?.order_status || null,
-        paymentStatus: getPaymentBadgeStatus(order)
+        paymentStatus: getPaymentBadgeStatus(order),
+        checkStatus: order?.check_status || null
       }
     })
   )
@@ -450,7 +452,7 @@ const OrderDetailsComponent: React.FC<{
       </View>
 
       {/* Status badges */}
-      {(orderStatus || paymentStatus) && (
+      {(orderStatus || paymentStatus || checkStatus) && (
         <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
           {orderStatus &&
             (() => {
@@ -520,6 +522,7 @@ const OrderDetailsComponent: React.FC<{
             })()}
           {paymentStatus &&
             paymentStatus !== 'Pending' &&
+            paymentStatus !== 'Unpaid' &&
             (() => {
               const cfg: Record<
                 string,
@@ -575,6 +578,24 @@ const OrderDetailsComponent: React.FC<{
                 </View>
               )
             })()}
+          {checkStatus === 'Closed' && (
+            <View
+              style={{
+                backgroundColor: 'rgba(59,130,246,0.12)',
+                borderRadius: 5,
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderWidth: 1,
+                borderColor: 'rgba(59,130,246,0.25)'
+              }}
+            >
+              <Text
+                style={{ fontSize: 9, fontWeight: '600', color: '#3B82F6' }}
+              >
+                Check Closed
+              </Text>
+            </View>
+          )}
         </View>
       )}
       <Dialog
