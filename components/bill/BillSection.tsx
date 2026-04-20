@@ -31,10 +31,11 @@ import {
   CreditCard,
   MoreHorizontal,
   Plus,
+  Printer,
   RefreshCw,
-  Send,
   Trash2,
-  WifiOff
+  WifiOff,
+  X
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -88,7 +89,7 @@ const BillItemsAndTotals = React.memo(
         />
         <View className='px-3 pb-1'>
           <View
-            className='h-10 px-3 rounded-lg justify-center'
+            className='h-9 px-3 rounded-lg justify-center mb-1'
             style={{
               backgroundColor: colors.panel,
               borderWidth: 1,
@@ -112,7 +113,7 @@ const BillItemsAndTotals = React.memo(
                 height: 18,
                 paddingHorizontal: 0,
                 paddingVertical: 0,
-                margin: 0,
+                margin: 2,
                 includeFontPadding: false,
                 fontFamily: 'System'
               }}
@@ -756,12 +757,12 @@ const BillSectionContent = ({
               disabled={newItemsCount === 0 || hasDraftItems}
               onPress={handleSendToKitchen}
             >
-              <Send size={12} color={colors.onSolid} />
+              <Printer size={12} color={colors.onSolid} />
               <Text
                 style={{
                   color: colors.onSolid,
                   fontSize: 12,
-                  fontWeight: '700'
+                  fontWeight: '500'
                 }}
               >
                 Send
@@ -780,7 +781,7 @@ const BillSectionContent = ({
                 style={{
                   color: colors.onSolid,
                   fontSize: 12,
-                  fontWeight: '700'
+                  fontWeight: '500'
                 }}
               >
                 New Order
@@ -816,19 +817,20 @@ const BillSectionContent = ({
         onRequestClose={() => setIsTableSelectorOpen(false)}
       >
         <View style={{ flex: 1 }}>
+          {/* Scrim */}
           <TouchableOpacity
             activeOpacity={1}
             onPress={() => setIsTableSelectorOpen(false)}
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              left: 0,
-              backgroundColor: 'rgba(8, 12, 18, 0.28)'
-            }}
+            style={
+              {
+                position: 'absolute',
+                inset: 0,
+                backgroundColor: 'rgba(0,0,0,0.55)'
+              } as any
+            }
           />
 
+          {/* Panel */}
           <View
             style={{
               position: 'absolute',
@@ -838,268 +840,308 @@ const BillSectionContent = ({
                 tableDrawerAnchor.height > 0
                   ? tableDrawerAnchor.height
                   : '100%',
-              width: 420,
+              width: 380,
               backgroundColor: colors.screen,
+              borderLeftWidth: 0,
               borderTopWidth: 1,
               borderBottomWidth: 1,
               borderRightWidth: 1,
               borderColor: colors.border,
-              borderTopRightRadius: 18,
-              borderBottomRightRadius: 18,
-              overflow: 'hidden'
+              borderTopRightRadius: 16,
+              borderBottomRightRadius: 16,
+              overflow: 'hidden',
+              flexDirection: 'column'
             }}
           >
+            {/* ── Top header ── */}
             <View
-              className='px-5 py-4 border-b'
-              style={{ borderColor: colors.border }}
+              style={{
+                paddingHorizontal: 18,
+                paddingTop: 16,
+                paddingBottom: 12
+              }}
             >
-              <Text
+              <View
                 style={{
-                  color: colors.heading,
-                  fontSize: 20,
-                  fontWeight: '700'
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
                 }}
               >
-                Select Table
-              </Text>
-              {floorPlanOptions.length > 0 && (
-                <View style={{ paddingTop: 12 }}>
+                <View style={{ flex: 1 }}>
                   <Text
                     style={{
-                      color: colors.label,
-                      fontSize: 11,
+                      color: colors.heading,
+                      fontSize: 16,
                       fontWeight: '700',
-                      marginBottom: 8
+                      letterSpacing: -0.2
                     }}
                   >
-                    Floor Plan
+                    Select Table
                   </Text>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      gap: 8
-                    }}
+                  <Text
+                    style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}
                   >
-                    {floorPlanOptions.map(plan => {
-                      const isActive =
-                        (pendingFloorPlanId ?? activeFloorPlanId) === plan.id
-
-                      return (
-                        <TouchableOpacity
-                          key={plan.id}
-                          onPress={() => {
-                            void handleSelectFloorPlan(plan.id)
-                          }}
-                          style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 7,
-                            borderRadius: 999,
-                            borderWidth: 1,
-                            backgroundColor: isActive
-                              ? `${colors.teal}16`
-                              : colors.card,
-                            borderColor: isActive ? colors.teal : colors.border
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: isActive ? colors.teal : colors.label,
-                              fontSize: 12,
-                              fontWeight: '700'
-                            }}
-                          >
-                            {plan.name}
-                          </Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
+                    {
+                      filteredTableOptions.filter(
+                        t => (t.session?.status ?? 'available') === 'available'
+                      ).length
+                    }{' '}
+                    of {filteredTableOptions.length} available
+                  </Text>
                 </View>
-              )}
-              {sectionOptions.length > 0 && (
-                <View style={{ paddingTop: 12 }}>
-                  <Text
-                    style={{
-                      color: colors.label,
-                      fontSize: 11,
-                      fontWeight: '700',
-                      marginBottom: 8
-                    }}
-                  >
-                    Section
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      gap: 8
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={() => setSelectedSectionId(null)}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 7,
-                        borderRadius: 999,
-                        borderWidth: 1,
-                        backgroundColor:
-                          selectedSectionId === null
-                            ? `${colors.teal}16`
-                            : colors.card,
-                        borderColor:
-                          selectedSectionId === null
-                            ? colors.teal
-                            : colors.border
-                      }}
-                    >
-                      <Text
+                <TouchableOpacity
+                  onPress={() => setIsTableSelectorOpen(false)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: colors.inset,
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <X size={13} color={colors.muted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Floor plan tabs — only shown when >1 plan */}
+              {floorPlanOptions.length > 1 && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    backgroundColor: colors.inset,
+                    borderRadius: 10,
+                    padding: 3,
+                    marginTop: 12
+                  }}
+                >
+                  {floorPlanOptions.map(plan => {
+                    const isActive =
+                      (pendingFloorPlanId ?? activeFloorPlanId) === plan.id
+                    return (
+                      <TouchableOpacity
+                        key={plan.id}
+                        onPress={() => {
+                          void handleSelectFloorPlan(plan.id)
+                        }}
                         style={{
-                          color:
-                            selectedSectionId === null
-                              ? colors.teal
-                              : colors.label,
-                          fontSize: 12,
-                          fontWeight: '700'
+                          flex: 1,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          backgroundColor: isActive
+                            ? colors.teal
+                            : 'transparent',
+                          shadowColor: isActive ? colors.teal : 'transparent',
+                          shadowOffset: { width: 0, height: 1 },
+                          shadowOpacity: isActive ? 0.3 : 0,
+                          shadowRadius: 3,
+                          elevation: isActive ? 2 : 0
                         }}
                       >
-                        All Sections
-                      </Text>
-                    </TouchableOpacity>
-                    {sectionOptions.map((section: ServerSection) => {
-                      const isActive = selectedSectionId === section.id
-
-                      return (
-                        <TouchableOpacity
-                          key={section.id}
-                          onPress={() => setSelectedSectionId(section.id)}
+                        <Text
                           style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 7,
-                            borderRadius: 999,
-                            borderWidth: 1,
-                            backgroundColor: isActive
-                              ? `${colors.teal}16`
-                              : colors.card,
-                            borderColor: isActive ? colors.teal : colors.border
+                            color: isActive ? colors.onSolid : colors.muted,
+                            fontSize: 12,
+                            fontWeight: isActive ? '600' : '500'
                           }}
                         >
-                          <Text
-                            style={{
-                              color: isActive ? colors.teal : colors.label,
-                              fontSize: 12,
-                              fontWeight: '700'
-                            }}
-                          >
-                            {section.name}
-                          </Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
+                          {plan.name}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
                 </View>
+              )}
+
+              {/* Section chips */}
+              {sectionOptions.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginTop: 10, marginHorizontal: -18 }}
+                  contentContainerStyle={{
+                    paddingHorizontal: 18,
+                    gap: 6,
+                    flexDirection: 'row'
+                  }}
+                >
+                  {[
+                    { id: null, name: 'All' },
+                    ...sectionOptions.map((s: ServerSection) => ({
+                      id: s.id,
+                      name: s.name
+                    }))
+                  ].map(item => {
+                    const isActive = selectedSectionId === item.id
+                    return (
+                      <TouchableOpacity
+                        key={item.id ?? '__all__'}
+                        onPress={() => setSelectedSectionId(item.id)}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 5,
+                          borderRadius: 8,
+                          backgroundColor: isActive ? colors.teal : colors.card,
+                          borderWidth: 1,
+                          borderColor: isActive ? colors.teal : colors.border
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: isActive ? colors.onSolid : colors.label,
+                            fontSize: 11,
+                            fontWeight: '600'
+                          }}
+                        >
+                          {item.name}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </ScrollView>
               )}
             </View>
 
+            {/* Divider */}
+            <View style={{ height: 1, backgroundColor: colors.border }} />
+
+            {/* ── Table grid ── */}
             <ScrollView
               style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 24 }}
+              contentContainerStyle={{ padding: 12, paddingBottom: 32 }}
+              showsVerticalScrollIndicator={false}
             >
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                {filteredTableOptions.map(table => {
-                  const statusLabel = getTableStatusLabel(table)
-                  const statusKey = table.session?.status ?? 'available'
-                  const statusColor =
-                    TABLE_STATUS_COLORS[statusKey] || colors.muted
-                  const isCurrentlyAssigned =
-                    table.id === activeOrderServiceLocation
-                  const isSelected =
-                    selectedTable?.id === table.id ||
-                    (!selectedTable && isCurrentlyAssigned)
-                  const isAvailable = statusKey === 'available'
-                  const isSelectable = isAvailable || isCurrentlyAssigned
-
-                  return (
-                    <TouchableOpacity
-                      key={table.id}
-                      onPress={() => handleSelectTable(table)}
-                      activeOpacity={isSelectable ? 0.8 : 1}
-                      style={{
-                        width: '50%',
-                        borderRightWidth: 1,
-                        borderBottomWidth: 1,
-                        borderColor: colors.border,
-                        paddingHorizontal: 14,
-                        paddingVertical: 14,
-                        opacity: isSelectable ? 1 : 0.6,
-                        backgroundColor: isSelected
-                          ? `${colors.teal}12`
-                          : colors.panel
-                      }}
-                    >
-                      <View className='flex-row items-center justify-between'>
-                        <Text
-                          style={{
-                            color: colors.heading,
-                            fontSize: 16,
-                            fontWeight: '700'
-                          }}
-                          numberOfLines={1}
-                        >
-                          {table.name}
-                        </Text>
-                        <View
-                          style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            borderWidth: 2,
-                            borderColor: isSelected
-                              ? colors.teal
-                              : colors.muted,
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          {isSelected ? (
-                            <Check size={12} color={colors.teal} />
-                          ) : null}
-                        </View>
-                      </View>
-                      <Text
-                        style={{
-                          color: statusColor,
-                          fontSize: 10,
-                          marginTop: 6,
-                          fontWeight: '700'
-                        }}
-                      >
-                        {statusLabel}
-                      </Text>
-                    </TouchableOpacity>
-                  )
-                })}
-                {filteredTableOptions.length === 0 && (
-                  <View
+              {filteredTableOptions.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingTop: 56 }}>
+                  <Text
                     style={{
-                      width: '100%',
-                      paddingHorizontal: 16,
-                      paddingVertical: 28,
-                      alignItems: 'center'
+                      color: colors.heading,
+                      fontSize: 14,
+                      fontWeight: '600'
                     }}
                   >
-                    <Text
-                      style={{
-                        color: colors.muted,
-                        fontSize: 13,
-                        fontWeight: '600'
-                      }}
-                    >
-                      No tables in this section.
-                    </Text>
-                  </View>
-                )}
-              </View>
+                    No tables found
+                  </Text>
+                  <Text
+                    style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}
+                  >
+                    Try a different section
+                  </Text>
+                </View>
+              ) : (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    justifyContent: 'center'
+                  }}
+                >
+                  {filteredTableOptions.map(table => {
+                    const statusLabel = getTableStatusLabel(table)
+                    const statusKey = table.session?.status ?? 'available'
+                    const statusColor =
+                      TABLE_STATUS_COLORS[statusKey] || colors.muted
+                    const isCurrentlyAssigned =
+                      table.id === activeOrderServiceLocation
+                    const isSelected =
+                      selectedTable?.id === table.id ||
+                      (!selectedTable && isCurrentlyAssigned)
+                    const isAvailable = statusKey === 'available'
+                    const isSelectable = isAvailable || isCurrentlyAssigned
+                    return (
+                      <TouchableOpacity
+                        key={table.id}
+                        onPress={() => handleSelectTable(table)}
+                        activeOpacity={isSelectable ? 0.7 : 1}
+                        style={{
+                          width: '45%',
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: isSelected ? colors.teal : colors.border,
+                          backgroundColor: isSelected
+                            ? `${colors.teal}12`
+                            : colors.card,
+                          opacity: isSelectable ? 1 : 0.4,
+                          paddingHorizontal: 12,
+                          paddingVertical: 12
+                        }}
+                      >
+                        {/* Name + check */}
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: colors.heading,
+                              fontSize: 17,
+                              fontWeight: '700',
+                              letterSpacing: -0.3,
+                              flexShrink: 1
+                            }}
+                            numberOfLines={1}
+                          >
+                            {table.name}
+                          </Text>
+                          {isSelected ? (
+                            <View
+                              style={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: 10,
+                                backgroundColor: colors.teal,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginLeft: 6
+                              }}
+                            >
+                              <Check
+                                size={11}
+                                color={colors.onSolid}
+                                strokeWidth={3}
+                              />
+                            </View>
+                          ) : (
+                            <View
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: 5,
+                                backgroundColor: statusColor,
+                                marginLeft: 6,
+                                opacity: 0.85
+                              }}
+                            />
+                          )}
+                        </View>
+
+                        {/* Status */}
+                        <Text
+                          style={{
+                            color: isSelected ? colors.teal : statusColor,
+                            fontSize: 10,
+                            fontWeight: '600',
+                            marginTop: 5,
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.3
+                          }}
+                        >
+                          {isCurrentlyAssigned && !isSelected
+                            ? 'Current'
+                            : statusLabel}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -1193,20 +1235,28 @@ const BillSectionContent = ({
         onSaveOrderNote={handleSaveOrderNote}
       />
       <View
-        className='mx-3 mb-2 rounded-2xl overflow-hidden'
+        className='mt-auto w-full overflow-hidden'
         style={{
+          marginLeft: -3,
+          marginRight: -3,
           backgroundColor: colors.panel,
-          borderWidth: 1,
-          borderColor: colors.border
+          borderTopWidth: 1,
+          borderLeftWidth: 1,
+          borderRightWidth: 1,
+          borderColor: colors.border,
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          shadowColor: '#000000',
+          shadowOffset: { width: 0, height: -10 },
+          shadowOpacity: 0.28,
+          shadowRadius: 18,
+          elevation: 20
         }}
       >
         <Totals cart={cart} />
 
         {showPlaymentActions && (
-          <View
-            className='px-3 pt-1.5 pb-2.5'
-            style={{ borderTopWidth: 1, borderTopColor: colors.border }}
-          >
+          <View className='px-3 pt-1 pb-1'>
             <View className='flex-row gap-2'>
               <TouchableOpacity
                 onPress={handleOpenMoreOptions}

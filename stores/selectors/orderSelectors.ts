@@ -306,12 +306,10 @@ export function useWorkingSetOrders (): OrderProfile[] {
 // ═══════════════════════════════════════════════════════════════════════════
 // Returns orders for this station's active order line:
 // - Working set orders OR orders from this station
-// - Excludes Dine In orders (handled by table/floor plan flow)
 // - order_status NOT IN ('completed', 'voided', 'cancelled', 'void')
 // - Must have items
 
 const INACTIVE_STATUSES = new Set(['completed', 'voided', 'cancelled', 'void'])
-const DINE_IN_TYPES = new Set(['Dine In', 'dine_in'])
 
 export function useStationOrders (): OrderProfile[] {
   const ordersById = useOrderStore(s => s.ordersById)
@@ -335,7 +333,6 @@ export function useStationOrders (): OrderProfile[] {
     const keys = Object.keys(ordersById)
     for (let i = 0; i < keys.length; i++) {
       const order = ordersById[keys[i]]
-      if (DINE_IN_TYPES.has(order.order_type ?? '')) continue
       if (INACTIVE_STATUSES.has(order.order_status ?? '')) continue
       if (!order.items || order.items.length === 0) continue
 
@@ -594,7 +591,6 @@ export function useOrderLineFilteredOrders (): OrderProfile[] {
         if (
           openedAt >= startTime &&
           openedAt <= endTime &&
-          !DINE_IN_TYPES.has(o.order_type ?? '') &&
           !INACTIVE_STATUSES.has(o.order_status ?? '') &&
           (o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0)
         ) {

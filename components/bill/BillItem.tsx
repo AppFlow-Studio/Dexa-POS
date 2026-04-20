@@ -417,6 +417,22 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const effectiveIsActive =
     isActive || isModifierActive || item.isDraft === true
 
+  const leftStatusColor = isVoided
+    ? colors.danger
+    : item.kitchen_status === 'ready'
+    ? colors.orderReady
+    : item.kitchen_status === 'preparing'
+    ? colors.orderPreparing
+    : item.kitchen_status === 'sent'
+    ? colors.orderSentToKitchen
+    : item.kitchen_status === 'served'
+    ? colors.tableServed
+    : paymentCoverage.isFullyPaid
+    ? colors.success
+    : paymentCoverage.isPartiallyPaid
+    ? colors.warning
+    : colors.muted
+
   return (
     <View
       className={`overflow-hidden py-2 ${
@@ -439,6 +455,22 @@ const BillItemComponent: React.FC<BillItemProps> = ({
           : undefined
       ]}
     >
+      {leftStatusColor !== 'transparent' && (
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 7,
+            bottom: 7,
+            width: 3,
+            borderRadius: 999,
+            backgroundColor: leftStatusColor,
+            opacity: isVoided ? 0.7 : 0.95,
+            zIndex: 1
+          }}
+        />
+      )}
+
       {isEditable && !isVoided && (
         <Animated.View
           style={deleteButtonStyle}
@@ -479,30 +511,18 @@ const BillItemComponent: React.FC<BillItemProps> = ({
           >
             <View>
               {/* Main row */}
-              <View className='flex-row items-center py-0 px-3 gap-2.5'>
-                {/* Quantity pill */}
-                <View
+              <View className='flex-row items-center py-0 pl-3 pr-3 gap-2'>
+                <Text
                   style={{
-                    minWidth: 28,
-                    height: 24,
-                    paddingHorizontal: 6,
-                    borderRadius: 8,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isVoided ? colors.border : colors.teal
+                    minWidth: 18,
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: isVoided ? colors.muted : colors.label,
+                    textAlign: 'left'
                   }}
                 >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: isVoided ? colors.muted : '#0B0B0B',
-                      textAlign: 'center'
-                    }}
-                  >
-                    {item.quantity}
-                  </Text>
-                </View>
+                  {item.quantity}
+                </Text>
 
                 {/* Name + badges */}
                 <View className='flex-1'>
@@ -658,7 +678,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               {hasModifiers && (
                 <View
                   style={{
-                    marginLeft: 46
+                    marginLeft: 36
                   }}
                 >
                   {item.customizations.modifiers &&

@@ -1,9 +1,11 @@
 import { useToast } from '@/contexts/ToastContext'
+import { calculatePaidStatus } from '@/lib/order-calculator'
 import { colors } from '@/lib/theme'
+import type { OrderProfile } from '@/lib/types'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { formatAddress } from '@/utils/addressUtils'
-import { Edit3, User } from 'lucide-react-native'
+import { Edit3, MapPin, User } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,
@@ -13,6 +15,91 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
+import Svg, { Rect } from 'react-native-svg'
+
+function getPaymentBadgeStatus (
+  order: OrderProfile | null
+): OrderProfile['paid_status'] | null {
+  if (!order) return null
+
+  const hasCashPayments =
+    order.payments?.some(payment => !payment.isVoided && payment.isCashPriced) ??
+    false
+
+  if (order.paid_status === 'Refunded') return 'Refunded'
+  if (order.paid_status === 'Paid' && (order.amount_due ?? 0) <= 0.01) {
+    return 'Paid'
+  }
+  if (hasCashPayments && (order.cash_amount_due ?? Number.POSITIVE_INFINITY) <= 0.01) {
+    return 'Paid'
+  }
+
+  const hasItems = (order.items?.length ?? 0) > 0
+  const hasPayments =
+    order.payments?.some(
+      payment =>
+        !payment.isVoided &&
+        ((payment.amount ?? 0) > 0 || (payment.refundedAmount ?? 0) > 0)
+    ) ?? false
+
+  const derivedTotal = Math.max(
+    order.total_amount ?? 0,
+    (order.amount_paid ?? 0) + Math.max(order.amount_due ?? 0, 0)
+  )
+  const hasBillableTotal = derivedTotal > 0.01
+
+  if (!hasItems && !hasBillableTotal && !hasPayments) return null
+
+  if (hasPayments && hasBillableTotal) {
+    return calculatePaidStatus(order.payments, derivedTotal)
+  }
+
+  if (order.amount_due != null) {
+    const amountPaid = order.amount_paid ?? 0
+
+    if (order.amount_due <= 0.01 && (hasBillableTotal || amountPaid > 0)) {
+      return 'Paid'
+    }
+
+    if (amountPaid > 0 && order.amount_due > 0.01) {
+      return 'Partial'
+    }
+  }
+
+  if (hasBillableTotal) {
+    return order.paid_status || 'Pending'
+  }
+
+  return order.paid_status || null
+}
+
+const DiningTableIcon: React.FC<{ color: string; size?: number }> = ({
+  color,
+  size = 16
+}) => (
+  <Svg width={size} height={size} viewBox='0 0 24 24' fill='none'>
+    {/* Table top */}
+    <Rect x='3' y='6' width='18' height='4' rx='1.5' fill={color} />
+
+    {/* Left leg */}
+    <Rect x='6' y='10' width='2' height='8' rx='1' fill={color} />
+
+    {/* Right leg */}
+    <Rect x='16' y='10' width='2' height='8' rx='1' fill={color} />
+
+    {/* Bottom support (optional, cleaner look) */}
+    <Rect
+      x='5'
+      y='17'
+      width='14'
+      height='2'
+      rx='1'
+      fill={color}
+      opacity={0.9}
+    />
+  </Svg>
+)
+
 import { useShallow } from 'zustand/react/shallow'
 import { AddressAutocomplete } from '../ui/AddressAutocomplete'
 import {
@@ -37,7 +124,9 @@ const OrderDetailsComponent: React.FC<{
     customerPhone,
     orderType,
     serviceLocationId,
-    deliveryAddress
+    deliveryAddress,
+    orderStatus,
+    paymentStatus
   } = useOrderStore(
     useShallow(s => {
       const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
@@ -48,7 +137,9 @@ const OrderDetailsComponent: React.FC<{
         customerPhone: order?.customer_phone || null,
         orderType: type,
         serviceLocationId: order?.service_location_id || null,
-        deliveryAddress: order?.delivery_address || ''
+        deliveryAddress: order?.delivery_address || '',
+        orderStatus: order?.order_status || null,
+        paymentStatus: getPaymentBadgeStatus(order)
       }
     })
   )
@@ -240,18 +331,20 @@ const OrderDetailsComponent: React.FC<{
           <View className='w-[44%]'>
             <TouchableOpacity
               onPress={onOpenTableSelector}
-              className='w-full rounded-lg h-12 px-2.5 justify-center'
+              className='w-full rounded-lg h-12 px-2.5 flex-row items-center gap-2'
               style={{
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
+              <DiningTableIcon color={colors.label} size={14} />
               <Text
                 style={{
                   color: colors.heading,
                   fontSize: 12,
-                  fontWeight: '600'
+                  fontWeight: '600',
+                  flex: 1
                 }}
                 numberOfLines={1}
               >
@@ -264,51 +357,58 @@ const OrderDetailsComponent: React.FC<{
         {isDeliverySelected && (
           <View className='w-[44%] h-12' style={{ zIndex: 50 }}>
             <View
-              className='w-full rounded-lg h-12 px-2.5 justify-center'
+              className='w-full rounded-lg h-12 px-2.5 flex-row items-center'
               style={{
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
-              <AddressAutocomplete
-                value={formatAddress(deliveryAddress) || ''}
-                onChangeText={text => {
-                  if (activeOrderId)
-                    updateActiveOrderDetails({
-                      delivery_address: JSON.stringify({
-                        street: text,
-                        city: '',
-                        state: '',
-                        zip: ''
-                      })
-                    })
-                }}
-                onAddressSelected={addr => {
-                  if (activeOrderId)
-                    updateActiveOrderDetails({
-                      delivery_address: JSON.stringify(addr)
-                    })
-                }}
-                placeholder='Enter address'
-                inputStyle={{
-                  backgroundColor: 'transparent',
-                  borderWidth: 0,
-                  borderRadius: 0,
-                  height: 46,
-                  minHeight: 46,
-                  maxHeight: 46,
-                  paddingHorizontal: 0
-                }}
-                dropdownPosition='below'
+              <MapPin
+                color={colors.label}
+                size={13}
+                style={{ marginRight: 6 }}
               />
+              <View style={{ flex: 1 }}>
+                <AddressAutocomplete
+                  value={formatAddress(deliveryAddress) || ''}
+                  onChangeText={text => {
+                    if (activeOrderId)
+                      updateActiveOrderDetails({
+                        delivery_address: JSON.stringify({
+                          street: text,
+                          city: '',
+                          state: '',
+                          zip: ''
+                        })
+                      })
+                  }}
+                  onAddressSelected={addr => {
+                    if (activeOrderId)
+                      updateActiveOrderDetails({
+                        delivery_address: JSON.stringify(addr)
+                      })
+                  }}
+                  placeholder='Enter address'
+                  inputStyle={{
+                    backgroundColor: 'transparent',
+                    borderWidth: 0,
+                    borderRadius: 0,
+                    height: 46,
+                    minHeight: 46,
+                    maxHeight: 46,
+                    paddingHorizontal: 0
+                  }}
+                  dropdownPosition='below'
+                />
+              </View>
             </View>
           </View>
         )}
       </View>
 
       <View
-        className='flex-row mt-2 rounded-lg p-1'
+        className='flex-row mt-1.5 rounded-lg p-0.5'
         style={{
           backgroundColor: colors.panel,
           borderWidth: 1,
@@ -330,7 +430,7 @@ const OrderDetailsComponent: React.FC<{
                   updateActiveOrderDetails({ order_type: type.dbValue as any })
                 }
               }}
-              className='flex-1 h-8 rounded-md items-center justify-center'
+              className='flex-1 h-7 rounded-md items-center justify-center'
               style={{
                 backgroundColor: isActive ? colors.teal : 'transparent'
               }}
@@ -338,8 +438,8 @@ const OrderDetailsComponent: React.FC<{
               <Text
                 style={{
                   color: isActive ? colors.onSolid : colors.label,
-                  fontSize: 12,
-                  fontWeight: '700'
+                  fontSize: 11,
+                  fontWeight: '600'
                 }}
               >
                 {type.label}
@@ -349,7 +449,133 @@ const OrderDetailsComponent: React.FC<{
         })}
       </View>
 
-      {/* Customer Name Modal */}
+      {/* Status badges */}
+      {(orderStatus || paymentStatus) && (
+        <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
+          {orderStatus &&
+            (() => {
+              const cfg: Record<
+                string,
+                { label: string; color: string; bg: string }
+              > = {
+                draft: {
+                  label: 'Draft',
+                  color: '#9CA3AF',
+                  bg: 'rgba(156,163,175,0.12)'
+                },
+                sent_to_kitchen: {
+                  label: 'In Kitchen',
+                  color: '#818CF8',
+                  bg: 'rgba(129,140,248,0.12)'
+                },
+                preparing: {
+                  label: 'Preparing',
+                  color: '#F59E0B',
+                  bg: 'rgba(245,158,11,0.12)'
+                },
+                ready: {
+                  label: 'Ready',
+                  color: '#22C55E',
+                  bg: 'rgba(34,197,94,0.12)'
+                },
+                completed: {
+                  label: 'Completed',
+                  color: '#3B82F6',
+                  bg: 'rgba(59,130,246,0.12)'
+                },
+                void: {
+                  label: 'Void',
+                  color: '#EF4444',
+                  bg: 'rgba(239,68,68,0.12)'
+                },
+                cancelled: {
+                  label: 'Cancelled',
+                  color: '#EF4444',
+                  bg: 'rgba(239,68,68,0.12)'
+                }
+              }
+              const s = cfg[orderStatus] ?? {
+                label: orderStatus,
+                color: '#9CA3AF',
+                bg: 'rgba(156,163,175,0.12)'
+              }
+              return (
+                <View
+                  style={{
+                    backgroundColor: s.bg,
+                    borderRadius: 5,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderWidth: 1,
+                    borderColor: `${s.color}33`
+                  }}
+                >
+                  <Text
+                    style={{ fontSize: 9, fontWeight: '600', color: s.color }}
+                  >
+                    {s.label}
+                  </Text>
+                </View>
+              )
+            })()}
+          {paymentStatus &&
+            (() => {
+              const cfg: Record<
+                string,
+                { label: string; color: string; bg: string }
+              > = {
+                Paid: {
+                  label: 'Paid',
+                  color: '#22C55E',
+                  bg: 'rgba(34,197,94,0.12)'
+                },
+                Partial: {
+                  label: 'Partial',
+                  color: '#F59E0B',
+                  bg: 'rgba(245,158,11,0.12)'
+                },
+                Unpaid: {
+                  label: 'Unpaid',
+                  color: '#EF4444',
+                  bg: 'rgba(239,68,68,0.12)'
+                },
+                Pending: {
+                  label: 'Pending',
+                  color: '#9CA3AF',
+                  bg: 'rgba(156,163,175,0.12)'
+                },
+                Refunded: {
+                  label: 'Refunded',
+                  color: '#EF4444',
+                  bg: 'rgba(239,68,68,0.12)'
+                }
+              }
+              const s = cfg[paymentStatus] ?? {
+                label: paymentStatus,
+                color: '#9CA3AF',
+                bg: 'rgba(156,163,175,0.12)'
+              }
+              return (
+                <View
+                  style={{
+                    backgroundColor: s.bg,
+                    borderRadius: 5,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderWidth: 1,
+                    borderColor: `${s.color}33`
+                  }}
+                >
+                  <Text
+                    style={{ fontSize: 9, fontWeight: '600', color: s.color }}
+                  >
+                    {s.label}
+                  </Text>
+                </View>
+              )
+            })()}
+        </View>
+      )}
       <Dialog
         open={isCustomerNameModalVisible}
         onOpenChange={setIsCustomerNameModalVisible}

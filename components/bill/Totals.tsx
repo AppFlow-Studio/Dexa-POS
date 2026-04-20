@@ -26,14 +26,29 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         isPaid: false,
         balanceDue: 0,
         cashBalanceDue: 0,
+        cardTotal: 0,
+        cashTotal: 0,
         cashSavings: 0,
-        amountPaid: 0
+        amountPaid: 0,
+        totalRefunded: 0
       }
     }
 
     const hasPayments = (activeOrder?.payments?.length ?? 0) > 0
+    const hasCashPayments =
+      activeOrder?.payments?.some(
+        (payment: any) => !payment.isVoided && payment.isCashPriced
+      ) ?? false
     const isPaid =
-      activeOrder?.paid_status === 'Paid' && totals.amountDue <= 0.01
+      activeOrder?.paid_status === 'Refunded'
+        ? false
+        : activeOrder?.paid_status === 'Paid' && totals.amountDue <= 0.01
+        ? true
+        : hasCashPayments
+        ? totals.cashAmountDue <= 0.01
+        : hasPayments
+        ? totals.amountDue <= 0.01
+        : false
 
     const totalRefunded = (activeOrder?.payments ?? [])
       .filter((p: any) => !p.isVoided)
@@ -42,6 +57,8 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
     // Derived selector already prioritizes backend values for amountDue
     const balanceDue = totals.amountDue
     const cashBalanceDue = totals.cashAmountDue
+    const cardTotal = totals.total
+    const cashTotal = totals.cashTotal
 
     const amountPaid =
       activeOrder?.amount_paid !== undefined
@@ -56,6 +73,8 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       isPaid,
       balanceDue,
       cashBalanceDue,
+      cardTotal,
+      cashTotal,
       cashSavings: cashSavings > 0.01 ? cashSavings : 0,
       amountPaid: Math.max(0, amountPaid),
       totalRefunded
@@ -70,22 +89,22 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
     totals.subtotal > 0 ? (totals.tax / totals.subtotal) * 100 : 0
 
   return (
-    <View className='px-3 pt-2 pb-1.5'>
+    <View className='px-5 pt-4 pb-1.5'>
       <View className='flex-row justify-between items-center mb-1'>
-        <Text style={{ color: colors.label, fontSize: 12 }}>Subtotal</Text>
+        <Text style={{ color: colors.label, fontSize: 11 }}>Subtotal</Text>
         <Text
-          style={{ color: colors.heading, fontSize: 12, fontWeight: '600' }}
+          style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
         >
           ${totals.subtotal.toFixed(2)}
         </Text>
       </View>
 
       <View className='flex-row justify-between items-center mb-1.5'>
-        <Text style={{ color: colors.label, fontSize: 12 }}>
+        <Text style={{ color: colors.label, fontSize: 11 }}>
           Tax ({taxRatePct.toFixed(2)}%)
         </Text>
         <Text
-          style={{ color: colors.heading, fontSize: 12, fontWeight: '600' }}
+          style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
         >
           ${totals.tax.toFixed(2)}
         </Text>
@@ -98,12 +117,12 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         <Text
           style={{
             color: colors.heading,
-            fontSize: 18,
-            lineHeight: 20,
+            fontSize: 16,
+            lineHeight: 18,
             fontWeight: '800'
           }}
         >
-          ${paymentInfo.cashBalanceDue.toFixed(2)}
+          ${paymentInfo.cashTotal.toFixed(2)}
         </Text>
       </View>
 
@@ -114,14 +133,25 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         <Text
           style={{
             color: colors.teal,
-            fontSize: 18,
-            lineHeight: 20,
+            fontSize: 16,
+            lineHeight: 18,
             fontWeight: '800'
           }}
         >
-          ${paymentInfo.balanceDue.toFixed(2)}
+          ${paymentInfo.cardTotal.toFixed(2)}
         </Text>
       </View>
+
+      {paymentInfo.hasPayments && paymentInfo.balanceDue > 0.01 && (
+        <View className='flex-row justify-between items-center mt-1'>
+          <Text style={{ color: colors.label, fontSize: 11 }}>Balance Due</Text>
+          <Text
+            style={{ color: colors.warning, fontSize: 11, fontWeight: '700' }}
+          >
+            ${paymentInfo.balanceDue.toFixed(2)}
+          </Text>
+        </View>
+      )}
 
       {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
         <View className='flex-row justify-between items-center mt-2'>
@@ -141,21 +171,6 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
             style={{ color: colors.danger, fontSize: 11, fontWeight: '700' }}
           >
             +${paymentInfo.totalRefunded.toFixed(2)}
-          </Text>
-        </View>
-      )}
-
-      {paymentInfo.isPaid && (
-        <View className='flex-row justify-between items-center mt-1'>
-          <Text
-            style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}
-          >
-            Fully Paid
-          </Text>
-          <Text
-            style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}
-          >
-            ✓
           </Text>
         </View>
       )}

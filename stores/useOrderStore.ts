@@ -8083,11 +8083,11 @@ export const useOrderStore = create<OrderState>()(
               currentOrder.order_status = newOrderStatus
               // Set opened_at timestamp when transitioning
               currentOrder.opened_at = newOpenedAt
-              // Optimistic update — derive from actual payments (handles Partial)
-              currentOrder.paid_status = calculatePaidStatus(
-                newPayments,
-                totals.total_amount
-              )
+              // Optimistic update — cash-priced full settlement should read Paid
+              // even when card-equivalent reconciliation still depends on cashSavings.
+              currentOrder.paid_status = isFullyPaid
+                ? ('Paid' as const)
+                : calculatePaidStatus(newPayments, totals.total_amount)
               currentOrder.check_status = currentOrder.check_status || 'Opened'
               // Sync amount_paid/amount_due to prevent stale values
               currentOrder.amount_paid =
