@@ -443,16 +443,27 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const effectiveIsActive =
     isActive || isModifierActive || item.isDraft === true
 
+  // Normalize status from both status fields to keep visual state accurate
+  // across legacy values and backend/kds variants.
+  const normalizedKitchenStatus = (item.kitchen_status ?? '').toLowerCase()
+  const normalizedItemStatus = (item.item_status ?? '').toLowerCase()
+  const effectivePrepStatus =
+    normalizedKitchenStatus && normalizedKitchenStatus !== 'new'
+      ? normalizedKitchenStatus
+      : normalizedItemStatus
+
   const leftStatusColor = isVoided
     ? colors.danger
-    : item.kitchen_status === 'ready'
+    : effectivePrepStatus === 'ready'
     ? colors.orderReady
-    : item.kitchen_status === 'preparing'
+    : effectivePrepStatus === 'preparing'
     ? colors.orderPreparing
-    : item.kitchen_status === 'sent'
+    : effectivePrepStatus === 'sent'
     ? colors.orderSentToKitchen
-    : item.kitchen_status === 'served'
-    ? colors.tableServed
+    : effectivePrepStatus === 'served' ||
+      effectivePrepStatus === 'done' ||
+      effectivePrepStatus === 'completed'
+    ? colors.success
     : paymentCoverage.isFullyPaid
     ? colors.success
     : paymentCoverage.isPartiallyPaid

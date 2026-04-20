@@ -49,8 +49,8 @@ export default function AuthLayout () {
         <View
           className='w-full p-8 rounded-2xl'
           style={{
-            backgroundColor: colors.panel,
-            borderWidth: 1,
+            backgroundColor: isPinLogin ? 'transparent' : colors.panel,
+            borderWidth: isPinLogin ? 0 : 1,
             borderColor: colors.border
           }}
         >

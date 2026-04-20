@@ -246,7 +246,10 @@ const Header = () => {
             <ArrowLeft color={colors.teal} size={16} />
           </TouchableOpacity>
         )}
-        <Text className='text-base font-semibold text-heading tracking-wide'>
+        <Text
+          className='text-base font-semibold tracking-wide'
+          style={{ color: colors.heading }}
+        >
           {title}
         </Text>
       </View>

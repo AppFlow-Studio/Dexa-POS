@@ -229,7 +229,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             </DropdownMenuTrigger>
             {/* Name — non-interactive */}
             <View>
-              <Text className='font-medium text-white text-xs leading-tight'>
+              <Text
+                className='font-medium text-xs leading-tight'
+                style={{ color: colors.heading }}
+              >
                 {employee.fullName.split(' ')[0]}
               </Text>
               {isOnBreak && session.breakStartTime && (
@@ -241,7 +244,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           <DropdownMenuContent className='w-[300px] bg-panel border border-border rounded-2xl shadow-2xl mt-3 overflow-hidden p-0'>
             {/* Hero header */}
             <View
-              style={{ backgroundColor: '#0C0F1A' }}
+              style={{ backgroundColor: colors.card }}
               className='px-5 pt-5 pb-4'
             >
               <View className='flex-row items-center gap-3'>
@@ -267,20 +270,25 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 </View>
                 <View className='flex-1'>
                   <Text
-                    className='text-white text-base font-bold'
+                    className='text-base font-bold'
+                    style={{ color: colors.heading }}
                     numberOfLines={1}
                   >
                     {employee.fullName}
                   </Text>
                   <View
-                    className={`mt-1 self-start px-2 py-0.5 rounded-full ${
-                      isOnBreak ? 'bg-amber-500/20' : 'bg-teal-500/20'
-                    }`}
+                    className='mt-1 self-start px-2 py-0.5 rounded-full'
+                    style={{
+                      backgroundColor: isOnBreak
+                        ? `${colors.warning}20`
+                        : `${colors.teal}20`
+                    }}
                   >
                     <Text
-                      className={`text-xs font-semibold ${
-                        isOnBreak ? 'text-amber-400' : 'text-teal-400'
-                      }`}
+                      className='text-xs font-semibold'
+                      style={{
+                        color: isOnBreak ? colors.warning : colors.teal
+                      }}
                     >
                       {isOnBreak ? '⏸ On Break' : '● On Duty'}
                     </Text>
@@ -298,7 +306,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 onPress={() => router.push('/my-profile')}
                 className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
               >
-                <View className='w-8 h-8 bg-white/5 rounded-lg items-center justify-center'>
+                <View
+                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  style={{ backgroundColor: colors.screen }}
+                >
                   <User size={16} color={colors.label} />
                 </View>
                 <Text className='text-heading text-sm font-medium flex-1'>
@@ -310,13 +321,19 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 onPress={handleOpenNotificationPanel}
                 className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
               >
-                <View className='w-8 h-8 bg-white/5 rounded-lg items-center justify-center'>
+                <View
+                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  style={{ backgroundColor: colors.screen }}
+                >
                   <Bell size={16} color={colors.label} />
                   {unreadCount > 0 && (
-                    <View className='absolute -top-1 -right-1 w-4 h-4 bg-teal-500 rounded-full items-center justify-center'>
+                    <View
+                      className='absolute -top-1 -right-1 w-4 h-4 rounded-full items-center justify-center'
+                      style={{ backgroundColor: colors.teal }}
+                    >
                       <Text
                         style={{
-                          color: '#0C0F1A',
+                          color: colors.onSolid,
                           fontSize: 9,
                           fontWeight: 'bold'
                         }}
@@ -330,8 +347,14 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   Notifications
                 </Text>
                 {unreadCount > 0 && (
-                  <View className='bg-teal-500/20 px-2 py-0.5 rounded-full'>
-                    <Text className='text-teal-400 text-xs font-bold'>
+                  <View
+                    className='px-2 py-0.5 rounded-full'
+                    style={{ backgroundColor: `${colors.teal}20` }}
+                  >
+                    <Text
+                      className='text-xs font-bold'
+                      style={{ color: colors.teal }}
+                    >
                       {unreadCount}
                     </Text>
                   </View>
@@ -342,7 +365,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 onPress={() => setPinModalOpen(true)}
                 className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
               >
-                <View className='w-8 h-8 bg-white/5 rounded-lg items-center justify-center'>
+                <View
+                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  style={{ backgroundColor: colors.screen }}
+                >
                   <ArrowLeftRight size={16} color={colors.label} />
                 </View>
                 <Text className='text-heading text-sm font-medium flex-1'>
@@ -358,9 +384,13 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
               >
                 <View
-                  className={`w-8 h-8 rounded-lg items-center justify-center ${
-                    !isClockedIn || isOnBreak ? 'bg-white/5' : 'bg-amber-500/10'
-                  }`}
+                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  style={{
+                    backgroundColor:
+                      !isClockedIn || isOnBreak
+                        ? colors.screen
+                        : `${colors.warning}20`
+                  }}
                 >
                   <Coffee
                     size={16}
@@ -370,9 +400,11 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   />
                 </View>
                 <Text
-                  className={`text-sm font-medium flex-1 ${
-                    !isClockedIn || isOnBreak ? 'text-muted' : 'text-heading'
-                  }`}
+                  className='text-sm font-medium flex-1'
+                  style={{
+                    color:
+                      !isClockedIn || isOnBreak ? colors.muted : colors.heading
+                  }}
                 >
                   {isOnBreak ? 'On Break' : 'Start Break'}
                 </Text>
@@ -384,10 +416,16 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 onPress={handleLogout}
                 className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
               >
-                <View className='w-8 h-8 bg-red-500/10 rounded-lg items-center justify-center'>
+                <View
+                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  style={{ backgroundColor: `${colors.danger}20` }}
+                >
                   <LogOut size={16} color={colors.danger} />
                 </View>
-                <Text className='text-red-400 text-sm font-medium flex-1'>
+                <Text
+                  className='text-sm font-medium flex-1'
+                  style={{ color: colors.danger }}
+                >
                   Sign out
                 </Text>
               </DropdownMenuItem>

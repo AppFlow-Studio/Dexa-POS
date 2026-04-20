@@ -14,6 +14,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
+import { useColorScheme } from '@/lib/useColorScheme'
 import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { useSearchStore } from '@/stores/searchStore'
@@ -26,7 +27,21 @@ import {
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { CheckCircle2, Plus, Search, X } from 'lucide-react-native'
+import { useRouter } from 'expo-router'
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Logs,
+  Plus,
+  Printer,
+  Search,
+  ShoppingBag,
+  Sofa,
+  UtensilsCrossed,
+  X
+} from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
@@ -40,6 +55,8 @@ const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const
 const cardContentStyle = { padding: 10, gap: 12 } as const
 
 const OrderProcessing = () => {
+  const router = useRouter()
+  const { colorScheme } = useColorScheme()
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
@@ -68,8 +85,16 @@ const OrderProcessing = () => {
   const [isNoSaleModalOpen, setNoSaleModalOpen] = useState(false)
   const [bulkCompleteModalOpen, setBulkCompleteModalOpen] = useState(false)
   const [isCustomItemModuleOpen, setIsCustomItemModuleOpen] = useState(false)
+  const [isInlinePreviousOrdersOpen, setIsInlinePreviousOrdersOpen] =
+    useState(false)
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
+  const orderBadgeListRef = useRef<Animated.FlatList<OrderProfile>>(null)
+  const orderBadgeScrollXRef = useRef(0)
+  const orderBadgeViewportWidthRef = useRef(0)
+  const orderBadgeContentWidthRef = useRef(0)
+  const [canScrollBadgesLeft, setCanScrollBadgesLeft] = useState(false)
+  const [canScrollBadgesRight, setCanScrollBadgesRight] = useState(false)
 
   // OPTIMIZED: Effect now uses getState() to avoid subscribing to all orders
   useEffect(() => {
@@ -304,6 +329,25 @@ const OrderProcessing = () => {
 
   const badgeKeyExtractor = useCallback((item: OrderProfile) => item.id, [])
 
+  const updateBadgeScrollAffordance = useCallback((offsetX: number) => {
+    const maxOffset = Math.max(
+      0,
+      orderBadgeContentWidthRef.current - orderBadgeViewportWidthRef.current
+    )
+    setCanScrollBadgesLeft(offsetX > 2)
+    setCanScrollBadgesRight(offsetX < maxOffset - 2)
+  }, [])
+
+  const scrollBadgesBackward = useCallback(() => {
+    const nextX = Math.max(0, orderBadgeScrollXRef.current - 180)
+    orderBadgeListRef.current?.scrollToOffset({ offset: nextX, animated: true })
+  }, [])
+
+  const scrollBadgesForward = useCallback(() => {
+    const nextX = orderBadgeScrollXRef.current + 180
+    orderBadgeListRef.current?.scrollToOffset({ offset: nextX, animated: true })
+  }, [])
+
   const handleAccordionChange = useCallback(
     (value: string | undefined) => setIsAccordionOpen(!!value),
     []
@@ -336,16 +380,356 @@ const OrderProcessing = () => {
     [handlePrintReceipt, handleViewItems, handleMarkDone]
   )
 
+  const renderOrderGridCard = useCallback(
+    ({ item }: { item: OrderProfile }) => {
+      const totalAmount = item.total_amount ?? 0
+      const displayId =
+        item.display_number || item.order_number || `#${item.id.slice(-4)}`
+      const itemCount =
+        item.items.length > 0
+          ? item.items.length
+          : item._broadcastItemCount ?? 0
+      const openedAt = item.opened_at
+        ? new Date(item.opened_at).toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit'
+          })
+        : ''
+
+      const orderStatusColor =
+        item.order_status === 'ready'
+          ? colors.success
+          : item.order_status === 'preparing' ||
+            item.order_status === 'sent_to_kitchen'
+          ? colors.warning
+          : item.order_status === 'completed'
+          ? colors.info
+          : item.order_status === 'cancelled' || item.order_status === 'void'
+          ? colors.danger
+          : colors.muted
+
+      const paidStatusColor =
+        item.paid_status === 'Paid'
+          ? colors.success
+          : item.paid_status === 'Partial'
+          ? colors.warning
+          : colors.muted
+
+      const canMarkDone =
+        item.order_status === 'preparing' ||
+        item.order_status === 'sent_to_kitchen' ||
+        (item.order_status === 'ready' && item.paid_status === 'Paid')
+
+      const cashDue = item.cash_amount_due ?? item.amount_due ?? totalAmount
+      const statusLabel = (item.order_status || 'pending')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase())
+
+      return (
+        <View
+          style={{
+            width: 300,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.info + '50',
+            backgroundColor: '#040d22',
+            overflow: 'hidden'
+          }}
+        >
+          <View
+            style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 7 }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 6
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  flex: 1,
+                  gap: 6
+                }}
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 6,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: colors.info + '18',
+                    borderWidth: 1,
+                    borderColor: colors.info + '35'
+                  }}
+                >
+                  <ShoppingBag size={11} color={colors.label} />
+                </View>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: colors.heading,
+                    fontSize: 12,
+                    fontWeight: '700',
+                    flex: 1
+                  }}
+                >
+                  {displayId}
+                </Text>
+                {item.order_type ? (
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      textTransform: 'lowercase'
+                    }}
+                  >
+                    {item.order_type}
+                  </Text>
+                ) : null}
+              </View>
+              <View
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 999,
+                  backgroundColor: paidStatusColor + '20',
+                  borderWidth: 1,
+                  borderColor: paidStatusColor + '35'
+                }}
+              >
+                <Text
+                  style={{
+                    color: paidStatusColor,
+                    fontSize: 9,
+                    fontWeight: '700'
+                  }}
+                >
+                  {item.paid_status}
+                </Text>
+              </View>
+            </View>
+
+            <Text
+              numberOfLines={1}
+              style={{ color: colors.label, fontSize: 10, marginTop: 4 }}
+            >
+              {item.customer_name || 'Walk-In'} • {itemCount} item
+              {itemCount !== 1 ? 's' : ''}
+            </Text>
+
+            {!!openedAt && (
+              <Text style={{ color: colors.muted, fontSize: 9, marginTop: 2 }}>
+                {openedAt}
+              </Text>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 7 }}>
+              <View
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 999,
+                  backgroundColor: orderStatusColor + '20',
+                  borderWidth: 1,
+                  borderColor: orderStatusColor + '35'
+                }}
+              >
+                <Text
+                  style={{
+                    color: orderStatusColor,
+                    fontSize: 9,
+                    fontWeight: '700'
+                  }}
+                >
+                  {statusLabel}
+                </Text>
+              </View>
+              <View
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 999,
+                  backgroundColor: colors.muted + '20',
+                  borderWidth: 1,
+                  borderColor: colors.muted + '30'
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.label,
+                    fontSize: 9,
+                    fontWeight: '600'
+                  }}
+                >
+                  {item.check_status || 'Opened'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderTopWidth: 1,
+              borderBottomWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: '#101e44',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
+            <Text style={{ color: colors.muted, fontSize: 9 }}>
+              Cash ${cashDue.toFixed(2)}
+            </Text>
+            <Text
+              style={{ color: colors.heading, fontSize: 12, fontWeight: '700' }}
+            >
+              ${totalAmount.toFixed(2)}
+            </Text>
+          </View>
+
+          <View style={{ paddingVertical: 3 }}>
+            {canMarkDone && (
+              <TouchableOpacity
+                onPress={() => handleMarkDone(item.id)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 10,
+                  paddingVertical: 7
+                }}
+              >
+                <View
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 7,
+                    backgroundColor: colors.success + '25',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 8
+                  }}
+                >
+                  <CheckCircle2 size={12} color={colors.success} />
+                </View>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: colors.success,
+                    flex: 1
+                  }}
+                >
+                  Mark as Done
+                </Text>
+                <ChevronRight size={13} color={colors.label} />
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={() => handleViewItems(item.id)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 10,
+                paddingVertical: 7
+              }}
+            >
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 7,
+                  backgroundColor: colors.info + '20',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 8
+                }}
+              >
+                <Eye size={12} color={colors.label} />
+              </View>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: colors.label,
+                  flex: 1
+                }}
+              >
+                View Items
+              </Text>
+              <ChevronRight size={13} color={colors.label} />
+            </TouchableOpacity>
+
+            {item.paid_status === 'Paid' && (
+              <TouchableOpacity
+                onPress={() => handlePrintReceipt(item)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 10,
+                  paddingVertical: 7
+                }}
+              >
+                <View
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 7,
+                    backgroundColor: colors.muted + '20',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 8
+                  }}
+                >
+                  <Printer size={12} color={colors.label} />
+                </View>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: colors.label,
+                    flex: 1
+                  }}
+                >
+                  Print Receipt
+                </Text>
+                <ChevronRight size={13} color={colors.label} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )
+    },
+    [handleViewItems, handleMarkDone, handlePrintReceipt]
+  )
+
   return (
-    <View className='flex-1 flex-col bg-screen px-2 py-1'>
+    <View
+      key={colorScheme}
+      className='flex-1 flex-col px-2 py-1'
+      style={{ backgroundColor: colors.screen }}
+    >
       {/* <CashDrawerStatusBar
         onManagePress={handleManageDrawer}
         onNoSalePress={handleNoSale}
       /> */}
-      <View className='flex-1 flex-row bg-screen rounded-lg '>
+      <View
+        className='flex-1 flex-row rounded-lg '
+        style={{ backgroundColor: colors.screen }}
+      >
         {/* Stage 1: BillSection (lighter — user sees their order first) */}
         {renderStage >= 1 ? (
           <BillSection
+            key={`bill-${colorScheme}`}
             moreOptionsSheetRef={
               moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
             }
@@ -365,16 +749,21 @@ const OrderProcessing = () => {
           </View>
         )}
 
-        <View className='flex-1 bg-screen ml-0'>
+        <View
+          className='flex-1 ml-0'
+          style={{ backgroundColor: colors.screen }}
+        >
           {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
           {renderStage >= 2 ? (
             <MenuSection
+              key={`menu-${colorScheme}`}
               showSearchButton={false}
               placeMenuSelectorInMenuRow={true}
               showMenuTabButton={false}
               showOpenItemButton={false}
               showTablesButton={false}
               showPreviousOrdersSection={false}
+              forceOrdersView={isInlinePreviousOrdersOpen}
               toolbarSearchSlot={
                 orderLineViewMode === 'minimal' ? (
                   <TouchableOpacity
@@ -423,26 +812,87 @@ const OrderProcessing = () => {
                 ) : undefined
               }
               rightToolbarSlot={
-                <TouchableOpacity
-                  onPress={() => setIsCustomItemModuleOpen(true)}
-                  className='flex-row items-center rounded-lg px-3 py-2.5 gap-2'
-                  style={{
-                    backgroundColor: colors.teal,
-                    borderWidth: 1,
-                    borderColor: colors.teal
-                  }}
-                >
-                  <Plus size={16} color='#000000' strokeWidth={2.5} />
-                  <Text
+                <View className='flex-row items-center gap-2'>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setIsInlinePreviousOrdersOpen(false)
+                    }}
+                    className='flex-row items-center rounded-lg p-3 justify-start'
                     style={{
-                      color: '#000000',
-                      fontSize: 12,
-                      fontWeight: '700'
+                      borderWidth: 1,
+                      borderColor: !isInlinePreviousOrdersOpen
+                        ? colors.teal + '55'
+                        : colors.border,
+                      backgroundColor: !isInlinePreviousOrdersOpen
+                        ? colors.teal + '18'
+                        : colors.panel
+                    }}
+                    accessibilityLabel='Switch to ordering view'
+                  >
+                    <UtensilsCrossed
+                      color={
+                        !isInlinePreviousOrdersOpen ? colors.teal : colors.label
+                      }
+                      size={14}
+                    />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => router.push('/tables')}
+                    className='flex-row items-center rounded-lg p-3 justify-start'
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.panel
+                    }}
+                    accessibilityLabel='Go to tables'
+                  >
+                    <Sofa color={colors.label} size={14} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setIsInlinePreviousOrdersOpen(true)}
+                    className='flex-row items-center rounded-lg p-3 justify-start'
+                    style={{
+                      borderWidth: 1,
+                      borderColor: isInlinePreviousOrdersOpen
+                        ? colors.teal + '55'
+                        : colors.border,
+                      backgroundColor: isInlinePreviousOrdersOpen
+                        ? colors.teal + '18'
+                        : colors.panel
+                    }}
+                    accessibilityLabel='Open history'
+                  >
+                    <Logs
+                      color={
+                        isInlinePreviousOrdersOpen ? colors.teal : colors.label
+                      }
+                      size={14}
+                    />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setIsCustomItemModuleOpen(true)}
+                    className='flex-row items-center rounded-lg px-3 py-2.5 gap-2'
+                    style={{
+                      backgroundColor: colors.teal,
+                      borderWidth: 1,
+                      borderColor: colors.teal
                     }}
                   >
-                    Custom Item
-                  </Text>
-                </TouchableOpacity>
+                    <Plus size={16} color='#000000' strokeWidth={2.5} />
+                    <Text
+                      style={{
+                        color: '#000000',
+                        fontSize: 12,
+                        fontWeight: '700'
+                      }}
+                    >
+                      Custom Item
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               }
               headerLeft={
                 <View className='flex-row items-center gap-x-2'>
@@ -500,44 +950,131 @@ const OrderProcessing = () => {
                 </View>
               }
               headerBelow={
-                orderLineViewMode !== 'minimal' && !isAccordionOpen ? (
-                  <View className='px-0 py-1.5 flex-row items-center'>
-                    <View style={{ gap: 4 }}>
-                      <View className='flex-row items-center gap-x-2'>
-                        <Text className='text-lg font-semibold text-white'>
-                          Order Line
-                        </Text>
-                        {displayOrders?.length > 0 && (
-                          <View className='ml-1 bg-panel border border-border rounded-full px-2.5 py-0.5 items-center justify-center'>
-                            <Text className='text-xs font-bold text-label'>
-                              {displayOrders.length}
-                            </Text>
-                          </View>
-                        )}
+                <>
+                  {!isInlinePreviousOrdersOpen &&
+                  orderLineViewMode !== 'minimal' &&
+                  !isAccordionOpen ? (
+                    <View className='px-0 py-1.5 flex-row items-center'>
+                      <View style={{ gap: 4 }}>
+                        <View className='flex-row items-center gap-x-2'>
+                          <Text
+                            style={{
+                              color: colors.heading,
+                              fontSize: 18,
+                              fontWeight: '600'
+                            }}
+                          >
+                            Order Line
+                          </Text>
+                          {displayOrders?.length > 0 && (
+                            <View className='ml-1 bg-panel border border-border rounded-full px-2.5 py-0.5 items-center justify-center'>
+                              <Text className='text-xs font-bold text-label'>
+                                {displayOrders.length}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
-                    </View>
 
-                    {displayOrders.length > 0 && (
-                      <View className='flex-1 ml-2 justify-center'>
-                        <Animated.FlatList
-                          horizontal
-                          data={displayOrders}
-                          keyExtractor={badgeKeyExtractor}
-                          className='max-h-10'
-                          contentContainerStyle={badgeContentStyle}
-                          showsHorizontalScrollIndicator={false}
-                          itemLayoutAnimation={LinearTransition.springify()
-                            .damping(18)
-                            .stiffness(120)}
-                          initialNumToRender={10}
-                          maxToRenderPerBatch={10}
-                          windowSize={3}
-                          renderItem={renderOrderBadge}
-                        />
-                      </View>
-                    )}
-                  </View>
-                ) : null
+                      {displayOrders.length > 0 && (
+                        <View
+                          className='flex-1 ml-2 justify-center'
+                          style={{ position: 'relative' }}
+                        >
+                          <Animated.FlatList
+                            ref={orderBadgeListRef}
+                            horizontal
+                            data={displayOrders}
+                            keyExtractor={badgeKeyExtractor}
+                            className='max-h-10'
+                            contentContainerStyle={badgeContentStyle}
+                            showsHorizontalScrollIndicator={false}
+                            onScroll={event => {
+                              const nextX = event.nativeEvent.contentOffset.x
+                              orderBadgeScrollXRef.current = nextX
+                              updateBadgeScrollAffordance(nextX)
+                            }}
+                            onLayout={event => {
+                              orderBadgeViewportWidthRef.current =
+                                event.nativeEvent.layout.width
+                              updateBadgeScrollAffordance(
+                                orderBadgeScrollXRef.current
+                              )
+                            }}
+                            onContentSizeChange={width => {
+                              orderBadgeContentWidthRef.current = width
+                              updateBadgeScrollAffordance(
+                                orderBadgeScrollXRef.current
+                              )
+                            }}
+                            scrollEventThrottle={16}
+                            itemLayoutAnimation={LinearTransition.springify()
+                              .damping(18)
+                              .stiffness(120)}
+                            initialNumToRender={10}
+                            maxToRenderPerBatch={10}
+                            windowSize={3}
+                            renderItem={renderOrderBadge}
+                          />
+
+                          {canScrollBadgesLeft && (
+                            <TouchableOpacity
+                              onPress={scrollBadgesBackward}
+                              style={{
+                                position: 'absolute',
+                                left: -2,
+                                top: '50%',
+                                marginTop: -14,
+                                width: 28,
+                                height: 28,
+                                borderRadius: 14,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: colors.panel,
+                                zIndex: 5,
+                                shadowColor: '#000',
+                                shadowOpacity: 0.28,
+                                shadowRadius: 6,
+                                shadowOffset: { width: 0, height: 2 },
+                                elevation: 4
+                              }}
+                              activeOpacity={0.85}
+                            >
+                              <ChevronLeft size={14} color={colors.label} />
+                            </TouchableOpacity>
+                          )}
+
+                          {canScrollBadgesRight && (
+                            <TouchableOpacity
+                              onPress={scrollBadgesForward}
+                              style={{
+                                position: 'absolute',
+                                right: -2,
+                                top: '50%',
+                                marginTop: -14,
+                                width: 28,
+                                height: 28,
+                                borderRadius: 14,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: colors.panel,
+                                zIndex: 5,
+                                shadowColor: '#000',
+                                shadowOpacity: 0.28,
+                                shadowRadius: 6,
+                                shadowOffset: { width: 0, height: 2 },
+                                elevation: 4
+                              }}
+                              activeOpacity={0.85}
+                            >
+                              <ChevronRight size={14} color={colors.label} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
+                </>
               }
             />
           ) : (
@@ -604,7 +1141,7 @@ const OrderProcessing = () => {
       <Modal
         visible={isOrdersModuleOpen}
         transparent
-        animationType='fade'
+        animationType='slide'
         onRequestClose={() => setIsOrdersModuleOpen(false)}
       >
         <Pressable
@@ -612,19 +1149,16 @@ const OrderProcessing = () => {
           style={{
             flex: 1,
             backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            paddingHorizontal: 24,
-            paddingVertical: 20
+            justifyContent: 'flex-end'
           }}
         >
           <Pressable
             onPress={() => {}}
             style={{
-              width: 500,
-              maxWidth: '92%',
-              alignSelf: 'center',
-              maxHeight: '92%',
-              borderRadius: 18,
+              width: '100%',
+              height: '100%',
+              borderTopLeftRadius: 18,
+              borderTopRightRadius: 18,
               borderWidth: 1,
               borderColor: colors.info + '35',
               backgroundColor: colors.screen,
@@ -730,15 +1264,24 @@ const OrderProcessing = () => {
               <Animated.FlatList
                 data={displayOrders}
                 keyExtractor={badgeKeyExtractor}
-                contentContainerStyle={cardContentStyle}
+                numColumns={4}
+                contentContainerStyle={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  gap: 10
+                }}
+                columnWrapperStyle={{
+                  marginBottom: 10,
+                  justifyContent: 'space-between'
+                }}
                 showsVerticalScrollIndicator={false}
                 itemLayoutAnimation={LinearTransition.springify()
                   .damping(18)
                   .stiffness(120)}
-                initialNumToRender={5}
-                maxToRenderPerBatch={5}
+                initialNumToRender={12}
+                maxToRenderPerBatch={12}
                 windowSize={4}
-                renderItem={renderOrderCard}
+                renderItem={renderOrderGridCard}
               />
             ) : (
               <View

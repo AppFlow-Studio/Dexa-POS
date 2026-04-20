@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useColorScheme } from '@/lib/useColorScheme'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
 import {
@@ -26,88 +27,92 @@ interface MenuControlsProps {
   rightSlot?: React.ReactNode
 }
 
-const styles = StyleSheet.create({
-  wrapper: {
-    width: '100%',
-    paddingTop: 8,
-    paddingHorizontal: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: `${colors.border}50`
-  },
-  controlsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 8
-  },
-  categoriesScroll: {
-    flex: 1
-  },
-  scrollContent: {
-    paddingHorizontal: 8,
-    gap: 6,
-    alignItems: 'center'
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'transparent'
-  },
-  tabActive: {
-    backgroundColor: `${colors.teal}18`,
-    borderColor: `${colors.teal}30`
-  },
-  tabLocked: {
-    backgroundColor: colors.screen,
-    borderColor: colors.border,
-    opacity: 0.7
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: 'white'
-  },
-  tabTextActive: {
-    color: colors.teal,
-    fontWeight: '700'
-  },
-  tabTextLocked: {
-    color: colors.label
-  },
-  unlockBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: colors.teal + '15',
-    borderWidth: 1,
-    borderColor: colors.teal + '30',
-    marginRight: 4,
-    marginLeft: 8
-  },
-  tailButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panel,
-    marginHorizontal: 4
-  },
-  rightSlotWrap: {
-    marginLeft: 6,
-    flexShrink: 0
-  }
-})
+const createStyles = () =>
+  StyleSheet.create({
+    wrapper: {
+      width: '100%',
+      paddingTop: 8,
+      paddingHorizontal: 0,
+      borderBottomWidth: 1,
+      borderBottomColor: `${colors.border}50`
+    },
+    controlsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingBottom: 8
+    },
+    categoriesArea: {
+      flex: 1,
+      position: 'relative'
+    },
+    categoriesScroll: {
+      flex: 1
+    },
+    scrollContent: {
+      paddingHorizontal: 28,
+      gap: 6,
+      alignItems: 'center'
+    },
+    tab: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      borderRadius: 10,
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: 'transparent'
+    },
+    tabActive: {
+      backgroundColor: `${colors.teal}18`,
+      borderColor: `${colors.teal}30`
+    },
+    tabLocked: {
+      backgroundColor: colors.screen,
+      borderColor: colors.border,
+      opacity: 0.7
+    },
+    tabText: {
+      fontSize: 13,
+      fontWeight: '500',
+      color: colors.heading
+    },
+    tabTextActive: {
+      color: colors.teal,
+      fontWeight: '700'
+    },
+    tabTextLocked: {
+      color: colors.label
+    },
+    tailButton: {
+      position: 'absolute',
+      top: '50%',
+      marginTop: -14,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.panel,
+      zIndex: 5,
+      shadowColor: '#000',
+      shadowOpacity: 0.28,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 4
+    },
+    leftTailButton: {
+      left: -4
+    },
+    rightTailButton: {
+      right: -4
+    },
+    rightSlotWrap: {
+      marginLeft: 6,
+      flexShrink: 0
+    }
+  })
 
 // ─── Unlock session badge ────────────────────────────────────────────────────
 
@@ -127,7 +132,21 @@ const UnlockBadge = React.memo(() => {
   const remainingMin = Math.max(1, Math.ceil(remainingMs / 60_000))
 
   return (
-    <View style={styles.unlockBadge}>
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        backgroundColor: colors.teal + '15',
+        borderWidth: 1,
+        borderColor: colors.teal + '30',
+        marginRight: 4,
+        marginLeft: 8
+      }}
+    >
       <ShieldCheck size={12} color={colors.teal} />
       <Text style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}>
         Manager Mode · {remainingMin}m
@@ -151,6 +170,8 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   onCategoryChange,
   rightSlot
 }) => {
+  const { colorScheme } = useColorScheme()
+  const styles = useMemo(() => createStyles(), [colorScheme])
   const menus = useMenuStore(s => s.menus)
   const isMenuAvailableNow = useMenuStore(s => s.isMenuAvailableNow)
   const isCategoryAvailableNow = useMenuStore(s => s.isCategoryAvailableNow)
@@ -222,104 +243,107 @@ const MenuControls: React.FC<MenuControlsProps> = ({
         {/* Unlock session badge — only visible when manager mode is active */}
         <UnlockBadge />
 
-        {canScrollLeft && (
-          <TouchableOpacity
-            onPress={() => {
-              const nextX = Math.max(0, categoriesScrollXRef.current - 120)
-              categoriesScrollRef.current?.scrollTo({
-                x: nextX,
-                animated: true
-              })
+        <View style={styles.categoriesArea}>
+          <ScrollView
+            ref={categoriesScrollRef}
+            style={styles.categoriesScroll}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            onScroll={event => {
+              const nextX = event.nativeEvent.contentOffset.x
+              categoriesScrollXRef.current = nextX
+              updateScrollAffordance(nextX)
             }}
-            style={styles.tailButton}
-            activeOpacity={0.8}
+            onLayout={event => {
+              categoriesViewportWidthRef.current =
+                event.nativeEvent.layout.width
+              updateScrollAffordance(categoriesScrollXRef.current)
+            }}
+            onContentSizeChange={width => {
+              categoriesContentWidthRef.current = width
+              updateScrollAffordance(categoriesScrollXRef.current)
+            }}
+            scrollEventThrottle={16}
           >
-            <ChevronLeft size={14} color={colors.label} />
-          </TouchableOpacity>
-        )}
+            {categories?.map(cat => {
+              const tab = cat.name
+              const isScheduled = cat.schedules && cat.schedules.length > 0
+              const isNormallyAvailable =
+                isCategoryAvailableNow(tab) && currentMenu
+                  ? isCategoryActiveForMenu(currentMenu.id, cat.id)
+                  : false
+              const hasOverride = temporaryActiveCategories.includes(tab)
+              const isAvailable = isNormallyAvailable || hasOverride
+              const isActive = activeCategory === tab
+              const showLock = isScheduled && !isAvailable
 
-        <ScrollView
-          ref={categoriesScrollRef}
-          style={styles.categoriesScroll}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          onScroll={event => {
-            const nextX = event.nativeEvent.contentOffset.x
-            categoriesScrollXRef.current = nextX
-            updateScrollAffordance(nextX)
-          }}
-          onLayout={event => {
-            categoriesViewportWidthRef.current = event.nativeEvent.layout.width
-            updateScrollAffordance(categoriesScrollXRef.current)
-          }}
-          onContentSizeChange={width => {
-            categoriesContentWidthRef.current = width
-            updateScrollAffordance(categoriesScrollXRef.current)
-          }}
-          scrollEventThrottle={16}
-        >
-          {categories?.map(cat => {
-            const tab = cat.name
-            const isScheduled = cat.schedules && cat.schedules.length > 0
-            const isNormallyAvailable =
-              isCategoryAvailableNow(tab) && currentMenu
-                ? isCategoryActiveForMenu(currentMenu.id, cat.id)
-                : false
-            const hasOverride = temporaryActiveCategories.includes(tab)
-            const isAvailable = isNormallyAvailable || hasOverride
-            const isActive = activeCategory === tab
-            const showLock = isScheduled && !isAvailable
-
-            return (
-              <TouchableOpacity
-                key={cat.id || tab}
-                onPress={() => handleCategoryPress(tab, isAvailable)}
-                style={[
-                  styles.tab,
-                  isActive && styles.tabActive,
-                  showLock && !isActive && styles.tabLocked
-                ]}
-                activeOpacity={0.7}
-              >
-                {showLock && (
-                  <Lock
-                    size={11}
-                    color={hasOverride ? colors.teal : colors.muted}
-                  />
-                )}
-                <Text
+              return (
+                <TouchableOpacity
+                  key={cat.id || tab}
+                  onPress={() => handleCategoryPress(tab, isAvailable)}
                   style={[
-                    styles.tabText,
-                    isActive && styles.tabTextActive,
-                    showLock && !isActive && styles.tabTextLocked
+                    styles.tab,
+                    isActive && styles.tabActive,
+                    showLock && !isActive && styles.tabLocked
                   ]}
+                  activeOpacity={0.7}
                 >
-                  {tab}
-                </Text>
-                {isScheduled && !isNormallyAvailable && hasOverride && (
-                  <Clock size={11} color={colors.teal} />
-                )}
-              </TouchableOpacity>
-            )
-          })}
-        </ScrollView>
+                  {showLock && (
+                    <Lock
+                      size={11}
+                      color={hasOverride ? colors.teal : colors.muted}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.tabText,
+                      isActive && styles.tabTextActive,
+                      showLock && !isActive && styles.tabTextLocked
+                    ]}
+                  >
+                    {tab}
+                  </Text>
+                  {isScheduled && !isNormallyAvailable && hasOverride && (
+                    <Clock size={11} color={colors.teal} />
+                  )}
+                </TouchableOpacity>
+              )
+            })}
+          </ScrollView>
 
-        {canScrollRight && (
-          <TouchableOpacity
-            onPress={() => {
-              const nextX = categoriesScrollXRef.current + 120
-              categoriesScrollRef.current?.scrollTo({
-                x: nextX,
-                animated: true
-              })
-            }}
-            style={styles.tailButton}
-            activeOpacity={0.8}
-          >
-            <ChevronRight size={14} color={colors.label} />
-          </TouchableOpacity>
-        )}
+          {canScrollLeft && (
+            <TouchableOpacity
+              onPress={() => {
+                const nextX = Math.max(0, categoriesScrollXRef.current - 120)
+                categoriesScrollRef.current?.scrollTo({
+                  x: nextX,
+                  animated: true
+                })
+              }}
+              style={[styles.tailButton, styles.leftTailButton]}
+              activeOpacity={0.85}
+            >
+              <ChevronLeft size={14} color={colors.label} />
+            </TouchableOpacity>
+          )}
+
+          {canScrollRight && (
+            <TouchableOpacity
+              onPress={() => {
+                const nextX = categoriesScrollXRef.current + 120
+                categoriesScrollRef.current?.scrollTo({
+                  x: nextX,
+                  animated: true
+                })
+              }}
+              style={[styles.tailButton, styles.rightTailButton]}
+              activeOpacity={0.85}
+            >
+              <ChevronRight size={14} color={colors.label} />
+            </TouchableOpacity>
+          )}
+        </View>
 
         {rightSlot ? (
           <View style={styles.rightSlotWrap}>{rightSlot}</View>

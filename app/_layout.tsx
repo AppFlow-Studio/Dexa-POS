@@ -357,6 +357,7 @@ export default Sentry.wrap(function RootLayout () {
                 <GestureHandlerRootView>
                   <SafeAreaProvider>
                     <ThemeProvider
+                      key={colorScheme}
                       value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
                     >
                       <BottomSheetModalProvider>
@@ -378,7 +379,14 @@ export default Sentry.wrap(function RootLayout () {
                                       }}
                                     />
                                   )}
-                                  <Stack screenOptions={POS_SCREEN_OPTIONS}>
+                                  <Stack
+                                    screenOptions={{
+                                      ...POS_SCREEN_OPTIONS,
+                                      contentStyle: {
+                                        backgroundColor: colors.screen
+                                      }
+                                    }}
+                                  >
                                     <Stack.Screen name='index' />
                                     <Stack.Screen name='(auth)' />
                                     <Stack.Screen name='(cfd)' />

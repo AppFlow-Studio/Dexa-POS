@@ -29,7 +29,8 @@ import {
   PackagePlus,
   Search,
   Sofa,
-  Table
+  Table,
+  UtensilsCrossed
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -53,6 +54,7 @@ interface MenuSectionProps {
   isTableOrder?: boolean
   headerLeft?: React.ReactNode
   headerBelow?: React.ReactNode
+  forceOrdersView?: boolean
   showPreviousOrdersSection?: boolean
   showSearchButton?: boolean
   toolbarSearchSlot?: React.ReactNode
@@ -65,6 +67,7 @@ interface MenuSectionProps {
 
 // OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
 import { colors } from '@/lib/theme'
+import { useColorScheme } from '@/lib/useColorScheme'
 import { useSearchStore } from '@/stores/searchStore'
 import { StyleSheet } from 'react-native'
 
@@ -123,6 +126,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   isTableOrder = false,
   headerLeft,
   headerBelow,
+  forceOrdersView = false,
   showPreviousOrdersSection = true,
   showSearchButton = true,
   toolbarSearchSlot,
@@ -132,6 +136,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   rightToolbarSlot,
   placeMenuSelectorInMenuRow = false
 }) => {
+  const { colorScheme } = useColorScheme()
   // State for the active filters
   const menus = useMenuStore(s => s.menus)
   const isMenuAvailableNow = useMenuStore(s => s.isMenuAvailableNow)
@@ -436,9 +441,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   return (
     <>
       <View
-        className={`mt-0 flex-1 bg-panel relative overflow-hidden px-2 ${
+        key={colorScheme}
+        className={`mt-0 flex-1 relative overflow-hidden px-2 ${
           isTableOrder ? 'rounded-tl-3xl' : ''
         }`}
+        style={{ backgroundColor: colors.screen }}
       >
         {/* Row 1: Header (Order Line) + Toolbar */}
         <View
@@ -537,6 +544,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     className='flex-row items-center rounded-lg px-3 py-2.5 gap-2'
                     style={{ backgroundColor: colors.panel }}
                   >
+                    <UtensilsCrossed color={colors.label} size={13} />
                     <Text
                       style={{
                         color: colors.heading,
@@ -655,7 +663,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         {headerBelow}
 
         {/* Row 3: Category controls */}
-        {activeTab === 'Menu' &&
+        {!forceOrdersView &&
+          activeTab === 'Menu' &&
           (activeMeal ? (
             <View className={`${isTableOrder ? 'px-3' : ''} pb-3`}>
               <MenuControls
@@ -670,6 +679,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                       className='flex-row items-center rounded-lg px-3 py-2.5 gap-2'
                       style={{ backgroundColor: colors.panel }}
                     >
+                      <UtensilsCrossed color={colors.label} size={13} />
                       <Text
                         style={{
                           color: colors.heading,
@@ -699,7 +709,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           ))}
 
         <View className={`flex-1 ${isTableOrder ? 'px-3' : ''}`}>
-          {activeTab === 'Menu' ? (
+          {forceOrdersView ? (
+            <View key={'Orders'} className='flex-1'>
+              <PreviousOrdersSection />
+            </View>
+          ) : activeTab === 'Menu' ? (
             activeMeal ? (
               <View key={'Menu'} className={`${isTableOrder ? 'px-3' : ''}`}>
                 <FlatList
@@ -707,6 +721,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   keyExtractor={keyExtractor}
                   numColumns={numColumns}
                   className='mt-2 h-[93%] pb-32'
+                  style={{ backgroundColor: colors.screen }}
+                  contentContainerStyle={{ backgroundColor: colors.screen }}
                   ItemSeparatorComponent={SpacerItem}
                   getItemLayout={(_item, index) => {
                     const ROW_HEIGHT = 80 + 12
