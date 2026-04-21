@@ -6,6 +6,7 @@ import {
 } from '@/lib/tablePositionRegistry'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
+import { useColorScheme } from '@/lib/useColorScheme'
 import {
   findWallCornerSnap,
   getWallEdgeFlags,
@@ -238,6 +239,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   disableLongPress = false
 }) => {
   const DRAG_HOLD_MS = 220
+  const { isDarkColorScheme } = useColorScheme()
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
   const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
   const defaultSittingTimeMinutes = useLocationConfigStore(
@@ -749,6 +751,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         <View style={{ width: effectiveWidth, height: effectiveHeight }}>
           {TableComponent ? (
             <TableComponent
+              darkMode={isDarkColorScheme}
               color={isTableType ? tableColor : colors.label}
               {...(isTableType && { chairColor: tableColor })}
               {...(table.shape_id === 'label-text' && { label: table.name })}
@@ -803,7 +806,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                   fontSize: textFit.primary,
                   fontWeight: '700',
                   textAlign: 'center',
-                  color: tableColor
+                  color: isDarkColorScheme ? tableColor : '#111827'
                 }}
                 numberOfLines={
                   textFit.isCircleShape || textFit.usableMinDim < 95 ? 1 : 2
@@ -823,7 +826,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               !isReservedSoon && (
                 <Text
                   style={{
-                    color: tableColor + 'AA',
+                    color: isDarkColorScheme ? tableColor + 'AA' : '#334155',
                     fontSize: textFit.secondary,
                     fontWeight: '600'
                   }}
@@ -861,7 +864,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                   !textFit.ultraCompact && (
                     <Text
                       style={{
-                        color: tableColor + 'CC',
+                        color: isDarkColorScheme
+                          ? tableColor + 'CC'
+                          : '#334155',
                         fontSize: textFit.secondary,
                         fontWeight: '600'
                       }}
@@ -876,7 +881,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                   <>
                     <Text
                       style={{
-                        color: '#FFFFFF',
+                        color: isDarkColorScheme ? '#FFFFFF' : '#111827',
                         fontSize: textFit.amount,
                         fontWeight: '700',
                         marginTop: textFit.compactMeta ? 1 : 2
@@ -890,7 +895,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                     {!!occupiedMetaLabel && !textFit.ultraCompact && (
                       <Text
                         style={{
-                          color: tableColor + 'CC',
+                          color: isDarkColorScheme
+                            ? tableColor + 'CC'
+                            : '#334155',
                           fontSize: textFit.secondary,
                           fontWeight: '600'
                         }}
@@ -922,7 +929,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 width: 20,
                 height: 20,
                 borderRadius: 10,
-                backgroundColor: 'rgba(0,0,0,0.6)',
+                backgroundColor: isDarkColorScheme
+                  ? 'rgba(0,0,0,0.6)'
+                  : 'rgba(255,255,255,0.9)',
                 borderWidth: 1,
                 borderColor: (sectionColor ?? tableColor) + '99',
                 alignItems: 'center',
@@ -931,7 +940,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             >
               <Text
                 style={{
-                  color: sectionColor ?? tableColor,
+                  color: isDarkColorScheme
+                    ? sectionColor ?? tableColor
+                    : '#111827',
                   fontSize: 8,
                   fontWeight: '700'
                 }}

@@ -14,19 +14,20 @@ import { cn } from '~/lib/utils'
 // On:  teal tinted track (colors.teal + ~15% opacity), teal thumb
 // Off: dark track (colors.card), muted thumb
 
-const TEAL_TRACK = `${colors.teal}26` // teal + ~15% opacity (38/255)
-const TEAL_THUMB = colors.teal // solid teal
-const TEAL_BORDER = `${colors.teal}66` // teal + ~40% opacity (102/255)
-const OFF_TRACK = colors.card // colors.card
-const OFF_THUMB = colors.muted // colors.muted
-const OFF_BORDER = colors.border // use theme border color
-
 function SwitchWeb ({
   className,
   ...props
 }: SwitchPrimitives.RootProps & {
   ref?: React.RefObject<SwitchPrimitives.RootRef>
 }) {
+  // Calculate colors dynamically so they update with theme changes
+  const TEAL_TRACK = `${colors.teal}26` // teal + ~15% opacity (38/255)
+  const TEAL_THUMB = colors.teal // solid teal
+  const TEAL_BORDER = `${colors.teal}66` // teal + ~40% opacity (102/255)
+  const OFF_TRACK = colors.card // colors.card
+  const OFF_THUMB = colors.muted // colors.muted
+  const OFF_BORDER = colors.border // use theme border color
+
   return (
     <SwitchPrimitives.Root
       className={cn(
@@ -57,6 +58,14 @@ function SwitchNative ({
 }: SwitchPrimitives.RootProps & {
   ref?: React.RefObject<SwitchPrimitives.RootRef>
 }) {
+  // Calculate colors dynamically so they update with theme changes
+  const TEAL_TRACK = `${colors.teal}26` // teal + ~15% opacity (38/255)
+  const TEAL_THUMB = colors.teal // solid teal
+  const TEAL_BORDER = `${colors.teal}66` // teal + ~40% opacity (102/255)
+  const OFF_TRACK = colors.card // colors.card
+  const OFF_THUMB = colors.muted // colors.muted
+  const OFF_BORDER = colors.border // use theme border color
+
   const translateX = useDerivedValue(() => (props.checked ? 16 : 0))
 
   const animatedTrackStyle = useAnimatedStyle(() => ({
