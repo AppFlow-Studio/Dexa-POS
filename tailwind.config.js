@@ -1,74 +1,73 @@
-const { hairlineWidth } = require("nativewind/theme");
-const { colors: themeColors } = require("./lib/theme-colors");
+const { hairlineWidth } = require('nativewind/theme')
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: "class",
-  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
-  presets: [require("nativewind/preset")],
+  darkMode: 'class',
+  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+  presets: [require('nativewind/preset')],
   theme: {
     extend: {
       colors: {
         // ── CSS-variable-driven (components/ui/ primitives) ──
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        foreground: "hsl(var(--foreground))",
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        foreground: 'hsl(var(--foreground))',
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))'
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))'
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))'
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))'
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))'
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))'
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))'
         },
-        background: "hsl(var(--background))",
+        background: 'hsl(var(--background))',
 
-        // ── Semantic palette (direct hex from theme-colors.js) ──
-        screen: themeColors.screen,
-        panel: themeColors.panel,
-        surface: themeColors.card,
-        inset: themeColors.inset,
+        // ── Semantic palette (CSS variables, switched by .dark class) ──
+        screen: 'var(--screen)',
+        panel: 'var(--panel)',
+        surface: 'var(--surface)',
+        inset: 'var(--inset)',
 
-        heading: themeColors.heading,
-        label: themeColors.label,
-        hint: themeColors.muted,
+        heading: 'var(--heading)',
+        label: 'var(--label)',
+        hint: 'var(--hint)',
 
         teal: {
-          DEFAULT: themeColors.teal,
-          muted: themeColors.tealMuted,
+          DEFAULT: 'var(--teal)',
+          muted: 'var(--teal-muted)'
         },
-        success: themeColors.success,
-        warning: themeColors.warning,
-        danger: themeColors.danger,
-        info: themeColors.info,
+        success: 'var(--success)',
+        warning: 'var(--warning)',
+        danger: 'var(--danger)',
+        info: 'var(--info)',
 
-        onSolid: themeColors.onSolid,
+        onSolid: 'var(--on-solid)'
       },
       borderWidth: {
-        hairline: hairlineWidth(),
-      },
-    },
+        hairline: hairlineWidth()
+      }
+    }
   },
-  plugins: [],
-};
+  plugins: []
+}

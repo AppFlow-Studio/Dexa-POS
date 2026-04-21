@@ -1,3 +1,4 @@
+import { colors } from '@/lib/theme'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import React, { useEffect, useMemo } from 'react'
@@ -172,23 +173,62 @@ const PaymentProgressHeader: React.FC = () => {
   }))
 
   return (
-    <View className='w-full px-6 py-3 bg-panel border-b border-border'>
-      <View className='flex-row justify-between items-center mb-2'>
+    <View
+      style={{
+        width: '100%',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        backgroundColor: colors.panel,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 8
+        }}
+      >
         <Text
-          className='text-gray-400 text-xs font-bold uppercase tracking-widest'
+          style={{
+            color: colors.muted,
+            fontSize: 11,
+            fontWeight: '700',
+            textTransform: 'uppercase',
+            letterSpacing: 0.8
+          }}
           numberOfLines={1}
         >
           {progressLabel}
         </Text>
-        <Text className='text-teal text-xs font-bold ml-2'>
+        <Text
+          style={{
+            color: colors.teal,
+            fontSize: 11,
+            fontWeight: 'bold',
+            marginLeft: 8
+          }}
+        >
           {Math.round(targetProgress)}%
         </Text>
       </View>
 
-      <View className='h-1.5 w-full bg-surface rounded-full overflow-hidden'>
+      <View
+        style={{
+          height: 6,
+          width: '100%',
+          backgroundColor: colors.muted + '15',
+          borderRadius: 3,
+          overflow: 'hidden'
+        }}
+      >
         <Animated.View
-          className='h-full bg-teal rounded-full'
-          style={animatedStyle}
+          style={[
+            animatedStyle,
+            { height: '100%', backgroundColor: colors.teal, borderRadius: 3 }
+          ]}
         />
       </View>
     </View>

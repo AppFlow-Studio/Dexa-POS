@@ -691,9 +691,9 @@ const MenuPage: React.FC = () => {
           isAvailableNow: isMenuAvailableNow(storeMenu.id)
         }))
         .sort((a, b) => {
-          // Sort by display_order if available, otherwise by name
-          const aOrder = a.display_order ?? Number.MAX_SAFE_INTEGER
-          const bOrder = b.display_order ?? Number.MAX_SAFE_INTEGER
+          // Sort by displayOrder if available, otherwise by name
+          const aOrder = a.displayOrder ?? Number.MAX_SAFE_INTEGER
+          const bOrder = b.displayOrder ?? Number.MAX_SAFE_INTEGER
           if (aOrder !== bOrder) return aOrder - bOrder
           return a.name.localeCompare(b.name)
         }),
@@ -1078,10 +1078,10 @@ const MenuPage: React.FC = () => {
           return (
             <View
               style={{
-                backgroundColor: colors.card,
+                backgroundColor: colors.panel,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor: colors.teal + '35',
                 padding: 12
               }}
             >
@@ -1174,10 +1174,10 @@ const MenuPage: React.FC = () => {
                     disabled={!editable}
                     style={{
                       padding: 6,
-                      backgroundColor: colors.panel,
+                      backgroundColor: colors.teal + '18',
                       borderRadius: 8,
                       borderWidth: 1,
-                      borderColor: colors.border,
+                      borderColor: colors.teal + '35',
                       opacity: editable ? 1 : 0.4
                     }}
                   >
@@ -1203,10 +1203,10 @@ const MenuPage: React.FC = () => {
                     disabled={!editable}
                     style={{
                       padding: 6,
-                      backgroundColor: colors.panel,
+                      backgroundColor: colors.teal + '18',
                       borderRadius: 8,
                       borderWidth: 1,
-                      borderColor: colors.border,
+                      borderColor: colors.teal + '35',
                       opacity: editable ? 1 : 0.4
                     }}
                   >
@@ -1237,10 +1237,11 @@ const MenuPage: React.FC = () => {
                               width: 130,
                               height: 160,
                               borderRadius: 10,
-                              backgroundColor: colors.card,
+                              backgroundColor: colors.panel,
                               borderWidth: 1,
-                              borderColor: colors.border,
-                              overflow: 'hidden'
+                              borderColor: colors.teal + '35',
+                              overflow: 'hidden',
+                              position: 'relative'
                             }}
                           >
                             <View style={{ height: 100, width: '100%' }}>
@@ -1299,6 +1300,55 @@ const MenuPage: React.FC = () => {
                               >
                                 ${item.price.toFixed(2)}
                               </Text>
+                            </View>
+                            {/* Action overlay */}
+                            <View
+                              style={{
+                                position: 'absolute',
+                                bottom: 6,
+                                right: 6,
+                                flexDirection: 'row',
+                                gap: 4,
+                                zIndex: 20
+                              }}
+                            >
+                              <TouchableOpacity
+                                onPress={() =>
+                                  handleToggleAvailability(item.id)
+                                }
+                                disabled={!editable}
+                                style={{
+                                  padding: 6,
+                                  backgroundColor: colors.teal + '18',
+                                  borderRadius: 6,
+                                  borderWidth: 1,
+                                  borderColor: colors.teal + '35',
+                                  opacity: editable ? 1 : 0.4
+                                }}
+                              >
+                                {item.availability !== false ? (
+                                  <Eye size={16} color={colors.success} />
+                                ) : (
+                                  <EyeOff size={16} color={colors.danger} />
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => handleEditItem(item)}
+                                disabled={!editable}
+                                style={{
+                                  padding: 6,
+                                  backgroundColor: colors.teal + '18',
+                                  borderRadius: 6,
+                                  borderWidth: 1,
+                                  borderColor: colors.teal + '35',
+                                  opacity: editable ? 1 : 0.4
+                                }}
+                              >
+                                <Pencil
+                                  size={16}
+                                  color={editable ? colors.teal : colors.muted}
+                                />
+                              </TouchableOpacity>
                             </View>
                           </View>
                         )
@@ -1381,9 +1431,9 @@ const MenuPage: React.FC = () => {
                             width: 130,
                             height: 160,
                             borderRadius: 10,
-                            backgroundColor: colors.card,
+                            backgroundColor: colors.panel,
                             borderWidth: 1,
-                            borderColor: colors.border,
+                            borderColor: colors.teal + '35',
                             overflow: 'hidden'
                           }}
                         >
@@ -1462,8 +1512,10 @@ const MenuPage: React.FC = () => {
                               disabled={!editable}
                               style={{
                                 padding: 6,
-                                backgroundColor: colors.card,
+                                backgroundColor: colors.teal + '18',
                                 borderRadius: 6,
+                                borderWidth: 1,
+                                borderColor: colors.teal + '35',
                                 opacity: editable ? 1 : 0.4
                               }}
                             >
@@ -1478,8 +1530,10 @@ const MenuPage: React.FC = () => {
                               disabled={!editable}
                               style={{
                                 padding: 6,
-                                backgroundColor: colors.card,
+                                backgroundColor: colors.teal + '18',
                                 borderRadius: 6,
+                                borderWidth: 1,
+                                borderColor: colors.teal + '35',
                                 opacity: editable ? 1 : 0.4
                               }}
                             >
@@ -2201,7 +2255,7 @@ const MenuPage: React.FC = () => {
   }
 
   return (
-    <View className='flex-1 bg-panel'>
+    <View className='flex-1 bg-screen'>
       {renderContent()}
       <PriceEditBottomSheet
         ref={priceEditRef}

@@ -4,12 +4,14 @@ import OptimizedListImage, {
 import { useToast } from '@/contexts/ToastContext'
 import { resolveMenuItemImageSource } from '@/lib/menuItemImageSource'
 import {
+  DEFAULT_MENU_ITEM_PLACEHOLDER_ICON,
   extractMenuItemPlaceholderIconKey,
   getMenuItemPlaceholderIcon,
   type MenuItemPlaceholderIconKey
 } from '@/lib/menuItemPlaceholderIcon'
 import { colors } from '@/lib/theme'
 import { MenuItemType } from '@/lib/types'
+import { useColorScheme } from '@/lib/useColorScheme'
 import {
   isMenuBlockedSync,
   setMenuBlockedSync,
@@ -27,132 +29,160 @@ import {
   View
 } from 'react-native'
 
-const styles = StyleSheet.create({
-  container: {
-    width: '19%',
-    borderRadius: 12,
-    marginBottom: 4,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: `${colors.teal}30`,
-    overflow: 'hidden'
-  },
-  containerWithImage: {
-    minHeight: 176
-  },
-  containerDisabled: {
-    opacity: 0.4
-  },
-  containerNoImage: {
-    aspectRatio: undefined,
-    height: 64
-  },
-  // Modifier corner triangle
-  modifierCorner: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 0,
-    height: 0,
-    borderTopWidth: 18,
-    borderRightWidth: 18,
-    borderTopColor: colors.teal,
-    borderRightColor: 'transparent',
-    zIndex: 10
-  },
-  // Image area
-  imageWrapper: {
-    height: 120,
-    width: '100%'
-  },
-  image: {
-    width: '100%',
-    height: '100%'
-  },
-  placeholderContainer: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: `${colors.teal}08`
-  },
-  // Content area
-  contentContainer: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    gap: 2
-  },
-  nameText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.heading,
-    lineHeight: 15
-  },
-  descriptionText: {
-    marginTop: 3,
-    fontSize: 9,
-    fontWeight: '500',
-    color: colors.muted,
-    lineHeight: 12
-  },
-  // Price row overlay: top-right of whole card
-  priceRow: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    zIndex: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 4
-  },
-  cardPriceChip: {
-    backgroundColor: 'rgba(17, 24, 39, 0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
-    borderRadius: 5,
-    paddingHorizontal: 4,
-    paddingVertical: 1
-  },
-  cardPrice: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#F9FAFB'
-  },
-  cardPriceCustom: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#FCD34D'
-  },
-  cashPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(17, 24, 39, 0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
-    borderRadius: 5,
-    paddingHorizontal: 3,
-    paddingVertical: 1
-  },
-  cashLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: `${colors.success}99`,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase'
-  },
-  cashAmount: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: colors.teal
-  },
-  // Divider between image and content
-  divider: {
-    height: 1,
-    backgroundColor: `${colors.teal}20`,
-    marginHorizontal: 10
+const createStyles = () =>
+  StyleSheet.create({
+    container: {
+      width: '19%',
+      aspectRatio: 1,
+      borderRadius: 12,
+      marginBottom: 4,
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: `${colors.teal}30`,
+      overflow: 'hidden'
+    },
+    containerDisabled: {
+      opacity: 0.4
+    },
+    containerNoImage: {
+      aspectRatio: undefined,
+      height: 64
+    },
+    // Modifier corner triangle
+    modifierCorner: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+      borderTopWidth: 18,
+      borderLeftWidth: 18,
+      borderTopColor: colors.teal,
+      borderLeftColor: 'transparent',
+      zIndex: 10
+    },
+    // Image area
+    imageWrapper: {
+      flex: 1,
+      width: '100%'
+    },
+    image: {
+      width: '100%',
+      height: '100%'
+    },
+    placeholderContainer: {
+      width: '100%',
+      height: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${colors.teal}08`
+    },
+    // Content area
+    contentContainer: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      gap: 2
+    },
+    nameText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.heading,
+      lineHeight: 15
+    },
+    // Price row: card price left, cash pill right
+    priceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 1
+    },
+    cardPrice: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.heading
+    },
+    cardPriceCustom: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.warning
+    },
+    cashPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: `${colors.success}18`,
+      borderWidth: 1,
+      borderColor: `${colors.success}40`,
+      borderRadius: 6,
+      paddingHorizontal: 5,
+      paddingVertical: 2
+    },
+    cashLabel: {
+      fontSize: 9,
+      fontWeight: '700',
+      color: `${colors.success}99`,
+      letterSpacing: 0.4,
+      textTransform: 'uppercase'
+    },
+    cashAmount: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.success
+    },
+    // Divider between image and content
+    divider: {
+      height: 1,
+      backgroundColor: `${colors.teal}20`,
+      marginHorizontal: 10
+    }
+  })
+
+const VALID_PLACEHOLDER_KEYS = new Set<MenuItemPlaceholderIconKey>([
+  'utensils',
+  'drink',
+  'burger',
+  'pizza',
+  'dessert',
+  'coffee',
+  'salad',
+  'seafood'
+])
+
+const resolveFallbackIconKey = (
+  item: MenuItemType
+): MenuItemPlaceholderIconKey => {
+  const fromPlaceholderField = item.placeholderIcon as
+    | MenuItemPlaceholderIconKey
+    | undefined
+
+  if (
+    fromPlaceholderField &&
+    VALID_PLACEHOLDER_KEYS.has(fromPlaceholderField)
+  ) {
+    return fromPlaceholderField
   }
-})
+
+  const fromCardBgColor = extractMenuItemPlaceholderIconKey(item.cardBgColor)
+  if (fromCardBgColor) {
+    return fromCardBgColor
+  }
+
+  const hintSource = `${item.name} ${
+    item.category?.join(' ') || ''
+  }`.toLowerCase()
+
+  if (/coffee|espresso|latte|cappuccino|tea/.test(hintSource)) return 'coffee'
+  if (/soda|drink|juice|cola|lemonade|smoothie|beverage/.test(hintSource))
+    return 'drink'
+  if (/burger|sandwich/.test(hintSource)) return 'burger'
+  if (/pizza|slice/.test(hintSource)) return 'pizza'
+  if (/cake|dessert|ice\s*cream|cookie|brownie|sweet/.test(hintSource))
+    return 'dessert'
+  if (/salad|greens/.test(hintSource)) return 'salad'
+  if (/fish|shrimp|salmon|tuna|seafood/.test(hintSource)) return 'seafood'
+
+  return DEFAULT_MENU_ITEM_PLACEHOLDER_ICON
+}
 
 interface MenuItemProps {
   item: MenuItemType
@@ -172,6 +202,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
   categoryId,
   menuId
 }) => {
+  const { colorScheme } = useColorScheme()
+  const styles = useMemo(() => createStyles(), [colorScheme])
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore()
   const { show } = useToast()
   const showMenuItemPrices = useSettingsStore(s => s.showMenuItemPrices)
@@ -248,14 +280,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const resolvedImageSource =
     imageSource ?? resolveMenuItemImageSource(item.image)
+
   const PlaceholderIcon = useMemo(() => {
-    const iconKey =
-      item.placeholderIcon ??
-      extractMenuItemPlaceholderIconKey(item.cardBgColor)
-    return getMenuItemPlaceholderIcon(
-      iconKey as MenuItemPlaceholderIconKey | undefined
-    )
-  }, [item.placeholderIcon, item.cardBgColor])
+    const iconKey = resolveFallbackIconKey(item)
+    return getMenuItemPlaceholderIcon(iconKey)
+  }, [item])
 
   return (
     <TouchableOpacity
@@ -264,37 +293,13 @@ const MenuItem: React.FC<MenuItemProps> = ({
       onPress={handlePress}
       style={[
         styles.container,
-        showMenuImages && styles.containerWithImage,
+        !showMenuImages && styles.containerNoImage,
         isDisabled && styles.containerDisabled,
         !showMenuImages && styles.containerNoImage
       ]}
     >
       {/* Modifier triangle corner */}
       {hasModifiers && <View style={styles.modifierCorner} />}
-
-      {showMenuItemPrices && (
-        <View style={styles.priceRow}>
-          <View style={styles.cardPriceChip}>
-            <Text
-              style={
-                priceData.hasCustomPricing
-                  ? styles.cardPriceCustom
-                  : styles.cardPrice
-              }
-            >
-              ${priceData.displayPrice?.toFixed(2)}
-            </Text>
-          </View>
-
-          {item.cashPrice && (
-            <View style={styles.cashPill}>
-              <Text style={styles.cashAmount}>
-                ${item.cashPrice.toFixed(2)}
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
 
       {/* Image */}
       {showMenuImages && (
@@ -309,11 +314,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
             />
           ) : (
             <View style={styles.placeholderContainer}>
-              <PlaceholderIcon
-                color={`${colors.label}72`}
-                size={26}
-                strokeWidth={2}
-              />
+              <PlaceholderIcon color={`${colors.label}60`} size={16} />
             </View>
           )}
         </View>
@@ -327,10 +328,27 @@ const MenuItem: React.FC<MenuItemProps> = ({
         <Text style={styles.nameText} numberOfLines={2}>
           {item.name}
         </Text>
-        {!!item.description?.trim() && (
-          <Text style={styles.descriptionText} numberOfLines={2}>
-            {item.description.trim()}
-          </Text>
+
+        {showMenuItemPrices && (
+          <View style={styles.priceRow}>
+            <Text
+              style={
+                priceData.hasCustomPricing
+                  ? styles.cardPriceCustom
+                  : styles.cardPrice
+              }
+            >
+              ${priceData.displayPrice?.toFixed(2)}
+            </Text>
+
+            {item.cashPrice && (
+              <View style={styles.cashPill}>
+                <Text style={styles.cashAmount}>
+                  ${item.cashPrice.toFixed(2)}
+                </Text>
+              </View>
+            )}
+          </View>
         )}
       </View>
     </TouchableOpacity>

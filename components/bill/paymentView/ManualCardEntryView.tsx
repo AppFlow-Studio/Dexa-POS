@@ -1,243 +1,317 @@
-import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
-import { PaymentErrorModal } from "@/components/bill/paymentView/PaymentErrorModal";
-import { useCFD } from "@/contexts/CFDProvider";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { useTerminalStatus } from "@/hooks/useTerminalStatus";
-import { colors } from "@/lib/theme";
-import { toastService } from "@/lib/toastService";
-import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
-import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { usePaymentStore } from "@/stores/usePaymentStore";
-import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { getSharedCastlesService } from "@/services/terminals/castles-service";
-import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
-import { extractLast4, parseCastlesReturnCode } from "@/services/terminals/castles-response-mapper";
-import { CASTLES_DEFAULT_PORT } from "@/types/castles";
-import { CheckCircle2, CreditCard, Keyboard, Wifi } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { PaymentErrorModal } from '@/components/bill/paymentView/PaymentErrorModal'
+import { TerminalStatusBanner } from '@/components/payment/TerminalStatusBanner'
+import { useCFD } from '@/contexts/CFDProvider'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { useTerminalStatus } from '@/hooks/useTerminalStatus'
+import { iosOnly } from '@/lib/safeAnimations'
+import { colors } from '@/lib/theme'
+import {
+  extractLast4,
+  parseCastlesReturnCode
+} from '@/services/terminals/castles-response-mapper'
+import { getSharedCastlesService } from '@/services/terminals/castles-service'
+import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter'
+import {
+  useActiveOrder,
+  useActiveOrderTotals
+} from '@/stores/selectors/orderSelectors'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { useOrderStore } from '@/stores/useOrderStore'
+import { usePaymentStore } from '@/stores/usePaymentStore'
+import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { CASTLES_DEFAULT_PORT } from '@/types/castles'
+import { CheckCircle2, Keyboard, Wifi } from 'lucide-react-native'
+import { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-} from "react-native";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-import { iosOnly } from "@/lib/safeAnimations";
+  View
+} from 'react-native'
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 
 const ManualCardEntryView = () => {
-  const supabase = useSupabaseClient();
-  const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const orderTotals = useActiveOrderTotals();
-  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
-  const activeOrderTotal = orderTotals?.total ?? 0;
-  const activeOrder = useActiveOrder();
+  const supabase = useSupabaseClient()
+  const activeOrderId = useOrderStore(s => s.activeOrderId)
+  const orderTotals = useActiveOrderTotals()
+  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0
+  const activeOrderTotal = orderTotals?.total ?? 0
+  const activeOrder = useActiveOrder()
 
-  const setView = usePaymentStore((s) => s.setView);
-  const close = usePaymentStore((s) => s.close);
-  const handlePaymentCompletion = usePaymentStore((s) => s.handlePaymentCompletion);
-  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
-  const splits = usePaymentStore((s) => s.splits);
-  const expandSheetToFull = usePaymentStore((s) => s.expandSheetToFull);
-  const setTransactionProcessing = usePaymentStore((s) => s.setTransactionProcessing);
+  const setView = usePaymentStore(s => s.setView)
+  const close = usePaymentStore(s => s.close)
+  const handlePaymentCompletion = usePaymentStore(
+    s => s.handlePaymentCompletion
+  )
+  const activeSplitId = usePaymentStore(s => s.activeSplitId)
+  const splits = usePaymentStore(s => s.splits)
+  const expandSheetToFull = usePaymentStore(s => s.expandSheetToFull)
+  const setTransactionProcessing = usePaymentStore(
+    s => s.setTransactionProcessing
+  )
 
-  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
+  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
 
-  useEffect(() => { expandSheetToFull(); }, [expandSheetToFull]);
+  useEffect(() => {
+    expandSheetToFull()
+  }, [expandSheetToFull])
 
-  const [status, setStatus] = useState<"ready" | "processing" | "success">("ready");
-  const [tipInput, setTipInput] = useState("");
-  const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(null);
-  const [errorModal, setErrorModal] = useState<{ visible: boolean; title: string; message: string }>({
-    visible: false, title: "", message: "",
-  });
-  const currentRefIdRef = useRef<string | null>(null);
-  const [isCancelling, setIsCancelling] = useState(false);
+  const [status, setStatus] = useState<'ready' | 'processing' | 'success'>(
+    'ready'
+  )
+  const [tipInput, setTipInput] = useState('')
+  const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
+    null
+  )
+  const [errorModal, setErrorModal] = useState<{
+    visible: boolean
+    title: string
+    message: string
+  }>({
+    visible: false,
+    title: '',
+    message: ''
+  })
+  const currentRefIdRef = useRef<string | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   // Terminal status
   const {
     status: terminalStatus,
     isReady: terminalReady,
     errorMessage: terminalErrorMessage,
-    recheckStatus,
+    recheckStatus
   } = useTerminalStatus(
     selectedStation?.payment_terminal?.id,
-    selectedStation?.payment_terminal,
-  );
+    selectedStation?.payment_terminal
+  )
 
-  const tipPresetPercentages = useLocationConfigStore((s) => s.config.tips.presetPercentages);
-  const TIP_PRESETS = tipPresetPercentages;
+  const tipPresetPercentages = useLocationConfigStore(
+    s => s.config.tips.presetPercentages
+  )
+  const TIP_PRESETS = tipPresetPercentages
 
-  const {
-    updateTip,
-    showProcessing,
-    showApproved,
-    showDeclined,
-    showIdle,
-  } = useCFD();
+  const { updateTip, showProcessing, showApproved, showDeclined, showIdle } =
+    useCFD()
 
   // Sync isTransactionProcessing with status and error modal
   useEffect(() => {
-    setTransactionProcessing(status === "processing" || errorModal.visible);
-    return () => { setTransactionProcessing(false); };
-  }, [status, errorModal.visible, setTransactionProcessing]);
+    setTransactionProcessing(status === 'processing' || errorModal.visible)
+    return () => {
+      setTransactionProcessing(false)
+    }
+  }, [status, errorModal.visible, setTransactionProcessing])
 
   // Signal health check service to skip during active terminal interaction
   useEffect(() => {
-    const isActive = status === "processing";
-    usePaymentTerminalStore.getState().setProcessingPayment(isActive);
-    return () => { usePaymentTerminalStore.getState().setProcessingPayment(false); };
-  }, [status]);
+    const isActive = status === 'processing'
+    usePaymentTerminalStore.getState().setProcessingPayment(isActive)
+    return () => {
+      usePaymentTerminalStore.getState().setProcessingPayment(false)
+    }
+  }, [status])
 
   // Amount calculations
-  const activeSplit = splits.find((s) => s.id === activeSplitId);
+  const activeSplit = splits.find(s => s.id === activeSplitId)
   const effectiveOutstandingTotal =
     activeOrderOutstandingTotal > 0
       ? activeOrderOutstandingTotal
       : activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0.01
-        ? activeOrder.amount_due
-        : activeOrderTotal;
-  const totalToPay = activeSplit ? activeSplit.amount : effectiveOutstandingTotal;
-  const tipAmount = parseFloat(tipInput) || 0;
-  const grandTotal = totalToPay + tipAmount;
+      ? activeOrder.amount_due
+      : activeOrderTotal
+  const totalToPay = activeSplit
+    ? activeSplit.amount
+    : effectiveOutstandingTotal
+  const tipAmount = parseFloat(tipInput) || 0
+  const grandTotal = totalToPay + tipAmount
 
   // CFD tip sync
   useEffect(() => {
-    updateTip(tipAmount, selectedTipPreset);
-  }, [tipAmount, selectedTipPreset, updateTip]);
+    updateTip(tipAmount, selectedTipPreset)
+  }, [tipAmount, selectedTipPreset, updateTip])
 
   useEffect(() => {
-    return () => { updateTip(0, null); };
-  }, [updateTip]);
+    return () => {
+      updateTip(0, null)
+    }
+  }, [updateTip])
 
   const handleTipPreset = (percentage: number) => {
-    const calculatedTip = (percentage / 100) * totalToPay;
-    setTipInput(calculatedTip.toFixed(2));
-    setSelectedTipPreset(percentage);
-  };
+    const calculatedTip = (percentage / 100) * totalToPay
+    setTipInput(calculatedTip.toFixed(2))
+    setSelectedTipPreset(percentage)
+  }
 
   const handleTipInputChange = (value: string) => {
-    if (/^\d*\.?\d{0,2}$/.test(value) || value === "") {
-      setTipInput(value);
-      setSelectedTipPreset(null);
+    if (/^\d*\.?\d{0,2}$/.test(value) || value === '') {
+      setTipInput(value)
+      setSelectedTipPreset(null)
     }
-  };
+  }
 
   // Process payment on Castles terminal
   useEffect(() => {
-    if (status !== "processing") return;
+    if (status !== 'processing') return
 
     const processPayment = async () => {
-      const terminal = selectedStation?.payment_terminal;
-      if (!terminal || terminal.terminal_type !== "castles") {
+      const terminal = selectedStation?.payment_terminal
+      if (!terminal || terminal.terminal_type !== 'castles') {
         setErrorModal({
           visible: true,
-          title: "Terminal Not Configured",
-          message: "Manual key-in requires a Castles terminal. Please configure one in station settings.",
-        });
-        return;
+          title: 'Terminal Not Configured',
+          message:
+            'Manual key-in requires a Castles terminal. Please configure one in station settings.'
+        })
+        return
       }
 
-      const host = terminal.ip_address;
+      const host = terminal.ip_address
       if (!host) {
-        setErrorModal({ visible: true, title: "Terminal Error", message: "Castles terminal has no IP address configured." });
-        return;
+        setErrorModal({
+          visible: true,
+          title: 'Terminal Error',
+          message: 'Castles terminal has no IP address configured.'
+        })
+        return
       }
-      const port = terminal.port ?? CASTLES_DEFAULT_PORT;
-      const tip = parseFloat(tipInput) || 0;
+      const port = terminal.port ?? CASTLES_DEFAULT_PORT
+      const tip = parseFloat(tipInput) || 0
 
       try {
-        console.log("[ManualKeyIn] Castles sale flow:", { host, port, totalToPay, tipAmount: tip, grandTotal: totalToPay + tip });
+        console.log('[ManualKeyIn] Castles sale flow:', {
+          host,
+          port,
+          totalToPay,
+          tipAmount: tip,
+          grandTotal: totalToPay + tip
+        })
 
         // 1. Connect + reset
-        const service = getSharedCastlesService();
-        await service.connect({ host, port, timeout: 120_000, terminalId: terminal.id });
-        await service.resetTerminalState();
+        const service = getSharedCastlesService()
+        await service.connect({
+          host,
+          port,
+          timeout: 120_000,
+          terminalId: terminal.id
+        })
+        await service.resetTerminalState()
 
         // 2. Get counter for txnPosTxnId
-        const counter = getOrCreateCounter({ terminalId: terminal.id, supabaseClient: supabase });
-        if (!counter.isInitialized) await counter.initialize();
-        const referenceId = counter.next();
-        currentRefIdRef.current = referenceId;
+        const counter = getOrCreateCounter({
+          terminalId: terminal.id,
+          supabaseClient: supabase
+        })
+        if (!counter.isInitialized) await counter.initialize()
+        const referenceId = counter.next()
+        currentRefIdRef.current = referenceId
 
-        console.log("[ManualKeyIn] Castles processSale:", { amount: totalToPay, tipAmount: tip, referenceId });
+        console.log('[ManualKeyIn] Castles processSale:', {
+          amount: totalToPay,
+          tipAmount: tip,
+          referenceId
+        })
 
         // 3. Execute sale — terminal handles card entry via manual key-in
         const result = await service.processSale({
           amount: totalToPay,
           tipAmount: tip,
-          referenceId,
-        });
+          referenceId
+        })
 
-        console.log("[ManualKeyIn] Castles sale result:", { success: result.success, error: result.error, hasRaw: !!result.raw });
+        console.log('[ManualKeyIn] Castles sale result:', {
+          success: result.success,
+          error: result.error,
+          hasRaw: !!result.raw
+        })
 
         // 4. Handle failure
         if (!result.success) {
           const errorInfo = result.raw?.txnReturnCode
             ? parseCastlesReturnCode(result.raw.txnReturnCode)
-            : { message: result.error || "Transaction failed" };
-          showDeclined();
-          setErrorModal({ visible: true, title: "Payment Declined", message: errorInfo.message });
-          return;
+            : { message: result.error || 'Transaction failed' }
+          showDeclined()
+          setErrorModal({
+            visible: true,
+            title: 'Payment Declined',
+            message: errorInfo.message
+          })
+          return
         }
 
         // 5. Handle success
-        const castlesTx = result.terminalResponse?.castles_transaction as Record<string, string> | undefined;
-        const castlesLast4 = castlesTx?.cardLast4 ?? (result.raw ? extractLast4(result.raw.txnMaskedCardNum ?? result.raw.txnCardMaskedPan ?? "") : undefined);
+        const castlesTx = result.terminalResponse?.castles_transaction as
+          | Record<string, string>
+          | undefined
+        const castlesLast4 =
+          castlesTx?.cardLast4 ??
+          (result.raw
+            ? extractLast4(
+                result.raw.txnMaskedCardNum ?? result.raw.txnCardMaskedPan ?? ''
+              )
+            : undefined)
 
         await handlePaymentCompletion({
-          method: "Card",
+          method: 'Card',
           tipAmount: tip,
           transactionDetails: {
-            terminalType: "castles",
+            terminalType: 'castles',
             isCashPriced: false,
             authorizationCode: castlesTx?.approvalCode,
             cardType: castlesTx?.cardType,
             last4: castlesLast4,
             transactionId: referenceId,
-            castlesTransaction: result.terminalResponse,
+            castlesTransaction: result.terminalResponse
           },
-          amountOverride: totalToPay,
-        });
+          amountOverride: totalToPay
+        })
 
-        showApproved();
-        setStatus("success");
-        setTimeout(() => showIdle(), 3000);
+        showApproved()
+        setStatus('success')
+        setTimeout(() => showIdle(), 3000)
       } catch (error) {
-        console.error("[ManualKeyIn] Error processing payment:", error);
-        const errorMsg = error instanceof Error ? error.message : "Unknown error";
-        showDeclined();
-        setErrorModal({ visible: true, title: "Payment Failed", message: errorMsg });
+        console.error('[ManualKeyIn] Error processing payment:', error)
+        const errorMsg =
+          error instanceof Error ? error.message : 'Unknown error'
+        showDeclined()
+        setErrorModal({
+          visible: true,
+          title: 'Payment Failed',
+          message: errorMsg
+        })
       }
-    };
+    }
 
-    processPayment();
-  }, [status]);
+    processPayment()
+  }, [status])
 
   const handleChargeCard = () => {
-    updateTip(tipAmount, selectedTipPreset);
-    setStatus("processing");
-    showProcessing("manual");
-  };
+    updateTip(tipAmount, selectedTipPreset)
+    setStatus('processing')
+    showProcessing('manual')
+  }
 
   const handleDismissErrorModal = () => {
-    setErrorModal({ visible: false, title: "", message: "" });
-    setStatus("ready");
-  };
+    setErrorModal({ visible: false, title: '', message: '' })
+    setStatus('ready')
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.panel }}>
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "space-between", padding: 16 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'space-between',
+          padding: 16
+        }}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps='handled'
       >
         {/* Terminal Status Banner */}
-        {terminalStatus !== "online" && (
+        {terminalStatus !== 'online' && (
           <View style={{ marginBottom: 16 }}>
             <TerminalStatusBanner
               status={terminalStatus}
@@ -248,101 +322,303 @@ const ManualCardEntryView = () => {
         )}
 
         {/* Top Section */}
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <View
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+        >
           {/* READY STATE */}
-          {status === "ready" && (
-            <View style={{ width: "100%", maxWidth: 400 }}>
-              <View style={{ alignItems: "center", marginBottom: 16 }}>
+          {status === 'ready' && (
+            <View style={{ width: '100%', maxWidth: 400 }}>
+              <View style={{ alignItems: 'center', marginBottom: 16 }}>
                 {/* Manual Key-in badge */}
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 12, backgroundColor: `${colors.teal}15`, paddingVertical: 5, paddingHorizontal: 12, borderRadius: 20, alignSelf: "center", borderWidth: 1, borderColor: `${colors.teal}30`, gap: 5 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 12,
+                    backgroundColor: `${colors.teal}15`,
+                    paddingVertical: 5,
+                    paddingHorizontal: 12,
+                    borderRadius: 20,
+                    alignSelf: 'center',
+                    borderWidth: 1,
+                    borderColor: `${colors.teal}30`,
+                    gap: 5
+                  }}
+                >
                   <Keyboard size={11} color={colors.teal} />
-                  <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>Manual Key-in</Text>
+                  <Text
+                    style={{
+                      color: colors.teal,
+                      fontSize: 10,
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.8
+                    }}
+                  >
+                    Manual Key-in
+                  </Text>
                 </View>
 
-                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>
-                  {activeSplit ? `Total for ${activeSplit.customerName}` : "Total Due"}
+                <Text
+                  style={{
+                    color: colors.muted,
+                    fontSize: 11,
+                    fontWeight: '700',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.8,
+                    marginBottom: 4
+                  }}
+                >
+                  {activeSplit
+                    ? `Total for ${activeSplit.customerName}`
+                    : 'Total Due'}
                 </Text>
-                <Text style={{ fontSize: 36, fontWeight: "700", color: colors.teal, marginBottom: 20 }}>
+                <Text
+                  style={{
+                    fontSize: 36,
+                    fontWeight: '700',
+                    color: colors.teal,
+                    marginBottom: 20
+                  }}
+                >
                   ${totalToPay.toFixed(2)}
                 </Text>
 
-                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6, alignSelf: "flex-start" }}>
+                <Text
+                  style={{
+                    color: colors.muted,
+                    fontSize: 11,
+                    fontWeight: '700',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.8,
+                    marginBottom: 6,
+                    alignSelf: 'flex-start'
+                  }}
+                >
                   Add Tip
                 </Text>
                 {/* Preset Tip Buttons */}
-                <View style={{ flexDirection: "row", gap: 6, width: "100%", marginBottom: 10 }}>
-                  {TIP_PRESETS.map((percent) => {
-                    const isActive = selectedTipPreset === percent;
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    gap: 6,
+                    width: '100%',
+                    marginBottom: 10
+                  }}
+                >
+                  {TIP_PRESETS.map(percent => {
+                    const isActive = selectedTipPreset === percent
                     return (
                       <TouchableOpacity
                         key={percent}
                         onPress={() => handleTipPreset(percent)}
                         style={{
-                          flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1,
-                          backgroundColor: isActive ? `${colors.teal}15` : colors.panel,
+                          flex: 1,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          backgroundColor: isActive
+                            ? `${colors.teal}15`
+                            : colors.panel,
                           borderColor: isActive ? colors.teal : colors.border,
-                          alignItems: "center",
+                          alignItems: 'center'
                         }}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: "700", color: isActive ? colors.heading : colors.muted }}>{percent}%</Text>
-                        <Text style={{ fontSize: 10, marginTop: 1, color: isActive ? colors.teal : colors.muted }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '700',
+                            color: isActive ? colors.heading : colors.muted
+                          }}
+                        >
+                          {percent}%
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            marginTop: 1,
+                            color: isActive ? colors.teal : colors.muted
+                          }}
+                        >
                           ${((percent / 100) * totalToPay).toFixed(2)}
                         </Text>
                       </TouchableOpacity>
-                    );
+                    )
                   })}
                 </View>
                 {/* Custom Tip Input */}
-                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, height: 44, width: "100%", marginBottom: 16 }}>
-                  <Text style={{ color: colors.muted, fontSize: 15, marginRight: 4 }}>$</Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: colors.panel,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    height: 44,
+                    width: '100%',
+                    marginBottom: 16
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 15,
+                      marginRight: 4
+                    }}
+                  >
+                    $
+                  </Text>
                   <TextInput
                     value={tipInput}
                     onChangeText={handleTipInputChange}
-                    placeholder="0.00"
-                    keyboardType="numeric"
+                    placeholder='0.00'
+                    keyboardType='numeric'
                     placeholderTextColor={colors.muted}
-                    style={{ flex: 1, fontSize: 16, fontWeight: "700", color: colors.heading }}
+                    style={{
+                      flex: 1,
+                      fontSize: 16,
+                      fontWeight: '700',
+                      color: colors.heading
+                    }}
                   />
                 </View>
 
-                <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
-                  <Text style={{ color: colors.muted, fontSize: 13 }}>Grand Total</Text>
-                  <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "700" }}>${grandTotal.toFixed(2)}</Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    borderTopWidth: 1,
+                    borderTopColor: colors.border,
+                    paddingTop: 10
+                  }}
+                >
+                  <Text style={{ color: colors.muted, fontSize: 13 }}>
+                    Grand Total
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontSize: 13,
+                      fontWeight: '700'
+                    }}
+                  >
+                    ${grandTotal.toFixed(2)}
+                  </Text>
                 </View>
               </View>
             </View>
           )}
 
           {/* PROCESSING / SUCCESS STATES */}
-          {(status === "processing" || status === "success") && (
-            <View style={{ marginBottom: 24, alignItems: "center" }}>
-              {status === "processing" && (
-                <Animated.View entering={iosOnly(FadeIn)} style={{ alignItems: "center" }}>
-                  <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 12, borderWidth: 1, borderColor: `${colors.teal}30` }}>
-                    <ActivityIndicator size="large" color={colors.teal} />
+          {(status === 'processing' || status === 'success') && (
+            <View style={{ marginBottom: 24, alignItems: 'center' }}>
+              {status === 'processing' && (
+                <Animated.View
+                  entering={iosOnly(FadeIn)}
+                  style={{ alignItems: 'center' }}
+                >
+                  <View
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 36,
+                      backgroundColor: `${colors.teal}15`,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 12,
+                      borderWidth: 1,
+                      borderColor: `${colors.teal}30`
+                    }}
+                  >
+                    <ActivityIndicator size='large' color={colors.teal} />
                   </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.panel, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      backgroundColor: colors.panel,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: colors.border
+                    }}
+                  >
                     <Wifi size={13} color={colors.success} />
-                    <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 12 }}>Terminal Connected</Text>
+                    <Text
+                      style={{
+                        color: colors.muted,
+                        fontWeight: '600',
+                        fontSize: 12
+                      }}
+                    >
+                      Terminal Connected
+                    </Text>
                   </View>
                 </Animated.View>
               )}
 
-              {status === "success" && (
-                <Animated.View entering={iosOnly(FadeIn.duration(300))} style={{ alignItems: "center" }}>
-                  <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${colors.success}15`, alignItems: "center", justifyContent: "center", marginBottom: 12, borderWidth: 1, borderColor: `${colors.success}30` }}>
+              {status === 'success' && (
+                <Animated.View
+                  entering={iosOnly(FadeIn.duration(300))}
+                  style={{ alignItems: 'center' }}
+                >
+                  <View
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 36,
+                      backgroundColor: `${colors.success}15`,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 12,
+                      borderWidth: 1,
+                      borderColor: `${colors.success}30`
+                    }}
+                  >
                     <CheckCircle2 size={36} color={colors.success} />
                   </View>
-                  <Text style={{ color: colors.success, fontWeight: "700", fontSize: 13 }}>Approved</Text>
+                  <Text
+                    style={{
+                      color: colors.success,
+                      fontWeight: '700',
+                      fontSize: 13
+                    }}
+                  >
+                    Approved
+                  </Text>
                 </Animated.View>
               )}
 
-              <View style={{ marginTop: 16, alignItems: "center" }}>
-                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.heading, marginBottom: 4, textAlign: "center" }}>
-                  {status === "processing" ? "Key In Card on Terminal" : "Payment Successful"}
+              <View style={{ marginTop: 16, alignItems: 'center' }}>
+                <Text
+                  style={{
+                    fontSize: 20,
+                    fontWeight: '700',
+                    color: colors.heading,
+                    marginBottom: 4,
+                    textAlign: 'center'
+                  }}
+                >
+                  {status === 'processing'
+                    ? 'Key In Card on Terminal'
+                    : 'Payment Successful'}
                 </Text>
-                <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center" }}>
-                  {status === "processing" ? `Charging $${grandTotal.toFixed(2)}` : "Transaction completed"}
+                <Text
+                  style={{
+                    color: colors.muted,
+                    fontSize: 13,
+                    textAlign: 'center'
+                  }}
+                >
+                  {status === 'processing'
+                    ? `Charging $${grandTotal.toFixed(2)}`
+                    : 'Transaction completed'}
                 </Text>
               </View>
             </View>
@@ -358,56 +634,87 @@ const ManualCardEntryView = () => {
         />
 
         {/* Bottom Section */}
-        <Animated.View entering={iosOnly(FadeInDown.delay(200))} style={{ width: "100%" }}>
+        <Animated.View
+          entering={iosOnly(FadeInDown.delay(200))}
+          style={{ width: '100%' }}
+        >
           {/* Charge Button */}
-          {status === "ready" && (
+          {status === 'ready' && (
             <TouchableOpacity
               onPress={handleChargeCard}
               disabled={!terminalReady}
               style={{
-                width: "100%", paddingVertical: 11, borderRadius: 8, marginBottom: 8,
-                alignItems: "center",
+                width: '100%',
+                paddingVertical: 11,
+                borderRadius: 8,
+                marginBottom: 8,
+                alignItems: 'center',
                 backgroundColor: terminalReady ? colors.teal : colors.panel,
                 borderWidth: terminalReady ? 0 : 1,
                 borderColor: colors.border,
-                opacity: terminalReady ? 1 : 0.5,
+                opacity: terminalReady ? 1 : 0.5
               }}
             >
-              <Text style={{ color: terminalReady ? "#000" : colors.muted, fontWeight: "700", fontSize: 14 }}>
+              <Text
+                style={{
+                  color: terminalReady ? '#fff' : colors.muted,
+                  fontWeight: '700',
+                  fontSize: 14
+                }}
+              >
                 Process on Terminal ${grandTotal.toFixed(2)}
               </Text>
             </TouchableOpacity>
           )}
 
-          {(status === "processing" || status === "ready") && (
+          {(status === 'processing' || status === 'ready') && (
             <TouchableOpacity
               disabled={isCancelling}
               onPress={async () => {
-                if (isCancelling) return;
-                if (status === "processing" && currentRefIdRef.current) {
-                  setIsCancelling(true);
+                if (isCancelling) return
+                if (status === 'processing' && currentRefIdRef.current) {
+                  setIsCancelling(true)
                   try {
-                    await getSharedCastlesService().gracefulDisconnect();
+                    await getSharedCastlesService().gracefulDisconnect()
                   } catch (err) {
-                    console.error("[ManualKeyIn] Abort failed:", err);
+                    console.error('[ManualKeyIn] Abort failed:', err)
                   }
-                  setIsCancelling(false);
-                  setStatus("ready");
+                  setIsCancelling(false)
+                  setStatus('ready')
                 } else {
-                  close();
+                  close()
                 }
               }}
-              style={{ width: "100%", paddingVertical: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, opacity: isCancelling ? 0.5 : 1 }}
+              style={{
+                width: '100%',
+                paddingVertical: 10,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                opacity: isCancelling ? 0.5 : 1
+              }}
             >
-              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.muted, textAlign: "center" }}>
-                {isCancelling ? "Cancelling..." : status === "processing" ? "Cancel Transaction" : "Back"}
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  color: colors.muted,
+                  textAlign: 'center'
+                }}
+              >
+                {isCancelling
+                  ? 'Cancelling...'
+                  : status === 'processing'
+                  ? 'Cancel Transaction'
+                  : 'Back'}
               </Text>
             </TouchableOpacity>
           )}
         </Animated.View>
       </ScrollView>
     </View>
-  );
-};
+  )
+}
 
-export default ManualCardEntryView;
+export default ManualCardEntryView

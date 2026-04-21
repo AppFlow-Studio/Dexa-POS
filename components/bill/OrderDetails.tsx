@@ -451,69 +451,66 @@ const OrderDetailsComponent: React.FC<{
         })}
       </View>
 
-      {/* Status badges */}
+      {/* Status text */}
       {(orderStatus || paymentStatus || checkStatus) && (
-        <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 10,
+            marginTop: 5
+          }}
+        >
           {orderStatus &&
             (() => {
-              const cfg: Record<
-                string,
-                { label: string; color: string; bg: string }
-              > = {
+              const cfg: Record<string, { label: string; color: string }> = {
                 draft: {
                   label: 'Draft',
-                  color: '#9CA3AF',
-                  bg: 'rgba(156,163,175,0.12)'
+                  color: '#9CA3AF'
                 },
                 sent_to_kitchen: {
                   label: 'In Kitchen',
-                  color: '#818CF8',
-                  bg: 'rgba(129,140,248,0.12)'
+                  color: '#818CF8'
                 },
                 preparing: {
                   label: 'Preparing',
-                  color: '#F59E0B',
-                  bg: 'rgba(245,158,11,0.12)'
+                  color: '#F59E0B'
                 },
                 ready: {
                   label: 'Ready',
-                  color: '#22C55E',
-                  bg: 'rgba(34,197,94,0.12)'
+                  color: '#22C55E'
                 },
                 completed: {
                   label: 'Completed',
-                  color: '#3B82F6',
-                  bg: 'rgba(59,130,246,0.12)'
+                  color: '#3B82F6'
                 },
                 void: {
                   label: 'Void',
-                  color: '#EF4444',
-                  bg: 'rgba(239,68,68,0.12)'
+                  color: '#EF4444'
                 },
                 cancelled: {
                   label: 'Cancelled',
-                  color: '#EF4444',
-                  bg: 'rgba(239,68,68,0.12)'
+                  color: '#EF4444'
                 }
               }
               const s = cfg[orderStatus] ?? {
                 label: orderStatus,
-                color: '#9CA3AF',
-                bg: 'rgba(156,163,175,0.12)'
+                color: '#9CA3AF'
               }
               return (
-                <View
-                  style={{
-                    backgroundColor: s.bg,
-                    borderRadius: 5,
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderWidth: 1,
-                    borderColor: `${s.color}33`
-                  }}
-                >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text
-                    style={{ fontSize: 9, fontWeight: '600', color: s.color }}
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '500',
+                      color: colors.muted
+                    }}
+                  >
+                    Order Status:{' '}
+                  </Text>
+                  <Text
+                    style={{ fontSize: 10, fontWeight: '600', color: s.color }}
                   >
                     {s.label}
                   </Text>
@@ -524,54 +521,45 @@ const OrderDetailsComponent: React.FC<{
             paymentStatus !== 'Pending' &&
             paymentStatus !== 'Unpaid' &&
             (() => {
-              const cfg: Record<
-                string,
-                { label: string; color: string; bg: string }
-              > = {
+              const cfg: Record<string, { label: string; color: string }> = {
                 Paid: {
                   label: 'Paid',
-                  color: '#22C55E',
-                  bg: 'rgba(34,197,94,0.12)'
+                  color: '#22C55E'
                 },
                 Partial: {
                   label: 'Partial',
-                  color: '#F59E0B',
-                  bg: 'rgba(245,158,11,0.12)'
+                  color: '#F59E0B'
                 },
                 Unpaid: {
                   label: 'Unpaid',
-                  color: '#EF4444',
-                  bg: 'rgba(239,68,68,0.12)'
+                  color: '#EF4444'
                 },
                 Pending: {
                   label: 'Pending',
-                  color: '#9CA3AF',
-                  bg: 'rgba(156,163,175,0.12)'
+                  color: '#9CA3AF'
                 },
                 Refunded: {
                   label: 'Refunded',
-                  color: '#EF4444',
-                  bg: 'rgba(239,68,68,0.12)'
+                  color: '#EF4444'
                 }
               }
               const s = cfg[paymentStatus] ?? {
                 label: paymentStatus,
-                color: '#9CA3AF',
-                bg: 'rgba(156,163,175,0.12)'
+                color: '#9CA3AF'
               }
               return (
-                <View
-                  style={{
-                    backgroundColor: s.bg,
-                    borderRadius: 5,
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderWidth: 1,
-                    borderColor: `${s.color}33`
-                  }}
-                >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text
-                    style={{ fontSize: 9, fontWeight: '600', color: s.color }}
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '500',
+                      color: colors.muted
+                    }}
+                  >
+                    Payment Status:{' '}
+                  </Text>
+                  <Text
+                    style={{ fontSize: 10, fontWeight: '600', color: s.color }}
                   >
                     {s.label}
                   </Text>
@@ -579,20 +567,16 @@ const OrderDetailsComponent: React.FC<{
               )
             })()}
           {checkStatus === 'Closed' && (
-            <View
-              style={{
-                backgroundColor: 'rgba(59,130,246,0.12)',
-                borderRadius: 5,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderWidth: 1,
-                borderColor: 'rgba(59,130,246,0.25)'
-              }}
-            >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text
-                style={{ fontSize: 9, fontWeight: '600', color: '#3B82F6' }}
+                style={{ fontSize: 10, fontWeight: '500', color: colors.muted }}
               >
-                Check Closed
+                Check Status:{' '}
+              </Text>
+              <Text
+                style={{ fontSize: 10, fontWeight: '600', color: '#3B82F6' }}
+              >
+                Closed
               </Text>
             </View>
           )}
@@ -613,8 +597,10 @@ const OrderDetailsComponent: React.FC<{
               </DialogTitle>
             </View>
 
-            {/* White Content */}
-            <View className='rounded-t-lg rounded-b-lg p-6 bg-background-100'>
+            <View
+              className='rounded-t-lg rounded-b-lg p-6'
+              style={{ backgroundColor: colors.panel }}
+            >
               <DialogHeader>
                 <Text className='text-accent-500 text-2xl text-center mb-4'>
                   Enter the customer's name for this order
@@ -640,17 +626,29 @@ const OrderDetailsComponent: React.FC<{
               <DialogFooter className='flex-row gap-4'>
                 <TouchableOpacity
                   onPress={handleCancelCustomerName}
-                  className='flex-1 py-4 border border-gray-300 rounded-lg'
+                  className='flex-1 py-4 rounded-lg'
+                  style={{ borderWidth: 1, borderColor: colors.border }}
                 >
-                  <Text className='font-bold text-2xl text-gray-700 text-center'>
+                  <Text
+                    className='font-bold text-2xl text-center'
+                    style={{ color: colors.label }}
+                  >
                     Cancel
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveCustomerName}
-                  className='flex-1 py-4 bg-white rounded-lg  border border-blue-400'
+                  className='flex-1 py-4 rounded-lg'
+                  style={{
+                    backgroundColor: colors.teal + '18',
+                    borderWidth: 1,
+                    borderColor: colors.teal + '40'
+                  }}
                 >
-                  <Text className='font-bold text-2xl text-gray-800 text-center'>
+                  <Text
+                    className='font-bold text-2xl text-center'
+                    style={{ color: colors.teal }}
+                  >
                     {localCustomerName ? 'Update' : 'Add'}
                   </Text>
                 </TouchableOpacity>

@@ -235,7 +235,7 @@ const SplitOptionsView: React.FC = () => {
           style={styles.backBtn}
           onPress={() => setView('payment-method-selection')}
         >
-          <ArrowLeft size={18} color={colors.label} />
+          <ArrowLeft size={18} color={colors.teal} />
         </TouchableOpacity>
         <View>
           <Text style={styles.headerTitle}>Split Bill</Text>

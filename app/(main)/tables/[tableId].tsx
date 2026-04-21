@@ -4,6 +4,7 @@ import TableOrderView, {
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useRef } from 'react'
 import { StyleSheet, TouchableWithoutFeedback, View } from 'react-native'
+import { colors } from '@/lib/theme'
 
 export default function TableScreen () {
   const { tableId } = useLocalSearchParams<{ tableId: string }>()
@@ -30,12 +31,12 @@ export default function TableScreen () {
 
   return (
     <View style={styles.container}>
-      <View style={styles.backdrop}>
+      <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: colors.heading + '60' }}>
         <TouchableWithoutFeedback onPress={handleClose}>
           <View style={StyleSheet.absoluteFill} />
         </TouchableWithoutFeedback>
       </View>
-      <View style={styles.card}>
+      <View style={{ width: '100%', height: '100%', borderRadius: 0, overflow: 'hidden', elevation: 8, shadowColor: colors.heading, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 8 }}>
         <TableOrderView
           ref={tableViewRef}
           tableId={typeof tableId === 'string' ? tableId : ''}
@@ -51,20 +52,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center'
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.38)'
-  },
-  card: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 0,
-    overflow: 'hidden',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8
   }
 })

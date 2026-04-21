@@ -1,5 +1,6 @@
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { useToast } from '@/contexts/ToastContext'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { getCachedCustomers } from '@/services/customer'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -37,7 +38,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import { iosOnly } from '@/lib/safeAnimations'
 import Animated, {
   FadeIn,
   FadeOut,
@@ -501,7 +501,7 @@ const AddReservationModal: React.FC<{
       onRequestClose={handleClose}
     >
       <Pressable
-        style={{ flex: 1, backgroundColor: 'rgba(9,14,22,0.68)' }}
+        style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
         onPress={handleClose}
       >
         <View
@@ -1344,7 +1344,7 @@ const SeatReservationTablePickerModal: React.FC<{
       <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(9,14,22,0.68)',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
           alignItems: 'center',
           justifyContent: 'center'
         }}

@@ -15,7 +15,7 @@ export default function InventoryLayout () {
   const pathname = usePathname()
 
   return (
-    <View className='flex-1 bg-screen p-4'>
+    <View className='flex-1 p-4' style={{ backgroundColor: colors.screen }}>
       {/* Header with Navigation Tabs */}
       <View className='flex-row items-center mb-4'>
         <View
@@ -57,7 +57,7 @@ export default function InventoryLayout () {
       </View>
 
       {/* Renders the currently active screen (index.tsx, vendors.tsx, etc.) */}
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
         <Slot />
       </View>
     </View>

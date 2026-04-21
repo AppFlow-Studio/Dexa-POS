@@ -12,6 +12,7 @@ import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
 import { getDeviceId } from '@/lib/deviceId'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
+import { useColorScheme } from '@/lib/useColorScheme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
@@ -65,6 +66,7 @@ const getSelectedTablesCapacity = (
 }
 
 const TablesScreen = () => {
+  const { colorScheme } = useColorScheme()
   const router = useRouter()
   // Subscribe to tables directly to ensure real-time updates
   const tables = useFloorPlanStore(useShallow(s => s.tables))
@@ -219,7 +221,9 @@ const TablesScreen = () => {
       const liveSession = useTableSessionStore.getState().sessions[table.id]
       const activeSession = liveSession ?? table.session
       if (activeSession?.order_id && activeSession.status !== 'available') {
-        const existing = useOrderStore.getState().getOrder(activeSession.order_id)
+        const existing = useOrderStore
+          .getState()
+          .getOrder(activeSession.order_id)
         if (!existing) {
           syncOrderFromDatabase(activeSession.order_id).catch(() => {})
         }
@@ -228,7 +232,13 @@ const TablesScreen = () => {
       // NORMAL MODE: Open context sheet regardless of session state
       setContextTable(table)
     },
-    [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection, syncOrderFromDatabase]
+    [
+      isClockedIn,
+      showClockInWall,
+      isMergeMode,
+      toggleTableSelection,
+      syncOrderFromDatabase
+    ]
   )
 
   const handleSheetSeatGuests = useCallback(
@@ -296,7 +306,9 @@ const TablesScreen = () => {
         // Background sync for fresh data if order wasn't cached
         if (!existingOrder) {
           syncOrderFromDatabase(orderId)
-            .then(localOrderId => { if (localOrderId) setActiveOrder(localOrderId) })
+            .then(localOrderId => {
+              if (localOrderId) setActiveOrder(localOrderId)
+            })
             .catch(() => {})
         }
       } else {
@@ -604,8 +616,19 @@ const TablesScreen = () => {
   }
 
   return (
-    <View className='flex-1 bg-screen px-2 py-1'>
-      <View className='flex-1 flex-row bg-screen rounded-lg border border-border'>
+    <View
+      key={colorScheme}
+      className='flex-1 px-2 py-1'
+      style={{ backgroundColor: colors.screen }}
+    >
+      <View
+        className='flex-1 flex-row rounded-lg'
+        style={{
+          backgroundColor: colors.screen,
+          borderWidth: 1,
+          borderColor: colors.border
+        }}
+      >
         {/* NEW: Sidebar Component */}
         <Sidebar
           // layouts={layouts} REMOVED

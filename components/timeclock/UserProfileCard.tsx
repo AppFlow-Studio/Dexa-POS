@@ -1,8 +1,3 @@
-import { router } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Platform, Text, TouchableOpacity, View } from "react-native";
-import CashTipDeclarationModal from "./CashTipDeclarationModal";
-import PinInputModal from "./PinInputModal";
 import { useTimeClock } from '@/hooks/useTimeclock'
 import { replaceRoute } from '@/lib/rootNavigation'
 import { colors } from '@/lib/theme'
@@ -11,7 +6,10 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import * as Application from 'expo-application'
 import { Clock, Timer } from 'lucide-react-native'
-
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Image, Platform, Text, TouchableOpacity, View } from 'react-native'
+import CashTipDeclarationModal from './CashTipDeclarationModal'
+import PinInputModal from './PinInputModal'
 
 // Helper function to format duration from milliseconds
 const formatDuration = (milliseconds: number): string => {
@@ -57,16 +55,16 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
   const [shiftDuration, setShiftDuration] = useState('0 h 00 m')
   const [pinModalOpen, setPinModalOpen] = useState(false)
   const [pinAction, setPinAction] = useState<
-    "break_start" | "break_end" | "clock_out" | null
-  >(null);
-  const [deviceId, setDeviceId] = useState<string>("unknown");
-  const [showCashDeclaration, setShowCashDeclaration] = useState(false);
-  const pendingClockOutPinRef = useRef<string | null>(null);
+    'break_start' | 'break_end' | 'clock_out' | null
+  >(null)
+  const [deviceId, setDeviceId] = useState<string>('unknown')
+  const [showCashDeclaration, setShowCashDeclaration] = useState(false)
+  const pendingClockOutPinRef = useRef<string | null>(null)
 
   // Get device ID on mount
   useEffect(() => {
-    getDeviceId().then(setDeviceId);
-  }, []);
+    getDeviceId().then(setDeviceId)
+  }, [])
 
   const user = useMemo(() => {
     return employees.find(e => e.id === employeeId) || null
@@ -124,14 +122,16 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
       await timeClock.endBreak(pin, locationId, deviceId)
       console.log('[UserProfileCard] timeClock.endBreak completed')
       // Also update old store for local UI sync
-      if (employeeId) oldEndBreak(employeeId);
-      replaceRoute('(main)', 'home');
-    } else if (pinAction === "clock_out") {
-      console.log("[UserProfileCard] PIN confirmed for clock-out, showing cash tip declaration...");
-      pendingClockOutPinRef.current = pin;
-      setShowCashDeclaration(true);
-      setPinAction(null);
-      return; // Don't clear pinAction below — we handle it here
+      if (employeeId) oldEndBreak(employeeId)
+      replaceRoute('(main)', 'home')
+    } else if (pinAction === 'clock_out') {
+      console.log(
+        '[UserProfileCard] PIN confirmed for clock-out, showing cash tip declaration...'
+      )
+      pendingClockOutPinRef.current = pin
+      setShowCashDeclaration(true)
+      setPinAction(null)
+      return // Don't clear pinAction below — we handle it here
     }
 
     setPinAction(null)
@@ -152,50 +152,74 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
     setPinModalOpen(true)
   }
 
-  const handleDeclarationComplete = useCallback(async (declaredAmount: number) => {
-    setShowCashDeclaration(false);
-    const locationId = selectedStore?.id;
-    const pin = pendingClockOutPinRef.current;
-    pendingClockOutPinRef.current = null;
+  const handleDeclarationComplete = useCallback(
+    async (declaredAmount: number) => {
+      setShowCashDeclaration(false)
+      const locationId = selectedStore?.id
+      const pin = pendingClockOutPinRef.current
+      pendingClockOutPinRef.current = null
 
-    if (!locationId || !pin) {
-      console.error("[UserProfileCard] Missing locationId or pin for clock-out");
-      return;
-    }
-
-    // Declare cash tips (non-blocking — queued if offline/fails)
-    const shiftId = timeClock.shiftId;
-    if (shiftId) {
-      try {
-        await timeClock.declareCashTips(shiftId, declaredAmount, locationId, deviceId);
-      } catch (e) {
-        console.warn("[UserProfileCard] Cash tip declaration failed, proceeding to clock-out:", e);
+      if (!locationId || !pin) {
+        console.error(
+          '[UserProfileCard] Missing locationId or pin for clock-out'
+        )
+        return
       }
-    }
 
-    // Clock out — wrap in try/catch so local state always updates
-    try {
-      await timeClock.clockOut(pin, locationId, deviceId);
-    } catch (e) {
-      console.warn("[UserProfileCard] clockOut RPC failed:", e);
-    }
+      // Declare cash tips (non-blocking — queued if offline/fails)
+      const shiftId = timeClock.shiftId
+      if (shiftId) {
+        try {
+          await timeClock.declareCashTips(
+            shiftId,
+            declaredAmount,
+            locationId,
+            deviceId
+          )
+        } catch (e) {
+          console.warn(
+            '[UserProfileCard] Cash tip declaration failed, proceeding to clock-out:',
+            e
+          )
+        }
+      }
 
-    // Always update local store regardless of RPC result
-    if (employeeId) oldClockOut(employeeId);
-    replaceRoute('(auth)', 'pin-login');
-  }, [selectedStore?.id, timeClock, deviceId, employeeId, oldClockOut]);
+      // Clock out — wrap in try/catch so local state always updates
+      try {
+        await timeClock.clockOut(pin, locationId, deviceId)
+      } catch (e) {
+        console.warn('[UserProfileCard] clockOut RPC failed:', e)
+      }
+
+      // Always update local store regardless of RPC result
+      if (employeeId) oldClockOut(employeeId)
+      replaceRoute('(auth)', 'pin-login')
+    },
+    [selectedStore?.id, timeClock, deviceId, employeeId, oldClockOut]
+  )
 
   const handleDeclarationCancel = useCallback(() => {
-    setShowCashDeclaration(false);
-    pendingClockOutPinRef.current = null;
-  }, []);
+    setShowCashDeclaration(false)
+    pendingClockOutPinRef.current = null
+  }, [])
 
-  const isBreak = session?.status === "onBreak";
+  const isBreak = session?.status === 'onBreak'
 
   if (!user) {
     return (
-      <View className='w-full p-6 bg-panel rounded-2xl border border-border items-center justify-center'>
-        <Text className='text-label'>No active employee.</Text>
+      <View
+        style={{
+          width: '100%',
+          padding: 24,
+          backgroundColor: colors.panel,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text style={{ color: colors.label }}>No active employee.</Text>
       </View>
     )
   }
@@ -209,17 +233,47 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
   return (
     <>
-      <View className='w-full bg-panel rounded-2xl border border-border overflow-hidden'>
+      <View
+        style={{
+          width: '100%',
+          backgroundColor: colors.panel,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: 'hidden'
+        }}
+      >
         {/* Hero section */}
         <View
-          style={{ backgroundColor: '#0C0F1A' }}
-          className='items-center px-8 pt-10 pb-8'
+          style={{
+            backgroundColor: colors.card,
+            alignItems: 'center',
+            paddingHorizontal: 32,
+            paddingTop: 40,
+            paddingBottom: 32
+          }}
         >
           {/* Clock */}
-          <Text className='text-label text-xs font-medium mb-2 tracking-widest uppercase'>
+          <Text
+            style={{
+              color: colors.label,
+              fontSize: 11,
+              fontWeight: '500',
+              marginBottom: 8,
+              textTransform: 'uppercase',
+              letterSpacing: 0.8
+            }}
+          >
             Current Time
           </Text>
-          <Text className='text-5xl font-bold text-heading mb-8'>
+          <Text
+            style={{
+              fontSize: 48,
+              fontWeight: 'bold',
+              color: colors.heading,
+              marginBottom: 32
+            }}
+          >
             {currentTime.toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit'
@@ -257,28 +311,43 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
             </View>
           )}
 
-          <Text className='text-heading text-xl font-bold text-center mb-3'>
+          <Text
+            style={{
+              color: colors.heading,
+              fontSize: 20,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              marginBottom: 12
+            }}
+          >
             {user.fullName}
           </Text>
 
           {/* Status badge */}
           <View
-            className={`px-4 py-1.5 rounded-full ${
-              session
-                ? isBreak
-                  ? 'bg-amber-500/20'
-                  : 'bg-teal-500/20'
-                : 'bg-white/5'
-            }`}
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 6,
+              borderRadius: 20,
+              backgroundColor:
+                session && isBreak
+                  ? colors.warning + '20'
+                  : session
+                  ? colors.teal + '20'
+                  : colors.muted + '10'
+            }}
           >
             <Text
-              className={`text-xs font-semibold ${
-                session
-                  ? isBreak
-                    ? 'text-amber-400'
-                    : 'text-teal-400'
-                  : 'text-label'
-              }`}
+              style={{
+                fontSize: 11,
+                fontWeight: '600',
+                color:
+                  session && isBreak
+                    ? colors.warning
+                    : session
+                    ? colors.teal
+                    : colors.label
+              }}
             >
               {session
                 ? isBreak
@@ -290,26 +359,38 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
         </View>
 
         {/* Divider */}
-        <View className='h-px bg-border' />
+        <View style={{ height: 1, backgroundColor: colors.border }} />
 
         {/* Shift stats */}
         {session && (
           <View className='px-6 py-5 gap-y-4'>
             <View className='flex-row items-center justify-between'>
-              <View className='flex-row items-center gap-2.5'>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              >
                 <Timer color={colors.muted} size={15} />
-                <Text className='text-label text-sm'>Duration</Text>
+                <Text style={{ color: colors.label, fontSize: 14 }}>
+                  Duration
+                </Text>
               </View>
-              <Text className='text-teal-400 text-sm font-semibold'>
+              <Text
+                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+              >
                 {shiftDuration}
               </Text>
             </View>
             <View className='flex-row items-center justify-between'>
-              <View className='flex-row items-center gap-2.5'>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              >
                 <Clock color={colors.muted} size={15} />
-                <Text className='text-label text-sm'>Clocked in at</Text>
+                <Text style={{ color: colors.label, fontSize: 14 }}>
+                  Clocked in at
+                </Text>
               </View>
-              <Text className='text-teal-400 text-sm font-semibold'>
+              <Text
+                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+              >
                 {new Date(session.clockInTime).toLocaleTimeString([], {
                   hour: '2-digit',
                   minute: '2-digit'
@@ -320,7 +401,15 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
         )}
 
         {/* Divider */}
-        {session && <View className='h-px bg-border mx-6' />}
+        {session && (
+          <View
+            style={{
+              height: 1,
+              backgroundColor: colors.border,
+              marginHorizontal: 24
+            }}
+          />
+        )}
 
         {/* Actions */}
         <View className='px-6 py-5 gap-y-3'>
@@ -379,8 +468,15 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
               </TouchableOpacity>
             </>
           ) : (
-            <View className='py-3 rounded-xl items-center bg-white/5'>
-              <Text className='text-label text-sm'>
+            <View
+              style={{
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: 'center',
+                backgroundColor: colors.muted + '10'
+              }}
+            >
+              <Text style={{ color: colors.label, fontSize: 14 }}>
                 Clock in from Employee List
               </Text>
             </View>
@@ -411,7 +507,9 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
         staffProfileId={user?.profileId || ''}
         locationId={selectedStore?.id || ''}
         employeeName={user?.fullName || ''}
-        clockInTime={session?.clockInTime ? new Date(session.clockInTime) : new Date()}
+        clockInTime={
+          session?.clockInTime ? new Date(session.clockInTime) : new Date()
+        }
         onComplete={handleDeclarationComplete}
         onCancel={handleDeclarationCancel}
       />

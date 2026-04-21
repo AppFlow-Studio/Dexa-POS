@@ -413,7 +413,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   isOvertime,
   overtimeMinutes
 }) => {
-  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(new Set())
+  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(
+    new Set()
+  )
   const prevItemCount = useRef<number>(0)
   // Narrow selectors — subscribe only to the specific fields we display, not the whole order
   const orderMeta = useOrderStore(
@@ -470,7 +472,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
 
   // Flat (no-coursing) item list — same filter + sort as groupedItems.
   // Used when enableCoursing=false so the bill renders without any course header.
-  // Keyed on itemsGroupingKey so we don't recompute on unrelated field updates.
+  // Depend on activeOrder.items so discount/subtotal-only updates render immediately.
   const flatItems = useMemo(() => {
     const items = (activeOrder?.items ?? []).filter(i => !i.is_voided)
     items.sort((a, b) => {
@@ -479,8 +481,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       return ka < kb ? -1 : ka > kb ? 1 : 0
     })
     return items
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsGroupingKey])
+  }, [activeOrder?.items])
 
   // Sort course keys
   const sortedCourses = useMemo(() => {
@@ -547,7 +548,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         next.add(courseId)
       }
       // Defer onSelectCourse to avoid setState-during-render warning
-      queueMicrotask(() => onSelectCourseRef.current?.(next.has(courseId) ? courseId : null))
+      queueMicrotask(() =>
+        onSelectCourseRef.current?.(next.has(courseId) ? courseId : null)
+      )
       return next
     })
   }, [])
@@ -592,7 +595,10 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const guestCount = orderMeta.guestCount
 
   return (
-    <View className='flex-1 bg-panel p-4'>
+    <View
+      className='flex-1'
+      style={{ backgroundColor: colors.panel, padding: 16 }}
+    >
       {/* Meta info row */}
       <View
         style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}
@@ -656,10 +662,20 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         </Text>
         <View className='flex-row items-center gap-2'>
           {isOvertime && (
-            <View className='bg-yellow-900/30 px-2.5 py-1 rounded-full'>
+            <View
+              style={{
+                backgroundColor: colors.warning + '30',
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 999
+              }}
+            >
               <Text
-                style={{ fontSize: 10, fontWeight: '600' }}
-                className='text-yellow-400'
+                style={{
+                  fontSize: 10,
+                  fontWeight: '600',
+                  color: colors.warning
+                }}
               >
                 {overtimeMinutes}min exceeded
               </Text>
@@ -668,7 +684,16 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
           {enableCoursing && (
             <TouchableOpacity
               onPress={onPressStartNewCourse}
-              className='flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal'
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal
+              }}
               activeOpacity={0.8}
             >
               <Plus size={16} color={colors.teal} />

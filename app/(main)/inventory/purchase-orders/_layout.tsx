@@ -1,11 +1,12 @@
-import { Slot, useRouter } from "expo-router";
-import { View } from "react-native";
+import { colors } from '@/lib/theme'
+import { Slot, useRouter } from 'expo-router'
+import { View } from 'react-native'
 
-export default function PurchaseOrderLayout() {
-  const router = useRouter();
+export default function PurchaseOrderLayout () {
+  const router = useRouter()
 
   return (
-    <View className="flex-1 bg-screen">
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* <View className="flex-row items-center p-6 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
           onPress={() => router.back()}
@@ -20,5 +21,5 @@ export default function PurchaseOrderLayout() {
      */}
       <Slot />
     </View>
-  );
+  )
 }

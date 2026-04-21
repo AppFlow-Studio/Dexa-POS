@@ -1,5 +1,5 @@
-import '@/lib/screenConfig' // must be first — calls enableFreeze() before any Screen mounts
 import '@/global.css'
+import '@/lib/screenConfig' // must be first — calls enableFreeze() before any Screen mounts
 import { PortalHost } from '@rn-primitives/portal'
 import { PortalProvider } from 'react-native-teleport'
 
@@ -26,7 +26,7 @@ import { initLogCollector } from '@/lib/logCollector'
 import { markNavigationEvent, setRootNavigationRef } from '@/lib/rootNavigation'
 import { POS_SCREEN_OPTIONS } from '@/lib/screenConfig'
 import { flushAllPendingWrites, secureStorage } from '@/lib/storage'
-import { colors } from '@/lib/theme'
+import { colors, setThemeMode } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { useCustomizationStore } from '@/stores/useCustomizationStore'
@@ -49,26 +49,36 @@ import { Stack, useNavigationContainerRef } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import * as React from 'react'
-import { ActivityIndicator, AppState, Platform, Pressable, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  AppState,
+  Platform,
+  Pressable,
+  Text,
+  View
+} from 'react-native'
 import { SystemBars } from 'react-native-edge-to-edge'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 // app/_layout.tsx — check for update on launch
-import * as Updates from 'expo-updates';
-import AppUpdateModal from '@/components/AppUpdateModal';
-import { checkForNativeUpdate, type VersionManifest } from '@/services/appUpdater';
-import * as Sentry from '@sentry/react-native';
-import { isRunningInExpoGo } from 'expo';
+import AppUpdateModal from '@/components/AppUpdateModal'
+import {
+  checkForNativeUpdate,
+  type VersionManifest
+} from '@/services/appUpdater'
+import * as Sentry from '@sentry/react-native'
+import { isRunningInExpoGo } from 'expo'
+import * as Updates from 'expo-updates'
 
 const navigationIntegration = Sentry.reactNavigationIntegration({
-  enableTimeToInitialDisplay: !isRunningInExpoGo(),
-});
+  enableTimeToInitialDisplay: !isRunningInExpoGo()
+})
 
 Sentry.init({
   dsn: 'https://dcfdfcd20582347382d2fb94df146b1e@o4511212537380864.ingest.us.sentry.io/4511212539019264',
 
   // Maps to EAS channel: "development" | "preview" | "production"
-  environment: __DEV__ ? 'development' : (Updates.channel ?? 'unknown'),
+  environment: __DEV__ ? 'development' : Updates.channel ?? 'unknown',
 
   sendDefaultPii: true,
   enableLogs: true,
@@ -83,18 +93,18 @@ Sentry.init({
   tracesSampleRate: __DEV__ ? 1.0 : 0.3,
 
   integrations: [navigationIntegration],
-  enableNativeFramesTracking: !isRunningInExpoGo(),
+  enableNativeFramesTracking: !isRunningInExpoGo()
 
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
   // spotlight: __DEV__,
-});
+})
 
-async function checkForUpdate() {
+async function checkForUpdate () {
   try {
-    const update = await Updates.checkForUpdateAsync();
+    const update = await Updates.checkForUpdateAsync()
     if (update.isAvailable) {
-      await Updates.fetchUpdateAsync();
-      await Updates.reloadAsync(); // silent restart
+      await Updates.fetchUpdateAsync()
+      await Updates.reloadAsync() // silent restart
     }
   } catch (e) {
     // offline — no problem, skip
@@ -280,7 +290,7 @@ function RootErrorFallback () {
   )
 }
 
-export default Sentry.wrap(function RootLayout() {
+export default Sentry.wrap(function RootLayout () {
   const hasMounted = React.useRef(false)
   const { colorScheme, isDarkColorScheme } = useColorScheme()
   const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false)
@@ -294,7 +304,9 @@ export default Sentry.wrap(function RootLayout() {
   const isPinModalOpen = usePinOverrideStore(s => s.isPinModalOpen)
   const isNoPrinterModalVisible = useNoPrinterModalStore(s => s.visible)
   const isCustomizationOpen = useCustomizationStore(s => s.isOpen)
-  const [nativeUpdateManifest, setNativeUpdateManifest] = React.useState<VersionManifest | null>(null)
+  const [nativeUpdateManifest, setNativeUpdateManifest] =
+    React.useState<VersionManifest | null>(null)
+  setThemeMode(colorScheme === 'light' ? 'light' : 'dark')
 
   // Store the navigation container ref for cross-group navigation + Sentry tracing
   const navigationRef = useNavigationContainerRef()
@@ -316,7 +328,7 @@ export default Sentry.wrap(function RootLayout() {
 
   // Hide system UI for full-screen immersive POS experience
   React.useEffect(() => {
-    async function runUpdateChecks() {
+    async function runUpdateChecks () {
       if (Platform.OS === 'android') {
         NavigationBar.setVisibilityAsync('hidden').catch(() => {})
         const manifest = await checkForNativeUpdate()
@@ -413,90 +425,102 @@ export default Sentry.wrap(function RootLayout() {
           >
             <TanstackProvider>
               <PosSyncProvider>
-              <GestureHandlerRootView>
-                <SafeAreaProvider>
-                  <ThemeProvider
-                    value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
-                  >
-                    <BottomSheetModalProvider>
-                      <ToastProvider>
-                        <LoadingProvider>
-                          <SessionKickListenerProvider>
-                            <RemoteActionsProvider>
-                              <CFDProvider>
-                                <StatusBar
-                                  style={'dark'}
-                                  translucent
-                                  hidden={Platform.OS === 'android'}
-                                />
-                                {Platform.OS === 'android' && (
-                                  <SystemBars
-                                    hidden={{
-                                      navigationBar: true,
-                                      statusBar: true
+                <GestureHandlerRootView>
+                  <SafeAreaProvider>
+                    <ThemeProvider
+                      key={colorScheme}
+                      value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
+                    >
+                      <BottomSheetModalProvider>
+                        <ToastProvider>
+                          <LoadingProvider>
+                            <SessionKickListenerProvider>
+                              <RemoteActionsProvider>
+                                <CFDProvider>
+                                  <StatusBar
+                                    style={'dark'}
+                                    translucent
+                                    hidden={Platform.OS === 'android'}
+                                  />
+                                  {Platform.OS === 'android' && (
+                                    <SystemBars
+                                      hidden={{
+                                        navigationBar: true,
+                                        statusBar: true
+                                      }}
+                                    />
+                                  )}
+                                  <Stack
+                                    screenOptions={{
+                                      ...POS_SCREEN_OPTIONS,
+                                      contentStyle: {
+                                        backgroundColor: colors.screen
+                                      }
+                                    }}
+                                  >
+                                    <Stack.Screen name='index' />
+                                    <Stack.Screen name='(auth)' />
+                                    <Stack.Screen name='(cfd)' />
+                                    <Stack.Screen name='(main)' />
+                                    <Stack.Screen name='(profiles-and-timeclock)' />
+                                  </Stack>
+                                  <PortalHost />
+                                  {isPOSMode && <SearchBottomSheet />}
+                                  {isPOSMode && isCustomizationOpen && (
+                                    <ItemCustomizationDialog />
+                                  )}
+                                  {isPOSMode && isClockInWallOpen && (
+                                    <ClockInWallModal
+                                      isOpen={isClockInWallOpen}
+                                      onClose={hideClockInWall}
+                                    />
+                                  )}
+                                  {isPOSMode && isPinModalOpen && (
+                                    <ManagerPinModal />
+                                  )}
+                                  {isPOSMode && <CustomerSheet />}
+                                  {isPOSMode && isNoPrinterModalVisible && (
+                                    <NoPrinterModal />
+                                  )}
+                                  {nativeUpdateManifest && (
+                                    <AppUpdateModal
+                                      visible={true}
+                                      manifest={nativeUpdateManifest}
+                                      onSkip={() =>
+                                        setNativeUpdateManifest(null)
+                                      }
+                                      onInstallComplete={() =>
+                                        setNativeUpdateManifest(null)
+                                      }
+                                    />
+                                  )}
+                                  <Toasts
+                                    defaultStyle={{
+                                      view: {
+                                        backgroundColor: colors.card,
+                                        borderWidth: 1,
+                                        borderColor: colors.border,
+                                        flex: 1
+                                      },
+                                      text: {
+                                        color: colors.heading,
+                                        fontWeight: 'bold',
+                                        fontSize: 24
+                                      },
+                                      indicator: {
+                                        backgroundColor: colors.teal
+                                      }
                                     }}
                                   />
-                                )}
-                                <Stack screenOptions={POS_SCREEN_OPTIONS}>
-                                  <Stack.Screen name='index' />
-                                  <Stack.Screen name='(auth)' />
-                                  <Stack.Screen name='(cfd)' />
-                                  <Stack.Screen name='(main)' />
-                                  <Stack.Screen name='(profiles-and-timeclock)' />
-                                </Stack>
-                                <PortalHost />
-                                {isPOSMode && <SearchBottomSheet />}
-                                {isPOSMode && isCustomizationOpen && (
-                                  <ItemCustomizationDialog />
-                                )}
-                                {isPOSMode && isClockInWallOpen && (
-                                  <ClockInWallModal
-                                    isOpen={isClockInWallOpen}
-                                    onClose={hideClockInWall}
-                                  />
-                                )}
-                                {isPOSMode && isPinModalOpen && (
-                                  <ManagerPinModal />
-                                )}
-                                {isPOSMode && <CustomerSheet />}
-                                {isPOSMode && isNoPrinterModalVisible && (
-                                  <NoPrinterModal />
-                                )}
-                                {nativeUpdateManifest && (
-                                  <AppUpdateModal
-                                    visible={true}
-                                    manifest={nativeUpdateManifest}
-                                    onSkip={() => setNativeUpdateManifest(null)}
-                                    onInstallComplete={() => setNativeUpdateManifest(null)}
-                                  />
-                                )}
-                                <Toasts
-                                  defaultStyle={{
-                                    view: {
-                                      backgroundColor: colors.card,
-                                      borderWidth: 1,
-                                      borderColor: colors.border,
-                                      flex: 1
-                                    },
-                                    text: {
-                                      color: colors.heading,
-                                      fontWeight: 'bold',
-                                      fontSize: 24
-                                    },
-                                    indicator: {
-                                      backgroundColor: colors.teal
-                                    }
-                                  }}
-                                />
-                              </CFDProvider>
-                            </RemoteActionsProvider>
-                          </SessionKickListenerProvider>
-                        </LoadingProvider>
-                      </ToastProvider>
-                    </BottomSheetModalProvider>
-                  </ThemeProvider>
-                </SafeAreaProvider>
-              </GestureHandlerRootView>
+                                </CFDProvider>
+                              </RemoteActionsProvider>
+                            </SessionKickListenerProvider>
+                          </LoadingProvider>
+                        </ToastProvider>
+                      </BottomSheetModalProvider>
+                    </ThemeProvider>
+                  </SafeAreaProvider>
+                </GestureHandlerRootView>
               </PosSyncProvider>
             </TanstackProvider>
           </ProductionErrorBoundary>
@@ -504,7 +528,7 @@ export default Sentry.wrap(function RootLayout() {
       </ClerkProvider>
     </PortalProvider>
   )
-});
+})
 
 const useIsomorphicLayoutEffect =
   Platform.OS === 'web' && typeof window === 'undefined'
