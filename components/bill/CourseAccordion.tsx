@@ -413,7 +413,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   isOvertime,
   overtimeMinutes
 }) => {
-  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(new Set())
+  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(
+    new Set()
+  )
   const prevItemCount = useRef<number>(0)
   // Narrow selectors — subscribe only to the specific fields we display, not the whole order
   const orderMeta = useOrderStore(
@@ -470,7 +472,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
 
   // Flat (no-coursing) item list — same filter + sort as groupedItems.
   // Used when enableCoursing=false so the bill renders without any course header.
-  // Keyed on itemsGroupingKey so we don't recompute on unrelated field updates.
+  // Depend on activeOrder.items so discount/subtotal-only updates render immediately.
   const flatItems = useMemo(() => {
     const items = (activeOrder?.items ?? []).filter(i => !i.is_voided)
     items.sort((a, b) => {
@@ -479,8 +481,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       return ka < kb ? -1 : ka > kb ? 1 : 0
     })
     return items
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsGroupingKey])
+  }, [activeOrder?.items])
 
   // Sort course keys
   const sortedCourses = useMemo(() => {
@@ -547,7 +548,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         next.add(courseId)
       }
       // Defer onSelectCourse to avoid setState-during-render warning
-      queueMicrotask(() => onSelectCourseRef.current?.(next.has(courseId) ? courseId : null))
+      queueMicrotask(() =>
+        onSelectCourseRef.current?.(next.has(courseId) ? courseId : null)
+      )
       return next
     })
   }, [])

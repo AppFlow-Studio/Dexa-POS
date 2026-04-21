@@ -47,49 +47,53 @@ interface ModifierDisplay {
 const ModifiersList = React.memo<{
   modifiers: ModifierDisplay[]
   isVoided?: boolean
+  discountFactor?: number
 }>(
-  ({ modifiers, isVoided = false }) => (
+  ({ modifiers, isVoided = false, discountFactor = 1 }) => (
     <View>
       {modifiers.map(
         (modifier, index) =>
           modifier.options.length > 0 &&
-          modifier.options.map((option, optionIndex) => (
-            <View
-              key={`mod-${index}-opt-${optionIndex}`}
-              className='flex-row items-center my-0.5'
-              style={{
-                paddingLeft: 4,
-                paddingRight: 12,
-                borderLeftColor: colors.border,
-                borderLeftWidth: 2,
-                paddingVertical: 1
-              }}
-            >
-              <Text
+          modifier.options.map((option, optionIndex) => {
+            const displayPrice = option.price * discountFactor
+            return (
+              <View
+                key={`mod-${index}-opt-${optionIndex}`}
+                className='flex-row items-center my-0.5'
                 style={{
-                  fontSize: 10,
-                  color: option.isNo ? colors.danger : '#E0E0E0',
-                  flex: 1
+                  paddingLeft: 4,
+                  paddingRight: 12,
+                  borderLeftColor: colors.border,
+                  borderLeftWidth: 2,
+                  paddingVertical: 1
                 }}
               >
-                {option.isNo ? `NO ${option.name}` : option.name}
-              </Text>
-              <Text
-                style={{
-                  width: PRICE_COLUMN_WIDTH,
-                  fontSize: 10,
-                  textAlign: 'right',
-                  color: isVoided ? colors.muted : colors.teal,
-                  opacity: 0.5,
-                  textDecorationLine: isVoided ? 'line-through' : 'none'
-                }}
-              >
-                {!option.isNo && option.price > 0
-                  ? `+$${option.price.toFixed(2)}`
-                  : ''}
-              </Text>
-            </View>
-          ))
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: option.isNo ? colors.danger : '#E0E0E0',
+                    flex: 1
+                  }}
+                >
+                  {option.isNo ? `NO ${option.name}` : option.name}
+                </Text>
+                <Text
+                  style={{
+                    width: PRICE_COLUMN_WIDTH,
+                    fontSize: 10,
+                    textAlign: 'right',
+                    color: isVoided ? colors.muted : colors.teal,
+                    opacity: 0.5,
+                    textDecorationLine: isVoided ? 'line-through' : 'none'
+                  }}
+                >
+                  {!option.isNo && option.price > 0
+                    ? `+$${displayPrice.toFixed(2)}`
+                    : ''}
+                </Text>
+              </View>
+            )
+          })
       )}
     </View>
   ),
@@ -112,7 +116,10 @@ const ModifiersList = React.memo<{
       }
     }
 
-    return prev.isVoided === next.isVoided
+    return (
+      prev.isVoided === next.isVoided &&
+      prev.discountFactor === next.discountFactor
+    )
   }
 )
 
@@ -433,6 +440,22 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const effectiveLineTotal =
     typeof item.subtotal === 'number' ? item.subtotal : baseLineTotal
   const itemDiscountAmount = Math.max(0, baseLineTotal - effectiveLineTotal)
+  const normalizedItemDiscountAmount = Math.max(
+    0,
+    typeof item.discount_amount === 'number'
+      ? item.discount_amount
+      : itemDiscountAmount
+  )
+  const modifierDiscountFactor =
+    baseLineTotal > 0
+      ? Math.max(
+          0,
+          Math.min(
+            1,
+            (baseLineTotal - normalizedItemDiscountAmount) / baseLineTotal
+          )
+        )
+      : 1
   const hasVisibleDiscount =
     !isVoided &&
     (itemDiscountAmount > 0.005 ||
@@ -755,6 +778,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       <ModifiersList
                         modifiers={item.customizations.modifiers}
                         isVoided={isVoided}
+                        discountFactor={modifierDiscountFactor}
                       />
                     )}
                   {item.customizations.notes && (
@@ -799,6 +823,10 @@ const BillItem = React.memo(BillItemComponent, (prev, next) => {
     prev.item.id !== next.item.id ||
     prev.item.quantity !== next.item.quantity ||
     prev.item.price !== next.item.price ||
+    prev.item.subtotal !== next.item.subtotal ||
+    prev.item.cashSubtotal !== next.item.cashSubtotal ||
+    prev.item.discount_amount !== next.item.discount_amount ||
+    prev.item.discount_cash_amount !== next.item.discount_cash_amount ||
     prev.item.is_voided !== next.item.is_voided ||
     prev.item.void_reason !== next.item.void_reason ||
     prev.item.paidQuantity !== next.item.paidQuantity ||
