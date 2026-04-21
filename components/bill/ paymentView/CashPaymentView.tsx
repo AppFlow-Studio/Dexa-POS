@@ -99,6 +99,12 @@ const CashPaymentView = () => {
     showPayment('cash')
     showProcessing('cash', 0)
     try {
+      // Fire cash drawer immediately — don't wait for payment to complete.
+      // The physical action has no data dependency on payment success.
+      PrinterService.openCashDrawer().catch(err =>
+        console.warn('[CashPayment] Cash drawer auto-open failed:', err)
+      )
+
       const amountTenderedNum = parseFloat(amountTendered) || 0
       await handlePaymentCompletion({
         method: 'Cash',
@@ -109,9 +115,6 @@ const CashPaymentView = () => {
         }
       })
       showApproved()
-      PrinterService.openCashDrawer().catch(err =>
-        console.warn('[CashPayment] Cash drawer auto-open failed:', err)
-      )
       // Do NOT reset isProcessing on success — the view is closing and frozen
       // totals must remain visible. Resetting would briefly show wrong change due
       // because handlePaymentCompletion already zeroed the order totals.

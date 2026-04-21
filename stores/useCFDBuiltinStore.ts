@@ -86,12 +86,18 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   loyaltyResult: null
 }
 
-export const useCFDBuiltinStore = create<CFDBuiltinState>()(set => ({
+export const useCFDBuiltinStore = create<CFDBuiltinState>()((set, get) => ({
   ...initialState,
   update: data => {
     if ('loyaltyResult' in data && data.loyaltyResult === null) {
       console.warn('[CFDBuiltinStore] loyaltyResult being set to null')
     }
+    // Skip no-op updates to prevent unnecessary re-renders on the secondary display
+    const current = get()
+    const hasChange = Object.entries(data).some(
+      ([key, value]) => current[key as keyof typeof current] !== value
+    )
+    if (!hasChange) return
     set(data)
   },
   reset: () => set(initialState)

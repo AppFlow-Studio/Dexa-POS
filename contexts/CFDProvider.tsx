@@ -252,6 +252,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       ctrl.updateOrder(params)
     }, 150)
   )
+  const debouncedBuiltinUpdateRef = useRef(
+    debounce((data: Record<string, unknown>) => {
+      useCFDBuiltinStore.getState().update(data as any)
+    }, 100)
+  )
 
   // Store settings
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
@@ -296,6 +301,19 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const activeOrderOutstandingTotal = useOrderStore(
     s => s.activeOrderOutstandingTotal
   )
+
+  // Content-based fingerprint so cfdItems transform only runs when actual item
+  // data changes, not when the items array reference changes due to unrelated
+  // order mutations (e.g. status changes, payment updates).
+  const itemsFingerprint = useMemo(() => {
+    if (!activeOrder?.items) return ''
+    return activeOrder.items
+      .map(
+        i =>
+          `${i.id}:${i.quantity}:${i.unitPrice}:${i.cashPrice}:${i.is_voided}:${i.seatNumber}:${i.courseNumber}:${i.name}:${i.open_item_name ?? ''}`
+      )
+      .join('|')
+  }, [activeOrder?.items])
 
   // Transform cart items to CFD format with dual pricing.
   // Wrapped in try-catch: an unhandled throw here propagates to the secondary
@@ -387,7 +405,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       console.error('[CFD] cfdItems transform failed:', err)
       return []
     }
-  }, [activeOrder?.items, activeOrderSeating, pathname])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsFingerprint, activeOrderSeating, pathname])
 
   // Initialize CFD controller
   useEffect(() => {
@@ -1208,7 +1227,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         builtinIdleTimerRef.current = null
       }
 
-      const screenState = activeScreenState || 'ordering'
+      const screenState: CFDScreenState = activeScreenState || 'ordering'
       const currentBase = baseAmountOverride ?? activeOrderSubtotal
       let cardSubtotal = Math.round(currentBase * 100)
       let cashSubtotal = Math.round(
@@ -1289,7 +1308,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         ? activeOrder?.service_location_id ?? null
         : null
 
-      useCFDBuiltinStore.getState().update({
+      const updatePayload = {
         screenState,
         serverName: null,
         customerName: activeOrder?.customer_name ?? null,
@@ -1327,14 +1346,31 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           logoUrl: organizationLogoUrl,
           primaryColor: '#10b981'
         },
-        paymentMethod:
+        paymentMethod: (
           paymentView === 'cash'
             ? 'cash'
             : paymentView === 'card' || paymentView === 'manual'
             ? 'card'
-            : null,
+            : null
+        ) as 'cash' | 'card' | 'manual' | null,
         loyaltyResult: null
-      })
+      }
+
+      // Payment-related states need immediate updates; ordering states are debounced
+      // to batch rapid cart changes and reduce secondary display render pressure.
+      const isPaymentState =
+        screenState === 'payment' ||
+        screenState === 'processing' ||
+        screenState === 'approved' ||
+        screenState === 'declined' ||
+        screenState === 'tip_selection'
+
+      if (isPaymentState) {
+        debouncedBuiltinUpdateRef.current.cancel()
+        useCFDBuiltinStore.getState().update(updatePayload)
+      } else {
+        debouncedBuiltinUpdateRef.current(updatePayload)
+      }
     } catch (err) {
       console.error('[CFD] Builtin display sync effect error:', err)
     }

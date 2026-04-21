@@ -162,6 +162,7 @@ export const PrinterService = {
       usePrintQueueStore.getState().enqueue(job)
     }
 
+    this.ensureProcessing()
     return true
   },
 
@@ -208,6 +209,7 @@ export const PrinterService = {
       usePrintQueueStore.getState().enqueue(job)
     }
 
+    this.ensureProcessing()
     return true
   },
 

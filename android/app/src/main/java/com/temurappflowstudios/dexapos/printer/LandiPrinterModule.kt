@@ -240,6 +240,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                     } catch (e: Exception) {
                         Log.w(TAG, "Post-print feed/cut failed: ${e.message}")
                     }
+                    warmCashBox()
                     promise.resolve(true)
                 }
 
@@ -430,6 +431,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         p.startPrint(object : OnPrintListener {
             override fun onSuccess() {
                 Log.d(TAG, "SimplePrinter: print completed successfully")
+                warmCashBox()
                 promise.resolve(true)
             }
 
@@ -646,6 +648,23 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             Log.e(TAG, "Cash drawer unexpected error: ${e.javaClass.simpleName}: ${e.message}")
             promise.reject("DRAWER_FAILED", "Failed to open cash drawer: ${e.message}", e)
+        }
+    }
+
+    // ==================== CASH BOX WARM-UP ====================
+
+    /**
+     * Pre-acquire the CashBox reference so it's ready when the drawer kick
+     * is requested. Called after each successful print to prevent stale-reference
+     * latency (100-500ms re-acquisition on real hardware).
+     */
+    private fun warmCashBox() {
+        try {
+            val driver = OmniDriver.me(reactContext)
+            cashBox = driver.getCashBox(Bundle())
+            Log.d(TAG, "CashBox reference warmed after print")
+        } catch (e: Exception) {
+            Log.w(TAG, "warmCashBox (non-fatal): ${e.message}")
         }
     }
 
