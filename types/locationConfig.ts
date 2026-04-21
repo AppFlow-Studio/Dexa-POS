@@ -186,7 +186,7 @@ export const DEFAULT_DINING_CONFIG: DiningConfig = {
 }
 
 export const DEFAULT_KDS_CONFIG: KdsConfig = {
-  workflowMode: '3-step',
+  workflowMode: '2-step',
   autoFireEnabled: false,
   autoFireDelayMinutes: 5,
   hideDoneItems: false,
