@@ -9,9 +9,13 @@ import { useSessionKick } from '@/contexts/SessionKickListenerProvider'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getDeviceId } from '@/lib/deviceId'
 import { replaceRoute } from '@/lib/rootNavigation'
-import { runSpeedTest, getSpeedQuality, type SpeedTestResult } from '@/lib/speedTest'
-import { colors, spinnerColor } from '@/lib/theme'
+import {
+  getSpeedQuality,
+  runSpeedTest,
+  type SpeedTestResult
+} from '@/lib/speedTest'
 import { secureStorage } from '@/lib/storage'
+import { colors, spinnerColor } from '@/lib/theme'
 import { toastService } from '@/lib/toastService'
 import type { MerchantRole } from '@/lib/types'
 import { useColorScheme } from '@/lib/useColorScheme'
@@ -414,7 +418,8 @@ const GeneralSettingsScreen = () => {
   }
 
   // ── Speed test ──────────────────────────────────────────────────────────
-  const [speedTestResult, setSpeedTestResult] = useState<SpeedTestResult | null>(null)
+  const [speedTestResult, setSpeedTestResult] =
+    useState<SpeedTestResult | null>(null)
   const [isTestingSpeed, setIsTestingSpeed] = useState(false)
 
   const handleSpeedTest = async () => {
@@ -826,99 +831,6 @@ const GeneralSettingsScreen = () => {
                   </Text>
                 </View>
               </View>
-
-              {/* Theme */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingVertical: 10
-                }}
-              >
-                <View style={{ flex: 1, marginRight: 16 }}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        color: colors.heading,
-                        fontWeight: '500'
-                      }}
-                    >
-                      App Theme
-                    </Text>
-                  </View>
-                  <Text
-                    style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
-                  >
-                    Choose between Dark and Light mode
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TouchableOpacity
-                    onPress={() => setColorScheme('dark')}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      backgroundColor:
-                        colorScheme === 'dark'
-                          ? colors.teal + '20'
-                          : 'transparent',
-                      borderWidth: 1,
-                      borderColor:
-                        colorScheme === 'dark'
-                          ? colors.teal + '50'
-                          : colors.border,
-                      borderRadius: 8
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color:
-                          colorScheme === 'dark' ? colors.teal : colors.label,
-                        fontWeight: '500'
-                      }}
-                    >
-                      Dark
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setColorScheme('light')}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      backgroundColor:
-                        colorScheme === 'light'
-                          ? colors.teal + '20'
-                          : 'transparent',
-                      borderWidth: 1,
-                      borderColor:
-                        colorScheme === 'light'
-                          ? colors.teal + '50'
-                          : colors.border,
-                      borderRadius: 8
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color:
-                          colorScheme === 'light' ? colors.teal : colors.label,
-                        fontWeight: '500'
-                      }}
-                    >
-                      Light
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
             </View>
           )}
         </View>
@@ -1276,124 +1188,179 @@ const GeneralSettingsScreen = () => {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
-                    style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      color: colors.heading
+                    }}
                   >
                     {isTestingSpeed ? 'Testing...' : 'Run Speed Test'}
                   </Text>
-                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                  <Text
+                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                  >
                     Check download speed, latency, and connection type
                   </Text>
                 </View>
               </TouchableOpacity>
 
               {/* Results */}
-              {speedTestResult && (() => {
-                const quality = getSpeedQuality(speedTestResult)
-                const qualityColor =
-                  quality === 'good' ? colors.success
-                    : quality === 'fair' ? colors.warning
+              {speedTestResult &&
+                (() => {
+                  const quality = getSpeedQuality(speedTestResult)
+                  const qualityColor =
+                    quality === 'good'
+                      ? colors.success
+                      : quality === 'fair'
+                      ? colors.warning
                       : colors.danger
-                const qualityLabel =
-                  quality === 'good' ? 'Good'
-                    : quality === 'fair' ? 'Fair'
+                  const qualityLabel =
+                    quality === 'good'
+                      ? 'Good'
+                      : quality === 'fair'
+                      ? 'Fair'
                       : 'Poor'
 
-                return (
-                  <View style={{ gap: 8 }}>
-                    {/* Quality badge */}
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: 9,
-                        backgroundColor: qualityColor + '15',
-                        borderWidth: 1,
-                        borderColor: qualityColor + '40',
-                        borderRadius: 8
-                      }}
-                    >
-                      <Wifi size={13} color={qualityColor} />
-                      <Text style={{ fontSize: 12, color: qualityColor, fontWeight: '600' }}>
-                        Connection Quality: {qualityLabel}
-                      </Text>
-                    </View>
-
-                    {/* Metrics */}
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        gap: 8
-                      }}
-                    >
-                      {/* Download Speed */}
+                  return (
+                    <View style={{ gap: 8 }}>
+                      {/* Quality badge */}
                       <View
                         style={{
-                          flex: 1,
-                          backgroundColor: colors.screen,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: 9,
+                          backgroundColor: qualityColor + '15',
                           borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: 8,
-                          padding: 10,
-                          alignItems: 'center'
+                          borderColor: qualityColor + '40',
+                          borderRadius: 8
                         }}
                       >
-                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 4 }}>
-                          Download
-                        </Text>
-                        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading }}>
-                          {speedTestResult.downloadMbps}
-                        </Text>
-                        <Text style={{ fontSize: 10, color: colors.label }}>Mbps</Text>
-                      </View>
-
-                      {/* Latency */}
-                      <View
-                        style={{
-                          flex: 1,
-                          backgroundColor: colors.screen,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: 8,
-                          padding: 10,
-                          alignItems: 'center'
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 4 }}>
-                          Latency
-                        </Text>
-                        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading }}>
-                          {speedTestResult.latencyMs}
-                        </Text>
-                        <Text style={{ fontSize: 10, color: colors.label }}>ms</Text>
-                      </View>
-
-                      {/* Connection Type */}
-                      <View
-                        style={{
-                          flex: 1,
-                          backgroundColor: colors.screen,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: 8,
-                          padding: 10,
-                          alignItems: 'center'
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 4 }}>
-                          Type
-                        </Text>
+                        <Wifi size={13} color={qualityColor} />
                         <Text
-                          style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
-                          numberOfLines={1}
+                          style={{
+                            fontSize: 12,
+                            color: qualityColor,
+                            fontWeight: '600'
+                          }}
                         >
-                          {speedTestResult.connectionType || 'Unknown'}
+                          Connection Quality: {qualityLabel}
                         </Text>
                       </View>
+
+                      {/* Metrics */}
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          gap: 8
+                        }}
+                      >
+                        {/* Download Speed */}
+                        <View
+                          style={{
+                            flex: 1,
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 8,
+                            padding: 10,
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: colors.muted,
+                              marginBottom: 4
+                            }}
+                          >
+                            Download
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 18,
+                              fontWeight: '700',
+                              color: colors.heading
+                            }}
+                          >
+                            {speedTestResult.downloadMbps}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: colors.label }}>
+                            Mbps
+                          </Text>
+                        </View>
+
+                        {/* Latency */}
+                        <View
+                          style={{
+                            flex: 1,
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 8,
+                            padding: 10,
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: colors.muted,
+                              marginBottom: 4
+                            }}
+                          >
+                            Latency
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 18,
+                              fontWeight: '700',
+                              color: colors.heading
+                            }}
+                          >
+                            {speedTestResult.latencyMs}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: colors.label }}>
+                            ms
+                          </Text>
+                        </View>
+
+                        {/* Connection Type */}
+                        <View
+                          style={{
+                            flex: 1,
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 8,
+                            padding: 10,
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: colors.muted,
+                              marginBottom: 4
+                            }}
+                          >
+                            Type
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: '700',
+                              color: colors.heading
+                            }}
+                            numberOfLines={1}
+                          >
+                            {speedTestResult.connectionType || 'Unknown'}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                )
-              })()}
+                  )
+                })()}
             </View>
           )}
         </View>

@@ -180,14 +180,14 @@ export const WaitlistCard: React.FC<{
 
           <View className='flex-1 ml-3 min-w-0'>
             <Text
-              className='text-white font-semibold text-base'
+              style={{ color: colors.label, fontWeight: '600', fontSize: 14 }}
               numberOfLines={1}
             >
               {entry.party_name}
             </Text>
             <View className='flex-row items-center mt-0.5'>
-              <Users size={12} color={colors.muted} />
-              <Text className='text-muted text-sm ml-1'>
+              <Users size={12} color={colors.label} />
+              <Text style={{ color: colors.label }} className='text-sm ml-1'>
                 {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
               </Text>
             </View>

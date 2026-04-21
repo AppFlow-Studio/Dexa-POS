@@ -595,7 +595,10 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const guestCount = orderMeta.guestCount
 
   return (
-    <View className='flex-1 bg-panel p-4'>
+    <View
+      className='flex-1'
+      style={{ backgroundColor: colors.panel, padding: 16 }}
+    >
       {/* Meta info row */}
       <View
         style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}
@@ -659,10 +662,20 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         </Text>
         <View className='flex-row items-center gap-2'>
           {isOvertime && (
-            <View className='bg-yellow-900/30 px-2.5 py-1 rounded-full'>
+            <View
+              style={{
+                backgroundColor: colors.warning + '30',
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 999
+              }}
+            >
               <Text
-                style={{ fontSize: 10, fontWeight: '600' }}
-                className='text-yellow-400'
+                style={{
+                  fontSize: 10,
+                  fontWeight: '600',
+                  color: colors.warning
+                }}
               >
                 {overtimeMinutes}min exceeded
               </Text>
@@ -671,7 +684,16 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
           {enableCoursing && (
             <TouchableOpacity
               onPress={onPressStartNewCourse}
-              className='flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal'
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal
+              }}
               activeOpacity={0.8}
             >
               <Plus size={16} color={colors.teal} />

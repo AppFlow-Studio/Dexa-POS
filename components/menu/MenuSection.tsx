@@ -69,17 +69,18 @@ interface MenuSectionProps {
 import { colors } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { useSearchStore } from '@/stores/searchStore'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, ViewStyle } from 'react-native'
 
 const menuSectionStyles = StyleSheet.create({
   spacer: {
     width: '23%'
-  },
-  blockingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    zIndex: 100
   }
+})
+
+const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
+  ...StyleSheet.absoluteFillObject,
+  backgroundColor: overlayColor,
+  zIndex: 100
 })
 
 // OPTIMIZED: WeakMap cache for image sources to prevent object recreation
@@ -114,7 +115,7 @@ const MenuBlockingOverlay = React.memo(() => {
   if (!isMenuBlocked && !isMenuBlockedSync()) return null
   return (
     <Pressable
-      style={menuSectionStyles.blockingOverlay}
+      style={getBlockingOverlayStyle(colors.background + '80')}
       onPress={cancelAndRemoveDraft}
     />
   )
@@ -183,13 +184,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     return menu.categories.some(cat => cat.items && cat.items.length > 0)
   }
 
-  // Helper to find the first menu that is currently available, unlocked, and has items
+  // Helper to find the first menu that is currently available (with items preferred)
   const getFirstAvailableMenuWithItems = () => {
-    return menus.find(
-      m =>
-        (isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)) &&
-        menuHasItems(m)
+    const available = menus.filter(
+      m => isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)
     )
+    // Prefer a menu that also has items; fall back to any available menu
+    return available.find(m => menuHasItems(m)) ?? available[0] ?? undefined
   }
 
   // Helper to get the preferred menu: last used (if valid) OR first available with items
@@ -200,13 +201,12 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       if (
         lastMenu &&
         (isMenuAvailableNow(lastMenu.id) ||
-          temporaryActiveMenus.includes(lastMenu.name)) &&
-        menuHasItems(lastMenu)
+          temporaryActiveMenus.includes(lastMenu.name))
       ) {
         return lastMenu
       }
     }
-    // Priority 2: First available menu with items
+    // Priority 2: First available menu (with items preferred)
     return getFirstAvailableMenuWithItems() || null
   }
 
@@ -216,12 +216,41 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     return startMenu ? startMenu.name : null
   })
 
+  // Derive the active menu object once so MenuControls doesn't need to re-derive it
+  const activeMenu = useMemo(
+    () => (activeMeal ? menus.find(m => m.name === activeMeal) : undefined),
+    [menus, activeMeal]
+  )
+
   const [activeCategory, setActiveCategory] = useState<string | null>(() => {
     const startMenu = getPreferredMenu()
     return startMenu ? startMenu.categories[0]?.name || '' : null
   })
 
   const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false)
+
+  useEffect(() => {
+    if (!__DEV__) return
+    console.log('[MenuSection] category row state', {
+      activeTab,
+      forceOrdersView,
+      activeMeal,
+      activeCategory,
+      shouldRenderCategoryRow:
+        !forceOrdersView && activeTab === 'Menu' && !!activeMeal,
+      menuCount: menus.length,
+      activeMenuId: activeMenu?.id,
+      activeMenuCategoryCount: activeMenu?.categories?.length ?? 0
+    })
+  }, [
+    activeTab,
+    forceOrdersView,
+    activeMeal,
+    activeCategory,
+    menus.length,
+    activeMenu?.id,
+    activeMenu?.categories?.length
+  ])
 
   // Ref for auto-scrolling to selected menu in dialog
   const menuScrollViewRef = useRef<ScrollView>(null)
@@ -250,18 +279,16 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     // If we have an active selection...
     if (activeMeal) {
       const currentMenu = menus.find(m => m.name === activeMeal)
-      // Check if it's still available and has items
+      // Keep the current menu as long as it's available — items may still be loading
       if (currentMenu) {
         const isAvailable =
           isMenuAvailableNow(currentMenu.id) ||
           temporaryActiveMenus.includes(currentMenu.name)
-        const hasItems = menuHasItems(currentMenu)
-        // If it IS available and has items, we are good.
-        if (isAvailable && hasItems) return
+        if (isAvailable) return
       }
     }
 
-    // If we reached here, either activeMeal is null OR the current selection is unavailable/empty.
+    // If we reached here, either activeMeal is null OR the current selection became unavailable.
     // Try to auto-switch to the next preferred one.
     const nextAvailable = getPreferredMenu()
 
@@ -299,6 +326,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // OPTIMIZED: Stable callback for meal change (avoid inline arrow in JSX)
   const handleMealChange = useCallback(
     (value: string) => {
+      setActiveTab('Menu')
       setActiveMeal(value)
       const menu = menus.find(m => m.name === value)
       setActiveCategory(menu?.categories[0]?.name || '')
@@ -326,7 +354,20 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     const isAvailable =
       isMenuAvailableNow(menu.id) || temporaryActiveMenus.includes(menu.name)
 
+    if (__DEV__) {
+      console.log('[MenuSection] handleMenuSelect', {
+        menuName,
+        menuId: menu.id,
+        menuIsActive: menu.isActive,
+        isAvailable,
+        categoryCount: menu.categories?.length ?? 0,
+        firstCategory: menu.categories?.[0]?.name ?? null,
+        isUnlocked: isUnlocked()
+      })
+    }
+
     if (isAvailable) {
+      setActiveTab('Menu')
       setActiveMeal(menuName)
       setActiveCategory(menu.categories[0]?.name || '')
       setIsMenuDialogOpen(false)
@@ -334,6 +375,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     } else if (isUnlocked()) {
       // Manager session active — bypass PIN and grant directly
       addTemporaryMenuAccess(menuName)
+      setActiveTab('Menu')
       setActiveMeal(menuName)
       setActiveCategory(menu.categories[0]?.name || '')
       setIsMenuDialogOpen(false)
@@ -386,10 +428,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     return getCategoryByName(activeCategory)?.id
   }, [activeCategory])
 
-  const activeMenuId = useMemo(() => {
-    if (!activeMeal) return undefined
-    return menus.find(m => m.name === activeMeal)?.id
-  }, [activeMeal, menus])
+  const activeMenuId = activeMenu?.id
 
   // Pre-warm modifier data for visible items so first tap is instant (deferred to avoid blocking render)
   // Only pre-warm the first ~15 items (3 rows of 5) to avoid blocking the main thread
@@ -558,10 +597,25 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   </TouchableOpacity>
                 </DialogTrigger>
               )}
-              <DialogContent className='w-[480px] max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden'>
-                <DialogHeader className='px-6 pt-6 pb-4 border-b border-border'>
+              <DialogContent
+                className='w-[480px] max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden'
+                style={{
+                  backgroundColor: colors.screen,
+                  borderColor: colors.border
+                }}
+              >
+                <DialogHeader
+                  className='px-6 pt-6 pb-4 border-b border-border'
+                  style={{ borderBottomColor: colors.border }}
+                >
                   <DialogTitle>
-                    <Text className='text-lg font-semibold text-white'>
+                    <Text
+                      style={{
+                        fontSize: 18,
+                        fontWeight: '600',
+                        color: colors.heading
+                      }}
+                    >
                       Menu
                     </Text>
                   </DialogTitle>
@@ -599,7 +653,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                         }}
                       >
                         <View className='flex-row justify-between items-center'>
-                          <Text className='font-semibold text-base text-white'>
+                          <Text
+                            style={{
+                              fontWeight: '600',
+                              fontSize: 16,
+                              color: colors.heading
+                            }}
+                          >
                             {menu.name}
                           </Text>
                           <View className='flex-row items-center gap-2'>
@@ -632,18 +692,40 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                           </View>
                         </View>
                         {menu.description ? (
-                          <Text className='text-xs text-gray-400 mt-1'>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: colors.muted,
+                              marginTop: 4
+                            }}
+                          >
                             {menu.description}
                           </Text>
                         ) : null}
                         {menu.categories.length > 0 && (
-                          <View className='flex-row flex-wrap gap-1.5 mt-2.5'>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              flexWrap: 'wrap',
+                              gap: 6,
+                              marginTop: 10
+                            }}
+                          >
                             {menu.categories.map((category, index) => (
                               <View
                                 key={index}
-                                className='px-2.5 py-1 rounded-full bg-surface border border-border'
+                                style={{
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 4,
+                                  borderRadius: 12,
+                                  backgroundColor: colors.panel,
+                                  borderWidth: 1,
+                                  borderColor: colors.border
+                                }}
                               >
-                                <Text className='text-xs text-label'>
+                                <Text
+                                  style={{ fontSize: 12, color: colors.label }}
+                                >
                                   {category.name}
                                 </Text>
                               </View>
@@ -696,12 +778,34 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               />
             </View>
           ) : (
-            <View className='flex-1 items-center justify-center mt-20'>
+            <View
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: 80
+              }}
+            >
               <Clock size={64} color={colors.muted} />
-              <Text className='text-white text-2xl font-bold mt-4'>
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: 24,
+                  fontWeight: 'bold',
+                  marginTop: 16
+                }}
+              >
                 No Menu Available
               </Text>
-              <Text className='text-gray-400 text-base mt-2 text-center px-10'>
+              <Text
+                style={{
+                  color: colors.muted,
+                  fontSize: 16,
+                  marginTop: 8,
+                  textAlign: 'center',
+                  paddingHorizontal: 40
+                }}
+              >
                 There are currently no menus scheduled for this time. Please
                 check back later or select a different order type.
               </Text>
@@ -715,14 +819,23 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
             </View>
           ) : activeTab === 'Menu' ? (
             activeMeal ? (
-              <View key={'Menu'} className={`${isTableOrder ? 'px-3' : ''}`}>
+              <View
+                key={'Menu'}
+                className={`flex-1 ${isTableOrder ? 'px-3' : ''}`}
+              >
                 <FlatList
                   data={dataWithSpacers}
                   keyExtractor={keyExtractor}
                   numColumns={numColumns}
-                  className='mt-2 h-[93%] pb-32'
-                  style={{ backgroundColor: colors.screen }}
-                  contentContainerStyle={{ backgroundColor: colors.screen }}
+                  style={{
+                    flex: 1,
+                    marginTop: 8,
+                    backgroundColor: colors.screen
+                  }}
+                  contentContainerStyle={{
+                    backgroundColor: colors.screen,
+                    paddingBottom: 128
+                  }}
                   ItemSeparatorComponent={SpacerItem}
                   getItemLayout={(_item, index) => {
                     const ROW_HEIGHT = 80 + 12
@@ -741,8 +854,15 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   windowSize={4}
                   initialNumToRender={8}
                   ListEmptyComponent={
-                    <View className='flex-1 items-center justify-center h-48'>
-                      <Text className='text-gray-400 text-lg'>
+                    <View
+                      style={{
+                        flex: 1,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: 192
+                      }}
+                    >
+                      <Text style={{ color: colors.muted, fontSize: 18 }}>
                         No items match the current filters.
                       </Text>
                     </View>

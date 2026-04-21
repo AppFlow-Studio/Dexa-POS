@@ -559,7 +559,9 @@ const BillSectionContent = ({
     const sessionStore = useTableSessionStore.getState()
     const sessionId = activeOrder.session_id
     const tableId = sessionId
-      ? sessionStore.sessionTableIndex[sessionId]?.[0] ?? ''
+      ? sessionStore.sessionTableIndex[sessionId]?.[0] ??
+        sessionStore.getSessionBySessionId(sessionId)?.tableId ??
+        ''
       : ''
 
     if (tableId) {
@@ -1335,13 +1337,26 @@ const BillSectionContent = ({
         onClose={handleCloseDiscounts}
       />
       <Dialog open={isVoidConfirmOpen} onOpenChange={setIsVoidConfirmOpen}>
-        <DialogContent className='w-[420px] bg-panel border border-border rounded-2xl p-0 overflow-hidden'>
+        <DialogContent
+          className='w-[420px] rounded-2xl p-0 overflow-hidden'
+          style={{
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border
+          }}
+        >
           <View
             className='px-5 pt-5 pb-4'
             style={{ backgroundColor: colors.panel }}
           >
             <DialogHeader>
-              <DialogTitle className='text-heading text-xl font-bold'>
+              <DialogTitle
+                style={{
+                  fontSize: 20,
+                  fontWeight: '700',
+                  color: colors.heading
+                }}
+              >
                 Void Order
               </DialogTitle>
             </DialogHeader>

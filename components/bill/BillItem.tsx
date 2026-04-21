@@ -71,7 +71,7 @@ const ModifiersList = React.memo<{
                 <Text
                   style={{
                     fontSize: 10,
-                    color: option.isNo ? colors.danger : '#E0E0E0',
+                    color: option.isNo ? colors.danger : colors.muted,
                     flex: 1
                   }}
                 >
@@ -83,7 +83,6 @@ const ModifiersList = React.memo<{
                     fontSize: 10,
                     textAlign: 'right',
                     color: isVoided ? colors.muted : colors.teal,
-                    opacity: 0.5,
                     textDecorationLine: isVoided ? 'line-through' : 'none'
                   }}
                 >

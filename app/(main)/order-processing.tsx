@@ -153,6 +153,7 @@ const OrderProcessing = () => {
 
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId)
+    setIsOrdersModuleOpen(false)
     setItemsModalOpen(true)
   }, [])
 
@@ -428,11 +429,12 @@ const OrderProcessing = () => {
       return (
         <View
           style={{
-            width: 300,
+            flex: 1,
+            maxWidth: 320,
             borderRadius: 14,
             borderWidth: 1,
             borderColor: colors.info + '50',
-            backgroundColor: '#040d22',
+            backgroundColor: colors.panel,
             overflow: 'hidden'
           }}
         >
@@ -580,7 +582,7 @@ const OrderProcessing = () => {
               borderTopWidth: 1,
               borderBottomWidth: 1,
               borderColor: colors.border,
-              backgroundColor: '#101e44',
+              backgroundColor: colors.screen,
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between'
@@ -596,7 +598,7 @@ const OrderProcessing = () => {
             </Text>
           </View>
 
-          <View style={{ paddingVertical: 3 }}>
+          <View style={{ paddingVertical: 3, backgroundColor: colors.screen }}>
             {canMarkDone && (
               <TouchableOpacity
                 onPress={() => handleMarkDone(item.id)}
@@ -654,13 +656,13 @@ const OrderProcessing = () => {
                   marginRight: 8
                 }}
               >
-                <Eye size={12} color={colors.label} />
+                <Eye size={12} color={colors.info} />
               </View>
               <Text
                 style={{
                   fontSize: 11,
                   fontWeight: '700',
-                  color: colors.label,
+                  color: colors.heading,
                   flex: 1
                 }}
               >
@@ -690,13 +692,13 @@ const OrderProcessing = () => {
                     marginRight: 8
                   }}
                 >
-                  <Printer size={12} color={colors.label} />
+                  <Printer size={12} color={colors.muted} />
                 </View>
                 <Text
                   style={{
                     fontSize: 11,
                     fontWeight: '700',
-                    color: colors.label,
+                    color: colors.heading,
                     flex: 1
                   }}
                 >
@@ -739,13 +741,31 @@ const OrderProcessing = () => {
           />
         ) : (
           // BillSection skeleton: matches the 380px sidebar layout
-          <View className='w-[38%] bg-screen p-4'>
-            <View className='h-10 w-48 bg-panel rounded-lg mb-4' />
-            <View className='h-6 w-32 bg-panel rounded-md mb-3' />
-            <View className='h-6 w-64 bg-panel rounded-md mb-3' />
-            <View className='h-6 w-52 bg-panel rounded-md mb-3' />
+          <View
+            className='w-[38%] p-4'
+            style={{ backgroundColor: colors.screen }}
+          >
+            <View
+              className='h-10 w-48 rounded-lg mb-4'
+              style={{ backgroundColor: colors.skeleton }}
+            />
+            <View
+              className='h-6 w-32 rounded-md mb-3'
+              style={{ backgroundColor: colors.skeleton }}
+            />
+            <View
+              className='h-6 w-64 rounded-md mb-3'
+              style={{ backgroundColor: colors.skeleton }}
+            />
+            <View
+              className='h-6 w-52 rounded-md mb-3'
+              style={{ backgroundColor: colors.skeleton }}
+            />
             <View className='flex-1' />
-            <View className='h-14 bg-panel rounded-xl' />
+            <View
+              className='h-14 rounded-xl'
+              style={{ backgroundColor: colors.skeleton }}
+            />
           </View>
         )}
 
@@ -967,8 +987,17 @@ const OrderProcessing = () => {
                             Order Line
                           </Text>
                           {displayOrders?.length > 0 && (
-                            <View className='ml-1 bg-panel border border-border rounded-full px-2.5 py-0.5 items-center justify-center'>
-                              <Text className='text-xs font-bold text-label'>
+                            <View
+                              className='ml-1 border rounded-full px-2.5 py-0.5 items-center justify-center'
+                              style={{
+                                backgroundColor: colors.info + '30',
+                                borderColor: colors.info + '55'
+                              }}
+                            >
+                              <Text
+                                className='text-xs font-bold'
+                                style={{ color: colors.info }}
+                              >
                                 {displayOrders.length}
                               </Text>
                             </View>
@@ -1082,12 +1111,20 @@ const OrderProcessing = () => {
             <View className='flex-1 p-4'>
               <View className='flex-row gap-x-2 mb-3'>
                 {[1, 2, 3, 4].map(i => (
-                  <View key={i} className='h-10 w-20 bg-panel rounded-lg' />
+                  <View
+                    key={i}
+                    className='h-10 w-20 rounded-lg'
+                    style={{ backgroundColor: colors.skeleton }}
+                  />
                 ))}
               </View>
               <View className='flex-row flex-wrap gap-2'>
                 {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                  <View key={i} className='h-24 w-28 bg-panel rounded-xl' />
+                  <View
+                    key={i}
+                    className='h-24 w-28 rounded-xl'
+                    style={{ backgroundColor: colors.skeleton }}
+                  />
                 ))}
               </View>
             </View>
@@ -1113,14 +1150,6 @@ const OrderProcessing = () => {
             />
           </>
         </Teleport>
-      )}
-
-      {isItemsModalOpen && (
-        <OrderLineItemsModal
-          isOpen={isItemsModalOpen}
-          onClose={handleCloseItemsModal}
-          orderId={selectedOrderId}
-        />
       )}
 
       <CashDrawerSheet
@@ -1272,7 +1301,8 @@ const OrderProcessing = () => {
                 }}
                 columnWrapperStyle={{
                   marginBottom: 10,
-                  justifyContent: 'space-between'
+                  justifyContent: 'flex-start',
+                  gap: 10
                 }}
                 showsVerticalScrollIndicator={false}
                 itemLayoutAnimation={LinearTransition.springify()
@@ -1299,6 +1329,14 @@ const OrderProcessing = () => {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {isItemsModalOpen && (
+        <OrderLineItemsModal
+          isOpen={isItemsModalOpen}
+          onClose={handleCloseItemsModal}
+          orderId={selectedOrderId}
+        />
+      )}
 
       <Modal
         visible={isCustomItemModuleOpen}

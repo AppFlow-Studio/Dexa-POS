@@ -245,11 +245,11 @@ const OrderLineSectionContent: React.FC = () => {
         )}
         ListEmptyComponent={
           <View className='h-40 items-center justify-center w-full'>
-            <Text className='text-lg text-gray-400'>
+            <Text className='text-lg' style={{ color: colors.muted }}>
               No orders for this category.
             </Text>
           </View>
-        }
+        }}
       />
       <OrderLineItemsModal
         isOpen={isItemsModalOpen}

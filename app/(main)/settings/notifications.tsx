@@ -6,7 +6,6 @@
  */
 
 import SettingsCard from '@/components/settings/SettingsCard'
-import SidebarNavigation from '@/components/settings/SidebarNavigation'
 import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
 import KDSSoundService, {
@@ -23,13 +22,7 @@ import {
   Truck
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  Modal,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native'
+import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
 // Filtered options for POS notifications (exclude 'none' from picker, master toggle handles disable)
 const SOUND_OPTIONS = SOUND_PRESET_OPTIONS.filter(o => o.value !== 'none')
@@ -82,9 +75,7 @@ function SoundPicker ({
         <Text style={{ color: colors.label, fontSize: 14, fontWeight: '500' }}>
           {label}
         </Text>
-        <Text
-          style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}
-        >
+        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
           Plays when a new order arrives from this source
         </Text>
       </View>
@@ -105,7 +96,7 @@ function SoundPicker ({
           marginRight: 8
         }}
       >
-        <Text style={{ color: '#fff', fontSize: 13, marginRight: 6 }}>
+        <Text style={{ color: colors.label, fontSize: 13, marginRight: 6 }}>
           {SOUND_PRESET_OPTIONS.find(o => o.value === value)?.label || value}
         </Text>
         <ChevronDown size={14} color={colors.muted} />
@@ -166,7 +157,7 @@ function SoundPicker ({
               >
                 <Text
                   style={{
-                    color: opt.value === value ? colors.teal : '#fff',
+                    color: opt.value === value ? colors.teal : colors.label,
                     fontSize: 14,
                     fontWeight: opt.value === value ? '600' : '400'
                   }}
@@ -211,20 +202,28 @@ export default function NotificationsScreen () {
   }, [])
 
   return (
-    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.screen }}>
+    <View
+      style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.screen }}
+    >
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
       >
         {/* Header */}
         <View style={{ marginBottom: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginBottom: 4
+            }}
+          >
             <Bell size={22} color={colors.teal} />
             <Text
               style={{
                 fontSize: 22,
                 fontWeight: '700',
-                color: '#fff',
+                color: colors.heading,
                 marginLeft: 10
               }}
             >
@@ -247,11 +246,18 @@ export default function NotificationsScreen () {
             }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: 15,
+                  fontWeight: '600'
+                }}
+              >
                 Enable Sound Alerts
               </Text>
               <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-                Play a sound when orders arrive from external sources (online, kiosk, third-party)
+                Play a sound when orders arrive from external sources (online,
+                kiosk, third-party)
               </Text>
             </View>
             <Switch

@@ -77,7 +77,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
         borderWidth: 1,
         borderColor: colors.info + '55',
         overflow: 'hidden',
-        backgroundColor: '#040d22'
+        backgroundColor: colors.panel
       }}
     >
       <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 }}>
@@ -194,7 +194,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
           borderTopWidth: 1,
           borderBottomWidth: 1,
           borderColor: colors.border,
-          backgroundColor: '#101e44'
+          backgroundColor: colors.screen
         }}
       >
         <View
@@ -215,7 +215,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
         </View>
       </View>
 
-      <View style={{ paddingVertical: 4 }}>
+      <View style={{ paddingVertical: 4, backgroundColor: colors.screen }}>
         {canMarkDone && (
           <TouchableOpacity
             onPress={onMarkDone}
@@ -273,13 +273,13 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
               marginRight: 8
             }}
           >
-            <Eye size={15} color={colors.label} />
+            <Eye size={15} color={colors.info} />
           </View>
           <Text
             style={{
               fontSize: 13,
               fontWeight: '600',
-              color: colors.label,
+              color: colors.heading,
               flex: 1
             }}
           >
@@ -309,13 +309,13 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
                 marginRight: 8
               }}
             >
-              <Printer size={15} color={colors.label} />
+              <Printer size={15} color={colors.muted} />
             </View>
             <Text
               style={{
                 fontSize: 13,
                 fontWeight: '600',
-                color: colors.label,
+                color: colors.heading,
                 flex: 1
               }}
             >

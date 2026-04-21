@@ -295,9 +295,9 @@ const PurchaseOrdersScreen = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: colors.screen }}
     >
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
         {/* Tab bar + actions */}
         <View
           style={{

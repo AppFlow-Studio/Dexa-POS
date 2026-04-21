@@ -4,10 +4,17 @@ import {
   registerTablePosition,
   unregisterTablePosition
 } from '@/lib/tablePositionRegistry'
-import { findWallCornerSnap, getWallEdgeFlags, WallEdgeFlags } from '@/lib/wallCornerSnap'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
-import { useOrderByAnyId, useOrderTotals } from '@/stores/selectors/orderSelectors'
+import {
+  findWallCornerSnap,
+  getWallEdgeFlags,
+  WallEdgeFlags
+} from '@/lib/wallCornerSnap'
+import {
+  useOrderByAnyId,
+  useOrderTotals
+} from '@/stores/selectors/orderSelectors'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
@@ -84,58 +91,64 @@ const getReservationTimeMs = (
   return null
 }
 
-const ReservationBadge = React.memo(({
-  label,
-  urgent,
-}: {
-  label: string
-  urgent: boolean
-}) => {
-  const opacity = useSharedValue(1)
+const ReservationBadge = React.memo(
+  ({ label, urgent }: { label: string; urgent: boolean }) => {
+    const opacity = useSharedValue(1)
 
-  useEffect(() => {
-    const duration = urgent ? 800 : 1200
-    const minOpacity = urgent ? 0.3 : 0.5
-    opacity.value = withRepeat(
-      withSequence(withTiming(minOpacity, { duration }), withTiming(1, { duration })),
-      -1
+    useEffect(() => {
+      const duration = urgent ? 800 : 1200
+      const minOpacity = urgent ? 0.3 : 0.5
+      opacity.value = withRepeat(
+        withSequence(
+          withTiming(minOpacity, { duration }),
+          withTiming(1, { duration })
+        ),
+        -1
+      )
+      return () => {
+        cancelAnimation(opacity)
+      }
+    }, [urgent])
+
+    const animStyle = useAnimatedStyle(() => ({
+      opacity: opacity.value
+    }))
+
+    const badgeColor = urgent ? colors.danger : colors.warning
+
+    return (
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            bottom: 4,
+            right: 4,
+            paddingHorizontal: 5,
+            paddingVertical: 3,
+            borderRadius: 6,
+            backgroundColor: badgeColor + '40',
+            borderWidth: 1.5,
+            borderColor: badgeColor,
+            alignItems: 'center',
+            justifyContent: 'center'
+          },
+          animStyle
+        ]}
+      >
+        <Text
+          style={{
+            color: badgeColor,
+            fontSize: 8,
+            fontWeight: '800',
+            letterSpacing: 0.3
+          }}
+        >
+          {label}
+        </Text>
+      </Animated.View>
     )
-    return () => {
-      cancelAnimation(opacity)
-    }
-  }, [urgent])
-
-  const animStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }))
-
-  const badgeColor = urgent ? colors.danger : colors.warning
-
-  return (
-    <Animated.View
-      style={[
-        {
-          position: 'absolute',
-          bottom: 4,
-          right: 4,
-          paddingHorizontal: 5,
-          paddingVertical: 3,
-          borderRadius: 6,
-          backgroundColor: badgeColor + '40',
-          borderWidth: 1.5,
-          borderColor: badgeColor,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        animStyle,
-      ]}
-    >
-      <Text style={{ color: badgeColor, fontSize: 8, fontWeight: '800', letterSpacing: 0.3 }}>
-        {label}
-      </Text>
-    </Animated.View>
-  )
-})
+  }
+)
 
 /**
  * Isolated pulsing border overlay — runs entirely on UI thread via Reanimated.
@@ -253,17 +266,27 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     isWall
       ? s.tables
           .filter(t => t.shape_id === 'wall-section')
-          .map(t => `${t.id}:${t.x},${t.y},${t.width},${t.height},${t.rotation}`)
+          .map(
+            t => `${t.id}:${t.x},${t.y},${t.width},${t.height},${t.rotation}`
+          )
           .join('|')
       : ''
   )
 
   const wallEdgeFlags: WallEdgeFlags = useMemo(() => {
-    if (!isWall) return { hideTop: false, hideRight: false, hideBottom: false, hideLeft: false }
-    const allWalls = useFloorPlanStore.getState().tables.filter(t => t.shape_id === 'wall-section')
+    if (!isWall)
+      return {
+        hideTop: false,
+        hideRight: false,
+        hideBottom: false,
+        hideLeft: false
+      }
+    const allWalls = useFloorPlanStore
+      .getState()
+      .tables.filter(t => t.shape_id === 'wall-section')
     return getWallEdgeFlags(table, allWalls)
-  // wallGeometryKey is a stable string that changes only when wall geometry changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // wallGeometryKey is a stable string that changes only when wall geometry changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isWall, wallGeometryKey])
 
   // --- COMPUTE EFFECTIVE DIMENSIONS ---
@@ -454,7 +477,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
       if (isWall) {
         // Walls: try corner snap first, fall back to grid
-        const snap = findWallCornerSnap(rawX, rawY, effectiveWidth, effectiveHeight, rot, table.id)
+        const snap = findWallCornerSnap(
+          rawX,
+          rawY,
+          effectiveWidth,
+          effectiveHeight,
+          rot,
+          table.id
+        )
         finalX = snap ? snap.x : Math.round(rawX / GRID_SIZE) * GRID_SIZE
         finalY = snap ? snap.y : Math.round(rawY / GRID_SIZE) * GRID_SIZE
       } else {
@@ -482,8 +512,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     })
     .onUpdate(event => {
       // Free drag — follows finger exactly, no grid stutter
-      translateX.value = dragContext.value.x + event.translationX / canvasScale.value
-      translateY.value = dragContext.value.y + event.translationY / canvasScale.value
+      translateX.value =
+        dragContext.value.x + event.translationX / canvasScale.value
+      translateY.value =
+        dragContext.value.y + event.translationY / canvasScale.value
     })
     .onEnd(() => {
       // Snap to grid (or wall corner for walls) only on release
@@ -548,23 +580,49 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const orderTotals = useOrderTotals(effectiveOrder?.id ?? null)
   const orderTotal = orderTotals?.total ?? 0
 
-  const { reservationCountdownLabel, isReservedSoon, isOccupiedWithReservationSoon, isReservationUrgent } = useMemo(() => {
+  const {
+    reservationCountdownLabel,
+    isReservedSoon,
+    isOccupiedWithReservationSoon,
+    isReservationUrgent
+  } = useMemo(() => {
     const nextReservation = liveNextReservation
-      ? { date: liveNextReservation.reservation_date, time: liveNextReservation.reservation_time }
+      ? {
+          date: liveNextReservation.reservation_date,
+          time: liveNextReservation.reservation_time
+        }
       : null
 
-    if (!nextReservation) return { reservationCountdownLabel: null, isReservedSoon: false, isOccupiedWithReservationSoon: false, isReservationUrgent: false }
+    if (!nextReservation)
+      return {
+        reservationCountdownLabel: null,
+        isReservedSoon: false,
+        isOccupiedWithReservationSoon: false,
+        isReservationUrgent: false
+      }
 
     const reservationTimeMs = getReservationTimeMs(nextReservation)
     if (reservationTimeMs == null || !Number.isFinite(reservationTimeMs))
-      return { reservationCountdownLabel: null, isReservedSoon: false, isOccupiedWithReservationSoon: false, isReservationUrgent: false }
+      return {
+        reservationCountdownLabel: null,
+        isReservedSoon: false,
+        isOccupiedWithReservationSoon: false,
+        isReservationUrgent: false
+      }
 
     const diffMs = reservationTimeMs - Date.now()
     if (diffMs <= 0 || diffMs > 30 * 60 * 1000)
-      return { reservationCountdownLabel: null, isReservedSoon: false, isOccupiedWithReservationSoon: false, isReservationUrgent: false }
+      return {
+        reservationCountdownLabel: null,
+        isReservedSoon: false,
+        isOccupiedWithReservationSoon: false,
+        isReservationUrgent: false
+      }
 
     const minutesLeft = Math.max(1, Math.ceil(diffMs / 60000))
-    const label = liveSession ? `Res in ${minutesLeft}m` : `Reserved in ${minutesLeft}m`
+    const label = liveSession
+      ? `Res in ${minutesLeft}m`
+      : `Reserved in ${minutesLeft}m`
     const occupied = !!liveSession
     const urgent = minutesLeft < 10
 
@@ -572,7 +630,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       reservationCountdownLabel: label,
       isReservedSoon: !occupied,
       isOccupiedWithReservationSoon: occupied,
-      isReservationUrgent: urgent,
+      isReservationUrgent: urgent
     }
   }, [tick, liveSession, liveNextReservation])
 
@@ -652,7 +710,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       return mins ? `R ${mins}m` : 'R'
     }
     return reservationCountdownLabel
-  }, [reservationCountdownLabel, textFit.compactMeta, isOccupiedWithReservationSoon])
+  }, [
+    reservationCountdownLabel,
+    textFit.compactMeta,
+    isOccupiedWithReservationSoon
+  ])
 
   const isOccupiedStatus =
     tableStatus === 'seating' ||
@@ -685,26 +747,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     <GestureDetector gesture={composedGesture}>
       <Animated.View style={animatedStyle}>
         <View style={{ width: effectiveWidth, height: effectiveHeight }}>
-          {/* Subtle elevation shadow */}
-          {isTableType && (
-            <View
-              pointerEvents='none'
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: effectiveWidth,
-                height: effectiveHeight,
-                borderRadius: 16,
-                shadowColor: '#000000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.35,
-                shadowRadius: 6,
-                elevation: 4
-              }}
-            />
-          )}
-
           {TableComponent ? (
             <TableComponent
               color={isTableType ? tableColor : colors.label}
@@ -736,7 +778,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 bottom: -3,
                 borderWidth: 2,
                 borderColor: colors.info,
-                borderRadius: 18,
+                borderRadius: 18
               }}
             />
           )}
@@ -902,7 +944,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           {/* Reservation badge */}
           {(isReservedSoon || isOccupiedWithReservationSoon) && (
             <ReservationBadge
-              label={reservationCountdownLabel?.match(/(\d+)m/)?.[1] ? `R ${reservationCountdownLabel.match(/(\d+)m/)?.[1]}m` : 'R'}
+              label={
+                reservationCountdownLabel?.match(/(\d+)m/)?.[1]
+                  ? `R ${reservationCountdownLabel.match(/(\d+)m/)?.[1]}m`
+                  : 'R'
+              }
               urgent={isReservationUrgent}
             />
           )}

@@ -19,7 +19,7 @@ const TEAL_THUMB = colors.teal // solid teal
 const TEAL_BORDER = `${colors.teal}66` // teal + ~40% opacity (102/255)
 const OFF_TRACK = colors.card // colors.card
 const OFF_THUMB = colors.muted // colors.muted
-const OFF_BORDER = 'rgba(42,48,80,1)'
+const OFF_BORDER = colors.border // use theme border color
 
 function SwitchWeb ({
   className,

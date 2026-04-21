@@ -293,17 +293,13 @@ const MenuItem: React.FC<MenuItemProps> = ({
       onPress={handlePress}
       style={[
         styles.container,
-        showMenuImages && styles.containerWithImage,
+        !showMenuImages && styles.containerNoImage,
         isDisabled && styles.containerDisabled,
         !showMenuImages && styles.containerNoImage
       ]}
     >
       {/* Modifier triangle corner */}
       {hasModifiers && <View style={styles.modifierCorner} />}
-
-      
-        
-      
 
       {/* Image */}
       {showMenuImages && (

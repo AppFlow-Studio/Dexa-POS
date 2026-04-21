@@ -39,19 +39,23 @@ const createStyles = () =>
     controlsRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingBottom: 8
+      paddingBottom: 8,
+      minHeight: 52
     },
     categoriesArea: {
       flex: 1,
-      position: 'relative'
+      position: 'relative',
+      minHeight: 40,
+      justifyContent: 'center'
     },
     categoriesScroll: {
-      flex: 1
+      minHeight: 40
     },
     scrollContent: {
       paddingHorizontal: 28,
       gap: 6,
-      alignItems: 'center'
+      alignItems: 'center',
+      minHeight: 40
     },
     tab: {
       flexDirection: 'row',
@@ -173,13 +177,11 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   const { colorScheme } = useColorScheme()
   const styles = useMemo(() => createStyles(), [colorScheme])
   const menus = useMenuStore(s => s.menus)
-  const isMenuAvailableNow = useMenuStore(s => s.isMenuAvailableNow)
   const isCategoryAvailableNow = useMenuStore(s => s.isCategoryAvailableNow)
   const isCategoryActiveForMenu = useMenuStore(s => s.isCategoryActiveForMenu)
   const temporaryActiveCategories = useMenuStore(
     s => s.temporaryActiveCategories
   )
-  const temporaryActiveMenus = useMenuStore(s => s.temporaryActiveMenus)
   const addTemporaryCategoryAccess = useMenuStore(
     s => s.addTemporaryCategoryAccess
   )
@@ -201,19 +203,32 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   }, [])
 
   const currentMenu = useMemo(
-    () =>
-      menus.find(
-        m =>
-          m.isActive &&
-          (isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)) &&
-          m.name === activeMeal
-      ),
-    [menus, activeMeal, isMenuAvailableNow, temporaryActiveMenus]
+    () => menus.find(m => m.name === activeMeal),
+    [menus, activeMeal]
   )
   const categories = currentMenu?.categories
 
+  useEffect(() => {
+    if (!__DEV__) return
+    console.log('[MenuControls] resolve categories', {
+      activeMeal,
+      foundMenu: !!currentMenu,
+      currentMenuId: currentMenu?.id,
+      categoryCount: categories?.length ?? 0,
+      categories: (categories || []).map(c => c.name)
+    })
+  }, [activeMeal, currentMenu?.id, categories?.length])
+
   const handleCategoryPress = useCallback(
     (tab: string, isAvailable: boolean) => {
+      if (__DEV__) {
+        console.log('[MenuControls] handleCategoryPress', {
+          tab,
+          isAvailable,
+          activeMeal,
+          currentMenuId: currentMenu?.id
+        })
+      }
       if (isAvailable) {
         onCategoryChange(tab)
         return
@@ -233,7 +248,9 @@ const MenuControls: React.FC<MenuControlsProps> = ({
       onCategoryChange,
       requestPinOverride,
       isUnlocked,
-      addTemporaryCategoryAccess
+      addTemporaryCategoryAccess,
+      activeMeal,
+      currentMenu?.id
     ]
   )
 

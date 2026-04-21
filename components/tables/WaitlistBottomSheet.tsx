@@ -65,151 +65,159 @@ const WaitlistCard: React.FC<{
   onSeat: () => void
   onNotify: () => void
   onDelete: () => void
-}> = React.memo(({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
-  const tick = useTableTimerTick()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const elapsed = useMemo(() => getElapsedMinutes(entry.created_at), [entry.created_at, tick])
-  const isOverdue = elapsed > entry.quoted_wait_minutes
+}> = React.memo(
+  ({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
+    const tick = useTableTimerTick()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const elapsed = useMemo(
+      () => getElapsedMinutes(entry.created_at),
+      [entry.created_at, tick]
+    )
+    const isOverdue = elapsed > entry.quoted_wait_minutes
 
-  const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
+    const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
 
-  // Sync shared value when isExpanded changes
-  useEffect(() => {
-    expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
-  }, [isExpanded])
+    // Sync shared value when isExpanded changes
+    useEffect(() => {
+      expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
+    }, [isExpanded])
 
-  const expandedStyle = useAnimatedStyle(() => ({
-    opacity: expandedHeight.value,
-    maxHeight: expandedHeight.value * 300,
-    overflow: 'hidden'
-  }))
+    const expandedStyle = useAnimatedStyle(() => ({
+      opacity: expandedHeight.value,
+      maxHeight: expandedHeight.value * 300,
+      overflow: 'hidden'
+    }))
 
-  return (
-    <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
-      {/* Collapsed Row */}
-      <Pressable onPress={onToggle} className='flex-row items-center px-4 py-3'>
-        {/* Time Badge */}
-        <View
-          className={`w-12 h-12 rounded-full items-center justify-center ${
-            isOverdue ? 'bg-red-900/60' : 'bg-teal/20'
-          }`}
+    return (
+      <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
+        {/* Collapsed Row */}
+        <Pressable
+          onPress={onToggle}
+          className='flex-row items-center px-4 py-3'
         >
-          <Text
-            className={`text-sm font-bold ${
-              isOverdue ? 'text-red-400' : 'text-teal'
+          {/* Time Badge */}
+          <View
+            className={`w-12 h-12 rounded-full items-center justify-center ${
+              isOverdue ? 'bg-red-900/60' : 'bg-teal/20'
             }`}
           >
-            {formatElapsed(elapsed)}
-          </Text>
-        </View>
-
-        {/* Name + Guests */}
-        <View className='flex-1 ml-3 min-w-0'>
-          <Text
-            className='text-white font-semibold text-base'
-            numberOfLines={1}
-          >
-            {entry.party_name}
-          </Text>
-          <View className='flex-row items-center mt-0.5'>
-            <Users size={12} color={colors.muted} />
-            <Text className='text-muted text-sm ml-1'>
-              {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
+            <Text
+              className={`text-sm font-bold ${
+                isOverdue ? 'text-red-400' : 'text-teal'
+              }`}
+            >
+              {formatElapsed(elapsed)}
             </Text>
           </View>
-          {(entry.notification_failures ?? 0) > 0 && (
-            <View className='self-start mt-1 px-2 py-0.5 rounded bg-red-600 border border-red-500'>
-              <Text className='text-white text-xs font-bold'>
-                SMS FAIL {entry.notification_failures}
+
+          {/* Name + Guests */}
+          <View className='flex-1 ml-3 min-w-0'>
+            <Text
+              style={{ color: colors.label, fontWeight: '600', fontSize: 14 }}
+              numberOfLines={1}
+            >
+              {entry.party_name}
+            </Text>
+            <View className='flex-row items-center mt-0.5'>
+              <Users size={12} color={colors.label} />
+              <Text style={{ color: colors.label }} className='text-sm ml-1'>
+                {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
               </Text>
             </View>
-          )}
-        </View>
-
-        {/* Chevron */}
-        {isExpanded ? (
-          <ChevronUp size={20} color={colors.label} />
-        ) : (
-          <ChevronDown size={20} color={colors.label} />
-        )}
-      </Pressable>
-
-      {/* Expanded Section — always mounted, animated in/out on UI thread */}
-      <Animated.View style={expandedStyle}>
-        <View className='px-4 pb-4 border-t border-border'>
-          <View className='mt-3 gap-2'>
-            {/* Phone */}
-            {entry.phone ? (
-              <View className='flex-row items-center'>
-                <Phone size={14} color={colors.label} />
-                <Text className='text-label text-sm ml-2'>{entry.phone}</Text>
-              </View>
-            ) : null}
-
-            {/* Notes */}
-            {entry.notes ? (
-              <View className='flex-row items-start'>
-                <StickyNote
-                  size={14}
-                  color={colors.label}
-                  style={{ marginTop: 2 }}
-                />
-                <Text className='text-label text-sm ml-2 italic flex-1'>
-                  {entry.notes}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Quoted time */}
-            <View className='flex-row items-center'>
-              <Clock size={14} color={colors.label} />
-              <Text className='text-label text-sm ml-2'>
-                Quoted: {entry.quoted_wait_minutes} min
-              </Text>
-            </View>
-
-            {/* SMS failure visibility */}
             {(entry.notification_failures ?? 0) > 0 && (
-              <View className='flex-row items-center gap-2 px-2.5 py-2 rounded-lg bg-red-600 border border-red-500'>
-                <AlertCircle size={14} color='white' />
-                <Text className='text-white text-sm flex-1 font-semibold'>
-                  SMS failed {entry.notification_failures}x — call guest
-                  verbally
+              <View className='self-start mt-1 px-2 py-0.5 rounded bg-red-600 border border-red-500'>
+                <Text className='text-white text-xs font-bold'>
+                  SMS FAIL {entry.notification_failures}
                 </Text>
               </View>
             )}
           </View>
 
-          {/* Action Buttons */}
-          <View className='flex-row items-center gap-3 mt-4'>
-            <TouchableOpacity
-              onPress={onSeat}
-              className='flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg bg-teal'
-            >
-              <Check size={16} color='white' />
-              <Text className='text-white font-semibold'>Seat</Text>
-            </TouchableOpacity>
+          {/* Chevron */}
+          {isExpanded ? (
+            <ChevronUp size={20} color={colors.label} />
+          ) : (
+            <ChevronDown size={20} color={colors.label} />
+          )}
+        </Pressable>
 
-            <TouchableOpacity
-              onPress={onNotify}
-              className='flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg border border-border'
-            >
-              <Bell size={16} color={colors.label} />
-              <Text className='text-label font-semibold'>Notify</Text>
-            </TouchableOpacity>
+        {/* Expanded Section — always mounted, animated in/out on UI thread */}
+        <Animated.View style={expandedStyle}>
+          <View className='px-4 pb-4 border-t border-border'>
+            <View className='mt-3 gap-2'>
+              {/* Phone */}
+              {entry.phone ? (
+                <View className='flex-row items-center'>
+                  <Phone size={14} color={colors.label} />
+                  <Text className='text-label text-sm ml-2'>{entry.phone}</Text>
+                </View>
+              ) : null}
 
-            <TouchableOpacity
-              onPress={onDelete}
-              className='w-11 h-11 items-center justify-center rounded-lg bg-red-900/30'
-            >
-              <X size={18} color={colors.danger} />
-            </TouchableOpacity>
+              {/* Notes */}
+              {entry.notes ? (
+                <View className='flex-row items-start'>
+                  <StickyNote
+                    size={14}
+                    color={colors.label}
+                    style={{ marginTop: 2 }}
+                  />
+                  <Text className='text-label text-sm ml-2 italic flex-1'>
+                    {entry.notes}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Quoted time */}
+              <View className='flex-row items-center'>
+                <Clock size={14} color={colors.label} />
+                <Text className='text-label text-sm ml-2'>
+                  Quoted: {entry.quoted_wait_minutes} min
+                </Text>
+              </View>
+
+              {/* SMS failure visibility */}
+              {(entry.notification_failures ?? 0) > 0 && (
+                <View className='flex-row items-center gap-2 px-2.5 py-2 rounded-lg bg-red-600 border border-red-500'>
+                  <AlertCircle size={14} color='white' />
+                  <Text className='text-white text-sm flex-1 font-semibold'>
+                    SMS failed {entry.notification_failures}x — call guest
+                    verbally
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Action Buttons */}
+            <View className='flex-row items-center gap-3 mt-4'>
+              <TouchableOpacity
+                onPress={onSeat}
+                className='flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg bg-teal'
+              >
+                <Check size={16} color='white' />
+                <Text className='text-white font-semibold'>Seat</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={onNotify}
+                className='flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg border border-border'
+              >
+                <Bell size={16} color={colors.label} />
+                <Text className='text-label font-semibold'>Notify</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={onDelete}
+                className='w-11 h-11 items-center justify-center rounded-lg bg-red-900/30'
+              >
+                <X size={18} color={colors.danger} />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Animated.View>
-    </View>
-  )
-})
+        </Animated.View>
+      </View>
+    )
+  }
+)
 
 // ── AddEntryForm ─────────────────────────────────────────────
 
@@ -502,7 +510,9 @@ const WaitlistBottomSheet: React.FC = () => {
   const isLoading = useWaitlistStore(s => s.isLoading)
   const fetchWaitlist = useWaitlistStore(s => s.fetchWaitlist)
   const addToWaitlistAsync = useWaitlistStore(s => s.addToWaitlistAsync)
-  const removeFromWaitlistAsync = useWaitlistStore(s => s.removeFromWaitlistAsync)
+  const removeFromWaitlistAsync = useWaitlistStore(
+    s => s.removeFromWaitlistAsync
+  )
   const seatFromWaitlistAsync = useWaitlistStore(s => s.seatFromWaitlistAsync)
   const startNewOrder = useOrderStore(s => s.startNewOrder)
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)

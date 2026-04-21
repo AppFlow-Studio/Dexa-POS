@@ -207,8 +207,19 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
   if (!user) {
     return (
-      <View className='w-full p-6 bg-panel rounded-2xl border border-border items-center justify-center'>
-        <Text className='text-label'>No active employee.</Text>
+      <View
+        style={{
+          width: '100%',
+          padding: 24,
+          backgroundColor: colors.panel,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text style={{ color: colors.label }}>No active employee.</Text>
       </View>
     )
   }
@@ -222,17 +233,47 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
   return (
     <>
-      <View className='w-full bg-panel rounded-2xl border border-border overflow-hidden'>
+      <View
+        style={{
+          width: '100%',
+          backgroundColor: colors.panel,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: 'hidden'
+        }}
+      >
         {/* Hero section */}
         <View
-          style={{ backgroundColor: '#0C0F1A' }}
-          className='items-center px-8 pt-10 pb-8'
+          style={{
+            backgroundColor: colors.card,
+            alignItems: 'center',
+            paddingHorizontal: 32,
+            paddingTop: 40,
+            paddingBottom: 32
+          }}
         >
           {/* Clock */}
-          <Text className='text-label text-xs font-medium mb-2 tracking-widest uppercase'>
+          <Text
+            style={{
+              color: colors.label,
+              fontSize: 11,
+              fontWeight: '500',
+              marginBottom: 8,
+              textTransform: 'uppercase',
+              letterSpacing: 0.8
+            }}
+          >
             Current Time
           </Text>
-          <Text className='text-5xl font-bold text-heading mb-8'>
+          <Text
+            style={{
+              fontSize: 48,
+              fontWeight: 'bold',
+              color: colors.heading,
+              marginBottom: 32
+            }}
+          >
             {currentTime.toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit'
@@ -270,28 +311,43 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
             </View>
           )}
 
-          <Text className='text-heading text-xl font-bold text-center mb-3'>
+          <Text
+            style={{
+              color: colors.heading,
+              fontSize: 20,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              marginBottom: 12
+            }}
+          >
             {user.fullName}
           </Text>
 
           {/* Status badge */}
           <View
-            className={`px-4 py-1.5 rounded-full ${
-              session
-                ? isBreak
-                  ? 'bg-amber-500/20'
-                  : 'bg-teal-500/20'
-                : 'bg-white/5'
-            }`}
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 6,
+              borderRadius: 20,
+              backgroundColor:
+                session && isBreak
+                  ? colors.warning + '20'
+                  : session
+                  ? colors.teal + '20'
+                  : colors.muted + '10'
+            }}
           >
             <Text
-              className={`text-xs font-semibold ${
-                session
-                  ? isBreak
-                    ? 'text-amber-400'
-                    : 'text-teal-400'
-                  : 'text-label'
-              }`}
+              style={{
+                fontSize: 11,
+                fontWeight: '600',
+                color:
+                  session && isBreak
+                    ? colors.warning
+                    : session
+                    ? colors.teal
+                    : colors.label
+              }}
             >
               {session
                 ? isBreak
@@ -303,26 +359,38 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
         </View>
 
         {/* Divider */}
-        <View className='h-px bg-border' />
+        <View style={{ height: 1, backgroundColor: colors.border }} />
 
         {/* Shift stats */}
         {session && (
           <View className='px-6 py-5 gap-y-4'>
             <View className='flex-row items-center justify-between'>
-              <View className='flex-row items-center gap-2.5'>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              >
                 <Timer color={colors.muted} size={15} />
-                <Text className='text-label text-sm'>Duration</Text>
+                <Text style={{ color: colors.label, fontSize: 14 }}>
+                  Duration
+                </Text>
               </View>
-              <Text className='text-teal-400 text-sm font-semibold'>
+              <Text
+                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+              >
                 {shiftDuration}
               </Text>
             </View>
             <View className='flex-row items-center justify-between'>
-              <View className='flex-row items-center gap-2.5'>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              >
                 <Clock color={colors.muted} size={15} />
-                <Text className='text-label text-sm'>Clocked in at</Text>
+                <Text style={{ color: colors.label, fontSize: 14 }}>
+                  Clocked in at
+                </Text>
               </View>
-              <Text className='text-teal-400 text-sm font-semibold'>
+              <Text
+                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+              >
                 {new Date(session.clockInTime).toLocaleTimeString([], {
                   hour: '2-digit',
                   minute: '2-digit'
@@ -333,7 +401,15 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
         )}
 
         {/* Divider */}
-        {session && <View className='h-px bg-border mx-6' />}
+        {session && (
+          <View
+            style={{
+              height: 1,
+              backgroundColor: colors.border,
+              marginHorizontal: 24
+            }}
+          />
+        )}
 
         {/* Actions */}
         <View className='px-6 py-5 gap-y-3'>
@@ -392,8 +468,15 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
               </TouchableOpacity>
             </>
           ) : (
-            <View className='py-3 rounded-xl items-center bg-white/5'>
-              <Text className='text-label text-sm'>
+            <View
+              style={{
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: 'center',
+                backgroundColor: colors.muted + '10'
+              }}
+            >
+              <Text style={{ color: colors.label, fontSize: 14 }}>
                 Clock in from Employee List
               </Text>
             </View>

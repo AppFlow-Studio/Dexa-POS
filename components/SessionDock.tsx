@@ -185,32 +185,43 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     setShowCashDeclaration(true)
   }
 
-  const handleDeclarationComplete = useCallback(async (declaredAmount: number) => {
-    setShowCashDeclaration(false)
-    const locationId = selectedStore?.id
-    if (!locationId) return
+  const handleDeclarationComplete = useCallback(
+    async (declaredAmount: number) => {
+      setShowCashDeclaration(false)
+      const locationId = selectedStore?.id
+      if (!locationId) return
 
-    // Declare cash tips (non-blocking)
-    const shiftId = timeClock.shiftId
-    if (shiftId) {
-      try {
-        await timeClock.declareCashTips(shiftId, declaredAmount, locationId, deviceId)
-      } catch (e) {
-        console.warn('[SessionDock] Cash tip declaration failed, proceeding:', e)
+      // Declare cash tips (non-blocking)
+      const shiftId = timeClock.shiftId
+      if (shiftId) {
+        try {
+          await timeClock.declareCashTips(
+            shiftId,
+            declaredAmount,
+            locationId,
+            deviceId
+          )
+        } catch (e) {
+          console.warn(
+            '[SessionDock] Cash tip declaration failed, proceeding:',
+            e
+          )
+        }
       }
-    }
 
-    // Clock out via RPC (same flow as UserProfileCard)
-    try {
-      // Need PIN for RPC — but SessionDock doesn't have it.
-      // Fall back to local-only clock-out (matches original handleLogout behavior)
-      useTimeclockStore.getState().clockOut(employee.id)
-    } catch (e) {
-      console.warn('[SessionDock] clockOut failed:', e)
-    }
+      // Clock out via RPC (same flow as UserProfileCard)
+      try {
+        // Need PIN for RPC — but SessionDock doesn't have it.
+        // Fall back to local-only clock-out (matches original handleLogout behavior)
+        useTimeclockStore.getState().clockOut(employee.id)
+      } catch (e) {
+        console.warn('[SessionDock] clockOut failed:', e)
+      }
 
-    replaceRoute('(auth)', 'pin-login')
-  }, [selectedStore?.id, timeClock, deviceId, employee.id])
+      replaceRoute('(auth)', 'pin-login')
+    },
+    [selectedStore?.id, timeClock, deviceId, employee.id]
+  )
 
   const handleDeclarationCancel = useCallback(() => {
     setShowCashDeclaration(false)
@@ -273,7 +284,14 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             </View>
           </View>
 
-          <DropdownMenuContent className='w-[300px] bg-panel border border-border rounded-2xl shadow-2xl mt-3 overflow-hidden p-0'>
+          <DropdownMenuContent
+            className='w-[300px] rounded-2xl shadow-2xl mt-3 overflow-hidden p-0'
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
+          >
             {/* Hero header */}
             <View
               style={{ backgroundColor: colors.card }}
@@ -302,8 +320,11 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 </View>
                 <View className='flex-1'>
                   <Text
-                    className='text-base font-bold'
-                    style={{ color: colors.heading }}
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 'bold',
+                      color: colors.heading
+                    }}
                     numberOfLines={1}
                   >
                     {employee.fullName}
@@ -330,7 +351,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             </View>
 
             {/* Divider */}
-            <View className='h-px bg-border' />
+            <View style={{ height: 1, backgroundColor: colors.border }} />
 
             {/* Menu items */}
             <View className='py-1.5'>
@@ -344,7 +365,14 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 >
                   <User size={16} color={colors.label} />
                 </View>
-                <Text className='text-heading text-sm font-medium flex-1'>
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: 14,
+                    fontWeight: '500',
+                    flex: 1
+                  }}
+                >
                   My Profile
                 </Text>
               </DropdownMenuItem>
@@ -375,7 +403,14 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     </View>
                   )}
                 </View>
-                <Text className='text-heading text-sm font-medium flex-1'>
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: 14,
+                    fontWeight: '500',
+                    flex: 1
+                  }}
+                >
                   Notifications
                 </Text>
                 {unreadCount > 0 && (
@@ -403,12 +438,26 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 >
                   <ArrowLeftRight size={16} color={colors.label} />
                 </View>
-                <Text className='text-heading text-sm font-medium flex-1'>
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: 14,
+                    fontWeight: '500',
+                    flex: 1
+                  }}
+                >
                   Switch Account
                 </Text>
               </DropdownMenuItem>
 
-              <View className='h-px bg-border mx-4 my-1' />
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: colors.border,
+                  marginHorizontal: 16,
+                  marginVertical: 4
+                }}
+              />
 
               <DropdownMenuItem
                 onPress={handleStartBreak}
@@ -442,7 +491,14 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 </Text>
               </DropdownMenuItem>
 
-              <View className='h-px bg-border mx-4 my-1' />
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: colors.border,
+                  marginHorizontal: 16,
+                  marginVertical: 4
+                }}
+              />
 
               <DropdownMenuItem
                 onPress={handleLogout}
@@ -489,7 +545,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           staffProfileId={employee?.profileId || ''}
           locationId={selectedStore?.id || ''}
           employeeName={employee?.fullName || ''}
-          clockInTime={session?.clockInTime ? new Date(session.clockInTime) : new Date()}
+          clockInTime={
+            session?.clockInTime ? new Date(session.clockInTime) : new Date()
+          }
           onComplete={handleDeclarationComplete}
           onCancel={handleDeclarationCancel}
         />

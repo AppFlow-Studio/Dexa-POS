@@ -85,8 +85,19 @@ const MyProfileScreen = () => {
   }
 
   return (
-    <SafeAreaView edges={['top']} className='flex-1 bg-screen'>
-      <View className='flex-1 px-5 pt-3 pb-4 bg-screen'>
+    <SafeAreaView
+      edges={['top']}
+      style={{ flex: 1, backgroundColor: colors.screen }}
+    >
+      <View
+        style={{
+          flex: 1,
+          paddingHorizontal: 20,
+          paddingTop: 12,
+          paddingBottom: 16,
+          backgroundColor: colors.screen
+        }}
+      >
         {/* Top bar */}
         <View className='flex-row items-center justify-between mb-4'>
           <View className='flex-row items-center gap-3'>
@@ -97,20 +108,56 @@ const MyProfileScreen = () => {
             >
               <ArrowLeft color={colors.teal} size={18} />
             </TouchableOpacity>
-            <Text className='text-lg font-bold text-heading'>My Profile</Text>
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: 'bold',
+                color: colors.heading
+              }}
+            >
+              My Profile
+            </Text>
           </View>
 
           <View className='flex-row items-center gap-2'>
             <Link href='/pto' asChild>
-              <TouchableOpacity className='flex-row items-center gap-2 px-3 py-1.5 bg-panel border border-border rounded-xl'>
+              <TouchableOpacity
+                className='flex-row items-center gap-2 px-3 py-1.5 rounded-xl'
+                style={{
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
+              >
                 <Calendar size={14} color={colors.teal} />
-                <Text className='text-sm font-semibold text-heading'>PTO</Text>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
+                  PTO
+                </Text>
               </TouchableOpacity>
             </Link>
             <Link href='/requests' asChild>
-              <TouchableOpacity className='flex-row items-center gap-2 px-3 py-1.5 bg-panel border border-border rounded-xl'>
+              <TouchableOpacity
+                className='flex-row items-center gap-2 px-3 py-1.5 rounded-xl'
+                style={{
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
+              >
                 <Menu size={14} color={colors.teal} />
-                <Text className='text-sm font-semibold text-heading'>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
                   Requests
                 </Text>
               </TouchableOpacity>
@@ -135,11 +182,26 @@ const MyProfileScreen = () => {
 
           {/* Right: Tab panel */}
           <View
-            style={{ flex: 1, minWidth: 0 }}
-            className='bg-panel rounded-2xl border border-border overflow-hidden'
+            style={{
+              flex: 1,
+              minWidth: 0,
+              backgroundColor: colors.panel,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+              overflow: 'hidden'
+            }}
           >
             {/* Tab Bar */}
-            <View className='flex-row border-b border-border px-2 pt-2'>
+            <View
+              style={{
+                flexDirection: 'row',
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                paddingHorizontal: 8,
+                paddingTop: 8
+              }}
+            >
               {TABS.map(t => {
                 const isActive = activeTab === t
                 return (

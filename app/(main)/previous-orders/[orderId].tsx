@@ -19,7 +19,7 @@ import { useToast } from '@/contexts/ToastContext'
 import {
   useCloseCheck,
   useReopenCheck,
-  useVoidOrder,
+  useVoidOrder
 } from '@/hooks/orders/useOrderActions'
 import { useRealtimeFallbackPolling } from '@/hooks/pos/useRealtimeFallbackPolling'
 import { iosOnly } from '@/lib/safeAnimations'
@@ -88,8 +88,7 @@ const OrderDetailsScreen = () => {
     if (!orderIdParam) return
     const found = usePreviousOrdersStore.getState().getOrderById(orderIdParam)
     if (found) return
-    const currentOrder =
-      useOrderStore.getState().ordersById[orderIdParam]
+    const currentOrder = useOrderStore.getState().ordersById[orderIdParam]
     if (currentOrder) {
       usePreviousOrdersStore.getState().addOrderToHistory(currentOrder)
     }
@@ -370,7 +369,7 @@ const OrderDetailsScreen = () => {
               borderBottomColor: colors.border,
               paddingHorizontal: 10,
               paddingTop: 4,
-              backgroundColor: colors.panel
+              backgroundColor: colors.screen
             }}
           >
             {TABS.map(tab => {
@@ -415,10 +414,11 @@ const OrderDetailsScreen = () => {
 
           {/* Tab Content */}
           <ScrollView
-            style={{ flex: 1 }}
+            style={{ flex: 1, backgroundColor: colors.screen }}
             contentContainerStyle={{
               paddingHorizontal: 10,
-              paddingVertical: 8
+              paddingVertical: 8,
+              backgroundColor: colors.screen
             }}
             refreshControl={
               <RefreshControl
@@ -442,8 +442,12 @@ const OrderDetailsScreen = () => {
 
         {/* Right Pane */}
         <ScrollView
-          style={{ flex: 2, backgroundColor: colors.panel }}
-          contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }}
+          style={{ flex: 2, backgroundColor: colors.screen }}
+          contentContainerStyle={{
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            backgroundColor: colors.screen
+          }}
           showsVerticalScrollIndicator={false}
         >
           <Animated.View entering={iosOnly(FadeIn.duration(300).delay(100))}>
@@ -468,7 +472,7 @@ const OrderDetailsScreen = () => {
               onVoidOrder={() => {
                 if (!profileOrder.db_order_id) return
                 voidOrderMutation.mutate({
-                  dbOrderId: profileOrder.db_order_id,
+                  dbOrderId: profileOrder.db_order_id
                 })
               }}
               onNotes={() => setShowNotesModal(true)}
