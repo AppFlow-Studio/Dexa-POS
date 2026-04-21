@@ -169,14 +169,75 @@ export {
   ErrorBoundary
 } from 'expo-router'
 
+const CLERK_WAS_SIGNED_IN_KEY = 'clerk_was_signed_in'
+const SESSION_RECOVERY_TIMEOUT_MS = 10_000
+
 /**
- * Gate that replaces the bare <ClerkLoaded>. While Clerk is loading (either
- * at cold start or if the SDK transiently re-enters a loading state during a
- * session refresh), show a visible spinner instead of rendering null — which
- * would blank the entire tree and produce the ~30-minute white-screen bug.
+ * Gate that replaces the bare <ClerkLoaded>. Prevents the overnight-signout
+ * problem by blocking the component tree from rendering during Clerk's token
+ * refresh window.
+ *
+ * When the device wakes from a long sleep, Clerk's JWT is expired. The SDK
+ * needs to refresh via the cached refresh token, but this is async. Without
+ * this gate, downstream auth checks in index.tsx / (main)/_layout.tsx see
+ * isSignedIn=false and immediately redirect to /login before the refresh
+ * completes.
+ *
+ * The gate uses a wasSignedIn flag in MMKV to distinguish "token is refreshing
+ * after sleep" from "user was never signed in / explicitly logged out".
  */
 function ClerkGate ({ children }: { children: React.ReactNode }) {
-  const { isLoaded } = useAuth()
+  const { isLoaded, isSignedIn, getToken } = useAuth()
+  const [graceExpired, setGraceExpired] = React.useState(false)
+  const graceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Read the persisted flag once on mount
+  const wasSignedIn = React.useRef(
+    secureStorage.getString(CLERK_WAS_SIGNED_IN_KEY) === 'true'
+  ).current
+
+  // Persist the flag when signed in
+  React.useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      secureStorage.set(CLERK_WAS_SIGNED_IN_KEY, 'true')
+    }
+  }, [isLoaded, isSignedIn])
+
+  // Grace period: when Clerk reports signed-out but we were previously signed in,
+  // give Clerk up to 10 seconds to complete its token refresh before routing to login.
+  const needsGrace = isLoaded && !isSignedIn && wasSignedIn && !graceExpired
+
+  React.useEffect(() => {
+    if (!needsGrace) {
+      // Clear any pending timer if we no longer need grace
+      if (graceTimerRef.current) {
+        clearTimeout(graceTimerRef.current)
+        graceTimerRef.current = null
+      }
+      return
+    }
+
+    console.log('[ClerkGate] Session refresh grace period started (10s)')
+
+    // Actively trigger Clerk's internal token refresh
+    getToken().catch(() => {})
+
+    graceTimerRef.current = setTimeout(() => {
+      console.warn('[ClerkGate] Grace period expired — session could not be recovered')
+      secureStorage.remove(CLERK_WAS_SIGNED_IN_KEY)
+      setGraceExpired(true)
+      graceTimerRef.current = null
+    }, SESSION_RECOVERY_TIMEOUT_MS)
+
+    return () => {
+      if (graceTimerRef.current) {
+        clearTimeout(graceTimerRef.current)
+        graceTimerRef.current = null
+      }
+    }
+  }, [needsGrace, getToken])
+
+  // Clerk still loading — show spinner
   if (!isLoaded) {
     return (
       <View className='flex-1 items-center justify-center bg-background'>
@@ -184,6 +245,16 @@ function ClerkGate ({ children }: { children: React.ReactNode }) {
       </View>
     )
   }
+
+  // Signed out but was previously signed in — wait for token refresh
+  if (needsGrace) {
+    return (
+      <View className='flex-1 items-center justify-center bg-background'>
+        <ActivityIndicator size='large' />
+      </View>
+    )
+  }
+
   return <>{children}</>
 }
 

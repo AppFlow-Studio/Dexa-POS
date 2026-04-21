@@ -482,9 +482,12 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   }
 
   if ((validated.tip ?? 0) > 0) {
+    const tipPct = validated.subtotal > 0
+      ? ` (${((validated.tip / validated.subtotal) * 100).toFixed(1)}%)`
+      : "";
     nodes.push({
       type: "two_column",
-      left: "Tip",
+      left: `Tip${tipPct}`,
       right: safeCurrency(validated.tip),
       lineWidth: w,
       labelAlign: "mid",
@@ -539,8 +542,8 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  // ── G. Tip Write-In Line ─────────────────────────────────────────────
-  if (cfg?.showTipLine !== false) {
+  // ── G. Tip Write-In Line (skip if tip already collected) ─────────────
+  if (cfg?.showTipLine !== false && (validated.tip ?? 0) <= 0) {
     // nodes.push({ type: "divider", style: "solid", lineWidth: w });
     nodes.push({ type: "empty_line" });
     nodes.push({ type: "empty_line" });
@@ -575,12 +578,27 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         format: BOLD,
       });
       if (payment.tipAmount && payment.tipAmount > 0) {
-        nodes.push({
-          type: "two_column",
-          left: "  Tip",
-          right: safeCurrency(payment.tipAmount),
-          lineWidth: w,
-        });
+        if (payment.originalTipAmount != null && payment.originalTipAmount !== payment.tipAmount) {
+          nodes.push({
+            type: "two_column",
+            left: "  Orig. Tip",
+            right: safeCurrency(payment.originalTipAmount),
+            lineWidth: w,
+          });
+          nodes.push({
+            type: "two_column",
+            left: "  Adj. Tip",
+            right: safeCurrency(payment.tipAmount),
+            lineWidth: w,
+          });
+        } else {
+          nodes.push({
+            type: "two_column",
+            left: "  Tip",
+            right: safeCurrency(payment.tipAmount),
+            lineWidth: w,
+          });
+        }
       }
       if (payment.last4) {
         const card = payment.cardBrand

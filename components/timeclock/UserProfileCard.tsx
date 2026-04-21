@@ -6,8 +6,9 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import * as Application from 'expo-application'
 import { Clock, Timer } from 'lucide-react-native'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Image, Platform, Text, TouchableOpacity, View } from 'react-native'
+import CashTipDeclarationModal from './CashTipDeclarationModal'
 import PinInputModal from './PinInputModal'
 
 // Helper function to format duration from milliseconds
@@ -57,10 +58,12 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
     'break_start' | 'break_end' | 'clock_out' | null
   >(null)
   const [deviceId, setDeviceId] = useState<string>('unknown')
+  const [showCashDeclaration, setShowCashDeclaration] = useState(false)
+  const pendingClockOutPinRef = useRef<string | null>(null)
 
   // Get device ID on mount
   useEffect(() => {
-    setDeviceId(getDeviceId())
+    getDeviceId().then(setDeviceId)
   }, [])
 
   const user = useMemo(() => {
@@ -122,11 +125,13 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
       if (employeeId) oldEndBreak(employeeId)
       replaceRoute('(main)', 'home')
     } else if (pinAction === 'clock_out') {
-      console.log('[UserProfileCard] Calling timeClock.clockOut...')
-      // Call backend
-      await timeClock.clockOut(pin, locationId, deviceId)
-      // Also update old store for local UI sync
-      if (employeeId) oldClockOut(employeeId)
+      console.log(
+        '[UserProfileCard] PIN confirmed for clock-out, showing cash tip declaration...'
+      )
+      pendingClockOutPinRef.current = pin
+      setShowCashDeclaration(true)
+      setPinAction(null)
+      return // Don't clear pinAction below — we handle it here
     }
 
     setPinAction(null)
@@ -146,6 +151,57 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
     setPinAction('clock_out')
     setPinModalOpen(true)
   }
+
+  const handleDeclarationComplete = useCallback(
+    async (declaredAmount: number) => {
+      setShowCashDeclaration(false)
+      const locationId = selectedStore?.id
+      const pin = pendingClockOutPinRef.current
+      pendingClockOutPinRef.current = null
+
+      if (!locationId || !pin) {
+        console.error(
+          '[UserProfileCard] Missing locationId or pin for clock-out'
+        )
+        return
+      }
+
+      // Declare cash tips (non-blocking — queued if offline/fails)
+      const shiftId = timeClock.shiftId
+      if (shiftId) {
+        try {
+          await timeClock.declareCashTips(
+            shiftId,
+            declaredAmount,
+            locationId,
+            deviceId
+          )
+        } catch (e) {
+          console.warn(
+            '[UserProfileCard] Cash tip declaration failed, proceeding to clock-out:',
+            e
+          )
+        }
+      }
+
+      // Clock out — wrap in try/catch so local state always updates
+      try {
+        await timeClock.clockOut(pin, locationId, deviceId)
+      } catch (e) {
+        console.warn('[UserProfileCard] clockOut RPC failed:', e)
+      }
+
+      // Always update local store regardless of RPC result
+      if (employeeId) oldClockOut(employeeId)
+      replaceRoute('(auth)', 'pin-login')
+    },
+    [selectedStore?.id, timeClock, deviceId, employeeId, oldClockOut]
+  )
+
+  const handleDeclarationCancel = useCallback(() => {
+    setShowCashDeclaration(false)
+    pendingClockOutPinRef.current = null
+  }, [])
 
   const isBreak = session?.status === 'onBreak'
 
@@ -360,6 +416,19 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
           setPinModalOpen(false)
           setPinAction(null)
         }}
+      />
+
+      <CashTipDeclarationModal
+        isOpen={showCashDeclaration}
+        shiftId={timeClock.shiftId || ''}
+        staffProfileId={user?.profileId || ''}
+        locationId={selectedStore?.id || ''}
+        employeeName={user?.fullName || ''}
+        clockInTime={
+          session?.clockInTime ? new Date(session.clockInTime) : new Date()
+        }
+        onComplete={handleDeclarationComplete}
+        onCancel={handleDeclarationCancel}
       />
     </>
   )

@@ -1,9 +1,10 @@
 import { useAuth, useSession } from "@clerk/clerk-expo";
 import { useEffect, useRef } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 
 /**
- * Component that keeps the Clerk session active by periodically touching it.
- * This prevents "signed out" errors when the session becomes stale.
+ * Component that keeps the Clerk session active by periodically touching it
+ * AND proactively refreshing the token when the device wakes from sleep.
  *
  * IMPORTANT: The effect depends on `session?.id`, NOT the `session` object
  * itself. `session.touch()` causes Clerk to return a new session reference
@@ -13,7 +14,7 @@ import { useEffect, useRef } from "react";
  * on the current session without re-running the effect.
  */
 export function ClerkSessionKeeper() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { session } = useSession();
   const touchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef(session);
@@ -22,6 +23,33 @@ export function ClerkSessionKeeper() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  // Proactive token refresh on foreground wake.
+  // When the device sleeps overnight, the JWT expires. session.touch() can't
+  // revive an expired session — it only extends active ones. getToken() triggers
+  // Clerk's internal refresh-token flow, which obtains a new JWT and updates
+  // isSignedIn. This runs before routing checks fire, giving Clerk time to
+  // rehydrate before ClerkGate evaluates the session state.
+  useEffect(() => {
+    const handleAppState = (state: AppStateStatus) => {
+      if (state !== "active") return;
+      // Force a token refresh — this triggers Clerk's internal refresh flow
+      getToken()
+        .then((token) => {
+          if (token) {
+            console.log("[SessionKeeper] ✓ Foreground token refresh succeeded");
+            // Also touch to extend the session server-side
+            sessionRef.current?.touch().catch(() => {});
+          }
+        })
+        .catch((err) => {
+          console.warn("[SessionKeeper] Foreground token refresh failed:", err);
+        });
+    };
+
+    const sub = AppState.addEventListener("change", handleAppState);
+    return () => sub.remove();
+  }, [getToken]);
 
   useEffect(() => {
     if (!isSignedIn || !session) {

@@ -1,3 +1,4 @@
+import CashTipDeclarationModal from "@/components/timeclock/CashTipDeclarationModal";
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -17,7 +18,7 @@ import { PosStaffLoginResponse } from "@/types/station";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -39,6 +40,14 @@ const PinLoginScreen = () => {
   const { forceTakeover } = useLocalSearchParams<{ forceTakeover?: string }>();
   const [pin, setPin] = useState("");
   const [deviceId, setDeviceId] = useState<string>("");
+  const [showCashDeclaration, setShowCashDeclaration] = useState(false);
+  const pendingClockOutPinRef = useRef<string | null>(null);
+  const [clockOutEmployee, setClockOutEmployee] = useState<{
+    name: string;
+    profileId: string;
+    shiftId: string;
+    clockInTime: Date;
+  } | null>(null);
   const [cachedDeviceInfo, setCachedDeviceInfo] = useState<Awaited<
     ReturnType<typeof getDeviceInfo>
   > | null>(null);
@@ -85,7 +94,7 @@ const PinLoginScreen = () => {
   const setStationSessionId = useStoreSettingsStore(
     (state) => state.setStationSessionId,
   );
-  const { getSession, clockIn: timeclockClockIn, queueAction } = useTimeclockStore();
+  const { getSession, clockIn: timeclockClockIn, queueAction, currentStaffId, employeeName: tcEmployeeName, sessions, activeEmployeeId } = useTimeclockStore();
   const { isOnline } = useNetworkStatus();
 
   const timeClock = useTimeClock();
@@ -541,15 +550,81 @@ const PinLoginScreen = () => {
       return;
     }
 
+    // Call the actual clock-out RPC first — it validates the PIN and returns
+    // the staff_id + shift_id. Then show the declaration modal with correct info.
+    // The clock-out completes on the backend, but we still need the declaration.
+    const enteredPin = pin;
+    setPin("");
+
     try {
-      // useTimeClock updates state optimistically; success/error toasts handled by the hook
-      await timeClock.clockOut(pin, selectedStore.id, deviceId);
-      setPin("");
+      const result = await timeClock.clockOut(enteredPin, selectedStore.id, deviceId);
+      const staffId = result?.staff_id;
+      const staffName = result?.employee_name;
+      const shiftId = result?.shift_id;
+
+      if (!staffId) {
+        triggerShakeAnimation();
+        return;
+      }
+
+      // Find clock-in time from their shift
+      const { employees } = useEmployeeStore.getState();
+      const emp = employees.find(e => e.profileId === staffId);
+      const empSession = emp ? sessions[emp.id] : null;
+      let clockInTime = empSession?.clockInTime ? new Date(empSession.clockInTime) : new Date();
+
+      // Try to get accurate clock-in time from backend
+      try {
+        const { data: shiftData } = await supabase
+          .from("staff_shifts")
+          .select("clock_in_time")
+          .eq("id", shiftId)
+          .single();
+        if (shiftData?.clock_in_time) {
+          clockInTime = new Date(shiftData.clock_in_time);
+        }
+      } catch {}
+
+      setClockOutEmployee({
+        name: staffName || emp?.fullName || 'Employee',
+        profileId: staffId,
+        shiftId: shiftId || '',
+        clockInTime,
+      });
+
+      // Update local store
+      if (emp) {
+        useTimeclockStore.getState().clockOut(emp.id);
+      }
+
+      pendingClockOutPinRef.current = enteredPin;
+      setShowCashDeclaration(true);
     } catch {
       triggerShakeAnimation();
-      setPin("");
     }
   };
+
+  const handleClockOutDeclarationComplete = useCallback(async (declaredAmount: number) => {
+    setShowCashDeclaration(false);
+    pendingClockOutPinRef.current = null;
+    if (!selectedStore) return;
+
+    // Clock-out already happened in handleClockOut — just declare tips
+    const shiftId = clockOutEmployee?.shiftId;
+    if (shiftId) {
+      try {
+        await timeClock.declareCashTips(shiftId, declaredAmount, selectedStore.id, deviceId);
+      } catch (e) {
+        console.warn("[PinLogin] Cash tip declaration failed:", e);
+      }
+    }
+    setClockOutEmployee(null);
+  }, [selectedStore, timeClock, deviceId, clockOutEmployee]);
+
+  const handleClockOutDeclarationCancel = useCallback(() => {
+    setShowCashDeclaration(false);
+    pendingClockOutPinRef.current = null;
+  }, []);
 
   const handleOpenTimeclock = async () => {
     if (!canSubmit || !selectedStore) {
@@ -859,6 +934,20 @@ const PinLoginScreen = () => {
           </View>
         </DialogContent>
       </Dialog>
+
+      <CashTipDeclarationModal
+        isOpen={showCashDeclaration}
+        shiftId={clockOutEmployee?.shiftId || timeClock.shiftId || ''}
+        staffProfileId={clockOutEmployee?.profileId || currentStaffId || ''}
+        locationId={selectedStore?.id || ''}
+        employeeName={clockOutEmployee?.name || 'Employee'}
+        clockInTime={clockOutEmployee?.clockInTime || new Date()}
+        onComplete={handleClockOutDeclarationComplete}
+        onCancel={() => {
+          handleClockOutDeclarationCancel();
+          setClockOutEmployee(null);
+        }}
+      />
     </>
   );
 };

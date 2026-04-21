@@ -3,15 +3,20 @@ import { ChecklistItem, ChecklistItemId } from "@/stores/useEndOfDayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   TipDistributionRulesOverview,
+  TodaySessionRow,
   fetchTipDistributionRulesOverview,
+  fetchTodaySessions,
   fetchUnsettledTipSummary,
 } from "@/services/endOfDayService";
+import { getCurrentBusinessDay } from "@/lib/businessDay";
+import { formatCurrency } from "@/utils/currency";
 import { colors } from "@/lib/theme";
 import { useQuery } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import React from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import EodChecklistRow from "../EodChecklistRow";
+import EodShiftTipReview from "../EodShiftTipReview";
 
 const resolveItem = (
   list: ChecklistItem[],
@@ -22,12 +27,24 @@ function fmt(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-function formatRuleValue(rule: TipDistributionRulesOverview["rules"][number]) {
-  if (rule.tipOutType === "flat") {
-    return `${rule.tipOutValue.toFixed(2)} fixed`;
+function formatTipSource(raw: string) {
+  switch (raw) {
+    case "charged_tips": return "Charged Tips";
+    case "all_tips": return "All Tips";
+    case "cash_only": return "Cash Only";
+    default: return raw.replace(/_/g, " ");
   }
-  if (rule.tipOutType === "percent" || rule.tipOutType === "percentage") {
-    return `${rule.tipOutValue.toFixed(1)}%`;
+}
+
+function formatRuleValue(rule: TipDistributionRulesOverview["rules"][number]) {
+  if (rule.tipOutType === "flat_amount") {
+    return `$${rule.tipOutValue.toFixed(2)} flat`;
+  }
+  if (rule.tipOutType === "percentage_of_tips") {
+    return `${rule.tipOutValue.toFixed(1)}% of tips`;
+  }
+  if (rule.tipOutType === "percentage_of_sales") {
+    return `${rule.tipOutValue.toFixed(1)}% of sales`;
   }
   return `${rule.tipOutValue} ${rule.tipOutType}`;
 }
@@ -64,17 +81,115 @@ export default function EodStepTips({
     queryFn: () => fetchTipDistributionRulesOverview(supabase, locationId),
   });
 
+  const todayStr = getCurrentBusinessDay({
+    timezone: selectedStore?.timezone || "UTC",
+    rolloverHour: selectedStore?.business_day_start_hour ?? 0,
+  });
+
+  const { data: todaySessions, refetch: refetchSessions } = useQuery({
+    queryKey: ["eod-today-sessions", locationId, todayStr],
+    enabled: Boolean(locationId),
+    staleTime: 0,
+    gcTime: 0,
+    queryFn: () => fetchTodaySessions(supabase, locationId, todayStr),
+  });
+
   const tipItem = resolveItem(checklist, "tips_distributed");
 
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const periodStart = tipSummary?.periodStart ?? null;
   const isMultiDay = periodStart !== null && periodStart < todayStr;
   const pendingSessions = tipSummary?.pendingPriorDaySessions ?? [];
   const hasPendingPrior = pendingSessions.length > 0;
 
+  // Multi-session: find the last approved session's cutoff for scoping
+  const approvedToday = (todaySessions || []).filter(s => s.status === "approved");
+  const lastApprovedCutoff = approvedToday.length > 0
+    ? approvedToday[approvedToday.length - 1].dataCutoffAt
+    : null;
+
   return (
     <View style={{ gap: 10 }}>
+      {/* Shift Declaration Review — manager can declare for undeclared staff */}
+      <EodShiftTipReview
+        supabase={supabase}
+        locationId={locationId}
+        date={todayStr}
+        afterCutoff={lastApprovedCutoff}
+      />
+
+      {/* Today's Sessions — multi-session history */}
+      {(todaySessions?.length ?? 0) > 0 && (
+        <View
+          style={{
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.panel,
+            padding: 12,
+            gap: 8,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+            Today's Close-Out Sessions
+          </Text>
+          <View style={{ gap: 4 }}>
+            {(todaySessions || []).map((s) => {
+              const startTime = s.dataStartAfter
+                ? new Date(s.dataStartAfter).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "Start of day";
+              const endTime = s.dataCutoffAt
+                ? new Date(s.dataCutoffAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "now";
+              const statusColor =
+                s.status === "approved" ? colors.success
+                : s.status === "calculated" ? colors.warning
+                : colors.label;
+              const statusLabel =
+                s.status === "approved" ? "Approved"
+                : s.status === "calculated" ? "Awaiting Approval"
+                : s.status === "draft" ? "In Progress"
+                : s.status;
+
+              return (
+                <View
+                  key={s.id}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 8,
+                    paddingHorizontal: 10,
+                    borderRadius: 10,
+                    backgroundColor: colors.card,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
+                      Session #{s.sequenceNumber}
+                    </Text>
+                    <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                      {startTime} — {endTime}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontSize: 10, fontWeight: "600", color: statusColor }}>
+                      {statusLabel}
+                    </Text>
+                    {s.totalDistributed > 0 && (
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: colors.heading, marginTop: 1 }}>
+                        {formatCurrency(s.totalDistributed)}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       <View
         style={{
           borderRadius: 16,
@@ -201,7 +316,10 @@ export default function EodStepTips({
         </Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <TouchableOpacity
-            onPress={onOpenTipWizard}
+            onPress={() => {
+              onOpenTipWizard();
+              // Refresh sessions after wizard closes (handled by onRefresh in parent)
+            }}
             style={{
               flex: 1,
               borderRadius: 9,
@@ -214,7 +332,17 @@ export default function EodStepTips({
             }}
           >
             <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
-              Open Tip Wizard
+              {(() => {
+                const sessions = todaySessions || [];
+                const hasUnapproved = sessions.some(s => s.status === "calculated");
+                const allApproved = sessions.length > 0 && sessions.every(s => s.status === "approved");
+                if (hasUnapproved) {
+                  const unapproved = sessions.find(s => s.status === "calculated");
+                  return `Review Session #${unapproved?.sequenceNumber ?? ""}`;
+                }
+                if (allApproved) return "Start Another Close-Out";
+                return "Start Tip Close-Out";
+              })()}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -223,6 +351,7 @@ export default function EodStepTips({
                 onRefresh(),
                 fetchTipConfig(supabase, locationId),
                 refetchTipSummary(),
+                refetchSessions(),
               ]);
             }}
             style={{
@@ -321,6 +450,14 @@ export default function EodStepTips({
                         </Text>
                       </View>
                     </View>
+                    <Text style={{ fontSize: 10, color: colors.label }}>
+                      Source: {formatTipSource(config.tipSource)} · {config.sourcePercentage}%
+                    </Text>
+                    {config.contributingRoleCodes?.length > 0 && (
+                      <Text style={{ fontSize: 10, color: colors.label }}>
+                        Contributing: {config.contributingRoleCodes.join(", ")}
+                      </Text>
+                    )}
                     {!!config.description ? (
                       <Text style={{ fontSize: 11, color: colors.label }}>
                         {config.description}

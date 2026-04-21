@@ -9,7 +9,9 @@ import { useSessionKick } from '@/contexts/SessionKickListenerProvider'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getDeviceId } from '@/lib/deviceId'
 import { replaceRoute } from '@/lib/rootNavigation'
+import { runSpeedTest, getSpeedQuality, type SpeedTestResult } from '@/lib/speedTest'
 import { colors, spinnerColor } from '@/lib/theme'
+import { secureStorage } from '@/lib/storage'
 import { toastService } from '@/lib/toastService'
 import type { MerchantRole } from '@/lib/types'
 import { useColorScheme } from '@/lib/useColorScheme'
@@ -38,7 +40,8 @@ import {
   Store,
   Sun,
   Trash2,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Wifi
 } from 'lucide-react-native'
 import React, { useCallback, useState } from 'react'
 import {
@@ -275,6 +278,7 @@ const GeneralSettingsScreen = () => {
     hours: false,
     display: true,
     sync: true,
+    network: false,
     cache: true
   })
   const toggleSection = (s: keyof typeof expandedSections) =>
@@ -409,6 +413,27 @@ const GeneralSettingsScreen = () => {
     }
   }
 
+  // ── Speed test ──────────────────────────────────────────────────────────
+  const [speedTestResult, setSpeedTestResult] = useState<SpeedTestResult | null>(null)
+  const [isTestingSpeed, setIsTestingSpeed] = useState(false)
+
+  const handleSpeedTest = async () => {
+    setIsTestingSpeed(true)
+    setSpeedTestResult(null)
+    try {
+      const result = await runSpeedTest()
+      setSpeedTestResult(result)
+    } catch {
+      toastService.show({
+        title: 'Speed Test Failed',
+        message: 'Could not complete the speed test. Check your connection.',
+        type: 'error'
+      })
+    } finally {
+      setIsTestingSpeed(false)
+    }
+  }
+
   // ── Clear cache (preserves user session) ───────────────────────────────
   const [showClearCacheModal, setShowClearCacheModal] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
@@ -493,6 +518,7 @@ const GeneralSettingsScreen = () => {
       clearStationSession()
       clearSelectedStore()
       clearLocationData()
+      secureStorage.remove('clerk_was_signed_in')
       await signOut()
       setShowLogoutModal(false)
       replaceRoute('(auth)', 'login')
@@ -1193,6 +1219,181 @@ const GeneralSettingsScreen = () => {
                 'floorplan',
                 handleFetchFloorPlan
               )}
+            </View>
+          )}
+        </View>
+
+        {/* ── Network Speed Test ── */}
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 12,
+            overflow: 'hidden'
+          }}
+        >
+          {renderSectionHeader(
+            'Network',
+            <Wifi size={16} color={colors.teal} />,
+            'network'
+          )}
+          {expandedSections.network && (
+            <View style={{ padding: 12 }}>
+              {/* Run Speed Test button */}
+              <TouchableOpacity
+                onPress={handleSpeedTest}
+                disabled={isTestingSpeed}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  marginBottom: speedTestResult ? 12 : 0
+                }}
+              >
+                <View
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    backgroundColor: colors.teal + '15',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 12
+                  }}
+                >
+                  {isTestingSpeed ? (
+                    <ActivityIndicator size='small' color={spinnerColor} />
+                  ) : (
+                    <Wifi size={16} color={colors.teal} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}
+                  >
+                    {isTestingSpeed ? 'Testing...' : 'Run Speed Test'}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                    Check download speed, latency, and connection type
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Results */}
+              {speedTestResult && (() => {
+                const quality = getSpeedQuality(speedTestResult)
+                const qualityColor =
+                  quality === 'good' ? colors.success
+                    : quality === 'fair' ? colors.warning
+                      : colors.danger
+                const qualityLabel =
+                  quality === 'good' ? 'Good'
+                    : quality === 'fair' ? 'Fair'
+                      : 'Poor'
+
+                return (
+                  <View style={{ gap: 8 }}>
+                    {/* Quality badge */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: 9,
+                        backgroundColor: qualityColor + '15',
+                        borderWidth: 1,
+                        borderColor: qualityColor + '40',
+                        borderRadius: 8
+                      }}
+                    >
+                      <Wifi size={13} color={qualityColor} />
+                      <Text style={{ fontSize: 12, color: qualityColor, fontWeight: '600' }}>
+                        Connection Quality: {qualityLabel}
+                      </Text>
+                    </View>
+
+                    {/* Metrics */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        gap: 8
+                      }}
+                    >
+                      {/* Download Speed */}
+                      <View
+                        style={{
+                          flex: 1,
+                          backgroundColor: colors.screen,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 8,
+                          padding: 10,
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 4 }}>
+                          Download
+                        </Text>
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading }}>
+                          {speedTestResult.downloadMbps}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: colors.label }}>Mbps</Text>
+                      </View>
+
+                      {/* Latency */}
+                      <View
+                        style={{
+                          flex: 1,
+                          backgroundColor: colors.screen,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 8,
+                          padding: 10,
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 4 }}>
+                          Latency
+                        </Text>
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading }}>
+                          {speedTestResult.latencyMs}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: colors.label }}>ms</Text>
+                      </View>
+
+                      {/* Connection Type */}
+                      <View
+                        style={{
+                          flex: 1,
+                          backgroundColor: colors.screen,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 8,
+                          padding: 10,
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 4 }}>
+                          Type
+                        </Text>
+                        <Text
+                          style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+                          numberOfLines={1}
+                        >
+                          {speedTestResult.connectionType || 'Unknown'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )
+              })()}
             </View>
           )}
         </View>

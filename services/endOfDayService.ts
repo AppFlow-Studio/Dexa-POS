@@ -76,8 +76,71 @@ export interface TodayTipSummary {
   cashTips: number
   totalTips: number
   periodStart: string | null // "YYYY-MM-DD" — first day included in totals
+  lastCutoffAt: string | null // timestamp of last approved session's data_cutoff_at
   /** Prior-day sessions (since last approved) that are not approved/exported/voided */
   pendingPriorDaySessions: { date: string; status: string }[]
+}
+
+export interface TodaySessionRow {
+  id: string
+  sequenceNumber: number
+  status: string
+  totalDistributed: number
+  dataStartAfter: string | null
+  dataCutoffAt: string | null
+  approvedAt: string | null
+  calculatedAt: string | null
+}
+
+/**
+ * Fetch all tip distribution sessions for a given location and date.
+ * Used by EodStepTips to show the multi-session history.
+ */
+export async function fetchTodaySessions(
+  supabase: SupabaseClient,
+  locationId: string,
+  date: string,
+): Promise<TodaySessionRow[]> {
+  const { data, error } = await supabase
+    .from('tip_distribution_sessions')
+    .select('id, sequence_number, status, total_distributed, data_start_after, data_cutoff_at, approved_at, calculated_at')
+    .eq('location_id', locationId)
+    .eq('session_date', date)
+    .not('status', 'eq', 'voided')
+    .order('sequence_number', { ascending: true })
+
+  if (error) throw error
+
+  const mapped = (data || []).map((s: any) => ({
+    id: s.id,
+    sequenceNumber: Number(s.sequence_number) || 1,
+    status: s.status as string,
+    totalDistributed: Number(s.total_distributed) || 0,
+    dataStartAfter: s.data_start_after as string | null,
+    dataCutoffAt: s.data_cutoff_at as string | null,
+    approvedAt: s.approved_at as string | null,
+    calculatedAt: s.calculated_at as string | null,
+  }))
+
+  // Deduplicate: keep only the latest row per sequence_number
+  // (recalculations can create multiple rows with the same sequence)
+  const bySeq = new Map<number, TodaySessionRow>()
+  for (const s of mapped) {
+    const existing = bySeq.get(s.sequenceNumber)
+    if (!existing || statusPriority(s.status) > statusPriority(existing.status)) {
+      bySeq.set(s.sequenceNumber, s)
+    }
+  }
+  return Array.from(bySeq.values()).sort((a, b) => a.sequenceNumber - b.sequenceNumber)
+}
+
+function statusPriority(status: string): number {
+  switch (status) {
+    case 'approved': return 3
+    case 'calculated': return 2
+    case 'draft': return 1
+    default: return 0
+  }
 }
 
 /**
@@ -137,14 +200,16 @@ export async function fetchUnsettledTipSummary (
 
   const lastSettledRes = await supabase
     .from('tip_distribution_sessions')
-    .select('session_date')
+    .select('session_date, data_cutoff_at')
     .eq('location_id', locationId)
     .in('status', ['approved', 'exported'])
     .order('session_date', { ascending: false })
+    .order('sequence_number', { ascending: false })
     .limit(1)
 
   let startOfPeriod: string
   let periodStart: string
+  const lastCutoffAt: string | null = lastSettledRes.data?.[0]?.data_cutoff_at ?? null
 
   if (lastSettledRes.data?.[0]?.session_date) {
     const lastDate = lastSettledRes.data[0].session_date
@@ -204,6 +269,7 @@ export async function fetchUnsettledTipSummary (
     cashTips,
     totalTips: cardTips + cashTips,
     periodStart,
+    lastCutoffAt,
     pendingPriorDaySessions: (priorSessionsRes.data || []).map((s: any) => ({
       date: s.session_date,
       status: s.status

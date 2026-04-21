@@ -119,7 +119,10 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     b.twoColumnRow("Discount", `-${formatCurrency(data.discount)}`, w);
   }
   if (data.tip > 0) {
-    b.twoColumnRow("Tip", formatCurrency(data.tip), w);
+    const tipPct = data.subtotal > 0
+      ? ` (${((data.tip / data.subtotal) * 100).toFixed(1)}%)`
+      : "";
+    b.twoColumnRow(`Tip${tipPct}`, formatCurrency(data.tip), w);
   }
   b.bold(false);
 
@@ -140,8 +143,8 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   }
   b.bold(false);
 
-  // ── Tip line (blank for customer to fill in) ──
-  if (cfg?.showTipLine !== false) {
+  // ── Tip line (blank for customer to fill in — skip if tip already collected) ──
+  if (cfg?.showTipLine !== false && data.tip <= 0) {
     b.solidLine(w);
     b.bold(true);
     b.twoColumnRow("Tip:", "________", w);
@@ -162,7 +165,12 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
       b.twoColumnRow(`Paid: ${payment.method}`, formatCurrency(payment.amount), w);
       b.bold(false);
       if (payment.tipAmount && payment.tipAmount > 0) {
-        b.twoColumnRow("  Tip", formatCurrency(payment.tipAmount), w);
+        if (payment.originalTipAmount != null && payment.originalTipAmount !== payment.tipAmount) {
+          b.twoColumnRow("  Orig. Tip", formatCurrency(payment.originalTipAmount), w);
+          b.twoColumnRow("  Adj. Tip", formatCurrency(payment.tipAmount), w);
+        } else {
+          b.twoColumnRow("  Tip", formatCurrency(payment.tipAmount), w);
+        }
       }
       if (payment.last4) {
         const cardLine = payment.cardBrand

@@ -2,6 +2,7 @@ import SessionLogoutModal from "@/components/auth/SessionLogoutModal";
 import { useSessionKick } from "@/contexts/SessionKickListenerProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
+import { secureStorage } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { clearLocationData, clearStationData } from "@/services/cacheService";
@@ -114,6 +115,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       clearLocationData();
 
       // Sign out of Clerk
+      secureStorage.remove('clerk_was_signed_in');
       await signOut();
 
       setShowModal(false);

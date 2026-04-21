@@ -629,7 +629,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   }}
                   numberOfLines={1}
                 >
-                  #
                   {ticket.display_number ||
                     ticket.order_number?.slice(-4) ||
                     '----'}
@@ -1551,7 +1550,7 @@ const KitchenDisplayScreen = () => {
           const displayNum =
             ticket.display_number ?? ticket.order_number?.slice(-4) ?? '?'
           toast.show({
-            title: `#${displayNum} auto-fired`,
+            title: `${displayNum} auto-fired`,
             message: `Started preparing after ${kdsAutoFireDelayMinutes}m`,
             type: 'success',
             duration: 3000
@@ -1597,7 +1596,7 @@ const KitchenDisplayScreen = () => {
           const displayNum =
             ticket.display_number ?? ticket.order_number?.slice(-4) ?? '?'
           toast.show({
-            title: `#${displayNum} auto-bumped`,
+            title: `${displayNum} auto-bumped`,
             message: `Ticket served after ${autoBumpMinutes}m`,
             type: 'success',
             duration: 3000

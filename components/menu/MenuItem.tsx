@@ -293,12 +293,17 @@ const MenuItem: React.FC<MenuItemProps> = ({
       onPress={handlePress}
       style={[
         styles.container,
+        showMenuImages && styles.containerWithImage,
         isDisabled && styles.containerDisabled,
         !showMenuImages && styles.containerNoImage
       ]}
     >
       {/* Modifier triangle corner */}
       {hasModifiers && <View style={styles.modifierCorner} />}
+
+      
+        
+      
 
       {/* Image */}
       {showMenuImages && (
@@ -362,6 +367,8 @@ export default React.memo(MenuItem, (prevProps, nextProps) => {
     prevProps.item.stockQuantity === nextProps.item.stockQuantity &&
     prevProps.item.name === nextProps.item.name &&
     prevProps.item.image === nextProps.item.image &&
+    prevProps.item.cardBgColor === nextProps.item.cardBgColor &&
+    prevProps.item.placeholderIcon === nextProps.item.placeholderIcon &&
     prevProps.categoryId === nextProps.categoryId &&
     prevProps.imageSource === nextProps.imageSource &&
     prevProps.imagePriority === nextProps.imagePriority
