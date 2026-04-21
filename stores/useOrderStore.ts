@@ -5199,9 +5199,16 @@ export const useOrderStore = create<OrderState>()(
               taxRatesMap
             )
 
+            // If a check discount is active, redistribute it across all items
+            // so every item (including newly added ones) has correct subtotal / discount_amount
+            const itemsForState =
+              activeOrder.checkDiscount && totals.discount_amount > 0
+                ? distributeDiscountToItems(updatedCart, totals.discount_amount)
+                : updatedCart
+
             set(state => {
               const order = state.ordersById[activeOrderId]
-              order.items = updatedCart
+              order.items = itemsForState
               order.total_amount = totals.total_amount
               order.total_tax = totals.tax_amount
               order.total_discount = totals.discount_amount
@@ -5515,11 +5522,18 @@ export const useOrderStore = create<OrderState>()(
               order.payments || [],
               taxRatesMap
             )
+            const itemsForState =
+              order.checkDiscount && totals.discount_amount > 0
+                ? distributeDiscountToItems(
+                    updatedItems,
+                    totals.discount_amount
+                  )
+                : updatedItems
 
             // SINGLE ATOMIC UPDATE
             set(state => {
               const order = state.ordersById[activeOrderId]
-              order.items = updatedItems
+              order.items = itemsForState
               order.total_amount = totals.total_amount
               order.total_tax = totals.tax_amount
               order.total_discount = totals.discount_amount
@@ -6448,10 +6462,17 @@ export const useOrderStore = create<OrderState>()(
               order.payments || [],
               taxRatesMap
             )
+            const itemsForState =
+              order.checkDiscount && totals.discount_amount > 0
+                ? distributeDiscountToItems(
+                    updatedItems,
+                    totals.discount_amount
+                  )
+                : updatedItems
             set(state => {
               const o = state.ordersById[activeOrderId]
               if (!o) return
-              o.items = updatedItems
+              o.items = itemsForState
               o.total_amount = totals.total_amount
               o.total_tax = totals.tax_amount
               o.total_discount = totals.discount_amount

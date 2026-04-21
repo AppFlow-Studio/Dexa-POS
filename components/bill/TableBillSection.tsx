@@ -234,9 +234,7 @@ const CourseSubHeader = React.memo(
           Course {course}
         </Text>
         <StatusPill status={status} />
-        {sentAt && status && status !== 'served' && (
-          <KitchenTimer sentAt={sentAt} />
-        )}
+        {sentAt && status && <KitchenTimer sentAt={sentAt} />}
         <Text style={{ fontSize: 9, color: colors.muted }}>
           {itemCount} {itemCount === 1 ? 'item' : 'items'}
         </Text>
@@ -485,7 +483,7 @@ const DenseSeatView = React.memo(
           seatNumber,
           label,
           isCurrent: false, // set in visibility pass
-          expanded: true,   // set in visibility pass
+          expanded: true, // set in visibility pass
           itemCount: seatItemCount,
           total: seatTotal
         })
@@ -566,9 +564,14 @@ const DenseSeatView = React.memo(
         if (row.type === 'seat-header') {
           const seatExpanded = !collapsedSeats.has(row.seatKey)
           result.push(
-            seatExpanded === row.expanded && (activeSeat === row.seatNumber) === row.isCurrent
+            seatExpanded === row.expanded &&
+              (activeSeat === row.seatNumber) === row.isCurrent
               ? row
-              : { ...row, expanded: seatExpanded, isCurrent: activeSeat === row.seatNumber }
+              : {
+                  ...row,
+                  expanded: seatExpanded,
+                  isCurrent: activeSeat === row.seatNumber
+                }
           )
           continue
         }
@@ -579,13 +582,16 @@ const DenseSeatView = React.memo(
           const courseKey = `${row.seatKey}-${row.course}`
           const courseExpanded = !collapsedCourses.has(courseKey)
           result.push(
-            courseExpanded === row.expanded ? row : { ...row, expanded: courseExpanded }
+            courseExpanded === row.expanded
+              ? row
+              : { ...row, expanded: courseExpanded }
           )
           continue
         }
 
         // type === 'item'
-        if (row.seatKey !== undefined && collapsedSeats.has(row.seatKey)) continue
+        if (row.seatKey !== undefined && collapsedSeats.has(row.seatKey))
+          continue
         if (row.courseKey && collapsedCourses.has(row.courseKey)) continue
 
         result.push(row)
@@ -743,8 +749,21 @@ const DenseSeatView = React.memo(
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {isOvertime && (
-              <View style={{ backgroundColor: 'rgba(120,53,15,0.3)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: '#facc15' }}>
+              <View
+                style={{
+                  backgroundColor: colors.warning + '30',
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 999
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '600',
+                    color: colors.warning
+                  }}
+                >
                   {overtimeMinutes}min exceeded
                 </Text>
               </View>
@@ -1069,7 +1088,10 @@ const TableBillSection = ({
 
   return (
     <>
-      <View className='max-w-lg  flex-1 flex-col'>
+      <View
+        className='max-w-lg  flex-1 flex-col'
+        style={{ backgroundColor: colors.panel }}
+      >
         {renderOrderView()}
 
         {/* --- INLINED ACTIVE DISCOUNT INDICATOR --- */}

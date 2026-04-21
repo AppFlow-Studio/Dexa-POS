@@ -21,14 +21,14 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: colors.teal + '20',
     alignItems: 'center',
     justifyContent: 'center'
   },
   label: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#000000',
+    color: colors.heading,
     textAlign: 'center',
     paddingHorizontal: 6
   }
@@ -44,7 +44,7 @@ const CreateCustomItemCard: React.FC<CreateCustomItemCardProps> = ({
   return (
     <TouchableOpacity style={styles.container} onPress={onPress}>
       <View style={styles.iconContainer}>
-        <Plus color='#000000' size={24} strokeWidth={2.5} />
+        <Plus color={colors.heading} size={24} strokeWidth={2.5} />
       </View>
       <Text style={styles.label}>Create Custom</Text>
     </TouchableOpacity>

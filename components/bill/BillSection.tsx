@@ -559,7 +559,9 @@ const BillSectionContent = ({
     const sessionStore = useTableSessionStore.getState()
     const sessionId = activeOrder.session_id
     const tableId = sessionId
-      ? sessionStore.sessionTableIndex[sessionId]?.[0] ?? ''
+      ? sessionStore.sessionTableIndex[sessionId]?.[0] ??
+        sessionStore.getSessionBySessionId(sessionId)?.tableId ??
+        ''
       : ''
 
     if (tableId) {
@@ -712,8 +714,14 @@ const BillSectionContent = ({
 
   if (!activeOrderId)
     return (
-      <View className='w-[38%] items-center justify-center p-6 bg-background'>
-        <Text className='text-sm font-semibold text-white mb-3'>
+      <View
+        className='w-[38%] items-center justify-center p-6'
+        style={{ backgroundColor: colors.screen }}
+      >
+        <Text
+          className='text-sm font-semibold mb-3'
+          style={{ color: colors.heading }}
+        >
           No Active Order
         </Text>
         <TouchableOpacity
@@ -722,7 +730,9 @@ const BillSectionContent = ({
             startNewOrder()
           }}
         >
-          <Text className='text-white text-sm font-semibold'>
+          <Text
+            style={{ color: colors.onSolid, fontSize: 14, fontWeight: '600' }}
+          >
             Start New Order
           </Text>
         </TouchableOpacity>
@@ -738,7 +748,12 @@ const BillSectionContent = ({
   return (
     <View
       ref={billSectionRef}
-      className='w-[38%] bg-screen border-r-2 border-border relative'
+      className='w-[38%] relative'
+      style={{
+        backgroundColor: colors.screen,
+        borderRightWidth: 2,
+        borderColor: colors.border
+      }}
     >
       <View
         className='px-3 pt-2 pb-1'
@@ -1322,13 +1337,26 @@ const BillSectionContent = ({
         onClose={handleCloseDiscounts}
       />
       <Dialog open={isVoidConfirmOpen} onOpenChange={setIsVoidConfirmOpen}>
-        <DialogContent className='w-[420px] bg-panel border border-border rounded-2xl p-0 overflow-hidden'>
+        <DialogContent
+          className='w-[420px] rounded-2xl p-0 overflow-hidden'
+          style={{
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border
+          }}
+        >
           <View
             className='px-5 pt-5 pb-4'
             style={{ backgroundColor: colors.panel }}
           >
             <DialogHeader>
-              <DialogTitle className='text-heading text-xl font-bold'>
+              <DialogTitle
+                style={{
+                  fontSize: 20,
+                  fontWeight: '700',
+                  color: colors.heading
+                }}
+              >
                 Void Order
               </DialogTitle>
             </DialogHeader>

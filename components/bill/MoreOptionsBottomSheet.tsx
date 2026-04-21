@@ -30,7 +30,14 @@ import {
   User,
   X
 } from 'lucide-react-native'
-import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -82,12 +89,15 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   }, [])
 
   /** Close sheet, then execute `action` once the close animation completes. */
-  const closeAndThen = useCallback((action: () => void) => {
-    pendingActionRef.current = action
-    if (ref && 'current' in ref && ref.current) {
-      ref.current.close()
-    }
-  }, [ref])
+  const closeAndThen = useCallback(
+    (action: () => void) => {
+      pendingActionRef.current = action
+      if (ref && 'current' in ref && ref.current) {
+        ref.current.close()
+      }
+    },
+    [ref]
+  )
 
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const supabase = useSupabaseClient()
@@ -165,7 +175,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       // Resolve real table UUID via session_id → sessionTableIndex
       const sessionId = activeOrder.session_id
       const tableId = sessionId
-        ? sessionStore.sessionTableIndex[sessionId]?.[0] ?? ''
+        ? sessionStore.sessionTableIndex[sessionId]?.[0] ??
+          sessionStore.getSessionBySessionId(sessionId)?.tableId ??
+          ''
         : ''
 
       if (tableId) {

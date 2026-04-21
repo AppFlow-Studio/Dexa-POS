@@ -1,25 +1,34 @@
-import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
-import Header from "@/components/Header";
-import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
-import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
-import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
-import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
-import { hydrateDrawerSession } from "@/services/cashDrawerService";
-import { useKDSStore } from "@/stores/useKDSStore";
-import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
-import { useOrderStore, getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import type { OrderPayload, PaymentPayload } from "@/types/real-time";
-import { useAuth } from "@clerk/clerk-expo";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Redirect, Slot } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
-import { useTableSessionInit } from "@/hooks/useTableSessionInit";
-import { colors, spinnerColor } from "@/lib/theme";
-import React, { useCallback, useEffect, useRef } from "react";
+import PaymentBottomSheet from '@/components/bill/PaymentBottomSheet'
+import Header from '@/components/Header'
+import MenuSearchSheet from '@/components/menu/MenuSearchSheet'
+import PaymentDetailBottomSheet from '@/components/menu/PaymentDetailBottomSheet'
+import NotificationBottomSheet from '@/components/notifications/NotificationBottomSheet'
+import { LocationRealtimeProvider } from '@/contexts/LocationRealtimeProvider'
+import { useOrderSyncRecovery } from '@/hooks/pos/useOrderSyncRecovery'
+import type { OrderBroadcastPayload } from '@/hooks/realtime/useOrdersRealtime'
+import { useTableSessionInit } from '@/hooks/useTableSessionInit'
+import { setHeaderHeight } from '@/lib/headerHeight'
+import { colors, spinnerColor } from '@/lib/theme'
+import { useColorScheme } from '@/lib/useColorScheme'
+import { hydrateDrawerSession } from '@/services/cashDrawerService'
+import KDSSoundService from '@/services/kds/kdsSoundService'
+import { useKDSStore } from '@/stores/useKDSStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchStore'
+import { useNotificationSheetStore } from '@/stores/useNotificationSheetStore'
+import {
+  getOrderStoreSupabaseClient,
+  useOrderStore
+} from '@/stores/useOrderStore'
+import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
+import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import type { OrderPayload, PaymentPayload } from '@/types/real-time'
+import { useAuth } from '@clerk/clerk-expo'
+import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { Redirect, Slot } from 'expo-router'
+import { StatusBar } from 'expo-status-bar'
+import React, { useCallback, useEffect, useRef } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -28,11 +37,6 @@ import {
   View
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
-import MenuSearchSheet from "@/components/menu/MenuSearchSheet";
-import { setHeaderHeight } from "@/lib/headerHeight";
-import KDSSoundService from "@/services/kds/kdsSoundService";
-import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
   useOrderSyncRecovery(locationId)
@@ -40,6 +44,7 @@ function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
 }
 
 export default function MainLayout () {
+  const { colorScheme } = useColorScheme()
   const { isSignedIn, isLoaded } = useAuth()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
@@ -110,7 +115,7 @@ export default function MainLayout () {
       kiosk: notifConfig.kioskOrderSound,
       third_party: notifConfig.thirdPartyOrderSound,
       pos: 'none',
-      default: notifConfig.thirdPartyOrderSound, // unknown external sources use third-party sound
+      default: notifConfig.thirdPartyOrderSound // unknown external sources use third-party sound
     })
   }, [isKDS, notifConfig])
 
@@ -169,10 +174,10 @@ export default function MainLayout () {
     // Batch all three store mutations so React processes them as a single
     // render cycle instead of three separate re-render passes.
     unstable_batchedUpdates(() => {
-      useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
-      useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
-      usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
-    });
+      useOrderStore.getState()._handleOrderBroadcast(broadcastPayload)
+      useKDSStore.getState().handleOrderBroadcast(broadcastPayload)
+      usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload)
+    })
 
     // Play notification sound for external orders (not POS-originated)
     if (broadcastPayload.operation === 'INSERT') {
@@ -183,7 +188,7 @@ export default function MainLayout () {
         soundServiceRef.current?.playForSource(src)
       }
     }
-  }, []);
+  }, [])
 
   const handlePaymentChange = useCallback((payload: PaymentPayload) => {
     if (__DEV__) {
@@ -243,19 +248,35 @@ export default function MainLayout () {
     >
       <OrderSyncRecoveryBridge locationId={selectedStore.id} />
       <KeyboardAvoidingView
+        key={colorScheme}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className='flex-1'
+        style={{ backgroundColor: colors.screen }}
       >
-        <SafeAreaView edges={['top']} className='flex-1 bg-background'>
+        <SafeAreaView
+          edges={['top']}
+          className='flex-1'
+          style={{ backgroundColor: colors.screen }}
+        >
           <StatusBar style={'light'} translucent />
 
-          <View className='flex-1 flex-row'>
+          <View
+            className='flex-1 flex-row'
+            style={{ backgroundColor: colors.screen }}
+          >
             {/* The Sidebar is now a self-contained component that handles its own state */}
             {/* <Sidebar /> */}
             {/* <ModifierSidebar /> */}
-            <View className='flex-1 flex-col'>
+            <View
+              className='flex-1 flex-col'
+              style={{ backgroundColor: colors.screen }}
+            >
               <View
                 className='px-4 z-50'
+                style={{
+                  backgroundColor: 'transparent',
+                  borderBottomWidth: 0
+                }}
                 onLayout={event =>
                   setHeaderHeight(event.nativeEvent.layout.height)
                 }
@@ -269,7 +290,9 @@ export default function MainLayout () {
             bottomSheetRef={
               notificationSheetRef as React.RefObject<BottomSheetMethods>
             }
-            onClose={() => { /* sheet is already closed when onClose fires */ }}
+            onClose={() => {
+              /* sheet is already closed when onClose fires */
+            }}
           />
           {/* Payment sheet — Modal-based, self-manages visibility via isOpen */}
           <PaymentBottomSheet />

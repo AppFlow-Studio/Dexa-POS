@@ -1,14 +1,14 @@
-import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
-import React from "react";
-import { StyleSheet, View } from "react-native";
+import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
+import React from 'react'
+import { StyleSheet, View } from 'react-native'
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSequence,
-  withTiming,
-} from "react-native-reanimated";
+  withTiming
+} from 'react-native-reanimated'
 
 /**
  * TableLayoutSkeleton - Fast placeholder UI for TableLayoutView
@@ -27,12 +27,12 @@ import Animated, {
  */
 
 interface TableLayoutSkeletonProps {
-  tableCount?: number;
-  showControls?: boolean;
+  tableCount?: number
+  showControls?: boolean
 }
 
 const AnimatedPulse: React.FC<{ style: any }> = ({ style }) => {
-  const opacity = useSharedValue(1);
+  const opacity = useSharedValue(1)
 
   React.useEffect(() => {
     opacity.value = withRepeat(
@@ -41,18 +41,18 @@ const AnimatedPulse: React.FC<{ style: any }> = ({ style }) => {
         withTiming(1, { duration: 1000 })
       ),
       -1
-    );
+    )
     return () => {
-      cancelAnimation(opacity);
-    };
-  }, []);
+      cancelAnimation(opacity)
+    }
+  }, [])
 
   const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
+    opacity: opacity.value
+  }))
 
-  return <Animated.View style={[style, animatedStyle]} />;
-};
+  return <Animated.View style={[style, animatedStyle]} />
+}
 
 // Pre-defined table positions to simulate a realistic floor plan
 const TABLE_POSITIONS = [
@@ -65,14 +65,14 @@ const TABLE_POSITIONS = [
   { x: 150, y: 340 },
   { x: 290, y: 340 },
   { x: 500, y: 130 },
-  { x: 500, y: 270 },
-];
+  { x: 500, y: 270 }
+]
 
 const TableLayoutSkeleton: React.FC<TableLayoutSkeletonProps> = ({
   tableCount = 8,
-  showControls = true,
+  showControls = true
 }) => {
-  const positions = TABLE_POSITIONS.slice(0, tableCount);
+  const positions = TABLE_POSITIONS.slice(0, tableCount)
 
   return (
     <View style={styles.container}>
@@ -102,7 +102,7 @@ const TableLayoutSkeleton: React.FC<TableLayoutSkeletonProps> = ({
               { left: pos.x, top: pos.y },
               // Vary some tables for visual interest
               index % 3 === 0 && styles.tableRound,
-              index % 5 === 0 && styles.tableLarge,
+              index % 5 === 0 && styles.tableLarge
             ]}
           />
         ))}
@@ -112,39 +112,59 @@ const TableLayoutSkeleton: React.FC<TableLayoutSkeletonProps> = ({
       {showControls && (
         <View style={styles.statusBar}>
           <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: TABLE_STATUS_COLORS.Available }]} />
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: TABLE_STATUS_COLORS.Available }
+              ]}
+            />
             <AnimatedPulse style={styles.statusText} />
           </View>
           <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: TABLE_STATUS_COLORS["In Use"] }]} />
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: TABLE_STATUS_COLORS['In Use'] }
+              ]}
+            />
             <AnimatedPulse style={styles.statusText} />
           </View>
           <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: TABLE_STATUS_COLORS["Needs Cleaning"] }]} />
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: TABLE_STATUS_COLORS['Needs Cleaning'] }
+              ]}
+            />
             <AnimatedPulse style={styles.statusText} />
           </View>
           <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: TABLE_STATUS_COLORS.Overtime }]} />
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: TABLE_STATUS_COLORS.Overtime }
+              ]}
+            />
             <AnimatedPulse style={styles.statusText} />
           </View>
         </View>
       )}
     </View>
-  );
-};
+  )
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.screen,
-    position: "relative",
+    position: 'relative'
   },
   zoomControls: {
-    position: "absolute",
+    position: 'absolute',
     top: 8,
     left: 8,
     zIndex: 20,
-    gap: 8,
+    gap: 8
   },
   zoomButton: {
     width: 52,
@@ -152,76 +172,76 @@ const styles = StyleSheet.create({
     backgroundColor: colors.skeleton,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.border
   },
   actionButtons: {
-    position: "absolute",
+    position: 'absolute',
     top: 16,
     right: 16,
     zIndex: 10,
-    flexDirection: "row",
-    gap: 8,
+    flexDirection: 'row',
+    gap: 8
   },
   mergeButton: {
     width: 140,
     height: 44,
     backgroundColor: colors.skeleton,
-    borderRadius: 8,
+    borderRadius: 8
   },
   editButton: {
     width: 110,
     height: 44,
     backgroundColor: colors.skeleton,
-    borderRadius: 8,
+    borderRadius: 8
   },
   canvasArea: {
     flex: 1,
-    position: "relative",
+    position: 'relative'
   },
   tablePlaceholder: {
-    position: "absolute",
+    position: 'absolute',
     width: 100,
     height: 100,
     backgroundColor: colors.skeleton,
-    borderRadius: 16,
+    borderRadius: 16
   },
   tableRound: {
-    borderRadius: 50,
+    borderRadius: 50
   },
   tableLarge: {
     width: 120,
-    height: 80,
+    height: 80
   },
   statusBar: {
-    position: "absolute",
+    position: 'absolute',
     bottom: 12,
     left: 16,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 16,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: "rgba(12, 15, 26, 0.9)",
+    backgroundColor: `${colors.card}E6`,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.border
   },
   statusItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
   },
   statusDot: {
     width: 12,
     height: 12,
-    borderRadius: 6,
+    borderRadius: 6
   },
   statusText: {
     width: 60,
     height: 16,
     backgroundColor: colors.skeleton,
-    borderRadius: 4,
-  },
-});
+    borderRadius: 4
+  }
+})
 
-export default React.memo(TableLayoutSkeleton);
+export default React.memo(TableLayoutSkeleton)

@@ -1,17 +1,35 @@
-import React from "react";
-import { Text, View } from "react-native";
+import { colors } from '@/lib/theme'
+import React from 'react'
+import { Text, View } from 'react-native'
 
 const SettingsCard = ({
   title,
-  children,
+  children
 }: {
-  title: string;
-  children: React.ReactNode;
+  title: string
+  children: React.ReactNode
 }) => (
-  <View className="bg-panel p-4 rounded-2xl border border-gray-700">
-    <Text className="text-2xl font-bold text-white mb-3">{title}</Text>
+  <View
+    style={{
+      backgroundColor: colors.panel,
+      padding: 16,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 22,
+        fontWeight: '700',
+        color: colors.heading,
+        marginBottom: 12
+      }}
+    >
+      {title}
+    </Text>
     {children}
   </View>
-);
+)
 
-export default SettingsCard;
+export default SettingsCard

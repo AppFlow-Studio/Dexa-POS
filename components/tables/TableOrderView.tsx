@@ -1009,12 +1009,12 @@ const TableOrderView = React.forwardRef<
   // Collapse to a bare screen during close animation — stops all child
   // subscriptions from re-rendering while the pop animation plays.
   if (phase === 'navigating_away') {
-    return <View style={{ flex: 1 }} className='bg-screen' />
+    return <View style={{ flex: 1, backgroundColor: colors.screen }} />
   }
 
   if (!isReady && renderStage === 0) {
     return (
-      <View style={{ flex: 1 }} className='bg-screen'>
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
         <TableDetailSkeleton />
       </View>
     )
@@ -1024,7 +1024,7 @@ const TableOrderView = React.forwardRef<
   // (prevents "No active order" flash during transitional gaps)
   if (!activeOrder && session?.order_id) {
     return (
-      <View style={{ flex: 1 }} className='bg-screen'>
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
         <TableDetailSkeleton />
       </View>
     )
@@ -1034,7 +1034,7 @@ const TableOrderView = React.forwardRef<
   // resolved yet, keep skeleton instead of rendering an empty bill ($0 due).
   if (!activeOrder && table?.session && table.session.status !== 'available') {
     return (
-      <View style={{ flex: 1 }} className='bg-screen'>
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
         <TableDetailSkeleton />
       </View>
     )
@@ -1043,10 +1043,16 @@ const TableOrderView = React.forwardRef<
   if (!table) {
     return (
       <View
-        style={{ flex: 1 }}
-        className='bg-screen flex-1 items-center justify-center'
+        style={{
+          flex: 1,
+          backgroundColor: colors.screen,
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}
       >
-        <Text className='text-xl font-bold' style={{ color: colors.danger }}>
+        <Text
+          style={{ fontSize: 20, fontWeight: 'bold', color: colors.danger }}
+        >
           Table not found!
         </Text>
       </View>
@@ -1054,12 +1060,18 @@ const TableOrderView = React.forwardRef<
   }
 
   return (
-    <View style={{ flex: 1 }} className='bg-screen'>
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* Seat selector — always visible. Per-seat ordering toggle only
           controls bill grouping, not seat-number assignment. */}
       <View
-        style={{ backgroundColor: colors.screen }}
-        className='flex-row items-center px-2 pt-2 pb-1'
+        style={{
+          backgroundColor: colors.screen,
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 8,
+          paddingTop: 8,
+          paddingBottom: 4
+        }}
       >
         <View style={{ flex: 1 }}>
           <SeatSelector
@@ -1183,17 +1195,41 @@ const TableOrderView = React.forwardRef<
               isOvertime={isOvertime}
               overtimeMinutes={defaultSittingTimeMinutes}
             />
-            <View className='flex-1 p-4 px-3 pt-0'>
+            <View
+              style={{
+                flex: 1,
+                padding: 16,
+                paddingHorizontal: 12,
+                paddingTop: 0
+              }}
+            >
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}
               {renderStage >= 2 ? (
                 enableCoursing && isCurrentCourseSent ? (
-                  <View className='flex-1 justify-center items-center'>
+                  <View
+                    style={{ justifyContent: 'center', alignItems: 'center' }}
+                  >
                     <TouchableOpacity
                       onPress={finalizeCurrentCourse}
-                      className='flex-row items-center gap-1.5 px-4 py-2 rounded-lg border border-teal'
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: colors.teal
+                      }}
                       activeOpacity={0.8}
                     >
-                      <Text className='font-semibold text-teal text-base'>
+                      <Text
+                        style={{
+                          fontWeight: '600',
+                          color: colors.teal,
+                          fontSize: 16
+                        }}
+                      >
                         + New Course
                       </Text>
                     </TouchableOpacity>
@@ -1205,8 +1241,10 @@ const TableOrderView = React.forwardRef<
                   />
                 )
               ) : (
-                <View className='flex-1 items-center justify-center'>
-                  <Text className='text-gray-500'>Loading menu...</Text>
+                <View
+                  style={{ alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ color: colors.label }}>Loading menu...</Text>
                 </View>
               )}
             </View>

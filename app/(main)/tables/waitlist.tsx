@@ -1,4 +1,7 @@
-import { AddWaitlistModal, AddWaitlistPayload } from '@/components/host-station/AddWaitlistModal'
+import {
+  AddWaitlistModal,
+  AddWaitlistPayload
+} from '@/components/host-station/AddWaitlistModal'
 import { TableSelectionSheet } from '@/components/host-station/TableSelectionSheet'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 
@@ -32,7 +35,7 @@ import {
   StickyNote,
   UserPlus,
   Users,
-  X,
+  X
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -41,7 +44,7 @@ import {
   Pressable,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -184,14 +187,14 @@ const WaitlistCard: React.FC<{
 
           <View className='flex-1 ml-3 min-w-0'>
             <Text
-              className='text-white font-semibold text-base'
+              style={{ color: colors.label, fontWeight: '600', fontSize: 14 }}
               numberOfLines={1}
             >
               {entry.party_name}
             </Text>
             <View className='flex-row items-center mt-0.5'>
-              <Users size={12} color={colors.muted} />
-              <Text className='text-muted text-sm ml-1'>
+              <Users size={12} color={colors.label} />
+              <Text style={{ color: colors.label }} className='text-sm ml-1'>
                 {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
               </Text>
             </View>
@@ -687,13 +690,15 @@ export default function WaitlistScreen () {
         setNotice({
           title: 'No Phone Number',
           description: `Please call out "${entry.party_name}" — no phone on file`,
-          variant: 'warning',
+          variant: 'warning'
         })
         return
       }
 
       try {
-        const result = await useWaitlistStore.getState().notifyWaitlistPartyAsync(entry.id)
+        const result = await useWaitlistStore
+          .getState()
+          .notifyWaitlistPartyAsync(entry.id)
 
         if (!result.success) {
           if (result.error === 'sms_failed') {
@@ -702,13 +707,13 @@ export default function WaitlistScreen () {
               description:
                 result.message ||
                 'Could not send SMS. Failure logged. Please notify guest verbally.',
-              variant: 'error',
+              variant: 'error'
             })
           } else {
             setNotice({
               title: 'Could Not Notify',
               description: result.error || 'Failed to notify party',
-              variant: 'error',
+              variant: 'error'
             })
           }
         } else if (result.sms) {
@@ -721,13 +726,13 @@ export default function WaitlistScreen () {
           show({
             title: 'Invalid Phone Number',
             message: `Could not send SMS — invalid number on file. Please notify ${entry.party_name} verbally.`,
-            type: 'warning',
+            type: 'warning'
           })
         } else {
           show({
             title: 'Party Notified',
             message: `${entry.party_name} has been notified`,
-            type: 'success',
+            type: 'success'
           })
         }
 
@@ -767,7 +772,7 @@ export default function WaitlistScreen () {
         p_preferred_section: data.preferred_section,
         p_notes: data.notes,
         p_quoted_wait_minutes: data.quoted_wait_minutes,
-        p_estimated_ready_at: data.estimated_ready_at,
+        p_estimated_ready_at: data.estimated_ready_at
       })
       setShowAddModal(false)
     },

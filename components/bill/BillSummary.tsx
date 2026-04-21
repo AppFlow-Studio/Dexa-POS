@@ -1,4 +1,5 @@
 import { iosOnly } from '@/lib/safeAnimations'
+import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import React, { useEffect, useMemo, useRef } from 'react'
 import { ScrollView, Text, View } from 'react-native'
@@ -51,13 +52,15 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   }, [cart, itemCourseMap])
 
   return (
-    <View className='flex-1 bg-background'>
+    <View className='flex-1' style={{ backgroundColor: colors.screen }}>
       <View className='px-3 h-full'>
         <View className='flex-1 h-full w-full'>
           <ScrollView
             ref={scrollViewRef}
             showsVerticalScrollIndicator={true}
             className='flex-1 h-full my-1'
+            style={{ backgroundColor: colors.screen }}
+            contentContainerStyle={{ backgroundColor: colors.screen }}
             nestedScrollEnabled={true}
           >
             {cart.length > 0 ? (
@@ -91,7 +94,9 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
               </View>
             ) : (
               <View className='h-full items-center justify-center'>
-                <Text className='text-xl text-gray-400'>Order is empty.</Text>
+                <Text style={{ fontSize: 20, color: colors.muted }}>
+                  Order is empty.
+                </Text>
               </View>
             )}
           </ScrollView>

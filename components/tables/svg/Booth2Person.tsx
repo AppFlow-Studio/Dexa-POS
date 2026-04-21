@@ -2,24 +2,23 @@ import * as React from 'react'
 import Svg, { Rect } from 'react-native-svg'
 
 interface Booth2PersonProps {
+  darkMode?: boolean
   color?: string
   chairColor?: string
   width?: number
   height?: number
 }
 
-const Booth2Person = React.memo(function Booth2Person({
+const Booth2Person = React.memo(function Booth2Person ({
+  darkMode = false,
   color = '#2DD4BF',
   width = 150,
-  height = 100,
+  height = 100
 }: Booth2PersonProps) {
+  const strokeOpacity = darkMode ? 0.5 : 0.8
+
   return (
-    <Svg
-      width={width}
-      height={height}
-      viewBox='0 0 180 80'
-      fill='none'
-    >
+    <Svg width={width} height={height} viewBox='0 0 180 80' fill='none'>
       {/* Table surface */}
       <Rect
         x='6'
@@ -28,12 +27,12 @@ const Booth2Person = React.memo(function Booth2Person({
         height='48'
         rx='4'
         fill={color}
-        fillOpacity='0.18'
+        fillOpacity={darkMode ? 0.18 : 0.8}
         stroke={color}
         strokeWidth='1.5'
-        strokeOpacity='0.8'
+        strokeOpacity={strokeOpacity}
       />
-      {/* Booth top and bottom */}
+      {/* Booth top */}
       <Rect
         x='6'
         y='0'
@@ -41,11 +40,12 @@ const Booth2Person = React.memo(function Booth2Person({
         height='13'
         rx='3'
         fill={color}
-        fillOpacity='0.12'
+        fillOpacity={darkMode ? 0.12 : 0.8}
         stroke={color}
         strokeWidth='1'
-        strokeOpacity='0.5'
+        strokeOpacity={strokeOpacity}
       />
+      {/* Booth bottom */}
       <Rect
         x='6'
         y='67'
@@ -53,10 +53,10 @@ const Booth2Person = React.memo(function Booth2Person({
         height='13'
         rx='3'
         fill={color}
-        fillOpacity='0.12'
+        fillOpacity={darkMode ? 0.12 : 0.8}
         stroke={color}
         strokeWidth='1'
-        strokeOpacity='0.5'
+        strokeOpacity={strokeOpacity}
       />
     </Svg>
   )
