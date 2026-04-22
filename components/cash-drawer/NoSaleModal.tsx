@@ -57,6 +57,7 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
   const drawerId = useCashDrawerStore(s => s.drawerId)
   const drawerName = useCashDrawerStore(s => s.drawerName)
   const activeSession = useCashDrawerStore(s => s.activeSession)
+  const getNoSaleCount = useCashDrawerStore(s => s.getNoSaleCount)
 
   const loggedInEmployee = useEmployeeStore(s => s.loggedInEmployee)
 
@@ -68,6 +69,7 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
   const [customReason, setCustomReason] = useState('')
   const [pin, setPin] = useState('')
   const [approvedBy, setApprovedBy] = useState<string | null>(null)
+  const [approvedByName, setApprovedByName] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const shakeX = useSharedValue(0)
@@ -91,7 +93,8 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
     const isManager = employee && MANAGER_ROLES.includes(employee.role)
 
     if (isManager) {
-      setApprovedBy(employee.displayName || employee.id)
+      setApprovedBy(employee.profileId || employee.id)
+      setApprovedByName(employee.displayName || employee.id)
       setPin('')
     } else {
       shakeX.value = withSequence(
@@ -139,6 +142,17 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
         message: 'Cash drawer opened.',
         type: 'success'
       })
+
+      // Check no-sale threshold after recording
+      const noSaleCount = getNoSaleCount()
+      const threshold = cashDrawerSettings.noSaleAlertThreshold
+      if (threshold > 0 && noSaleCount >= threshold) {
+        show({
+          title: 'No-Sale Alert',
+          message: `${noSaleCount} no-sale operations this session (threshold: ${threshold}). This will be flagged in the EOD audit.`,
+          type: 'warning'
+        })
+      }
 
       // Print receipt if configured
       if (cashDrawerSettings.autoPrintNoSaleReceipt) {
@@ -192,6 +206,7 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
     setCustomReason('')
     setPin('')
     setApprovedBy(null)
+    setApprovedByName(null)
   }
 
   const handleClose = () => {
@@ -421,7 +436,35 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
                       fontWeight: '600'
                     }}
                   >
-                    Approved by: {approvedBy}
+                    Approved by: {approvedByName}
+                  </Text>
+                </View>
+              )}
+
+              {/* No-sale threshold warning */}
+              {cashDrawerSettings.noSaleAlertThreshold > 0 &&
+                getNoSaleCount() >= cashDrawerSettings.noSaleAlertThreshold && (
+                <View
+                  style={{
+                    marginTop: 4,
+                    marginBottom: 4,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    backgroundColor: colors.danger + '15',
+                    borderWidth: 1,
+                    borderColor: colors.danger + '45',
+                    borderRadius: 10
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.danger,
+                      textAlign: 'center',
+                      fontWeight: '600'
+                    }}
+                  >
+                    {getNoSaleCount()} no-sale ops this session (threshold: {cashDrawerSettings.noSaleAlertThreshold})
                   </Text>
                 </View>
               )}

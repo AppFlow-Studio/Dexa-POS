@@ -191,15 +191,16 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
       const locationId = selectedStore?.id
       if (!locationId) return
 
-      // Declare cash tips (non-blocking)
+      // Declare cash tips (non-blocking — queued if offline)
       const shiftId = timeClock.shiftId
-      if (shiftId) {
+      if (shiftId || employee?.profileId) {
         try {
           await timeClock.declareCashTips(
-            shiftId,
+            shiftId || '',
             declaredAmount,
             locationId,
-            deviceId
+            deviceId,
+            employee?.profileId,
           )
         } catch (e) {
           console.warn(

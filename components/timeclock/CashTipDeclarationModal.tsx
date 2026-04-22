@@ -9,9 +9,12 @@
 
 import { fetchShiftTipSummary, ShiftTipSummary } from '@/services/cashTipDeclarationService'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { getCurrentBusinessDay } from '@/lib/businessDay'
+import { getCurrentBusinessDay, getBusinessDayBounds } from '@/lib/businessDay'
 import { colors } from '@/lib/theme'
+import { getIsOnline } from '@/services/offlineSyncService'
+import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { computeEmployeeTipData } from '@/utils/computeEmployeeTipData'
 import { formatCurrency } from '@/utils/currency'
 import {
   AlertTriangle,
@@ -82,6 +85,7 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
   const [rawInput, setRawInput] = useState('0')
   const [summary, setSummary] = useState<ShiftTipSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [isOfflineEstimate, setIsOfflineEstimate] = useState(false)
 
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const declaredAmount = parseFloat(rawInput) || 0
@@ -91,16 +95,36 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
   }
   const today = getCurrentBusinessDay(bdConfig)
 
-  // Reset state when modal opens
+  // Detect stale shift (clock-in from a previous business day)
+  const clockInDate = clockInTime.toISOString().split('T')[0]
+  const isStaleShift = clockInDate < today
+
+  // Reset state when modal opens — compute local estimate immediately, refine with backend if online
   useEffect(() => {
-    if (isOpen) {
-      setStep('summary')
-      setRawInput('0')
-      setSummary(null)
+    if (!isOpen) return
+
+    setStep('summary')
+    setRawInput('0')
+    setSummaryLoading(false)
+
+    // 1. Immediate local computation (no network needed)
+    const bounds = getBusinessDayBounds(today, bdConfig)
+    const ordersById = useOrderStore.getState().ordersById
+    const local = computeEmployeeTipData(staffProfileId, ordersById, bounds.startUtc, bounds.endUtc)
+    setSummary({ cardTips: local.cardTips, cashPaymentTips: local.cashPaymentTips, grossSales: local.grossSales })
+
+    const online = getIsOnline()
+    setIsOfflineEstimate(!online)
+
+    // 2. If online, refine with authoritative backend data
+    if (online) {
       setSummaryLoading(true)
       fetchShiftTipSummary(supabase, staffProfileId, locationId, today, bdConfig)
-        .then(setSummary)
-        .catch(() => setSummary(null))
+        .then(backendSummary => {
+          setSummary(backendSummary)
+          setIsOfflineEstimate(false)
+        })
+        .catch(() => { /* keep local estimate on failure */ })
         .finally(() => setSummaryLoading(false))
     }
   }, [isOpen, staffProfileId, locationId, supabase, today])
@@ -159,6 +183,46 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
       <Text style={{ fontSize: 18, fontWeight: '800', color: colors.heading, textAlign: 'center' }}>
         Ending shift for {employeeName}
       </Text>
+
+      {isOfflineEstimate && (
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingVertical: 6,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          backgroundColor: colors.warning + '12',
+          borderWidth: 1,
+          borderColor: colors.warning + '30',
+          gap: 6,
+        }}>
+          <AlertTriangle size={12} color={colors.warning} />
+          <Text style={{ fontSize: 11, color: colors.warning, fontWeight: '500' }}>
+            Offline — showing local estimates from this device
+          </Text>
+        </View>
+      )}
+
+      {isStaleShift && (
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingVertical: 6,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          backgroundColor: colors.danger + '12',
+          borderWidth: 1,
+          borderColor: colors.danger + '30',
+          gap: 6,
+        }}>
+          <AlertTriangle size={12} color={colors.danger} />
+          <Text style={{ fontSize: 11, color: colors.danger, fontWeight: '500' }}>
+            This shift started on {clockInDate} — tips will be recorded for today's close-out
+          </Text>
+        </View>
+      )}
 
       <View style={{ gap: 12 }}>
         {/* Duration */}

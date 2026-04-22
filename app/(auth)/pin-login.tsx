@@ -558,6 +558,34 @@ const PinLoginScreen = () => {
 
     try {
       const result = await timeClock.clockOut(enteredPin, selectedStore.id, deviceId);
+
+      // Offline path: RPC was queued, resolve employee from PIN locally
+      if (result?.queued) {
+        const allEmployees = useEmployeeStore.getState().employees;
+        const offlineEmp = allEmployees.find(e => e.pin === enteredPin);
+        if (!offlineEmp) {
+          triggerShakeAnimation();
+          return;
+        }
+        const offlineSession = sessions[offlineEmp.id];
+        const offlineClockIn = offlineSession?.clockInTime
+          ? new Date(offlineSession.clockInTime)
+          : new Date();
+        const tcStore = useTimeclockStore.getState();
+
+        setClockOutEmployee({
+          name: offlineEmp.fullName || 'Employee',
+          profileId: offlineEmp.profileId,
+          shiftId: tcStore.currentShiftId || '',
+          clockInTime: offlineClockIn,
+        });
+        tcStore.clockOut(offlineEmp.id);
+        pendingClockOutPinRef.current = enteredPin;
+        setShowCashDeclaration(true);
+        return;
+      }
+
+      // Online path: extract data from RPC response
       const staffId = result?.staff_id;
       const staffName = result?.employee_name;
       const shiftId = result?.shift_id;
@@ -568,8 +596,8 @@ const PinLoginScreen = () => {
       }
 
       // Find clock-in time from their shift
-      const { employees } = useEmployeeStore.getState();
-      const emp = employees.find(e => e.profileId === staffId);
+      const { employees: allEmps } = useEmployeeStore.getState();
+      const emp = allEmps.find(e => e.profileId === staffId);
       const empSession = emp ? sessions[emp.id] : null;
       let clockInTime = empSession?.clockInTime ? new Date(empSession.clockInTime) : new Date();
 
@@ -611,9 +639,15 @@ const PinLoginScreen = () => {
 
     // Clock-out already happened in handleClockOut — just declare tips
     const shiftId = clockOutEmployee?.shiftId;
-    if (shiftId) {
+    if (shiftId || clockOutEmployee?.profileId) {
       try {
-        await timeClock.declareCashTips(shiftId, declaredAmount, selectedStore.id, deviceId);
+        await timeClock.declareCashTips(
+          shiftId || '',
+          declaredAmount,
+          selectedStore.id,
+          deviceId,
+          clockOutEmployee?.profileId,
+        );
       } catch (e) {
         console.warn("[PinLogin] Cash tip declaration failed:", e);
       }

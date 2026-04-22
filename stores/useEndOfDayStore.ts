@@ -104,8 +104,18 @@ export const EOD_STEPS: EndOfDayStepDefinition[] = [
 
 export const DEFAULT_EOD_PHASE: EodPhase = "wizard";
 
+export interface NoSaleEventDetail {
+  id: string;
+  performedAt: string;
+  performedBy: string;
+  performedByName?: string;
+  reason: string | null;
+  approvedBy: string | null;
+}
+
 export interface DrawerBreakdownItem {
   drawerName: string;
+  sessionId?: string;
   opening: number;
   closing: number;
   expected: number;
@@ -116,6 +126,14 @@ export interface DrawerBreakdownItem {
   payOuts: number;
   cashDrops: number;
   noSaleCount: number;
+  noSaleEvents?: NoSaleEventDetail[];
+  suspiciousPatterns?: Array<{
+    flagType: string;
+    description: string;
+    noSaleOpId: string;
+    relatedOpId: string | null;
+    timeGapSeconds: number;
+  }>;
 }
 
 export interface DailySummary {

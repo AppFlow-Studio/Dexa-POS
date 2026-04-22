@@ -11,6 +11,7 @@ export interface TimeClockAction {
   // Cash tip declaration fields (only for type: 'declare_cash_tips')
   shiftId?: string;
   cashTipAmount?: number;
+  staffProfileId?: string; // Fallback for shift lookup when shiftId is unknown (offline clock-in)
 }
 
 export interface StaffShiftState {

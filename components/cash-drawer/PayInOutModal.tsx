@@ -82,6 +82,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
   const [customReason, setCustomReason] = useState('')
   const [pin, setPin] = useState('')
   const [approvedBy, setApprovedBy] = useState<string | null>(null)
+  const [approvedByName, setApprovedByName] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [step, setStep] = useState<1 | 2>(1)
 
@@ -108,7 +109,8 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
     const isManager = employee && MANAGER_ROLES.includes(employee.role)
 
     if (isManager) {
-      setApprovedBy(employee.displayName || employee.id)
+      setApprovedBy(employee.profileId || employee.id)
+      setApprovedByName(employee.displayName || employee.id)
       setPin('')
     } else {
       shakeX.value = withSequence(
@@ -183,6 +185,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
     setCustomReason('')
     setPin('')
     setApprovedBy(null)
+    setApprovedByName(null)
     setStep(1)
   }
 
@@ -628,7 +631,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                           fontWeight: '600'
                         }}
                       >
-                        Approved by: {approvedBy}
+                        Approved by: {approvedByName}
                       </Text>
                     </View>
                   )}

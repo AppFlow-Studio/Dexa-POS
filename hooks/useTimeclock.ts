@@ -307,12 +307,101 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
 
         let error: any;
         if (actionToProcess.type === 'declare_cash_tips') {
-          // Route cash tip declarations to the dedicated RPC
-          const res = await supabase.rpc("declare_cash_tips_for_shift", {
-            p_shift_id: actionToProcess.shiftId!,
-            p_amount: actionToProcess.cashTipAmount!,
-          });
-          error = res.error;
+          // Resolve the correct shiftId for this declaration
+          let resolvedShiftId = actionToProcess.shiftId;
+          const staffId = actionToProcess.staffProfileId;
+          const locId = actionToProcess.locationId;
+
+          // If shiftId is present, check if it's stale (from a previous day).
+          // When a user clocks out of a multi-day stale session and declares tips,
+          // the declaration should go to the most recent shift (today's or the
+          // clock-out day), not the original stale shift from days ago.
+          if (resolvedShiftId && staffId) {
+            try {
+              const { data: shiftCheck } = await supabase
+                .from("staff_shifts")
+                .select("id, clock_in_time")
+                .eq("id", resolvedShiftId)
+                .single();
+
+              if (shiftCheck?.clock_in_time) {
+                const shiftDate = shiftCheck.clock_in_time.split("T")[0];
+                const today = new Date().toISOString().split("T")[0];
+
+                if (shiftDate < today) {
+                  // Stale shift — find the most recent shift for this employee today
+                  console.warn(
+                    `[useTimeClock] Stale shift detected (${shiftDate}), looking for today's shift`
+                  );
+                  const { data: todayShift } = await supabase
+                    .from("staff_shifts")
+                    .select("id")
+                    .eq("staff_profile_id", staffId)
+                    .eq("location_id", locId)
+                    .gte("clock_in_time", `${today}T00:00:00`)
+                    .order("clock_in_time", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                  if (todayShift?.id) {
+                    console.log(
+                      `[useTimeClock] Re-associating declaration to today's shift: ${todayShift.id}`
+                    );
+                    resolvedShiftId = todayShift.id;
+                  } else {
+                    // No shift today — fall back to most recent shift overall
+                    const { data: latestShift } = await supabase
+                      .from("staff_shifts")
+                      .select("id")
+                      .eq("staff_profile_id", staffId)
+                      .eq("location_id", locId)
+                      .order("clock_in_time", { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+
+                    if (latestShift?.id) {
+                      resolvedShiftId = latestShift.id;
+                    }
+                    // else keep original stale shiftId — better than losing the declaration
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("[useTimeClock] Stale shift check failed, using original:", e);
+            }
+          }
+
+          // If shiftId was missing entirely (clock-in was also offline), resolve by staffProfileId
+          if (!resolvedShiftId && staffId) {
+            try {
+              const { data: shiftData } = await supabase
+                .from("staff_shifts")
+                .select("id")
+                .eq("staff_profile_id", staffId)
+                .eq("location_id", locId)
+                .order("clock_in_time", { ascending: false })
+                .limit(1)
+                .single();
+              if (shiftData?.id) {
+                resolvedShiftId = shiftData.id;
+              }
+            } catch (e) {
+              console.warn("[useTimeClock] Failed to resolve shift for declaration:", e);
+            }
+          }
+
+          if (!resolvedShiftId) {
+            console.error("[useTimeClock] Cannot declare tips: no shiftId resolved");
+            store.removeFromQueue(actionToProcess.id);
+            error = { code: "NO_SHIFT", message: "Could not resolve shift for tip declaration" };
+          } else {
+            // Route cash tip declarations to the dedicated RPC
+            const res = await supabase.rpc("declare_cash_tips_for_shift", {
+              p_shift_id: resolvedShiftId,
+              p_amount: actionToProcess.cashTipAmount!,
+            });
+            error = res.error;
+          }
         } else {
           const res = await supabase.rpc("handle_time_clock", {
             p_pin_code: actionToProcess.pinCode,
@@ -366,6 +455,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       amount: number,
       locationId: string,
       deviceId: string,
+      staffProfileId?: string,
     ): Promise<{ success: boolean; queued?: boolean }> => {
       const netState = await NetInfo.fetch();
 
@@ -393,6 +483,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
               deviceId,
               shiftId,
               cashTipAmount: amount,
+              staffProfileId,
             });
             return { success: true, queued: true };
           }
@@ -409,6 +500,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
           deviceId,
           shiftId,
           cashTipAmount: amount,
+          staffProfileId,
         });
         return { success: true, queued: true };
       }

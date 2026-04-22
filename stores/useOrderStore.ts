@@ -5051,7 +5051,10 @@ export const useOrderStore = create<OrderState>()(
               // Station tracking
               station_id: currentStationId,
               _sourceStationId: currentStationId,
-              _sourceStationName: currentStation?.station_name || null
+              _sourceStationName: currentStation?.station_name || null,
+
+              // Staff attribution
+              created_by_staff_profile_id: activeEmployee?.profileId || null
             }
             set(state => {
               state.ordersById[newOrder.id] = newOrder

@@ -949,6 +949,9 @@ export interface OrderProfile {
   _sourceStationId?: string | null // Original creating station ID (for display)
   _sourceStationName?: string | null // Original creating station name (for display)
 
+  // === STAFF ATTRIBUTION ===
+  created_by_staff_profile_id?: string | null // staff_profiles.id of the employee who created this order
+
   // === ORDER SOURCE ===
   order_source?: string | null // "pos" | "online" | null
   delivery_platform?: string | null // "uber_eats" | "grubhub" | "doordash" | "food_panda" | null
