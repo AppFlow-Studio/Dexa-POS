@@ -282,11 +282,11 @@ const CashPaymentView = () => {
 
               {/* Amount Received */}
               <View style={{ gap: 5 }}>
-                <Text style={labelStyle}>Amount Received</Text>
+                <Text style={getLabelStyle()}>Amount Received</Text>
                 <TouchableOpacity
                   onPress={() => setActiveInput('tendered')}
                   style={[
-                    inputStyle,
+                    getInputStyle(),
                     {
                       borderColor:
                         activeInput === 'tendered' ? colors.teal : colors.border
@@ -324,7 +324,7 @@ const CashPaymentView = () => {
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={labelStyle}>Cash Tip (Optional)</Text>
+                  <Text style={getLabelStyle()}>Cash Tip (Optional)</Text>
                   <Text style={{ color: colors.muted, fontSize: 10 }}>
                     Goes to server tip-out
                   </Text>
@@ -332,7 +332,7 @@ const CashPaymentView = () => {
                 <TouchableOpacity
                   onPress={() => setActiveInput('tip')}
                   style={[
-                    inputStyle,
+                    getInputStyle(),
                     {
                       height: 42,
                       borderColor:
@@ -554,7 +554,7 @@ const CashPaymentView = () => {
                   >
                     <Text
                       style={{
-                        color: '#000',
+                        color: colors.onSolid,
                         fontWeight: '700',
                         fontSize: 9,
                         textTransform: 'uppercase',
@@ -564,7 +564,11 @@ const CashPaymentView = () => {
                       Exact
                     </Text>
                     <Text
-                      style={{ color: '#000', fontWeight: '800', fontSize: 11 }}
+                      style={{
+                        color: colors.onSolid,
+                        fontWeight: '800',
+                        fontSize: 11
+                      }}
                     >
                       ${totalWithTip.toFixed(2)}
                     </Text>
@@ -680,11 +684,13 @@ const CashPaymentView = () => {
               opacity: (!isSufficient && total > 0) || isProcessing ? 0.35 : 1
             }}
           >
-            <Text style={{ fontWeight: '600', fontSize: 13, color: '#000' }}>
+            <Text
+              style={{ fontWeight: '600', fontSize: 13, color: colors.onSolid }}
+            >
               {isProcessing ? 'Processing...' : 'Complete Order'}
             </Text>
             {!isProcessing && (
-              <Text style={{ color: '#000', fontSize: 13 }}>→</Text>
+              <Text style={{ color: colors.onSolid, fontSize: 13 }}>→</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -693,15 +699,15 @@ const CashPaymentView = () => {
   )
 }
 
-const labelStyle = {
+const getLabelStyle = () => ({
   color: colors.muted,
   fontSize: 10,
   fontWeight: '700' as const,
   textTransform: 'uppercase' as const,
   letterSpacing: 0.8
-}
+})
 
-const inputStyle = {
+const getInputStyle = () => ({
   flexDirection: 'row' as const,
   alignItems: 'center' as const,
   backgroundColor: colors.panel,
@@ -709,6 +715,6 @@ const inputStyle = {
   borderWidth: 1.5,
   paddingHorizontal: 12,
   height: 48
-}
+})
 
 export default CashPaymentView

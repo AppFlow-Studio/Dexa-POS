@@ -15,7 +15,8 @@ const TableSquare4Chair = React.memo(function TableSquare4Chair ({
   width = 97,
   height = 97
 }: TableSquare4ChairProps) {
-  const lightStroke = '#111827'
+  const fillOpacity = darkMode ? 0.12 : 0.18
+  const strokeOpacity = darkMode ? 0.5 : 0.7
 
   return (
     <Svg width={width} height={height} viewBox='0 0 97 97' fill='none'>
@@ -27,10 +28,10 @@ const TableSquare4Chair = React.memo(function TableSquare4Chair ({
         height='11'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.75}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.9}
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
+        strokeOpacity={strokeOpacity}
       />
 
       {/* Chair - bottom */}
@@ -41,10 +42,10 @@ const TableSquare4Chair = React.memo(function TableSquare4Chair ({
         height='11'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.75}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.9}
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
+        strokeOpacity={strokeOpacity}
       />
 
       {/* Chair - left */}
@@ -55,10 +56,10 @@ const TableSquare4Chair = React.memo(function TableSquare4Chair ({
         height='39'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.75}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.9}
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
+        strokeOpacity={strokeOpacity}
       />
 
       {/* Chair - right */}
@@ -69,10 +70,10 @@ const TableSquare4Chair = React.memo(function TableSquare4Chair ({
         height='39'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.75}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.9}
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
+        strokeOpacity={strokeOpacity}
       />
 
       {/* Table surface */}
@@ -83,10 +84,10 @@ const TableSquare4Chair = React.memo(function TableSquare4Chair ({
         height='73'
         rx='6'
         fill={color}
-        fillOpacity={darkMode ? 0.18 : 0.75}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1.5'
-        strokeOpacity={darkMode ? 0.8 : 0.9}
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='2'
+        strokeOpacity={strokeOpacity}
       />
     </Svg>
   )

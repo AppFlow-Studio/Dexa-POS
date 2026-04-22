@@ -31,78 +31,83 @@ type PaymentMethod =
   | 'Open Tab'
   | 'Close Tab'
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.screen },
-  header: { alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 },
-  title: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.heading,
-    marginBottom: 3
-  },
-  subtitle: { fontSize: 12, color: colors.muted },
-  list: { gap: 8, paddingHorizontal: 16 },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panel
-  },
-  cardActive: {
-    borderColor: colors.teal,
-    backgroundColor: `${colors.teal}10`
-  },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: `${colors.border}60`,
-    marginRight: 12
-  },
-  iconBoxActive: { backgroundColor: `${colors.teal}20` },
-  methodTitle: { fontSize: 13, fontWeight: '600', color: colors.muted },
-  methodTitleActive: { color: colors.heading },
-  methodDesc: { fontSize: 11, color: colors.muted, marginTop: 1 },
-  methodDescActive: { color: colors.teal },
-  radio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: colors.border
-  },
-  footer: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.screen,
-    flexDirection: 'row',
-    gap: 10
-  },
-  backBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panel,
-    alignItems: 'center'
-  },
-  proceedBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: colors.teal,
-    alignItems: 'center'
-  }
-})
+const getStyles = () =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.screen },
+    header: {
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 16
+    },
+    title: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.heading,
+      marginBottom: 3
+    },
+    subtitle: { fontSize: 12, color: colors.muted },
+    list: { gap: 8, paddingHorizontal: 16 },
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.panel
+    },
+    cardActive: {
+      borderColor: colors.teal,
+      backgroundColor: `${colors.teal}10`
+    },
+    iconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${colors.border}60`,
+      marginRight: 12
+    },
+    iconBoxActive: { backgroundColor: `${colors.teal}20` },
+    methodTitle: { fontSize: 13, fontWeight: '600', color: colors.muted },
+    methodTitleActive: { color: colors.heading },
+    methodDesc: { fontSize: 11, color: colors.muted, marginTop: 1 },
+    methodDescActive: { color: colors.teal },
+    radio: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 1.5,
+      borderColor: colors.border
+    },
+    footer: {
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: 20,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.screen,
+      flexDirection: 'row',
+      gap: 10
+    },
+    backBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.panel,
+      alignItems: 'center'
+    },
+    proceedBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: colors.teal,
+      alignItems: 'center'
+    }
+  })
 
 const PaymentMethodSelectionView: React.FC = () => {
   const setView = usePaymentStore(s => s.setView)
@@ -215,26 +220,26 @@ const PaymentMethodSelectionView: React.FC = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={getStyles().container}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 20 }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>
+        <View style={getStyles().header}>
+          <Text style={getStyles().title}>
             {activeSplit
               ? `Payment for ${activeSplit.customerName}`
               : 'Select Payment Method'}
           </Text>
-          <Text style={styles.subtitle}>
+          <Text style={getStyles().subtitle}>
             {activeSplit
               ? `Amount Due: $${activeSplit.amount.toFixed(2)}`
               : 'Choose how the customer would like to pay'}
           </Text>
         </View>
 
-        <View style={styles.list}>
+        <View style={getStyles().list}>
           {availableMethods.map(method => {
             const isSelected = selectedMethod === method.name
             const Icon = method.icon
@@ -243,10 +248,13 @@ const PaymentMethodSelectionView: React.FC = () => {
                 key={method.name}
                 onPress={() => setSelectedMethod(method.name)}
                 activeOpacity={0.8}
-                style={[styles.card, isSelected && styles.cardActive]}
+                style={[getStyles().card, isSelected && getStyles().cardActive]}
               >
                 <View
-                  style={[styles.iconBox, isSelected && styles.iconBoxActive]}
+                  style={[
+                    getStyles().iconBox,
+                    isSelected && getStyles().iconBoxActive
+                  ]}
                 >
                   <Icon
                     color={isSelected ? colors.teal : colors.label}
@@ -257,16 +265,16 @@ const PaymentMethodSelectionView: React.FC = () => {
                 <View style={{ flex: 1 }}>
                   <Text
                     style={[
-                      styles.methodTitle,
-                      isSelected && styles.methodTitleActive
+                      getStyles().methodTitle,
+                      isSelected && getStyles().methodTitleActive
                     ]}
                   >
                     {method.title}
                   </Text>
                   <Text
                     style={[
-                      styles.methodDesc,
-                      isSelected && styles.methodDescActive
+                      getStyles().methodDesc,
+                      isSelected && getStyles().methodDescActive
                     ]}
                   >
                     {method.description}
@@ -281,7 +289,7 @@ const PaymentMethodSelectionView: React.FC = () => {
                       stroke={colors.screen}
                     />
                   ) : (
-                    <View style={styles.radio} />
+                    <View style={getStyles().radio} />
                   )}
                 </View>
               </TouchableOpacity>
@@ -290,9 +298,9 @@ const PaymentMethodSelectionView: React.FC = () => {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={getStyles().footer}>
         <TouchableOpacity
-          style={styles.backBtn}
+          style={getStyles().backBtn}
           onPress={() => (activeSplit ? handleBack() : close())}
         >
           <Text
@@ -301,7 +309,10 @@ const PaymentMethodSelectionView: React.FC = () => {
             {activeSplit ? 'Back' : 'Cancel'}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.proceedBtn} onPress={handleProceed}>
+        <TouchableOpacity
+          style={getStyles().proceedBtn}
+          onPress={handleProceed}
+        >
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
             Proceed
           </Text>

@@ -489,6 +489,12 @@ const pendingItemAdditions: Map<string, Promise<boolean>> = new Map()
 // Per-order serial chain to prevent concurrent ensureOrderCreated calls
 const orderAdditionChains = new Map<string, Promise<any>>()
 
+// Global per-order sync dedupe to prevent duplicate fetch/hydration work.
+const inFlightDbOrderSyncs = new Map<string, Promise<string | null>>()
+const inFlightOrderDetailSyncs = new Map<string, Promise<void>>()
+const lastOrderDetailSyncAt = new Map<string, number>()
+const ORDER_DETAIL_SYNC_COOLDOWN_MS = 5000
+
 // Module-level sync operation tracking (NOT in store state to avoid Immer freezing)
 // Maps itemId -> sync promise for pending backend operations
 const pendingSyncOperations = new Map<string, Promise<boolean>>()
@@ -10625,470 +10631,496 @@ export const useOrderStore = create<OrderState>()(
               return dbOrderIdOrLocalId
             }
 
-            // O(1) order resolution via direct key or dbOrderIdIndex
-            const resolvedKey =
-              get().dbOrderIdIndex[dbOrderIdOrLocalId] ?? dbOrderIdOrLocalId
-            let order = get().ordersById[resolvedKey]
-            let localOrderId = resolvedKey
-            let isNewOrder = false
-
-            if (!order) {
-              // Race guard: hydrateOrderFromSeat may have set db_order_id on an
-              // existing order but dbOrderIdIndex isn't populated yet (realtime
-              // broadcast arrived before the RPC response). Scan ordersById as a
-              // fallback to prevent duplicate order creation.
-              const existingEntries = Object.entries(get().ordersById)
-              for (let i = 0; i < existingEntries.length; i++) {
-                const [key, o] = existingEntries[i]
-                if (o.db_order_id === dbOrderIdOrLocalId) {
-                  // Repair the index and return the existing order
-                  set(state => {
-                    state.dbOrderIdIndex[dbOrderIdOrLocalId] = key
-                  })
-                  console.log(
-                    `[syncOrderFromDatabase] Race guard: found existing order ${key} for db_order_id ${dbOrderIdOrLocalId}, repaired index`
-                  )
-                  return key
-                }
-              }
-              // No existing order — create new
-              localOrderId = `order_${Date.now()}_${Math.random()
-                .toString(36)
-                .substr(2, 9)}`
-              isNewOrder = true
+            const existingSync = inFlightDbOrderSyncs.get(dbOrderIdOrLocalId)
+            if (existingSync) {
+              console.log(
+                `[syncOrderFromDatabase] Reusing in-flight sync for ${dbOrderIdOrLocalId}`
+              )
+              return existingSync
             }
 
-            // Determine which database ID to use for fetching
-            const dbOrderId = order?.db_order_id || dbOrderIdOrLocalId
+            const syncPromise = (async (): Promise<string | null> => {
+              // O(1) order resolution via direct key or dbOrderIdIndex
+              const resolvedKey =
+                get().dbOrderIdIndex[dbOrderIdOrLocalId] ?? dbOrderIdOrLocalId
+              let order = get().ordersById[resolvedKey]
+              let localOrderId = resolvedKey
+              let isNewOrder = false
 
-            console.log(
-              `[syncOrderFromDatabase] Syncing order (local: ${localOrderId}, db: ${dbOrderId})`
-            )
-
-            try {
-              // Fetch order, items, payments, and item payments in parallel
-              const [
-                orderResult,
-                itemsResult,
-                paymentsResult,
-                itemPaymentsResult
-              ] = await Promise.all([
-                supabase
-                  .from('orders')
-                  .select('*')
-                  .eq('id', dbOrderId)
-                  .single(),
-                supabase
-                  .from('order_items')
-                  .select('*, order_item_modifiers (*)')
-                  .eq('order_id', dbOrderId)
-                  .eq('is_voided', false),
-                supabase
-                  .from('order_payments')
-                  .select('*')
-                  .eq('order_id', dbOrderId),
-                supabase
-                  .from('order_item_payments')
-                  .select('*')
-                  .eq('order_id', dbOrderId)
-              ])
-
-              if (orderResult.error) {
-                console.error(
-                  '[syncOrderFromDatabase] Order fetch error:',
-                  orderResult.error
-                )
-                throw new Error(orderResult.error.message)
+              if (!order) {
+                // Race guard: hydrateOrderFromSeat may have set db_order_id on an
+                // existing order but dbOrderIdIndex isn't populated yet (realtime
+                // broadcast arrived before the RPC response). Scan ordersById as a
+                // fallback to prevent duplicate order creation.
+                const existingEntries = Object.entries(get().ordersById)
+                for (let i = 0; i < existingEntries.length; i++) {
+                  const [key, o] = existingEntries[i]
+                  if (o.db_order_id === dbOrderIdOrLocalId) {
+                    // Repair the index and return the existing order
+                    set(state => {
+                      state.dbOrderIdIndex[dbOrderIdOrLocalId] = key
+                    })
+                    console.log(
+                      `[syncOrderFromDatabase] Race guard: found existing order ${key} for db_order_id ${dbOrderIdOrLocalId}, repaired index`
+                    )
+                    return key
+                  }
+                }
+                // No existing order — create new
+                localOrderId = `order_${Date.now()}_${Math.random()
+                  .toString(36)
+                  .substr(2, 9)}`
+                isNewOrder = true
               }
 
-              const dbOrder = orderResult.data
-              if (!dbOrder) {
-                throw new Error('Order not found in database')
-              }
+              // Determine which database ID to use for fetching
+              const dbOrderId = order?.db_order_id || dbOrderIdOrLocalId
 
-              if (itemsResult.error) {
-                console.error(
-                  '[syncOrderFromDatabase] Items fetch error:',
-                  itemsResult.error
-                )
-                throw new Error(itemsResult.error.message)
-              }
+              console.log(
+                `[syncOrderFromDatabase] Syncing order (local: ${localOrderId}, db: ${dbOrderId})`
+              )
 
-              const dbItems = itemsResult.data
-              const dbPayments = paymentsResult.data
-              const dbItemPayments = itemPaymentsResult.data
+              try {
+                // Fetch order, items, payments, and item payments in parallel
+                const [
+                  orderResult,
+                  itemsResult,
+                  paymentsResult,
+                  itemPaymentsResult
+                ] = await Promise.all([
+                  supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('id', dbOrderId)
+                    .single(),
+                  supabase
+                    .from('order_items')
+                    .select('*, order_item_modifiers (*)')
+                    .eq('order_id', dbOrderId)
+                    .eq('is_voided', false),
+                  supabase
+                    .from('order_payments')
+                    .select('*')
+                    .eq('order_id', dbOrderId),
+                  supabase
+                    .from('order_item_payments')
+                    .select('*')
+                    .eq('order_id', dbOrderId)
+                ])
 
-              if (paymentsResult.error) {
-                console.error(
-                  '[syncOrderFromDatabase] Payments fetch error:',
-                  paymentsResult.error
-                )
-                // Non-fatal - continue without payments
-              }
+                if (orderResult.error) {
+                  console.error(
+                    '[syncOrderFromDatabase] Order fetch error:',
+                    orderResult.error
+                  )
+                  throw new Error(orderResult.error.message)
+                }
 
-              console.log('[syncOrderFromDatabase] Fetched data:', {
-                order: dbOrder,
-                items: dbItems?.length || 0,
-                payments: dbPayments?.length || 0
-              })
+                const dbOrder = orderResult.data
+                if (!dbOrder) {
+                  throw new Error('Order not found in database')
+                }
 
-              // 4. Update local state with database values
-              set(state => {
-                const localOrder = state.ordersById[localOrderId]
+                if (itemsResult.error) {
+                  console.error(
+                    '[syncOrderFromDatabase] Items fetch error:',
+                    itemsResult.error
+                  )
+                  throw new Error(itemsResult.error.message)
+                }
 
-                // If order doesn't exist locally, we need to create it from DB data
-                // Otherwise, sync existing order with DB data
-                const syncedItems = localOrder
-                  ? localOrder.items.map(localItem => {
-                      const dbItem = dbItems?.find(
-                        db => db.id === localItem.db_order_item_id
-                      )
-                      if (dbItem) {
-                        return {
-                          ...localItem,
-                          quantity: dbItem.quantity,
-                          // FIX: Use higher of local vs backend to prevent overwrite
-                          paidQuantity: Math.max(
-                            localItem.paidQuantity || 0,
-                            dbItem.paid_quantity || 0
-                          ),
-                          price: dbItem.unit_price,
-                          cashPrice: dbItem.cash_price,
-                          is_voided: dbItem.is_voided,
-                          // Preserve course number from backend to prevent items being grouped into course 1
-                          courseNumber:
-                            dbItem.course_number || localItem.courseNumber || 1,
-                          // Sync seat assignment from backend so cross-station seat
-                          // changes propagate. Backend is authoritative — explicit
-                          // null means "Shared" and must win over a stale local
-                          // value. Only fall back to local if the column was
-                          // genuinely missing from the response.
-                          seatNumber:
-                            dbItem.seat_number !== undefined
-                              ? dbItem.seat_number
-                              : localItem.seatNumber ?? null,
-                          // Sync discount distribution fields from backend
-                          discount_amount: dbItem.discount_amount ?? 0,
-                          discount_cash_amount:
-                            dbItem.discount_cash_amount ??
-                            dbItem.discount_amount ??
-                            0,
-                          subtotal: dbItem.subtotal,
-                          cashSubtotal: dbItem.cash_subtotal,
-                          taxAmount: dbItem.tax_amount,
-                          cashTaxAmount: dbItem.cash_tax_amount,
-                          sync_status: 'synced' as const,
-                          sync_error: undefined,
-                          customizations: {
-                            ...localItem.customizations,
-                            notes:
-                              dbItem.special_instructions ||
-                              localItem.customizations?.notes,
-                            modifiers:
-                              transformBackendModifiers(
-                                dbItem.order_item_modifiers
-                              ) ?? localItem.customizations?.modifiers
+                const dbItems = itemsResult.data
+                const dbPayments = paymentsResult.data
+                const dbItemPayments = itemPaymentsResult.data
+
+                if (paymentsResult.error) {
+                  console.error(
+                    '[syncOrderFromDatabase] Payments fetch error:',
+                    paymentsResult.error
+                  )
+                  // Non-fatal - continue without payments
+                }
+
+                if (__DEV__) {
+                  console.log('[syncOrderFromDatabase] Fetched data:', {
+                    orderId: dbOrder?.id,
+                    items: dbItems?.length || 0,
+                    payments: dbPayments?.length || 0
+                  })
+                }
+
+                // 4. Update local state with database values
+                set(state => {
+                  const localOrder = state.ordersById[localOrderId]
+
+                  // If order doesn't exist locally, we need to create it from DB data
+                  // Otherwise, sync existing order with DB data
+                  const syncedItems = localOrder
+                    ? localOrder.items.map(localItem => {
+                        const dbItem = dbItems?.find(
+                          db => db.id === localItem.db_order_item_id
+                        )
+                        if (dbItem) {
+                          return {
+                            ...localItem,
+                            quantity: dbItem.quantity,
+                            // FIX: Use higher of local vs backend to prevent overwrite
+                            paidQuantity: Math.max(
+                              localItem.paidQuantity || 0,
+                              dbItem.paid_quantity || 0
+                            ),
+                            price: dbItem.unit_price,
+                            cashPrice: dbItem.cash_price,
+                            is_voided: dbItem.is_voided,
+                            // Preserve course number from backend to prevent items being grouped into course 1
+                            courseNumber:
+                              dbItem.course_number ||
+                              localItem.courseNumber ||
+                              1,
+                            // Sync seat assignment from backend so cross-station seat
+                            // changes propagate. Backend is authoritative — explicit
+                            // null means "Shared" and must win over a stale local
+                            // value. Only fall back to local if the column was
+                            // genuinely missing from the response.
+                            seatNumber:
+                              dbItem.seat_number !== undefined
+                                ? dbItem.seat_number
+                                : localItem.seatNumber ?? null,
+                            // Sync discount distribution fields from backend
+                            discount_amount: dbItem.discount_amount ?? 0,
+                            discount_cash_amount:
+                              dbItem.discount_cash_amount ??
+                              dbItem.discount_amount ??
+                              0,
+                            subtotal: dbItem.subtotal,
+                            cashSubtotal: dbItem.cash_subtotal,
+                            taxAmount: dbItem.tax_amount,
+                            cashTaxAmount: dbItem.cash_tax_amount,
+                            sync_status: 'synced' as const,
+                            sync_error: undefined,
+                            customizations: {
+                              ...localItem.customizations,
+                              notes:
+                                dbItem.special_instructions ||
+                                localItem.customizations?.notes,
+                              modifiers:
+                                transformBackendModifiers(
+                                  dbItem.order_item_modifiers
+                                ) ?? localItem.customizations?.modifiers
+                            }
                           }
                         }
-                      }
-                      return localItem
-                    })
-                  : [] // If no local order, start with empty array
+                        return localItem
+                      })
+                    : [] // If no local order, start with empty array
 
-                // Also add any items from DB that aren't in local state
-                const localItemDbIds = new Set(
-                  (localOrder?.items || [])
-                    .map(i => i.db_order_item_id)
-                    .filter(Boolean)
-                )
-                const newItemsFromDb: CartItem[] =
-                  dbItems
-                    ?.filter(dbItem => !localItemDbIds.has(dbItem.id))
-                    .map(dbItem => ({
-                      id: `db_${dbItem.id}`,
-                      db_order_item_id: dbItem.id,
-                      menuItemId: dbItem.menu_item_id || '',
-                      // For open items, use open_item_name; otherwise use item_name
-                      name: dbItem.is_open_item
-                        ? dbItem.open_item_name || 'Open Item'
-                        : dbItem.item_name || 'Unknown Item',
-                      // For open items, use open_item_price; otherwise use unit_price
-                      price: dbItem.is_open_item
-                        ? dbItem.open_item_price || 0
-                        : dbItem.unit_price || 0,
-                      unitPrice: dbItem.is_open_item
-                        ? dbItem.open_item_price || 0
-                        : dbItem.unit_price || 0,
-                      cashPrice:
-                        dbItem.cash_price ||
-                        dbItem.cash_unit_price ||
-                        (dbItem.is_open_item
-                          ? dbItem.open_item_price
-                          : dbItem.unit_price) ||
-                        0,
-                      originalPrice:
-                        dbItem.cash_price ||
-                        dbItem.cash_unit_price ||
-                        (dbItem.is_open_item
-                          ? dbItem.open_item_price
-                          : dbItem.unit_price) ||
-                        0,
-                      quantity: dbItem.quantity || 1,
-                      // When creating from DB, trust backend value
-                      paidQuantity: dbItem.paid_quantity || 0,
-                      // Preserve course number from backend to prevent items being grouped into course 1
-                      courseNumber: dbItem.course_number || 1,
-                      // Carry seat assignment from backend so the bill seat pill
-                      // survives reload (matches utils/orderTransformers.ts:250).
-                      seatNumber: dbItem.seat_number ?? null,
-                      category_name: dbItem.category_name || 'Uncategorized',
-                      is_voided: dbItem.is_voided || false,
-                      sync_status: 'synced' as const,
-                      customizations: {
-                        notes: dbItem.special_instructions || undefined,
-                        modifiers: transformBackendModifiers(
-                          dbItem.order_item_modifiers
-                        )
-                      },
-                      // Open item support
-                      is_open_item: dbItem.is_open_item || false,
-                      open_item_name: dbItem.open_item_name || undefined,
-                      open_item_price: dbItem.open_item_price || undefined,
-                      // Use authoritative kitchen_status column (updated by KDS),
-                      // fall back to legacy item_status derivation
-                      kitchen_status:
-                        (dbItem.kitchen_status as CartItem['kitchen_status']) ||
-                        (dbItem.item_status === 'Ready'
-                          ? 'ready'
-                          : dbItem.item_status === 'Served' ||
-                            dbItem.item_status === 'Completed'
-                          ? 'served'
-                          : 'sent'),
-                      item_status: (dbItem.item_status as any) || 'Preparing',
-                      // Required CartItem financial fields
-                      subtotal:
-                        dbItem.subtotal ||
-                        dbItem.unit_price * dbItem.quantity ||
-                        0,
-                      cashSubtotal:
-                        dbItem.cash_subtotal ||
-                        dbItem.cash_price * dbItem.quantity ||
-                        0,
-                      taxRate: dbItem.tax_rate || 0,
-                      taxAmount: dbItem.tax_amount || 0,
-                      cashTaxAmount: dbItem.cash_tax_amount || 0,
-                      // Discount distribution fields
-                      discount_amount: dbItem.discount_amount ?? 0,
-                      discount_cash_amount:
-                        dbItem.discount_cash_amount ??
-                        dbItem.discount_amount ??
-                        0,
-                      // Required base prices (for recalculation)
-                      // Use base_card_price/base_cash_price (without modifiers)
-                      // so calculateItemEffective*Price can add modifiers correctly.
-                      // Falls back to unit_price/cash_price for older items that
-                      // lack the base columns — in that case modifiers will be
-                      // double-counted, but calculate_order_totals_fast on the
-                      // backend remains authoritative.
-                      baseCardPrice: dbItem.is_open_item
-                        ? dbItem.open_item_price || 0
-                        : (dbItem as any).base_card_price ??
-                          dbItem.unit_price ??
-                          0,
-                      baseCashPrice:
-                        (dbItem as any).base_cash_price ??
-                        (dbItem.cash_price ||
+                  // Also add any items from DB that aren't in local state
+                  const localItemDbIds = new Set(
+                    (localOrder?.items || [])
+                      .map(i => i.db_order_item_id)
+                      .filter(Boolean)
+                  )
+                  const newItemsFromDb: CartItem[] =
+                    dbItems
+                      ?.filter(dbItem => !localItemDbIds.has(dbItem.id))
+                      .map(dbItem => ({
+                        id: `db_${dbItem.id}`,
+                        db_order_item_id: dbItem.id,
+                        menuItemId: dbItem.menu_item_id || '',
+                        // For open items, use open_item_name; otherwise use item_name
+                        name: dbItem.is_open_item
+                          ? dbItem.open_item_name || 'Open Item'
+                          : dbItem.item_name || 'Unknown Item',
+                        // For open items, use open_item_price; otherwise use unit_price
+                        price: dbItem.is_open_item
+                          ? dbItem.open_item_price || 0
+                          : dbItem.unit_price || 0,
+                        unitPrice: dbItem.is_open_item
+                          ? dbItem.open_item_price || 0
+                          : dbItem.unit_price || 0,
+                        cashPrice:
+                          dbItem.cash_price ||
                           dbItem.cash_unit_price ||
                           (dbItem.is_open_item
                             ? dbItem.open_item_price
                             : dbItem.unit_price) ||
-                          0)
-                    })) || []
-
-                const allItems = [...syncedItems, ...newItemsFromDb]
-
-                // Map payments from database
-                const syncedPayments: OrderProfilePayment[] =
-                  dbPayments?.map(p => {
-                    // Proper status mapping — preserve authorized for pre-auth
-                    const status: OrderProfilePayment['status'] =
-                      p.status === 'voided'
-                        ? 'voided'
-                        : p.status === 'refunded'
-                        ? 'refunded'
-                        : p.status === 'authorized'
-                        ? 'authorized'
-                        : p.status === 'captured'
-                        ? 'captured'
-                        : 'pending'
-
-                    const isPreAuth = p.status === 'authorized'
-                    const terminalResponse = (p as any).terminal_response as
-                      | Record<string, any>
-                      | undefined
-                    const castlesTxn = terminalResponse?.castles_transaction as
-                      | Record<string, any>
-                      | undefined
-
-                    return {
-                      id: p.id,
-                      db_payment_id: p.id,
-                      amount: p.amount,
-                      method: (p.payment_method === 'card'
-                        ? 'Card'
-                        : 'Cash') as PaymentType,
-                      cardBrand: p.card_type,
-                      last4: p.card_last_four,
-                      tip_amount: p.tip_amount || 0,
-                      total_collected: p.amount + (p.tip_amount || 0),
-                      itemsCovered: (p.item_ids || []).map(
-                        (itemId: string) => ({
-                          itemId,
-                          itemName: 'Item',
-                          quantity: 1,
-                          unitPrice: 0,
-                          subtotal: 0
-                        })
-                      ),
-                      timestamp: p.created_at,
-                      status,
-                      isVoided: p.status === 'voided',
-                      sync_status: 'synced' as const,
-                      sync_attempt_count: 0,
-                      // Cash pricing fields — falls back to order-level ratio when original_amount is missing
-                      isCashPriced: (p as any).is_cash_priced ?? undefined,
-                      cashSavings: deriveCashSavings(
-                        {
-                          is_cash_priced: (p as any).is_cash_priced,
-                          original_amount: (p as any).original_amount,
-                          amount: p.amount
+                          0,
+                        originalPrice:
+                          dbItem.cash_price ||
+                          dbItem.cash_unit_price ||
+                          (dbItem.is_open_item
+                            ? dbItem.open_item_price
+                            : dbItem.unit_price) ||
+                          0,
+                        quantity: dbItem.quantity || 1,
+                        // When creating from DB, trust backend value
+                        paidQuantity: dbItem.paid_quantity || 0,
+                        // Preserve course number from backend to prevent items being grouped into course 1
+                        courseNumber: dbItem.course_number || 1,
+                        // Carry seat assignment from backend so the bill seat pill
+                        // survives reload (matches utils/orderTransformers.ts:250).
+                        seatNumber: dbItem.seat_number ?? null,
+                        category_name: dbItem.category_name || 'Uncategorized',
+                        is_voided: dbItem.is_voided || false,
+                        sync_status: 'synced' as const,
+                        customizations: {
+                          notes: dbItem.special_instructions || undefined,
+                          modifiers: transformBackendModifiers(
+                            dbItem.order_item_modifiers
+                          )
                         },
-                        dbOrder.card_total ?? dbOrder.total_amount,
-                        dbOrder.cash_total
-                      ),
-                      // Pre-auth fields
-                      isPreAuth,
-                      ...(isPreAuth
-                        ? {
-                            preAuthAmount: p.amount,
-                            preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
-                            preAuthStan: castlesTxn?.stan,
-                            preAuthAuthCode:
-                              (p as any).authorization_code ||
-                              castlesTxn?.approvalCode,
-                            preAuthReferenceId:
-                              (p as any).reference_number ||
-                              castlesTxn?.referenceId,
-                            preAuthTerminalType:
-                              (terminalResponse?.terminal_vendor === 'castles'
-                                ? 'castles'
-                                : 'dejavoo') as
-                                | 'dejavoo'
-                                | 'castles'
-                                | undefined
-                          }
-                        : {})
-                    }
-                  }) ||
-                  localOrder?.payments ||
-                  []
+                        // Open item support
+                        is_open_item: dbItem.is_open_item || false,
+                        open_item_name: dbItem.open_item_name || undefined,
+                        open_item_price: dbItem.open_item_price || undefined,
+                        // Use authoritative kitchen_status column (updated by KDS),
+                        // fall back to legacy item_status derivation
+                        kitchen_status:
+                          (dbItem.kitchen_status as CartItem['kitchen_status']) ||
+                          (dbItem.item_status === 'Ready'
+                            ? 'ready'
+                            : dbItem.item_status === 'Served' ||
+                              dbItem.item_status === 'Completed'
+                            ? 'served'
+                            : 'sent'),
+                        item_status: (dbItem.item_status as any) || 'Preparing',
+                        // Required CartItem financial fields
+                        subtotal:
+                          dbItem.subtotal ||
+                          dbItem.unit_price * dbItem.quantity ||
+                          0,
+                        cashSubtotal:
+                          dbItem.cash_subtotal ||
+                          dbItem.cash_price * dbItem.quantity ||
+                          0,
+                        taxRate: dbItem.tax_rate || 0,
+                        taxAmount: dbItem.tax_amount || 0,
+                        cashTaxAmount: dbItem.cash_tax_amount || 0,
+                        // Discount distribution fields
+                        discount_amount: dbItem.discount_amount ?? 0,
+                        discount_cash_amount:
+                          dbItem.discount_cash_amount ??
+                          dbItem.discount_amount ??
+                          0,
+                        // Required base prices (for recalculation)
+                        // Use base_card_price/base_cash_price (without modifiers)
+                        // so calculateItemEffective*Price can add modifiers correctly.
+                        // Falls back to unit_price/cash_price for older items that
+                        // lack the base columns — in that case modifiers will be
+                        // double-counted, but calculate_order_totals_fast on the
+                        // backend remains authoritative.
+                        baseCardPrice: dbItem.is_open_item
+                          ? dbItem.open_item_price || 0
+                          : (dbItem as any).base_card_price ??
+                            dbItem.unit_price ??
+                            0,
+                        baseCashPrice:
+                          (dbItem as any).base_cash_price ??
+                          (dbItem.cash_price ||
+                            dbItem.cash_unit_price ||
+                            (dbItem.is_open_item
+                              ? dbItem.open_item_price
+                              : dbItem.unit_price) ||
+                            0)
+                      })) || []
 
-                // ================================================================
-                // CALCULATE paid_status FROM LOCAL PAYMENTS ONLY
-                // ================================================================
-                // CRITICAL: Use local payments array as single source of truth
-                // This prevents flicker caused by stale/racing backend values
-                const orderTotalAmount =
-                  dbOrder.card_total || dbOrder.total_amount || 0
-                // Prefer backend payment_status when available (most authoritative)
-                // Falls back to local calculation for cases where backend status isn't set
-                const syncedPaidStatus = dbOrder.payment_status
-                  ? mapPaymentStatus(dbOrder.payment_status)
-                  : calculatePaidStatusFromPayments(
-                      syncedPayments,
-                      orderTotalAmount
-                    )
-                const isPaid = syncedPaidStatus === 'Paid'
+                  const allItems = [...syncedItems, ...newItemsFromDb]
 
-                // Create base order profile (either update existing or create new)
-                const baseOrderProfile = localOrder || {
-                  id: localOrderId,
-                  db_order_id: dbOrderId,
-                  service_location_id:
-                    dbOrder.table_number || dbOrder.service_location_id,
-                  order_status: (dbOrder.status as any) || 'preparing',
-                  order_type: mapOrderType(dbOrder.order_type),
-                  opened_at: dbOrder.created_at,
-                  customer_name: '',
-                  display_number: dbOrder.display_number,
-                  order_number: dbOrder.order_number,
-                  station_id: dbOrder.station_id,
-                  sync_version: dbOrder.sync_version ?? 1
-                }
+                  // Map payments from database
+                  const syncedPayments: OrderProfilePayment[] =
+                    dbPayments?.map(p => {
+                      // Proper status mapping — preserve authorized for pre-auth
+                      const status: OrderProfilePayment['status'] =
+                        p.status === 'voided'
+                          ? 'voided'
+                          : p.status === 'refunded'
+                          ? 'refunded'
+                          : p.status === 'authorized'
+                          ? 'authorized'
+                          : p.status === 'captured'
+                          ? 'captured'
+                          : 'pending'
 
-                // If creating new order, add to orderIds array
-                const newOrderIds = localOrder
-                  ? state.orderIds
-                  : [...state.orderIds, localOrderId]
+                      const isPreAuth = p.status === 'authorized'
+                      const terminalResponse = (p as any).terminal_response as
+                        | Record<string, any>
+                        | undefined
+                      const castlesTxn =
+                        terminalResponse?.castles_transaction as
+                          | Record<string, any>
+                          | undefined
 
-                const updatedOrderProfile: OrderProfile = {
-                  ...baseOrderProfile,
-                  items: allItems,
-                  payments: syncedPayments,
-                  // Use database as source of truth for financial data
-                  amount_paid: dbOrder.amount_paid || 0,
-                  amount_due: dbOrder.amount_due || 0,
-                  cash_amount_due: dbOrder.cash_amount_due, // Direct from DB - authoritative
-                  total_amount: dbOrder.card_total || dbOrder.total_amount,
-                  total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
-                  paid_status: syncedPaidStatus,
-                  check_status: isPaid ? 'Closed' : 'Opened',
-                  // Session tracking - sync from database
-                  session_id: dbOrder.session_id,
-                  order_source: dbOrder.order_source ?? null,
-                  delivery_platform:
-                    dbOrder.delivery_platform ??
-                    normalizePlatform(
-                      (dbOrder as any).metadata?.delivery_company
-                    ) ??
-                    null,
-                  sync_status: 'synced'
-                }
+                      return {
+                        id: p.id,
+                        db_payment_id: p.id,
+                        amount: p.amount,
+                        method: (p.payment_method === 'card'
+                          ? 'Card'
+                          : 'Cash') as PaymentType,
+                        cardBrand: p.card_type,
+                        last4: p.card_last_four,
+                        tip_amount: p.tip_amount || 0,
+                        total_collected: p.amount + (p.tip_amount || 0),
+                        itemsCovered: (p.item_ids || []).map(
+                          (itemId: string) => ({
+                            itemId,
+                            itemName: 'Item',
+                            quantity: 1,
+                            unitPrice: 0,
+                            subtotal: 0
+                          })
+                        ),
+                        timestamp: p.created_at,
+                        status,
+                        isVoided: p.status === 'voided',
+                        sync_status: 'synced' as const,
+                        sync_attempt_count: 0,
+                        // Cash pricing fields — falls back to order-level ratio when original_amount is missing
+                        isCashPriced: (p as any).is_cash_priced ?? undefined,
+                        cashSavings: deriveCashSavings(
+                          {
+                            is_cash_priced: (p as any).is_cash_priced,
+                            original_amount: (p as any).original_amount,
+                            amount: p.amount
+                          },
+                          dbOrder.card_total ?? dbOrder.total_amount,
+                          dbOrder.cash_total
+                        ),
+                        // Pre-auth fields
+                        isPreAuth,
+                        ...(isPreAuth
+                          ? {
+                              preAuthAmount: p.amount,
+                              preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                              preAuthStan: castlesTxn?.stan,
+                              preAuthAuthCode:
+                                (p as any).authorization_code ||
+                                castlesTxn?.approvalCode,
+                              preAuthReferenceId:
+                                (p as any).reference_number ||
+                                castlesTxn?.referenceId,
+                              preAuthTerminalType:
+                                (terminalResponse?.terminal_vendor === 'castles'
+                                  ? 'castles'
+                                  : 'dejavoo') as
+                                  | 'dejavoo'
+                                  | 'castles'
+                                  | undefined
+                            }
+                          : {})
+                      }
+                    }) ||
+                    localOrder?.payments ||
+                    []
 
-                state.ordersById[localOrderId] = updatedOrderProfile
-                state.orderIds = newOrderIds
-
-                // Surgical dbOrderIdIndex maintenance
-                state.dbOrderIdIndex[dbOrderId] = localOrderId
-                syncTableOrderIdIndexForOrder(state, localOrderId)
-                // Ensure MMKV persistence
-                state.persistableOrderIds[localOrderId] = true
-
-                // Update outstanding totals if this is the active order
-                if (localOrderId === state.activeOrderId) {
-                  state.activeOrderOutstandingTotal = dbOrder.amount_due || 0
-                  // Priority: backend cash_amount_due > current local value > card amount_due
-                  state.activeOrderOutstandingCash =
-                    dbOrder.cash_amount_due ??
-                    state.activeOrderOutstandingCash ??
-                    dbOrder.amount_due ??
-                    0
-                  state.activeOrderTotal =
+                  // ================================================================
+                  // CALCULATE paid_status FROM LOCAL PAYMENTS ONLY
+                  // ================================================================
+                  // CRITICAL: Use local payments array as single source of truth
+                  // This prevents flicker caused by stale/racing backend values
+                  const orderTotalAmount =
                     dbOrder.card_total || dbOrder.total_amount || 0
-                  state.activeOrderTax =
-                    dbOrder.card_tax_amount || dbOrder.tax_amount || 0
-                  state.activeOrderSubtotal =
-                    dbOrder.card_subtotal || dbOrder.subtotal || 0
-                }
-              })
+                  // Prefer backend payment_status when available (most authoritative)
+                  // Falls back to local calculation for cases where backend status isn't set
+                  const syncedPaidStatus = dbOrder.payment_status
+                    ? mapPaymentStatus(dbOrder.payment_status)
+                    : calculatePaidStatusFromPayments(
+                        syncedPayments,
+                        orderTotalAmount
+                      )
+                  const isPaid = syncedPaidStatus === 'Paid'
 
-              console.log(
-                '[syncOrderFromDatabase] Successfully synced order from database'
-              )
-              return localOrderId
-            } catch (error: any) {
-              console.error('[syncOrderFromDatabase] Error:', error)
-              return null
+                  // Create base order profile (either update existing or create new)
+                  const baseOrderProfile = localOrder || {
+                    id: localOrderId,
+                    db_order_id: dbOrderId,
+                    service_location_id:
+                      dbOrder.table_number || dbOrder.service_location_id,
+                    order_status: (dbOrder.status as any) || 'preparing',
+                    order_type: mapOrderType(dbOrder.order_type),
+                    opened_at: dbOrder.created_at,
+                    customer_name: '',
+                    display_number: dbOrder.display_number,
+                    order_number: dbOrder.order_number,
+                    station_id: dbOrder.station_id,
+                    sync_version: dbOrder.sync_version ?? 1
+                  }
+
+                  // If creating new order, add to orderIds array
+                  const newOrderIds = localOrder
+                    ? state.orderIds
+                    : [...state.orderIds, localOrderId]
+
+                  const updatedOrderProfile: OrderProfile = {
+                    ...baseOrderProfile,
+                    items: allItems,
+                    payments: syncedPayments,
+                    // Use database as source of truth for financial data
+                    amount_paid: dbOrder.amount_paid || 0,
+                    amount_due: dbOrder.amount_due || 0,
+                    cash_amount_due: dbOrder.cash_amount_due, // Direct from DB - authoritative
+                    total_amount: dbOrder.card_total || dbOrder.total_amount,
+                    total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
+                    paid_status: syncedPaidStatus,
+                    check_status: isPaid ? 'Closed' : 'Opened',
+                    // Session tracking - sync from database
+                    session_id: dbOrder.session_id,
+                    order_source: dbOrder.order_source ?? null,
+                    delivery_platform:
+                      dbOrder.delivery_platform ??
+                      normalizePlatform(
+                        (dbOrder as any).metadata?.delivery_company
+                      ) ??
+                      null,
+                    sync_status: 'synced'
+                  }
+
+                  state.ordersById[localOrderId] = updatedOrderProfile
+                  state.orderIds = newOrderIds
+
+                  // Surgical dbOrderIdIndex maintenance
+                  state.dbOrderIdIndex[dbOrderId] = localOrderId
+                  syncTableOrderIdIndexForOrder(state, localOrderId)
+                  // Ensure MMKV persistence
+                  state.persistableOrderIds[localOrderId] = true
+
+                  // Update outstanding totals if this is the active order
+                  if (localOrderId === state.activeOrderId) {
+                    state.activeOrderOutstandingTotal = dbOrder.amount_due || 0
+                    // Priority: backend cash_amount_due > current local value > card amount_due
+                    state.activeOrderOutstandingCash =
+                      dbOrder.cash_amount_due ??
+                      state.activeOrderOutstandingCash ??
+                      dbOrder.amount_due ??
+                      0
+                    state.activeOrderTotal =
+                      dbOrder.card_total || dbOrder.total_amount || 0
+                    state.activeOrderTax =
+                      dbOrder.card_tax_amount || dbOrder.tax_amount || 0
+                    state.activeOrderSubtotal =
+                      dbOrder.card_subtotal || dbOrder.subtotal || 0
+                  }
+                })
+
+                console.log(
+                  '[syncOrderFromDatabase] Successfully synced order from database'
+                )
+                return localOrderId
+              } catch (error: any) {
+                console.error('[syncOrderFromDatabase] Error:', error)
+                return null
+              }
+            })()
+
+            inFlightDbOrderSyncs.set(dbOrderIdOrLocalId, syncPromise)
+            try {
+              return await syncPromise
+            } finally {
+              if (
+                inFlightDbOrderSyncs.get(dbOrderIdOrLocalId) === syncPromise
+              ) {
+                inFlightDbOrderSyncs.delete(dbOrderIdOrLocalId)
+              }
             }
           },
 
@@ -11890,250 +11922,165 @@ export const useOrderStore = create<OrderState>()(
               return
             }
 
-            try {
-              console.log('[syncOrderFromBackendComplete] Starting sync:', {
-                localOrderId: storeKey,
-                dbOrderId: order.db_order_id,
-                currentItemsCount: order.items?.length || 0
-              })
-
-              // Call get_order_details RPC
-              const { data, error } = await supabase.rpc('get_order_details', {
-                p_order_id: order.db_order_id
-              })
-
-              if (error) {
-                console.error(
-                  '[syncOrderFromBackendComplete] RPC error:',
-                  error
-                )
-                throw error
-              }
-
-              if (!data) {
-                console.warn(
-                  '[syncOrderFromBackendComplete] No data returned from RPC'
-                )
-                return
-              }
-
+            const detailSyncKey = order.db_order_id
+            const lastSyncedAt = lastOrderDetailSyncAt.get(detailSyncKey)
+            if (
+              lastSyncedAt &&
+              Date.now() - lastSyncedAt < ORDER_DETAIL_SYNC_COOLDOWN_MS
+            ) {
               console.log(
-                '[syncOrderFromBackendComplete] RPC response received:',
-                {
-                  hasOrder: !!data.order,
-                  itemsCount: data.items?.length || 0,
-                  paymentsCount: data.payments?.length || 0,
-                  reversalsCount: data.reversals?.length || 0,
-                  refundItemsCount: data.order_refund_items?.length || 0,
-                  discountsCount: data.order_discounts?.length || 0,
-                  stationName: data.station_name,
-                  rawItemsData: data.items
-                }
+                `[syncOrderFromBackendComplete] Skipping recent sync for ${detailSyncKey}`
               )
+              return
+            }
+            const existingDetailSync =
+              inFlightOrderDetailSyncs.get(detailSyncKey)
+            if (existingDetailSync) {
+              console.log(
+                `[syncOrderFromBackendComplete] Reusing in-flight sync for ${detailSyncKey}`
+              )
+              return existingDetailSync
+            }
 
-              // Extract response components (including new fields from updated RPC)
-              const orderData = data.order
-              const itemsData = data.items || []
-              const paymentsData = data.payments || []
-              const reversalsData = data.reversals || []
-              const orderRefundItemsData = data.order_refund_items || []
-              const orderDiscountsData = data.order_discounts || []
-              const stationName = data.station_name
+            const detailSyncPromise = (async (): Promise<void> => {
+              try {
+                console.log('[syncOrderFromBackendComplete] Starting sync:', {
+                  localOrderId: storeKey,
+                  dbOrderId: order.db_order_id,
+                  currentItemsCount: order.items?.length || 0
+                })
 
-              // Build per-payment item coverage lookup from order_payment_items junction table
-              const paymentItemsData: any[] = data.payment_items || []
-              const paymentItemsByPaymentId = new Map<string, any[]>()
-              for (const pi of paymentItemsData) {
-                const key = pi.order_payment_id
-                if (!paymentItemsByPaymentId.has(key))
-                  paymentItemsByPaymentId.set(key, [])
-                paymentItemsByPaymentId.get(key)!.push(pi)
-              }
-
-              if (!orderData) {
-                console.error(
-                  '[syncOrderFromBackendComplete] No order data in response'
+                // Call get_order_details RPC
+                const { data, error } = await supabase.rpc(
+                  'get_order_details',
+                  {
+                    p_order_id: order.db_order_id
+                  }
                 )
-                return
-              }
 
-              if (itemsData.length === 0) {
-                console.warn(
-                  '[syncOrderFromBackendComplete] ⚠️ No items in response - order may be empty or all items voided'
+                if (error) {
+                  console.error(
+                    '[syncOrderFromBackendComplete] RPC error:',
+                    error
+                  )
+                  throw error
+                }
+
+                if (!data) {
+                  console.warn(
+                    '[syncOrderFromBackendComplete] No data returned from RPC'
+                  )
+                  return
+                }
+
+                console.log(
+                  '[syncOrderFromBackendComplete] RPC response received:',
+                  {
+                    hasOrder: !!data.order,
+                    itemsCount: data.items?.length || 0,
+                    paymentsCount: data.payments?.length || 0,
+                    reversalsCount: data.reversals?.length || 0,
+                    refundItemsCount: data.order_refund_items?.length || 0,
+                    discountsCount: data.order_discounts?.length || 0,
+                    stationName: data.station_name
+                  }
                 )
-              }
 
-              // Sort raw backend items by created_at to ensure stable order (defense-in-depth)
-              itemsData.sort((a: any, b: any) => {
-                const aOrder = a.item?.display_order ?? a.display_order ?? null
-                const bOrder = b.item?.display_order ?? b.display_order ?? null
-                if (aOrder !== null && bOrder !== null && aOrder !== bOrder)
-                  return aOrder - bOrder
-                if (aOrder !== null && bOrder === null) return -1
-                if (aOrder === null && bOrder !== null) return 1
-                const aTime = a.item?.created_at || a.created_at || ''
-                const bTime = b.item?.created_at || b.created_at || ''
-                return aTime < bTime ? -1 : aTime > bTime ? 1 : 0
-              })
+                // Extract response components (including new fields from updated RPC)
+                const orderData = data.order
+                const itemsData = data.items || []
+                const paymentsData = data.payments || []
+                const reversalsData = data.reversals || []
+                const orderRefundItemsData = data.order_refund_items || []
+                const orderDiscountsData = data.order_discounts || []
+                const stationName = data.station_name
 
-              // Transform items with nested modifiers to CartItem format
-              // Uses the shared mapBackendItemToCartItem for consistency with broadcast transforms
-              const transformedItems: CartItem[] = itemsData.map(
-                (itemWrapper: any) => {
-                  const item = itemWrapper.item
-                  const modifiers = itemWrapper.modifiers || []
+                // Build per-payment item coverage lookup from order_payment_items junction table
+                const paymentItemsData: any[] = data.payment_items || []
+                const paymentItemsByPaymentId = new Map<string, any[]>()
+                for (const pi of paymentItemsData) {
+                  const key = pi.order_payment_id
+                  if (!paymentItemsByPaymentId.has(key))
+                    paymentItemsByPaymentId.set(key, [])
+                  paymentItemsByPaymentId.get(key)!.push(pi)
+                }
 
-                  // Transform modifiers to CartItem format
-                  const transformedModifiers =
-                    transformBackendModifiers(modifiers)
+                if (!orderData) {
+                  console.error(
+                    '[syncOrderFromBackendComplete] No order data in response'
+                  )
+                  return
+                }
 
-                  return mapBackendItemToCartItem(
-                    item as BackendItemInput,
-                    transformedModifiers
+                if (itemsData.length === 0) {
+                  console.warn(
+                    '[syncOrderFromBackendComplete] ⚠️ No items in response - order may be empty or all items voided'
                   )
                 }
-              )
 
-              // Transform payments to OrderProfile format with comprehensive fields
-              const transformedPayments: OrderProfilePayment[] =
-                paymentsData.map((payment: any) => {
-                  // Extract terminal response data for fallback card details + pre-auth fields
-                  const terminalResp = payment.terminal_response as
-                    | Record<string, any>
-                    | undefined
-                  const castlesTxn = terminalResp?.castles_transaction as
-                    | Record<string, any>
-                    | undefined
-                  const dejavooTxn = terminalResp?.dejavoo_transaction as
-                    | Record<string, any>
-                    | undefined
+                // Sort raw backend items by created_at to ensure stable order (defense-in-depth)
+                itemsData.sort((a: any, b: any) => {
+                  const aOrder =
+                    a.item?.display_order ?? a.display_order ?? null
+                  const bOrder =
+                    b.item?.display_order ?? b.display_order ?? null
+                  if (aOrder !== null && bOrder !== null && aOrder !== bOrder)
+                    return aOrder - bOrder
+                  if (aOrder !== null && bOrder === null) return -1
+                  if (aOrder === null && bOrder !== null) return 1
+                  const aTime = a.item?.created_at || a.created_at || ''
+                  const bTime = b.item?.created_at || b.created_at || ''
+                  return aTime < bTime ? -1 : aTime > bTime ? 1 : 0
+                })
 
-                  return {
-                    // Core identifiers
-                    id: payment.id,
-                    db_payment_id: payment.id,
+                // Transform items with nested modifiers to CartItem format
+                // Uses the shared mapBackendItemToCartItem for consistency with broadcast transforms
+                const transformedItems: CartItem[] = itemsData.map(
+                  (itemWrapper: any) => {
+                    const item = itemWrapper.item
+                    const modifiers = itemWrapper.modifiers || []
 
-                    // Payment basics
-                    amount: payment.amount || 0,
-                    method: (payment.payment_method === 'cash'
-                      ? 'Cash'
-                      : 'Card') as PaymentType,
-                    tip_amount: payment.tip_amount || 0,
-                    total_collected:
-                      (payment.amount || 0) + (payment.tip_amount || 0),
+                    // Transform modifiers to CartItem format
+                    const transformedModifiers =
+                      transformBackendModifiers(modifiers)
 
-                    // Card details (with terminal response fallback)
-                    cardBrand:
-                      payment.card_type ??
-                      castlesTxn?.cardType ??
-                      dejavooTxn?.CardType,
-                    last4:
-                      payment.card_last_four ??
-                      castlesTxn?.cardLast4 ??
-                      dejavooTxn?.Last4,
+                    return mapBackendItemToCartItem(
+                      item as BackendItemInput,
+                      transformedModifiers
+                    )
+                  }
+                )
 
-                    // Cash details
-                    amountTendered: payment.amount_tendered,
-                    changeGiven: payment.change_given || 0,
-                    isCashPriced: payment.is_cash_priced || false,
+                // Transform payments to OrderProfile format with comprehensive fields
+                const transformedPayments: OrderProfilePayment[] =
+                  paymentsData.map((payment: any) => {
+                    // Extract terminal response data for fallback card details + pre-auth fields
+                    const terminalResp = payment.terminal_response as
+                      | Record<string, any>
+                      | undefined
+                    const castlesTxn = terminalResp?.castles_transaction as
+                      | Record<string, any>
+                      | undefined
+                    const dejavooTxn = terminalResp?.dejavoo_transaction as
+                      | Record<string, any>
+                      | undefined
 
-                    // Portions
-                    subtotal_portion: payment.subtotal_portion,
-                    tax_portion: payment.tax_portion,
-                    discount_portion: payment.discount_portion,
+                    return {
+                      // Core identifiers
+                      id: payment.id,
+                      db_payment_id: payment.id,
 
-                    // Split payment info
-                    splitInfo:
-                      payment.split_count && payment.split_count > 1
-                        ? {
-                            portionIndex: payment.split_portion_index || 0,
-                            totalPortions: payment.split_count,
-                            isLastPortion:
-                              (payment.split_portion_index || 0) ===
-                              payment.split_count - 1
-                          }
-                        : undefined,
+                      // Payment basics
+                      amount: payment.amount || 0,
+                      method: (payment.payment_method === 'cash'
+                        ? 'Cash'
+                        : 'Card') as PaymentType,
+                      tip_amount: payment.tip_amount || 0,
+                      total_collected:
+                        (payment.amount || 0) + (payment.tip_amount || 0),
 
-                    // Item coverage — prefer per-payment items from junction table (accurate per-payment quantities)
-                    // Fall back to covers_items + paid_quantity for legacy orders without payment_items
-                    itemsCovered: (() => {
-                      const perPaymentItems = paymentItemsByPaymentId.get(
-                        payment.id
-                      )
-                      if (perPaymentItems && perPaymentItems.length > 0) {
-                        return perPaymentItems.map((pi: any) => ({
-                          itemId: pi.order_item_id,
-                          itemName:
-                            transformedItems.find(
-                              i =>
-                                i.db_order_item_id === pi.order_item_id ||
-                                i.id === pi.order_item_id
-                            )?.name || 'Unknown Item',
-                          quantity: pi.quantity_paid,
-                          unitPrice: pi.unit_price_paid,
-                          subtotal: pi.subtotal_paid
-                        }))
-                      }
-                      // Legacy fallback for orders without payment_items
-                      return (payment.covers_items || []).map(
-                        (itemId: string) => {
-                          const item = transformedItems.find(
-                            i =>
-                              i.db_order_item_id === itemId || i.id === itemId
-                          )
-                          const coveredQty =
-                            item?.paidQuantity || item?.quantity || 1
-                          const unitPrice = payment.is_cash_priced
-                            ? (item?.cashPrice ?? item?.price) || 0
-                            : item?.price || 0
-                          return {
-                            itemId,
-                            itemName: item?.name || 'Unknown Item',
-                            quantity: coveredQty,
-                            unitPrice,
-                            subtotal: unitPrice * coveredQty
-                          }
-                        }
-                      )
-                    })(),
-
-                    // Status and timestamps
-                    status: payment.status || 'captured',
-                    timestamp: payment.initiated_at || payment.created_at,
-
-                    // Void tracking
-                    isVoided: payment.is_voided || false,
-                    voidReason: payment.void_reason,
-                    voidedAt: payment.voided_at,
-
-                    // Refund tracking
-                    refundedAmount: payment.refunded_amount || 0,
-                    refundedAt: payment.refunded_at,
-                    reference_id: payment.reference_number,
-
-                    // Tip adjustment tracking
-                    original_tip_amount:
-                      payment.original_tip_amount || undefined,
-                    tip_adjusted_at: payment.tip_adjusted_at || undefined,
-                    tip_adjusted_by: payment.tip_adjusted_by || undefined,
-
-                    // Return tracking fields
-                    isReturned: payment.is_returned || false,
-                    returnedAt: payment.returned_at,
-                    returnedBy: payment.returned_by,
-                    returnAmount: payment.return_amount || 0,
-                    returnRrn: payment.return_rrn,
-                    returnAuthCode: payment.return_auth_code,
-                    returnReferenceId: payment.return_reference_id,
-                    returnNumber: payment.return_number,
-                    returnReason: payment.return_reason,
-
-                    // Transaction details
-                    transactionDetails: {
-                      terminalType: payment.terminal_type,
-                      authorizationCode:
-                        payment.authorization_code || payment.auth_code,
-                      cardType:
+                      // Card details (with terminal response fallback)
+                      cardBrand:
                         payment.card_type ??
                         castlesTxn?.cardType ??
                         dejavooTxn?.CardType,
@@ -12141,420 +12088,551 @@ export const useOrderStore = create<OrderState>()(
                         payment.card_last_four ??
                         castlesTxn?.cardLast4 ??
                         dejavooTxn?.Last4,
-                      transactionId: payment.transaction_id,
+
+                      // Cash details
                       amountTendered: payment.amount_tendered,
-                      changeGiven: payment.change_given,
-                      isCashPriced: payment.is_cash_priced,
-                      isCash: payment.payment_method === 'cash',
-                      // Include dejavoo response from processor_response if available
-                      dejavooTransaction:
-                        payment.processor_response?.dejavoo_transaction,
-                      // Additional terminal fields
-                      rrn: payment.rrn,
-                      batchNumber:
-                        payment.batch_number || payment.dejavoo_batch_number,
-                      invoiceNumber: payment.dejavoo_invoice_number,
-                      entryMode:
-                        payment.processor_response?.dejavoo_transaction
-                          ?.entryMode ?? castlesTxn?.entryMode,
-                      referenceId: payment.reference_number,
-                      castlesTransaction: castlesTxn
-                    },
+                      changeGiven: payment.change_given || 0,
+                      isCashPriced: payment.is_cash_priced || false,
 
-                    // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)
-                    isPreAuth: payment.status === 'authorized',
-                    ...(payment.status === 'authorized'
-                      ? {
-                          preAuthAmount: payment.amount,
-                          preAuthRrn: payment.rrn || castlesTxn?.rrn,
-                          preAuthStan: castlesTxn?.stan,
-                          preAuthAuthCode:
-                            payment.authorization_code ||
-                            castlesTxn?.approvalCode,
-                          preAuthReferenceId:
-                            payment.reference_number || castlesTxn?.referenceId,
-                          preAuthTerminalType: (payment.terminal_type ===
-                          'castles'
-                            ? 'castles'
-                            : 'dejavoo') as 'castles' | 'dejavoo'
+                      // Portions
+                      subtotal_portion: payment.subtotal_portion,
+                      tax_portion: payment.tax_portion,
+                      discount_portion: payment.discount_portion,
+
+                      // Split payment info
+                      splitInfo:
+                        payment.split_count && payment.split_count > 1
+                          ? {
+                              portionIndex: payment.split_portion_index || 0,
+                              totalPortions: payment.split_count,
+                              isLastPortion:
+                                (payment.split_portion_index || 0) ===
+                                payment.split_count - 1
+                            }
+                          : undefined,
+
+                      // Item coverage — prefer per-payment items from junction table (accurate per-payment quantities)
+                      // Fall back to covers_items + paid_quantity for legacy orders without payment_items
+                      itemsCovered: (() => {
+                        const perPaymentItems = paymentItemsByPaymentId.get(
+                          payment.id
+                        )
+                        if (perPaymentItems && perPaymentItems.length > 0) {
+                          return perPaymentItems.map((pi: any) => ({
+                            itemId: pi.order_item_id,
+                            itemName:
+                              transformedItems.find(
+                                i =>
+                                  i.db_order_item_id === pi.order_item_id ||
+                                  i.id === pi.order_item_id
+                              )?.name || 'Unknown Item',
+                            quantity: pi.quantity_paid,
+                            unitPrice: pi.unit_price_paid,
+                            subtotal: pi.subtotal_paid
+                          }))
                         }
-                      : {}),
-
-                    // Sync status
-                    sync_status: 'synced' as const
-                  }
-                })
-
-              // Calculate paid status from backend payment_status
-              const paidStatus =
-                orderData.payment_status === 'paid'
-                  ? 'Paid'
-                  : orderData.payment_status === 'partial'
-                  ? 'Partial'
-                  : 'Pending'
-
-              console.log('[syncOrderFromBackendComplete] Transformed data:', {
-                transformedItemsCount: transformedItems.length,
-                transformedPaymentsCount: transformedPayments.length,
-                reversalsCount: reversalsData.length,
-                refundItemsCount: orderRefundItemsData.length,
-                stationName,
-                firstItemSample: transformedItems[0]
-                  ? {
-                      id: transformedItems[0].id,
-                      name: transformedItems[0].name,
-                      quantity: transformedItems[0].quantity,
-                      refundedQuantity: transformedItems[0].refundedQuantity
-                    }
-                  : null
-              })
-
-              // Update local store with complete order data
-              set(state => {
-                if (!state.ordersById[storeKey]) {
-                  console.error(
-                    '[syncOrderFromBackendComplete] ❌ Order not found in store during update!',
-                    { orderId: storeKey }
-                  )
-                  return
-                }
-                // Snapshot the draft to a plain object so downstream spreads
-                // and freeze() don't hit revoked Immer proxies.
-                const currentOrder = current(state.ordersById[storeKey]!)
-                console.log('PASSED LOCAL ID', storeKey)
-                console.log('ACTIVE ORDER', state.activeOrderId)
-                console.log('[syncOrderFromBackendComplete] Updating store:', {
-                  orderId: storeKey,
-                  dbOrderId: currentOrder.db_order_id,
-                  isActiveOrder: true, // orderId === state.activeOrderId
-                  updatingItems: transformedItems.length,
-                  updatingPayments: transformedPayments.length,
-                  updatingReversals: reversalsData.length,
-                  updatingRefundItems: orderRefundItemsData.length
-                })
-
-                // Preserve local items that haven't synced to backend yet
-                const localPendingItems = currentOrder.items.filter(
-                  item => !item.db_order_item_id && !item.isDraft
-                )
-
-                // Preserve locally-synced items not yet in the backend fetch.
-                // Mirrors the broadcast merge safeguard at line ~3474.
-                // Race: db_order_item_id was set between the RPC fetch start
-                // and this set(), so the item is absent from transformedItems
-                // but excluded from localPendingItems (it already has db_order_item_id).
-                const backendItemDbIds = new Set(
-                  transformedItems.map(i => i.db_order_item_id).filter(Boolean)
-                )
-                const localSyncedNotInBackend = currentOrder.items.filter(
-                  item =>
-                    item.db_order_item_id &&
-                    !item.isDraft &&
-                    !backendItemDbIds.has(item.db_order_item_id)
-                )
-
-                // Preserve locally-advanced kitchen_status and item_status.
-                // Mirrors the broadcast merge logic at line ~3436.
-                // Race: optimistic kitchen send sets local kitchen_status='sent'/'preparing',
-                // but the backend fetch (started before the RPC committed) returns stale 'new'.
-                const localItemsByDbId = new Map<string, CartItem>()
-                for (const item of currentOrder.items) {
-                  if (item.db_order_item_id) {
-                    localItemsByDbId.set(item.db_order_item_id, item)
-                  }
-                }
-                for (let i = 0; i < transformedItems.length; i++) {
-                  const backendItem = transformedItems[i]
-                  if (!backendItem.db_order_item_id) continue
-                  const localItem = localItemsByDbId.get(
-                    backendItem.db_order_item_id
-                  )
-                  if (!localItem) continue
-
-                  // Preserve locally-advanced kitchen_status
-                  const localKRank =
-                    KITCHEN_STATUS_RANK[localItem.kitchen_status ?? 'new'] ?? 0
-                  const backendKRank =
-                    KITCHEN_STATUS_RANK[backendItem.kitchen_status ?? 'new'] ??
-                    0
-                  if (localKRank > backendKRank) {
-                    transformedItems[i] = {
-                      ...backendItem,
-                      id: localItem.id, // Keep local ID
-                      kitchen_status: localItem.kitchen_status,
-                      item_status: localItem.item_status
-                    }
-                  } else if (localItem.id !== backendItem.id) {
-                    // Preserve local item ID even when backend is ahead
-                    transformedItems[i] = { ...backendItem, id: localItem.id }
-                  }
-
-                  // Preserve local quantity if a sync is in-flight
-                  const pendingQuantity =
-                    useSyncStatusStore
-                      .getState()
-                      .itemSyncStatus.get(localItem.id) === 'pending' ||
-                    useSyncStatusStore
-                      .getState()
-                      .itemSyncStatus.get(localItem.id) === 'syncing'
-                  if (pendingQuantity) {
-                    transformedItems[i] = {
-                      ...transformedItems[i],
-                      quantity: localItem.quantity
-                    }
-                  }
-                }
-
-                // Absorb local pending items into unmatched backend items.
-                // Race prevention: addItemToBackend may have committed to the DB
-                // but not yet called useOrderStore.setState() to set db_order_item_id
-                // locally. In that window, the backend item appears in transformedItems
-                // but the local item appears in localPendingItems — creating a duplicate.
-                // Absorbing them here (by unique menuItemId match) prevents the duplicate
-                // from ever being written to state. Fix A in addItemToBackend handles any
-                // remaining cases where this absorption couldn't run in time.
-                const claimedPendingIds = new Set<string>()
-                {
-                  // Build menuItemId → pending items map for O(n) lookup
-                  const localPendingByKey = new Map<string, CartItem[]>()
-                  for (const pendingItem of currentOrder.items) {
-                    if (pendingItem.db_order_item_id || pendingItem.isDraft)
-                      continue
-                    const key = pendingItem.menuItemId || pendingItem.name
-                    if (!localPendingByKey.has(key))
-                      localPendingByKey.set(key, [])
-                    localPendingByKey.get(key)!.push(pendingItem)
-                  }
-
-                  for (let i = 0; i < transformedItems.length; i++) {
-                    const ti = transformedItems[i]
-                    if (!ti.db_order_item_id) continue
-                    // Skip items already matched by db_order_item_id (handled above)
-                    if (localItemsByDbId.has(ti.db_order_item_id)) continue
-
-                    const key = ti.menuItemId || ti.name
-                    const candidates = (
-                      localPendingByKey.get(key) ?? []
-                    ).filter(c => !claimedPendingIds.has(c.id))
-                    // Only absorb when there is exactly one candidate — ambiguous
-                    // cases (same item ordered twice while syncing) are left for Fix A.
-                    if (candidates.length !== 1) continue
-
-                    const pendingItem = candidates[0]
-                    claimedPendingIds.add(pendingItem.id)
-
-                    // Absorb: preserve local ID + locally-advanced kitchen_status
-                    const localKRank =
-                      KITCHEN_STATUS_RANK[
-                        pendingItem.kitchen_status ?? 'new'
-                      ] ?? 0
-                    const backendKRank =
-                      KITCHEN_STATUS_RANK[ti.kitchen_status ?? 'new'] ?? 0
-                    transformedItems[i] = {
-                      ...ti,
-                      id: pendingItem.id,
-                      ...(localKRank > backendKRank
-                        ? {
-                            kitchen_status: pendingItem.kitchen_status,
-                            item_status: pendingItem.item_status
+                        // Legacy fallback for orders without payment_items
+                        return (payment.covers_items || []).map(
+                          (itemId: string) => {
+                            const item = transformedItems.find(
+                              i =>
+                                i.db_order_item_id === itemId || i.id === itemId
+                            )
+                            const coveredQty =
+                              item?.paidQuantity || item?.quantity || 1
+                            const unitPrice = payment.is_cash_priced
+                              ? (item?.cashPrice ?? item?.price) || 0
+                              : item?.price || 0
+                            return {
+                              itemId,
+                              itemName: item?.name || 'Unknown Item',
+                              quantity: coveredQty,
+                              unitPrice,
+                              subtotal: unitPrice * coveredQty
+                            }
                           }
-                        : {})
+                        )
+                      })(),
+
+                      // Status and timestamps
+                      status: payment.status || 'captured',
+                      timestamp: payment.initiated_at || payment.created_at,
+
+                      // Void tracking
+                      isVoided: payment.is_voided || false,
+                      voidReason: payment.void_reason,
+                      voidedAt: payment.voided_at,
+
+                      // Refund tracking
+                      refundedAmount: payment.refunded_amount || 0,
+                      refundedAt: payment.refunded_at,
+                      reference_id: payment.reference_number,
+
+                      // Tip adjustment tracking
+                      original_tip_amount:
+                        payment.original_tip_amount || undefined,
+                      tip_adjusted_at: payment.tip_adjusted_at || undefined,
+                      tip_adjusted_by: payment.tip_adjusted_by || undefined,
+
+                      // Return tracking fields
+                      isReturned: payment.is_returned || false,
+                      returnedAt: payment.returned_at,
+                      returnedBy: payment.returned_by,
+                      returnAmount: payment.return_amount || 0,
+                      returnRrn: payment.return_rrn,
+                      returnAuthCode: payment.return_auth_code,
+                      returnReferenceId: payment.return_reference_id,
+                      returnNumber: payment.return_number,
+                      returnReason: payment.return_reason,
+
+                      // Transaction details
+                      transactionDetails: {
+                        terminalType: payment.terminal_type,
+                        authorizationCode:
+                          payment.authorization_code || payment.auth_code,
+                        cardType:
+                          payment.card_type ??
+                          castlesTxn?.cardType ??
+                          dejavooTxn?.CardType,
+                        last4:
+                          payment.card_last_four ??
+                          castlesTxn?.cardLast4 ??
+                          dejavooTxn?.Last4,
+                        transactionId: payment.transaction_id,
+                        amountTendered: payment.amount_tendered,
+                        changeGiven: payment.change_given,
+                        isCashPriced: payment.is_cash_priced,
+                        isCash: payment.payment_method === 'cash',
+                        // Include dejavoo response from processor_response if available
+                        dejavooTransaction:
+                          payment.processor_response?.dejavoo_transaction,
+                        // Additional terminal fields
+                        rrn: payment.rrn,
+                        batchNumber:
+                          payment.batch_number || payment.dejavoo_batch_number,
+                        invoiceNumber: payment.dejavoo_invoice_number,
+                        entryMode:
+                          payment.processor_response?.dejavoo_transaction
+                            ?.entryMode ?? castlesTxn?.entryMode,
+                        referenceId: payment.reference_number,
+                        castlesTransaction: castlesTxn
+                      },
+
+                      // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)
+                      isPreAuth: payment.status === 'authorized',
+                      ...(payment.status === 'authorized'
+                        ? {
+                            preAuthAmount: payment.amount,
+                            preAuthRrn: payment.rrn || castlesTxn?.rrn,
+                            preAuthStan: castlesTxn?.stan,
+                            preAuthAuthCode:
+                              payment.authorization_code ||
+                              castlesTxn?.approvalCode,
+                            preAuthReferenceId:
+                              payment.reference_number ||
+                              castlesTxn?.referenceId,
+                            preAuthTerminalType: (payment.terminal_type ===
+                            'castles'
+                              ? 'castles'
+                              : 'dejavoo') as 'castles' | 'dejavoo'
+                          }
+                        : {}),
+
+                      // Sync status
+                      sync_status: 'synced' as const
+                    }
+                  })
+
+                // Calculate paid status from backend payment_status
+                const paidStatus =
+                  orderData.payment_status === 'paid'
+                    ? 'Paid'
+                    : orderData.payment_status === 'partial'
+                    ? 'Partial'
+                    : 'Pending'
+
+                if (__DEV__) {
+                  console.log(
+                    '[syncOrderFromBackendComplete] Transformed data:',
+                    {
+                      transformedItemsCount: transformedItems.length,
+                      transformedPaymentsCount: transformedPayments.length,
+                      reversalsCount: reversalsData.length,
+                      refundItemsCount: orderRefundItemsData.length,
+                      stationName
+                    }
+                  )
+                }
+
+                // Update local store with complete order data
+                set(state => {
+                  if (!state.ordersById[storeKey]) {
+                    console.error(
+                      '[syncOrderFromBackendComplete] ❌ Order not found in store during update!',
+                      { orderId: storeKey }
+                    )
+                    return
+                  }
+                  // Snapshot the draft to a plain object so downstream spreads
+                  // and freeze() don't hit revoked Immer proxies.
+                  const currentOrder = current(state.ordersById[storeKey]!)
+                  if (__DEV__) {
+                    console.log(
+                      '[syncOrderFromBackendComplete] Updating store:',
+                      {
+                        orderId: storeKey,
+                        dbOrderId: currentOrder.db_order_id,
+                        isActiveOrder: true, // orderId === state.activeOrderId
+                        updatingItems: transformedItems.length,
+                        updatingPayments: transformedPayments.length,
+                        updatingReversals: reversalsData.length,
+                        updatingRefundItems: orderRefundItemsData.length
+                      }
+                    )
+                  }
+
+                  // Preserve local items that haven't synced to backend yet
+                  const localPendingItems = currentOrder.items.filter(
+                    item => !item.db_order_item_id && !item.isDraft
+                  )
+
+                  // Preserve locally-synced items not yet in the backend fetch.
+                  // Mirrors the broadcast merge safeguard at line ~3474.
+                  // Race: db_order_item_id was set between the RPC fetch start
+                  // and this set(), so the item is absent from transformedItems
+                  // but excluded from localPendingItems (it already has db_order_item_id).
+                  const backendItemDbIds = new Set(
+                    transformedItems
+                      .map(i => i.db_order_item_id)
+                      .filter(Boolean)
+                  )
+                  const localSyncedNotInBackend = currentOrder.items.filter(
+                    item =>
+                      item.db_order_item_id &&
+                      !item.isDraft &&
+                      !backendItemDbIds.has(item.db_order_item_id)
+                  )
+
+                  // Preserve locally-advanced kitchen_status and item_status.
+                  // Mirrors the broadcast merge logic at line ~3436.
+                  // Race: optimistic kitchen send sets local kitchen_status='sent'/'preparing',
+                  // but the backend fetch (started before the RPC committed) returns stale 'new'.
+                  const localItemsByDbId = new Map<string, CartItem>()
+                  for (const item of currentOrder.items) {
+                    if (item.db_order_item_id) {
+                      localItemsByDbId.set(item.db_order_item_id, item)
                     }
                   }
-                }
+                  for (let i = 0; i < transformedItems.length; i++) {
+                    const backendItem = transformedItems[i]
+                    if (!backendItem.db_order_item_id) continue
+                    const localItem = localItemsByDbId.get(
+                      backendItem.db_order_item_id
+                    )
+                    if (!localItem) continue
 
-                // Preserve local payments that haven't synced to backend yet
-                // (e.g. pre-auth payments added optimistically before syncPreAuthToBackend completes)
-                const localPendingPayments =
-                  currentOrder.payments?.filter(
-                    p => !p.db_payment_id && p.sync_status === 'pending'
-                  ) ?? []
+                    // Preserve locally-advanced kitchen_status
+                    const localKRank =
+                      KITCHEN_STATUS_RANK[localItem.kitchen_status ?? 'new'] ??
+                      0
+                    const backendKRank =
+                      KITCHEN_STATUS_RANK[
+                        backendItem.kitchen_status ?? 'new'
+                      ] ?? 0
+                    if (localKRank > backendKRank) {
+                      transformedItems[i] = {
+                        ...backendItem,
+                        id: localItem.id, // Keep local ID
+                        kitchen_status: localItem.kitchen_status,
+                        item_status: localItem.item_status
+                      }
+                    } else if (localItem.id !== backendItem.id) {
+                      // Preserve local item ID even when backend is ahead
+                      transformedItems[i] = { ...backendItem, id: localItem.id }
+                    }
 
-                // Preserve locally-advanced payments (e.g. local="captured" vs server="authorized")
-                // This prevents realtime sync from regressing payment status when capture_preauth_v1
-                // hasn't completed on the server yet but closeCheck already incremented sync_version.
-                const PAYMENT_STATUS_ORDER: Record<string, number> = {
-                  authorized: 0,
-                  pending: 1,
-                  captured: 2,
-                  refunded: 3,
-                  voided: 3
-                }
-                const localPaymentsByDbId = new Map<
-                  string,
-                  OrderProfilePayment
-                >()
-                for (const p of currentOrder.payments ?? []) {
-                  if (p.db_payment_id)
-                    localPaymentsByDbId.set(p.db_payment_id, p)
-                }
-
-                let hasLocalAdvancedPayments = false
-                const mergedPayments = transformedPayments.map(serverPmt => {
-                  if (!serverPmt.db_payment_id) return serverPmt
-                  const localPmt = localPaymentsByDbId.get(
-                    serverPmt.db_payment_id
-                  )
-                  if (
-                    localPmt &&
-                    (PAYMENT_STATUS_ORDER[localPmt.status ?? ''] ?? -1) >
-                      (PAYMENT_STATUS_ORDER[serverPmt.status ?? ''] ?? -1)
-                  ) {
-                    hasLocalAdvancedPayments = true
-                    return localPmt
+                    // Preserve local quantity if a sync is in-flight
+                    const pendingQuantity =
+                      useSyncStatusStore
+                        .getState()
+                        .itemSyncStatus.get(localItem.id) === 'pending' ||
+                      useSyncStatusStore
+                        .getState()
+                        .itemSyncStatus.get(localItem.id) === 'syncing'
+                    if (pendingQuantity) {
+                      transformedItems[i] = {
+                        ...transformedItems[i],
+                        quantity: localItem.quantity
+                      }
+                    }
                   }
-                  return serverPmt
+
+                  // Absorb local pending items into unmatched backend items.
+                  // Race prevention: addItemToBackend may have committed to the DB
+                  // but not yet called useOrderStore.setState() to set db_order_item_id
+                  // locally. In that window, the backend item appears in transformedItems
+                  // but the local item appears in localPendingItems — creating a duplicate.
+                  // Absorbing them here (by unique menuItemId match) prevents the duplicate
+                  // from ever being written to state. Fix A in addItemToBackend handles any
+                  // remaining cases where this absorption couldn't run in time.
+                  const claimedPendingIds = new Set<string>()
+                  {
+                    // Build menuItemId → pending items map for O(n) lookup
+                    const localPendingByKey = new Map<string, CartItem[]>()
+                    for (const pendingItem of currentOrder.items) {
+                      if (pendingItem.db_order_item_id || pendingItem.isDraft)
+                        continue
+                      const key = pendingItem.menuItemId || pendingItem.name
+                      if (!localPendingByKey.has(key))
+                        localPendingByKey.set(key, [])
+                      localPendingByKey.get(key)!.push(pendingItem)
+                    }
+
+                    for (let i = 0; i < transformedItems.length; i++) {
+                      const ti = transformedItems[i]
+                      if (!ti.db_order_item_id) continue
+                      // Skip items already matched by db_order_item_id (handled above)
+                      if (localItemsByDbId.has(ti.db_order_item_id)) continue
+
+                      const key = ti.menuItemId || ti.name
+                      const candidates = (
+                        localPendingByKey.get(key) ?? []
+                      ).filter(c => !claimedPendingIds.has(c.id))
+                      // Only absorb when there is exactly one candidate — ambiguous
+                      // cases (same item ordered twice while syncing) are left for Fix A.
+                      if (candidates.length !== 1) continue
+
+                      const pendingItem = candidates[0]
+                      claimedPendingIds.add(pendingItem.id)
+
+                      // Absorb: preserve local ID + locally-advanced kitchen_status
+                      const localKRank =
+                        KITCHEN_STATUS_RANK[
+                          pendingItem.kitchen_status ?? 'new'
+                        ] ?? 0
+                      const backendKRank =
+                        KITCHEN_STATUS_RANK[ti.kitchen_status ?? 'new'] ?? 0
+                      transformedItems[i] = {
+                        ...ti,
+                        id: pendingItem.id,
+                        ...(localKRank > backendKRank
+                          ? {
+                              kitchen_status: pendingItem.kitchen_status,
+                              item_status: pendingItem.item_status
+                            }
+                          : {})
+                      }
+                    }
+                  }
+
+                  // Preserve local payments that haven't synced to backend yet
+                  // (e.g. pre-auth payments added optimistically before syncPreAuthToBackend completes)
+                  const localPendingPayments =
+                    currentOrder.payments?.filter(
+                      p => !p.db_payment_id && p.sync_status === 'pending'
+                    ) ?? []
+
+                  // Preserve locally-advanced payments (e.g. local="captured" vs server="authorized")
+                  // This prevents realtime sync from regressing payment status when capture_preauth_v1
+                  // hasn't completed on the server yet but closeCheck already incremented sync_version.
+                  const PAYMENT_STATUS_ORDER: Record<string, number> = {
+                    authorized: 0,
+                    pending: 1,
+                    captured: 2,
+                    refunded: 3,
+                    voided: 3
+                  }
+                  const localPaymentsByDbId = new Map<
+                    string,
+                    OrderProfilePayment
+                  >()
+                  for (const p of currentOrder.payments ?? []) {
+                    if (p.db_payment_id)
+                      localPaymentsByDbId.set(p.db_payment_id, p)
+                  }
+
+                  let hasLocalAdvancedPayments = false
+                  const mergedPayments = transformedPayments.map(serverPmt => {
+                    if (!serverPmt.db_payment_id) return serverPmt
+                    const localPmt = localPaymentsByDbId.get(
+                      serverPmt.db_payment_id
+                    )
+                    if (
+                      localPmt &&
+                      (PAYMENT_STATUS_ORDER[localPmt.status ?? ''] ?? -1) >
+                        (PAYMENT_STATUS_ORDER[serverPmt.status ?? ''] ?? -1)
+                    ) {
+                      hasLocalAdvancedPayments = true
+                      return localPmt
+                    }
+                    return serverPmt
+                  })
+
+                  // Conflict guard: preserve local status if we have pending changes
+                  const hasLocalPending = currentOrder.items.some(
+                    item =>
+                      item.sync_status === 'pending' ||
+                      (!item.db_order_item_id && !item.isDraft)
+                  )
+                  const hasLocalPendingPayments = (
+                    currentOrder.payments ?? []
+                  ).some(p => !p.db_payment_id && p.sync_status === 'pending')
+
+                  // Rank-based upgrade: always accept server's paid_status if it's higher
+                  const PAID_STATUS_RANK: Record<string, number> = {
+                    Unpaid: 0,
+                    Pending: 0,
+                    Partial: 1,
+                    Paid: 2
+                  }
+                  const localPaidRank =
+                    PAID_STATUS_RANK[currentOrder.paid_status ?? ''] ?? -1
+                  const serverPaidRank = PAID_STATUS_RANK[paidStatus] ?? -1
+                  const isServerPaidUpgrade = serverPaidRank > localPaidRank
+
+                  // Build the updated order once to avoid duplication
+                  const updatedOrder: OrderProfile = {
+                    ...currentOrder,
+                    items: [
+                      // Drop items mid-removal so a backend fetch that still shows
+                      // them can't re-introduce them into the cart.
+                      ...transformedItems.filter(
+                        item =>
+                          !item.db_order_item_id ||
+                          !isItemPendingRemoval(item.db_order_item_id)
+                      ),
+                      // Exclude pending items that were absorbed into transformedItems above
+                      ...localPendingItems.filter(
+                        item => !claimedPendingIds.has(item.id)
+                      ),
+                      ...localSyncedNotInBackend
+                    ],
+                    payments: [...mergedPayments, ...localPendingPayments],
+                    // Reversals and refund items from backend
+                    reversals: reversalsData,
+                    order_refund_items: orderRefundItemsData,
+                    // Restore discount metadata from backend order_discounts
+                    ...restoreDiscountsFromBackend(orderDiscountsData),
+                    // Station name from backend
+                    _sourceStationName:
+                      stationName || currentOrder._sourceStationName,
+                    // Financial totals
+                    total_amount:
+                      orderData.card_total ?? orderData.total_amount,
+                    total_tax: orderData.tax_amount,
+                    total_discount: orderData.discount_amount,
+                    amount_paid: isServerPaidUpgrade
+                      ? orderData.amount_paid
+                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      ? currentOrder.amount_paid
+                      : orderData.amount_paid,
+                    amount_due: isServerPaidUpgrade
+                      ? orderData.amount_due
+                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      ? currentOrder.amount_due
+                      : orderData.amount_due,
+                    cash_amount_due: orderData.cash_amount_due,
+                    // Status fields — preserve local status when items are pending sync or payments are ahead
+                    // BUT always accept server upgrade (e.g. Partial → Paid)
+                    paid_status: isServerPaidUpgrade
+                      ? paidStatus
+                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      ? currentOrder.paid_status
+                      : hasLocalPending
+                      ? currentOrder.paid_status
+                      : paidStatus,
+                    order_status: hasLocalPending
+                      ? currentOrder.order_status
+                      : orderData.status,
+                    sync_version: orderData.sync_version,
+                    check_status:
+                      orderData.check_status || currentOrder.check_status,
+                    // Customer data from backend
+                    customer_name:
+                      orderData.customer_name ?? currentOrder.customer_name,
+                    customer_phone:
+                      orderData.customer_phone ?? currentOrder.customer_phone,
+                    customer_email:
+                      orderData.customer_email ?? currentOrder.customer_email,
+                    customer_id:
+                      orderData.customer_id ?? currentOrder.customer_id,
+                    delivery_address:
+                      orderData.delivery_address ??
+                      currentOrder.delivery_address,
+                    // Split payment path (multi-station sync)
+                    split_payment_path:
+                      (orderData as any).split_payment_path ??
+                      currentOrder.split_payment_path ??
+                      null
+                  }
+
+                  // Self-healing: if amount_due ≈ 0 and all payments synced, ensure paid_status = "Paid"
+                  if (
+                    updatedOrder.paid_status !== 'Paid' &&
+                    (updatedOrder.amount_due ?? 0) <= 0.01 &&
+                    (updatedOrder.payments ?? []).length > 0 &&
+                    (updatedOrder.payments ?? []).every(p => !!p.db_payment_id)
+                  ) {
+                    if (__DEV__)
+                      console.warn(
+                        '[syncOrderFromBackendComplete] Self-healing: paid_status was',
+                        updatedOrder.paid_status,
+                        'but amount_due is',
+                        updatedOrder.amount_due,
+                        '— correcting to Paid'
+                      )
+                    updatedOrder.paid_status = 'Paid'
+                    updatedOrder.amount_due = 0
+                  }
+
+                  state.ordersById[storeKey] = freeze(updatedOrder)
+                  syncTableOrderIdIndexForOrder(state, storeKey, currentOrder)
+                  // Update active order derived state if this is the active order
+                  if (storeKey === state.activeOrderId) {
+                    state.activeOrderTotal =
+                      orderData.card_total ?? orderData.total_amount
+                    state.activeOrderTax = orderData.tax_amount
+                    state.activeOrderDiscount = orderData.discount_amount
+                    state.activeOrderOutstandingTotal =
+                      hasLocalAdvancedPayments && !isServerPaidUpgrade
+                        ? currentOrder.amount_due ?? orderData.amount_due
+                        : orderData.amount_due
+                    state.activeOrderOutstandingCash = orderData.cash_amount_due
+                  }
                 })
 
-                // Conflict guard: preserve local status if we have pending changes
-                const hasLocalPending = currentOrder.items.some(
-                  item =>
-                    item.sync_status === 'pending' ||
-                    (!item.db_order_item_id && !item.isDraft)
+                // Invalidate cache
+                paymentPreviewService.invalidateCache(storeKey)
+
+                // Verify the update
+                const updatedOrder = get().ordersById[storeKey]
+                console.log(
+                  '[syncOrderFromBackendComplete] ✅ Order synced successfully:',
+                  {
+                    orderId: storeKey,
+                    itemsInStore: updatedOrder?.items?.length || 0,
+                    paymentsInStore: updatedOrder?.payments?.length || 0,
+                    checkStatus: updatedOrder?.check_status,
+                    paidStatus: updatedOrder?.paid_status
+                  }
                 )
-                const hasLocalPendingPayments = (
-                  currentOrder.payments ?? []
-                ).some(p => !p.db_payment_id && p.sync_status === 'pending')
+              } catch (error: any) {
+                console.error('[syncOrderFromBackendComplete] Failed:', error)
+                throw error
+              }
+            })()
 
-                // Rank-based upgrade: always accept server's paid_status if it's higher
-                const PAID_STATUS_RANK: Record<string, number> = {
-                  Unpaid: 0,
-                  Pending: 0,
-                  Partial: 1,
-                  Paid: 2
-                }
-                const localPaidRank =
-                  PAID_STATUS_RANK[currentOrder.paid_status ?? ''] ?? -1
-                const serverPaidRank = PAID_STATUS_RANK[paidStatus] ?? -1
-                const isServerPaidUpgrade = serverPaidRank > localPaidRank
-
-                // Build the updated order once to avoid duplication
-                const updatedOrder: OrderProfile = {
-                  ...currentOrder,
-                  items: [
-                    // Drop items mid-removal so a backend fetch that still shows
-                    // them can't re-introduce them into the cart.
-                    ...transformedItems.filter(
-                      item =>
-                        !item.db_order_item_id ||
-                        !isItemPendingRemoval(item.db_order_item_id)
-                    ),
-                    // Exclude pending items that were absorbed into transformedItems above
-                    ...localPendingItems.filter(
-                      item => !claimedPendingIds.has(item.id)
-                    ),
-                    ...localSyncedNotInBackend
-                  ],
-                  payments: [...mergedPayments, ...localPendingPayments],
-                  // Reversals and refund items from backend
-                  reversals: reversalsData,
-                  order_refund_items: orderRefundItemsData,
-                  // Restore discount metadata from backend order_discounts
-                  ...restoreDiscountsFromBackend(orderDiscountsData),
-                  // Station name from backend
-                  _sourceStationName:
-                    stationName || currentOrder._sourceStationName,
-                  // Financial totals
-                  total_amount: orderData.card_total ?? orderData.total_amount,
-                  total_tax: orderData.tax_amount,
-                  total_discount: orderData.discount_amount,
-                  amount_paid: isServerPaidUpgrade
-                    ? orderData.amount_paid
-                    : hasLocalAdvancedPayments || hasLocalPendingPayments
-                    ? currentOrder.amount_paid
-                    : orderData.amount_paid,
-                  amount_due: isServerPaidUpgrade
-                    ? orderData.amount_due
-                    : hasLocalAdvancedPayments || hasLocalPendingPayments
-                    ? currentOrder.amount_due
-                    : orderData.amount_due,
-                  cash_amount_due: orderData.cash_amount_due,
-                  // Status fields — preserve local status when items are pending sync or payments are ahead
-                  // BUT always accept server upgrade (e.g. Partial → Paid)
-                  paid_status: isServerPaidUpgrade
-                    ? paidStatus
-                    : hasLocalAdvancedPayments || hasLocalPendingPayments
-                    ? currentOrder.paid_status
-                    : hasLocalPending
-                    ? currentOrder.paid_status
-                    : paidStatus,
-                  order_status: hasLocalPending
-                    ? currentOrder.order_status
-                    : orderData.status,
-                  sync_version: orderData.sync_version,
-                  check_status:
-                    orderData.check_status || currentOrder.check_status,
-                  // Customer data from backend
-                  customer_name:
-                    orderData.customer_name ?? currentOrder.customer_name,
-                  customer_phone:
-                    orderData.customer_phone ?? currentOrder.customer_phone,
-                  customer_email:
-                    orderData.customer_email ?? currentOrder.customer_email,
-                  customer_id:
-                    orderData.customer_id ?? currentOrder.customer_id,
-                  delivery_address:
-                    orderData.delivery_address ?? currentOrder.delivery_address,
-                  // Split payment path (multi-station sync)
-                  split_payment_path:
-                    (orderData as any).split_payment_path ??
-                    currentOrder.split_payment_path ??
-                    null
-                }
-
-                // Self-healing: if amount_due ≈ 0 and all payments synced, ensure paid_status = "Paid"
-                if (
-                  updatedOrder.paid_status !== 'Paid' &&
-                  (updatedOrder.amount_due ?? 0) <= 0.01 &&
-                  (updatedOrder.payments ?? []).length > 0 &&
-                  (updatedOrder.payments ?? []).every(p => !!p.db_payment_id)
-                ) {
-                  if (__DEV__)
-                    console.warn(
-                      '[syncOrderFromBackendComplete] Self-healing: paid_status was',
-                      updatedOrder.paid_status,
-                      'but amount_due is',
-                      updatedOrder.amount_due,
-                      '— correcting to Paid'
-                    )
-                  updatedOrder.paid_status = 'Paid'
-                  updatedOrder.amount_due = 0
-                }
-
-                state.ordersById[storeKey] = freeze(updatedOrder)
-                syncTableOrderIdIndexForOrder(state, storeKey, currentOrder)
-                // Update active order derived state if this is the active order
-                if (storeKey === state.activeOrderId) {
-                  state.activeOrderTotal =
-                    orderData.card_total ?? orderData.total_amount
-                  state.activeOrderTax = orderData.tax_amount
-                  state.activeOrderDiscount = orderData.discount_amount
-                  state.activeOrderOutstandingTotal =
-                    hasLocalAdvancedPayments && !isServerPaidUpgrade
-                      ? currentOrder.amount_due ?? orderData.amount_due
-                      : orderData.amount_due
-                  state.activeOrderOutstandingCash = orderData.cash_amount_due
-                }
-              })
-
-              // Invalidate cache
-              paymentPreviewService.invalidateCache(storeKey)
-
-              // Verify the update
-              const updatedOrder = get().ordersById[storeKey]
-              console.log(
-                '[syncOrderFromBackendComplete] ✅ Order synced successfully:',
-                {
-                  orderId: storeKey,
-                  itemsInStore: updatedOrder?.items?.length || 0,
-                  paymentsInStore: updatedOrder?.payments?.length || 0,
-                  checkStatus: updatedOrder?.check_status,
-                  paidStatus: updatedOrder?.paid_status
-                }
-              )
-            } catch (error: any) {
-              console.error('[syncOrderFromBackendComplete] Failed:', error)
-              throw error
+            inFlightOrderDetailSyncs.set(detailSyncKey, detailSyncPromise)
+            try {
+              await detailSyncPromise
+              lastOrderDetailSyncAt.set(detailSyncKey, Date.now())
+            } finally {
+              if (
+                inFlightOrderDetailSyncs.get(detailSyncKey) ===
+                detailSyncPromise
+              ) {
+                inFlightOrderDetailSyncs.delete(detailSyncKey)
+              }
             }
           },
 

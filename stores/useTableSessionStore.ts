@@ -38,10 +38,7 @@ import {
 } from '@/types/db-floor-plan-types'
 import type { TableSessionPayload } from '@/types/real-time'
 import { create } from 'zustand'
-import {
-  persist,
-  subscribeWithSelector
-} from 'zustand/middleware'
+import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { useEmployeeStore } from './useEmployeeStore'
 import {
@@ -412,20 +409,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           }))
 
           const results = allResults.filter(r => r.result.changed)
-
-          if (allResults.length > 0) {
-            console.log('[useTableSessionStore] batchDispatch:', {
-              actionCount: allResults.length,
-              changedCount: results.length,
-              actions: allResults.map(r => ({
-                tableId: r.tableId,
-                actionType: r.action.type,
-                prevStatus: r.prev?.status,
-                newStatus: r.result.session?.status,
-                changed: r.result.changed
-              }))
-            })
-          }
 
           if (results.length === 0) return 0
 
@@ -806,17 +789,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         _handleSessionChange: (payload: TableSessionPayload) => {
           const { operation, data } = payload
 
-          console.log('[useTableSessionStore] _handleSessionChange:', {
-            operation,
-            sessionId: data?.session?.id,
-            status: data?.session?.status,
-            tableCount: data?.tables?.length ?? 0,
-            tables: data?.tables?.map(t => ({
-              id: t.table_id,
-              label: t.table_label
-            }))
-          })
-
           if (operation === 'DELETE' || !data?.session) {
             useFloorPlanStore.getState()._debouncedRefresh()
             return
@@ -868,16 +840,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           }
 
           // SYNC for tables in this session
-          console.log(
-            '[useTableSessionStore] Creating SYNC actions for tables:',
-            {
-              sessionId,
-              tableIds,
-              status: incomingSession.status,
-              actionCount: tableIds.length
-            }
-          )
-
           for (const tableId of tableIds) {
             actions.push({
               tableId,

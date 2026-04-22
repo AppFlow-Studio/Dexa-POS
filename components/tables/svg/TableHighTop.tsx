@@ -15,7 +15,8 @@ const TableHighTop = React.memo(function TableHighTop ({
   width = 120,
   height = 120
 }: TableHighTopProps) {
-  const lightStroke = '#94A3B8'
+  const fillOpacity = darkMode ? 0.12 : 0.18
+  const strokeOpacity = darkMode ? 0.5 : 0.7
 
   return (
     <Svg width={width} height={height} viewBox='0 0 80 80' fill='none'>
@@ -25,10 +26,10 @@ const TableHighTop = React.memo(function TableHighTop ({
         cy='40'
         r='36'
         fill={color}
-        fillOpacity={darkMode ? 0.18 : 0.88}
-        stroke={darkMode ? color : lightStroke}
+        fillOpacity={darkMode ? 0.18 : 0.28}
+        stroke={color}
         strokeWidth='1.5'
-        strokeOpacity={darkMode ? 0.8 : 0.75}
+        strokeOpacity={darkMode ? 0.5 : 0.6}
       />
 
       {/* Overhang ring */}
@@ -37,7 +38,7 @@ const TableHighTop = React.memo(function TableHighTop ({
         cy='40'
         r='28'
         fill='none'
-        stroke={darkMode ? color : lightStroke}
+        stroke={color}
         strokeWidth='0.75'
         strokeOpacity={darkMode ? 0.25 : 0.35}
       />
@@ -48,10 +49,10 @@ const TableHighTop = React.memo(function TableHighTop ({
         cy='40'
         r='9'
         fill={color}
-        fillOpacity={darkMode ? 0.22 : 0.9}
-        stroke={darkMode ? color : lightStroke}
+        fillOpacity={darkMode ? 0.22 : 0.32}
+        stroke={color}
         strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.75}
+        strokeOpacity={darkMode ? 0.5 : 0.6}
       />
     </Svg>
   )

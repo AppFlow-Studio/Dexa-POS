@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useRouter } from 'expo-router'
 import {
   Award,
@@ -13,14 +14,13 @@ import {
   Settings,
   ShoppingBag,
   ShoppingCart,
-  UtensilsCrossed,
+  UtensilsCrossed
 } from 'lucide-react-native'
 import { useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import PinDisplay from './auth/PinDisplay'
 import PinNumpad from './auth/PinNumpad'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
 
 interface MenuCardProps {
   icon: React.ReactNode
@@ -36,7 +36,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
   title,
   onPress,
   isLocked = false,
-  onLockPress,
+  onLockPress
 }) => {
   return (
     <TouchableOpacity
@@ -51,20 +51,22 @@ const MenuCard: React.FC<MenuCardProps> = ({
         backgroundColor: colors.card,
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 12,
+        padding: 12
       }}
     >
       {/* Top accent line */}
-      <View style={{
-        position: 'absolute',
-        top: 0,
-        left: '20%',
-        right: '20%',
-        height: 2,
-        backgroundColor: colors.teal + '60',
-        borderBottomLeftRadius: 2,
-        borderBottomRightRadius: 2,
-      }} />
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: '20%',
+          right: '20%',
+          height: 2,
+          backgroundColor: colors.teal + '60',
+          borderBottomLeftRadius: 2,
+          borderBottomRightRadius: 2
+        }}
+      />
 
       {isLocked && (
         <TouchableOpacity
@@ -87,7 +89,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
           borderColor: colors.teal + '40',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 10,
+          marginBottom: 10
         }}
       >
         {icon}
@@ -98,7 +100,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
           fontSize: 11,
           fontWeight: '600',
           color: colors.heading,
-          textAlign: 'center',
+          textAlign: 'center'
         }}
         numberOfLines={1}
       >
@@ -110,7 +112,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
 
 const MainMenu: React.FC = () => {
   const router = useRouter()
-  const employees = useEmployeeStore((s) => s.employees)
+  const employees = useEmployeeStore(s => s.employees)
   const [pinDialogOpen, setPinDialogOpen] = useState(false)
   const [currentPin, setCurrentPin] = useState('')
   const [targetRoute, setTargetRoute] = useState<string | null>(null)
@@ -128,17 +130,20 @@ const MainMenu: React.FC = () => {
       'merchant.manager',
       'merchant.owner',
       'merchant.shift_manager',
-      'merchant.inventory_manager',
+      'merchant.inventory_manager'
     ]
-    const authorizedEmployees = employees.filter((emp) =>
+    const authorizedEmployees = employees.filter(emp =>
       allowedRoles.includes(emp.role)
     )
-    console.log('[MainMenu] Authorized employees with PINs:', authorizedEmployees.map(e => ({
-      name: e.fullName,
-      role: e.role,
-      pin: e.pin,
-      pinLength: e.pin?.length
-    })))
+    console.log(
+      '[MainMenu] Authorized employees with PINs:',
+      authorizedEmployees.map(e => ({
+        name: e.fullName,
+        role: e.role,
+        pin: e.pin,
+        pinLength: e.pin?.length
+      }))
+    )
   }
 
   const handlePinSubmit = () => {
@@ -149,7 +154,7 @@ const MainMenu: React.FC = () => {
       'merchant.manager',
       'merchant.owner',
       'merchant.shift_manager',
-      'merchant.inventory_manager',
+      'merchant.inventory_manager'
     ]
 
     // Debug logging
@@ -157,16 +162,20 @@ const MainMenu: React.FC = () => {
       entered: currentPin,
       enteredLength: currentPin.length,
       totalEmployees: employees.length,
-      authorizedEmployees: employees.filter(e => allowedRoles.includes(e.role)).length
+      authorizedEmployees: employees.filter(e => allowedRoles.includes(e.role))
+        .length
     })
 
     // Find any employee with matching PIN and admin/manager/owner role
-    const authorizedEmployee = employees.find((emp) => {
+    const authorizedEmployee = employees.find(emp => {
       const trimmedPin = emp.pin?.trim() ?? ''
-      const isMatch = trimmedPin === currentPin && allowedRoles.includes(emp.role)
+      const isMatch =
+        trimmedPin === currentPin && allowedRoles.includes(emp.role)
 
       if (allowedRoles.includes(emp.role)) {
-        console.log(`[PIN Check] ${emp.fullName} (${emp.role}): stored="${trimmedPin}" vs entered="${currentPin}" - match=${isMatch}`)
+        console.log(
+          `[PIN Check] ${emp.fullName} (${emp.role}): stored="${trimmedPin}" vs entered="${currentPin}" - match=${isMatch}`
+        )
       }
 
       return isMatch
@@ -197,35 +206,35 @@ const MainMenu: React.FC = () => {
       icon: <ShoppingCart color={colors.teal} size={20} />,
       title: 'Sales',
       subtitle: 'Process Orders',
-      route: '/order-processing',
+      route: '/order-processing'
     },
     {
       id: 'tables',
       icon: <LayoutGrid color={colors.teal} size={20} />,
       title: 'Tables',
       subtitle: 'Manage Seating',
-      route: '/tables',
+      route: '/tables'
     },
     {
       id: 'previous-orders',
       icon: <History color={colors.teal} size={20} />,
       title: 'Previous Orders',
       subtitle: 'Order History',
-      route: '/previous-orders',
+      route: '/previous-orders'
     },
     {
       id: 'online-orders',
       icon: <ShoppingBag color={colors.teal} size={20} />,
       title: 'Online Orders',
       subtitle: 'Web & App Orders',
-      route: '/online-orders',
+      route: '/online-orders'
     },
     {
       id: 'kds',
       icon: <ChefHat color={colors.teal} size={20} />,
       title: 'Kitchen Display',
       subtitle: 'Manage Orders',
-      route: '/kds',
+      route: '/kds'
     },
     {
       id: 'scheduling',
@@ -233,7 +242,7 @@ const MainMenu: React.FC = () => {
       title: 'Scheduling',
       subtitle: 'Time Management',
       route: '/scheduling',
-      isLocked: true,
+      isLocked: true
     },
     {
       id: 'menu-management',
@@ -241,7 +250,7 @@ const MainMenu: React.FC = () => {
       title: 'Menu Management',
       subtitle: 'Edit Menu Items',
       route: '/menu',
-      isLocked: true,
+      isLocked: true
     },
     {
       id: 'inventory',
@@ -249,7 +258,7 @@ const MainMenu: React.FC = () => {
       title: 'Inventory',
       subtitle: 'Stock Management',
       route: '/inventory',
-      isLocked: true,
+      isLocked: true
     },
     {
       id: 'analytics',
@@ -257,7 +266,7 @@ const MainMenu: React.FC = () => {
       title: 'Analytics',
       subtitle: 'Sales Reports',
       route: '/analytics',
-      isLocked: true,
+      isLocked: true
     },
     {
       id: 'settings',
@@ -265,30 +274,30 @@ const MainMenu: React.FC = () => {
       title: 'Settings',
       subtitle: 'System Config',
       route: '/settings',
-      isLocked: true,
+      isLocked: true
     },
     {
       id: 'loyalty',
       icon: <Award color={colors.teal} size={20} />,
       title: 'Loyalty',
       subtitle: 'Rewards & Members',
-      route: '/loyalty',
+      route: '/loyalty'
     },
     {
       id: 'castlestest',
       icon: <Cpu color={colors.teal} size={20} />,
       title: 'Castles Test',
       subtitle: 'Castles device test',
-      route: '/castlestest',
-    },
+      route: '/castlestest'
+    }
   ]
 
-  const regularItems = menuItems.filter((item) => !item.isLocked)
-  const managementItems = menuItems.filter((item) => item.isLocked)
+  const regularItems = menuItems.filter(item => !item.isLocked)
+  const managementItems = menuItems.filter(item => item.isLocked)
 
   const renderRow = (items: typeof menuItems) => (
     <View style={{ flexDirection: 'row', gap: 20, justifyContent: 'center' }}>
-      {items.map((item) => (
+      {items.map(item => (
         <View key={item.id} style={{ width: 150, height: 150 }}>
           <MenuCard
             icon={item.icon}
@@ -318,18 +327,36 @@ const MainMenu: React.FC = () => {
           justifyContent: 'center',
           alignItems: 'center',
           padding: 20,
-          gap: 50,
+          gap: 50
         }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ alignItems: 'center', gap: 14 }}>
-          <Text style={{ fontSize: 12, color: colors.heading, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase',padding:8 }}>
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.heading,
+              fontWeight: '700',
+              letterSpacing: 1.4,
+              textTransform: 'uppercase',
+              padding: 8
+            }}
+          >
             Operations
           </Text>
           {renderRow(regularItems)}
         </View>
         <View style={{ alignItems: 'center', gap: 14 }}>
-          <Text style={{ fontSize: 12, color: colors.heading, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase',padding:8  }}>
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.heading,
+              fontWeight: '700',
+              letterSpacing: 1.4,
+              textTransform: 'uppercase',
+              padding: 8
+            }}
+          >
             Management
           </Text>
           {renderRow(managementItems)}
@@ -338,38 +365,66 @@ const MainMenu: React.FC = () => {
 
       {/* Manager PIN Dialog */}
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
-        <DialogContent className="w-fit h-fit p-0">
+        <DialogContent
+          style={{
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.card,
+            borderRadius: 14
+          }}
+          className='w-fit h-fit p-0'
+        >
           <View
             style={{
-              backgroundColor: colors.panel,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: colors.border,
               padding: 24,
-              minWidth: 320,
+              minWidth: 320
             }}
           >
             <DialogHeader>
               <DialogTitle>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading, textAlign: 'center' }}>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: '700',
+                    color: colors.heading,
+                    textAlign: 'center'
+                  }}
+                >
                   Manager Access Required
                 </Text>
               </DialogTitle>
             </DialogHeader>
 
-            <Text style={{ fontSize: 12, color: colors.muted, textAlign: 'center', marginTop: 6, marginBottom: 16 }}>
+            <Text
+              style={{
+                fontSize: 12,
+                color: colors.muted,
+                textAlign: 'center',
+                marginTop: 6,
+                marginBottom: 16
+              }}
+            >
               Enter your manager PIN to continue
             </Text>
 
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
 
-            <View style={{ minHeight: 18, marginTop: 8, marginBottom: 2, justifyContent: 'center' }}>
+            <View
+              style={{
+                minHeight: 18,
+                marginTop: 8,
+                marginBottom: 2,
+                justifyContent: 'center'
+              }}
+            >
               {pinError && (
-                <Text style={{
-                  fontSize: 12,
-                  color: colors.danger,
-                  textAlign: 'center',
-                }}>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.danger,
+                    textAlign: 'center'
+                  }}
+                >
                   {pinError}
                 </Text>
               )}
@@ -377,7 +432,7 @@ const MainMenu: React.FC = () => {
 
             <View style={{ marginTop: 8 }}>
               <PinNumpad
-                onKeyPress={(input) => {
+                onKeyPress={input => {
                   // Clear error when user starts typing
                   if (pinError) setPinError('')
 
@@ -402,16 +457,19 @@ const MainMenu: React.FC = () => {
               style={{
                 marginTop: 14,
                 paddingVertical: 11,
-                backgroundColor: currentPin.length === 4 ? colors.teal : colors.teal + '30',
+                backgroundColor:
+                  currentPin.length === 4 ? colors.teal : colors.teal + '30',
                 borderRadius: 10,
-                alignItems: 'center',
+                alignItems: 'center'
               }}
             >
-              <Text style={{
-                fontSize: 13,
-                fontWeight: '700',
-                color: currentPin.length === 4 ? colors.onSolid : colors.muted,
-              }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: currentPin.length === 4 ? colors.onSolid : colors.muted
+                }}
+              >
                 Enter
               </Text>
             </TouchableOpacity>

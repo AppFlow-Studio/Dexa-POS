@@ -15,7 +15,8 @@ const Booth2Person = React.memo(function Booth2Person ({
   width = 150,
   height = 100
 }: Booth2PersonProps) {
-  const strokeOpacity = darkMode ? 0.5 : 0.8
+  const fillOpacity = darkMode ? 0.12 : 0.18
+  const strokeOpacity = darkMode ? 0.5 : 0.7
 
   return (
     <Svg width={width} height={height} viewBox='0 0 180 80' fill='none'>
@@ -27,7 +28,7 @@ const Booth2Person = React.memo(function Booth2Person ({
         height='48'
         rx='4'
         fill={color}
-        fillOpacity={darkMode ? 0.18 : 0.8}
+        fillOpacity={darkMode ? 0.18 : 0.28}
         stroke={color}
         strokeWidth='1.5'
         strokeOpacity={strokeOpacity}
@@ -40,7 +41,7 @@ const Booth2Person = React.memo(function Booth2Person ({
         height='13'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.8}
+        fillOpacity={fillOpacity}
         stroke={color}
         strokeWidth='1'
         strokeOpacity={strokeOpacity}
@@ -53,7 +54,7 @@ const Booth2Person = React.memo(function Booth2Person ({
         height='13'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.8}
+        fillOpacity={fillOpacity}
         stroke={color}
         strokeWidth='1'
         strokeOpacity={strokeOpacity}

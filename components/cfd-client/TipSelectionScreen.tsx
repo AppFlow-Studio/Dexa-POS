@@ -1,4 +1,5 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { Delete } from 'lucide-react-native'
 import { useEffect, useState } from 'react'
@@ -11,7 +12,6 @@ import {
   View
 } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
-import { iosOnly } from '@/lib/safeAnimations'
 
 interface Props {
   onTipSelected: (tipAmount: number, tipPercentage: number | null) => void
@@ -48,7 +48,8 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const subtotal = tipConfig?.subtotalForTip ?? 0
   const presets = tipConfig?.presetPercentages ?? [15, 20, 25]
   const maxTipPct = tipConfig?.maxTipPercentage ?? 100
-  const maxTipCents = subtotal > 0 ? Math.round(subtotal * (maxTipPct / 100)) : Infinity
+  const maxTipCents =
+    subtotal > 0 ? Math.round(subtotal * (maxTipPct / 100)) : Infinity
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
   const customAmountCents = Math.round((parseFloat(customAmount) || 0) * 100)
   const selectedTipAmount = showCustom
@@ -122,7 +123,9 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
             return (
               <Animated.View
                 key={pct}
-                entering={iosOnly(FadeInDown.duration(300).delay(80 + index * 60))}
+                entering={iosOnly(
+                  FadeInDown.duration(300).delay(80 + index * 60)
+                )}
                 style={styles.presetCardWrapper}
               >
                 <Pressable

@@ -15,7 +15,8 @@ const TableRectangle4Chair = React.memo(function TableRectangle4Chair ({
   width = 140,
   height = 90
 }: TableRectangle4ChairProps) {
-  const lightStroke = '#94A3B8'
+  const fillOpacity = darkMode ? 0.12 : 0.18
+  const strokeOpacity = darkMode ? 0.5 : 0.7
 
   return (
     <Svg width={width} height={height} viewBox='0 0 140 90' fill='none'>
@@ -27,10 +28,10 @@ const TableRectangle4Chair = React.memo(function TableRectangle4Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
+        fillOpacity={fillOpacity}
+        stroke={color}
         strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.7}
+        strokeOpacity={strokeOpacity}
       />
       <Rect
         x='78'
@@ -39,10 +40,10 @@ const TableRectangle4Chair = React.memo(function TableRectangle4Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
+        fillOpacity={fillOpacity}
+        stroke={color}
         strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.7}
+        strokeOpacity={strokeOpacity}
       />
 
       {/* Chairs - bottom */}
@@ -53,10 +54,10 @@ const TableRectangle4Chair = React.memo(function TableRectangle4Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
+        fillOpacity={fillOpacity}
+        stroke={color}
         strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.7}
+        strokeOpacity={strokeOpacity}
       />
       <Rect
         x='78'
@@ -65,10 +66,10 @@ const TableRectangle4Chair = React.memo(function TableRectangle4Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
+        fillOpacity={fillOpacity}
+        stroke={color}
         strokeWidth='1'
-        strokeOpacity={darkMode ? 0.5 : 0.7}
+        strokeOpacity={strokeOpacity}
       />
 
       {/* Table */}
@@ -79,10 +80,10 @@ const TableRectangle4Chair = React.memo(function TableRectangle4Chair ({
         height='60'
         rx='8'
         fill={color}
-        fillOpacity={darkMode ? 0.18 : 0.88}
-        stroke={darkMode ? color : lightStroke}
+        fillOpacity={darkMode ? 0.18 : 0.28}
+        stroke={color}
         strokeWidth='1.5'
-        strokeOpacity={darkMode ? 0.8 : 0.75}
+        strokeOpacity={darkMode ? 0.5 : 0.6}
       />
     </Svg>
   )

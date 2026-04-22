@@ -15,7 +15,7 @@ const TableRectangle6Chair = React.memo(function TableRectangle6Chair ({
   width = 180,
   height = 90
 }: TableRectangle6ChairProps) {
-  const lightStroke = '#94A3B8'
+  const fillOpacity = darkMode ? 0.12 : 0.18
   const strokeOpacity = darkMode ? 0.5 : 0.7
 
   return (
@@ -28,9 +28,9 @@ const TableRectangle6Chair = React.memo(function TableRectangle6Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
         strokeOpacity={strokeOpacity}
       />
       <Rect
@@ -40,9 +40,9 @@ const TableRectangle6Chair = React.memo(function TableRectangle6Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
         strokeOpacity={strokeOpacity}
       />
       <Rect
@@ -52,9 +52,9 @@ const TableRectangle6Chair = React.memo(function TableRectangle6Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
         strokeOpacity={strokeOpacity}
       />
 
@@ -66,9 +66,9 @@ const TableRectangle6Chair = React.memo(function TableRectangle6Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
         strokeOpacity={strokeOpacity}
       />
       <Rect
@@ -78,9 +78,9 @@ const TableRectangle6Chair = React.memo(function TableRectangle6Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
         strokeOpacity={strokeOpacity}
       />
       <Rect
@@ -90,9 +90,9 @@ const TableRectangle6Chair = React.memo(function TableRectangle6Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.85}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1'
+        fillOpacity={fillOpacity}
+        stroke={color}
+        strokeWidth='1.5'
         strokeOpacity={strokeOpacity}
       />
 
@@ -104,10 +104,10 @@ const TableRectangle6Chair = React.memo(function TableRectangle6Chair ({
         height='60'
         rx='8'
         fill={color}
-        fillOpacity={darkMode ? 0.18 : 0.88}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1.5'
-        strokeOpacity={darkMode ? 0.8 : 0.75}
+        fillOpacity={darkMode ? 0.18 : 0.15}
+        stroke={color}
+        strokeWidth='2'
+        strokeOpacity={darkMode ? 0.5 : 0.8}
       />
     </Svg>
   )

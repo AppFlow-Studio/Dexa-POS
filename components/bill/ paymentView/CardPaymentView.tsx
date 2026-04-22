@@ -10,6 +10,7 @@ import {
   isTerminalConnectivityError
 } from '@/lib/payments/dejavoo-error-detector'
 import { DejavooSpinAPI } from '@/lib/payments/dejavoo-spin-api'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { toastService } from '@/lib/toastService'
 import {
@@ -42,7 +43,6 @@ import {
   View
 } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
-import { iosOnly } from '@/lib/safeAnimations'
 const CardPaymentView = () => {
   // Refresh order data on mount and realtime reconnection
   // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
@@ -267,11 +267,14 @@ const CardPaymentView = () => {
           const adjustRefId = counter.next()
 
           if (!captured.rrn) {
-            console.warn('[CardPayment] Cannot tip adjust — missing RRN from original sale')
+            console.warn(
+              '[CardPayment] Cannot tip adjust — missing RRN from original sale'
+            )
             toastService.show({
               type: 'warning',
               title: 'Tip Adjust Skipped',
-              message: 'Missing RRN from original sale — tip adjust requires manual entry on terminal.',
+              message:
+                'Missing RRN from original sale — tip adjust requires manual entry on terminal.'
             })
           } else {
             const result = await service.tipAdjust({
@@ -287,7 +290,7 @@ const CardPaymentView = () => {
               toastService.show({
                 type: 'error',
                 title: 'Tip Adjust Failed',
-                message: result.error || 'Terminal rejected tip adjustment.',
+                message: result.error || 'Terminal rejected tip adjustment.'
               })
             }
           }
@@ -419,7 +422,7 @@ const CardPaymentView = () => {
               hasRaw: !!result.raw,
               txnRrn: result.raw?.txnRrn,
               txnRRN: result.raw?.txnRRN,
-              txnStan: result.raw?.txnStan,
+              txnStan: result.raw?.txnStan
             })
 
             // 4. Handle failure
@@ -1228,7 +1231,7 @@ const CardPaymentView = () => {
             >
               <Text
                 style={{
-                  color: terminalReady ? '#000' : colors.muted,
+                  color: terminalReady ? colors.onSolid : colors.muted,
                   fontWeight: '700',
                   fontSize: 14
                 }}

@@ -20,8 +20,8 @@ const TableCircle6Chair = React.memo(function TableCircle6Chair ({
   width = 150,
   height = 150
 }: TableCircle6ChairProps) {
-  const lightStroke = '#94A3B8'
-
+  const fillOpacity = darkMode ? 0.12 : 0.18
+  const strokeOpacity = darkMode ? 0.5 : 0.7
   return (
     <Svg width={width} height={height} viewBox='0 0 150 150' fill='none'>
       {ANGLES.map(angleDeg => {
@@ -40,10 +40,10 @@ const TableCircle6Chair = React.memo(function TableCircle6Chair ({
               height={CHAIR_H}
               rx='3'
               fill={color}
-              fillOpacity={darkMode ? 0.12 : 0.85}
-              stroke={darkMode ? color : lightStroke}
-              strokeWidth='1'
-              strokeOpacity={darkMode ? 0.5 : 0.7}
+              fillOpacity={fillOpacity}
+              stroke={color}
+              strokeWidth='1.5'
+              strokeOpacity={strokeOpacity}
             />
           </G>
         )
@@ -55,10 +55,10 @@ const TableCircle6Chair = React.memo(function TableCircle6Chair ({
         cy='75'
         r='41'
         fill={color}
-        fillOpacity={darkMode ? 0.18 : 0.88}
-        stroke={darkMode ? color : lightStroke}
-        strokeWidth='1.5'
-        strokeOpacity={darkMode ? 0.8 : 0.75}
+        fillOpacity={darkMode ? 0.18 : 0.15}
+        stroke={color}
+        strokeWidth='2'
+        strokeOpacity={darkMode ? 0.5 : 0.8}
       />
     </Svg>
   )

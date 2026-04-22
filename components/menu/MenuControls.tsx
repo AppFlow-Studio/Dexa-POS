@@ -2,6 +2,7 @@ import { colors } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
+import { LinearGradient } from 'expo-linear-gradient'
 import {
   ChevronLeft,
   ChevronRight,
@@ -52,7 +53,7 @@ const createStyles = () =>
       minHeight: 40
     },
     scrollContent: {
-      paddingHorizontal: 28,
+      paddingHorizontal: 20,
       gap: 6,
       alignItems: 'center',
       minHeight: 40
@@ -208,27 +209,8 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   )
   const categories = currentMenu?.categories
 
-  useEffect(() => {
-    if (!__DEV__) return
-    console.log('[MenuControls] resolve categories', {
-      activeMeal,
-      foundMenu: !!currentMenu,
-      currentMenuId: currentMenu?.id,
-      categoryCount: categories?.length ?? 0,
-      categories: (categories || []).map(c => c.name)
-    })
-  }, [activeMeal, currentMenu?.id, categories?.length])
-
   const handleCategoryPress = useCallback(
     (tab: string, isAvailable: boolean) => {
-      if (__DEV__) {
-        console.log('[MenuControls] handleCategoryPress', {
-          tab,
-          isAvailable,
-          activeMeal,
-          currentMenuId: currentMenu?.id
-        })
-      }
       if (isAvailable) {
         onCategoryChange(tab)
         return
@@ -248,9 +230,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
       onCategoryChange,
       requestPinOverride,
       isUnlocked,
-      addTemporaryCategoryAccess,
-      activeMeal,
-      currentMenu?.id
+      addTemporaryCategoryAccess
     ]
   )
 
@@ -328,6 +308,38 @@ const MenuControls: React.FC<MenuControlsProps> = ({
               )
             })}
           </ScrollView>
+
+          {/* Left fade overlay */}
+          <LinearGradient
+            colors={[colors.card, colors.card + '00']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 40,
+              zIndex: 4,
+              pointerEvents: 'none'
+            }}
+          />
+
+          {/* Right fade overlay */}
+          <LinearGradient
+            colors={[colors.card + '00', colors.card]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 40,
+              zIndex: 4,
+              pointerEvents: 'none'
+            }}
+          />
 
           {canScrollLeft && (
             <TouchableOpacity
