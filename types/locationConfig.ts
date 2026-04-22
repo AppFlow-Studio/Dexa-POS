@@ -314,7 +314,7 @@ export const DEFAULT_NOTIFICATIONS_CONFIG: NotificationsConfig = {
 }
 
 export const DEFAULT_FRAUD_DETECTION_CONFIG: FraudDetectionConfig = {
-  refundToSelfEnabled: true,
+  refundToSelfEnabled: false,
   alertThreshold: 2,
   blockThreshold: 3,
   windowMinutes: 60,
