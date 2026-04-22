@@ -135,6 +135,8 @@ export interface TimeclockConfig {
   clockInRequirePin: boolean
   preventEarlyClockIn: boolean
   preventOpenOrdersClockOut: boolean
+  autoCloseStaleShifts: boolean // Auto-close shifts open longer than maxShiftHours
+  maxShiftHours: number // Threshold for stale shift detection (default: 24)
 }
 
 export interface NotificationsConfig {
@@ -142,6 +144,13 @@ export interface NotificationsConfig {
   onlineOrderSound: SoundPreset
   kioskOrderSound: SoundPreset
   thirdPartyOrderSound: SoundPreset
+}
+
+export interface FraudDetectionConfig {
+  refundToSelfEnabled: boolean
+  alertThreshold: number    // Number of same-cashier cash refunds before manager alert
+  blockThreshold: number    // Number before refund is blocked pending manager approval
+  windowMinutes: number     // Sliding window in minutes for velocity detection
 }
 
 // ============================================================================
@@ -163,6 +172,7 @@ export interface LocationPosConfig {
   payment: PaymentConfig
   notifications: NotificationsConfig
   timeclock: TimeclockConfig
+  fraudDetection: FraudDetectionConfig
 }
 
 /** All valid namespace keys */
@@ -292,6 +302,8 @@ export const DEFAULT_TIMECLOCK_CONFIG: TimeclockConfig = {
   clockInRequirePin: true,
   preventEarlyClockIn: true,
   preventOpenOrdersClockOut: true,
+  autoCloseStaleShifts: false,
+  maxShiftHours: 24,
 }
 
 export const DEFAULT_NOTIFICATIONS_CONFIG: NotificationsConfig = {
@@ -299,6 +311,13 @@ export const DEFAULT_NOTIFICATIONS_CONFIG: NotificationsConfig = {
   onlineOrderSound: 'bell',
   kioskOrderSound: 'ding',
   thirdPartyOrderSound: 'alert',
+}
+
+export const DEFAULT_FRAUD_DETECTION_CONFIG: FraudDetectionConfig = {
+  refundToSelfEnabled: true,
+  alertThreshold: 2,
+  blockThreshold: 3,
+  windowMinutes: 60,
 }
 
 export const DEFAULT_POS_CONFIG: LocationPosConfig = {
@@ -316,4 +335,5 @@ export const DEFAULT_POS_CONFIG: LocationPosConfig = {
   payment: DEFAULT_PAYMENT_CONFIG,
   notifications: DEFAULT_NOTIFICATIONS_CONFIG,
   timeclock: DEFAULT_TIMECLOCK_CONFIG,
+  fraudDetection: DEFAULT_FRAUD_DETECTION_CONFIG,
 }

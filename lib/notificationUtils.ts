@@ -31,6 +31,12 @@ export const getNotificationAppearance = (type: Notification["type"]) => {
         color: "#9CA3AF",
         title: "New Note",
       };
+    case "refund_fraud_alert":
+      return {
+        icon: AlertCircleIcon,
+        color: "#ef4444",
+        title: "Refund Fraud Alert",
+      };
     case "pto_update":
     case "pto_request_approved":
     case "swap_request_peer_accepted":

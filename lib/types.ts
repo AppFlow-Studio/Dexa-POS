@@ -512,6 +512,8 @@ export interface PreviousOrder {
   delivery_platform?: string | null
   reversals?: ReversalRecord[]
   order_refund_items?: OrderRefundItemRecord[]
+  // Staff attribution (for fraud detection — who created this order)
+  created_by_staff_profile_id?: string | null
 }
 
 export type InventoryItemStatus =
@@ -1067,6 +1069,7 @@ export interface Notification {
     | 'swap_request_peer_denied'
     | 'swap_approved'
     | 'swap_denied'
+    | 'refund_fraud_alert'
   message: string
   isRead: boolean
   timestamp: string // ISO string

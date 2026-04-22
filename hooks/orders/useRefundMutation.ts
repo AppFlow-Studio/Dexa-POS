@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { RefundService } from "@/services/refundService";
@@ -9,7 +8,6 @@ import { getIsOnline } from "@/services/offlineSyncService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { orderHistoryKeys } from "./useOrderHistory";
-import { orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
 import { applyOptimisticPatch } from "./applyOptimisticPatch";
 import type { RefundReasonType, RefundRequest, ReversalRecord, OrderRefundItemRecord } from "@/types/refunds";
 import type { OrderProfile, OrderProfilePayment, PreviousOrder } from "@/lib/types";
@@ -244,6 +242,10 @@ export function useRefundMutation() {
         throw new Error("Supabase unavailable.");
       }
 
+      // Mark order as locally mutated to suppress stale own-station broadcasts
+      // during the 3-second mutation window (same pattern as addItem/removeItem)
+      useOrderStore.getState().markLocalMutation(input.orderId)
+
       const refundService = new RefundService(supabase);
       const reasonType = toRefundReasonType(input.reason);
       const orderIdForRefund = input.dbOrderId;
@@ -384,15 +386,15 @@ export function useRefundMutation() {
         });
       }
 
-      // Cache invalidation — history list/counts + active orders for workspace sync
+      // Cache invalidation — history list/counts only.
+      // NOTE: Do NOT invalidate active-orders query here. That query only fetches
+      // active-status orders (draft/pending/preparing/ready). A refunded order is
+      // "closed", so it won't be in the response. Invalidating triggers hydrateWorkspace
+      // which replaces ordersById — evicting the closed order and causing the
+      // PaymentDetailBottomSheet to lose the order reference (shows "Loading order...").
+      // The optimistic patch + syncOrderFromBackendComplete already handle the update.
       queryClient.invalidateQueries({ queryKey: ["orderHistory", "list"] });
       queryClient.invalidateQueries({ queryKey: ["orderHistory", "filterCounts"] });
-      const locationId = useStoreSettingsStore.getState().selectedStore?.id;
-      if (locationId) {
-        queryClient.invalidateQueries({
-          queryKey: orderQueryKeys.active(locationId),
-        });
-      }
     },
 
     onError: (error: Error) => {

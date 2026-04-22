@@ -2703,6 +2703,7 @@ interface OrderState {
   // _handleItemBroadcast: (payload: OrderItemBroadcastPayload) => void;
   // _handlePaymentBroadcast: (payload: PaymentBroadcastPayload) => void;
   _debouncedOrderRefresh: (dbOrderId: string) => void
+  markLocalMutation: (orderId: string) => void
   // _handleOrderReconnect: (locationId: string) => void;
 
   // === ORDER VISIBILITY & MANAGEMENT (Phase 5) ===
@@ -2751,6 +2752,12 @@ const throttleTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const pendingItemsBlockStart: Record<string, number> = {}
 const PENDING_ITEMS_BLOCK_MIN_MS = 3000
 const PENDING_ITEMS_BLOCK_MAX_MS = 10000
+
+// Own-station mutation window: suppress _debouncedOrderRefresh from stale
+// own-station broadcasts that arrive shortly after a local mutation.
+// Set by addItemToActiveOrder, removeItemFromActiveOrder, etc.
+const lastLocalMutationAt: Record<string, number> = {}
+const OWN_STATION_MUTATION_WINDOW_MS = 3000
 
 function getPendingItemsBlockTimeout (pendingItemCount: number): number {
   return Math.min(
@@ -3911,6 +3918,17 @@ export const useOrderStore = create<OrderState>()(
                     // Coalesced invalidation — batches rapid broadcast updates
                     scheduleCalculationCacheInvalidation()
 
+                    // Own-station mutation window: suppress _debouncedOrderRefresh
+                    // from stale broadcasts that arrive shortly after a local mutation
+                    // (addItem, removeItem, updateQuantity). Cross-station syncs unaffected.
+                    const _mutationTs =
+                      lastLocalMutationAt[dbOrderId] ??
+                      lastLocalMutationAt[localOrderKey]
+                    const isInMutationWindow =
+                      isOwnStationOrder &&
+                      _mutationTs != null &&
+                      Date.now() - _mutationTs < OWN_STATION_MUTATION_WINDOW_MS
+
                     // Full sync if status changed and backend is AHEAD of local.
                     // Skip if local is already ahead (e.g. local=sent_to_kitchen, backend=draft
                     // during retroactive kitchen send) — the full fetch would overwrite
@@ -3928,13 +3946,14 @@ export const useOrderStore = create<OrderState>()(
                         ORDER_STATUS_RANK[localOrder.order_status ?? ''] ?? 0
                       const backendRank =
                         ORDER_STATUS_RANK[backendOrder.status ?? ''] ?? 0
-                      if (backendRank >= localRank) {
+                      if (backendRank >= localRank && !isInMutationWindow) {
                         get()._debouncedOrderRefresh(dbOrderId)
                       }
                     }
 
                     // v2: item count change → full sync to fetch new items
                     if (
+                      !isInMutationWindow &&
                       isHeaderOnlyBroadcast(backendOrder) &&
                       backendOrder.item_count !== undefined &&
                       backendOrder.item_count !==
@@ -3944,7 +3963,7 @@ export const useOrderStore = create<OrderState>()(
                     }
 
                     // v2: sync_version ahead + kitchen-active → fetch fresh items for kitchen_status
-                    if (isKitchenSyncAdvance) {
+                    if (isKitchenSyncAdvance && !isInMutationWindow) {
                       get()._debouncedOrderRefresh(dbOrderId)
                     }
                   }
@@ -4396,6 +4415,9 @@ export const useOrderStore = create<OrderState>()(
               delete state.persistableOrderIds[dbOrderId]
             })
 
+            // Cleanup mutation window tracker
+            delete lastLocalMutationAt[dbOrderId]
+
             console.log('[RemoveOrder] Removed:', dbOrderId)
           },
 
@@ -4795,6 +4817,13 @@ export const useOrderStore = create<OrderState>()(
           // ====================================================================
 
           _debouncedOrderRefresh: createDebouncedOrderRefresh(get),
+
+          markLocalMutation: (orderId) => {
+            const order = get().ordersById[orderId]
+            const dbId = order?.db_order_id
+            if (dbId) lastLocalMutationAt[dbId] = Date.now()
+            lastLocalMutationAt[orderId] = Date.now()
+          },
 
           // ====================================================================
           // RECONNECTION LOGIC
@@ -5233,6 +5262,11 @@ export const useOrderStore = create<OrderState>()(
               }
             })
 
+            // Track mutation for own-station broadcast guard
+            const _dbId = get().ordersById[activeOrderId]?.db_order_id
+            if (_dbId) lastLocalMutationAt[_dbId] = Date.now()
+            lastLocalMutationAt[activeOrderId] = Date.now()
+
             // 7. Background sync with promise tracking for sync barriers
             // Use the merged item with updated quantity, or the new item
             const itemToSync =
@@ -5552,6 +5586,13 @@ export const useOrderStore = create<OrderState>()(
               state.activeOrderTotalCash = totals.cash_total_amount
               state.activeOrderOutstandingCash = totals.cash_outstanding_total
             })
+
+            // Track mutation for own-station broadcast guard
+            {
+              const _dbId = get().ordersById[activeOrderId]?.db_order_id
+              if (_dbId) lastLocalMutationAt[_dbId] = Date.now()
+              lastLocalMutationAt[activeOrderId] = Date.now()
+            }
 
             // Background sync (fire-and-forget)
             if (mergeTarget && _supabaseClient) {
@@ -6397,6 +6438,13 @@ export const useOrderStore = create<OrderState>()(
               state.activeOrderOutstandingCash = totals.cash_outstanding_total
             })
 
+            // Track mutation for own-station broadcast guard
+            {
+              const _dbId = get().ordersById[activeOrderId]?.db_order_id
+              if (_dbId) lastLocalMutationAt[_dbId] = Date.now()
+              lastLocalMutationAt[activeOrderId] = Date.now()
+            }
+
             // Background sync (fire-and-forget)
             if (itemToHandle?.db_order_item_id && _supabaseClient) {
               const dbItemId = itemToHandle.db_order_item_id
@@ -6491,6 +6539,13 @@ export const useOrderStore = create<OrderState>()(
               state.activeOrderTotalCash = totals.cash_total_amount
               state.activeOrderOutstandingCash = totals.cash_outstanding_total
             })
+
+            // Track mutation for own-station broadcast guard
+            {
+              const _dbId = order.db_order_id
+              if (_dbId) lastLocalMutationAt[_dbId] = Date.now()
+              lastLocalMutationAt[activeOrderId] = Date.now()
+            }
 
             const dbItemId = item.db_order_item_id
             const supabase = _supabaseClient
@@ -12241,6 +12296,11 @@ export const useOrderStore = create<OrderState>()(
                   item => !item.db_order_item_id && !item.isDraft
                 )
 
+                // Preserve draft items (user is still configuring on ModifierScreen)
+                const localDraftItems = currentOrder.items.filter(
+                  item => item.isDraft
+                )
+
                 // Preserve locally-synced items not yet in the backend fetch.
                 // Mirrors the broadcast merge safeguard at line ~3474.
                 // Race: db_order_item_id was set between the RPC fetch start
@@ -12434,20 +12494,38 @@ export const useOrderStore = create<OrderState>()(
                 // Build the updated order once to avoid duplication
                 const updatedOrder: OrderProfile = {
                   ...currentOrder,
-                  items: [
-                    // Drop items mid-removal so a backend fetch that still shows
-                    // them can't re-introduce them into the cart.
-                    ...transformedItems.filter(
-                      item =>
-                        !item.db_order_item_id ||
-                        !isItemPendingRemoval(item.db_order_item_id)
-                    ),
-                    // Exclude pending items that were absorbed into transformedItems above
-                    ...localPendingItems.filter(
-                      item => !claimedPendingIds.has(item.id)
-                    ),
-                    ...localSyncedNotInBackend
-                  ],
+                  items: (() => {
+                    const merged = [
+                      // Drop items mid-removal so a backend fetch that still shows
+                      // them can't re-introduce them into the cart.
+                      ...transformedItems.filter(
+                        item =>
+                          !item.db_order_item_id ||
+                          !isItemPendingRemoval(item.db_order_item_id)
+                      ),
+                      // Exclude pending items that were absorbed into transformedItems above
+                      ...localPendingItems.filter(
+                        item => !claimedPendingIds.has(item.id)
+                      ),
+                      ...localSyncedNotInBackend,
+                      // Preserve draft items (user still configuring on ModifierScreen)
+                      ...localDraftItems
+                    ]
+                    // Preserve local item ordering — backend may return items
+                    // in a different order than the user added them.
+                    // Items not in local state (new from backend) sort to end.
+                    const localIdOrder = new Map(
+                      currentOrder.items.map((item, idx) => [item.id, idx])
+                    )
+                    merged.sort((a, b) => {
+                      const aIdx =
+                        localIdOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER
+                      const bIdx =
+                        localIdOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER
+                      return aIdx - bIdx
+                    })
+                    return merged
+                  })(),
                   payments: [...mergedPayments, ...localPendingPayments],
                   // Reversals and refund items from backend
                   reversals: reversalsData,

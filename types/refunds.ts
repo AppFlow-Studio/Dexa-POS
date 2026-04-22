@@ -46,6 +46,7 @@ export interface RefundRequest {
   payment_terminal_name?: string;
   payment_terminal?: StationPaymentTerminal;
   stationId?: string; // station performing the refund
+  metadata?: Record<string, unknown>; // Fraud flags, audit context
 }
 
 export interface ReversalRecord {

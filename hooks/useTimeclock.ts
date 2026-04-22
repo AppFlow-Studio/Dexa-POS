@@ -31,7 +31,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       });
       const previousStatus = store.status;
 
-      // A. Create the payload
+      // A. Create the payload — include staff context for offline fallback
       const actionPayload: TimeClockAction = {
         id: uuidv4(),
         type,
@@ -39,6 +39,12 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
         locationId,
         timestamp: new Date().toISOString(),
         deviceId,
+        // For clock_out: include staffProfileId and shiftId so the queue
+        // processor can directly update staff_shifts if the RPC fails
+        ...(type === "clock_out" && {
+          staffProfileId: store.currentStaffId || undefined,
+          shiftId: store.currentShiftId || undefined,
+        }),
       };
 
       // B. Optimistic Update (Immediate Feedback)
@@ -410,6 +416,63 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
             p_device_id: actionToProcess.deviceId,
           });
           error = res.error;
+
+          // Fallback for clock_out: if the RPC fails (PIN rejected, state mismatch, etc.),
+          // directly update staff_shifts instead of silently losing the clock-out.
+          // This prevents stale sessions that stay "active" forever.
+          if (error && actionToProcess.type === 'clock_out') {
+            const fallbackShiftId = actionToProcess.shiftId;
+            const fallbackStaffId = actionToProcess.staffProfileId;
+            const clockOutTime = actionToProcess.timestamp || new Date().toISOString();
+
+            console.warn(
+              `[useTimeClock] clock_out RPC failed (${error.message}), attempting direct shift update fallback`
+            );
+
+            let targetShiftId = fallbackShiftId;
+
+            // If no shiftId, try to find the active shift for this employee
+            if (!targetShiftId && fallbackStaffId) {
+              try {
+                const { data: activeShift } = await supabase
+                  .from("staff_shifts")
+                  .select("id")
+                  .eq("staff_profile_id", fallbackStaffId)
+                  .eq("location_id", actionToProcess.locationId)
+                  .in("status", ["active", "on_break"])
+                  .order("clock_in_time", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (activeShift?.id) {
+                  targetShiftId = activeShift.id;
+                }
+              } catch (e) {
+                console.warn("[useTimeClock] Failed to find active shift for fallback:", e);
+              }
+            }
+
+            if (targetShiftId) {
+              try {
+                const { error: updateError } = await supabase
+                  .from("staff_shifts")
+                  .update({
+                    clock_out_time: clockOutTime,
+                    status: "completed",
+                  })
+                  .eq("id", targetShiftId)
+                  .in("status", ["active", "on_break"]);
+
+                if (!updateError) {
+                  console.log("[useTimeClock] Fallback clock-out succeeded for shift:", targetShiftId);
+                  error = null; // Clear the error — fallback worked
+                } else {
+                  console.error("[useTimeClock] Fallback clock-out also failed:", updateError);
+                }
+              } catch (e) {
+                console.error("[useTimeClock] Fallback clock-out exception:", e);
+              }
+            }
+          }
         }
 
         if (error) {
