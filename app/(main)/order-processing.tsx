@@ -920,7 +920,7 @@ const OrderProcessing = () => {
                     style={{
                       width: orderLineViewMode === 'minimal' ? 300 : 300,
                       borderWidth: 1,
-                      borderColor: colors.border,
+                      borderColor: `${colors.teal}35`,
                       backgroundColor: colors.screen
                     }}
                   >
@@ -930,7 +930,7 @@ const OrderProcessing = () => {
                         marginLeft: 7,
                         fontSize: 12,
                         fontWeight: '500',
-                        color: colors.muted
+                        color: colors.label
                       }}
                     >
                       Search menu...

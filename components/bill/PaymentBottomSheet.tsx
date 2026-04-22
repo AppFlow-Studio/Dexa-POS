@@ -104,11 +104,11 @@ const PaymentBottomSheet: React.FC = () => {
         }}
         statusBarTranslucent
       >
-        <View style={styles.backdrop}>
-          <View style={styles.sheet}>
+        <View style={getStyles().backdrop}>
+          <View style={getStyles().sheet}>
             <ScrollView
-              style={styles.container}
-              contentContainerStyle={styles.containerContent}
+              style={getStyles().container}
+              contentContainerStyle={getStyles().containerContent}
               keyboardShouldPersistTaps='handled'
             >
               {/* Header */}
@@ -161,7 +161,7 @@ const PaymentBottomSheet: React.FC = () => {
               <PaymentProgressHeader />
 
               {/* Content Wrapper */}
-              <View style={styles.content}>{renderContent()}</View>
+              <View style={getStyles().content}>{renderContent()}</View>
             </ScrollView>
           </View>
         </View>
@@ -291,28 +291,29 @@ const PaymentBottomSheet: React.FC = () => {
   )
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end'
-  },
-  sheet: {
-    height: '100%',
-    backgroundColor: colors.screen
-  },
-  container: {
-    flex: 1,
-    backgroundColor: colors.panel
-  },
-  containerContent: {
-    flexGrow: 1
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 8,
-    paddingBottom: 12
-  }
-})
+const getStyles = () =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'flex-end'
+    },
+    sheet: {
+      height: '100%',
+      backgroundColor: colors.screen
+    },
+    container: {
+      flex: 1,
+      backgroundColor: colors.panel
+    },
+    containerContent: {
+      flexGrow: 1
+    },
+    content: {
+      flex: 1,
+      paddingHorizontal: 8,
+      paddingBottom: 12
+    }
+  })
 
 export default PaymentBottomSheet
