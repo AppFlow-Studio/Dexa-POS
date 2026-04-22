@@ -68,11 +68,6 @@ export function useRefundFraudGuard() {
 
       // Can't determine self-refund if either ID is missing
       if (!profileId || !params.orderCreatedByStaffProfileId) {
-        console.log('[FraudGuard] Skipping — missing IDs:', {
-          activeProfileId: profileId,
-          orderCreatorId: params.orderCreatedByStaffProfileId,
-          paymentMethod: params.paymentMethod,
-        });
         const result: FraudGuardCheckResult = {
           isSelfRefund: false,
           isCashRefund: params.paymentMethod === "Cash",
@@ -87,14 +82,6 @@ export function useRefundFraudGuard() {
       const isSelfRefund =
         profileId === params.orderCreatedByStaffProfileId;
       const isCashRefund = params.paymentMethod === "Cash";
-
-      console.log('[FraudGuard] Check:', {
-        activeProfileId: profileId,
-        orderCreatorId: params.orderCreatedByStaffProfileId,
-        isSelfRefund,
-        isCashRefund,
-        paymentMethod: params.paymentMethod,
-      });
 
       let velocity: VelocityResult = EMPTY_VELOCITY;
       if (isSelfRefund && isCashRefund) {
@@ -141,8 +128,6 @@ export function useRefundFraudGuard() {
 
       // Alert at threshold: notification (toast is handled by caller to avoid being overwritten by success toast)
       if (updatedVelocity.shouldAlert) {
-        console.log('[FraudGuard] Alert threshold reached:', updatedVelocity.selfRefundCount, 'self-refunds');
-
         // Notification for manager review (persists in notification panel)
         useNotificationStore.getState().addNotification({
           type: "refund_fraud_alert",

@@ -12440,8 +12440,9 @@ export const useOrderStore = create<OrderState>()(
                   authorized: 0,
                   pending: 1,
                   captured: 2,
-                  refunded: 3,
-                  voided: 3
+                  partially_refunded: 3,
+                  refunded: 4,
+                  voided: 4
                 }
                 const localPaymentsByDbId = new Map<
                   string,

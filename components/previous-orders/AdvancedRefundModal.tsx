@@ -153,12 +153,12 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
     )
   }
 
-  const getActiveEmployee = () => {
+  const getActiveEmployee = (): { staffId: string | null; name: string } => {
     const empStore = useEmployeeStore.getState()
     const activeEmpId = empStore.activeEmployeeId
     const emp = activeEmpId ? empStore.getEmployeeById(activeEmpId) : null
     return {
-      staffId: emp?.profileId || 'unknown',
+      staffId: emp?.profileId ?? null,
       name: emp?.fullName || 'Cashier',
     }
   }
@@ -177,6 +177,10 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
 
   const processFullRefund = async (managerId?: string, managerName?: string) => {
     const { staffId, name } = getActiveEmployee()
+    if (!staffId) {
+      show({ title: 'Employee Required', message: 'An active employee must be signed in to process refunds.', type: 'error' })
+      return
+    }
     const guard = lastGuardRef.current
     const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined
 
@@ -199,6 +203,10 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
 
   const processPartialRefund = async (managerId?: string, managerName?: string) => {
     const { staffId, name } = getActiveEmployee()
+    if (!staffId) {
+      show({ title: 'Employee Required', message: 'An active employee must be signed in to process refunds.', type: 'error' })
+      return
+    }
     const guard = lastGuardRef.current
     const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined
 

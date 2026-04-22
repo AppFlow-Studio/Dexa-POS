@@ -42,7 +42,7 @@ const SimpleRefundModal: React.FC<SimpleRefundModalProps> = ({
     const empStore = useEmployeeStore.getState();
     const activeEmpId = empStore.activeEmployeeId;
     const emp = activeEmpId ? empStore.getEmployeeById(activeEmpId) : null;
-    return { staffId: emp?.profileId || "unknown", name: emp?.fullName || "Cashier" };
+    return { staffId: emp?.profileId ?? null, name: emp?.fullName || "Cashier" };
   };
 
   const buildFraudMetadata = (guard: FraudGuardCheckResult, managerId?: string, managerName?: string): RefundFraudMetadata | undefined => {
@@ -54,6 +54,10 @@ const SimpleRefundModal: React.FC<SimpleRefundModalProps> = ({
 
   const processRefund = async (managerId?: string, managerName?: string) => {
     const { staffId, name } = getActiveEmployee();
+    if (!staffId) {
+      show({ title: "Employee Required", message: "An active employee must be signed in to process refunds.", type: "error" });
+      return;
+    }
     const guard = lastGuardRef.current;
     const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined;
     await refundFullOrder(order.orderId, reason, staffId, name, paymentMethod, metadata);
