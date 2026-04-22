@@ -146,6 +146,7 @@ const PrintersKitchenScreen = () => {
   const printMerchantCopy = printingConfig.printMerchantCopy;
   const printCustomerCopy = printingConfig.printCustomerCopy;
   const printVoidTickets = printingConfig.printVoidTickets;
+  const printRefundTickets = printingConfig.printRefundTickets ?? true;
   // Shim for existing updateField calls
   const updateField = (field: string, value: any) => {
     const KDS_MAP: Record<string, string> = {
@@ -426,6 +427,11 @@ const PrintersKitchenScreen = () => {
               label="Print Void Tickets"
               value={printVoidTickets}
               onToggle={(v) => _updateConfig('printing', { printVoidTickets: v })}
+            />
+            <ToggleRow
+              label="Print Refund Tickets"
+              value={printRefundTickets}
+              onToggle={(v) => _updateConfig('printing', { printRefundTickets: v })}
             />
             <ToggleRow
               label="Show Guest Count"

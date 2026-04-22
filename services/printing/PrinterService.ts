@@ -214,6 +214,59 @@ export const PrinterService = {
   },
 
   /**
+   * Print refund tickets for refunded items (notifies kitchen about refunds).
+   */
+  async printRefundTicket (
+    order: OrderProfile,
+    refundedItems: CartItem[],
+    location: SelectedLocation
+  ): Promise<boolean> {
+    const routedItems = routeKitchenItems(refundedItems, location.id, {
+      orderType: order.order_type
+    })
+
+    if (routedItems.size === 0) {
+      return false
+    }
+
+    for (const [printerId, printerItems] of routedItems) {
+      const printer = usePrinterStore.getState().getPrinterById(printerId)
+      if (!printer) continue
+
+      const routingConfig = usePrinterStore
+        .getState()
+        .getRoutingConfig(printerId)
+
+      const ticketData = buildKitchenTicketData(
+        order,
+        printerItems,
+        printer,
+        false,
+        location,
+        routingConfig.printModifiers
+      )
+      ticketData.isRefundTicket = true
+      ticketData.items = ticketData.items.map(item => ({
+        ...item,
+        isRefunded: true
+      }))
+
+      const job = createJobForPrinter(
+        printer,
+        ticketData,
+        'refund_ticket',
+        'high',
+        order.id,
+        'kitchen'
+      )
+      usePrintQueueStore.getState().enqueue(job)
+    }
+
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
    * Open the cash drawer on the default receipt printer.
    */
   async openCashDrawer (): Promise<boolean> {

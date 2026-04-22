@@ -21,6 +21,9 @@ export interface KDSTicketItem {
   is_prioritized?: boolean
   recalled?: boolean
   seat_number?: number | null
+  is_voided?: boolean
+  is_refunded?: boolean
+  refunded_quantity?: number
 }
 
 export interface KDSTicket {

@@ -94,6 +94,7 @@ export type PrintJobType =
   | "receipt"
   | "kitchen_ticket"
   | "void_ticket"
+  | "refund_ticket"
   | "test_page"
   | "cash_drawer";
 
@@ -282,6 +283,7 @@ export interface KitchenTicketData {
   totalItemCount?: number;
   items: KitchenTicketItemData[];
   isVoidTicket: boolean;
+  isRefundTicket?: boolean;
   maxCharsPerLine: number;
   templateConfig?: ReceiptTemplateConfig;
   readyByTime?: string;
@@ -293,6 +295,7 @@ export interface KitchenTicketItemData {
   modifiers: string[];
   notes?: string;
   isVoided?: boolean;
+  isRefunded?: boolean;
   station?: string;
   allergyAlert?: string;
   seatNumber?: number | null;

@@ -53,6 +53,7 @@ export interface PrintingConfig {
   autoPrintReceipt: boolean
   autoPrintVoidReceipt: boolean
   printVoidTickets: boolean
+  printRefundTickets: boolean
   printMerchantCopy: boolean
   printCustomerCopy: boolean
 }
@@ -220,6 +221,7 @@ export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {
   autoPrintReceipt: false,
   autoPrintVoidReceipt: true,
   printVoidTickets: true,
+  printRefundTickets: true,
   printMerchantCopy: false,
   printCustomerCopy: true,
 }
