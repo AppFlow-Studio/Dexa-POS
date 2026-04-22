@@ -770,10 +770,7 @@ const OrderProcessing = () => {
           </View>
         )}
 
-        <View
-          className='flex-1 ml-0'
-          style={{ backgroundColor: colors.screen }}
-        >
+        <View className='flex-1 ml-0' style={{ backgroundColor: colors.card }}>
           {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
           {renderStage >= 2 ? (
             <MenuSection
@@ -902,10 +899,10 @@ const OrderProcessing = () => {
                       borderColor: colors.teal
                     }}
                   >
-                    <Plus size={16} color='#000000' strokeWidth={2.5} />
+                    <Plus size={16} color='#FFFFFF' strokeWidth={2.5} />
                     <Text
                       style={{
-                        color: '#000000',
+                        color: '#FFFFFF',
                         fontSize: 12,
                         fontWeight: '700'
                       }}
@@ -1049,7 +1046,7 @@ const OrderProcessing = () => {
 
                           {/* Left fade overlay */}
                           <LinearGradient
-                            colors={[colors.screen, colors.screen + '00']}
+                            colors={[colors.card, colors.card + '00']}
                             start={{ x: 0, y: 0.5 }}
                             end={{ x: 1, y: 0.5 }}
                             style={{
@@ -1065,7 +1062,7 @@ const OrderProcessing = () => {
 
                           {/* Right fade overlay */}
                           <LinearGradient
-                            colors={[colors.screen + '00', colors.screen]}
+                            colors={[colors.card + '00', colors.card]}
                             start={{ x: 0, y: 0.5 }}
                             end={{ x: 1, y: 0.5 }}
                             style={{

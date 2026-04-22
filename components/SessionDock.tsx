@@ -240,13 +240,13 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
       <>
         <DropdownMenu>
           <View className='flex-row items-center gap-2'>
-            {/* Teal circle — tapping opens dropdown */}
+            {/* Avatar circle — tapping opens dropdown */}
             <DropdownMenuTrigger
               style={{
                 width: 30,
                 height: 30,
                 borderRadius: 21,
-                backgroundColor: colors.teal,
+                backgroundColor: colors.tealMuted,
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
@@ -303,7 +303,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     width: 46,
                     height: 46,
                     borderRadius: 23,
-                    backgroundColor: colors.teal,
+                    backgroundColor: colors.tealMuted,
                     alignItems: 'center',
                     justifyContent: 'center'
                   }}

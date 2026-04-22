@@ -484,7 +484,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         className={`mt-0 flex-1 relative overflow-hidden px-2 ${
           isTableOrder ? 'rounded-tl-3xl' : ''
         }`}
-        style={{ backgroundColor: colors.screen }}
+        style={{ backgroundColor: colors.card }}
       >
         {/* Row 1: Header (Order Line) + Toolbar */}
         <View
@@ -830,10 +830,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   style={{
                     flex: 1,
                     marginTop: 8,
-                    backgroundColor: colors.screen
+                    backgroundColor: colors.card
                   }}
                   contentContainerStyle={{
-                    backgroundColor: colors.screen,
+                    backgroundColor: colors.card,
                     paddingBottom: 128
                   }}
                   ItemSeparatorComponent={SpacerItem}

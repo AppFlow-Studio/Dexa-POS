@@ -332,7 +332,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
           {/* Left fade overlay */}
           <LinearGradient
-            colors={[colors.screen, colors.screen + '00']}
+            colors={[colors.card, colors.card + '00']}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={{
@@ -348,7 +348,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
           {/* Right fade overlay */}
           <LinearGradient
-            colors={[colors.screen + '00', colors.screen]}
+            colors={[colors.card + '00', colors.card]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={{

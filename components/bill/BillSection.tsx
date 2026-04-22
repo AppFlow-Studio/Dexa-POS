@@ -1320,10 +1320,11 @@ const BillSectionContent = ({
                 ) : null}
                 <CreditCard size={14} color={colors.onSolid} />
                 <Text
-                  style={{ fontSize: 13, fontWeight: '700' }}
-                  className={
-                    isPayButtonDisabled ? 'text-gray-200' : 'text-black'
-                  }
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: isPayButtonDisabled ? colors.muted : colors.onSolid
+                  }}
                 >
                   Pay
                 </Text>

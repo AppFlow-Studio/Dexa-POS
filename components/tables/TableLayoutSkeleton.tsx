@@ -1,5 +1,6 @@
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
-import React from 'react'
+import { useColorScheme } from '@/lib/useColorScheme'
+import React, { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Animated, {
   cancelAnimation,
@@ -72,7 +73,101 @@ const TableLayoutSkeleton: React.FC<TableLayoutSkeletonProps> = ({
   tableCount = 8,
   showControls = true
 }) => {
+  const { colorScheme } = useColorScheme()
   const positions = TABLE_POSITIONS.slice(0, tableCount)
+
+  const styles = useMemo(() => {
+    return StyleSheet.create({
+      container: {
+        flex: 1,
+        backgroundColor: colors.screen,
+        position: 'relative'
+      },
+      zoomControls: {
+        position: 'absolute',
+        top: 8,
+        left: 8,
+        zIndex: 20,
+        gap: 8
+      },
+      zoomButton: {
+        width: 52,
+        height: 48,
+        backgroundColor: colors.skeleton,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.border
+      },
+      actionButtons: {
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        zIndex: 10,
+        flexDirection: 'row',
+        gap: 8
+      },
+      mergeButton: {
+        width: 140,
+        height: 44,
+        backgroundColor: colors.skeleton,
+        borderRadius: 8
+      },
+      editButton: {
+        width: 110,
+        height: 44,
+        backgroundColor: colors.skeleton,
+        borderRadius: 8
+      },
+      canvasArea: {
+        flex: 1,
+        position: 'relative'
+      },
+      tablePlaceholder: {
+        position: 'absolute',
+        width: 100,
+        height: 100,
+        backgroundColor: colors.skeleton,
+        borderRadius: 16
+      },
+      tableRound: {
+        borderRadius: 50
+      },
+      tableLarge: {
+        width: 120,
+        height: 80
+      },
+      statusBar: {
+        position: 'absolute',
+        bottom: 12,
+        left: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 16,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        backgroundColor: `${colors.card}E6`,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: colors.border
+      },
+      statusItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8
+      },
+      statusDot: {
+        width: 12,
+        height: 12,
+        borderRadius: 6
+      },
+      statusText: {
+        width: 60,
+        height: 16,
+        backgroundColor: colors.skeleton,
+        borderRadius: 4
+      }
+    })
+  }, [colorScheme])
 
   return (
     <View style={styles.container}>
@@ -152,96 +247,5 @@ const TableLayoutSkeleton: React.FC<TableLayoutSkeletonProps> = ({
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.screen,
-    position: 'relative'
-  },
-  zoomControls: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    zIndex: 20,
-    gap: 8
-  },
-  zoomButton: {
-    width: 52,
-    height: 48,
-    backgroundColor: colors.skeleton,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  actionButtons: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    zIndex: 10,
-    flexDirection: 'row',
-    gap: 8
-  },
-  mergeButton: {
-    width: 140,
-    height: 44,
-    backgroundColor: colors.skeleton,
-    borderRadius: 8
-  },
-  editButton: {
-    width: 110,
-    height: 44,
-    backgroundColor: colors.skeleton,
-    borderRadius: 8
-  },
-  canvasArea: {
-    flex: 1,
-    position: 'relative'
-  },
-  tablePlaceholder: {
-    position: 'absolute',
-    width: 100,
-    height: 100,
-    backgroundColor: colors.skeleton,
-    borderRadius: 16
-  },
-  tableRound: {
-    borderRadius: 50
-  },
-  tableLarge: {
-    width: 120,
-    height: 80
-  },
-  statusBar: {
-    position: 'absolute',
-    bottom: 12,
-    left: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: `${colors.card}E6`,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  statusItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
-  },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6
-  },
-  statusText: {
-    width: 60,
-    height: 16,
-    backgroundColor: colors.skeleton,
-    borderRadius: 4
-  }
-})
 
 export default React.memo(TableLayoutSkeleton)

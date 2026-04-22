@@ -193,7 +193,9 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         marginBottom: 8,
         marginHorizontal: 8,
         borderRadius: 12,
-        overflow: 'hidden'
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: needsAttention ? colors.warning + '30' : colors.border
       }}
     >
       {/* Collapsed row */}
@@ -201,12 +203,23 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         activeOpacity={0.7}
         onPress={handlePress}
         style={{
-          backgroundColor: needsAttention ? colors.warning + '20' : colors.card,
+          backgroundColor: needsAttention
+            ? colors.warning + '20'
+            : colors.panel,
           paddingHorizontal: 14,
           paddingVertical: 10,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 12
+          gap: 12,
+          ...(needsAttention
+            ? {}
+            : {
+                shadowColor: '#000000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 1.5,
+                elevation: 1
+              })
         }}
       >
         {/* Left: order number + meta line */}
@@ -378,10 +391,10 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             style={{
               padding: 6,
               borderRadius: 8,
-              backgroundColor: colors.card
+              backgroundColor: colors.muted + '15'
             }}
           >
-            <MoreHorizontal color={colors.label} size={16} />
+            <MoreHorizontal color={colors.heading} size={16} />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
