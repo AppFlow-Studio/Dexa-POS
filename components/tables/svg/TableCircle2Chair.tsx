@@ -15,7 +15,8 @@ const TableCircle2Chair = React.memo(function TableCircle2Chair ({
   width = 130,
   height = 130
 }: TableCircle2ChairProps) {
-  const strokeOpacity = darkMode ? 0.5 : 0.8
+  const fillOpacity = darkMode ? 0.12 : 0.18
+  const strokeOpacity = darkMode ? 0.5 : 0.7
 
   return (
     <Svg width={width} height={height} viewBox='0 0 100 100' fill='none'>
@@ -27,7 +28,7 @@ const TableCircle2Chair = React.memo(function TableCircle2Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.8}
+        fillOpacity={fillOpacity}
         stroke={color}
         strokeWidth='1'
         strokeOpacity={strokeOpacity}
@@ -41,7 +42,7 @@ const TableCircle2Chair = React.memo(function TableCircle2Chair ({
         height='12'
         rx='3'
         fill={color}
-        fillOpacity={darkMode ? 0.12 : 0.8}
+        fillOpacity={fillOpacity}
         stroke={color}
         strokeWidth='1'
         strokeOpacity={strokeOpacity}
@@ -53,7 +54,7 @@ const TableCircle2Chair = React.memo(function TableCircle2Chair ({
         cy='50'
         r='31'
         fill={color}
-        fillOpacity={darkMode ? 0.18 : 0.85}
+        fillOpacity={darkMode ? 0.18 : 0.28}
         stroke={color}
         strokeWidth='1.5'
         strokeOpacity={strokeOpacity}
