@@ -436,6 +436,13 @@ export function useTableSession (
             )
 
             try {
+              // Deduplicate: skip if this order is already syncing elsewhere.
+              if (syncInFlightRef.current === sOrderId) {
+                updatePhase('ready')
+                return
+              }
+              syncInFlightRef.current = sOrderId
+
               const localOrderId = await syncOrderFromDatabase(sOrderId)
               if (getPhase(phaseRef) === 'navigating_away') return
 
@@ -461,6 +468,10 @@ export function useTableSession (
                 type: 'error'
               })
               updatePhase('ready')
+            } finally {
+              if (syncInFlightRef.current === sOrderId) {
+                syncInFlightRef.current = null
+              }
             }
           }
           return

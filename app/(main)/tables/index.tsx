@@ -562,7 +562,13 @@ const TablesScreen = () => {
     })
     registerPendingOrderCreation(newOrder.id, creationPromise)
 
-    // 3. Only navigate once seating succeeds.
+    // 3. Navigate immediately — order is already in local store
+    setGuestModalOpen(false)
+    clearSelection()
+    setMergeMode(false)
+    router.push(('/tables/' + primaryTableId) as Href)
+
+    // 4. Seat guests in background
     try {
       const { orderId } = await useTableSessionStore.getState().seatGuests({
         tableIds: tableIdsToSeat,
@@ -574,11 +580,6 @@ const TablesScreen = () => {
         serverId: assignedServerId,
         reservationId: activeReservation?.id
       })
-
-      setGuestModalOpen(false)
-      clearSelection()
-      setMergeMode(false)
-      router.push(('/tables/' + primaryTableId) as Href)
 
       if (activeReservation?.id && orderId) {
         const sessionId =
@@ -605,12 +606,6 @@ const TablesScreen = () => {
       }
     } catch (err) {
       console.error('[GuestCountSubmit] seatGuests failed:', err)
-      setActiveOrder(null)
-      const message =
-        err instanceof Error && err.message
-          ? err.message
-          : 'Unable to seat party. Please try again.'
-      setSeatingErrorMessage(message)
       resolveCreation!(null)
     }
   }

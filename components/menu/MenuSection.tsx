@@ -229,29 +229,6 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
   const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false)
 
-  useEffect(() => {
-    if (!__DEV__) return
-    console.log('[MenuSection] category row state', {
-      activeTab,
-      forceOrdersView,
-      activeMeal,
-      activeCategory,
-      shouldRenderCategoryRow:
-        !forceOrdersView && activeTab === 'Menu' && !!activeMeal,
-      menuCount: menus.length,
-      activeMenuId: activeMenu?.id,
-      activeMenuCategoryCount: activeMenu?.categories?.length ?? 0
-    })
-  }, [
-    activeTab,
-    forceOrdersView,
-    activeMeal,
-    activeCategory,
-    menus.length,
-    activeMenu?.id,
-    activeMenu?.categories?.length
-  ])
-
   // Ref for auto-scrolling to selected menu in dialog
   const menuScrollViewRef = useRef<ScrollView>(null)
 
@@ -353,18 +330,6 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
     const isAvailable =
       isMenuAvailableNow(menu.id) || temporaryActiveMenus.includes(menu.name)
-
-    if (__DEV__) {
-      console.log('[MenuSection] handleMenuSelect', {
-        menuName,
-        menuId: menu.id,
-        menuIsActive: menu.isActive,
-        isAvailable,
-        categoryCount: menu.categories?.length ?? 0,
-        firstCategory: menu.categories?.[0]?.name ?? null,
-        isUnlocked: isUnlocked()
-      })
-    }
 
     if (isAvailable) {
       setActiveTab('Menu')

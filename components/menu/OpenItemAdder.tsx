@@ -1,9 +1,10 @@
 import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
+import { useColorScheme } from '@/lib/useColorScheme'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { Delete } from 'lucide-react-native'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   StyleSheet,
   Text,
@@ -12,106 +13,110 @@ import {
   View
 } from 'react-native'
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.screen,
-    padding: 12,
-    paddingBottom: 64,
-    gap: 8
-  },
-  topContent: {
-    gap: 8
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.muted,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 6
-  },
-  input: {
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: colors.heading,
-    height: 40
-  },
-  priceDisplay: {
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: `${colors.teal}40`,
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: 'center'
-  },
-  priceText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.teal
-  },
-  numpadRow: {
-    flexDirection: 'row',
-    gap: 4
-  },
-  numpadBtn: {
-    flex: 1,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  numpadText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.heading
-  },
-  actionRow: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 12,
-    flexDirection: 'row',
-    gap: 8
-  },
-  clearBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  addBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.teal
-  },
-  addBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#000'
-  }
-})
+const createStyles = () =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.screen,
+      padding: 12,
+      paddingBottom: 64,
+      gap: 8
+    },
+    topContent: {
+      gap: 8
+    },
+    label: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.muted,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      marginBottom: 6
+    },
+    input: {
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: colors.heading,
+      height: 40
+    },
+    priceDisplay: {
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: `${colors.teal}40`,
+      borderRadius: 10,
+      paddingVertical: 8,
+      alignItems: 'center'
+    },
+    priceText: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: colors.teal
+    },
+    numpadRow: {
+      flexDirection: 'row',
+      gap: 4
+    },
+    numpadBtn: {
+      flex: 1,
+      height: 40,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: colors.border
+    },
+    numpadText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.heading
+    },
+    actionRow: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 12,
+      flexDirection: 'row',
+      gap: 8
+    },
+    clearBtn: {
+      flex: 1,
+      height: 44,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: colors.border
+    },
+    addBtn: {
+      flex: 1,
+      height: 44,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.teal
+    },
+    addBtnText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.onSolid
+    }
+  })
 
 interface OpenItemAdderProps {
   onCreated?: () => void
 }
 
 const OpenItemAdder = ({ onCreated }: OpenItemAdderProps) => {
+  const { colorScheme } = useColorScheme()
+  const styles = useMemo(() => createStyles(), [colorScheme])
+
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const addItemToActiveOrder = useOrderStore(s => s.addItemToActiveOrder)
   const { show } = useToast()

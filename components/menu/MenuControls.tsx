@@ -209,27 +209,8 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   )
   const categories = currentMenu?.categories
 
-  useEffect(() => {
-    if (!__DEV__) return
-    console.log('[MenuControls] resolve categories', {
-      activeMeal,
-      foundMenu: !!currentMenu,
-      currentMenuId: currentMenu?.id,
-      categoryCount: categories?.length ?? 0,
-      categories: (categories || []).map(c => c.name)
-    })
-  }, [activeMeal, currentMenu?.id, categories?.length])
-
   const handleCategoryPress = useCallback(
     (tab: string, isAvailable: boolean) => {
-      if (__DEV__) {
-        console.log('[MenuControls] handleCategoryPress', {
-          tab,
-          isAvailable,
-          activeMeal,
-          currentMenuId: currentMenu?.id
-        })
-      }
       if (isAvailable) {
         onCategoryChange(tab)
         return
@@ -249,9 +230,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
       onCategoryChange,
       requestPinOverride,
       isUnlocked,
-      addTemporaryCategoryAccess,
-      activeMeal,
-      currentMenu?.id
+      addTemporaryCategoryAccess
     ]
   )
 

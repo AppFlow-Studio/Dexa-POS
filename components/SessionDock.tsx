@@ -252,7 +252,11 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               }}
             >
               <Text
-                style={{ color: '#0C0F1A', fontSize: 13, fontWeight: 'bold' }}
+                style={{
+                  color: colors.heading,
+                  fontSize: 13,
+                  fontWeight: 'bold'
+                }}
               >
                 {initials}
               </Text>
@@ -265,7 +269,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     width: 8,
                     height: 8,
                     borderRadius: 4,
-                    backgroundColor: '#ef4444'
+                    backgroundColor: colors.danger
                   }}
                 />
               )}
@@ -310,7 +314,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 >
                   <Text
                     style={{
-                      color: '#0C0F1A',
+                      color: colors.heading,
                       fontSize: 15,
                       fontWeight: 'bold'
                     }}

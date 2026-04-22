@@ -899,10 +899,10 @@ const OrderProcessing = () => {
                       borderColor: colors.teal
                     }}
                   >
-                    <Plus size={16} color='#FFFFFF' strokeWidth={2.5} />
+                    <Plus size={16} color={colors.onSolid} strokeWidth={2.5} />
                     <Text
                       style={{
-                        color: '#FFFFFF',
+                        color: colors.onSolid,
                         fontSize: 12,
                         fontWeight: '700'
                       }}
