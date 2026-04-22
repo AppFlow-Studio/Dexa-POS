@@ -715,8 +715,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <Text
               style={{
                 color: urgencyLevel > 0 ? colors.danger : colors.label,
-                fontSize: 13,
-                fontWeight: urgencyLevel > 0 ? '700' : '600'
+                fontSize: 18,
+                fontWeight: '800'
               }}
             >
               {timeElapsed}
@@ -1104,9 +1104,12 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
       useCallback(
         s => {
           void s.timerTick
-          return getBucketedElapsed(ticket.start_time_epoch)
+          return getBucketedElapsed(
+            ticket.start_time_epoch,
+            ticket.done_time_epoch
+          )
         },
-        [ticket.start_time_epoch]
+        [ticket.start_time_epoch, ticket.done_time_epoch]
       )
     )
 
@@ -1189,7 +1192,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
             </View>
 
             {/* Timer */}
-            <Text style={{ color: '#9CA3AF', fontSize: 12, fontWeight: '600' }}>
+            <Text style={{ color: '#9CA3AF', fontSize: 16, fontWeight: '800' }}>
               {timeElapsed}
             </Text>
           </View>
@@ -1991,10 +1994,9 @@ const KitchenDisplayScreen = () => {
   }, [kdsHideDoneItems, _updateKdsConfig])
 
   // ─── Render Helpers ─────────────────────────────────────────────
-  const columnWidthPct = `${100 / columnCount}%` as const
   const renderItem = useCallback(
     ({ item }: { item: KDSTicket }) => (
-      <View style={{ width: columnWidthPct, paddingHorizontal: 2 }}>
+      <View style={{ flex: 1, paddingHorizontal: 2 }}>
         <KDSTicketCard
           ticket={item}
           onAdvance={advanceWithUndo}
@@ -2015,18 +2017,25 @@ const KitchenDisplayScreen = () => {
       workflowMode,
       kdsHideDoneItems,
       displaySettings,
-      urgencyThresholds,
-      columnWidthPct
+      urgencyThresholds
     ]
+  )
+
+  // Column-based layout: distribute tickets evenly across columns
+  const getTicketsForColumn = useCallback(
+    (tickets: KDSTicket[], col: number) => {
+      return tickets.filter((_, i) => i % columnCount === col)
+    },
+    [columnCount]
   )
 
   const renderDoneItem = useCallback(
     ({ item }: { item: KDSTicket }) => (
-      <View style={{ width: columnWidthPct, paddingHorizontal: 2 }}>
+      <View style={{ flex: 1, paddingHorizontal: 2 }}>
         <KDSDoneTicketCard ticket={item} onRecall={recallDoneTicket} />
       </View>
     ),
-    [recallDoneTicket, columnWidthPct]
+    [recallDoneTicket]
   )
 
   const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, [])
@@ -2039,7 +2048,11 @@ const KitchenDisplayScreen = () => {
       {Array.from({ length: columnCount * 4 }).map((_, i) => (
         <View
           key={`skel-${i}`}
-          style={{ width: columnWidthPct, paddingHorizontal: 2 }}
+          style={{
+            flex: 1,
+            minWidth: `${100 / columnCount}%`,
+            paddingHorizontal: 2
+          }}
         >
           <KDSSkeletonCard />
         </View>
@@ -2530,36 +2543,56 @@ const KitchenDisplayScreen = () => {
                 }}
                 pointerEvents={isActive ? 'auto' : 'none'}
               >
-                <FlatList
-                  key={columnCount}
-                  data={listDataByStatus[status]}
-                  keyExtractor={keyExtractor}
-                  renderItem={renderItem}
-                  numColumns={columnCount}
-                  contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
-                  initialNumToRender={16}
-                  maxToRenderPerBatch={8}
-                  windowSize={5}
-                  removeClippedSubviews={true}
-                  ListEmptyComponent={
-                    <View
-                      style={{
-                        flex: 1,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        paddingVertical: 60
-                      }}
-                    >
-                      <Text style={{ color: colors.muted, fontSize: 14 }}>
-                        No {status} tickets
-                      </Text>
-                    </View>
-                  }
-                />
+                {listDataByStatus[status].length === 0 ? (
+                  <View
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 60
+                    }}
+                  >
+                    <Text style={{ color: colors.muted, fontSize: 14 }}>
+                      No {status} tickets
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ flex: 1, flexDirection: 'row' }}>
+                    {Array.from({ length: columnCount }).map((_, col) => {
+                      const columnTickets = getTicketsForColumn(
+                        listDataByStatus[status],
+                        col
+                      )
+                      return (
+                        <View
+                          key={`col-${col}`}
+                          style={{
+                            flex: 1,
+                            paddingHorizontal: 2
+                          }}
+                        >
+                          <FlatList
+                            data={columnTickets}
+                            keyExtractor={keyExtractor}
+                            renderItem={renderItem}
+                            contentContainerStyle={{
+                              padding: 4,
+                              paddingBottom: 20
+                            }}
+                            initialNumToRender={16}
+                            maxToRenderPerBatch={8}
+                            windowSize={5}
+                            removeClippedSubviews={true}
+                          />
+                        </View>
+                      )
+                    })}
+                  </View>
+                )}
               </View>
             )
           })}
-          {/* Done tab — separate FlatList with gray card renderer */}
+          {/* Done tab — column-based layout */}
           <View
             key='done'
             style={{
@@ -2573,32 +2606,52 @@ const KitchenDisplayScreen = () => {
             }}
             pointerEvents={activeStatus === 'done' ? 'auto' : 'none'}
           >
-            <FlatList
-              key={columnCount}
-              data={listDataByStatus.done}
-              keyExtractor={keyExtractor}
-              renderItem={renderDoneItem}
-              numColumns={columnCount}
-              contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
-              initialNumToRender={16}
-              maxToRenderPerBatch={8}
-              windowSize={5}
-              removeClippedSubviews={true}
-              ListEmptyComponent={
-                <View
-                  style={{
-                    flex: 1,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingVertical: 60
-                  }}
-                >
-                  <Text style={{ color: colors.muted, fontSize: 14 }}>
-                    No done tickets
-                  </Text>
-                </View>
-              }
-            />
+            {listDataByStatus.done.length === 0 ? (
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 60
+                }}
+              >
+                <Text style={{ color: colors.muted, fontSize: 14 }}>
+                  No done tickets
+                </Text>
+              </View>
+            ) : (
+              <View style={{ flex: 1, flexDirection: 'row' }}>
+                {Array.from({ length: columnCount }).map((_, col) => {
+                  const columnTickets = getTicketsForColumn(
+                    listDataByStatus.done,
+                    col
+                  )
+                  return (
+                    <View
+                      key={`done-col-${col}`}
+                      style={{
+                        flex: 1,
+                        paddingHorizontal: 2
+                      }}
+                    >
+                      <FlatList
+                        data={columnTickets}
+                        keyExtractor={keyExtractor}
+                        renderItem={renderDoneItem}
+                        contentContainerStyle={{
+                          padding: 4,
+                          paddingBottom: 20
+                        }}
+                        initialNumToRender={16}
+                        maxToRenderPerBatch={8}
+                        windowSize={5}
+                        removeClippedSubviews={true}
+                      />
+                    </View>
+                  )
+                })}
+              </View>
+            )}
           </View>
         </Pressable>
       )}

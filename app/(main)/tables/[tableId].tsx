@@ -1,10 +1,10 @@
 import TableOrderView, {
   type TableOrderViewHandle
 } from '@/components/tables/TableOrderView'
+import { colors } from '@/lib/theme'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useRef } from 'react'
 import { StyleSheet, TouchableWithoutFeedback, View } from 'react-native'
-import { colors } from '@/lib/theme'
 
 export default function TableScreen () {
   const { tableId } = useLocalSearchParams<{ tableId: string }>()
@@ -13,30 +13,41 @@ export default function TableScreen () {
   const tableViewRef = useRef<TableOrderViewHandle>(null)
 
   const doGoBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back()
-    } else {
-      router.replace('/tables')
-    }
+    router.replace('/tables')
   }, [router])
 
   const handleClose = useCallback(() => {
     if (isClosingRef.current) return
     isClosingRef.current = true
     tableViewRef.current?.prepareClose()
-    requestAnimationFrame(() => {
-      doGoBack()
-    })
+    doGoBack()
   }, [doGoBack])
 
   return (
     <View style={styles.container}>
-      <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: colors.heading + '60' }}>
+      <View
+        style={{
+          ...StyleSheet.absoluteFillObject,
+          backgroundColor: colors.heading + '60'
+        }}
+      >
         <TouchableWithoutFeedback onPress={handleClose}>
           <View style={StyleSheet.absoluteFill} />
         </TouchableWithoutFeedback>
       </View>
-      <View style={{ width: '100%', height: '100%', borderRadius: 0, overflow: 'hidden', elevation: 8, shadowColor: colors.heading, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 8 }}>
+      <View
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius: 0,
+          overflow: 'hidden',
+          elevation: 8,
+          shadowColor: colors.heading,
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.18,
+          shadowRadius: 8
+        }}
+      >
         <TableOrderView
           ref={tableViewRef}
           tableId={typeof tableId === 'string' ? tableId : ''}

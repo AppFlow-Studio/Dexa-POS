@@ -241,19 +241,23 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
       <>
         <DropdownMenu>
           <View className='flex-row items-center gap-2'>
-            {/* Teal circle — tapping opens dropdown */}
+            {/* Avatar circle — tapping opens dropdown */}
             <DropdownMenuTrigger
               style={{
                 width: 30,
                 height: 30,
                 borderRadius: 21,
-                backgroundColor: colors.teal,
+                backgroundColor: colors.tealMuted,
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
               <Text
-                style={{ color: '#0C0F1A', fontSize: 13, fontWeight: 'bold' }}
+                style={{
+                  color: colors.heading,
+                  fontSize: 13,
+                  fontWeight: 'bold'
+                }}
               >
                 {initials}
               </Text>
@@ -266,7 +270,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     width: 8,
                     height: 8,
                     borderRadius: 4,
-                    backgroundColor: '#ef4444'
+                    backgroundColor: colors.danger
                   }}
                 />
               )}
@@ -304,14 +308,14 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     width: 46,
                     height: 46,
                     borderRadius: 23,
-                    backgroundColor: colors.teal,
+                    backgroundColor: colors.tealMuted,
                     alignItems: 'center',
                     justifyContent: 'center'
                   }}
                 >
                   <Text
                     style={{
-                      color: '#0C0F1A',
+                      color: colors.heading,
                       fontSize: 15,
                       fontWeight: 'bold'
                     }}

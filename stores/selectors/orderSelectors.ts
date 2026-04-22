@@ -592,7 +592,6 @@ export function useOrderLineFilteredOrders (): OrderProfile[] {
           openedAt >= startTime &&
           openedAt <= endTime &&
           !INACTIVE_STATUSES.has(o.order_status ?? '') &&
-          o.order_status !== 'draft' &&
           (o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0)
         ) {
           result.push(o)

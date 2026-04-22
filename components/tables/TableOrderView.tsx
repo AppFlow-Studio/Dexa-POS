@@ -76,17 +76,21 @@ const TableOrderView = React.forwardRef<
   const openedAtRef = useRef(nowMs())
 
   // --- 1. Base Deferred Rendering State (MUST BE FIRST) ---
-  // Fast-path: if the order is already in the store, skip skeleton entirely
-  // and render fully interactive on the very first frame.
+  // Fast-path: skip skeleton and show stage 1 immediately (bill/header first),
+  // then hydrate stage 2 (menu/right side) after interactions.
   const [renderStage, setRenderStage] = useState(() => {
     const session = useTableSessionStore.getState().sessions[currentTableId]
-    if (!session || session.status === 'available') return 2
+    if (!session || session.status === 'available') {
+      return 1
+    }
     if (session.order_id) {
       const found = useOrderStore.getState().getOrder(session.order_id)
-      if (found) return 2
+      if (found) return 1
     }
     return 0
   })
+  const initialRenderStageRef = useRef(renderStage)
+  const prevRenderStageRef = useRef(renderStage)
 
   // --- 2. Standard Hooks & Context ---
   const { show } = useToast()
@@ -194,20 +198,45 @@ const TableOrderView = React.forwardRef<
         { tableId: currentTableId }
       )
     }
-    useModifierSidebarStore.getState().cancelAndRemoveDraft()
-    pricingSheetRef.current?.close()
-    moreOptionsSheetRef.current?.close()
-    discountSheetRef.current?.close()
-    setServerSheetOpen(false)
-    setActiveDialog({ type: 'none' })
-    setRenderStage(0)
+    // Keep close-path work minimal so backdrop tap can navigate immediately.
     markNavigatingAway()
   }, [markNavigatingAway])
 
   // Expose prepareClose so [tableId].tsx can suppress store reactivity before router.back()
   useImperativeHandle(ref, () => ({ prepareClose }), [prepareClose])
 
+  // Heavy close cleanup is deferred to unmount so it doesn't block the tap-to-close path.
+  useEffect(() => {
+    return () => {
+      useModifierSidebarStore.getState().cancelAndRemoveDraft()
+    }
+  }, [])
+
   // --- 7. Effects ---
+  useEffect(() => {
+    if (!__DEV__) return
+    console.log(
+      `[perf][table-order] initial stage=${
+        initialRenderStageRef.current
+      } at ${Math.round(nowMs() - openedAtRef.current)}ms`,
+      { tableId: currentTableId }
+    )
+  }, [currentTableId])
+
+  useEffect(() => {
+    if (!__DEV__) return
+    const prevStage = prevRenderStageRef.current
+    if (prevStage === renderStage) return
+
+    console.log(
+      `[perf][table-order] stage ${prevStage} -> ${renderStage} at ${Math.round(
+        nowMs() - openedAtRef.current
+      )}ms`,
+      { tableId: currentTableId }
+    )
+    prevRenderStageRef.current = renderStage
+  }, [renderStage, currentTableId])
+
   useEffect(() => {
     // If lazy initializer already fast-pathed to stage 2, skip progressive hydration.
     if (renderStage >= 2) {
@@ -222,19 +251,26 @@ const TableOrderView = React.forwardRef<
       return
     }
     // Fallback: progressive hydration for uncached orders.
+    // Defer by one frame so stage 1 paints first, then start stage 2 immediately.
     setRenderStage(1)
-    const id = requestAnimationFrame(() => {
-      setRenderStage(2)
-      if (__DEV__) {
-        console.log(
-          `[perf][table-order] interactive in ${Math.round(
-            nowMs() - openedAtRef.current
-          )}ms`,
-          { tableId: currentTableId }
-        )
-      }
-    })
-    return () => cancelAnimationFrame(id)
+    let rafId: number | null = null
+    const timer = setTimeout(() => {
+      rafId = requestAnimationFrame(() => {
+        setRenderStage(2)
+        if (__DEV__) {
+          console.log(
+            `[perf][table-order] interactive in ${Math.round(
+              nowMs() - openedAtRef.current
+            )}ms`,
+            { tableId: currentTableId }
+          )
+        }
+      })
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
   }, [currentTableId]) // renderStage intentionally NOT in deps
 
   // --- 8. Final Derived UI State ---

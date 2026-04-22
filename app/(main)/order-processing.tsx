@@ -27,6 +27,7 @@ import {
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import {
   CheckCircle2,
@@ -51,7 +52,7 @@ import Animated, {
 import { Portal as Teleport } from 'react-native-teleport'
 
 const EMPTY_ORDERS: OrderProfile[] = []
-const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const
+const badgeContentStyle = { paddingHorizontal: 20, gap: 8 } as const
 const cardContentStyle = { padding: 10, gap: 12 } as const
 
 const OrderProcessing = () => {
@@ -769,10 +770,7 @@ const OrderProcessing = () => {
           </View>
         )}
 
-        <View
-          className='flex-1 ml-0'
-          style={{ backgroundColor: colors.screen }}
-        >
+        <View className='flex-1 ml-0' style={{ backgroundColor: colors.card }}>
           {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
           {renderStage >= 2 ? (
             <MenuSection
@@ -901,10 +899,10 @@ const OrderProcessing = () => {
                       borderColor: colors.teal
                     }}
                   >
-                    <Plus size={16} color='#000000' strokeWidth={2.5} />
+                    <Plus size={16} color={colors.onSolid} strokeWidth={2.5} />
                     <Text
                       style={{
-                        color: '#000000',
+                        color: colors.onSolid,
                         fontSize: 12,
                         fontWeight: '700'
                       }}
@@ -922,7 +920,7 @@ const OrderProcessing = () => {
                     style={{
                       width: orderLineViewMode === 'minimal' ? 300 : 300,
                       borderWidth: 1,
-                      borderColor: colors.border,
+                      borderColor: `${colors.teal}35`,
                       backgroundColor: colors.screen
                     }}
                   >
@@ -932,7 +930,7 @@ const OrderProcessing = () => {
                         marginLeft: 7,
                         fontSize: 12,
                         fontWeight: '500',
-                        color: colors.muted
+                        color: colors.label
                       }}
                     >
                       Search menu...
@@ -1044,6 +1042,38 @@ const OrderProcessing = () => {
                             maxToRenderPerBatch={10}
                             windowSize={3}
                             renderItem={renderOrderBadge}
+                          />
+
+                          {/* Left fade overlay */}
+                          <LinearGradient
+                            colors={[colors.card, colors.card + '00']}
+                            start={{ x: 0, y: 0.5 }}
+                            end={{ x: 1, y: 0.5 }}
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: 40,
+                              zIndex: 4,
+                              pointerEvents: 'none'
+                            }}
+                          />
+
+                          {/* Right fade overlay */}
+                          <LinearGradient
+                            colors={[colors.card + '00', colors.card]}
+                            start={{ x: 0, y: 0.5 }}
+                            end={{ x: 1, y: 0.5 }}
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: 40,
+                              zIndex: 4,
+                              pointerEvents: 'none'
+                            }}
                           />
 
                           {canScrollBadgesLeft && (
