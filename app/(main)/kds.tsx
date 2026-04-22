@@ -696,8 +696,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <Text
               style={{
                 color: urgencyLevel > 0 ? colors.danger : colors.label,
-                fontSize: 13,
-                fontWeight: urgencyLevel > 0 ? '700' : '600'
+                fontSize: 18,
+                fontWeight: '800'
               }}
             >
               {timeElapsed}
@@ -1052,9 +1052,12 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
       useCallback(
         s => {
           void s.timerTick
-          return getBucketedElapsed(ticket.start_time_epoch)
+          return getBucketedElapsed(
+            ticket.start_time_epoch,
+            ticket.done_time_epoch
+          )
         },
-        [ticket.start_time_epoch]
+        [ticket.start_time_epoch, ticket.done_time_epoch]
       )
     )
 
@@ -1137,7 +1140,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
             </View>
 
             {/* Timer */}
-            <Text style={{ color: '#9CA3AF', fontSize: 12, fontWeight: '600' }}>
+            <Text style={{ color: '#9CA3AF', fontSize: 16, fontWeight: '800' }}>
               {timeElapsed}
             </Text>
           </View>
