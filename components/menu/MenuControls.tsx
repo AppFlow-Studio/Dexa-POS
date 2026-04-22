@@ -2,6 +2,7 @@ import { colors } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
+import { LinearGradient } from 'expo-linear-gradient'
 import {
   ChevronLeft,
   ChevronRight,
@@ -52,7 +53,7 @@ const createStyles = () =>
       minHeight: 40
     },
     scrollContent: {
-      paddingHorizontal: 28,
+      paddingHorizontal: 20,
       gap: 6,
       alignItems: 'center',
       minHeight: 40
@@ -328,6 +329,38 @@ const MenuControls: React.FC<MenuControlsProps> = ({
               )
             })}
           </ScrollView>
+
+          {/* Left fade overlay */}
+          <LinearGradient
+            colors={[colors.screen, colors.screen + '00']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 40,
+              zIndex: 4,
+              pointerEvents: 'none'
+            }}
+          />
+
+          {/* Right fade overlay */}
+          <LinearGradient
+            colors={[colors.screen + '00', colors.screen]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 40,
+              zIndex: 4,
+              pointerEvents: 'none'
+            }}
+          />
 
           {canScrollLeft && (
             <TouchableOpacity

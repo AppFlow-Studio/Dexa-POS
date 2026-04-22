@@ -27,6 +27,7 @@ import {
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import {
   CheckCircle2,
@@ -51,7 +52,7 @@ import Animated, {
 import { Portal as Teleport } from 'react-native-teleport'
 
 const EMPTY_ORDERS: OrderProfile[] = []
-const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const
+const badgeContentStyle = { paddingHorizontal: 20, gap: 8 } as const
 const cardContentStyle = { padding: 10, gap: 12 } as const
 
 const OrderProcessing = () => {
@@ -1044,6 +1045,38 @@ const OrderProcessing = () => {
                             maxToRenderPerBatch={10}
                             windowSize={3}
                             renderItem={renderOrderBadge}
+                          />
+
+                          {/* Left fade overlay */}
+                          <LinearGradient
+                            colors={[colors.screen, colors.screen + '00']}
+                            start={{ x: 0, y: 0.5 }}
+                            end={{ x: 1, y: 0.5 }}
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: 40,
+                              zIndex: 4,
+                              pointerEvents: 'none'
+                            }}
+                          />
+
+                          {/* Right fade overlay */}
+                          <LinearGradient
+                            colors={[colors.screen + '00', colors.screen]}
+                            start={{ x: 0, y: 0.5 }}
+                            end={{ x: 1, y: 0.5 }}
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: 40,
+                              zIndex: 4,
+                              pointerEvents: 'none'
+                            }}
                           />
 
                           {canScrollBadgesLeft && (
