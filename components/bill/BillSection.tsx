@@ -1,5 +1,6 @@
 import { useToast } from '@/contexts/ToastContext'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { getDeviceId } from '@/lib/deviceId'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import {
@@ -16,6 +17,7 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useOrderSyncCounts } from '@/stores/useSyncStatusStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import type {
   FloorPlanObject,
@@ -328,9 +330,11 @@ const BillSectionContent = ({
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore()
   const { show } = useToast()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const autoPrintKitchenTickets = useLocationConfigStore(
     s => s.config.printing.autoPrintKitchenTickets
   )
+  const deviceId = useMemo(() => getDeviceId(), [])
 
   // Memoize computed values to prevent unnecessary recalculations
   const cart = useMemo(() => activeOrderItems || [], [activeOrderItems])
@@ -646,7 +650,7 @@ const BillSectionContent = ({
   }, [])
 
   const handleSelectTable = useCallback(
-    (table: FloorPlanObject) => {
+    async (table: FloorPlanObject) => {
       const isCurrentlyAssigned = table.id === activeOrderServiceLocation
       const isAvailable = (table.session?.status ?? 'available') === 'available'
 
@@ -661,10 +665,56 @@ const BillSectionContent = ({
         return
       }
 
+      if (activeOrderType === 'dine_in' && activeOrderId) {
+        assignOrderToTable(activeOrderId, table.id)
+
+        const liveSession = useTableSessionStore.getState().sessions[table.id]
+        const hasActiveSession = !!liveSession || !!table.session
+
+        if (
+          !hasActiveSession ||
+          (liveSession?.status ?? table.session?.status) === 'available'
+        ) {
+          try {
+            await useTableSessionStore.getState().seatGuests({
+              tableIds: [table.id],
+              partySize: Math.max(1, activeOrder?.guest_count ?? 1),
+              createOrder: true,
+              localOrderId: activeOrderId,
+              selected_station: selectedStation?.id,
+              device_id: deviceId
+            })
+          } catch (error) {
+            console.error(
+              '[BillSection] Failed to start table session from order-processing table selector:',
+              error
+            )
+            show({
+              title: 'Session Start Failed',
+              message:
+                'Table was selected, but we could not start the table session. Please try again.',
+              type: 'error'
+            })
+            return
+          }
+        }
+      }
+
       setSelectedTable(table)
       setIsTableSelectorOpen(false)
     },
-    [activeOrderServiceLocation, getTableStatusLabel, setSelectedTable, show]
+    [
+      activeOrder?.guest_count,
+      activeOrderId,
+      activeOrderServiceLocation,
+      activeOrderType,
+      assignOrderToTable,
+      deviceId,
+      getTableStatusLabel,
+      selectedStation?.id,
+      setSelectedTable,
+      show
+    ]
   )
 
   const handleClearCart = useCallback(() => {
@@ -737,7 +787,7 @@ const BillSectionContent = ({
       )
   }
 
-  const handleSendToKitchen = () => {
+  const handleSendToKitchen = async () => {
     if (!checkEmployeeInShift(activeEmployeeId!)) {
       showClockInWall()
       return
@@ -763,6 +813,36 @@ const BillSectionContent = ({
 
     if (activeOrderType === 'dine_in' && selectedTable) {
       assignOrderToTable(activeOrderId!, selectedTable.id)
+      const liveSession =
+        useTableSessionStore.getState().sessions[selectedTable.id]
+      const hasActiveSession = !!liveSession || !!selectedTable.session
+      if (
+        !hasActiveSession ||
+        (liveSession?.status ?? selectedTable.session?.status) === 'available'
+      ) {
+        try {
+          await useTableSessionStore.getState().seatGuests({
+            tableIds: [selectedTable.id],
+            partySize: Math.max(1, activeOrder?.guest_count ?? 1),
+            createOrder: true,
+            localOrderId: activeOrderId!,
+            selected_station: selectedStation?.id,
+            device_id: deviceId
+          })
+        } catch (error) {
+          console.error(
+            '[BillSection] Failed to start table session before sending to kitchen:',
+            error
+          )
+          show({
+            title: 'Session Required',
+            message:
+              'Could not start the table session. Please reselect the table and try again.',
+            type: 'error'
+          })
+          return
+        }
+      }
       // Table session status updates are now handled through session-based APIs
       clearSelectedTable()
     }

@@ -37,10 +37,10 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Dimensions,
-  FlatList,
   GestureResponderEvent,
   Pressable,
   Animated as RNAnimated,
+  ScrollView,
   Text,
   TouchableOpacity,
   View
@@ -377,6 +377,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       else if (capturedStatus === 'ready') newStatus = 'served'
 
       if (!newStatus) return
+      if (__DEV__) {
+        console.log('[KDS Debug] ticket card advance trigger', {
+          ticketId: ticket.ticket_id,
+          capturedStatus,
+          newStatus,
+          itemIds: itemIds.length
+        })
+      }
       onAdvance(ticket.ticket_id, itemIds, newStatus)
     }
 
@@ -414,27 +422,42 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const { doneItemCount, visibleItems } = useMemo(() => {
       // Done count excludes voided/refunded items — they're not "done", they're cancelled/returned
       const doneCount = ticketItems
-        .filter(i => i.kitchen_status === 'ready' && !i.is_voided && !i.is_refunded)
+        .filter(
+          i => i.kitchen_status === 'ready' && !i.is_voided && !i.is_refunded
+        )
         .reduce((sum, i) => sum + (i.quantity || 0), 0)
 
       // Hide done items setting — voided/refunded always stay visible as kitchen notifications
       let filtered: KDSTicketItem[] = shouldHideDoneItems
-        ? ticketItems.filter(i => i.kitchen_status !== 'ready' || i.is_voided || i.is_refunded)
+        ? ticketItems.filter(
+            i => i.kitchen_status !== 'ready' || i.is_voided || i.is_refunded
+          )
         : [...ticketItems]
 
       // Expand voided/refunded items into display rows with _displayState
-      let processed: ExpandedItem[] = filtered.flatMap((item): ExpandedItem[] => {
-        if (item.is_voided) return [{ ...item, _displayState: 'voided' }]
-        if (!item.is_refunded || !item.refunded_quantity) return [{ ...item, _displayState: 'active' }]
-        if (item.refunded_quantity >= item.quantity) {
-          return [{ ...item, _displayState: 'refunded' }]
+      let processed: ExpandedItem[] = filtered.flatMap(
+        (item): ExpandedItem[] => {
+          if (item.is_voided) return [{ ...item, _displayState: 'voided' }]
+          if (!item.is_refunded || !item.refunded_quantity)
+            return [{ ...item, _displayState: 'active' }]
+          if (item.refunded_quantity >= item.quantity) {
+            return [{ ...item, _displayState: 'refunded' }]
+          }
+          // Partial refund — split into refunded + changed rows
+          return [
+            {
+              ...item,
+              quantity: item.refunded_quantity,
+              _displayState: 'refunded'
+            },
+            {
+              ...item,
+              quantity: item.quantity - item.refunded_quantity,
+              _displayState: 'changed'
+            }
+          ]
         }
-        // Partial refund — split into refunded + changed rows
-        return [
-          { ...item, quantity: item.refunded_quantity, _displayState: 'refunded' },
-          { ...item, quantity: item.quantity - item.refunded_quantity, _displayState: 'changed' },
-        ]
-      })
+      )
 
       if (displaySettings.aggregateIdenticalItems) {
         const aggregated: ExpandedItem[] = []
@@ -789,7 +812,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           <View style={{ padding: 10, backgroundColor: '#FFFFFF' }}>
             {visibleItems.map(
               ({ item, sortedModifiers, representedItemIds }, index) => {
-                const isItemDone = item.kitchen_status === 'ready' && item._displayState === 'active'
+                const rowKey = `${item.id}_${item._displayState}_${index}`
+                const isItemDone =
+                  item.kitchen_status === 'ready' &&
+                  item._displayState === 'active'
                 const isVoided = item._displayState === 'voided'
                 const isRefunded = item._displayState === 'refunded'
                 const isChanged = item._displayState === 'changed'
@@ -807,11 +833,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   : isItemDone
                   ? colors.success
                   : '#E5E7EB'
-                const qtyColor = isItemDone ? '#fff' : isVoided ? '#7F1D1D' : isRefunded ? '#7C2D12' : '#111827'
+                const qtyColor = isItemDone
+                  ? '#fff'
+                  : isVoided
+                  ? '#7F1D1D'
+                  : isRefunded
+                  ? '#7C2D12'
+                  : '#111827'
 
                 return (
                   <Pressable
-                    key={`${item.id}_${item._displayState}`}
+                    key={rowKey}
                     onPress={() => {
                       if (!isInactive && !isItemDone && onItemPress) {
                         const idsToMark =
@@ -860,18 +892,69 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       </View>
                       {/* Status badge pill for voided/refunded/changed */}
                       {isVoided && (
-                        <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, marginRight: 5, alignSelf: 'center' }}>
-                          <Text style={{ color: '#DC2626', fontSize: 8, fontWeight: '800' }}>VOIDED</Text>
+                        <View
+                          style={{
+                            backgroundColor: '#FEE2E2',
+                            paddingHorizontal: 5,
+                            paddingVertical: 1,
+                            borderRadius: 3,
+                            marginRight: 5,
+                            alignSelf: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: '#DC2626',
+                              fontSize: 8,
+                              fontWeight: '800'
+                            }}
+                          >
+                            VOIDED
+                          </Text>
                         </View>
                       )}
                       {isRefunded && (
-                        <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, marginRight: 5, alignSelf: 'center' }}>
-                          <Text style={{ color: '#D97706', fontSize: 8, fontWeight: '800' }}>REFUNDED</Text>
+                        <View
+                          style={{
+                            backgroundColor: '#FEF3C7',
+                            paddingHorizontal: 5,
+                            paddingVertical: 1,
+                            borderRadius: 3,
+                            marginRight: 5,
+                            alignSelf: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: '#D97706',
+                              fontSize: 8,
+                              fontWeight: '800'
+                            }}
+                          >
+                            REFUNDED
+                          </Text>
                         </View>
                       )}
                       {isChanged && (
-                        <View style={{ backgroundColor: '#FEF9C3', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, marginRight: 5, alignSelf: 'center' }}>
-                          <Text style={{ color: '#92400E', fontSize: 8, fontWeight: '800' }}>CHANGED</Text>
+                        <View
+                          style={{
+                            backgroundColor: '#FEF9C3',
+                            paddingHorizontal: 5,
+                            paddingVertical: 1,
+                            borderRadius: 3,
+                            marginRight: 5,
+                            alignSelf: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: '#92400E',
+                              fontSize: 8,
+                              fontWeight: '800'
+                            }}
+                          >
+                            CHANGED
+                          </Text>
                         </View>
                       )}
                       {item.seat_number != null && (
@@ -888,7 +971,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       )}
                       <Text
                         style={{
-                          color: isInactive ? '#9CA3AF' : isItemDone ? '#9CA3AF' : '#111827',
+                          color: isInactive
+                            ? '#9CA3AF'
+                            : isItemDone
+                            ? '#9CA3AF'
+                            : '#111827',
                           fontSize: 13,
                           fontWeight: '600',
                           flex: 1,
@@ -929,7 +1016,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         }
                         return (
                           <View
-                            key={`${item.id}_${item._displayState}_m${mi}`}
+                            key={`${rowKey}_m${mi}`}
                             style={{
                               marginTop: 2,
                               flexDirection: 'row',
@@ -1223,9 +1310,9 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 
           {/* Items list */}
           <View style={{ padding: 12, gap: 6 }}>
-            {getTicketItems(ticket).map((item: KDSTicketItem) => (
+            {getTicketItems(ticket).map((item: KDSTicketItem, index) => (
               <View
-                key={item.id}
+                key={`${item.id}_${index}`}
                 style={{
                   flexDirection: 'column',
                   alignItems: 'flex-start',
@@ -1336,6 +1423,7 @@ const KitchenDisplayScreen = () => {
   const selectAllVisible = useKDSStore(s => s.selectAllVisible)
   const clearSelection = useKDSStore(s => s.clearSelection)
   const bulkAdvanceTickets = useKDSStore(s => s.bulkAdvanceTickets)
+  const bulkMarkTicketsDone = useKDSStore(s => s.bulkMarkTicketsDone)
   const setOnNewOrderCallback = useKDSStore(s => s.setOnNewOrderCallback)
   const recallTicket = useKDSStore(s => s.recallTicket)
   const doneTickets = useKDSStore(s => s.doneTickets)
@@ -1446,7 +1534,7 @@ const KitchenDisplayScreen = () => {
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false)
   const [pendingBulkAction, setPendingBulkAction] = useState<
-    'selected' | 'all' | null
+    'selected' | 'all' | 'done-selected' | 'done-all' | null
   >(null)
 
   // Action menu state (long-press)
@@ -1832,10 +1920,13 @@ const KitchenDisplayScreen = () => {
   }, [locationId, fetchTickets])
 
   // ─── Bulk Action Handlers ───────────────────────────────────────
-  const handleBulkAction = useCallback((action: 'selected' | 'all') => {
-    setPendingBulkAction(action)
-    setShowPinModal(true)
-  }, [])
+  const handleBulkAction = useCallback(
+    (action: 'selected' | 'all' | 'done-selected' | 'done-all') => {
+      setPendingBulkAction(action)
+      setShowPinModal(true)
+    },
+    []
+  )
 
   const handlePinConfirm = useCallback(
     async (pin: string) => {
@@ -1862,9 +1953,12 @@ const KitchenDisplayScreen = () => {
       setShowPinModal(false)
 
       const ticketIdsToAdvance =
-        pendingBulkAction === 'all'
+        pendingBulkAction === 'all' || pendingBulkAction === 'done-all'
           ? activeFilteredTickets.map(t => t.ticket_id)
           : Array.from(useKDSStore.getState().selectedTicketIds as Set<string>)
+      const isForceDoneAction =
+        pendingBulkAction === 'done-selected' ||
+        pendingBulkAction === 'done-all'
 
       if (ticketIdsToAdvance.length === 0) {
         toast.show({
@@ -1876,11 +1970,17 @@ const KitchenDisplayScreen = () => {
         return
       }
 
-      bulkAdvanceTickets(ticketIdsToAdvance, locationId || '')
+      if (isForceDoneAction) {
+        bulkMarkTicketsDone(ticketIdsToAdvance)
+      } else {
+        bulkAdvanceTickets(ticketIdsToAdvance, locationId || '')
+      }
 
       toast.show({
-        title: 'Bulk Advance',
-        message: `${ticketIdsToAdvance.length} ticket(s) advanced by ${employee.fullName}.`,
+        title: isForceDoneAction ? 'Marked Done' : 'Bulk Advance',
+        message: isForceDoneAction
+          ? `${ticketIdsToAdvance.length} ticket(s) marked done by ${employee.fullName}.`
+          : `${ticketIdsToAdvance.length} ticket(s) advanced by ${employee.fullName}.`,
         type: 'success'
       })
       setPendingBulkAction(null)
@@ -1889,6 +1989,7 @@ const KitchenDisplayScreen = () => {
       findEmployeeByPin,
       pendingBulkAction,
       activeFilteredTickets,
+      bulkMarkTicketsDone,
       bulkAdvanceTickets,
       locationId,
       toast
@@ -1994,20 +2095,18 @@ const KitchenDisplayScreen = () => {
   }, [kdsHideDoneItems, _updateKdsConfig])
 
   // ─── Render Helpers ─────────────────────────────────────────────
-  const renderItem = useCallback(
-    ({ item }: { item: KDSTicket }) => (
-      <View style={{ flex: 1, paddingHorizontal: 2 }}>
-        <KDSTicketCard
-          ticket={item}
-          onAdvance={advanceWithUndo}
-          onToggleSelect={toggleTicketSelection}
-          onLongPress={handleTicketLongPress}
-          onItemPress={workflowMode === '2-step' ? handleItemPress : undefined}
-          hideDoneItems={kdsHideDoneItems}
-          displaySettings={displaySettings}
-          urgencyThresholds={urgencyThresholds}
-        />
-      </View>
+  const renderTicketCard = useCallback(
+    (item: KDSTicket) => (
+      <KDSTicketCard
+        ticket={item}
+        onAdvance={advanceWithUndo}
+        onToggleSelect={toggleTicketSelection}
+        onLongPress={handleTicketLongPress}
+        onItemPress={workflowMode === '2-step' ? handleItemPress : undefined}
+        hideDoneItems={kdsHideDoneItems}
+        displaySettings={displaySettings}
+        urgencyThresholds={urgencyThresholds}
+      />
     ),
     [
       advanceWithUndo,
@@ -2021,7 +2120,13 @@ const KitchenDisplayScreen = () => {
     ]
   )
 
-  // Column-based layout: distribute tickets evenly across columns
+  const renderDoneTicketCard = useCallback(
+    (item: KDSTicket) => (
+      <KDSDoneTicketCard ticket={item} onRecall={recallDoneTicket} />
+    ),
+    [recallDoneTicket]
+  )
+
   const getTicketsForColumn = useCallback(
     (tickets: KDSTicket[], col: number) => {
       return tickets.filter((_, i) => i % columnCount === col)
@@ -2029,16 +2134,8 @@ const KitchenDisplayScreen = () => {
     [columnCount]
   )
 
-  const renderDoneItem = useCallback(
-    ({ item }: { item: KDSTicket }) => (
-      <View style={{ flex: 1, paddingHorizontal: 2 }}>
-        <KDSDoneTicketCard ticket={item} onRecall={recallDoneTicket} />
-      </View>
-    ),
-    [recallDoneTicket]
-  )
-
-  const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, [])
+  const activeTabTickets = listDataByStatus[activeStatus]
+  const isDoneTab = activeStatus === 'done'
 
   // Skeleton grid for loading state
   const renderSkeletons = () => (
@@ -2206,6 +2303,76 @@ const KitchenDisplayScreen = () => {
                 </TouchableOpacity>
               )
             })}
+
+            {activeStatus !== 'done' && (
+              <>
+                <View
+                  style={{
+                    width: 1,
+                    height: 20,
+                    backgroundColor: colors.border
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={toggleBulkMode}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 14,
+                    backgroundColor: bulkMode
+                      ? colors.info + '20'
+                      : 'transparent',
+                    borderWidth: 1,
+                    borderColor: bulkMode ? colors.info + '50' : colors.border,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: bulkMode ? colors.info : colors.label,
+                      fontSize: 12,
+                      fontWeight: bulkMode ? '700' : '600'
+                    }}
+                  >
+                    {bulkMode ? 'Exit Bulk' : 'Bulk'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleBulkAction('done-all')}
+                  disabled={activeFilteredTickets.length === 0}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 14,
+                    backgroundColor:
+                      activeFilteredTickets.length > 0
+                        ? colors.warning + '18'
+                        : 'transparent',
+                    borderWidth: 1,
+                    borderColor:
+                      activeFilteredTickets.length > 0
+                        ? colors.warning + '45'
+                        : colors.border,
+                    opacity: activeFilteredTickets.length > 0 ? 1 : 0.5
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        activeFilteredTickets.length > 0
+                          ? colors.warning
+                          : colors.label,
+                      fontSize: 12,
+                      fontWeight: '700'
+                    }}
+                  >
+                    Mark All Done
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
 
             {/* Divider */}
             <View
@@ -2487,6 +2654,31 @@ const KitchenDisplayScreen = () => {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
+              onPress={() => handleBulkAction('done-selected')}
+              disabled={selectionCount === 0}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor:
+                  selectionCount > 0 ? colors.warning + '18' : 'transparent',
+                borderWidth: 1,
+                borderColor:
+                  selectionCount > 0 ? colors.warning + '45' : colors.border,
+                borderRadius: 6,
+                opacity: selectionCount > 0 ? 1 : 0.5
+              }}
+            >
+              <Text
+                style={{
+                  color: selectionCount > 0 ? colors.warning : colors.label,
+                  fontSize: 12,
+                  fontWeight: '700'
+                }}
+              >
+                Mark Selected Done
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => handleBulkAction('all')}
               disabled={activeFilteredTickets.length === 0}
               style={{
@@ -2518,142 +2710,88 @@ const KitchenDisplayScreen = () => {
                 Advance All in Tab
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleBulkAction('done-all')}
+              disabled={activeFilteredTickets.length === 0}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor:
+                  activeFilteredTickets.length > 0
+                    ? colors.warning + '18'
+                    : 'transparent',
+                borderWidth: 1,
+                borderColor:
+                  activeFilteredTickets.length > 0
+                    ? colors.warning + '45'
+                    : colors.border,
+                borderRadius: 6,
+                opacity: activeFilteredTickets.length > 0 ? 1 : 0.5
+              }}
+            >
+              <Text
+                style={{
+                  color:
+                    activeFilteredTickets.length > 0
+                      ? colors.warning
+                      : colors.label,
+                  fontSize: 12,
+                  fontWeight: '700'
+                }}
+              >
+                Mark All Done
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* ─── Grid: 4 pre-mounted FlatLists stacked ─── */}
+      {/* ─── Single Active FlatList ─── */}
       {!isReady || (isInitialLoading && !hasHydrated) ? (
         renderSkeletons()
+      ) : activeTabTickets.length === 0 ? (
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingVertical: 60
+          }}
+        >
+          <Text style={{ color: colors.muted, fontSize: 14 }}>
+            {isDoneTab ? 'No done tickets' : `No ${activeStatus} tickets`}
+          </Text>
+        </View>
       ) : (
-        <Pressable style={{ flex: 1, position: 'relative' }}>
-          {(['pending', 'cooking', 'ready'] as const).map(status => {
-            const isActive = activeStatus === status
-            return (
-              <View
-                key={status}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  opacity: isActive ? 1 : 0,
-                  zIndex: isActive ? 1 : 0
-                }}
-                pointerEvents={isActive ? 'auto' : 'none'}
-              >
-                {listDataByStatus[status].length === 0 ? (
-                  <View
-                    style={{
-                      flex: 1,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      paddingVertical: 60
-                    }}
-                  >
-                    <Text style={{ color: colors.muted, fontSize: 14 }}>
-                      No {status} tickets
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={{ flex: 1, flexDirection: 'row' }}>
-                    {Array.from({ length: columnCount }).map((_, col) => {
-                      const columnTickets = getTicketsForColumn(
-                        listDataByStatus[status],
-                        col
-                      )
-                      return (
-                        <View
-                          key={`col-${col}`}
-                          style={{
-                            flex: 1,
-                            paddingHorizontal: 2
-                          }}
-                        >
-                          <FlatList
-                            data={columnTickets}
-                            keyExtractor={keyExtractor}
-                            renderItem={renderItem}
-                            contentContainerStyle={{
-                              padding: 4,
-                              paddingBottom: 20
-                            }}
-                            initialNumToRender={16}
-                            maxToRenderPerBatch={8}
-                            windowSize={5}
-                            removeClippedSubviews={true}
-                          />
-                        </View>
-                      )
-                    })}
-                  </View>
-                )}
-              </View>
-            )
-          })}
-          {/* Done tab — column-based layout */}
-          <View
-            key='done'
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              opacity: activeStatus === 'done' ? 1 : 0,
-              zIndex: activeStatus === 'done' ? 1 : 0
-            }}
-            pointerEvents={activeStatus === 'done' ? 'auto' : 'none'}
-          >
-            {listDataByStatus.done.length === 0 ? (
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingVertical: 60
-                }}
-              >
-                <Text style={{ color: colors.muted, fontSize: 14 }}>
-                  No done tickets
-                </Text>
-              </View>
-            ) : (
-              <View style={{ flex: 1, flexDirection: 'row' }}>
-                {Array.from({ length: columnCount }).map((_, col) => {
-                  const columnTickets = getTicketsForColumn(
-                    listDataByStatus.done,
-                    col
-                  )
-                  return (
-                    <View
-                      key={`done-col-${col}`}
-                      style={{
-                        flex: 1,
-                        paddingHorizontal: 2
-                      }}
-                    >
-                      <FlatList
-                        data={columnTickets}
-                        keyExtractor={keyExtractor}
-                        renderItem={renderDoneItem}
-                        contentContainerStyle={{
-                          padding: 4,
-                          paddingBottom: 20
-                        }}
-                        initialNumToRender={16}
-                        maxToRenderPerBatch={8}
-                        windowSize={5}
-                        removeClippedSubviews={true}
-                      />
+        <ScrollView
+          key={`kds-${activeStatus}-${columnCount}`}
+          contentContainerStyle={{
+            padding: 4,
+            paddingBottom: 20
+          }}
+          keyboardShouldPersistTaps='handled'
+          showsVerticalScrollIndicator={true}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+            {Array.from({ length: columnCount }).map((_, col) => {
+              const columnTickets = getTicketsForColumn(activeTabTickets, col)
+              return (
+                <View
+                  key={`col-${activeStatus}-${col}`}
+                  style={{ flex: 1, paddingHorizontal: 2 }}
+                >
+                  {columnTickets.map((ticket, index) => (
+                    <View key={`${ticket.ticket_id}_${col}_${index}`}>
+                      {isDoneTab
+                        ? renderDoneTicketCard(ticket)
+                        : renderTicketCard(ticket)}
                     </View>
-                  )
-                })}
-              </View>
-            )}
+                  ))}
+                </View>
+              )
+            })}
           </View>
-        </Pressable>
+        </ScrollView>
       )}
 
       {/* ─── Action Menu Overlay ─── */}
