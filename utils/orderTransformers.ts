@@ -663,6 +663,8 @@ export function transformBroadcastToOrder (
     service_location_name: backendOrder.table_number || undefined,
     server_name:
       backendOrder.server_name || backendOrder.assigned_server_id || undefined,
+    created_by_staff_profile_id:
+      backendOrder.created_by_staff_id ?? backendOrder.assigned_server_id ?? null,
     customer_name: backendOrder.customer_name || '',
     customer_phone: backendOrder.customer_phone || undefined,
     customer_email: backendOrder.customer_email || undefined,

@@ -1,11 +1,13 @@
 import { useToast } from "@/contexts/ToastContext";
+import { useRefundFraudGuard, type FraudGuardCheckResult } from "@/hooks/useRefundFraudGuard";
 import { PaymentType, PreviousOrder } from "@/lib/types";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { usePreviousOrdersStore, type RefundFraudMetadata } from "@/stores/usePreviousOrdersStore";
 import { Check, X } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -13,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import RefundApprovalModal from "./RefundApprovalModal";
 
 interface RefundModalProps {
   isOpen: boolean;
@@ -34,45 +37,106 @@ const RefundModal: React.FC<RefundModalProps> = ({
   const { show } = useToast();
 
   const { refundFullOrder, refundItems } = usePreviousOrdersStore();
+  const { checkRefund, recordAndNotify } = useRefundFraudGuard();
+  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [pendingRefundType, setPendingRefundType] = useState<"full" | "partial" | null>(null);
+  const lastGuardRef = useRef<FraudGuardCheckResult | null>(null);
 
   if (!order) return null;
 
-  const handleFullRefund = () => {
-    if (!reason.trim()) {
-      show({
-        title: "Reason Required",
-        message: "A reason must be provided to process a full refund.",
-        type: "error",
-      });
+  const getActiveEmployee = (): { staffId: string | null; name: string } => {
+    const empStore = useEmployeeStore.getState();
+    const activeEmpId = empStore.activeEmployeeId;
+    const emp = activeEmpId ? empStore.getEmployeeById(activeEmpId) : null;
+    return { staffId: emp?.profileId ?? null, name: emp?.fullName || "Cashier" };
+  };
+
+  const buildFraudMetadata = (guard: FraudGuardCheckResult, managerId?: string, managerName?: string): RefundFraudMetadata | undefined => {
+    if (!guard.isSelfRefund || !guard.isCashRefund) return undefined;
+    const flags: string[] = ["same_cashier_refund"];
+    if (guard.velocity.shouldBlock) flags.push("velocity_blocked");
+    return { fraudFlags: flags, velocityCount: guard.velocity.selfRefundCount, approvedByManagerId: managerId, approvedByManagerName: managerName };
+  };
+
+  const processFullRefund = async (managerId?: string, managerName?: string) => {
+    const { staffId, name } = getActiveEmployee();
+    if (!staffId) {
+      show({ title: "Employee Required", message: "An active employee must be signed in to process refunds.", type: "error" });
       return;
     }
-
-    refundFullOrder(order.orderId, reason, "Cashier", paymentMethod);
-    show({
-      title: "Refund Successful",
-      message: "The full refund has been processed successfully.",
-      type: "success",
-    });
+    const guard = lastGuardRef.current;
+    const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined;
+    await refundFullOrder(order.orderId, reason, staffId, name, paymentMethod, metadata);
+    if (guard?.isSelfRefund && guard?.isCashRefund) {
+      const velocity = recordAndNotify({ orderId: order.orderId, amount: order.total, approvedByManagerId: managerId, approvedByManagerName: managerName });
+      if (velocity?.shouldAlert) {
+        show({ title: "Refund Flagged", message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: "warning" });
+      } else {
+        show({ title: "Refund Successful", message: "The full refund has been processed successfully.", type: "success" });
+      }
+    } else {
+      show({ title: "Refund Successful", message: "The full refund has been processed successfully.", type: "success" });
+    }
     onClose();
+  };
+
+  const processPartialRefund = async (managerId?: string, managerName?: string) => {
+    const { staffId, name } = getActiveEmployee();
+    if (!staffId) {
+      show({ title: "Employee Required", message: "An active employee must be signed in to process refunds.", type: "error" });
+      return;
+    }
+    const guard = lastGuardRef.current;
+    const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined;
+    await refundItems(order.orderId, selectedItems, staffId, name, paymentMethod, metadata);
+    if (guard?.isSelfRefund && guard?.isCashRefund) {
+      const velocity = recordAndNotify({ orderId: order.orderId, amount: calculateRefundAmount(), approvedByManagerId: managerId, approvedByManagerName: managerName });
+      if (velocity?.shouldAlert) {
+        show({ title: "Refund Flagged", message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: "warning" });
+      } else {
+        show({ title: "Refund Successful", message: "The partial refund has been processed successfully.", type: "success" });
+      }
+    } else {
+      show({ title: "Refund Successful", message: "The partial refund has been processed successfully.", type: "success" });
+    }
+    onClose();
+  };
+
+  const handleFullRefund = () => {
+    if (!reason.trim()) {
+      show({ title: "Reason Required", message: "A reason must be provided to process a full refund.", type: "error" });
+      return;
+    }
+    const guard = checkRefund({ orderCreatedByStaffProfileId: order.created_by_staff_profile_id, paymentMethod });
+    lastGuardRef.current = guard;
+    if (guard.isSelfRefund && guard.isCashRefund && guard.velocity.shouldBlock) {
+      setPendingRefundType("full");
+      setApprovalModalVisible(true);
+      return;
+    }
+    processFullRefund();
   };
 
   const handlePartialRefund = () => {
     if (selectedItems.length === 0) {
-      show({
-        title: "No Items Selected",
-        message: "Please select one or more items to process a partial refund.",
-        type: "error",
-      });
+      show({ title: "No Items Selected", message: "Please select one or more items to process a partial refund.", type: "error" });
       return;
     }
+    const guard = checkRefund({ orderCreatedByStaffProfileId: order.created_by_staff_profile_id, paymentMethod });
+    lastGuardRef.current = guard;
+    if (guard.isSelfRefund && guard.isCashRefund && guard.velocity.shouldBlock) {
+      setPendingRefundType("partial");
+      setApprovalModalVisible(true);
+      return;
+    }
+    processPartialRefund();
+  };
 
-    refundItems(order.orderId, selectedItems, "Cashier", paymentMethod);
-    show({
-      title: "Refund Successful",
-      message: "The partial refund has been processed successfully.",
-      type: "success",
-    });
-    onClose();
+  const onManagerApproved = async (managerProfileId: string, managerName: string) => {
+    setApprovalModalVisible(false);
+    if (pendingRefundType === "full") await processFullRefund(managerProfileId, managerName);
+    else if (pendingRefundType === "partial") await processPartialRefund(managerProfileId, managerName);
+    setPendingRefundType(null);
   };
 
   const toggleItemSelection = (itemId: string, maxQuantity: number) => {
@@ -369,6 +433,14 @@ const RefundModal: React.FC<RefundModalProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
+
+        <RefundApprovalModal
+          visible={approvalModalVisible}
+          employeeName={lastGuardRef.current?.activeEmployeeName || "Cashier"}
+          refundCount={lastGuardRef.current?.velocity.selfRefundCount || 0}
+          onApproved={onManagerApproved}
+          onCancel={() => { setApprovalModalVisible(false); setPendingRefundType(null); }}
+        />
       </DialogContent>
     </Dialog>
   );

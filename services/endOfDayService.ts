@@ -5,7 +5,9 @@
  * Runs checklist validations against live data.
  */
 
+import { fetchSessionVarianceAnalysis } from '@/services/cashDrawerAuditService'
 import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import {
   DailySummary,
@@ -746,7 +748,7 @@ export async function fetchDailySummary (
         const sessionIds = sessions.map((s: any) => s.id)
         const { data: allOps } = await supabase
           .from('cash_drawer_operations')
-          .select('session_id, operation_type, amount')
+          .select('id, session_id, operation_type, amount, performed_at, performed_by, reason, approved_by')
           .in('session_id', sessionIds)
 
         const opsBySession: Record<string, any[]> = {}
@@ -764,8 +766,19 @@ export async function fetchDailySummary (
           const countType = (type: string) =>
             ops.filter((o: any) => o.operation_type === type).length
 
+          // Collect no-sale event details with timestamps
+          const noSaleOps = ops.filter((o: any) => o.operation_type === 'no_sale')
+          const noSaleEvents = noSaleOps.map((o: any) => ({
+            id: o.id,
+            performedAt: o.performed_at,
+            performedBy: o.performed_by,
+            reason: o.reason || null,
+            approvedBy: o.approved_by || null,
+          }))
+
           return {
             drawerName: drawerNameMap[s.cash_drawer_id] || 'Unknown',
+            sessionId: s.id,
             opening: Number(s.opening_amount || 0),
             closing: Number(s.closing_amount || 0),
             expected: Number(s.expected_cash || 0),
@@ -775,9 +788,36 @@ export async function fetchDailySummary (
             payIns: sumType('pay_in'),
             payOuts: sumType('pay_out'),
             cashDrops: sumType('cash_drop'),
-            noSaleCount: countType('no_sale')
+            noSaleCount: countType('no_sale'),
+            noSaleEvents,
           }
         })
+
+        // Fetch variance analysis for sessions with significant variance
+        const alertThreshold = useLocationConfigStore.getState().config.cashDrawer.varianceAlertThreshold || 20
+        for (const item of drawerBreakdown) {
+          if (item.sessionId && Math.abs(item.variance) >= alertThreshold) {
+            try {
+              const analysis = await fetchSessionVarianceAnalysis(supabase, item.sessionId)
+              if (analysis) {
+                item.suspiciousPatterns = analysis.suspiciousPatterns
+                // Enrich no-sale events with staff names from analysis
+                if (analysis.noSaleEvents.length > 0) {
+                  item.noSaleEvents = analysis.noSaleEvents.map(ev => ({
+                    id: ev.id,
+                    performedAt: ev.performedAt,
+                    performedBy: ev.performedBy,
+                    performedByName: ev.performedByName || undefined,
+                    reason: ev.reason,
+                    approvedBy: ev.approvedBy,
+                  }))
+                }
+              }
+            } catch (err) {
+              console.warn('[EOD] Failed to fetch variance analysis for session:', item.sessionId, err)
+            }
+          }
+        }
       }
     } catch (err) {
       console.warn('[EOD] Failed to fetch drawer breakdown:', err)

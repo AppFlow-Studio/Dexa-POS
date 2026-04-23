@@ -512,6 +512,8 @@ export interface PreviousOrder {
   delivery_platform?: string | null
   reversals?: ReversalRecord[]
   order_refund_items?: OrderRefundItemRecord[]
+  // Staff attribution (for fraud detection — who created this order)
+  created_by_staff_profile_id?: string | null
 }
 
 export type InventoryItemStatus =
@@ -949,6 +951,9 @@ export interface OrderProfile {
   _sourceStationId?: string | null // Original creating station ID (for display)
   _sourceStationName?: string | null // Original creating station name (for display)
 
+  // === STAFF ATTRIBUTION ===
+  created_by_staff_profile_id?: string | null // staff_profiles.id of the employee who created this order
+
   // === ORDER SOURCE ===
   order_source?: string | null // "pos" | "online" | null
   delivery_platform?: string | null // "uber_eats" | "grubhub" | "doordash" | "food_panda" | null
@@ -1064,6 +1069,7 @@ export interface Notification {
     | 'swap_request_peer_denied'
     | 'swap_approved'
     | 'swap_denied'
+    | 'refund_fraud_alert'
   message: string
   isRead: boolean
   timestamp: string // ISO string

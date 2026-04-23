@@ -15,6 +15,13 @@ import {
   openDrawerSession
 } from '@/services/cashDrawerService'
 import {
+  computeLocalVarianceFlags,
+  computeLocalTimeline,
+  fetchSessionVarianceAnalysis,
+  type SuspiciousPattern,
+  type VarianceAnalysis,
+} from '@/services/cashDrawerAuditService'
+import {
   DenominationCount,
   isDebitOperation,
   isNoEffectOperation,
@@ -117,6 +124,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   const drawerName = useCashDrawerStore(s => s.drawerName)
   const getRunningBalance = useCashDrawerStore(s => s.getRunningBalance)
   const getVariance = useCashDrawerStore(s => s.getVariance)
+  const getNoSaleCount = useCashDrawerStore(s => s.getNoSaleCount)
 
   const loggedInEmployee = useEmployeeStore(s => s.loggedInEmployee)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
@@ -149,6 +157,11 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
     actual: number
     variance: number
   } | null>(null)
+
+  // Variance analysis state
+  const [varianceDetailExpanded, setVarianceDetailExpanded] = useState(false)
+  const [varianceAnalysis, setVarianceAnalysis] = useState<VarianceAnalysis | null>(null)
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -277,6 +290,24 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   const isBlind = cashDrawerSettings.blindCloseCount
   const { varianceWarningThreshold, varianceAlertThreshold } =
     cashDrawerSettings
+
+  // Local variance flags for the close view (no RPC needed)
+  const localVarianceFlags = useMemo(
+    () => computeLocalVarianceFlags(operations, variance),
+    [operations, variance]
+  )
+  const localTimeline = useMemo(
+    () => computeLocalTimeline(operations, activeSession?.openingAmount || 0),
+    [operations, activeSession?.openingAmount]
+  )
+
+  const handleFetchAnalysis = useCallback(async () => {
+    if (!activeSession || loadingAnalysis) return
+    setLoadingAnalysis(true)
+    const result = await fetchSessionVarianceAnalysis(supabase, activeSession.id)
+    setVarianceAnalysis(result)
+    setLoadingAnalysis(false)
+  }, [activeSession, supabase, loadingAnalysis])
 
   const getVarianceColor = (v: number) => {
     const abs = Math.abs(v)
@@ -1021,16 +1052,41 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             }}
           >
             <Banknote size={16} color={colors.teal} />
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '700',
-                color: colors.teal,
-                marginTop: 2
-              }}
-            >
-              No Sale
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: colors.teal,
+                }}
+              >
+                No Sale
+              </Text>
+              {getNoSaleCount() > 0 && (
+                <View
+                  style={{
+                    paddingHorizontal: 5,
+                    paddingVertical: 1,
+                    borderRadius: 8,
+                    backgroundColor:
+                      cashDrawerSettings.noSaleAlertThreshold > 0 &&
+                      getNoSaleCount() >= cashDrawerSettings.noSaleAlertThreshold
+                        ? colors.danger
+                        : colors.muted + '60',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: '800',
+                      color: '#fff',
+                    }}
+                  >
+                    {getNoSaleCount()}
+                  </Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -1332,6 +1388,139 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
         />
       </View>
 
+      {/* Variance Detail Panel — shown when variance exceeds warning threshold */}
+      {!isBlind && Math.abs(variance) >= varianceWarningThreshold && (
+        <View style={{ marginTop: 12 }}>
+          <TouchableOpacity
+            onPress={() => setVarianceDetailExpanded(!varianceDetailExpanded)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              backgroundColor: Math.abs(variance) >= varianceAlertThreshold
+                ? colors.danger + '15'
+                : '#fbbf2420',
+              borderWidth: 1,
+              borderColor: Math.abs(variance) >= varianceAlertThreshold
+                ? colors.danger + '45'
+                : '#fbbf2450',
+              borderRadius: 10,
+            }}
+          >
+            <Text style={{
+              fontSize: 12,
+              fontWeight: '700',
+              color: Math.abs(variance) >= varianceAlertThreshold
+                ? colors.danger
+                : '#fbbf24',
+            }}>
+              {varianceDetailExpanded ? 'Hide' : 'Show'} Variance Analysis
+            </Text>
+            <Text style={{
+              fontSize: 11,
+              color: colors.muted,
+            }}>
+              {localVarianceFlags.length > 0 ? `${localVarianceFlags.length} flag(s)` : 'No flags'}
+            </Text>
+          </TouchableOpacity>
+
+          {varianceDetailExpanded && (
+            <View style={{
+              marginTop: 8,
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
+              padding: 10,
+            }}>
+              {/* Suspicious patterns */}
+              {localVarianceFlags.length > 0 && (
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.danger, marginBottom: 6 }}>
+                    Suspicious Patterns
+                  </Text>
+                  {localVarianceFlags.map((flag, i) => (
+                    <View key={i} style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 6,
+                      backgroundColor: colors.danger + '10',
+                      borderWidth: 1,
+                      borderColor: colors.danger + '30',
+                      borderRadius: 8,
+                      marginBottom: 4,
+                    }}>
+                      <Text style={{ fontSize: 11, color: colors.danger, fontWeight: '600' }}>
+                        {flag.description}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Operations timeline */}
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.label, marginBottom: 6 }}>
+                Operations Timeline
+              </Text>
+              {localTimeline.map((op) => {
+                const isNoSale = op.operationType === 'no_sale'
+                const opColor = OP_COLORS[op.operationType] || OP_COLORS.no_sale
+                return (
+                  <View key={op.id} style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 4,
+                    paddingHorizontal: 6,
+                    borderRadius: 6,
+                    marginBottom: 2,
+                    backgroundColor: isNoSale ? '#fbbf2415' : 'transparent',
+                    borderWidth: isNoSale ? 1 : 0,
+                    borderColor: isNoSale ? '#fbbf2430' : 'transparent',
+                  }}>
+                    <Text style={{ fontSize: 10, color: colors.muted, width: 60 }}>
+                      {formatTime(op.performedAt)}
+                    </Text>
+                    <View style={{
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 4,
+                      width: 80,
+                    }} className={opColor.bg}>
+                      <Text className={opColor.text} style={{ fontSize: 10, fontWeight: '600' }}>
+                        {OP_LABELS[op.operationType] || op.operationType}
+                      </Text>
+                    </View>
+                    <Text style={{
+                      fontSize: 10,
+                      fontWeight: '600',
+                      color: isNoEffectOperation(op.operationType)
+                        ? colors.muted
+                        : isDebitOperation(op.operationType) ? colors.danger : colors.teal,
+                      width: 60,
+                      textAlign: 'right',
+                    }}>
+                      {isNoEffectOperation(op.operationType)
+                        ? '—'
+                        : `${isDebitOperation(op.operationType) ? '-' : '+'}${formatCurrency(op.amount)}`}
+                    </Text>
+                    <Text style={{
+                      fontSize: 10,
+                      color: colors.heading,
+                      fontWeight: '500',
+                      flex: 1,
+                      textAlign: 'right',
+                    }}>
+                      {formatCurrency(op.runningBalance)}
+                    </Text>
+                  </View>
+                )
+              })}
+            </View>
+          )}
+        </View>
+      )}
+
     </View>
   )
 
@@ -1449,6 +1638,99 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </View>
           </View>
         </View>
+
+        {/* View Full Analysis button — shown when any non-zero variance exists */}
+        {Math.abs(v) >= varianceWarningThreshold && (
+          <View style={{ marginBottom: 10 }}>
+            <TouchableOpacity
+              onPress={handleFetchAnalysis}
+              disabled={loadingAnalysis}
+              style={{
+                paddingVertical: 9,
+                borderRadius: 10,
+                alignItems: 'center',
+                backgroundColor: colors.danger + '15',
+                borderWidth: 1,
+                borderColor: colors.danger + '45',
+              }}
+            >
+              <Text style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color: colors.danger,
+              }}>
+                {loadingAnalysis ? 'Loading Analysis...' : 'View Full Variance Analysis'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Server-side analysis results */}
+            {varianceAnalysis && (
+              <View style={{
+                marginTop: 8,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                padding: 10,
+              }}>
+                {varianceAnalysis.suspiciousPatterns.length > 0 && (
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.danger, marginBottom: 4 }}>
+                      Suspicious Patterns ({varianceAnalysis.suspiciousPatterns.length})
+                    </Text>
+                    {varianceAnalysis.suspiciousPatterns.map((flag, i) => (
+                      <View key={i} style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 6,
+                        backgroundColor: colors.danger + '10',
+                        borderWidth: 1,
+                        borderColor: colors.danger + '30',
+                        borderRadius: 8,
+                        marginBottom: 4,
+                      }}>
+                        <Text style={{ fontSize: 11, color: colors.danger, fontWeight: '600' }}>
+                          {flag.description}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {varianceAnalysis.noSaleEvents.length > 0 && (
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#fbbf24', marginBottom: 4 }}>
+                      No-Sale Events ({varianceAnalysis.noSaleEvents.length})
+                    </Text>
+                    {varianceAnalysis.noSaleEvents.map((ev) => (
+                      <View key={ev.id} style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        backgroundColor: '#fbbf2410',
+                        borderRadius: 6,
+                        marginBottom: 2,
+                      }}>
+                        <Text style={{ fontSize: 10, color: '#fbbf24', fontWeight: '600' }}>
+                          {formatTime(ev.performedAt)} — {ev.performedByName || 'Unknown'}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: colors.muted }}>
+                          {ev.reason || 'No reason'}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {varianceAnalysis.suspiciousPatterns.length === 0 && varianceAnalysis.noSaleEvents.length === 0 && (
+                  <Text style={{ fontSize: 11, color: colors.muted, textAlign: 'center' }}>
+                    No suspicious patterns detected
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+        )}
 
         <TouchableOpacity
           onPress={onClose}

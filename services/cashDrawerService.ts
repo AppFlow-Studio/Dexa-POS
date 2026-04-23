@@ -215,33 +215,26 @@ export async function recordDrawerOperation(
     receiptPrinted: params.receiptPrinted,
   });
 
-  // Persist to backend — run INSERT and session UPDATE in parallel
-  const insertPromise = supabase.from("cash_drawer_operations").insert({
-    id: opId,
-    cash_drawer_id: params.cashDrawerId,
-    session_id: params.sessionId,
-    operation_type: params.operationType,
-    amount: params.amount,
-    performed_by: params.performedBy,
-    performed_at: performedAt,
-    order_id: params.orderId || null,
-    payment_id: params.paymentId || null,
-    balance_after: balanceAfter,
-    reason: params.reason || null,
-    approved_by: params.approvedBy || null,
-  });
+  // Persist to backend via RPC (handles balance calc, session update, and
+  // audit_logs dual-logging for no-sale events atomically)
+  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    "record_cash_operation",
+    {
+      p_cash_drawer_id: params.cashDrawerId,
+      p_session_id: params.sessionId,
+      p_operation_type: params.operationType,
+      p_amount: params.amount,
+      p_performed_by: params.performedBy,
+      p_order_id: params.orderId || null,
+      p_payment_id: params.paymentId || null,
+      p_reason: params.reason || null,
+      p_approved_by: params.approvedBy || null,
+    }
+  );
 
-  const updatePromise = !isNoEffectOperation(params.operationType)
-    ? supabase
-        .from("cash_drawer_sessions")
-        .update({ expected_cash: balanceAfter })
-        .eq("id", params.sessionId)
-    : Promise.resolve({ error: null });
-
-  const [insertResult] = await Promise.all([insertPromise, updatePromise]);
-
-  if (insertResult.error) {
-    console.error("[CashDrawer] Failed to record operation, queuing offline:", insertResult.error);
+  if (rpcError || (rpcResult && !rpcResult.success)) {
+    const errMsg = rpcError?.message || rpcResult?.error || "Unknown error";
+    console.error("[CashDrawer] RPC failed, queuing offline:", errMsg);
     // Queue for offline sync
     try {
       const { queueOperation } = require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
@@ -266,7 +259,7 @@ export async function recordDrawerOperation(
     } catch (queueError) {
       console.error("[CashDrawer] Failed to queue offline operation:", queueError);
     }
-    return { success: false, error: insertResult.error.message };
+    return { success: false, error: errMsg };
   }
 
   return { success: true };

@@ -168,13 +168,14 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
       // Declare cash tips (non-blocking — queued if offline/fails)
       const shiftId = timeClock.shiftId
-      if (shiftId) {
+      if (shiftId || user?.profileId) {
         try {
           await timeClock.declareCashTips(
-            shiftId,
+            shiftId || '',
             declaredAmount,
             locationId,
-            deviceId
+            deviceId,
+            user?.profileId,
           )
         } catch (e) {
           console.warn(

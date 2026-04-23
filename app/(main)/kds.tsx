@@ -408,17 +408,36 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const shouldHideDoneItems = hideDoneItems && !onItemPress
 
     // Memoize expensive item filtering/aggregation/sorting for large ticket volumes.
+    type DisplayState = 'active' | 'voided' | 'refunded' | 'changed'
+    type ExpandedItem = KDSTicketItem & { _displayState: DisplayState }
+
     const { doneItemCount, visibleItems } = useMemo(() => {
+      // Done count excludes voided/refunded items — they're not "done", they're cancelled/returned
       const doneCount = ticketItems
-        .filter(i => i.kitchen_status === 'ready')
+        .filter(i => i.kitchen_status === 'ready' && !i.is_voided && !i.is_refunded)
         .reduce((sum, i) => sum + (i.quantity || 0), 0)
 
-      let processed: KDSTicketItem[] = shouldHideDoneItems
-        ? ticketItems.filter(i => i.kitchen_status !== 'ready')
+      // Hide done items setting — voided/refunded always stay visible as kitchen notifications
+      let filtered: KDSTicketItem[] = shouldHideDoneItems
+        ? ticketItems.filter(i => i.kitchen_status !== 'ready' || i.is_voided || i.is_refunded)
         : [...ticketItems]
 
+      // Expand voided/refunded items into display rows with _displayState
+      let processed: ExpandedItem[] = filtered.flatMap((item): ExpandedItem[] => {
+        if (item.is_voided) return [{ ...item, _displayState: 'voided' }]
+        if (!item.is_refunded || !item.refunded_quantity) return [{ ...item, _displayState: 'active' }]
+        if (item.refunded_quantity >= item.quantity) {
+          return [{ ...item, _displayState: 'refunded' }]
+        }
+        // Partial refund — split into refunded + changed rows
+        return [
+          { ...item, quantity: item.refunded_quantity, _displayState: 'refunded' },
+          { ...item, quantity: item.quantity - item.refunded_quantity, _displayState: 'changed' },
+        ]
+      })
+
       if (displaySettings.aggregateIdenticalItems) {
-        const aggregated: KDSTicketItem[] = []
+        const aggregated: ExpandedItem[] = []
         const keyMap = new Map<string, number>()
         for (const item of processed) {
           const modKey = item.modifiers
@@ -427,7 +446,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             .join('|')
           const key = `${item.name}__${modKey}__${
             item.special_instructions ?? ''
-          }`
+          }__${item._displayState}`
           const idx = keyMap.get(key)
           if (idx !== undefined) {
             const existing = aggregated[idx]
@@ -457,7 +476,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         allergen: { label: string; color: string } | null
       }
       type VisibleItem = {
-        item: KDSTicketItem
+        item: ExpandedItem
         sortedModifiers: ModWithMeta[]
         representedItemIds: string[]
       }
@@ -770,12 +789,31 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           <View style={{ padding: 10, backgroundColor: '#FFFFFF' }}>
             {visibleItems.map(
               ({ item, sortedModifiers, representedItemIds }, index) => {
-                const isItemDone = item.kitchen_status === 'ready'
+                const isItemDone = item.kitchen_status === 'ready' && item._displayState === 'active'
+                const isVoided = item._displayState === 'voided'
+                const isRefunded = item._displayState === 'refunded'
+                const isChanged = item._displayState === 'changed'
+                const isInactive = isVoided || isRefunded
+                const shouldStrike = isItemDone || isInactive
+                const itemOpacity = isInactive ? 0.4 : isItemDone ? 0.5 : 1
+
+                // Quantity badge color
+                const qtyBg = isVoided
+                  ? '#FCA5A5'
+                  : isRefunded
+                  ? '#FDBA74'
+                  : isChanged
+                  ? '#FDE68A'
+                  : isItemDone
+                  ? colors.success
+                  : '#E5E7EB'
+                const qtyColor = isItemDone ? '#fff' : isVoided ? '#7F1D1D' : isRefunded ? '#7C2D12' : '#111827'
+
                 return (
                   <Pressable
-                    key={item.id}
+                    key={`${item.id}_${item._displayState}`}
                     onPress={() => {
-                      if (!isItemDone && onItemPress) {
+                      if (!isInactive && !isItemDone && onItemPress) {
                         const idsToMark =
                           representedItemIds.length > 0
                             ? representedItemIds
@@ -795,14 +833,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       style={{
                         flexDirection: 'row',
                         alignItems: 'flex-start',
-                        opacity: isItemDone ? 0.5 : 1
+                        opacity: itemOpacity
                       }}
                     >
                       <View
                         style={{
-                          backgroundColor: isItemDone
-                            ? colors.success
-                            : '#E5E7EB',
+                          backgroundColor: qtyBg,
                           width: 22,
                           height: 22,
                           borderRadius: 4,
@@ -814,7 +850,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       >
                         <Text
                           style={{
-                            color: isItemDone ? '#fff' : '#111827',
+                            color: qtyColor,
                             fontSize: 12,
                             fontWeight: '700'
                           }}
@@ -822,6 +858,22 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           {item.quantity}
                         </Text>
                       </View>
+                      {/* Status badge pill for voided/refunded/changed */}
+                      {isVoided && (
+                        <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, marginRight: 5, alignSelf: 'center' }}>
+                          <Text style={{ color: '#DC2626', fontSize: 8, fontWeight: '800' }}>VOIDED</Text>
+                        </View>
+                      )}
+                      {isRefunded && (
+                        <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, marginRight: 5, alignSelf: 'center' }}>
+                          <Text style={{ color: '#D97706', fontSize: 8, fontWeight: '800' }}>REFUNDED</Text>
+                        </View>
+                      )}
+                      {isChanged && (
+                        <View style={{ backgroundColor: '#FEF9C3', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, marginRight: 5, alignSelf: 'center' }}>
+                          <Text style={{ color: '#92400E', fontSize: 8, fontWeight: '800' }}>CHANGED</Text>
+                        </View>
+                      )}
                       {item.seat_number != null && (
                         <Text
                           style={{
@@ -836,11 +888,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       )}
                       <Text
                         style={{
-                          color: isItemDone ? '#9CA3AF' : '#111827',
+                          color: isInactive ? '#9CA3AF' : isItemDone ? '#9CA3AF' : '#111827',
                           fontSize: 13,
                           fontWeight: '600',
                           flex: 1,
-                          textDecorationLine: isItemDone
+                          textDecorationLine: shouldStrike
                             ? 'line-through'
                             : 'none'
                         }}
@@ -877,7 +929,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         }
                         return (
                           <View
-                            key={`${item.id}_m${mi}`}
+                            key={`${item.id}_${item._displayState}_m${mi}`}
                             style={{
                               marginTop: 2,
                               flexDirection: 'row',
@@ -894,8 +946,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                                 fontWeight: '600',
                                 lineHeight: 16,
                                 marginLeft: 30,
-                                opacity: isItemDone ? 0.4 : 1,
-                                textDecorationLine: isItemDone
+                                opacity: shouldStrike ? 0.4 : 1,
+                                textDecorationLine: shouldStrike
                                   ? 'line-through'
                                   : 'none',
                                 flex: 1
@@ -940,8 +992,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           fontStyle: 'italic',
                           marginLeft: 30,
                           marginTop: 3,
-                          opacity: isItemDone ? 0.4 : 1,
-                          textDecorationLine: isItemDone
+                          opacity: shouldStrike ? 0.4 : 1,
+                          textDecorationLine: shouldStrike
                             ? 'line-through'
                             : 'none'
                         }}

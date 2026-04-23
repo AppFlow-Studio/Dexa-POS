@@ -26,6 +26,18 @@ export function buildKitchenTicketCommands(
     b.doubleLine(w);
   }
 
+  // ── Refund header (if applicable) ──
+  if (data.isRefundTicket) {
+    b.alignCenter();
+    b.bold(true);
+    b.doubleSize(true);
+    b.textLine("** REFUND **");
+    b.doubleSize(false);
+    b.bold(false);
+    b.alignLeft();
+    b.doubleLine(w);
+  }
+
   // ── Order Header ──
   b.alignCenter();
   b.bold(true);
@@ -237,7 +249,7 @@ function renderSingleItem(
     b.doubleHeight(true);
   }
 
-  const prefix = item.isVoided ? "VOID " : "";
+  const prefix = item.isVoided ? "VOID " : item.isRefunded ? "REFUND " : "";
   const qtyStr = `${item.quantity}x `;
   b.textLine(`${prefix}${qtyStr}${item.name}`);
 

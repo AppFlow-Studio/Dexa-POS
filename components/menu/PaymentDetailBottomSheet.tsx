@@ -4,6 +4,8 @@ import {
   useRefundMutation,
   type PerPaymentRefundDetail
 } from '@/hooks/orders/useRefundMutation'
+import { useRefundFraudGuard, type FraudGuardCheckResult } from '@/hooks/useRefundFraudGuard'
+import RefundApprovalModal from '@/components/previous-orders/RefundApprovalModal'
 import { useTipAdjustMutation } from '@/hooks/orders/useTipAdjustMutation'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
@@ -3626,6 +3628,16 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 
   // Mutation hooks
   const refundMutation = useRefundMutation()
+  const { checkRefund, recordAndNotify } = useRefundFraudGuard()
+  const [refundApprovalVisible, setRefundApprovalVisible] = useState(false)
+  const pendingRefundRef = useRef<{
+    type: RefundType
+    totalAmount: number
+    reason: string
+    perPaymentDetails: PerPaymentRefundDetail[]
+    selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
+  } | null>(null)
+  const lastFraudGuardRef = useRef<FraudGuardCheckResult | null>(null)
 
   const { isOpen, orderId, initialView, close } = usePaymentDetailSheetStore()
   const updateOrderCheckStatus = useOrderStore(s => s.updateOrderCheckStatus)
@@ -3874,10 +3886,21 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       })
     }
 
+    // Compute refunds from reversals (authoritative source) — reversals update
+    // reliably via both optimistic patch and backend sync, whereas payment-level
+    // refundedAmount can lag behind when syncOrderFromBackendComplete's payment
+    // merge preserves a stale local payment (partially_refunded status gap).
+    const reversalRefundTotal = ((order.reversals as ReversalRecord[]) || [])
+      .filter(r => r.status === 'completed')
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
+
+    // Use reversals when available, fall back to payment-level for legacy orders
+    const effectiveRefunds = reversalRefundTotal > 0 ? reversalRefundTotal : totalRefunded
+
     return {
       orderTotal: order.total_amount || 0,
       orderCashTotal: order.total_cash_amount || 0,
-      refunds: totalRefunded,
+      refunds: effectiveRefunds,
       collected: totalCollected,
       held: totalHeld,
       tips: totalTips,
@@ -4155,29 +4178,19 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     setRightPaneView('summary')
   }, [])
 
-  const handleProcessRefund = useCallback(
+  const executeRefund = useCallback(
     async (
       type: RefundType,
       totalAmount: number,
       reason: string,
       perPaymentDetails: PerPaymentRefundDetail[],
-      selectedItems?: {
-        itemId: string
-        quantity: number
-        paymentIndex?: number
-      }[]
+      selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
     ): Promise<boolean> => {
       if (!order) {
-        show({
-          title: 'Refund Failed',
-          message: 'Order not found.',
-          type: 'error'
-        })
+        show({ title: 'Refund Failed', message: 'Order not found.', type: 'error' })
         return false
       }
-
       const orderDbId = order.db_order_id || order.id
-
       try {
         if (type === 'items') {
           await refundMutation.mutateAsync({
@@ -4208,11 +4221,137 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         setRightPaneView('summary')
         return true
       } catch {
-        // Error handling is done by the mutation's onError callback
         return false
       }
     },
     [order, orderId, show, selectedStation, refundMutation]
+  )
+
+  const writeFraudAuditLog = useCallback(
+    (params: {
+      totalAmount: number
+      velocityCount: number
+      wasBlocked: boolean
+      approvedByManagerId?: string
+      approvedByManagerName?: string
+    }) => {
+      if (!supabase || !orderId) return
+      const empStore = useEmployeeStore.getState()
+      const activeEmpId = empStore.activeEmployeeId
+      const emp = activeEmpId ? empStore.getEmployeeById(activeEmpId) : null
+      if (!emp?.profileId) return
+
+      const flags = ['same_cashier_refund']
+      if (params.wasBlocked) flags.push('velocity_blocked')
+
+      supabase.from('audit_logs').insert({
+        action: 'same_cashier_refund',
+        action_category: 'fraud_detection',
+        actor_name: emp.fullName,
+        staff_profile_id: emp.profileId,
+        resource_type: 'order',
+        resource_id: orderId,
+        severity: params.wasBlocked ? 'high' : 'medium',
+        metadata: {
+          fraud_flags: flags,
+          refund_amount: params.totalAmount,
+          velocity_count: params.velocityCount,
+          approved_by: params.approvedByManagerId,
+          approved_by_name: params.approvedByManagerName,
+        },
+        location_id: selectedStore?.id,
+        merchant_id: selectedStore?.merchant_id,
+      }).then(({ error: auditErr }) => {
+        if (auditErr) console.warn('[FraudGuard] audit_logs insert failed:', auditErr)
+      })
+    },
+    [supabase, orderId, selectedStore]
+  )
+
+  const handleProcessRefund = useCallback(
+    async (
+      type: RefundType,
+      totalAmount: number,
+      reason: string,
+      perPaymentDetails: PerPaymentRefundDetail[],
+      selectedItems?: {
+        itemId: string
+        quantity: number
+        paymentIndex?: number
+      }[]
+    ): Promise<boolean> => {
+      // Determine if any payment in this refund involves cash
+      const hasCashPayment = perPaymentDetails.some(
+        d => d.method?.toLowerCase() === 'cash'
+      )
+      const paymentMethod = hasCashPayment ? 'Cash' as const : 'Card' as const
+
+      const guard = checkRefund({
+        orderCreatedByStaffProfileId: order?.created_by_staff_profile_id,
+        paymentMethod,
+      })
+      lastFraudGuardRef.current = guard
+
+      if (guard.isSelfRefund && guard.isCashRefund && guard.velocity.shouldBlock) {
+        pendingRefundRef.current = { type, totalAmount, reason, perPaymentDetails, selectedItems }
+        setRefundApprovalVisible(true)
+        return false
+      }
+
+      const success = await executeRefund(type, totalAmount, reason, perPaymentDetails, selectedItems)
+
+      if (success && guard.isSelfRefund && guard.isCashRefund) {
+        const velocity = recordAndNotify({ orderId: orderId || '', amount: totalAmount })
+        writeFraudAuditLog({ totalAmount, velocityCount: velocity?.selfRefundCount ?? 1, wasBlocked: false })
+        if (velocity?.shouldAlert) {
+          setTimeout(() => {
+            show({ title: 'Refund Flagged', message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. Flagged for review.`, type: 'warning' })
+          }, 100)
+        }
+      }
+
+      return success
+    },
+    [order, orderId, show, checkRefund, recordAndNotify, executeRefund, writeFraudAuditLog]
+  )
+
+  const handleRefundManagerApproved = useCallback(
+    async (managerProfileId: string, managerName: string) => {
+      setRefundApprovalVisible(false)
+      const pending = pendingRefundRef.current
+      if (!pending) return
+
+      const success = await executeRefund(
+        pending.type,
+        pending.totalAmount,
+        pending.reason,
+        pending.perPaymentDetails,
+        pending.selectedItems,
+      )
+
+      if (success) {
+        const velocity = recordAndNotify({
+          orderId: orderId || '',
+          amount: pending.totalAmount,
+          approvedByManagerId: managerProfileId,
+          approvedByManagerName: managerName,
+        })
+        writeFraudAuditLog({
+          totalAmount: pending.totalAmount,
+          velocityCount: velocity?.selfRefundCount ?? 1,
+          wasBlocked: true,
+          approvedByManagerId: managerProfileId,
+          approvedByManagerName: managerName,
+        })
+        if (velocity?.shouldAlert) {
+          setTimeout(() => {
+            show({ title: 'Refund Flagged', message: `Same-cashier cash refund #${velocity.selfRefundCount} (manager-approved). Flagged for review.`, type: 'warning' })
+          }, 100)
+        }
+      }
+      pendingRefundRef.current = null
+    },
+    [orderId, show, executeRefund, recordAndNotify, writeFraudAuditLog]
   )
 
   return (
@@ -4342,6 +4481,17 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         </View>
       </View>
       <ToastRenderer />
+
+      <RefundApprovalModal
+        visible={refundApprovalVisible}
+        employeeName={lastFraudGuardRef.current?.activeEmployeeName || 'Cashier'}
+        refundCount={lastFraudGuardRef.current?.velocity.selfRefundCount || 0}
+        onApproved={handleRefundManagerApproved}
+        onCancel={() => {
+          setRefundApprovalVisible(false)
+          pendingRefundRef.current = null
+        }}
+      />
     </Modal>
   )
 }

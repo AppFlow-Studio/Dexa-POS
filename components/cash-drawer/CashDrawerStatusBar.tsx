@@ -7,6 +7,7 @@
 
 import { formatCurrency } from "@/utils/currency";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { DollarSign } from "lucide-react-native";
 import React, { useEffect } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -25,8 +26,10 @@ const CashDrawerStatusBar: React.FC<CashDrawerStatusBarProps> = ({
   const activeSession = useCashDrawerStore((s) => s.activeSession);
   const operations = useCashDrawerStore((s) => s.operations);
   const getRunningBalance = useCashDrawerStore((s) => s.getRunningBalance);
+  const getNoSaleCount = useCashDrawerStore((s) => s.getNoSaleCount);
   const shouldPromptOpen = useCashDrawerStore((s) => s.shouldPromptOpen);
   const setShouldPromptOpen = useCashDrawerStore((s) => s.setShouldPromptOpen);
+  const noSaleAlertThreshold = useLocationConfigStore((s) => s.config.cashDrawer.noSaleAlertThreshold);
 
   // Post-clock-in prompt: auto-open drawer sheet when flagged
   useEffect(() => {
@@ -78,9 +81,22 @@ const CashDrawerStatusBar: React.FC<CashDrawerStatusBarProps> = ({
       <View className="flex-1 flex-row items-center justify-end gap-2">
         <TouchableOpacity
           onPress={onNoSalePress}
-          className="px-3 py-1 rounded-md bg-gray-700"
+          className="px-3 py-1 rounded-md bg-gray-700 flex-row items-center"
         >
           <Text className="text-xs font-semibold text-white">No Sale</Text>
+          {getNoSaleCount() > 0 && (
+            <View
+              className={`ml-1.5 px-1.5 py-0.5 rounded-full ${
+                noSaleAlertThreshold > 0 && getNoSaleCount() >= noSaleAlertThreshold
+                  ? "bg-red-600"
+                  : "bg-gray-600"
+              }`}
+            >
+              <Text className="text-[10px] font-bold text-white">
+                {getNoSaleCount()}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onManagePress}

@@ -132,7 +132,7 @@ async function _backfillMissingDefaults(
   const namespaces: ConfigNamespace[] = [
     'dining', 'kds', 'printing', 'cashDrawer',
     'onlineOrdering', 'tips', 'preAuth', 'waitlist', 'payment',
-    'notifications', 'timeclock',
+    'notifications', 'timeclock', 'fraudDetection',
   ]
 
   for (const ns of namespaces) {

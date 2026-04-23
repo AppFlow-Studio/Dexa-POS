@@ -469,13 +469,13 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
   const items = order.order_items
   if (!items || items.length === 0) return []
 
-  // Filter to KDS-relevant, non-voided items
-  const kdsItems = items.filter(
-    item =>
-      !item.is_voided &&
-      item.kitchen_status != null &&
-      KDS_STATUSES.has(item.kitchen_status)
-  )
+  // Filter to KDS-relevant items (include voided/refunded if they reached kitchen)
+  const kdsItems = items.filter(item => {
+    if (item.kitchen_status == null) return false
+    if (item.is_voided) return true
+    if ((item.refunded_quantity ?? 0) > 0) return true
+    return KDS_STATUSES.has(item.kitchen_status)
+  })
   if (kdsItems.length === 0) return []
 
   // Group by course_number + fire_time (round)
@@ -496,10 +496,13 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
     const fireTimeMs = safeParseUtcTimestamp(fireTime)
     const fireTimeEpoch = fireTimeMs ? Math.floor(fireTimeMs / 1000) : 0
 
-    // Derive ticket status (same logic as SQL: all ready → ready, any sent → pending, else cooking)
+    // Derive ticket status from active items only (voided/fully-refunded are display-only)
     // In 2-step mode, remap "pending" to "cooking" (items skip Pending bucket)
-    const allReady = roundItems.every(i => i.kitchen_status === 'ready')
-    const anySent = roundItems.some(i => i.kitchen_status === 'sent')
+    const activeItems = roundItems.filter(i =>
+      !i.is_voided && (i.refunded_quantity ?? 0) < i.quantity
+    )
+    const allReady = activeItems.length === 0 || activeItems.every(i => i.kitchen_status === 'ready')
+    const anySent = activeItems.some(i => i.kitchen_status === 'sent')
     const ticketStatus: KDSTicket['status'] = allReady
       ? 'ready'
       : anySent
@@ -523,7 +526,10 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
       prep_station: item.prep_station,
       rush: item.rush,
       is_prioritized: item.is_prioritized,
-      seat_number: item.seat_number ?? null
+      seat_number: item.seat_number ?? null,
+      is_voided: item.is_voided,
+      is_refunded: (item.refunded_quantity ?? 0) > 0,
+      refunded_quantity: item.refunded_quantity ?? 0
     }))
     // Stable sort by id so items never reorder on status change
     ticketItems.sort((a, b) => a.id.localeCompare(b.id))
@@ -545,7 +551,10 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
       start_time: fireTime ?? order.sent_to_kitchen_at,
       start_time_epoch:
         fireTimeMs || safeParseUtcTimestamp(order.sent_to_kitchen_at),
-      item_count: ticketItems.reduce((sum, i) => sum + i.quantity, 0),
+      item_count: ticketItems.reduce((sum, i) => {
+        if (i.is_voided) return sum
+        return sum + Math.max(0, i.quantity - (i.refunded_quantity ?? 0))
+      }, 0),
       items: ticketItems,
       prioritized: roundItems.some(i => i.is_prioritized),
       session_id: order.session_id ?? null
@@ -582,6 +591,9 @@ function ticketDeepEqual (a: KDSTicket, b: KDSTicket): boolean {
     if (ai.quantity !== bi.quantity || ai.rush !== bi.rush) return false
     if (ai.is_prioritized !== bi.is_prioritized) return false
     if (ai.special_instructions !== bi.special_instructions) return false
+    if (ai.is_voided !== bi.is_voided) return false
+    if (ai.is_refunded !== bi.is_refunded) return false
+    if (ai.refunded_quantity !== bi.refunded_quantity) return false
   }
   return true
 }

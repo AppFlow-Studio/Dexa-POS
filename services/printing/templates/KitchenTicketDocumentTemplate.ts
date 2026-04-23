@@ -49,6 +49,20 @@ export function buildKitchenTicketDocument (
     nodes.push({ type: 'divider', style: 'double', lineWidth: w })
   }
 
+  // ── Refund header (if applicable) ──
+  if (data.isRefundTicket) {
+    nodes.push({
+      type: 'text_line',
+      content: '** REFUND **',
+      align: 'center',
+      format: scaledFormat('** REFUND **', w, {
+        doubleWidth: true,
+        doubleHeight: true
+      })
+    })
+    nodes.push({ type: 'divider', style: 'double', lineWidth: w })
+  }
+
   // ── Order Header ──
   const orderHeaderText = `ORDER ${data.orderNumber}`
   nodes.push({
@@ -264,7 +278,7 @@ function pushSingleItem (
   cfg: KitchenTicketData['templateConfig']
 ): void {
   const useLargeText = cfg?.largeItemText !== false
-  const prefix = item.isVoided ? 'VOID ' : ''
+  const prefix = item.isVoided ? 'VOID ' : item.isRefunded ? 'REFUND ' : ''
   const qtyStr = `${item.quantity}x `
   const itemText = `${prefix}${qtyStr}${sanitizeForPrint(item.name)}`
 

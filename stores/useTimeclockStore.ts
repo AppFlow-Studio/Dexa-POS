@@ -616,6 +616,77 @@ export const useTimeclockStore = create<TimeclockState>()(
             return;
           }
 
+          // Check timeclock config for auto-close stale shifts setting
+          const { useLocationConfigStore } = require("./useLocationConfigStore") as {
+            useLocationConfigStore: typeof import("./useLocationConfigStore").useLocationConfigStore;
+          };
+          const timeclockConfig = useLocationConfigStore.getState().config.timeclock;
+          const autoClose = timeclockConfig?.autoCloseStaleShifts ?? false;
+          const maxHours = timeclockConfig?.maxShiftHours ?? 24;
+
+          // Auto-close stale shifts if setting is enabled
+          if (autoClose) {
+            const now = Date.now();
+            const staleShiftIds: string[] = [];
+            const staleDates = new Set<string>();
+
+            for (const shift of data) {
+              const clockInMs = new Date(shift.clock_in_time).getTime();
+              const hoursOpen = (now - clockInMs) / 3_600_000;
+              if (hoursOpen > maxHours) {
+                staleShiftIds.push(shift.id);
+                // Track the shift date for daily tips rebuild
+                staleDates.add(shift.clock_in_time.split("T")[0]);
+              }
+            }
+
+            if (staleShiftIds.length > 0) {
+              console.warn(
+                `[Timeclock] Auto-closing ${staleShiftIds.length} stale shift(s) open >${maxHours}h`
+              );
+
+              // Close stale shifts — set clock_out to end of their clock-in business day
+              for (const shiftId of staleShiftIds) {
+                const shift = data.find((s: any) => s.id === shiftId);
+                if (!shift) continue;
+
+                // End of the clock-in day (midnight local → UTC)
+                const clockInDate = shift.clock_in_time.split("T")[0];
+                const nextDay = new Date(clockInDate);
+                nextDay.setDate(nextDay.getDate() + 1);
+                const endOfDay = nextDay.toISOString();
+
+                await supabase
+                  .from("staff_shifts")
+                  .update({ clock_out_time: endOfDay, status: "completed" })
+                  .eq("id", shiftId)
+                  .in("status", ["active", "on_break"]);
+              }
+
+              // Rebuild daily tips for affected dates
+              for (const date of staleDates) {
+                try {
+                  await supabase.rpc("rebuild_employee_daily_tips", {
+                    p_location_id: locationId,
+                    p_shift_date: date,
+                  });
+                } catch (e) {
+                  console.warn(`[Timeclock] Failed to rebuild daily tips for ${date}:`, e);
+                }
+              }
+
+              // Remove auto-closed shifts from the data array so they don't get hydrated
+              const staleSet = new Set(staleShiftIds);
+              const remaining = data.filter((s: any) => !staleSet.has(s.id));
+              data.length = 0;
+              data.push(...remaining);
+
+              console.log(
+                `[Timeclock] Auto-closed stale shifts, ${data.length} active shifts remaining`
+              );
+            }
+          }
+
           // Map staff_profile_id to location_member id via employee store
           const { useEmployeeStore } = require("./useEmployeeStore") as {
             useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;

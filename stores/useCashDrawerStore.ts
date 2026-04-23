@@ -100,6 +100,7 @@ interface CashDrawerState {
   // Computed
   getRunningBalance: () => number;
   getVariance: (closingAmount: number) => number;
+  getNoSaleCount: () => number;
 }
 
 // ============================================================================
@@ -192,6 +193,10 @@ export const useCashDrawerStore = create<CashDrawerState>()(
       getVariance: (closingAmount: number) => {
         const expected = get().getRunningBalance();
         return closingAmount - expected;
+      },
+
+      getNoSaleCount: () => {
+        return get().operations.filter(op => op.operationType === 'no_sale').length;
       },
     })),
     {

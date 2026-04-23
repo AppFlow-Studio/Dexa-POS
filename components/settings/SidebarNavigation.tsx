@@ -25,6 +25,7 @@ import {
   Printer,
   Receipt,
   Settings,
+  Shield,
   Smartphone,
   Truck,
   Users
@@ -87,6 +88,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         label: 'Cash Management',
         icon: DollarSign,
         route: '/settings/cash-management'
+      },
+      {
+        id: 'fraud-detection',
+        label: 'Fraud Detection',
+        icon: Shield,
+        route: '/settings/fraud-detection'
       },
       {
         id: 'dining-room',

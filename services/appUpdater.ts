@@ -43,7 +43,16 @@ function isValidManifest(obj: unknown): obj is VersionManifest {
 export async function checkForNativeUpdate(): Promise<VersionManifest | null> {
   if (__DEV__) return null;
   try {
-    const res = await fetch(getVersionManifestUrl());
+    // Cache-bust: query param defeats every URL-keyed cache (native HTTP cache,
+    // CDN edge, proxies). Headers are the cooperative signal for caches that
+    // inspect them. Together they guarantee a fresh version.json on every check.
+    const url = `${getVersionManifestUrl()}?t=${Date.now()}`;
+    const res = await fetch(url, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
     if (!res.ok) return null;
 
     const raw: unknown = await res.json();

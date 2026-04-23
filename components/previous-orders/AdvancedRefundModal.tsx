@@ -1,8 +1,11 @@
 import { useToast } from '@/contexts/ToastContext'
+import { useRefundFraudGuard, type FraudGuardCheckResult } from '@/hooks/useRefundFraudGuard'
 import { orderHistoryKeys } from '@/hooks/orders/useOrderHistory'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { CartItem, OrderProfile, PaymentType } from '@/lib/types'
-import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import { usePreviousOrdersStore, type RefundFraudMetadata } from '@/stores/usePreviousOrdersStore'
+import RefundApprovalModal from './RefundApprovalModal'
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFooter,
@@ -56,6 +59,10 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
   const { show } = useToast()
   const queryClient = useQueryClient()
   const { refundFullOrder, refundItems } = usePreviousOrdersStore()
+  const { checkRefund, recordAndNotify } = useRefundFraudGuard()
+  const [approvalModalVisible, setApprovalModalVisible] = useState(false)
+  const [pendingRefundType, setPendingRefundType] = useState<'full' | 'partial' | null>(null)
+  const lastGuardRef = useRef<FraudGuardCheckResult | null>(null)
 
   useImperativeHandle(ref, () => ({
     open: () => {
@@ -146,6 +153,81 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
     )
   }
 
+  const getActiveEmployee = (): { staffId: string | null; name: string } => {
+    const empStore = useEmployeeStore.getState()
+    const activeEmpId = empStore.activeEmployeeId
+    const emp = activeEmpId ? empStore.getEmployeeById(activeEmpId) : null
+    return {
+      staffId: emp?.profileId ?? null,
+      name: emp?.fullName || 'Cashier',
+    }
+  }
+
+  const buildFraudMetadata = (guard: FraudGuardCheckResult, managerId?: string, managerName?: string): RefundFraudMetadata | undefined => {
+    if (!guard.isSelfRefund || !guard.isCashRefund) return undefined
+    const flags: string[] = ['same_cashier_refund']
+    if (guard.velocity.shouldBlock) flags.push('velocity_blocked')
+    return {
+      fraudFlags: flags,
+      velocityCount: guard.velocity.selfRefundCount,
+      approvedByManagerId: managerId,
+      approvedByManagerName: managerName,
+    }
+  }
+
+  const processFullRefund = async (managerId?: string, managerName?: string) => {
+    const { staffId, name } = getActiveEmployee()
+    if (!staffId) {
+      show({ title: 'Employee Required', message: 'An active employee must be signed in to process refunds.', type: 'error' })
+      return
+    }
+    const guard = lastGuardRef.current
+    const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined
+
+    await refundFullOrder(orderId, reason, staffId, name, paymentMethod, metadata)
+
+    if (guard?.isSelfRefund && guard?.isCashRefund) {
+      const velocity = recordAndNotify({ orderId, amount: orderTotal, approvedByManagerId: managerId, approvedByManagerName: managerName })
+      if (velocity?.shouldAlert) {
+        show({ title: 'Refund Flagged', message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: 'warning' })
+      } else {
+        show({ title: 'Refund Successful', message: 'The full refund has been processed successfully.', type: 'success' })
+      }
+    } else {
+      show({ title: 'Refund Successful', message: 'The full refund has been processed successfully.', type: 'success' })
+    }
+
+    queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all })
+    bottomSheetRef.current?.close()
+  }
+
+  const processPartialRefund = async (managerId?: string, managerName?: string) => {
+    const { staffId, name } = getActiveEmployee()
+    if (!staffId) {
+      show({ title: 'Employee Required', message: 'An active employee must be signed in to process refunds.', type: 'error' })
+      return
+    }
+    const guard = lastGuardRef.current
+    const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined
+
+    await refundItems(orderId, selectedItems, staffId, name, paymentMethod, metadata)
+
+    if (guard?.isSelfRefund && guard?.isCashRefund) {
+      const refundAmt = calculateRefundAmount()
+      const velocity = recordAndNotify({ orderId, amount: refundAmt, approvedByManagerId: managerId, approvedByManagerName: managerName })
+      if (velocity?.shouldAlert) {
+        show({ title: 'Refund Flagged', message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: 'warning' })
+      } else {
+        show({ title: 'Refund Successful', message: 'The partial refund has been processed successfully.', type: 'success' })
+      }
+    } else {
+      show({ title: 'Refund Successful', message: 'The partial refund has been processed successfully.', type: 'success' })
+    }
+
+    queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all })
+    bottomSheetRef.current?.close()
+  }
+
   const handleFullRefund = async () => {
     if (!reason.trim()) {
       show({
@@ -156,14 +238,19 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    await refundFullOrder(orderId, reason, 'Cashier', paymentMethod)
-    show({
-      title: 'Refund Successful',
-      message: 'The full refund has been processed successfully.',
-      type: 'success'
+    const guard = checkRefund({
+      orderCreatedByStaffProfileId: order?.created_by_staff_profile_id,
+      paymentMethod,
     })
-    queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all })
-    bottomSheetRef.current?.close()
+    lastGuardRef.current = guard
+
+    if (guard.isSelfRefund && guard.isCashRefund && guard.velocity.shouldBlock) {
+      setPendingRefundType('full')
+      setApprovalModalVisible(true)
+      return
+    }
+
+    await processFullRefund()
   }
 
   const handlePartialRefund = async () => {
@@ -186,14 +273,29 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    await refundItems(orderId, selectedItems, 'Cashier', paymentMethod)
-    show({
-      title: 'Refund Successful',
-      message: 'The partial refund has been processed successfully.',
-      type: 'success'
+    const guard = checkRefund({
+      orderCreatedByStaffProfileId: order?.created_by_staff_profile_id,
+      paymentMethod,
     })
-    queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all })
-    bottomSheetRef.current?.close()
+    lastGuardRef.current = guard
+
+    if (guard.isSelfRefund && guard.isCashRefund && guard.velocity.shouldBlock) {
+      setPendingRefundType('partial')
+      setApprovalModalVisible(true)
+      return
+    }
+
+    await processPartialRefund()
+  }
+
+  const onManagerApproved = async (managerProfileId: string, managerName: string) => {
+    setApprovalModalVisible(false)
+    if (pendingRefundType === 'full') {
+      await processFullRefund(managerProfileId, managerName)
+    } else if (pendingRefundType === 'partial') {
+      await processPartialRefund(managerProfileId, managerName)
+    }
+    setPendingRefundType(null)
   }
 
   const renderBackdrop = useMemo(
@@ -664,6 +766,17 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
           </View>
         </BottomSheetScrollView>
       </BottomSheetView>
+
+      <RefundApprovalModal
+        visible={approvalModalVisible}
+        employeeName={lastGuardRef.current?.activeEmployeeName || 'Cashier'}
+        refundCount={lastGuardRef.current?.velocity.selfRefundCount || 0}
+        onApproved={onManagerApproved}
+        onCancel={() => {
+          setApprovalModalVisible(false)
+          setPendingRefundType(null)
+        }}
+      />
     </BottomSheet>
   )
 }

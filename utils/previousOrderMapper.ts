@@ -44,6 +44,7 @@ export function previousOrderToOrderProfile(
     order_refund_items: order.order_refund_items,
     station_id: order.station_id,
     _sourceStationName: order.station_name,
+    created_by_staff_profile_id: order.created_by_staff_profile_id ?? null,
   };
 }
 

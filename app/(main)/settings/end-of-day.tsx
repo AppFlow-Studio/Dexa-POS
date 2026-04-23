@@ -474,6 +474,7 @@ export default function EndOfDayScreen () {
         return (
           <EodStepCash
             checklist={checklist}
+            drawerBreakdown={dailySummary?.drawerBreakdown}
             onOpenCashDrawer={onOpenCashDrawer}
             onRefresh={handleRefresh}
           />

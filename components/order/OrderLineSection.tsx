@@ -249,7 +249,7 @@ const OrderLineSectionContent: React.FC = () => {
               No orders for this category.
             </Text>
           </View>
-        }}
+        }
       />
       <OrderLineItemsModal
         isOpen={isItemsModalOpen}

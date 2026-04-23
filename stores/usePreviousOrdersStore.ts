@@ -15,6 +15,14 @@ import { create } from "zustand";
 import { getCurrentBusinessDay, type BusinessDayConfig } from "@/lib/businessDay";
 import { todayOrdersCache, projectToSummary } from "@/stores/todayOrdersCache";
 
+/** Metadata passed from fraud guard to tag refund records and audit logs. */
+export interface RefundFraudMetadata {
+  fraudFlags?: string[];
+  velocityCount?: number;
+  approvedByManagerId?: string;
+  approvedByManagerName?: string;
+}
+
 /** Same source as useOrdersQuery / reconcile: selected store, then floor plan fallback */
 function resolveHistoryLocationId(): string | null {
   const storeId = useStoreSettingsStore.getState().selectedStore?.id ?? null;
@@ -170,14 +178,18 @@ interface PreviousOrdersState {
   refundFullOrder: (
     orderId: string,
     reason: string,
-    refundedBy: string,
+    initiatedByStaffId: string,
+    initiatedByName: string,
     paymentMethod: PaymentType,
+    metadata?: RefundFraudMetadata,
   ) => Promise<void>;
   refundItems: (
     orderId: string,
     items: Array<{ itemId: string; quantity: number; reason: string }>,
-    refundedBy: string,
+    initiatedByStaffId: string,
+    initiatedByName: string,
     paymentMethod: PaymentType,
+    metadata?: RefundFraudMetadata,
   ) => Promise<void>;
   getRefundsForOrder: (orderId: string) => RefundRecord[];
   patchPreviousOrder: (orderId: string, patch: Partial<PreviousOrder>) => void;
@@ -251,6 +263,7 @@ function _transformFetchedOrder(
     delivery_platform: profile.delivery_platform ?? null,
     reversals: profile.reversals,
     order_refund_items: profile.order_refund_items,
+    created_by_staff_profile_id: profile.created_by_staff_profile_id ?? null,
   };
 }
 
@@ -391,6 +404,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         order_refund_items: order.order_refund_items,
         order_source: order.order_source ?? null,
         delivery_platform: order.delivery_platform ?? null,
+        created_by_staff_profile_id: order.created_by_staff_profile_id ?? null,
       };
 
       set((state) => {
@@ -831,8 +845,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     refundFullOrder: async (
       orderId: string,
       reason: string,
-      refundedBy: string,
+      initiatedByStaffId: string,
+      initiatedByName: string,
       paymentMethod: PaymentType,
+      metadata?: RefundFraudMetadata,
     ) => {
       const order = get().getOrderById(orderId);
       if (!order || order.refunded) {
@@ -847,15 +863,43 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           refundType: { type: "full_payment" },
           reason: toRefundReasonType(reason),
           reasonDetail: reason,
-          initiatedBy: refundedBy,
+          initiatedBy: initiatedByStaffId,
+          approvedBy: metadata?.approvedByManagerId,
           payment_terminal_id: station?.payment_terminal?.id || "",
           payment_terminal: station?.payment_terminal || undefined,
           stationId: station?.id,
+          metadata: metadata?.fraudFlags
+            ? { fraud_flags: metadata.fraudFlags, velocity_count: metadata.velocityCount }
+            : undefined,
         };
         const result = await refundService.processRefund(refundRequest);
         if (!result.success) {
           console.error("Refund failed:", result.error);
           return;
+        }
+
+        // Audit log for fraud-flagged refunds
+        if (metadata?.fraudFlags?.includes('same_cashier_refund')) {
+          _supabaseClient.from('audit_logs').insert({
+            action: 'same_cashier_refund',
+            action_category: 'fraud_detection',
+            actor_name: initiatedByName,
+            staff_profile_id: initiatedByStaffId,
+            resource_type: 'order',
+            resource_id: orderId,
+            severity: metadata.fraudFlags.includes('velocity_blocked') ? 'high' : 'medium',
+            metadata: {
+              fraud_flags: metadata.fraudFlags,
+              refund_amount: order.total,
+              velocity_count: metadata.velocityCount,
+              approved_by: metadata.approvedByManagerId,
+              approved_by_name: metadata.approvedByManagerName,
+            },
+            location_id: useStoreSettingsStore.getState().selectedStore?.id,
+            merchant_id: useStoreSettingsStore.getState().selectedStore?.merchant_id,
+          }).then(({ error: auditErr }) => {
+            if (auditErr) console.warn('[FraudGuard] audit_logs insert failed:', auditErr);
+          });
         }
       }
 
@@ -868,12 +912,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           quantity: item.quantity,
           reason,
           refundedAt: new Date().toISOString(),
-          refundedBy,
+          refundedBy: initiatedByName,
         })),
         totalRefunded: order.total,
         reason,
         refundedAt: new Date().toISOString(),
-        refundedBy,
+        refundedBy: initiatedByName,
         paymentMethod,
       };
 
@@ -912,8 +956,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         quantity: number;
         reason: string;
       }>,
-      refundedBy: string,
+      initiatedByStaffId: string,
+      initiatedByName: string,
       paymentMethod: PaymentType,
+      metadata?: RefundFraudMetadata,
     ) => {
       const order = get().previousOrders.find((o) => o.orderId === orderId);
       if (!order) {
@@ -940,7 +986,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             quantity,
             reason,
             refundedAt: new Date().toISOString(),
-            refundedBy,
+            refundedBy: initiatedByName,
           });
         }
       });
@@ -968,15 +1014,43 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             itemsToRefund.map((i) => i.reason).find(Boolean) || "other",
           ),
           reasonDetail: itemsToRefund.map((i) => i.reason).join(", "),
-          initiatedBy: refundedBy,
+          initiatedBy: initiatedByStaffId,
+          approvedBy: metadata?.approvedByManagerId,
           payment_terminal_id: station?.payment_terminal?.id || "",
           payment_terminal: station?.payment_terminal || undefined,
           stationId: station?.id,
+          metadata: metadata?.fraudFlags
+            ? { fraud_flags: metadata.fraudFlags, velocity_count: metadata.velocityCount }
+            : undefined,
         };
         const result = await refundService.processRefund(refundRequest);
         if (!result.success) {
           console.error("Refund failed:", result.error);
           return;
+        }
+
+        // Audit log for fraud-flagged refunds
+        if (metadata?.fraudFlags?.includes('same_cashier_refund')) {
+          _supabaseClient.from('audit_logs').insert({
+            action: 'same_cashier_refund',
+            action_category: 'fraud_detection',
+            actor_name: initiatedByName,
+            staff_profile_id: initiatedByStaffId,
+            resource_type: 'order',
+            resource_id: orderId,
+            severity: metadata.fraudFlags.includes('velocity_blocked') ? 'high' : 'medium',
+            metadata: {
+              fraud_flags: metadata.fraudFlags,
+              refund_amount: totalRefundedInThisTx,
+              velocity_count: metadata.velocityCount,
+              approved_by: metadata.approvedByManagerId,
+              approved_by_name: metadata.approvedByManagerName,
+            },
+            location_id: useStoreSettingsStore.getState().selectedStore?.id,
+            merchant_id: useStoreSettingsStore.getState().selectedStore?.merchant_id,
+          }).then(({ error: auditErr }) => {
+            if (auditErr) console.warn('[FraudGuard] audit_logs insert failed:', auditErr);
+          });
         }
       }
 
@@ -992,7 +1066,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           .filter(Boolean)
           .join(", "),
         refundedAt: new Date().toISOString(),
-        refundedBy,
+        refundedBy: initiatedByName,
         paymentMethod,
       };
 
