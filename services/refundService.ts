@@ -306,18 +306,9 @@ export class RefundService {
       dbErrors.push(`Payment update failed: ${paymentResult.error.message || paymentResult.error}`);
     }
     
-    // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER applyRefundToPayment completes
-    // to avoid race condition where it reads stale refunded_amount data
-    const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
-      this.supabase,
-      request.orderId,
-    );
-    
-    if (orderResult.error) {
-      console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
-      dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
-    }
-
+    // Record refund items BEFORE recalculating totals — calculate_order_totals_fast
+    // reads refunded_quantity from order_items, so items must be recorded first.
+    // (Matches the order used by processItemReturn.)
     const refundItems = await this.buildFullRefundItems(request.orderId, reversal.id, request.reason, request.reasonDetail);
     if (refundItems.length > 0) {
       await OrderService.recordRefundItems(
@@ -325,6 +316,18 @@ export class RefundService {
         reversal.id,
         refundItems,
       );
+    }
+
+    // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER both applyRefundToPayment
+    // and recordRefundItems complete to avoid stale refunded_amount/refunded_quantity data
+    const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
+      this.supabase,
+      request.orderId,
+    );
+
+    if (orderResult.error) {
+      console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
+      dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
     }
 
     return {

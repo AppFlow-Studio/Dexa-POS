@@ -2821,8 +2821,10 @@ function mergePayments (
     authorized: 0,
     pending: 1,
     captured: 2,
-    refunded: 3,
-    voided: 3
+    partially_refunded: 3,
+    refunded: 4,
+    voided: 4,
+    void: 4
   }
 
   // Build local lookup by db_payment_id

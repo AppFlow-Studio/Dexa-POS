@@ -19,6 +19,7 @@ v_effective_paid numeric;
 v_payment_refunded numeric;
 v_payment_voided numeric;
 v_card_total_calc numeric;
+v_cash_total_calc numeric;
 v_payment_based_due numeric;
 v_custom_refund_balance numeric;
 v_order record;
@@ -91,8 +92,9 @@ FROM public.order_payments
 WHERE order_id = p_order_id
   AND (status = 'void' OR is_voided = true);
 
--- Calculate card total for payment-based due calculation
+-- Calculate card and cash totals for payment-based due calculation
 v_card_total_calc := v_card_subtotal + v_card_tax + v_service_charge;
+v_cash_total_calc := v_cash_subtotal + v_cash_tax + v_service_charge;
 
 -- Payment-based amount due = total - effective_paid (handles custom refunds)
 v_payment_based_due := GREATEST(v_card_total_calc - v_effective_paid, 0);
@@ -110,7 +112,11 @@ IF v_order.payment_status = 'paid' AND v_payment_refunded = 0 AND v_payment_void
     v_unpaid_cash_total := 0;
 ELSE
     v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
-    v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
+    -- Scale custom refund balance by cash/card ratio before adding to cash outstanding
+    v_unpaid_cash_total := v_unpaid_cash_total +
+      CASE WHEN v_card_total_calc > 0
+      THEN ROUND(v_custom_refund_balance * v_cash_total_calc / v_card_total_calc, 2)
+      ELSE v_custom_refund_balance END;
 END IF;
 
 -- Update order with totals

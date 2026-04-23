@@ -97,11 +97,14 @@ function buildAndApplyRefundPatch(input: RefundMutationInput): void {
       (d) => d.dbPaymentId === p.db_payment_id || d.paymentIndex === currentPayments.indexOf(p)
     );
     if (!detail) return p;
-    return {
-      ...p,
-      refundedAmount: (p.refundedAmount || 0) + detail.totalRefund,
-      refundedAt: now,
-    };
+    const newRefundedAmount = (p.refundedAmount || 0) + detail.totalRefund;
+    const isFullyRefunded = newRefundedAmount + 0.001 >= (p.amount || 0);
+    // Mark voided for full refunds so selector uses frontend calculator
+    // instead of stale optimistic amount_due
+    if (input.type === "full" && isFullyRefunded) {
+      return { ...p, refundedAmount: newRefundedAmount, refundedAt: now, isVoided: true, status: p.status };
+    }
+    return { ...p, refundedAmount: newRefundedAmount, refundedAt: now };
   });
 
   // Build new reversal records
