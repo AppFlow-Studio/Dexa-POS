@@ -21,7 +21,8 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import type {
   FloorPlanObject,
-  ServerSection
+  ServerSection,
+  TableSession
 } from '@/types/db-floor-plan-types'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import {
@@ -628,7 +629,11 @@ const BillSectionContent = ({
   }, [sectionOptions, selectedSectionId])
 
   const getTableStatusLabel = useCallback((table: FloorPlanObject) => {
-    const status = table.session?.status ?? 'available'
+    const liveStatus =
+      useTableSessionStore.getState().sessions[table.id]?.status ??
+      table.session?.status ??
+      'available'
+    const status = liveStatus
     const labelMap: Record<string, string> = {
       available: 'Available',
       reserved: 'Reserved',
@@ -649,12 +654,40 @@ const BillSectionContent = ({
     return labelMap[status] || status
   }, [])
 
-  const handleSelectTable = useCallback(
-    async (table: FloorPlanObject) => {
-      const isCurrentlyAssigned = table.id === activeOrderServiceLocation
-      const isAvailable = (table.session?.status ?? 'available') === 'available'
+  const isSessionLinkedToOrder = useCallback(
+    (session: TableSession | undefined) => {
+      if (!session?.order_id || !activeOrderId) return false
+      if (session.order_id === activeOrderId) return true
+      return (
+        !!activeOrder?.db_order_id &&
+        session.order_id === activeOrder.db_order_id
+      )
+    },
+    [activeOrder?.db_order_id, activeOrderId]
+  )
 
-      if (!isAvailable && !isCurrentlyAssigned) {
+  const ensureDineInOrderTableSession = useCallback(
+    async (table: FloorPlanObject): Promise<boolean> => {
+      if (activeOrderType !== 'dine_in' || !activeOrderId) {
+        return true
+      }
+
+      const sessionStore = useTableSessionStore.getState()
+      const destinationSession = sessionStore.sessions[table.id]
+      const destinationStatus =
+        destinationSession?.status ?? table.session?.status ?? 'available'
+      const linkedSessionEntries = Object.entries(sessionStore.sessions).filter(
+        ([, session]) => isSessionLinkedToOrder(session)
+      )
+      const hasLinkedSessionOnDestination = linkedSessionEntries.some(
+        ([tableId]) => tableId === table.id
+      )
+      const activeLinkedSourceEntries = linkedSessionEntries.filter(
+        ([tableId, session]) =>
+          tableId !== table.id && session.status !== 'available'
+      )
+
+      if (destinationStatus !== 'available' && !hasLinkedSessionOnDestination) {
         show({
           title: 'Table Unavailable',
           message: `${table.name} is currently ${getTableStatusLabel(
@@ -662,59 +695,124 @@ const BillSectionContent = ({
           ).toLowerCase()}.`,
           type: 'error'
         })
-        return
+        return false
       }
 
-      if (activeOrderType === 'dine_in' && activeOrderId) {
-        assignOrderToTable(activeOrderId, table.id)
+      if (activeLinkedSourceEntries.length > 1) {
+        show({
+          title: 'Multiple Session Conflict',
+          message:
+            'This order appears on multiple active table sessions. Please clear the extra table sessions before moving this order.',
+          type: 'error'
+        })
+        return false
+      }
 
-        const liveSession = useTableSessionStore.getState().sessions[table.id]
-        const hasActiveSession = !!liveSession || !!table.session
+      const sourceEntry = activeLinkedSourceEntries[0]
+      const sourceSession = sourceEntry?.[1]
+      const shouldTransfer = !!sourceSession
 
+      if (shouldTransfer && sourceSession) {
         if (
-          !hasActiveSession ||
-          (liveSession?.status ?? table.session?.status) === 'available'
+          destinationStatus !== 'available' &&
+          !hasLinkedSessionOnDestination
         ) {
-          try {
-            await useTableSessionStore.getState().seatGuests({
-              tableIds: [table.id],
-              partySize: Math.max(1, activeOrder?.guest_count ?? 1),
-              createOrder: true,
-              localOrderId: activeOrderId,
-              selected_station: selectedStation?.id,
-              device_id: deviceId
-            })
-          } catch (error) {
-            console.error(
-              '[BillSection] Failed to start table session from order-processing table selector:',
-              error
-            )
-            show({
-              title: 'Session Start Failed',
-              message:
-                'Table was selected, but we could not start the table session. Please try again.',
-              type: 'error'
-            })
-            return
-          }
+          show({
+            title: 'Table Unavailable',
+            message: `${table.name} is currently ${getTableStatusLabel(
+              table
+            ).toLowerCase()}.`,
+            type: 'error'
+          })
+          return false
         }
+
+        if (!isOnline) {
+          show({
+            title: 'Offline Transfer Blocked',
+            message:
+              'You are offline. Reassigning an active dine-in table requires a live connection to transfer the session safely.',
+            type: 'warning'
+          })
+          return false
+        }
+
+        try {
+          await sessionStore.transferSession(sourceSession.id, [table.id])
+        } catch (error) {
+          console.error(
+            '[BillSection] Failed to transfer table session:',
+            error
+          )
+          show({
+            title: 'Transfer Failed',
+            message:
+              'Could not move this order to the selected table. Please try again.',
+            type: 'error'
+          })
+          return false
+        }
+      }
+
+      assignOrderToTable(activeOrderId, table.id)
+
+      const refreshedDestinationSession =
+        useTableSessionStore.getState().sessions[table.id]
+      const hasActiveDestinationSession =
+        !!refreshedDestinationSession &&
+        refreshedDestinationSession.status !== 'available'
+
+      if (!hasActiveDestinationSession) {
+        try {
+          await useTableSessionStore.getState().seatGuests({
+            tableIds: [table.id],
+            partySize: Math.max(1, activeOrder?.guest_count ?? 1),
+            createOrder: true,
+            localOrderId: activeOrderId,
+            selected_station: selectedStation?.id,
+            device_id: deviceId
+          })
+        } catch (error) {
+          console.error(
+            '[BillSection] Failed to start table session for dine-in order:',
+            error
+          )
+          show({
+            title: 'Session Start Failed',
+            message:
+              'Table was selected, but we could not start the table session. Please try again.',
+            type: 'error'
+          })
+          return false
+        }
+      }
+
+      return true
+    },
+    [
+      activeOrder?.guest_count,
+      activeOrderId,
+      activeOrderType,
+      assignOrderToTable,
+      deviceId,
+      getTableStatusLabel,
+      isOnline,
+      isSessionLinkedToOrder,
+      selectedStation?.id,
+      show
+    ]
+  )
+
+  const handleSelectTable = useCallback(
+    async (table: FloorPlanObject) => {
+      if (!(await ensureDineInOrderTableSession(table))) {
+        return
       }
 
       setSelectedTable(table)
       setIsTableSelectorOpen(false)
     },
-    [
-      activeOrder?.guest_count,
-      activeOrderId,
-      activeOrderServiceLocation,
-      activeOrderType,
-      assignOrderToTable,
-      deviceId,
-      getTableStatusLabel,
-      selectedStation?.id,
-      setSelectedTable,
-      show
-    ]
+    [ensureDineInOrderTableSession, setSelectedTable, show]
   )
 
   const handleClearCart = useCallback(() => {
@@ -812,36 +910,15 @@ const BillSectionContent = ({
       ) || []
 
     if (activeOrderType === 'dine_in' && selectedTable) {
-      assignOrderToTable(activeOrderId!, selectedTable.id)
-      const liveSession =
-        useTableSessionStore.getState().sessions[selectedTable.id]
-      const hasActiveSession = !!liveSession || !!selectedTable.session
-      if (
-        !hasActiveSession ||
-        (liveSession?.status ?? selectedTable.session?.status) === 'available'
-      ) {
-        try {
-          await useTableSessionStore.getState().seatGuests({
-            tableIds: [selectedTable.id],
-            partySize: Math.max(1, activeOrder?.guest_count ?? 1),
-            createOrder: true,
-            localOrderId: activeOrderId!,
-            selected_station: selectedStation?.id,
-            device_id: deviceId
-          })
-        } catch (error) {
-          console.error(
-            '[BillSection] Failed to start table session before sending to kitchen:',
-            error
-          )
-          show({
-            title: 'Session Required',
-            message:
-              'Could not start the table session. Please reselect the table and try again.',
-            type: 'error'
-          })
-          return
-        }
+      const sessionReady = await ensureDineInOrderTableSession(selectedTable)
+      if (!sessionReady) {
+        show({
+          title: 'Session Required',
+          message:
+            'Could not confirm a valid table session for this order. Please reselect the table and try again.',
+          type: 'error'
+        })
+        return
       }
       // Table session status updates are now handled through session-based APIs
       clearSelectedTable()

@@ -26,6 +26,7 @@ import {
 } from '@/stores/useOrderStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
@@ -282,6 +283,124 @@ const OrderProcessing = () => {
       })
     }
   }, [show, showLoading, hideLoading, updateActiveOrderDetails])
+
+  const handleCloseSession = useCallback(async () => {
+    const state = useOrderStore.getState()
+    const currentActiveOrderId = state.activeOrderId
+    const currentActiveOrder = currentActiveOrderId
+      ? state.ordersById[currentActiveOrderId]
+      : null
+
+    if (!currentActiveOrderId || !currentActiveOrder) return
+
+    const isDineInOrder =
+      currentActiveOrder.order_type === 'dine_in' ||
+      currentActiveOrder.order_type === 'Dine In'
+
+    if (!isDineInOrder) {
+      show({
+        title: 'Session Not Available',
+        message: 'Only dine-in orders have table sessions.',
+        type: 'warning'
+      })
+      return
+    }
+
+    if (currentActiveOrder.paid_status !== 'Paid') {
+      show({
+        title: 'Cannot Close Session',
+        message: 'Order must be fully paid before closing the table session.',
+        type: 'error'
+      })
+      return
+    }
+
+    const tableId = currentActiveOrder.service_location_id
+    if (!tableId) {
+      show({
+        title: 'No Table Linked',
+        message: 'This order is not linked to an active table session.',
+        type: 'warning'
+      })
+      return
+    }
+
+    showLoading('Closing session...')
+    try {
+      if (currentActiveOrder.check_status !== 'Closed') {
+        if (!currentActiveOrder.db_order_id) {
+          throw new Error(
+            'Order must be synced to close check before closing session'
+          )
+        }
+
+        const supabase = getOrderStoreSupabaseClient()
+        const { loggedInEmployee } = useEmployeeStore.getState()
+
+        if (!supabase) {
+          throw new Error('Database connection unavailable')
+        }
+
+        const closeCheckResult = await OrderService.closeCheck(
+          supabase,
+          currentActiveOrder.db_order_id,
+          loggedInEmployee?.profileId || null
+        )
+
+        if (!closeCheckResult.success) {
+          throw new Error(closeCheckResult.error || 'Failed to close check')
+        }
+
+        useOrderStore
+          .getState()
+          .updateActiveOrderDetails({ check_status: 'Closed' })
+      }
+
+      const sessionStore = useTableSessionStore.getState()
+      const tableSession = sessionStore.getSession(tableId)
+      if (
+        tableSession &&
+        tableSession.status !== 'paid' &&
+        tableSession.status !== 'cleaning'
+      ) {
+        const paymentTransition = await sessionStore.dispatchAction({
+          type: 'FULL_PAYMENT',
+          tableId
+        })
+        if (!paymentTransition.success) {
+          throw new Error(
+            paymentTransition.error ||
+              'Failed to finalize table session before closing'
+          )
+        }
+      }
+
+      const result = await useTableSessionStore.getState().dispatchAction({
+        type: 'CLEAR_TABLE',
+        tableId,
+        orderId: currentActiveOrderId
+      })
+
+      hideLoading()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to close session')
+      }
+
+      show({
+        title: 'Session Closed',
+        message: 'Table marked for cleaning.',
+        type: 'success'
+      })
+    } catch (error: any) {
+      hideLoading()
+      show({
+        title: 'Failed to Close Session',
+        message: error.message || 'An unexpected error occurred.',
+        type: 'error'
+      })
+    }
+  }, [show, showLoading, hideLoading])
 
   // DEFERRED RENDERING: Progressive staged rendering via double-rAF
   // Stage 0: Skeleton placeholders (instant first paint)
@@ -1237,6 +1356,7 @@ const OrderProcessing = () => {
               discountSheetRef as React.RefObject<BottomSheetMethods>
             }
             onCloseCheck={handleCloseCheck}
+            onCloseSession={handleCloseSession}
             onNoSale={handleNoSale}
           />
           <DiscountBottomSheet

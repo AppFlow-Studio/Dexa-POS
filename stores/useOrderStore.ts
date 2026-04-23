@@ -2037,6 +2037,10 @@ const syncPaymentToBackend = async (
       // Queue for retry - build payment params for process_payment_v8
       const isCashRetry = paymentDetails.method === 'Cash'
       const terminalResponseRetry = buildTerminalResponse()
+      const isFullRemainingPaymentRetry =
+        !paymentDetails.itemAllocations?.length &&
+        !paymentDetails.splitCount &&
+        !paymentDetails.forceCardPricing
 
       // Build item allocations for retry
       const itemAllocationsRetry =
@@ -2049,7 +2053,7 @@ const syncPaymentToBackend = async (
       const paymentParams = {
         p_order_id: order.db_order_id,
         p_payment_method: isCashRetry ? 'cash' : 'card',
-        p_amount: paymentDetails.amount,
+        p_amount: isFullRemainingPaymentRetry ? null : paymentDetails.amount,
         p_tip_amount: paymentDetails.tipAmount || 0,
         p_amount_tendered: isCashRetry
           ? paymentDetails.transactionDetails?.amountTendered ||
@@ -9538,11 +9542,6 @@ export const useOrderStore = create<OrderState>()(
               })
             ]
 
-            // Capture backend-facing draft status BEFORE mutating local state —
-            // the local set() below changes order_status from 'draft' to 'sent_to_kitchen'
-            // so freshOrder.order_status after the await would be wrong for this decision.
-            const wasBackendDraft = currentOrder.order_status === 'draft'
-
             // O(1) update via ordersById
             set(state => {
               const order = state.ordersById[activeOrderId]
@@ -9618,10 +9617,6 @@ export const useOrderStore = create<OrderState>()(
                 .map(item => item.db_order_item_id)
                 .filter((id): id is string => !!id)
 
-              const backendStatus = wasBackendDraft
-                ? getOrderSentStatus()
-                : 'preparing'
-
               const hasPending = get().hasPendingSyncs(activeOrderId)
 
               if (freshSentItems.length === 0) {
@@ -9643,104 +9638,58 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderId
                 )
               } else if (dbItemIds.length > 0) {
-                if (wasBackendDraft) {
-                  // Draft order: must update order status FIRST (draft -> sent_to_kitchen/preparing)
-                  // before bulk_update_order_item_status can set sent_to_kitchen_at on the order
-                  // (valid_status_transitions constraint rejects sent_to_kitchen_at on draft orders)
-                  OrderService.updateOrderStatus(
-                    supabase,
-                    freshOrder.db_order_id!,
-                    getOrderSentStatus()
-                  )
-                    .then(({ error }) => {
-                      if (
-                        error &&
-                        error.code !== 'P0001' &&
-                        !error.message?.includes('already in')
-                      ) {
-                        console.error(
-                          'Failed to update backend order status:',
-                          error
-                        )
-                        queueFailedOperation(
-                          'send_to_kitchen',
-                          { localOrderId: activeOrderId, localItemIds },
-                          activeOrderId
-                        )
-                        return
-                      }
-                      // THEN update item statuses
-                      return OrderService.bulkUpdateOrderItemStatus(
-                        supabase,
-                        dbItemIds,
-                        getKitchenSentStatus()
+                // Always transition backend order status before item updates.
+                // Local state may already be optimistic/non-draft while backend is still draft.
+                OrderService.updateOrderStatus(
+                  supabase,
+                  freshOrder.db_order_id!,
+                  getOrderSentStatus()
+                )
+                  .then(({ error }) => {
+                    if (
+                      error &&
+                      error.code !== 'P0001' &&
+                      !error.message?.includes('already in')
+                    ) {
+                      console.error(
+                        'Failed to update backend order status:',
+                        error
                       )
-                    })
-                    .then(result => {
-                      if (result?.error) {
-                        console.error(
-                          'Failed to update item statuses:',
-                          result.error
-                        )
-                        queueFailedOperation(
-                          'send_to_kitchen',
-                          { localOrderId: activeOrderId, localItemIds },
-                          activeOrderId
-                        )
-                      }
-                    })
-                    .catch((err: any) => {
-                      console.error('Failed to sync send-to-kitchen:', err)
                       queueFailedOperation(
                         'send_to_kitchen',
                         { localOrderId: activeOrderId, localItemIds },
                         activeOrderId
                       )
-                    })
-                } else {
-                  // Non-draft order (already sent_to_kitchen/preparing): items first, then order status
-                  OrderService.bulkUpdateOrderItemStatus(
-                    supabase,
-                    dbItemIds,
-                    getKitchenSentStatus()
-                  )
-                    .then(({ error }) => {
-                      if (error) {
-                        console.error('Failed to update item statuses:', error)
-                        queueFailedOperation(
-                          'send_to_kitchen',
-                          { localOrderId: activeOrderId, localItemIds },
-                          activeOrderId
-                        )
-                        return
-                      }
-                      // Update order status (bulk_update already auto-transitions, but ensure correct status)
-                      return supabase.rpc('update_order_status', {
-                        p_order_id: freshOrder.db_order_id,
-                        p_new_status: backendStatus
-                      })
-                    })
-                    .then((result: any) => {
-                      if (
-                        result?.error &&
-                        result.error.code !== 'P0001' &&
-                        !result.error.message?.includes('already in')
-                      ) {
-                        console.error(
-                          'Failed to update backend order status:',
-                          result.error
-                        )
-                      }
-                    })
-                    .catch((err: any) => {
-                      console.error('Failed to sync send-to-kitchen:', err)
+                      return
+                    }
+
+                    return OrderService.bulkUpdateOrderItemStatus(
+                      supabase,
+                      dbItemIds,
+                      getKitchenSentStatus()
+                    )
+                  })
+                  .then(result => {
+                    if (result?.error) {
+                      console.error(
+                        'Failed to update item statuses:',
+                        result.error
+                      )
                       queueFailedOperation(
                         'send_to_kitchen',
                         { localOrderId: activeOrderId, localItemIds },
                         activeOrderId
                       )
-                    })
-                }
+                    }
+                  })
+                  .catch((err: any) => {
+                    console.error('Failed to sync send-to-kitchen:', err)
+                    queueFailedOperation(
+                      'send_to_kitchen',
+                      { localOrderId: activeOrderId, localItemIds },
+                      activeOrderId
+                    )
+                  })
               }
             } else {
               // Offline or order not synced: queue for later
