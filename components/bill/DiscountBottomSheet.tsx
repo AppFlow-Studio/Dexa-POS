@@ -200,7 +200,11 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       android_keyboardInputMode='adjustResize'
       topInset={60}
     >
-      <BottomSheetScrollView style={{ flex: 1, backgroundColor: colors.panel }}>
+      <BottomSheetScrollView
+        style={{ flex: 1, backgroundColor: colors.panel }}
+        keyboardShouldPersistTaps='always'
+        keyboardDismissMode='none'
+      >
         {/* ── Header ── */}
         <View
           style={{
@@ -235,6 +239,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
           </View>
           <TouchableOpacity
             onPress={onClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={{
               padding: 6,
               borderRadius: 10,
@@ -291,6 +296,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
               </View>
               <TouchableOpacity
                 onPress={handleRemoveCheckDiscount}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{
                   paddingHorizontal: 10,
                   paddingVertical: 5,
@@ -534,6 +540,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   <TouchableOpacity
                     onPress={handleApplyCustomDiscount}
                     disabled={!isCustomValid}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{
                       paddingHorizontal: 16,
                       paddingVertical: 9,

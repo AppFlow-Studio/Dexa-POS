@@ -6064,6 +6064,21 @@ export const useOrderStore = create<OrderState>()(
 
             const currentItem = order.items[itemIndex]
 
+            // If this item currently has an in-flight sync operation, ignore backend
+            // payloads that would reduce quantity. This prevents swipe increments
+            // performed during sync from being rolled back by stale realtime updates.
+            if (
+              pendingSyncOperations.has(itemId) &&
+              backendData.quantity !== undefined &&
+              backendData.quantity < currentItem.quantity
+            ) {
+              console.warn(
+                `[applyBackendItemData] Ignoring stale quantity rollback for item ${itemId} ` +
+                  `(backend ${backendData.quantity} < local ${currentItem.quantity}) while sync pending`
+              )
+              return
+            }
+
             // Merge backend data into item (only provided fields)
             const updatedItem: CartItem = {
               ...currentItem,
@@ -6512,20 +6527,54 @@ export const useOrderStore = create<OrderState>()(
             const updatedItems = order.items.map(i =>
               i.id === itemId ? { ...i, quantity: newQuantity } : i
             )
+
+            // A check discount is active when a valid checkDiscount exists AND
+            // local order state confirms discount context (record/totals/item fields).
+            const hasValidCheckDiscountValue =
+              !!order.checkDiscount &&
+              ((order.checkDiscount.type === 'percentage' &&
+                order.checkDiscount.value > 0) ||
+                (order.checkDiscount.type === 'fixed' &&
+                  order.checkDiscount.value > 0))
+
+            const hasOrderLevelDiscountRecord = (
+              order.applied_discounts || []
+            ).some(
+              d => !d.applied_to_item_ids || d.applied_to_item_ids.length === 0
+            )
+
+            const hasItemDiscountSignals = order.items.some(
+              i =>
+                (i.discount_amount ?? 0) > 0 ||
+                (i.discount_cash_amount ?? 0) > 0 ||
+                !!i.appliedDiscount
+            )
+
+            const hasActiveCheckDiscount =
+              hasValidCheckDiscountValue &&
+              (hasOrderLevelDiscountRecord ||
+                (order.total_discount ?? 0) > 0 ||
+                hasItemDiscountSignals)
+
+            const effectiveCheckDiscount = hasActiveCheckDiscount
+              ? order.checkDiscount
+              : null
+
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap
             const totals = calculateOrderTotals(
               updatedItems,
-              order.checkDiscount,
+              effectiveCheckDiscount,
               order.payments || [],
               taxRatesMap
             )
+
             const itemsForState =
-              order.checkDiscount && totals.discount_amount > 0
+              hasActiveCheckDiscount && totals.discount_amount > 0
                 ? distributeDiscountToItems(
                     updatedItems,
                     totals.discount_amount
                   )
-                : updatedItems
+                : distributeDiscountToItems(updatedItems, 0)
             set(state => {
               const o = state.ordersById[activeOrderId]
               if (!o) return
