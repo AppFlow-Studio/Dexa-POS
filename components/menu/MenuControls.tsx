@@ -53,7 +53,7 @@ const createStyles = () =>
       minHeight: 40
     },
     scrollContent: {
-      paddingHorizontal: 20,
+      paddingHorizontal: 4,
       gap: 6,
       alignItems: 'center',
       minHeight: 40
@@ -310,20 +310,22 @@ const MenuControls: React.FC<MenuControlsProps> = ({
           </ScrollView>
 
           {/* Left fade overlay */}
-          <LinearGradient
-            colors={[colors.card, colors.card + '00']}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: 40,
-              zIndex: 4,
-              pointerEvents: 'none'
-            }}
-          />
+          {canScrollLeft && (
+            <LinearGradient
+              colors={[colors.card, colors.card + '00']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 40,
+                zIndex: 4,
+                pointerEvents: 'none'
+              }}
+            />
+          )}
 
           {/* Right fade overlay */}
           <LinearGradient
