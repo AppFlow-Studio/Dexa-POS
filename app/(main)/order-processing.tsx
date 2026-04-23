@@ -1387,10 +1387,11 @@ const OrderProcessing = () => {
           <Pressable
             onPress={() => {}}
             style={{
-              width: 360,
-              maxWidth: '92%',
+              width: 500,
+              maxWidth: '96%',
+              height: 560,
               alignSelf: 'center',
-              maxHeight: '92%',
+              maxHeight: '90%',
               borderRadius: 18,
               borderWidth: 1,
               borderColor: colors.teal + '45',
@@ -1434,8 +1435,9 @@ const OrderProcessing = () => {
                 <X size={16} color={colors.label} />
               </TouchableOpacity>
             </View>
-            <View style={{ height: 620 }}>
+            <View style={{ flex: 1 }}>
               <OpenItemAdder
+                modalLayout
                 onCreated={() => setIsCustomItemModuleOpen(false)}
               />
             </View>

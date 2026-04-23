@@ -13,13 +13,21 @@ import {
   View
 } from 'react-native'
 
-const createStyles = () =>
+const createStyles = (modalLayout: boolean) =>
   StyleSheet.create({
     container: {
-      flex: 1,
+      ...(modalLayout
+        ? {
+            flex: 1,
+            width: '100%'
+          }
+        : {
+            flex: 1400,
+            height: 500
+          }),
       backgroundColor: colors.screen,
       padding: 12,
-      paddingBottom: 64,
+      paddingBottom: modalLayout ? 12 : 64,
       gap: 8
     },
     topContent: {
@@ -77,12 +85,18 @@ const createStyles = () =>
       color: colors.heading
     },
     actionRow: {
-      position: 'absolute',
-      left: 12,
-      right: 12,
-      bottom: 12,
       flexDirection: 'row',
-      gap: 8
+      gap: 8,
+      ...(modalLayout
+        ? {
+            marginTop: 8
+          }
+        : {
+            position: 'absolute' as const,
+            left: 12,
+            right: 12,
+            bottom: 12
+          })
     },
     clearBtn: {
       flex: 1,
@@ -111,11 +125,18 @@ const createStyles = () =>
 
 interface OpenItemAdderProps {
   onCreated?: () => void
+  modalLayout?: boolean
 }
 
-const OpenItemAdder = ({ onCreated }: OpenItemAdderProps) => {
+const OpenItemAdder = ({
+  onCreated,
+  modalLayout = false
+}: OpenItemAdderProps) => {
   const { colorScheme } = useColorScheme()
-  const styles = useMemo(() => createStyles(), [colorScheme])
+  const styles = useMemo(
+    () => createStyles(modalLayout),
+    [colorScheme, modalLayout]
+  )
 
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const addItemToActiveOrder = useOrderStore(s => s.addItemToActiveOrder)

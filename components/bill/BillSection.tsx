@@ -14,10 +14,8 @@ import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useOrderSyncCounts } from '@/stores/useSyncStatusStore'
-import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import type {
   FloorPlanObject,
@@ -299,7 +297,7 @@ const BillSectionContent = ({
     assignOrderToTable,
     setActiveOrder,
     retryFailedSyncs,
-    voidOrder,
+    clearCart,
     updateActiveOrderDetails
   } = useOrderStore(
     useShallow(s => ({
@@ -308,7 +306,7 @@ const BillSectionContent = ({
       assignOrderToTable: s.assignOrderToTable,
       setActiveOrder: s.setActiveOrder,
       retryFailedSyncs: s.retryFailedSyncs,
-      voidOrder: s.voidOrder,
+      clearCart: s.clearCart,
       updateActiveOrderDetails: s.updateActiveOrderDetails
     }))
   )
@@ -669,46 +667,23 @@ const BillSectionContent = ({
     [activeOrderServiceLocation, getTableStatusLabel, setSelectedTable, show]
   )
 
-  const handleVoidOrder = useCallback(() => {
+  const handleClearCart = useCallback(() => {
     if (!activeOrderId || !activeOrder) return
     setIsVoidConfirmOpen(true)
   }, [activeOrder, activeOrderId])
 
-  const handleConfirmVoidOrder = useCallback(async () => {
+  const handleConfirmClearCart = useCallback(async () => {
     if (!activeOrderId || !activeOrder) return
 
-    const sessionStore = useTableSessionStore.getState()
-    const sessionId = activeOrder.session_id
-    const tableId = sessionId
-      ? sessionStore.sessionTableIndex[sessionId]?.[0] ??
-        sessionStore.getSessionBySessionId(sessionId)?.tableId ??
-        ''
-      : ''
-
-    if (tableId) {
-      await sessionStore.dispatchAction({
-        type: 'VOID_ORDER',
-        tableId,
-        orderId: activeOrder.id,
-        dbOrderId: activeOrder.db_order_id
-      })
-
-      if (activeOrder.session_id) {
-        await useReservationStore
-          .getState()
-          .completeReservationForSession(activeOrder.session_id)
-      }
-    } else {
-      voidOrder(activeOrderId)
-    }
+    clearCart()
 
     setIsVoidConfirmOpen(false)
     show({
-      title: 'Order Voided',
-      message: 'The current order has been successfully voided.',
+      title: 'Cart Cleared',
+      message: 'All items have been removed from the cart.',
       type: 'success'
     })
-  }, [activeOrder, activeOrderId, show, voidOrder])
+  }, [activeOrder, activeOrderId, clearCart, show])
 
   const handlePayClick = () => {
     // Safety guard: Prevent payment if button should be disabled
@@ -929,7 +904,7 @@ const BillSectionContent = ({
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={handleVoidOrder}
+              onPress={handleClearCart}
               className='h-8 w-8 rounded-lg items-center justify-center'
               style={{ backgroundColor: '#F87171' }}
             >
@@ -1479,7 +1454,7 @@ const BillSectionContent = ({
                   color: colors.heading
                 }}
               >
-                Void Order
+                Clear Cart
               </DialogTitle>
             </DialogHeader>
             <Text
@@ -1490,7 +1465,7 @@ const BillSectionContent = ({
                 lineHeight: 20
               }}
             >
-              Are you sure you want to void this order? This action cannot be
+              Are you sure you want to clear this cart? This action cannot be
               undone.
             </Text>
           </View>
@@ -1516,7 +1491,7 @@ const BillSectionContent = ({
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleConfirmVoidOrder}
+              onPress={handleConfirmClearCart}
               className='flex-1 h-11 rounded-xl items-center justify-center'
               style={{ backgroundColor: colors.danger }}
             >
@@ -1527,7 +1502,7 @@ const BillSectionContent = ({
                   fontWeight: '700'
                 }}
               >
-                Void Order
+                Clear Cart
               </Text>
             </TouchableOpacity>
           </DialogFooter>
