@@ -118,9 +118,9 @@ const toRefundReasonType = (reason: string): RefundReasonType => {
 };
 
 
-const MAX_IN_MEMORY_PREVIOUS_ORDERS = 500;
-const INITIAL_FETCH_SIZE = 100;
-const LOAD_MORE_PAGE_SIZE = 100;
+const MAX_IN_MEMORY_PREVIOUS_ORDERS = 200;
+const INITIAL_FETCH_SIZE = 30;
+const LOAD_MORE_PAGE_SIZE = 30;
 const LOAD_MORE_COOLDOWN_MS = 2000;
 
 // Cooldown tracking for onEndReached cascade prevention
@@ -245,7 +245,8 @@ function _transformFetchedOrder(
     notes: profile.notes,
     voided: profile.order_status === "void",
     refunded:
-      profile.order_status === "refunded" ||
+      profile.paid_status === "Refunded" ||
+      (profile.order_status === "refunded" && profile.paid_status !== "Paid") ||
       (
         (profile.payments || []).some((p) => p.isVoided === true || p.status === "voided") &&
         !(profile.payments || []).some((p) => !p.isVoided && p.status === "captured")
@@ -1144,7 +1145,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         get().patchPreviousOrder(existing.db_order_id || existing.orderId, {
           paymentStatus: _derivePaymentStatus(profile),
           refunded:
-            profile.order_status === "refunded" ||
+            profile.paid_status === "Refunded" ||
+            (profile.order_status === "refunded" && profile.paid_status !== "Paid") ||
             (
               (profile.payments || []).some((p) => p.isVoided === true || p.status === "voided") &&
               !(profile.payments || []).some((p) => !p.isVoided && p.status === "captured")

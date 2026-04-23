@@ -18,8 +18,7 @@ CREATE OR REPLACE FUNCTION process_payment_v8(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-AS;
-$$
+AS $$
 DECLARE 
     v_order record;
     v_payment_id uuid;
@@ -378,13 +377,20 @@ BEGIN
         FROM payment_calc pc;
 
         -- Update items with allocated quantities (INCREMENT paid_quantity)
-        -- Cap at effective unpaid (quantity - paid + refunded)
+        -- Cap paid_quantity at quantity, clear refunded_quantity proportionally
         UPDATE public.order_items oi
         SET
-            paid_quantity = COALESCE(oi.paid_quantity, 0) + LEAST(
-                COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
-                oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
-            ),
+            paid_quantity = LEAST(oi.quantity,
+                COALESCE(oi.paid_quantity, 0) + LEAST(
+                    COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                    oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
+                )),
+            -- Clear refunded_quantity proportionally to what's being re-paid
+            refunded_quantity = GREATEST(
+                COALESCE(oi.refunded_quantity, 0) - LEAST(
+                    COALESCE((alloc.value->>'quantity')::integer, COALESCE(oi.refunded_quantity, 0)),
+                    COALESCE(oi.refunded_quantity, 0)
+                ), 0),
             price_paid = CASE WHEN v_is_cash THEN oi.cash_price ELSE oi.unit_price END,
             updated_at = now()
         FROM jsonb_array_elements(p_item_allocations) AS alloc
@@ -488,11 +494,14 @@ BEGIN
             FROM public.order_items oi
             WHERE oi.id = ANY(v_covered_items);
 
-            -- CRITICAL: Mark ALL remaining items as paid
-            -- Set paid_quantity = quantity + refunded_quantity so effective_unpaid becomes 0
+            -- CRITICAL: Mark ALL remaining items as paid and clear stale refund state.
+            -- Set paid_quantity = quantity (clean), refunded_quantity = 0 (clear stale refunds).
+            -- This ensures void→re-pay cycle produces clean state (paid=qty, refunded=0).
             UPDATE public.order_items
             SET
-                paid_quantity = quantity + COALESCE(refunded_quantity, 0),
+                paid_quantity = quantity,
+                refunded_quantity = 0,
+                refunded_amount = 0,
                 price_paid = CASE WHEN v_use_cash_pricing THEN cash_price ELSE unit_price END,
                 updated_at = now()
             WHERE order_id = p_order_id
@@ -866,10 +875,12 @@ BEGIN
         v_order_fully_paid := (v_portions_remaining = 0);
 
         IF v_order_fully_paid AND v_unpaid_items_count > 0 THEN
-            -- Set paid_quantity = quantity + refunded_quantity so effective_unpaid becomes 0
+            -- Mark all items as paid, clear stale refund state
             UPDATE public.order_items
             SET
-                paid_quantity = quantity + COALESCE(refunded_quantity, 0),
+                paid_quantity = quantity,
+                refunded_quantity = 0,
+                refunded_amount = 0,
                 price_paid = COALESCE(price_paid, unit_price),
                 updated_at = now()
             WHERE order_id = p_order_id
@@ -892,9 +903,12 @@ BEGIN
         -- mark all remaining items as paid for data consistency.
         -- This mirrors the split-completion pattern at lines 846-859.
         IF v_order_fully_paid AND v_unpaid_items_count > 0 THEN
+            -- Mark all items as paid, clear stale refund state
             UPDATE public.order_items
             SET
-                paid_quantity = quantity + COALESCE(refunded_quantity, 0),
+                paid_quantity = quantity,
+                refunded_quantity = 0,
+                refunded_amount = 0,
                 price_paid = COALESCE(price_paid, CASE WHEN v_use_cash_pricing THEN cash_price ELSE unit_price END),
                 updated_at = now()
             WHERE order_id = p_order_id

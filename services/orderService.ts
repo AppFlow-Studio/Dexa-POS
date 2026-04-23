@@ -414,6 +414,8 @@ export class OrderService {
 
   /**
    * Apply refund to payment totals and status.
+   * @param restorePaidQuantity - When true, decrements paid_quantity on order_items
+   *   via order_payment_items junction (like void_payment does). Used for full payment voids.
    */
   static async applyRefundToPayment (
     client: SupabaseClient,
@@ -427,7 +429,8 @@ export class OrderService {
       transactionNumber?: string
       reason?: string
       initiatedBy?: string
-    }
+    },
+    options?: { restorePaidQuantity?: boolean }
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await client.rpc('apply_refund_to_payment', {
       p_payment_id: paymentId,
@@ -438,7 +441,8 @@ export class OrderService {
       p_return_reference_id: returnDetails?.referenceId ?? null,
       p_return_number: returnDetails?.transactionNumber ?? null,
       p_return_reason: returnDetails?.reason ?? null,
-      p_initiated_by: returnDetails?.initiatedBy ?? null
+      p_initiated_by: returnDetails?.initiatedBy ?? null,
+      p_restore_paid_quantity: options?.restorePaidQuantity ?? false
     })
     if (__DEV__) console.log('applyRefundToPayment', data, error)
     return { data, error }
@@ -446,15 +450,19 @@ export class OrderService {
 
   /**
    * Record refund line items and update order_items refunded totals.
+   * @param skipQuantityUpdate - When true, skips incrementing refunded_quantity on order_items.
+   *   Used for full payment voids where paid_quantity is restored instead.
    */
   static async recordRefundItems (
     client: SupabaseClient,
     reversalId: string,
-    items: Array<Record<string, unknown>>
+    items: Array<Record<string, unknown>>,
+    skipQuantityUpdate: boolean = false
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await client.rpc('record_refund_items', {
       p_reversal_id: reversalId,
-      p_items: items
+      p_items: items,
+      p_skip_quantity_update: skipQuantityUpdate
     })
     return { data, error }
   }

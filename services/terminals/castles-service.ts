@@ -1539,3 +1539,15 @@ export function getSharedCastlesService(): CastlesService {
   }
   return _sharedInstance;
 }
+
+// Clean up TCP socket on Metro fast refresh to prevent stale connections
+// that leave the Castles terminal stuck on the old socket.
+if (__DEV__ && (module as any).hot) {
+  (module as any).hot.dispose(() => {
+    if (_sharedInstance) {
+      console.log('[CastlesService] Hot refresh: tearing down TCP socket');
+      _sharedInstance.disconnect();
+      _sharedInstance = null;
+    }
+  });
+}

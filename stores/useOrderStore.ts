@@ -2220,6 +2220,16 @@ const syncPaymentToBackend = async (
         }
       })
 
+      // Sync payment status to previous orders store so both stores stay consistent
+      if (order.db_order_id) {
+        usePreviousOrdersStore.getState().patchPreviousOrder(order.db_order_id, {
+          paymentStatus: isFullyPaid ? 'Paid' : 'In Progress',
+          refunded: false,
+          amount_paid: data.order_amount_paid,
+          amount_due: data.order_amount_due,
+        })
+      }
+
       // Clean up persistableOrderIds if no more unsynced data remains
       const postSyncOrder = useOrderStore.getState().ordersById[order.id]
       if (postSyncOrder) {
@@ -3725,19 +3735,26 @@ export const useOrderStore = create<OrderState>()(
                       }
 
                       // Detect locally-advanced payment state to avoid stale broadcast reverting paid_status
+                      // Refund transitions bypass rank check — both Paid→Refunded and
+                      // Refunded→Paid must be accepted to reflect the full lifecycle.
                       const PAID_STATUS_RANK: Record<string, number> = {
                         Unpaid: 0,
                         Pending: 0,
                         Partial: 1,
                         Paid: 2
                       }
+                      const broadcastPaidStatus = mapPaymentStatus(
+                        backendOrder.payment_status
+                      )
                       const localPaidRank =
                         PAID_STATUS_RANK[existingOrder.paid_status ?? ''] ?? -1
                       const broadcastPaidRank =
-                        PAID_STATUS_RANK[
-                          mapPaymentStatus(backendOrder.payment_status)
-                        ] ?? -1
+                        PAID_STATUS_RANK[broadcastPaidStatus] ?? -1
+                      const isRefundTransition =
+                        broadcastPaidStatus === 'Refunded' ||
+                        existingOrder.paid_status === 'Refunded'
                       const isPaymentLocallyAhead =
+                        !isRefundTransition &&
                         localPaidRank > broadcastPaidRank
 
                       // Build updated order
@@ -4317,6 +4334,7 @@ export const useOrderStore = create<OrderState>()(
               } else {
                 // Discount exists on backend but not in local state
                 // (e.g. applied from another station). Queue a full fetch to restore it.
+                lastOrderDetailSyncAt.delete(dbOrderId)
                 queueMicrotask(() => {
                   get().syncOrderFromBackendComplete(dbOrderId)
                 })
@@ -5033,6 +5051,14 @@ export const useOrderStore = create<OrderState>()(
 
             // Lazy-fetch full detail for remote/header-only orders with no items loaded
             if (order && order.items.length === 0 && order.db_order_id) {
+              get().syncOrderFromBackendComplete(orderId)
+            }
+
+            // Fetch discount metadata when discount exists but checkDiscount not yet restored
+            // (e.g. order with discount applied on another station, synced via broadcast)
+            if (order && order.db_order_id && order.items.length > 0
+                && (order.total_discount ?? 0) > 0 && !order.checkDiscount) {
+              lastOrderDetailSyncAt.delete(order.db_order_id)
               get().syncOrderFromBackendComplete(orderId)
             }
           },
@@ -11898,7 +11924,13 @@ export const useOrderStore = create<OrderState>()(
               if (!o) return
               o.total_amount = totals.total_amount
               o.total_tax = totals.tax_amount
-              o.total_discount = totals.discount_amount
+              // Preserve backend total_discount when checkDiscount hasn't been restored yet
+              // (e.g. cross-station order where discount metadata is still being fetched)
+              const preserveBackendDiscount =
+                totals.discount_amount === 0 && (o.total_discount ?? 0) > 0 && !o.checkDiscount
+              if (!preserveBackendDiscount) {
+                o.total_discount = totals.discount_amount
+              }
               o.amount_due = finalOutstandingTotal
               o.cash_amount_due = finalCashOutstandingTotal
 
@@ -11907,7 +11939,9 @@ export const useOrderStore = create<OrderState>()(
                 state.activeOrderSubtotal = totals.subtotal
                 state.activeOrderTax = totals.tax_amount
                 state.activeOrderTotal = totals.total_amount
-                state.activeOrderDiscount = totals.discount_amount
+                state.activeOrderDiscount = preserveBackendDiscount
+                  ? o.total_discount!
+                  : totals.discount_amount
                 state.activeOrderOutstandingSubtotal =
                   totals.outstanding_subtotal
                 state.activeOrderOutstandingTax = totals.outstanding_tax
@@ -12327,6 +12361,8 @@ export const useOrderStore = create<OrderState>()(
                     ? 'Paid'
                     : orderData.payment_status === 'partial'
                     ? 'Partial'
+                    : orderData.payment_status === 'refunded'
+                    ? 'Refunded'
                     : 'Pending'
 
                 if (__DEV__) {
@@ -12563,6 +12599,8 @@ export const useOrderStore = create<OrderState>()(
                   ).some(p => !p.db_payment_id && p.sync_status === 'pending')
 
                   // Rank-based upgrade: always accept server's paid_status if it's higher
+                  // Refund transitions bypass rank check — both Paid→Refunded and
+                  // Refunded→Paid must be accepted to reflect the full lifecycle.
                   const PAID_STATUS_RANK: Record<string, number> = {
                     Unpaid: 0,
                     Pending: 0,
@@ -12572,7 +12610,11 @@ export const useOrderStore = create<OrderState>()(
                   const localPaidRank =
                     PAID_STATUS_RANK[currentOrder.paid_status ?? ''] ?? -1
                   const serverPaidRank = PAID_STATUS_RANK[paidStatus] ?? -1
-                  const isServerPaidUpgrade = serverPaidRank > localPaidRank
+                  const isRefundTransition =
+                    paidStatus === 'Refunded' ||
+                    currentOrder.paid_status === 'Refunded'
+                  const isServerPaidUpgrade =
+                    isRefundTransition || serverPaidRank > localPaidRank
 
                   // Build the updated order once to avoid duplication
                   const updatedOrder: OrderProfile = {

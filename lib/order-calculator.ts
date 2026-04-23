@@ -552,8 +552,9 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
       
       // Outstanding calculations
       // Account for refunded quantities - refunded items need to be paid again
+      // Cap at quantity to prevent over-counting from stale refunded/paid state
       const effectivePaidQty = (data.item.paidQuantity ?? 0) - (data.item.refundedQuantity ?? 0);
-      const unpaidQty = data.item.quantity - effectivePaidQty;
+      const unpaidQty = Math.min(data.item.quantity, data.item.quantity - effectivePaidQty);
       if (unpaidQty > 0) {
         const unpaidProportion = new Decimal(unpaidQty).dividedBy(data.item.quantity);
         
@@ -580,8 +581,9 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     } else {
       // Tax exempt item - still track outstanding subtotals
       // Account for refunded quantities - refunded items need to be paid again
+      // Cap at quantity to prevent over-counting from stale refunded/paid state
       const effectivePaidQty = (data.item.paidQuantity ?? 0) - (data.item.refundedQuantity ?? 0);
-      const unpaidQty = data.item.quantity - effectivePaidQty;
+      const unpaidQty = Math.min(data.item.quantity, data.item.quantity - effectivePaidQty);
       if (unpaidQty > 0) {
         const unpaidProportion = new Decimal(unpaidQty).dividedBy(data.item.quantity);
         outstandingCardSubtotal = outstandingCardSubtotal.plus(

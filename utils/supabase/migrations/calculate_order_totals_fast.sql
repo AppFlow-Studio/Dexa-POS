@@ -53,15 +53,16 @@ v_amount_paid := COALESCE(v_order.amount_paid, 0);
 
 -- Calculate amount_due from UNPAID items (item-level calculation)
 -- Account for refunded_quantity: refunded items need to be paid again
--- Formula: unpaid_qty = quantity - paid_quantity + refunded_quantity
+-- Formula: unpaid_qty = LEAST(quantity, quantity - paid_quantity + refunded_quantity)
+-- Cap at quantity to prevent over-counting from stale refunded/paid state
 SELECT
     COALESCE(SUM(
-        ROUND(subtotal * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
-        ROUND(tax_amount * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
+        ROUND(subtotal * LEAST(quantity, quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
+        ROUND(tax_amount * LEAST(quantity, quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
     ), 0),
     COALESCE(SUM(
-        ROUND(cash_subtotal * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
-        ROUND(cash_tax_amount * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
+        ROUND(cash_subtotal * LEAST(quantity, quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
+        ROUND(cash_tax_amount * LEAST(quantity, quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
     ), 0)
 INTO v_unpaid_card_total, v_unpaid_cash_total
 FROM public.order_items

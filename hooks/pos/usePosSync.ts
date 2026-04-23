@@ -53,7 +53,7 @@ export const usePosSync = (locationId: string | null) => {
     // CRITICAL OFFLINE SETTINGS
     networkMode: "offlineFirst", // Serve from cache if no internet
     staleTime: Infinity, // Data never becomes "stale" automatically. We control updates.
-    gcTime: 1000 * 60 * 60 * 24, // Keep in garbage collection for 24 hours
+    gcTime: 1000 * 60 * 60 * 2, // Keep in garbage collection for 2 hours
   });
 };
 
