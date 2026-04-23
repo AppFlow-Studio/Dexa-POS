@@ -148,17 +148,8 @@ function detectServerChanges(
 ): ConflictChange[] {
   const changes: ConflictChange[] = [];
 
-  // Check total amount changes
-  if (
-    serverOrder.total_amount !== undefined &&
-    localOrder.total_amount !== serverOrder.total_amount
-  ) {
-    changes.push({
-      field: 'total_amount',
-      previousValue: localOrder.total_amount,
-      newValue: serverOrder.total_amount,
-    });
-  }
+  // Skip derived fields (total_amount, total_discount) — these auto-recalculate
+  // when items change and cause false-positive conflicts on discounted orders.
 
   // Check paid amount changes (indicates payment processed)
   if (
@@ -193,18 +184,6 @@ function detectServerChanges(
       field: 'paid_status',
       previousValue: localOrder.paid_status,
       newValue: serverOrder.paid_status,
-    });
-  }
-
-  // Check discount changes
-  if (
-    serverOrder.total_discount !== undefined &&
-    localOrder.total_discount !== serverOrder.total_discount
-  ) {
-    changes.push({
-      field: 'total_discount',
-      previousValue: localOrder.total_discount,
-      newValue: serverOrder.total_discount,
     });
   }
 

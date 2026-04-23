@@ -571,15 +571,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Resume the Castles singleton with the current station's terminal
         // config so the first post-resume payment skips the cold-connect
         // penalty. Read from the store (not closure) to avoid stale refs.
-        const terminal =
-          useStoreSettingsStore.getState().selectedStation?.payment_terminal;
-        if (
-          terminal?.id &&
-          terminal?.terminal_type === "castles" &&
-          (terminal.ip_address || terminal.connection_type === "usb")
-        ) {
-          const service = getSharedCastlesService();
-          if (service.isSuspended()) {
+        const service = getSharedCastlesService();
+        if (service.isSuspended()) {
+          const terminal =
+            useStoreSettingsStore.getState().selectedStation?.payment_terminal;
+          if (
+            terminal?.id &&
+            terminal?.terminal_type === "castles" &&
+            (terminal.ip_address || terminal.connection_type === "usb")
+          ) {
+            // Resume + pre-warm connection with terminal config
             service.resume({
               connectionType:
                 terminal.connection_type === "usb" ? "usb" : "local_socket",
@@ -588,6 +589,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
               timeout: 10_000,
               terminalId: terminal.id,
             });
+          } else {
+            // Always clear suspended flag — lazy-connect will handle the rest
+            service.resume();
           }
         }
       } else if (nextState === "background") {
