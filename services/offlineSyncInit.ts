@@ -637,6 +637,17 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           // Don't retry - needs user intervention
           return true // Mark as "handled" to prevent infinite retries
         } else {
+          const err = typeof result.error === 'string' ? result.error : ''
+          if (
+            err.includes('invalid input value for enum discount_type') ||
+            err.includes('22P02')
+          ) {
+            console.error(
+              '[OfflineSync] apply_discount: Non-retryable enum error, dropping op:',
+              result.error
+            )
+            return true
+          }
           console.error(
             '[OfflineSync] apply_discount: RPC failed:',
             result.error

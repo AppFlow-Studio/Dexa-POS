@@ -7065,6 +7065,11 @@ export const useOrderStore = create<OrderState>()(
 
             // Normalize incoming discount
             const isRecord = (discountInput as any).discount_type !== undefined
+            const rawRecordDiscountType = isRecord
+              ? (discountInput as any).discount_type
+              : undefined
+            const isLegacyFixedPreset =
+              isRecord && rawRecordDiscountType === 'fixed'
             const normalizedDiscount: Discount = isRecord
               ? {
                   id: (discountInput as any).id,
@@ -7106,6 +7111,16 @@ export const useOrderStore = create<OrderState>()(
                 'Discount'
               : normalizedDiscount.label ?? 'Discount'
 
+            // Legacy preset data guard:
+            // Some presets are stored with discount_type='fixed' in discounts table.
+            // Passing discount_id for those causes manage_order_discount to use invalid enum value.
+            const effectiveDiscountId =
+              isRecord && !isLegacyFixedPreset
+                ? (discountInput as any).id ?? null
+                : null
+            const effectiveSource =
+              isRecord && !isLegacyFixedPreset ? 'preset' : 'open'
+
             // Get discount_value in raw form (percentage as 10 for 10%, fixed as dollar amount)
             const rawDiscountValue = isRecord
               ? (discountInput as any).discount_value
@@ -7115,14 +7130,14 @@ export const useOrderStore = create<OrderState>()(
 
             const applied: OrderAppliedDiscount = {
               local_id: `discount_${Date.now()}`,
-              discount_id: isRecord ? (discountInput as any).id ?? null : null,
+              discount_id: effectiveDiscountId,
               discount_type:
                 normalizedDiscount.type === 'percentage'
                   ? 'percentage'
                   : 'fixed_amount',
               discount_value: rawDiscountValue,
               discount_name: discountName,
-              source: isRecord ? 'preset' : 'open',
+              source: effectiveSource,
               calculated_amount: Math.round(calculatedAmount * 100) / 100,
               pre_discount_subtotal: preDiscountSubtotal,
               applied_by_staff_profiles_id: staffId,
@@ -7132,6 +7147,11 @@ export const useOrderStore = create<OrderState>()(
               applied_at: new Date().toISOString(),
               sync_status: order.db_order_id ? 'pending' : 'pending'
             }
+
+            // Capture previously synced backend discounts so we can void them before applying a new one.
+            const previousSyncedDiscountIds = (order.applied_discounts || [])
+              .map(d => d.order_discount_id)
+              .filter((id): id is string => !!id)
 
             // Update state optimistically - distribute discount to items locally
             // This ensures split payment views show correct prices even before RPC completes
@@ -7145,12 +7165,8 @@ export const useOrderStore = create<OrderState>()(
               if (!order) return
               order.items = itemsWithDistributedDiscount
               order.checkDiscount = normalizedDiscount
-              order.applied_discounts = [
-                ...(order.applied_discounts || []).filter(
-                  d => d.source !== 'preset'
-                ),
-                applied
-              ]
+              // Single active check discount locally; treat new apply as replacement.
+              order.applied_discounts = [applied]
               order.total_amount = totals.total_amount
               order.total_tax = totals.tax_amount
               order.total_discount = totals.discount_amount
@@ -7177,24 +7193,72 @@ export const useOrderStore = create<OrderState>()(
             const dbOrderId = order.db_order_id
             const isOnline = getIsOnline()
 
+            // Cancel stale queued apply_discount ops for this order to avoid replaying old discounts.
+            const pendingOps = getOperationsForOrder(orderId)
+            for (const op of pendingOps) {
+              if (op.type === 'apply_discount') {
+                removeOperation(op.id)
+              }
+            }
+
+            const isPositiveAmountsConstraint = (errorLike: any): boolean => {
+              const text =
+                typeof errorLike === 'string'
+                  ? errorLike
+                  : `${errorLike?.message || ''} ${errorLike?.details || ''} ${
+                      errorLike?.code || ''
+                    }`
+              return text.includes('positive_amounts') || text.includes('23514')
+            }
+
+            const isInvalidDiscountEnum = (errorLike: any): boolean => {
+              const text =
+                typeof errorLike === 'string'
+                  ? errorLike
+                  : `${errorLike?.message || ''} ${errorLike?.details || ''} ${
+                      errorLike?.code || ''
+                    }`
+              return (
+                text.includes('invalid input value for enum discount_type') ||
+                text.includes('22P02')
+              )
+            }
+
             if (supabase && dbOrderId && isOnline && staffId) {
               console.log(
                 '[applyDiscountToCheck] syncing discount via RPC',
                 applied
               )
-              OrderDiscountService.applyDiscount(supabase, {
-                order_id: dbOrderId,
-                staff_id: staffId,
-                discount_id: applied.discount_id,
-                discount_name: discountName,
-                discount_type: applied.discount_type,
-                discount_value: applied.discount_value,
-                source: applied.source as 'preset' | 'open' | 'promo_code',
-                reason: null,
-                applied_to_item_ids: null,
-                approved_by_staff_id:
-                  applied.approved_by_staff_profiles_id ?? null
-              })
+              const runApplyRpc = () =>
+                OrderDiscountService.applyDiscount(supabase, {
+                  order_id: dbOrderId,
+                  staff_id: staffId,
+                  discount_id: applied.discount_id,
+                  discount_name: discountName,
+                  discount_type: applied.discount_type,
+                  discount_value: applied.discount_value,
+                  source: applied.source as 'preset' | 'open' | 'promo_code',
+                  reason: null,
+                  applied_to_item_ids: null,
+                  approved_by_staff_id:
+                    applied.approved_by_staff_profiles_id ?? null
+                })
+
+              const voidPreviousSyncedDiscounts = async () => {
+                for (const orderDiscountId of previousSyncedDiscountIds) {
+                  await OrderDiscountService.voidDiscount(supabase, {
+                    order_id: dbOrderId,
+                    staff_id: staffId,
+                    order_discount_id: orderDiscountId,
+                    void_reason: null
+                  })
+                }
+              }
+
+              ;(previousSyncedDiscountIds.length > 0
+                ? voidPreviousSyncedDiscounts().then(() => runApplyRpc())
+                : runApplyRpc()
+              )
                 .then(result => {
                   if (result.success && result.order_discount_id) {
                     // Update local state with backend order_discount_id, mark as synced,
@@ -7321,7 +7385,35 @@ export const useOrderStore = create<OrderState>()(
                       '[applyDiscountToCheck] RPC failed:',
                       result.error
                     )
-                    // Queue for retry
+                    if (
+                      !isPositiveAmountsConstraint(result.error) &&
+                      !isInvalidDiscountEnum(result.error)
+                    ) {
+                      // Queue for retry only for transient failures.
+                      queueOperation({
+                        type: 'apply_discount',
+                        params: {
+                          localOrderId: orderId,
+                          discount: applied
+                        },
+                        localOrderId: orderId
+                      } as any)
+                    } else {
+                      console.error(
+                        '[applyDiscountToCheck] Not queueing non-retryable discount apply failure'
+                      )
+                    }
+                  }
+                })
+                .catch(err => {
+                  console.error(
+                    'Failed to sync discount via RPC, queueing:',
+                    err
+                  )
+                  if (
+                    !isPositiveAmountsConstraint(err) &&
+                    !isInvalidDiscountEnum(err)
+                  ) {
                     queueOperation({
                       type: 'apply_discount',
                       params: {
@@ -7330,21 +7422,11 @@ export const useOrderStore = create<OrderState>()(
                       },
                       localOrderId: orderId
                     } as any)
+                  } else {
+                    console.error(
+                      '[applyDiscountToCheck] Not queueing non-retryable discount apply failure'
+                    )
                   }
-                })
-                .catch(err => {
-                  console.error(
-                    'Failed to sync discount via RPC, queueing:',
-                    err
-                  )
-                  queueOperation({
-                    type: 'apply_discount',
-                    params: {
-                      localOrderId: orderId,
-                      discount: applied
-                    },
-                    localOrderId: orderId
-                  } as any)
                 })
             } else {
               // Offline or no db_order_id yet - queue for later

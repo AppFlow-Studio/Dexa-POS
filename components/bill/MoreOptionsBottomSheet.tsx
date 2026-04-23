@@ -436,6 +436,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         enablePanDownToClose={true}
         onChange={handleSheetChange}
         {...bottomSheetTheme}
+        style={{ zIndex: 10000, elevation: 10000 }}
         backdropComponent={renderBackdrop}
       >
         <BottomSheetScrollView

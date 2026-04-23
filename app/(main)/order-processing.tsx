@@ -44,12 +44,18 @@ import {
   X
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import Animated, {
   LinearTransition,
   SlideInLeft
 } from 'react-native-reanimated'
-import { Portal as Teleport } from 'react-native-teleport'
 
 const EMPTY_ORDERS: OrderProfile[] = []
 const badgeContentStyle = { paddingHorizontal: 20, gap: 8 } as const
@@ -1162,24 +1168,22 @@ const OrderProcessing = () => {
         </View>
       </View>
 
-      {/* Stage 2: Mount in root portal so the sheet layers above BillSection controls */}
+      {/* Stage 2: Mount bottom sheets in a dedicated overlay layer above BillSection controls */}
       {renderStage >= 2 && (
-        <Teleport hostName='root'>
-          <>
-            <MoreOptionsBottomSheet
-              ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-              discountSheetRef={
-                discountSheetRef as React.RefObject<BottomSheetMethods>
-              }
-              onCloseCheck={handleCloseCheck}
-              onNoSale={handleNoSale}
-            />
-            <DiscountBottomSheet
-              ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
-              onClose={() => discountSheetRef?.current?.close()}
-            />
-          </>
-        </Teleport>
+        <View pointerEvents='box-none' style={styles.sheetOverlayLayer}>
+          <MoreOptionsBottomSheet
+            ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+            discountSheetRef={
+              discountSheetRef as React.RefObject<BottomSheetMethods>
+            }
+            onCloseCheck={handleCloseCheck}
+            onNoSale={handleNoSale}
+          />
+          <DiscountBottomSheet
+            ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
+            onClose={() => discountSheetRef?.current?.close()}
+          />
+        </View>
       )}
 
       <CashDrawerSheet
@@ -1449,3 +1453,11 @@ const OrderProcessing = () => {
 }
 
 export default OrderProcessing
+
+const styles = StyleSheet.create({
+  sheetOverlayLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20000,
+    elevation: 20000
+  }
+})

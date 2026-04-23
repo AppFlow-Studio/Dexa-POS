@@ -1363,9 +1363,9 @@ const BillSectionContent = ({
           borderTopRightRadius: 28,
           shadowColor: '#000000',
           shadowOffset: { width: 0, height: -10 },
-          shadowOpacity: 0.28,
+          shadowOpacity: 0.16,
           shadowRadius: 18,
-          elevation: 20
+          elevation: 2
         }}
       >
         <Totals cart={cart} />
