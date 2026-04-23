@@ -6,16 +6,13 @@ import {
   getAutoRetryCount,
   isAutoRetryInProgress
 } from '@/services/offlineSyncService'
-import { PrinterService } from '@/services/printing/PrinterService'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useDineInStore } from '@/stores/useDineInStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useReservationStore } from '@/stores/useReservationStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useOrderSyncCounts } from '@/stores/useSyncStatusStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
@@ -208,10 +205,6 @@ const BillSectionContent = ({
   const { activeEmployeeId } = useEmployeeStore()
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore()
   const { show } = useToast()
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const autoPrintKitchenTickets = useLocationConfigStore(
-    s => s.config.printing.autoPrintKitchenTickets
-  )
 
   // Memoize computed values to prevent unnecessary recalculations
   const cart = useMemo(() => activeOrderItems || [], [activeOrderItems])
@@ -656,37 +649,13 @@ const BillSectionContent = ({
       return
     }
 
-    // Capture new items BEFORE sendNewItemsToKitchen (which merges/mutates statuses)
-    const currentOrder = activeOrderId
-      ? useOrderStore.getState().ordersById[activeOrderId]
-      : null
-    const newItems =
-      currentOrder?.items.filter(
-        item => !item.kitchen_status || item.kitchen_status === 'new'
-      ) || []
-
     if (activeOrderType === 'dine_in' && selectedTable) {
       assignOrderToTable(activeOrderId!, selectedTable.id)
       // Table session status updates are now handled through session-based APIs
       clearSelectedTable()
     }
+    // Auto-print is now handled centrally inside sendNewItemsToKitchen
     sendNewItemsToKitchen()
-
-    // Auto-print kitchen tickets for new items
-    if (
-      autoPrintKitchenTickets &&
-      selectedStore &&
-      newItems.length > 0 &&
-      currentOrder
-    ) {
-      PrinterService.printKitchenTickets(
-        currentOrder,
-        newItems,
-        selectedStore
-      ).catch(e =>
-        console.warn('[BillSection] Auto-print kitchen tickets failed:', e)
-      )
-    }
   }
 
   // OPTIMIZED: Wrap callback with useCallback

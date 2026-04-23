@@ -114,6 +114,7 @@ import {
   isConflictCritical
 } from '@/types/conflict-resolution'
 import { DejavooSaleTransactionResponse } from '@/types/dejavoo-spin-api'
+import { autoPrintKitchenTicketsIfEnabled } from '@/services/printing/autoPrintKitchen'
 
 // ============================================================================
 // PURE CALCULATION FUNCTIONS (Delegating to order-calculator module)
@@ -9436,6 +9437,12 @@ export const useOrderStore = create<OrderState>()(
               type: 'success'
             })
 
+            // Auto-print kitchen tickets (centralized — fires for all send-to-kitchen paths)
+            const orderForPrint = get().ordersById[activeOrderId]
+            if (orderForPrint) {
+              autoPrintKitchenTicketsIfEnabled(orderForPrint, newItems)
+            }
+
             // ================================================================
             // OFFLINE-FIRST: Queue or sync backend operation
             // ================================================================
@@ -9671,10 +9678,21 @@ export const useOrderStore = create<OrderState>()(
                 : order.opened_at
             }
 
+            // Capture new items before state mutation for auto-print
+            const newItemsForPrint = order.items.filter(
+              item => !item.kitchen_status || item.kitchen_status === 'new'
+            )
+
             // Update state
             set(state => {
               state.ordersById[orderId] = updatedOrder
             })
+
+            // Auto-print kitchen tickets (centralized — fires for all send-to-kitchen paths)
+            const freshOrder = get().ordersById[orderId]
+            if (freshOrder) {
+              autoPrintKitchenTicketsIfEnabled(freshOrder, newItemsForPrint)
+            }
 
             // Clear sync status for fired items — they're committed to local state now
             // ================================================================

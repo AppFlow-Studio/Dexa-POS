@@ -326,7 +326,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
       const result: CFDCartItem[] = []
       for (const item of activeOrder.items) {
-        if (item.is_voided || item.quantity <= 0) continue
+        if (item.is_voided || item.quantity <= 0 || item.isDraft) continue
         try {
           const cardUnitPrice = item.unitPrice || item.price || 0
           const cashUnitPrice = item.cashPrice || cardUnitPrice
