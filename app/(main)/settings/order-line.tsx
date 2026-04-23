@@ -103,6 +103,23 @@ const ORDER_LINE_VIEW_OPTIONS: {
   }
 ]
 
+const MINIMAL_MODE_ROW_OPTIONS: {
+  value: 2 | 3
+  label: string
+  description: string
+}[] = [
+  {
+    value: 2,
+    label: '2 Rows',
+    description: 'Open a compact order sheet sized to show about two rows.'
+  },
+  {
+    value: 3,
+    label: '3 Rows',
+    description: 'Open the full-height order sheet.'
+  }
+]
+
 const OrderLineSettingsScreen = () => {
   const orderLineSettings = useSettingsStore(s => s.orderLineSettings)
   const setOrderLineSettings = useSettingsStore(s => s.setOrderLineSettings)
@@ -387,6 +404,85 @@ const OrderLineSettingsScreen = () => {
                   </TouchableOpacity>
                 )
               })}
+
+              {(orderLineSettings.viewMode ?? 'default') === 'minimal' && (
+                <View style={{ marginTop: 6, gap: 6 }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: colors.muted,
+                      marginTop: 4,
+                      paddingHorizontal: 2
+                    }}
+                  >
+                    In minimal mode, choose how tall the order sheet opens.
+                  </Text>
+                  {MINIMAL_MODE_ROW_OPTIONS.map(option => {
+                    const currentRows = orderLineSettings.minimalModeRows ?? 3
+                    const isSelected = currentRows === option.value
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        onPress={() =>
+                          setOrderLineSettings({
+                            minimalModeRows: option.value
+                          })
+                        }
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingHorizontal: 10,
+                          paddingVertical: 9,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          backgroundColor: isSelected
+                            ? colors.teal + '10'
+                            : colors.screen,
+                          borderColor: isSelected
+                            ? colors.teal + '50'
+                            : colors.border
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: '600',
+                              color: isSelected ? colors.teal : colors.heading
+                            }}
+                          >
+                            {option.label}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: colors.muted,
+                              marginTop: 1
+                            }}
+                          >
+                            {option.description}
+                          </Text>
+                        </View>
+                        {isSelected && (
+                          <View
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 11,
+                              backgroundColor: colors.teal,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginLeft: 10
+                            }}
+                          >
+                            <Check size={13} color={colors.onSolid} />
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              )}
             </View>
           )}
         </View>

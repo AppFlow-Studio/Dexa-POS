@@ -46,15 +46,19 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from 'react-native'
 import Animated, {
   LinearTransition,
-  SlideInLeft
+  SlideInLeft,
+  useAnimatedStyle,
+  useSharedValue
 } from 'react-native-reanimated'
 
 const EMPTY_ORDERS: OrderProfile[] = []
@@ -63,6 +67,7 @@ const cardContentStyle = { padding: 10, gap: 12 } as const
 
 const OrderProcessing = () => {
   const router = useRouter()
+  const { height: windowHeight } = useWindowDimensions()
   const { colorScheme } = useColorScheme()
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -78,6 +83,9 @@ const OrderProcessing = () => {
   const orderCompletionMode = useStoreSettingsStore(s => s.orderCompletionMode)
   const orderLineViewMode = useSettingsStore(
     s => s.orderLineSettings.viewMode ?? 'default'
+  )
+  const minimalModeRows = useSettingsStore(
+    s => s.orderLineSettings.minimalModeRows ?? 3
   )
   const openSearch = useSearchStore(s => s.openSearch)
 
@@ -102,6 +110,8 @@ const OrderProcessing = () => {
   const orderBadgeContentWidthRef = useRef(0)
   const [canScrollBadgesLeft, setCanScrollBadgesLeft] = useState(false)
   const [canScrollBadgesRight, setCanScrollBadgesRight] = useState(false)
+  const ordersSheetHeight = useSharedValue<number>(windowHeight)
+  const dragStartHeightRef = useRef<number>(windowHeight)
 
   // OPTIMIZED: Effect now uses getState() to avoid subscribing to all orders
   useEffect(() => {
@@ -291,6 +301,52 @@ const OrderProcessing = () => {
   }, [])
 
   const displayOrders = renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS
+  const minOrdersSheetHeight = Math.round(windowHeight * 0.56)
+  const maxOrdersSheetHeight = windowHeight
+  const defaultOrdersSheetHeight =
+    minimalModeRows === 2
+      ? Math.round(windowHeight * 0.74)
+      : maxOrdersSheetHeight
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    height: ordersSheetHeight.value
+  }))
+
+  const clampOrdersSheetHeight = useCallback(
+    (height: number) =>
+      Math.max(minOrdersSheetHeight, Math.min(maxOrdersSheetHeight, height)),
+    [maxOrdersSheetHeight, minOrdersSheetHeight]
+  )
+
+  useEffect(() => {
+    if (!isOrdersModuleOpen) return
+    ordersSheetHeight.value = defaultOrdersSheetHeight
+  }, [defaultOrdersSheetHeight, isOrdersModuleOpen])
+
+  const sheetResizePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          Math.abs(gestureState.dy) > 2,
+        onPanResponderGrant: () => {
+          dragStartHeightRef.current = ordersSheetHeight.value
+        },
+        onPanResponderMove: (_evt, gestureState) => {
+          const nextHeight = clampOrdersSheetHeight(
+            dragStartHeightRef.current - gestureState.dy
+          )
+          ordersSheetHeight.value = nextHeight
+        },
+        onPanResponderRelease: (_evt, gestureState) => {
+          const nextHeight = clampOrdersSheetHeight(
+            dragStartHeightRef.current - gestureState.dy
+          )
+          ordersSheetHeight.value = nextHeight
+        }
+      }),
+    [clampOrdersSheetHeight, ordersSheetHeight]
+  )
 
   // Bulk complete: orders eligible for completion
   const completableOrders = useMemo(() => {
@@ -407,9 +463,10 @@ const OrderProcessing = () => {
       const orderStatusColor =
         item.order_status === 'ready'
           ? colors.success
-          : item.order_status === 'preparing' ||
-            item.order_status === 'sent_to_kitchen'
-          ? colors.warning
+          : item.order_status === 'preparing'
+          ? colors.orderPreparing
+          : item.order_status === 'sent_to_kitchen'
+          ? colors.orderSentToKitchen
           : item.order_status === 'completed'
           ? colors.info
           : item.order_status === 'cancelled' || item.order_status === 'void'
@@ -438,6 +495,7 @@ const OrderProcessing = () => {
           style={{
             flex: 1,
             maxWidth: 320,
+            alignSelf: 'flex-start',
             borderRadius: 14,
             borderWidth: 1,
             borderColor: colors.info + '50',
@@ -794,44 +852,46 @@ const OrderProcessing = () => {
                     onPress={() => setIsOrdersModuleOpen(true)}
                     className='flex-row items-center rounded-lg px-3 py-2.5 justify-start'
                     style={{
-                      backgroundColor: colors.info + '16',
+                      backgroundColor: colors.panel,
                       borderWidth: 1,
-                      borderColor: colors.info + '35'
+                      borderColor: colors.border
                     }}
                   >
                     <Text
                       style={{
                         fontSize: 12,
-                        fontWeight: '700',
-                        color: colors.heading
+                        fontWeight: '600',
+                        color: colors.label
                       }}
                     >
                       Orders
                     </Text>
-                    <View
-                      style={{
-                        minWidth: 20,
-                        height: 20,
-                        borderRadius: 10,
-                        marginLeft: 6,
-                        backgroundColor: colors.info + '30',
-                        borderWidth: 1,
-                        borderColor: colors.info + '55',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        paddingHorizontal: 5
-                      }}
-                    >
-                      <Text
+                    {displayOrders.length > 0 && (
+                      <View
                         style={{
-                          color: colors.heading,
-                          fontSize: 10,
-                          fontWeight: '800'
+                          minWidth: 20,
+                          height: 20,
+                          borderRadius: 10,
+                          marginLeft: 6,
+                          backgroundColor: colors.muted + '20',
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingHorizontal: 5
                         }}
                       >
-                        {displayOrders.length}
-                      </Text>
-                    </View>
+                        <Text
+                          style={{
+                            color: colors.label,
+                            fontSize: 10,
+                            fontWeight: '700'
+                          }}
+                        >
+                          {displayOrders.length}
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 ) : undefined
               }
@@ -1207,31 +1267,59 @@ const OrderProcessing = () => {
         animationType='slide'
         onRequestClose={() => setIsOrdersModuleOpen(false)}
       >
-        <Pressable
-          onPress={() => setIsOrdersModuleOpen(false)}
+        <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
             justifyContent: 'flex-end'
           }}
         >
           <Pressable
-            onPress={() => {}}
+            onPress={() => setIsOrdersModuleOpen(false)}
             style={{
-              width: '100%',
-              height: '100%',
-              borderTopLeftRadius: 18,
-              borderTopRightRadius: 18,
-              borderWidth: 1,
-              borderColor: colors.info + '35',
-              backgroundColor: colors.screen,
-              overflow: 'hidden'
+              ...StyleSheet.absoluteFillObject,
+              backgroundColor: 'rgba(0,0,0,0.5)'
             }}
+          />
+
+          <Animated.View
+            style={[
+              {
+                width: '100%',
+                borderTopLeftRadius: 18,
+                borderTopRightRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.info + '35',
+                backgroundColor: colors.screen,
+                overflow: 'hidden'
+              },
+              sheetAnimatedStyle
+            ]}
           >
+            <View
+              {...sheetResizePanResponder.panHandlers}
+              style={{
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingTop: 8,
+                paddingBottom: 6,
+                backgroundColor: colors.screen
+              }}
+            >
+              <View
+                style={{
+                  width: 58,
+                  height: 5,
+                  borderRadius: 999,
+                  backgroundColor: colors.border
+                }}
+              />
+            </View>
+
             <View
               style={{
                 paddingHorizontal: 12,
-                paddingVertical: 10,
+                paddingTop: 6,
+                paddingBottom: 10,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
                 flexDirection: 'row',
@@ -1339,9 +1427,6 @@ const OrderProcessing = () => {
                   gap: 10
                 }}
                 showsVerticalScrollIndicator={false}
-                itemLayoutAnimation={LinearTransition.springify()
-                  .damping(18)
-                  .stiffness(120)}
                 initialNumToRender={12}
                 maxToRenderPerBatch={12}
                 windowSize={4}
@@ -1360,8 +1445,8 @@ const OrderProcessing = () => {
                 </Text>
               </View>
             )}
-          </Pressable>
-        </Pressable>
+          </Animated.View>
+        </View>
       </Modal>
 
       {isItemsModalOpen && (
