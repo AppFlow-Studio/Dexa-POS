@@ -125,7 +125,12 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
       setLoading(false)
 
       if (details) {
-        const formatted = [details.street, details.city, details.state, details.zip]
+        const formatted = [
+          details.street,
+          details.city,
+          details.state,
+          details.zip
+        ]
           .filter(Boolean)
           .join(', ')
         setInputValue(formatted)
@@ -256,7 +261,7 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder={placeholder}
-          placeholderTextColor={colors.muted}
+          placeholderTextColor={colors.heading}
           style={{
             flex: 1,
             color: colors.heading,

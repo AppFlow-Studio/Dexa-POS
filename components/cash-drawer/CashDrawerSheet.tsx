@@ -11,16 +11,15 @@ import PayInOutModal from '@/components/cash-drawer/PayInOutModal'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import {
+  computeLocalTimeline,
+  computeLocalVarianceFlags,
+  fetchSessionVarianceAnalysis,
+  type VarianceAnalysis
+} from '@/services/cashDrawerAuditService'
+import {
   closeDrawerSession,
   openDrawerSession
 } from '@/services/cashDrawerService'
-import {
-  computeLocalVarianceFlags,
-  computeLocalTimeline,
-  fetchSessionVarianceAnalysis,
-  type SuspiciousPattern,
-  type VarianceAnalysis,
-} from '@/services/cashDrawerAuditService'
 import {
   DenominationCount,
   isDebitOperation,
@@ -69,36 +68,43 @@ const OP_LABELS: Record<string, string> = {
   tip_out: 'Tip Out'
 }
 
-const OP_COLORS: Record<string, { bg: string; text: string }> = {
-  cash_sale: { bg: 'bg-cyan-900/40', text: 'text-cyan-400' },
-  cash_refund: { bg: 'bg-red-900/40', text: 'text-red-400' },
-  pay_in: { bg: 'bg-cyan-900/40', text: 'text-cyan-400' },
-  pay_out: { bg: 'bg-red-900/40', text: 'text-red-400' },
-  cash_drop: { bg: 'bg-blue-900/40', text: 'text-blue-400' },
-  tip_out: { bg: 'bg-red-900/40', text: 'text-red-400' },
-  no_sale: { bg: 'bg-gray-800', text: 'text-gray-400' },
-  opening_count: { bg: 'bg-gray-800', text: 'text-gray-400' },
-  closing_count: { bg: 'bg-gray-800', text: 'text-gray-400' }
+function getOpStyle (operationType: string): { bg: string; text: string } {
+  switch (operationType) {
+    case 'cash_sale':
+    case 'pay_in':
+      return { bg: colors.teal + '25', text: colors.teal }
+    case 'cash_refund':
+    case 'pay_out':
+    case 'tip_out':
+      return { bg: colors.danger + '25', text: colors.danger }
+    case 'cash_drop':
+      return { bg: colors.info + '25', text: colors.info }
+    default:
+      return { bg: colors.muted + '25', text: colors.muted }
+  }
 }
 
-function formatTime(iso: string) {
+function formatTime (iso: string) {
   const date = new Date(iso)
-  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
-function getSignedAmountColor(value: number) {
+function getSignedAmountColor (value: number) {
   if (value > 0) return colors.teal
   if (value < 0) return colors.danger
   return colors.muted
 }
 
-function formatSignedAmount(value: number) {
+function formatSignedAmount (value: number) {
   if (value > 0) return formatCurrency(value)
   if (value < 0) return formatCurrency(Math.abs(value))
   return formatCurrency(0)
 }
 
-function renderSignedAmount(value: number) {
+function renderSignedAmount (value: number) {
   const sign = value > 0 ? '+' : value < 0 ? '-' : ''
   const amountColor = getSignedAmountColor(value)
 
@@ -160,7 +166,8 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
   // Variance analysis state
   const [varianceDetailExpanded, setVarianceDetailExpanded] = useState(false)
-  const [varianceAnalysis, setVarianceAnalysis] = useState<VarianceAnalysis | null>(null)
+  const [varianceAnalysis, setVarianceAnalysis] =
+    useState<VarianceAnalysis | null>(null)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
 
   useEffect(() => {
@@ -304,18 +311,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   const handleFetchAnalysis = useCallback(async () => {
     if (!activeSession || loadingAnalysis) return
     setLoadingAnalysis(true)
-    const result = await fetchSessionVarianceAnalysis(supabase, activeSession.id)
+    const result = await fetchSessionVarianceAnalysis(
+      supabase,
+      activeSession.id
+    )
     setVarianceAnalysis(result)
     setLoadingAnalysis(false)
   }, [activeSession, supabase, loadingAnalysis])
-
-  const getVarianceColor = (v: number) => {
-    const abs = Math.abs(v)
-    if (abs === 0) return 'text-cyan-400'
-    if (abs >= varianceAlertThreshold) return 'text-red-400'
-    if (abs >= varianceWarningThreshold) return 'text-yellow-400'
-    return 'text-blue-400'
-  }
 
   // ── Open view ──────────────────────────────────────────────────────────────
   const renderOpenView = () => (
@@ -638,7 +640,6 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           />
         </View>
       )}
-
     </View>
   )
 
@@ -668,9 +669,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           {isSubmitting
             ? 'Opening...'
             : `Open drawer ${formatCurrency(
-                isQuickStart
-                  ? parseFloat(quickStartAmount) || 0
-                  : openingTotal
+                isQuickStart ? parseFloat(quickStartAmount) || 0 : openingTotal
               )}`}
         </Text>
       </View>
@@ -1052,12 +1051,19 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             }}
           >
             <Banknote size={16} color={colors.teal} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginTop: 2,
+                gap: 4
+              }}
+            >
               <Text
                 style={{
                   fontSize: 11,
                   fontWeight: '700',
-                  color: colors.teal,
+                  color: colors.teal
                 }}
               >
                 No Sale
@@ -1070,16 +1076,17 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                     borderRadius: 8,
                     backgroundColor:
                       cashDrawerSettings.noSaleAlertThreshold > 0 &&
-                      getNoSaleCount() >= cashDrawerSettings.noSaleAlertThreshold
+                      getNoSaleCount() >=
+                        cashDrawerSettings.noSaleAlertThreshold
                         ? colors.danger
-                        : colors.muted + '60',
+                        : colors.muted + '60'
                   }}
                 >
                   <Text
                     style={{
                       fontSize: 9,
                       fontWeight: '800',
-                      color: '#fff',
+                      color: '#fff'
                     }}
                   >
                     {getNoSaleCount()}
@@ -1399,59 +1406,86 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               justifyContent: 'space-between',
               paddingHorizontal: 10,
               paddingVertical: 8,
-              backgroundColor: Math.abs(variance) >= varianceAlertThreshold
-                ? colors.danger + '15'
-                : '#fbbf2420',
+              backgroundColor:
+                Math.abs(variance) >= varianceAlertThreshold
+                  ? colors.danger + '15'
+                  : colors.warning + '20',
               borderWidth: 1,
-              borderColor: Math.abs(variance) >= varianceAlertThreshold
-                ? colors.danger + '45'
-                : '#fbbf2450',
-              borderRadius: 10,
+              borderColor:
+                Math.abs(variance) >= varianceAlertThreshold
+                  ? colors.danger + '45'
+                  : colors.warning + '50',
+              borderRadius: 10
             }}
           >
-            <Text style={{
-              fontSize: 12,
-              fontWeight: '700',
-              color: Math.abs(variance) >= varianceAlertThreshold
-                ? colors.danger
-                : '#fbbf24',
-            }}>
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color:
+                  Math.abs(variance) >= varianceAlertThreshold
+                    ? colors.danger
+                    : colors.warning
+              }}
+            >
               {varianceDetailExpanded ? 'Hide' : 'Show'} Variance Analysis
             </Text>
-            <Text style={{
-              fontSize: 11,
-              color: colors.muted,
-            }}>
-              {localVarianceFlags.length > 0 ? `${localVarianceFlags.length} flag(s)` : 'No flags'}
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.muted
+              }}
+            >
+              {localVarianceFlags.length > 0
+                ? `${localVarianceFlags.length} flag(s)`
+                : 'No flags'}
             </Text>
           </TouchableOpacity>
 
           {varianceDetailExpanded && (
-            <View style={{
-              marginTop: 8,
-              backgroundColor: colors.panel,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 10,
-              padding: 10,
-            }}>
+            <View
+              style={{
+                marginTop: 8,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                padding: 10
+              }}
+            >
               {/* Suspicious patterns */}
               {localVarianceFlags.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.danger, marginBottom: 6 }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color: colors.danger,
+                      marginBottom: 6
+                    }}
+                  >
                     Suspicious Patterns
                   </Text>
                   {localVarianceFlags.map((flag, i) => (
-                    <View key={i} style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 6,
-                      backgroundColor: colors.danger + '10',
-                      borderWidth: 1,
-                      borderColor: colors.danger + '30',
-                      borderRadius: 8,
-                      marginBottom: 4,
-                    }}>
-                      <Text style={{ fontSize: 11, color: colors.danger, fontWeight: '600' }}>
+                    <View
+                      key={i}
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 6,
+                        backgroundColor: colors.danger + '10',
+                        borderWidth: 1,
+                        borderColor: colors.danger + '30',
+                        borderRadius: 8,
+                        marginBottom: 4
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.danger,
+                          fontWeight: '600'
+                        }}
+                      >
                         {flag.description}
                       </Text>
                     </View>
@@ -1460,57 +1494,90 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               )}
 
               {/* Operations timeline */}
-              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.label, marginBottom: 6 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: colors.label,
+                  marginBottom: 6
+                }}
+              >
                 Operations Timeline
               </Text>
-              {localTimeline.map((op) => {
+              {localTimeline.map(op => {
                 const isNoSale = op.operationType === 'no_sale'
-                const opColor = OP_COLORS[op.operationType] || OP_COLORS.no_sale
+                const opColor = getOpStyle(op.operationType)
                 return (
-                  <View key={op.id} style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: 4,
-                    paddingHorizontal: 6,
-                    borderRadius: 6,
-                    marginBottom: 2,
-                    backgroundColor: isNoSale ? '#fbbf2415' : 'transparent',
-                    borderWidth: isNoSale ? 1 : 0,
-                    borderColor: isNoSale ? '#fbbf2430' : 'transparent',
-                  }}>
-                    <Text style={{ fontSize: 10, color: colors.muted, width: 60 }}>
+                  <View
+                    key={op.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: 4,
+                      paddingHorizontal: 6,
+                      borderRadius: 6,
+                      marginBottom: 2,
+                      backgroundColor: isNoSale
+                        ? colors.warning + '15'
+                        : 'transparent',
+                      borderWidth: isNoSale ? 1 : 0,
+                      borderColor: isNoSale
+                        ? colors.warning + '30'
+                        : 'transparent'
+                    }}
+                  >
+                    <Text
+                      style={{ fontSize: 10, color: colors.muted, width: 60 }}
+                    >
                       {formatTime(op.performedAt)}
                     </Text>
-                    <View style={{
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 4,
-                      width: 80,
-                    }} className={opColor.bg}>
-                      <Text className={opColor.text} style={{ fontSize: 10, fontWeight: '600' }}>
+                    <View
+                      style={{
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 4,
+                        width: 80,
+                        backgroundColor: opColor.bg
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '600',
+                          color: opColor.text
+                        }}
+                      >
                         {OP_LABELS[op.operationType] || op.operationType}
                       </Text>
                     </View>
-                    <Text style={{
-                      fontSize: 10,
-                      fontWeight: '600',
-                      color: isNoEffectOperation(op.operationType)
-                        ? colors.muted
-                        : isDebitOperation(op.operationType) ? colors.danger : colors.teal,
-                      width: 60,
-                      textAlign: 'right',
-                    }}>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '600',
+                        color: isNoEffectOperation(op.operationType)
+                          ? colors.muted
+                          : isDebitOperation(op.operationType)
+                          ? colors.danger
+                          : colors.teal,
+                        width: 60,
+                        textAlign: 'right'
+                      }}
+                    >
                       {isNoEffectOperation(op.operationType)
                         ? '—'
-                        : `${isDebitOperation(op.operationType) ? '-' : '+'}${formatCurrency(op.amount)}`}
+                        : `${
+                            isDebitOperation(op.operationType) ? '-' : '+'
+                          }${formatCurrency(op.amount)}`}
                     </Text>
-                    <Text style={{
-                      fontSize: 10,
-                      color: colors.heading,
-                      fontWeight: '500',
-                      flex: 1,
-                      textAlign: 'right',
-                    }}>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        color: colors.heading,
+                        fontWeight: '500',
+                        flex: 1,
+                        textAlign: 'right'
+                      }}
+                    >
                       {formatCurrency(op.runningBalance)}
                     </Text>
                   </View>
@@ -1520,7 +1587,6 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           )}
         </View>
       )}
-
     </View>
   )
 
@@ -1651,44 +1717,67 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                 alignItems: 'center',
                 backgroundColor: colors.danger + '15',
                 borderWidth: 1,
-                borderColor: colors.danger + '45',
+                borderColor: colors.danger + '45'
               }}
             >
-              <Text style={{
-                fontSize: 12,
-                fontWeight: '700',
-                color: colors.danger,
-              }}>
-                {loadingAnalysis ? 'Loading Analysis...' : 'View Full Variance Analysis'}
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: colors.danger
+                }}
+              >
+                {loadingAnalysis
+                  ? 'Loading Analysis...'
+                  : 'View Full Variance Analysis'}
               </Text>
             </TouchableOpacity>
 
             {/* Server-side analysis results */}
             {varianceAnalysis && (
-              <View style={{
-                marginTop: 8,
-                backgroundColor: colors.panel,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 10,
-                padding: 10,
-              }}>
+              <View
+                style={{
+                  marginTop: 8,
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  padding: 10
+                }}
+              >
                 {varianceAnalysis.suspiciousPatterns.length > 0 && (
                   <View style={{ marginBottom: 8 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.danger, marginBottom: 4 }}>
-                      Suspicious Patterns ({varianceAnalysis.suspiciousPatterns.length})
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: colors.danger,
+                        marginBottom: 4
+                      }}
+                    >
+                      Suspicious Patterns (
+                      {varianceAnalysis.suspiciousPatterns.length})
                     </Text>
                     {varianceAnalysis.suspiciousPatterns.map((flag, i) => (
-                      <View key={i} style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 6,
-                        backgroundColor: colors.danger + '10',
-                        borderWidth: 1,
-                        borderColor: colors.danger + '30',
-                        borderRadius: 8,
-                        marginBottom: 4,
-                      }}>
-                        <Text style={{ fontSize: 11, color: colors.danger, fontWeight: '600' }}>
+                      <View
+                        key={i}
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                          backgroundColor: colors.danger + '10',
+                          borderWidth: 1,
+                          borderColor: colors.danger + '30',
+                          borderRadius: 8,
+                          marginBottom: 4
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: colors.danger,
+                            fontWeight: '600'
+                          }}
+                        >
                           {flag.description}
                         </Text>
                       </View>
@@ -1698,21 +1787,38 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
                 {varianceAnalysis.noSaleEvents.length > 0 && (
                   <View style={{ marginBottom: 8 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#fbbf24', marginBottom: 4 }}>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: colors.warning,
+                        marginBottom: 4
+                      }}
+                    >
                       No-Sale Events ({varianceAnalysis.noSaleEvents.length})
                     </Text>
-                    {varianceAnalysis.noSaleEvents.map((ev) => (
-                      <View key={ev.id} style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        backgroundColor: '#fbbf2410',
-                        borderRadius: 6,
-                        marginBottom: 2,
-                      }}>
-                        <Text style={{ fontSize: 10, color: '#fbbf24', fontWeight: '600' }}>
-                          {formatTime(ev.performedAt)} — {ev.performedByName || 'Unknown'}
+                    {varianceAnalysis.noSaleEvents.map(ev => (
+                      <View
+                        key={ev.id}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          backgroundColor: colors.warning + '10',
+                          borderRadius: 6,
+                          marginBottom: 2
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: colors.warning,
+                            fontWeight: '600'
+                          }}
+                        >
+                          {formatTime(ev.performedAt)} —{' '}
+                          {ev.performedByName || 'Unknown'}
                         </Text>
                         <Text style={{ fontSize: 10, color: colors.muted }}>
                           {ev.reason || 'No reason'}
@@ -1722,11 +1828,18 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                   </View>
                 )}
 
-                {varianceAnalysis.suspiciousPatterns.length === 0 && varianceAnalysis.noSaleEvents.length === 0 && (
-                  <Text style={{ fontSize: 11, color: colors.muted, textAlign: 'center' }}>
-                    No suspicious patterns detected
-                  </Text>
-                )}
+                {varianceAnalysis.suspiciousPatterns.length === 0 &&
+                  varianceAnalysis.noSaleEvents.length === 0 && (
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: colors.muted,
+                        textAlign: 'center'
+                      }}
+                    >
+                      No suspicious patterns detected
+                    </Text>
+                  )}
               </View>
             )}
           </View>
@@ -1779,7 +1892,14 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           {view === 'open' && (
             <>
               {renderOpenView()}
-              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
+              <View
+                style={{
+                  marginTop: 12,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border,
+                  paddingTop: 12
+                }}
+              >
                 {renderOpenViewButton()}
               </View>
             </>
@@ -1788,7 +1908,14 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           {view === 'close' && (
             <>
               {renderCloseView()}
-              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
+              <View
+                style={{
+                  marginTop: 12,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border,
+                  paddingTop: 12
+                }}
+              >
                 {renderCloseViewButton()}
               </View>
             </>

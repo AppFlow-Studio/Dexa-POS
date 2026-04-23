@@ -357,7 +357,7 @@ const OrderDetailsComponent: React.FC<{
         )}
 
         {isDeliverySelected && (
-          <View style={{ flex: 1, height: 48, zIndex: 50 }}>
+          <View style={{ flex: 1, zIndex: 50 }}>
             <View
               className='w-full rounded-lg h-12 px-2.5 flex-row items-center'
               style={{
@@ -399,7 +399,10 @@ const OrderDetailsComponent: React.FC<{
                     height: 46,
                     minHeight: 46,
                     maxHeight: 46,
-                    paddingHorizontal: 0
+                    paddingHorizontal: 0,
+                    fontWeight: '600',
+                    fontSize: 12,
+                    color: colors.heading
                   }}
                   dropdownPosition='below'
                 />

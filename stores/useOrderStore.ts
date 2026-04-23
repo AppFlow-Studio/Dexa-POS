@@ -2038,6 +2038,10 @@ const syncPaymentToBackend = async (
       // Queue for retry - build payment params for process_payment_v8
       const isCashRetry = paymentDetails.method === 'Cash'
       const terminalResponseRetry = buildTerminalResponse()
+      const isFullRemainingPaymentRetry =
+        !paymentDetails.itemAllocations?.length &&
+        !paymentDetails.splitCount &&
+        !paymentDetails.forceCardPricing
 
       // Build item allocations for retry
       const itemAllocationsRetry =
@@ -2050,7 +2054,7 @@ const syncPaymentToBackend = async (
       const paymentParams = {
         p_order_id: order.db_order_id,
         p_payment_method: isCashRetry ? 'cash' : 'card',
-        p_amount: paymentDetails.amount,
+        p_amount: isFullRemainingPaymentRetry ? null : paymentDetails.amount,
         p_tip_amount: paymentDetails.tipAmount || 0,
         p_amount_tendered: isCashRetry
           ? paymentDetails.transactionDetails?.amountTendered ||
@@ -4845,7 +4849,7 @@ export const useOrderStore = create<OrderState>()(
 
           _debouncedOrderRefresh: createDebouncedOrderRefresh(get),
 
-          markLocalMutation: (orderId) => {
+          markLocalMutation: orderId => {
             const order = get().ordersById[orderId]
             const dbId = order?.db_order_id
             if (dbId) lastLocalMutationAt[dbId] = Date.now()
@@ -6093,6 +6097,21 @@ export const useOrderStore = create<OrderState>()(
 
             const currentItem = order.items[itemIndex]
 
+            // If this item currently has an in-flight sync operation, ignore backend
+            // payloads that would reduce quantity. This prevents swipe increments
+            // performed during sync from being rolled back by stale realtime updates.
+            if (
+              pendingSyncOperations.has(itemId) &&
+              backendData.quantity !== undefined &&
+              backendData.quantity < currentItem.quantity
+            ) {
+              console.warn(
+                `[applyBackendItemData] Ignoring stale quantity rollback for item ${itemId} ` +
+                  `(backend ${backendData.quantity} < local ${currentItem.quantity}) while sync pending`
+              )
+              return
+            }
+
             // Merge backend data into item (only provided fields)
             const updatedItem: CartItem = {
               ...currentItem,
@@ -6541,20 +6560,54 @@ export const useOrderStore = create<OrderState>()(
             const updatedItems = order.items.map(i =>
               i.id === itemId ? { ...i, quantity: newQuantity } : i
             )
+
+            // A check discount is active when a valid checkDiscount exists AND
+            // local order state confirms discount context (record/totals/item fields).
+            const hasValidCheckDiscountValue =
+              !!order.checkDiscount &&
+              ((order.checkDiscount.type === 'percentage' &&
+                order.checkDiscount.value > 0) ||
+                (order.checkDiscount.type === 'fixed' &&
+                  order.checkDiscount.value > 0))
+
+            const hasOrderLevelDiscountRecord = (
+              order.applied_discounts || []
+            ).some(
+              d => !d.applied_to_item_ids || d.applied_to_item_ids.length === 0
+            )
+
+            const hasItemDiscountSignals = order.items.some(
+              i =>
+                (i.discount_amount ?? 0) > 0 ||
+                (i.discount_cash_amount ?? 0) > 0 ||
+                !!i.appliedDiscount
+            )
+
+            const hasActiveCheckDiscount =
+              hasValidCheckDiscountValue &&
+              (hasOrderLevelDiscountRecord ||
+                (order.total_discount ?? 0) > 0 ||
+                hasItemDiscountSignals)
+
+            const effectiveCheckDiscount = hasActiveCheckDiscount
+              ? order.checkDiscount
+              : null
+
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap
             const totals = calculateOrderTotals(
               updatedItems,
-              order.checkDiscount,
+              effectiveCheckDiscount,
               order.payments || [],
               taxRatesMap
             )
+
             const itemsForState =
-              order.checkDiscount && totals.discount_amount > 0
+              hasActiveCheckDiscount && totals.discount_amount > 0
                 ? distributeDiscountToItems(
                     updatedItems,
                     totals.discount_amount
                   )
-                : updatedItems
+                : distributeDiscountToItems(updatedItems, 0)
             set(state => {
               const o = state.ordersById[activeOrderId]
               if (!o) return
@@ -7045,6 +7098,11 @@ export const useOrderStore = create<OrderState>()(
 
             // Normalize incoming discount
             const isRecord = (discountInput as any).discount_type !== undefined
+            const rawRecordDiscountType = isRecord
+              ? (discountInput as any).discount_type
+              : undefined
+            const isLegacyFixedPreset =
+              isRecord && rawRecordDiscountType === 'fixed'
             const normalizedDiscount: Discount = isRecord
               ? {
                   id: (discountInput as any).id,
@@ -7086,6 +7144,16 @@ export const useOrderStore = create<OrderState>()(
                 'Discount'
               : normalizedDiscount.label ?? 'Discount'
 
+            // Legacy preset data guard:
+            // Some presets are stored with discount_type='fixed' in discounts table.
+            // Passing discount_id for those causes manage_order_discount to use invalid enum value.
+            const effectiveDiscountId =
+              isRecord && !isLegacyFixedPreset
+                ? (discountInput as any).id ?? null
+                : null
+            const effectiveSource =
+              isRecord && !isLegacyFixedPreset ? 'preset' : 'open'
+
             // Get discount_value in raw form (percentage as 10 for 10%, fixed as dollar amount)
             const rawDiscountValue = isRecord
               ? (discountInput as any).discount_value
@@ -7095,14 +7163,14 @@ export const useOrderStore = create<OrderState>()(
 
             const applied: OrderAppliedDiscount = {
               local_id: `discount_${Date.now()}`,
-              discount_id: isRecord ? (discountInput as any).id ?? null : null,
+              discount_id: effectiveDiscountId,
               discount_type:
                 normalizedDiscount.type === 'percentage'
                   ? 'percentage'
                   : 'fixed_amount',
               discount_value: rawDiscountValue,
               discount_name: discountName,
-              source: isRecord ? 'preset' : 'open',
+              source: effectiveSource,
               calculated_amount: Math.round(calculatedAmount * 100) / 100,
               pre_discount_subtotal: preDiscountSubtotal,
               applied_by_staff_profiles_id: staffId,
@@ -7112,6 +7180,11 @@ export const useOrderStore = create<OrderState>()(
               applied_at: new Date().toISOString(),
               sync_status: order.db_order_id ? 'pending' : 'pending'
             }
+
+            // Capture previously synced backend discounts so we can void them before applying a new one.
+            const previousSyncedDiscountIds = (order.applied_discounts || [])
+              .map(d => d.order_discount_id)
+              .filter((id): id is string => !!id)
 
             // Update state optimistically - distribute discount to items locally
             // This ensures split payment views show correct prices even before RPC completes
@@ -7125,12 +7198,8 @@ export const useOrderStore = create<OrderState>()(
               if (!order) return
               order.items = itemsWithDistributedDiscount
               order.checkDiscount = normalizedDiscount
-              order.applied_discounts = [
-                ...(order.applied_discounts || []).filter(
-                  d => d.source !== 'preset'
-                ),
-                applied
-              ]
+              // Single active check discount locally; treat new apply as replacement.
+              order.applied_discounts = [applied]
               order.total_amount = totals.total_amount
               order.total_tax = totals.tax_amount
               order.total_discount = totals.discount_amount
@@ -7157,24 +7226,72 @@ export const useOrderStore = create<OrderState>()(
             const dbOrderId = order.db_order_id
             const isOnline = getIsOnline()
 
+            // Cancel stale queued apply_discount ops for this order to avoid replaying old discounts.
+            const pendingOps = getOperationsForOrder(orderId)
+            for (const op of pendingOps) {
+              if (op.type === 'apply_discount') {
+                removeOperation(op.id)
+              }
+            }
+
+            const isPositiveAmountsConstraint = (errorLike: any): boolean => {
+              const text =
+                typeof errorLike === 'string'
+                  ? errorLike
+                  : `${errorLike?.message || ''} ${errorLike?.details || ''} ${
+                      errorLike?.code || ''
+                    }`
+              return text.includes('positive_amounts') || text.includes('23514')
+            }
+
+            const isInvalidDiscountEnum = (errorLike: any): boolean => {
+              const text =
+                typeof errorLike === 'string'
+                  ? errorLike
+                  : `${errorLike?.message || ''} ${errorLike?.details || ''} ${
+                      errorLike?.code || ''
+                    }`
+              return (
+                text.includes('invalid input value for enum discount_type') ||
+                text.includes('22P02')
+              )
+            }
+
             if (supabase && dbOrderId && isOnline && staffId) {
               console.log(
                 '[applyDiscountToCheck] syncing discount via RPC',
                 applied
               )
-              OrderDiscountService.applyDiscount(supabase, {
-                order_id: dbOrderId,
-                staff_id: staffId,
-                discount_id: applied.discount_id,
-                discount_name: discountName,
-                discount_type: applied.discount_type,
-                discount_value: applied.discount_value,
-                source: applied.source as 'preset' | 'open' | 'promo_code',
-                reason: null,
-                applied_to_item_ids: null,
-                approved_by_staff_id:
-                  applied.approved_by_staff_profiles_id ?? null
-              })
+              const runApplyRpc = () =>
+                OrderDiscountService.applyDiscount(supabase, {
+                  order_id: dbOrderId,
+                  staff_id: staffId,
+                  discount_id: applied.discount_id,
+                  discount_name: discountName,
+                  discount_type: applied.discount_type,
+                  discount_value: applied.discount_value,
+                  source: applied.source as 'preset' | 'open' | 'promo_code',
+                  reason: null,
+                  applied_to_item_ids: null,
+                  approved_by_staff_id:
+                    applied.approved_by_staff_profiles_id ?? null
+                })
+
+              const voidPreviousSyncedDiscounts = async () => {
+                for (const orderDiscountId of previousSyncedDiscountIds) {
+                  await OrderDiscountService.voidDiscount(supabase, {
+                    order_id: dbOrderId,
+                    staff_id: staffId,
+                    order_discount_id: orderDiscountId,
+                    void_reason: null
+                  })
+                }
+              }
+
+              ;(previousSyncedDiscountIds.length > 0
+                ? voidPreviousSyncedDiscounts().then(() => runApplyRpc())
+                : runApplyRpc()
+              )
                 .then(result => {
                   if (result.success && result.order_discount_id) {
                     // Update local state with backend order_discount_id, mark as synced,
@@ -7301,7 +7418,35 @@ export const useOrderStore = create<OrderState>()(
                       '[applyDiscountToCheck] RPC failed:',
                       result.error
                     )
-                    // Queue for retry
+                    if (
+                      !isPositiveAmountsConstraint(result.error) &&
+                      !isInvalidDiscountEnum(result.error)
+                    ) {
+                      // Queue for retry only for transient failures.
+                      queueOperation({
+                        type: 'apply_discount',
+                        params: {
+                          localOrderId: orderId,
+                          discount: applied
+                        },
+                        localOrderId: orderId
+                      } as any)
+                    } else {
+                      console.error(
+                        '[applyDiscountToCheck] Not queueing non-retryable discount apply failure'
+                      )
+                    }
+                  }
+                })
+                .catch(err => {
+                  console.error(
+                    'Failed to sync discount via RPC, queueing:',
+                    err
+                  )
+                  if (
+                    !isPositiveAmountsConstraint(err) &&
+                    !isInvalidDiscountEnum(err)
+                  ) {
                     queueOperation({
                       type: 'apply_discount',
                       params: {
@@ -7310,21 +7455,11 @@ export const useOrderStore = create<OrderState>()(
                       },
                       localOrderId: orderId
                     } as any)
+                  } else {
+                    console.error(
+                      '[applyDiscountToCheck] Not queueing non-retryable discount apply failure'
+                    )
                   }
-                })
-                .catch(err => {
-                  console.error(
-                    'Failed to sync discount via RPC, queueing:',
-                    err
-                  )
-                  queueOperation({
-                    type: 'apply_discount',
-                    params: {
-                      localOrderId: orderId,
-                      discount: applied
-                    },
-                    localOrderId: orderId
-                  } as any)
                 })
             } else {
               // Offline or no db_order_id yet - queue for later
@@ -9436,11 +9571,6 @@ export const useOrderStore = create<OrderState>()(
               })
             ]
 
-            // Capture backend-facing draft status BEFORE mutating local state —
-            // the local set() below changes order_status from 'draft' to 'sent_to_kitchen'
-            // so freshOrder.order_status after the await would be wrong for this decision.
-            const wasBackendDraft = currentOrder.order_status === 'draft'
-
             // O(1) update via ordersById
             set(state => {
               const order = state.ordersById[activeOrderId]
@@ -9522,10 +9652,6 @@ export const useOrderStore = create<OrderState>()(
                 .map(item => item.db_order_item_id)
                 .filter((id): id is string => !!id)
 
-              const backendStatus = wasBackendDraft
-                ? getOrderSentStatus()
-                : 'preparing'
-
               const hasPending = get().hasPendingSyncs(activeOrderId)
 
               if (freshSentItems.length === 0) {
@@ -9547,104 +9673,58 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderId
                 )
               } else if (dbItemIds.length > 0) {
-                if (wasBackendDraft) {
-                  // Draft order: must update order status FIRST (draft -> sent_to_kitchen/preparing)
-                  // before bulk_update_order_item_status can set sent_to_kitchen_at on the order
-                  // (valid_status_transitions constraint rejects sent_to_kitchen_at on draft orders)
-                  OrderService.updateOrderStatus(
-                    supabase,
-                    freshOrder.db_order_id!,
-                    getOrderSentStatus()
-                  )
-                    .then(({ error }) => {
-                      if (
-                        error &&
-                        error.code !== 'P0001' &&
-                        !error.message?.includes('already in')
-                      ) {
-                        console.error(
-                          'Failed to update backend order status:',
-                          error
-                        )
-                        queueFailedOperation(
-                          'send_to_kitchen',
-                          { localOrderId: activeOrderId, localItemIds },
-                          activeOrderId
-                        )
-                        return
-                      }
-                      // THEN update item statuses
-                      return OrderService.bulkUpdateOrderItemStatus(
-                        supabase,
-                        dbItemIds,
-                        getKitchenSentStatus()
+                // Always transition backend order status before item updates.
+                // Local state may already be optimistic/non-draft while backend is still draft.
+                OrderService.updateOrderStatus(
+                  supabase,
+                  freshOrder.db_order_id!,
+                  getOrderSentStatus()
+                )
+                  .then(({ error }) => {
+                    if (
+                      error &&
+                      error.code !== 'P0001' &&
+                      !error.message?.includes('already in')
+                    ) {
+                      console.error(
+                        'Failed to update backend order status:',
+                        error
                       )
-                    })
-                    .then(result => {
-                      if (result?.error) {
-                        console.error(
-                          'Failed to update item statuses:',
-                          result.error
-                        )
-                        queueFailedOperation(
-                          'send_to_kitchen',
-                          { localOrderId: activeOrderId, localItemIds },
-                          activeOrderId
-                        )
-                      }
-                    })
-                    .catch((err: any) => {
-                      console.error('Failed to sync send-to-kitchen:', err)
                       queueFailedOperation(
                         'send_to_kitchen',
                         { localOrderId: activeOrderId, localItemIds },
                         activeOrderId
                       )
-                    })
-                } else {
-                  // Non-draft order (already sent_to_kitchen/preparing): items first, then order status
-                  OrderService.bulkUpdateOrderItemStatus(
-                    supabase,
-                    dbItemIds,
-                    getKitchenSentStatus()
-                  )
-                    .then(({ error }) => {
-                      if (error) {
-                        console.error('Failed to update item statuses:', error)
-                        queueFailedOperation(
-                          'send_to_kitchen',
-                          { localOrderId: activeOrderId, localItemIds },
-                          activeOrderId
-                        )
-                        return
-                      }
-                      // Update order status (bulk_update already auto-transitions, but ensure correct status)
-                      return supabase.rpc('update_order_status', {
-                        p_order_id: freshOrder.db_order_id,
-                        p_new_status: backendStatus
-                      })
-                    })
-                    .then((result: any) => {
-                      if (
-                        result?.error &&
-                        result.error.code !== 'P0001' &&
-                        !result.error.message?.includes('already in')
-                      ) {
-                        console.error(
-                          'Failed to update backend order status:',
-                          result.error
-                        )
-                      }
-                    })
-                    .catch((err: any) => {
-                      console.error('Failed to sync send-to-kitchen:', err)
+                      return
+                    }
+
+                    return OrderService.bulkUpdateOrderItemStatus(
+                      supabase,
+                      dbItemIds,
+                      getKitchenSentStatus()
+                    )
+                  })
+                  .then(result => {
+                    if (result?.error) {
+                      console.error(
+                        'Failed to update item statuses:',
+                        result.error
+                      )
                       queueFailedOperation(
                         'send_to_kitchen',
                         { localOrderId: activeOrderId, localItemIds },
                         activeOrderId
                       )
-                    })
-                }
+                    }
+                  })
+                  .catch((err: any) => {
+                    console.error('Failed to sync send-to-kitchen:', err)
+                    queueFailedOperation(
+                      'send_to_kitchen',
+                      { localOrderId: activeOrderId, localItemIds },
+                      activeOrderId
+                    )
+                  })
               }
             } else {
               // Offline or order not synced: queue for later
@@ -12414,7 +12494,6 @@ export const useOrderStore = create<OrderState>()(
                   const localDraftItems = currentOrder.items.filter(
                     item => item.isDraft
                   )
-
                   // Preserve locally-synced items not yet in the backend fetch.
                   // Mirrors the broadcast merge safeguard at line ~3474.
                   // Race: db_order_item_id was set between the RPC fetch start

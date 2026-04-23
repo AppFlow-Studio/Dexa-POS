@@ -637,6 +637,17 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           // Don't retry - needs user intervention
           return true // Mark as "handled" to prevent infinite retries
         } else {
+          const err = typeof result.error === 'string' ? result.error : ''
+          if (
+            err.includes('invalid input value for enum discount_type') ||
+            err.includes('22P02')
+          ) {
+            console.error(
+              '[OfflineSync] apply_discount: Non-retryable enum error, dropping op:',
+              result.error
+            )
+            return true
+          }
           console.error(
             '[OfflineSync] apply_discount: RPC failed:',
             result.error
@@ -1059,6 +1070,9 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
         if (error) {
           // If the order is already paid, the desired state is already achieved — discard
           const errMsg = (error as any)?.message || String(error)
+          const isNoUnpaidItemsError =
+            (error as any)?.code === 'P0001' &&
+            errMsg.toLowerCase().includes('no unpaid items remaining')
           if (
             errMsg.toLowerCase().includes('already paid') ||
             errMsg.toLowerCase().includes('already been paid') ||
@@ -1070,6 +1084,18 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
             )
             return true
           }
+
+          if (isNoUnpaidItemsError) {
+            // P0001 "No unpaid items remaining" means the payment state is already achieved —
+            // either our queued operation was a duplicate of a successful direct call, or another
+            // station paid first. Either way, the desired outcome (items paid) is already met.
+            // Always discard as idempotent success to prevent infinite retries.
+            console.warn(
+              `[OfflineSync:payment] No unpaid items remaining — payment already processed (idempotent). Discarding operation as complete.`
+            )
+            return true
+          }
+
           console.error(`[OfflineSync:payment] FAILED - Error:`, error)
           return false
         }

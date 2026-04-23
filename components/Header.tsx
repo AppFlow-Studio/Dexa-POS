@@ -240,10 +240,10 @@ const Header = () => {
         {showBackButton && (
           <TouchableOpacity
             onPress={handleBackPress}
-            className='p-1.5 rounded-lg'
+            className='p-2 rounded-lg'
             style={{ backgroundColor: `${colors.teal}18` }}
           >
-            <ArrowLeft color={colors.teal} size={16} />
+            <ArrowLeft color={colors.teal} size={19} />
           </TouchableOpacity>
         )}
         <Text
