@@ -16,7 +16,7 @@ import React, {
   useRef,
   useState
 } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { Keyboard, Text, TouchableOpacity, View } from 'react-native'
 import SearchResultItem from './SearchResultItem'
 
 // Helper to check schedule availability
@@ -181,7 +181,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose={true}
-      onClose={closeSearch}
+      onClose={Keyboard.dismiss}
       onChange={handleSheetChange}
       backdropComponent={renderBackdrop}
       keyboardBehavior='extend'

@@ -16,7 +16,7 @@ import BottomSheet, {
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { Check, Tag, X } from 'lucide-react-native'
 import React, { forwardRef, useMemo, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { Text, TouchableOpacity, View, useWindowDimensions } from 'react-native'
 
 interface DiscountBottomSheetProps {
   onClose: () => void
@@ -26,32 +26,76 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   DiscountBottomSheetProps
 > = ({ onClose }, ref) => {
-  const snapPoints = useMemo(() => ['58%', '92%'], [])
+  const { width } = useWindowDimensions()
   const [activeTab, setActiveTab] = useState<'check' | 'items'>('check')
-
-  // Custom discount state
   const [customDiscountType, setCustomDiscountType] = useState<
     'percentage' | 'fixed'
   >('percentage')
   const [customDiscountValue, setCustomDiscountValue] = useState('')
+
+  const snapPoints = useMemo(() => {
+    if (width >= 1200) return ['68%', '94%']
+    if (width >= 768) return ['72%', '96%']
+    return ['82%', '98%']
+  }, [width])
+
+  const isNarrow = width < 480
 
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const applyDiscountToCheck = useOrderStore(s => s.applyDiscountToCheck)
   const applyDiscountToItem = useOrderStore(s => s.applyDiscountToItem)
   const removeDiscountFromItem = useOrderStore(s => s.removeDiscountFromItem)
   const removeCheckDiscount = useOrderStore(s => s.removeCheckDiscount)
+  const activeOrder = useActiveOrder()
+  const { data: discounts = [] } = useDiscounts()
   const { show } = useToast()
 
-  const { data: discounts = [] } = useDiscounts()
-
-  const activeOrder = useActiveOrder()
   const cartItems = activeOrder?.items || []
-  const itemsWithAvailableDiscounts = cartItems.filter(
-    item => !!item.availableDiscount
+  const activeCheckDiscount = useMemo(() => {
+    if (activeOrder?.checkDiscount) return activeOrder.checkDiscount
+
+    const latestApplied = (activeOrder as any)?.applied_discounts?.[0]
+    if (!latestApplied) return null
+
+    const type =
+      latestApplied.discount_type === 'percentage' ? 'percentage' : 'fixed'
+    const rawValue = Number(latestApplied.discount_value ?? 0)
+
+    return {
+      id:
+        latestApplied.discount_id ||
+        latestApplied.order_discount_id ||
+        latestApplied.local_id,
+      label: latestApplied.discount_name || 'Active Discount',
+      value:
+        type === 'percentage'
+          ? rawValue > 1
+            ? rawValue / 100
+            : rawValue
+          : rawValue,
+      type
+    }
+  }, [activeOrder?.checkDiscount, (activeOrder as any)?.applied_discounts])
+
+  const itemsWithAvailableDiscounts = useMemo(
+    () => cartItems.filter(item => !!item.availableDiscount),
+    [cartItems]
   )
+
+  const checkSubtotal = useMemo(() => {
+    return cartItems.reduce((sum, item: any) => {
+      if (item?.is_voided) return sum
+      const lineSubtotal =
+        typeof item?.subtotal === 'number'
+          ? item.subtotal
+          : (item?.price ?? 0) * (item?.quantity ?? 1)
+      return sum + Math.max(0, lineSubtotal)
+    }, 0)
+  }, [cartItems])
 
   const eligibilityResults = useMemo(() => {
     if (!activeOrder) return []
+
     const items = cartItems.map(item => ({
       id: item.id,
       menu_item_id: item.menuItemId,
@@ -59,6 +103,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       is_alcohol: false,
       item_total: item.price * item.quantity
     }))
+
     const ctx: EligibilityContext = {
       orderType:
         activeOrder.order_type === 'dine_in'
@@ -71,45 +116,62 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       subtotal: items.reduce((sum, i) => sum + i.item_total, 0),
       items
     }
+
     return getEligibleDiscounts(discounts as any, ctx)
   }, [activeOrder, cartItems, discounts])
+
+  const calculateDiscountAmount = (discount: any): number => {
+    if (!discount || checkSubtotal <= 0) return 0
+
+    const discountType = discount.type ?? discount.discount_type
+    const rawValue = discount.value ?? discount.discount_value ?? 0
+    const numericValue = Number(rawValue)
+
+    if (!Number.isFinite(numericValue) || numericValue <= 0) return 0
+
+    if (discountType === 'percentage') {
+      const normalizedPct = numericValue > 1 ? numericValue / 100 : numericValue
+      return Math.max(0, checkSubtotal * normalizedPct)
+    }
+
+    return Math.max(0, numericValue)
+  }
+
+  const validateDiscountDoesNotGoNegative = (discount: any): string | null => {
+    if (checkSubtotal <= 0)
+      return 'Discount cannot be applied to an empty check.'
+
+    const discountAmount = calculateDiscountAmount(discount)
+    if (discountAmount <= 0) return 'Please enter a valid discount amount.'
+
+    if (discountAmount - checkSubtotal > 0.001) {
+      return 'Discount is too high. It cannot reduce the total below $0.00.'
+    }
+
+    return null
+  }
 
   const handleApplyCheckDiscount = (discount: any) => {
     if (!activeOrderId) return
 
-    const existingCheckDiscount = activeOrder?.checkDiscount as any
-    const existingNonStackable =
-      existingCheckDiscount && existingCheckDiscount.stackable === false
-    const incomingNonStackable = (discount as any)?.stackable === false
-
-    // Enforce non-stackable rule: block applying when a non-stackable exists or incoming is non-stackable
-    if (
-      existingCheckDiscount &&
-      (existingNonStackable || incomingNonStackable)
-    ) {
+    const negativeTotalError = validateDiscountDoesNotGoNegative(discount)
+    if (negativeTotalError) {
       show({
-        title: 'Cannot stack discounts',
-        message: 'Remove the existing discount before applying this one.',
+        title: 'Invalid discount',
+        message: negativeTotalError,
         type: 'error'
       })
       return
     }
 
     applyDiscountToCheck(activeOrderId, discount as any)
-    onClose()
-  }
-
-  const handleRemoveCheckDiscount = () => {
-    if (!activeOrderId) return
-    removeCheckDiscount(activeOrderId)
-    onClose()
   }
 
   const handleApplyCustomDiscount = () => {
     if (!activeOrderId || !customDiscountValue) return
 
     const numericValue = parseFloat(customDiscountValue)
-    if (isNaN(numericValue) || numericValue <= 0) {
+    if (Number.isNaN(numericValue) || numericValue <= 0) {
       show({
         title: 'Invalid discount',
         message: 'Please enter a valid discount amount.',
@@ -118,7 +180,6 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    // Validate percentage doesn't exceed 100%
     if (customDiscountType === 'percentage' && numericValue > 100) {
       show({
         title: 'Invalid percentage',
@@ -128,7 +189,6 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    // Create a custom discount object compatible with applyDiscountToCheck
     const customDiscount = {
       id: `custom_${Date.now()}`,
       label:
@@ -136,17 +196,27 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
           ? `Custom ${numericValue}% Off`
           : `Custom $${numericValue.toFixed(2)} Off`,
       value:
-        customDiscountType === 'percentage'
-          ? numericValue / 100 // Convert to decimal for percentage
-          : numericValue,
+        customDiscountType === 'percentage' ? numericValue / 100 : numericValue,
       type: customDiscountType
     }
 
+    const negativeTotalError = validateDiscountDoesNotGoNegative(customDiscount)
+    if (negativeTotalError) {
+      show({
+        title: 'Invalid discount',
+        message: negativeTotalError,
+        type: 'error'
+      })
+      return
+    }
+
     applyDiscountToCheck(activeOrderId, customDiscount as any)
-
-    // Reset custom discount form
     setCustomDiscountValue('')
+  }
 
+  const handleRemoveCheckDiscount = () => {
+    if (!activeOrderId) return
+    removeCheckDiscount(activeOrderId)
     onClose()
   }
 
@@ -166,42 +236,53 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
           {...props}
           appearsOnIndex={0}
           disappearsOnIndex={-1}
-          opacity={0.7}
+          opacity={0.28}
+          pressBehavior='close'
         />
       ),
     []
   )
 
   const isCustomValid =
-    !!customDiscountValue && parseFloat(customDiscountValue) > 0
+    !!customDiscountValue &&
+    parseFloat(customDiscountValue) > 0 &&
+    !validateDiscountDoesNotGoNegative({
+      type: customDiscountType,
+      value:
+        customDiscountType === 'percentage'
+          ? parseFloat(customDiscountValue) / 100
+          : parseFloat(customDiscountValue)
+    })
 
   return (
     <BottomSheet
       ref={ref}
       index={-1}
       snapPoints={snapPoints}
-      enablePanDownToClose={true}
+      enablePanDownToClose
       backdropComponent={renderBackdrop}
+      onClose={onClose}
       {...bottomSheetTheme}
+      style={{ zIndex: 10000, elevation: 10000 }}
       backgroundStyle={{
         backgroundColor: colors.panel,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
         borderWidth: 1,
         borderColor: colors.border
-      }}
-      handleIndicatorStyle={{
-        backgroundColor: colors.muted,
-        width: 46,
-        height: 4
       }}
       keyboardBehavior='interactive'
       keyboardBlurBehavior='restore'
       android_keyboardInputMode='adjustResize'
-      topInset={60}
+      enableContentPanningGesture={false}
+      topInset={0}
     >
-      <BottomSheetScrollView style={{ flex: 1, backgroundColor: colors.panel }}>
-        {/* ── Header ── */}
+      <BottomSheetScrollView
+        style={{ flex: 1, backgroundColor: colors.panel }}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        keyboardShouldPersistTaps='always'
+        keyboardDismissMode='none'
+      >
         <View
           style={{
             flexDirection: 'row',
@@ -214,15 +295,16 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
             borderBottomColor: colors.border
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View
               style={{
                 width: 30,
                 height: 30,
                 borderRadius: 8,
-                backgroundColor: colors.teal + '15',
+                backgroundColor: colors.teal + '18',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                marginRight: 8
               }}
             >
               <Tag size={14} color={colors.teal} />
@@ -234,11 +316,13 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
             </Text>
           </View>
           <TouchableOpacity
+            activeOpacity={0.8}
             onPress={onClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={{
               padding: 6,
               borderRadius: 10,
-              backgroundColor: colors.teal + '10',
+              backgroundColor: colors.teal + '12',
               borderWidth: 1,
               borderColor: colors.teal + '30'
             }}
@@ -248,10 +332,14 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
         </View>
 
         <View
-          style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 24 }}
+          style={{
+            width: '100%',
+            alignSelf: 'center',
+            paddingHorizontal: 14,
+            paddingTop: 12
+          }}
         >
-          {/* ── Active discount banner ── */}
-          {activeOrder?.checkDiscount && (
+          {activeCheckDiscount && (
             <View
               style={{
                 flexDirection: 'row',
@@ -273,27 +361,28 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                     color: colors.teal
                   }}
                 >
-                  {activeOrder.checkDiscount.label || 'Active Discount'}
+                  {activeCheckDiscount.label || 'Active Discount'}
                 </Text>
                 <Text
                   style={{
                     fontSize: 12,
-                    color: colors.teal + '99',
+                    color: colors.teal + 'AA',
                     marginTop: 1
                   }}
                 >
-                  {activeOrder.checkDiscount.type === 'percentage'
+                  {activeCheckDiscount.type === 'percentage'
                     ? `${Math.round(
-                        (activeOrder.checkDiscount.value || 0) * 100
+                        (activeCheckDiscount.value || 0) * 100
                       )}% off`
-                    : `$${activeOrder.checkDiscount.value?.toFixed(2)} off`}
+                    : `$${activeCheckDiscount.value?.toFixed(2)} off`}
                 </Text>
               </View>
               <TouchableOpacity
+                activeOpacity={0.8}
                 onPress={handleRemoveCheckDiscount}
                 style={{
                   paddingHorizontal: 10,
-                  paddingVertical: 5,
+                  paddingVertical: 6,
                   borderRadius: 8,
                   backgroundColor: colors.danger + '15',
                   borderWidth: 1,
@@ -313,7 +402,6 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
             </View>
           )}
 
-          {/* ── Tabs ── */}
           <View
             style={{
               flexDirection: 'row',
@@ -325,43 +413,44 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
               marginBottom: 14
             }}
           >
-            {(['check', 'items'] as const).map(tab => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 6,
-                  borderRadius: 8,
-                  alignItems: 'center',
-                  backgroundColor:
-                    activeTab === tab ? colors.card : 'transparent'
-                }}
-              >
-                <Text
+            {(['check', 'items'] as const).map(tab => {
+              const selected = activeTab === tab
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  activeOpacity={0.85}
+                  onPress={() => setActiveTab(tab)}
                   style={{
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: activeTab === tab ? colors.heading : colors.muted
+                    flex: 1,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    backgroundColor: selected ? colors.card : 'transparent'
                   }}
                 >
-                  {tab === 'check' ? 'Whole Check' : 'Specific Items'}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '700',
+                      color: selected ? colors.heading : colors.muted
+                    }}
+                  >
+                    {tab === 'check' ? 'Whole Check' : 'Specific Items'}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
           </View>
 
-          {/* ── Whole Check tab ── */}
           {activeTab === 'check' && (
             <View>
-              {/* Custom discount section label */}
               <Text
                 style={{
                   fontSize: 11,
-                  fontWeight: '600',
+                  fontWeight: '700',
                   color: colors.muted,
                   textTransform: 'uppercase',
-                  letterSpacing: 0.7,
+                  letterSpacing: 0.6,
                   marginBottom: 8
                 }}
               >
@@ -378,7 +467,6 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   marginBottom: 16
                 }}
               >
-                {/* Type toggle */}
                 <View
                   style={{
                     flexDirection: 'row',
@@ -389,10 +477,11 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   }}
                 >
                   <TouchableOpacity
+                    activeOpacity={0.85}
                     onPress={() => setCustomDiscountType('percentage')}
                     style={{
                       flex: 1,
-                      paddingVertical: 6,
+                      paddingVertical: 8,
                       borderRadius: 6,
                       alignItems: 'center',
                       backgroundColor:
@@ -404,7 +493,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                     <Text
                       style={{
                         fontSize: 12,
-                        fontWeight: '600',
+                        fontWeight: '700',
                         color:
                           customDiscountType === 'percentage'
                             ? colors.onSolid
@@ -415,10 +504,11 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    activeOpacity={0.85}
                     onPress={() => setCustomDiscountType('fixed')}
                     style={{
                       flex: 1,
-                      paddingVertical: 6,
+                      paddingVertical: 8,
                       borderRadius: 6,
                       alignItems: 'center',
                       backgroundColor:
@@ -430,7 +520,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                     <Text
                       style={{
                         fontSize: 12,
-                        fontWeight: '600',
+                        fontWeight: '700',
                         color:
                           customDiscountType === 'fixed'
                             ? colors.onSolid
@@ -442,12 +532,10 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   </TouchableOpacity>
                 </View>
 
-                {/* Quick preset pills */}
                 <View
                   style={{
                     flexDirection: 'row',
                     flexWrap: 'wrap',
-                    gap: 6,
                     marginBottom: 12
                   }}
                 >
@@ -460,11 +548,14 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                     return (
                       <TouchableOpacity
                         key={val}
+                        activeOpacity={0.85}
                         onPress={() => setCustomDiscountValue(val.toString())}
                         style={{
                           paddingHorizontal: 12,
-                          paddingVertical: 5,
+                          paddingVertical: 6,
                           borderRadius: 20,
+                          marginRight: 6,
+                          marginBottom: 6,
                           backgroundColor: isSelected
                             ? accentColor + '20'
                             : colors.screen,
@@ -477,7 +568,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                         <Text
                           style={{
                             fontSize: 12,
-                            fontWeight: '600',
+                            fontWeight: '700',
                             color: isSelected ? accentColor : colors.label
                           }}
                         >
@@ -490,20 +581,24 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   })}
                 </View>
 
-                {/* Input + Apply */}
                 <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  style={{
+                    flexDirection: isNarrow ? 'column' : 'row',
+                    alignItems: isNarrow ? 'stretch' : 'center'
+                  }}
                 >
                   <View
                     style={{
-                      flex: 1,
+                      flex: isNarrow ? 0 : 1,
                       flexDirection: 'row',
                       alignItems: 'center',
                       backgroundColor: colors.screen,
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      paddingHorizontal: 10
+                      paddingHorizontal: 10,
+                      marginBottom: isNarrow ? 8 : 0,
+                      marginRight: isNarrow ? 0 : 8
                     }}
                   >
                     <Text
@@ -525,19 +620,24 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                       keyboardType='decimal-pad'
                       style={{
                         flex: 1,
-                        paddingVertical: 9,
+                        paddingVertical: 10,
                         fontSize: 14,
                         color: colors.heading
                       }}
                     />
                   </View>
+
                   <TouchableOpacity
+                    activeOpacity={0.85}
                     onPress={handleApplyCustomDiscount}
                     disabled={!isCustomValid}
                     style={{
-                      paddingHorizontal: 16,
-                      paddingVertical: 9,
+                      paddingHorizontal: 18,
+                      paddingVertical: 10,
                       borderRadius: 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: isNarrow ? undefined : 96,
                       backgroundColor: isCustomValid
                         ? customDiscountType === 'percentage'
                           ? colors.teal
@@ -557,49 +657,28 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   </TouchableOpacity>
                 </View>
 
-                {/* Preview */}
-                {isCustomValid && (
-                  <View
-                    style={{
-                      marginTop: 10,
-                      padding: 8,
-                      borderRadius: 8,
-                      backgroundColor: colors.screen,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderStyle: 'dashed'
-                    }}
+                {customDiscountValue.length > 0 && !isCustomValid && (
+                  <Text
+                    style={{ marginTop: 8, fontSize: 12, color: colors.danger }}
                   >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: colors.muted,
-                        textAlign: 'center'
-                      }}
-                    >
-                      Saves{' '}
-                      <Text
-                        style={{ color: colors.success, fontWeight: '700' }}
-                      >
-                        {customDiscountType === 'percentage'
-                          ? `${customDiscountValue}% off`
-                          : `$${parseFloat(customDiscountValue).toFixed(
-                              2
-                            )} off`}
-                      </Text>
-                    </Text>
-                  </View>
+                    {validateDiscountDoesNotGoNegative({
+                      type: customDiscountType,
+                      value:
+                        customDiscountType === 'percentage'
+                          ? parseFloat(customDiscountValue) / 100
+                          : parseFloat(customDiscountValue)
+                    })}
+                  </Text>
                 )}
               </View>
 
-              {/* Preset discounts */}
               <Text
                 style={{
                   fontSize: 11,
-                  fontWeight: '600',
+                  fontWeight: '700',
                   color: colors.muted,
                   textTransform: 'uppercase',
-                  letterSpacing: 0.7,
+                  letterSpacing: 0.6,
                   marginBottom: 8
                 }}
               >
@@ -617,23 +696,25 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   No preset discounts available
                 </Text>
               ) : (
-                <View style={{ gap: 6 }}>
+                <View>
                   {eligibilityResults.map(d => (
                     <TouchableOpacity
                       key={d.discount.id}
+                      activeOpacity={0.85}
                       disabled={!d.eligible}
                       onPress={() => handleApplyCheckDiscount(d.discount)}
                       style={{
                         padding: 10,
                         borderRadius: 10,
                         borderWidth: 1,
+                        marginBottom: 6,
                         backgroundColor: d.eligible
                           ? colors.teal + '10'
                           : colors.screen,
                         borderColor: d.eligible
                           ? colors.teal + '40'
                           : colors.border,
-                        opacity: d.eligible ? 1 : 0.55
+                        opacity: d.eligible ? 1 : 0.6
                       }}
                     >
                       <View
@@ -647,7 +728,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                           <Text
                             style={{
                               fontSize: 13,
-                              fontWeight: '600',
+                              fontWeight: '700',
                               color: colors.heading
                             }}
                           >
@@ -673,14 +754,14 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                               color: colors.success
                             }}
                           >
-                            −${d.calculated_savings.toFixed(2)}
+                            -${d.calculated_savings.toFixed(2)}
                           </Text>
                         ) : (
                           <Text
                             style={{
                               fontSize: 11,
                               color: colors.danger,
-                              maxWidth: 100,
+                              maxWidth: 110,
                               textAlign: 'right'
                             }}
                           >
@@ -695,15 +776,15 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
             </View>
           )}
 
-          {/* ── Specific Items tab ── */}
           {activeTab === 'items' && (
-            <View style={{ gap: 6 }}>
+            <View>
               {itemsWithAvailableDiscounts.length > 0 ? (
                 itemsWithAvailableDiscounts.map(item => {
                   const isApplied = !!item.appliedDiscount
                   return (
                     <TouchableOpacity
                       key={item.id}
+                      activeOpacity={0.85}
                       onPress={() => handleToggleItemDiscount(item)}
                       style={{
                         flexDirection: 'row',
@@ -711,6 +792,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                         padding: 10,
                         borderRadius: 10,
                         borderWidth: 1,
+                        marginBottom: 6,
                         backgroundColor: isApplied
                           ? colors.teal + '10'
                           : colors.screen,
@@ -723,7 +805,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                         <Text
                           style={{
                             fontSize: 13,
-                            fontWeight: '600',
+                            fontWeight: '700',
                             color: colors.heading
                           }}
                         >
@@ -739,6 +821,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                           {item.availableDiscount?.label || 'Discountable'}
                         </Text>
                       </View>
+
                       <View
                         style={{
                           width: 22,

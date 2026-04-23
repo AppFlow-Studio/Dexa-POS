@@ -54,6 +54,7 @@ interface MoreOptionsProps {
   discountSheetRef?: React.RefObject<BottomSheetMethods>
   onVoidSuccess?: () => void
   onCloseCheck?: () => void
+  onCloseSession?: () => void
   onNoSale?: () => void
 }
 
@@ -61,7 +62,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   MoreOptionsProps
 > = function MoreOptionsComponent (
-  { discountSheetRef, onVoidSuccess, onCloseCheck, onNoSale },
+  { discountSheetRef, onVoidSuccess, onCloseCheck, onCloseSession, onNoSale },
   ref
 ) {
   const snapPoints = useMemo(() => ['75%'], [])
@@ -144,6 +145,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   }, [activeOrder?.payments])
   const isCheckClosed = isBalanceZero || activeOrder?.paid_status === 'Paid'
   const canApplyDiscount = !hasRefunds && !isCheckClosed
+  const isDineInOrder =
+    activeOrder?.order_type === 'dine_in' ||
+    activeOrder?.order_type === 'Dine In'
+  const canCloseSession =
+    isDineInOrder &&
+    activeOrder?.paid_status === 'Paid' &&
+    !!activeOrder?.service_location_id
 
   const handleClearCart = () => {
     setClearCartConfirmOpen(true)
@@ -436,6 +444,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         enablePanDownToClose={true}
         onChange={handleSheetChange}
         {...bottomSheetTheme}
+        style={{ zIndex: 10000, elevation: 10000 }}
         backdropComponent={renderBackdrop}
       >
         <BottomSheetScrollView
@@ -600,6 +609,61 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           ) : (
             <></>
           )}
+
+          {canCloseSession ? (
+            <TouchableOpacity
+              onPress={() => closeAndThen(() => onCloseSession?.())}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginHorizontal: 12,
+                marginBottom: 4,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderRadius: 10,
+                backgroundColor: colors.warning + '15',
+                borderWidth: 1,
+                borderColor: colors.warning + '35'
+              }}
+            >
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  backgroundColor: colors.warning + '20',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}
+              >
+                <CheckCircle2 size={15} color={colors.warning} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: colors.warning
+                  }}
+                >
+                  Close Session
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.warning + '99',
+                    marginTop: 1
+                  }}
+                >
+                  {activeOrder?.check_status === 'Closed'
+                    ? 'Mark table for cleaning'
+                    : 'Close check and mark table for cleaning'}
+                </Text>
+              </View>
+              <ChevronRight size={14} color={colors.warning + '80'} />
+            </TouchableOpacity>
+          ) : null}
 
           {/* Discounts row */}
           <TouchableOpacity

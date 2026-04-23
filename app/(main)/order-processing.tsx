@@ -26,6 +26,7 @@ import {
 } from '@/stores/useOrderStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
@@ -44,12 +45,22 @@ import {
   X
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
+import {
+  Modal,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
+} from 'react-native'
 import Animated, {
   LinearTransition,
-  SlideInLeft
+  SlideInLeft,
+  useAnimatedStyle,
+  useSharedValue
 } from 'react-native-reanimated'
-import { Portal as Teleport } from 'react-native-teleport'
 
 const EMPTY_ORDERS: OrderProfile[] = []
 const badgeContentStyle = { paddingHorizontal: 20, gap: 8 } as const
@@ -57,6 +68,7 @@ const cardContentStyle = { padding: 10, gap: 12 } as const
 
 const OrderProcessing = () => {
   const router = useRouter()
+  const { height: windowHeight } = useWindowDimensions()
   const { colorScheme } = useColorScheme()
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -72,6 +84,9 @@ const OrderProcessing = () => {
   const orderCompletionMode = useStoreSettingsStore(s => s.orderCompletionMode)
   const orderLineViewMode = useSettingsStore(
     s => s.orderLineSettings.viewMode ?? 'default'
+  )
+  const minimalModeRows = useSettingsStore(
+    s => s.orderLineSettings.minimalModeRows ?? 3
   )
   const openSearch = useSearchStore(s => s.openSearch)
 
@@ -96,6 +111,8 @@ const OrderProcessing = () => {
   const orderBadgeContentWidthRef = useRef(0)
   const [canScrollBadgesLeft, setCanScrollBadgesLeft] = useState(false)
   const [canScrollBadgesRight, setCanScrollBadgesRight] = useState(false)
+  const ordersSheetHeight = useSharedValue<number>(windowHeight)
+  const dragStartHeightRef = useRef<number>(windowHeight)
 
   // OPTIMIZED: Effect now uses getState() to avoid subscribing to all orders
   useEffect(() => {
@@ -267,6 +284,124 @@ const OrderProcessing = () => {
     }
   }, [show, showLoading, hideLoading, updateActiveOrderDetails])
 
+  const handleCloseSession = useCallback(async () => {
+    const state = useOrderStore.getState()
+    const currentActiveOrderId = state.activeOrderId
+    const currentActiveOrder = currentActiveOrderId
+      ? state.ordersById[currentActiveOrderId]
+      : null
+
+    if (!currentActiveOrderId || !currentActiveOrder) return
+
+    const isDineInOrder =
+      currentActiveOrder.order_type === 'dine_in' ||
+      currentActiveOrder.order_type === 'Dine In'
+
+    if (!isDineInOrder) {
+      show({
+        title: 'Session Not Available',
+        message: 'Only dine-in orders have table sessions.',
+        type: 'warning'
+      })
+      return
+    }
+
+    if (currentActiveOrder.paid_status !== 'Paid') {
+      show({
+        title: 'Cannot Close Session',
+        message: 'Order must be fully paid before closing the table session.',
+        type: 'error'
+      })
+      return
+    }
+
+    const tableId = currentActiveOrder.service_location_id
+    if (!tableId) {
+      show({
+        title: 'No Table Linked',
+        message: 'This order is not linked to an active table session.',
+        type: 'warning'
+      })
+      return
+    }
+
+    showLoading('Closing session...')
+    try {
+      if (currentActiveOrder.check_status !== 'Closed') {
+        if (!currentActiveOrder.db_order_id) {
+          throw new Error(
+            'Order must be synced to close check before closing session'
+          )
+        }
+
+        const supabase = getOrderStoreSupabaseClient()
+        const { loggedInEmployee } = useEmployeeStore.getState()
+
+        if (!supabase) {
+          throw new Error('Database connection unavailable')
+        }
+
+        const closeCheckResult = await OrderService.closeCheck(
+          supabase,
+          currentActiveOrder.db_order_id,
+          loggedInEmployee?.profileId || null
+        )
+
+        if (!closeCheckResult.success) {
+          throw new Error(closeCheckResult.error || 'Failed to close check')
+        }
+
+        useOrderStore
+          .getState()
+          .updateActiveOrderDetails({ check_status: 'Closed' })
+      }
+
+      const sessionStore = useTableSessionStore.getState()
+      const tableSession = sessionStore.getSession(tableId)
+      if (
+        tableSession &&
+        tableSession.status !== 'paid' &&
+        tableSession.status !== 'cleaning'
+      ) {
+        const paymentTransition = await sessionStore.dispatchAction({
+          type: 'FULL_PAYMENT',
+          tableId
+        })
+        if (!paymentTransition.success) {
+          throw new Error(
+            paymentTransition.error ||
+              'Failed to finalize table session before closing'
+          )
+        }
+      }
+
+      const result = await useTableSessionStore.getState().dispatchAction({
+        type: 'CLEAR_TABLE',
+        tableId,
+        orderId: currentActiveOrderId
+      })
+
+      hideLoading()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to close session')
+      }
+
+      show({
+        title: 'Session Closed',
+        message: 'Table marked for cleaning.',
+        type: 'success'
+      })
+    } catch (error: any) {
+      hideLoading()
+      show({
+        title: 'Failed to Close Session',
+        message: error.message || 'An unexpected error occurred.',
+        type: 'error'
+      })
+    }
+  }, [show, showLoading, hideLoading])
+
   // DEFERRED RENDERING: Progressive staged rendering via double-rAF
   // Stage 0: Skeleton placeholders (instant first paint)
   // Stage 1: BillSection (lighter — user sees their order first)
@@ -285,6 +420,52 @@ const OrderProcessing = () => {
   }, [])
 
   const displayOrders = renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS
+  const minOrdersSheetHeight = Math.round(windowHeight * 0.56)
+  const maxOrdersSheetHeight = windowHeight
+  const defaultOrdersSheetHeight =
+    minimalModeRows === 2
+      ? Math.round(windowHeight * 0.74)
+      : maxOrdersSheetHeight
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    height: ordersSheetHeight.value
+  }))
+
+  const clampOrdersSheetHeight = useCallback(
+    (height: number) =>
+      Math.max(minOrdersSheetHeight, Math.min(maxOrdersSheetHeight, height)),
+    [maxOrdersSheetHeight, minOrdersSheetHeight]
+  )
+
+  useEffect(() => {
+    if (!isOrdersModuleOpen) return
+    ordersSheetHeight.value = defaultOrdersSheetHeight
+  }, [defaultOrdersSheetHeight, isOrdersModuleOpen])
+
+  const sheetResizePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          Math.abs(gestureState.dy) > 2,
+        onPanResponderGrant: () => {
+          dragStartHeightRef.current = ordersSheetHeight.value
+        },
+        onPanResponderMove: (_evt, gestureState) => {
+          const nextHeight = clampOrdersSheetHeight(
+            dragStartHeightRef.current - gestureState.dy
+          )
+          ordersSheetHeight.value = nextHeight
+        },
+        onPanResponderRelease: (_evt, gestureState) => {
+          const nextHeight = clampOrdersSheetHeight(
+            dragStartHeightRef.current - gestureState.dy
+          )
+          ordersSheetHeight.value = nextHeight
+        }
+      }),
+    [clampOrdersSheetHeight, ordersSheetHeight]
+  )
 
   // Bulk complete: orders eligible for completion
   const completableOrders = useMemo(() => {
@@ -401,9 +582,10 @@ const OrderProcessing = () => {
       const orderStatusColor =
         item.order_status === 'ready'
           ? colors.success
-          : item.order_status === 'preparing' ||
-            item.order_status === 'sent_to_kitchen'
-          ? colors.warning
+          : item.order_status === 'preparing'
+          ? colors.orderPreparing
+          : item.order_status === 'sent_to_kitchen'
+          ? colors.orderSentToKitchen
           : item.order_status === 'completed'
           ? colors.info
           : item.order_status === 'cancelled' || item.order_status === 'void'
@@ -432,6 +614,7 @@ const OrderProcessing = () => {
           style={{
             flex: 1,
             maxWidth: 320,
+            alignSelf: 'flex-start',
             borderRadius: 14,
             borderWidth: 1,
             borderColor: colors.info + '50',
@@ -788,44 +971,46 @@ const OrderProcessing = () => {
                     onPress={() => setIsOrdersModuleOpen(true)}
                     className='flex-row items-center rounded-lg px-3 py-2.5 justify-start'
                     style={{
-                      backgroundColor: colors.info + '16',
+                      backgroundColor: colors.panel,
                       borderWidth: 1,
-                      borderColor: colors.info + '35'
+                      borderColor: colors.border
                     }}
                   >
                     <Text
                       style={{
                         fontSize: 12,
-                        fontWeight: '700',
-                        color: colors.heading
+                        fontWeight: '600',
+                        color: colors.label
                       }}
                     >
                       Orders
                     </Text>
-                    <View
-                      style={{
-                        minWidth: 20,
-                        height: 20,
-                        borderRadius: 10,
-                        marginLeft: 6,
-                        backgroundColor: colors.info + '30',
-                        borderWidth: 1,
-                        borderColor: colors.info + '55',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        paddingHorizontal: 5
-                      }}
-                    >
-                      <Text
+                    {displayOrders.length > 0 && (
+                      <View
                         style={{
-                          color: colors.heading,
-                          fontSize: 10,
-                          fontWeight: '800'
+                          minWidth: 20,
+                          height: 20,
+                          borderRadius: 10,
+                          marginLeft: 6,
+                          backgroundColor: colors.muted + '20',
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingHorizontal: 5
                         }}
                       >
-                        {displayOrders.length}
-                      </Text>
-                    </View>
+                        <Text
+                          style={{
+                            color: colors.label,
+                            fontSize: 10,
+                            fontWeight: '700'
+                          }}
+                        >
+                          {displayOrders.length}
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 ) : undefined
               }
@@ -1162,24 +1347,23 @@ const OrderProcessing = () => {
         </View>
       </View>
 
-      {/* Stage 2: Mount in root portal so the sheet layers above BillSection controls */}
+      {/* Stage 2: Mount bottom sheets in a dedicated overlay layer above BillSection controls */}
       {renderStage >= 2 && (
-        <Teleport hostName='root'>
-          <>
-            <MoreOptionsBottomSheet
-              ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-              discountSheetRef={
-                discountSheetRef as React.RefObject<BottomSheetMethods>
-              }
-              onCloseCheck={handleCloseCheck}
-              onNoSale={handleNoSale}
-            />
-            <DiscountBottomSheet
-              ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
-              onClose={() => discountSheetRef?.current?.close()}
-            />
-          </>
-        </Teleport>
+        <View pointerEvents='box-none' style={styles.sheetOverlayLayer}>
+          <MoreOptionsBottomSheet
+            ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+            discountSheetRef={
+              discountSheetRef as React.RefObject<BottomSheetMethods>
+            }
+            onCloseCheck={handleCloseCheck}
+            onCloseSession={handleCloseSession}
+            onNoSale={handleNoSale}
+          />
+          <DiscountBottomSheet
+            ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
+            onClose={() => discountSheetRef?.current?.close()}
+          />
+        </View>
       )}
 
       <CashDrawerSheet
@@ -1203,31 +1387,59 @@ const OrderProcessing = () => {
         animationType='slide'
         onRequestClose={() => setIsOrdersModuleOpen(false)}
       >
-        <Pressable
-          onPress={() => setIsOrdersModuleOpen(false)}
+        <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
             justifyContent: 'flex-end'
           }}
         >
           <Pressable
-            onPress={() => {}}
+            onPress={() => setIsOrdersModuleOpen(false)}
             style={{
-              width: '100%',
-              height: '100%',
-              borderTopLeftRadius: 18,
-              borderTopRightRadius: 18,
-              borderWidth: 1,
-              borderColor: colors.info + '35',
-              backgroundColor: colors.screen,
-              overflow: 'hidden'
+              ...StyleSheet.absoluteFillObject,
+              backgroundColor: 'rgba(0,0,0,0.5)'
             }}
+          />
+
+          <Animated.View
+            style={[
+              {
+                width: '100%',
+                borderTopLeftRadius: 18,
+                borderTopRightRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.info + '35',
+                backgroundColor: colors.screen,
+                overflow: 'hidden'
+              },
+              sheetAnimatedStyle
+            ]}
           >
+            <View
+              {...sheetResizePanResponder.panHandlers}
+              style={{
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingTop: 8,
+                paddingBottom: 6,
+                backgroundColor: colors.screen
+              }}
+            >
+              <View
+                style={{
+                  width: 58,
+                  height: 5,
+                  borderRadius: 999,
+                  backgroundColor: colors.border
+                }}
+              />
+            </View>
+
             <View
               style={{
                 paddingHorizontal: 12,
-                paddingVertical: 10,
+                paddingTop: 6,
+                paddingBottom: 10,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
                 flexDirection: 'row',
@@ -1335,9 +1547,6 @@ const OrderProcessing = () => {
                   gap: 10
                 }}
                 showsVerticalScrollIndicator={false}
-                itemLayoutAnimation={LinearTransition.springify()
-                  .damping(18)
-                  .stiffness(120)}
                 initialNumToRender={12}
                 maxToRenderPerBatch={12}
                 windowSize={4}
@@ -1356,8 +1565,8 @@ const OrderProcessing = () => {
                 </Text>
               </View>
             )}
-          </Pressable>
-        </Pressable>
+          </Animated.View>
+        </View>
       </Modal>
 
       {isItemsModalOpen && (
@@ -1387,10 +1596,11 @@ const OrderProcessing = () => {
           <Pressable
             onPress={() => {}}
             style={{
-              width: 360,
-              maxWidth: '92%',
+              width: 500,
+              maxWidth: '96%',
+              height: 560,
               alignSelf: 'center',
-              maxHeight: '92%',
+              maxHeight: '90%',
               borderRadius: 18,
               borderWidth: 1,
               borderColor: colors.teal + '45',
@@ -1434,8 +1644,9 @@ const OrderProcessing = () => {
                 <X size={16} color={colors.label} />
               </TouchableOpacity>
             </View>
-            <View style={{ height: 620 }}>
+            <View style={{ flex: 1 }}>
               <OpenItemAdder
+                modalLayout
                 onCreated={() => setIsCustomItemModuleOpen(false)}
               />
             </View>
@@ -1447,3 +1658,11 @@ const OrderProcessing = () => {
 }
 
 export default OrderProcessing
+
+const styles = StyleSheet.create({
+  sheetOverlayLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20000,
+    elevation: 20000
+  }
+})

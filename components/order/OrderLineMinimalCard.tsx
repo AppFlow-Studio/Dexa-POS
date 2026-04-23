@@ -51,8 +51,9 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
       case 'ready':
         return colors.success
       case 'preparing':
+        return colors.orderPreparing
       case 'sent_to_kitchen':
-        return colors.warning
+        return colors.orderSentToKitchen
       case 'completed':
         return colors.info
       case 'cancelled':

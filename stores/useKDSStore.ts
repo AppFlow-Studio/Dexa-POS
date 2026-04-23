@@ -118,6 +118,7 @@ interface KDSState {
   selectAllVisible: (ids: string[]) => void
   clearSelection: () => void
   bulkAdvanceTickets: (ticketIds: string[], locationId: string) => void
+  bulkMarkTicketsDone: (ticketIds: string[]) => void
 
   // Config
   setNewOrderPosition: (pos: 'left' | 'right') => void
@@ -269,9 +270,38 @@ function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
     return tickets
   const now = Date.now()
 
+  // Prune stale pending actions globally first so item-level suppression does not
+  // keep masking tickets after the optimistic protection window.
+  for (const [ticketId, pending] of _pendingActions) {
+    if (now - pending.timestamp > PENDING_ACTION_TTL) {
+      _pendingActions.delete(ticketId)
+    }
+  }
+
+  // Some bulk-done flows can regenerate ticket IDs from broadcast/refetch before
+  // backend state fully settles. Keep those tickets hidden if all incoming items
+  // are already covered by a pending "done" action.
+  const pendingDoneItemIds = new Set<string>()
+  for (const pending of _pendingActions.values()) {
+    if (pending.targetStatus !== 'done') continue
+    for (const [itemId, status] of pending.itemStatuses) {
+      if (status === 'served') pendingDoneItemIds.add(itemId)
+    }
+  }
+
   return tickets.reduce<KDSTicket[]>((acc, ticket) => {
     const pending = _pendingActions.get(ticket.ticket_id)
     if (!pending) {
+      // Ticket has no direct pending entry, but all its items are in a pending
+      // done-set from bulk completion. Keep it out until backend catches up.
+      if (
+        pendingDoneItemIds.size > 0 &&
+        ticket.items.length > 0 &&
+        ticket.items.every(item => pendingDoneItemIds.has(item.id))
+      ) {
+        return acc
+      }
+
       // Still overlay recalled flag even without pending action
       if (_recalledTicketIds.has(ticket.ticket_id)) {
         acc.push({
@@ -284,18 +314,6 @@ function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
       return acc
     }
     if (pendingActionSatisfied(ticket, pending)) {
-      _pendingActions.delete(ticket.ticket_id)
-      if (_recalledTicketIds.has(ticket.ticket_id)) {
-        acc.push({
-          ...ticket,
-          items: ticket.items.map(item => ({ ...item, recalled: true }))
-        })
-      } else {
-        acc.push(ticket)
-      }
-      return acc
-    }
-    if (now - pending.timestamp > PENDING_ACTION_TTL) {
       _pendingActions.delete(ticket.ticket_id)
       if (_recalledTicketIds.has(ticket.ticket_id)) {
         acc.push({
@@ -410,6 +428,40 @@ const TERMINAL_ORDER_STATUSES = new Set([
   'void'
 ])
 
+function isActionableKitchenItem (
+  item: Pick<
+    KDSTicketItem,
+    'is_voided' | 'refunded_quantity' | 'quantity' | 'kitchen_status'
+  >
+): boolean {
+  const status = (item.kitchen_status ?? '').toLowerCase()
+  const isTerminalKitchenStatus =
+    status === 'served' ||
+    status === 'voided' ||
+    status === 'done' ||
+    status === 'completed'
+
+  return (
+    !item.is_voided &&
+    (item.refunded_quantity ?? 0) < item.quantity &&
+    !isTerminalKitchenStatus
+  )
+}
+
+function ticketHasActionableItems (ticket: KDSTicket): boolean {
+  const items = Array.isArray(ticket.items) ? ticket.items : []
+  return items.some(item => isActionableKitchenItem(item))
+}
+
+function dedupeTicketsById (tickets: KDSTicket[]): KDSTicket[] {
+  if (tickets.length <= 1) return tickets
+  const byId = new Map<string, KDSTicket>()
+  for (const ticket of tickets) {
+    byId.set(ticket.ticket_id, ticket)
+  }
+  return Array.from(byId.values())
+}
+
 /** Shared predicate: should we apply display-based item filtering? */
 function shouldUseDisplayFilter (
   kdsDisplayId: string | null,
@@ -478,6 +530,15 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
   })
   if (kdsItems.length === 0) return []
 
+  if (__DEV__) {
+    console.log('[KDS Debug] buildTicketsFromBroadcast start', {
+      orderId: order.id,
+      orderStatus: order.status,
+      totalItems: items.length,
+      kdsItems: kdsItems.length
+    })
+  }
+
   // Group by course_number + fire_time (round)
   const byRound = new Map<string, BroadcastOrderItemData[]>()
   for (const item of kdsItems) {
@@ -498,10 +559,38 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
 
     // Derive ticket status from active items only (voided/fully-refunded are display-only)
     // In 2-step mode, remap "pending" to "cooking" (items skip Pending bucket)
-    const activeItems = roundItems.filter(i =>
-      !i.is_voided && (i.refunded_quantity ?? 0) < i.quantity
-    )
-    const allReady = activeItems.length === 0 || activeItems.every(i => i.kitchen_status === 'ready')
+    const activeItems = roundItems.filter(i => isActionableKitchenItem(i))
+
+    if (__DEV__) {
+      console.log('[KDS Debug] round status inputs', {
+        orderId: order.id,
+        roundKey: key,
+        roundItemCount: roundItems.length,
+        actionableCount: activeItems.length,
+        statuses: roundItems.map(i => ({
+          id: i.id,
+          kitchenStatus: i.kitchen_status,
+          qty: i.quantity,
+          refundedQty: i.refunded_quantity ?? 0,
+          isVoided: i.is_voided
+        }))
+      })
+    }
+
+    // If a round has no actionable kitchen items left (only voided/refunded rows),
+    // do not keep rebuilding it into active KDS columns.
+    if (activeItems.length === 0) {
+      if (__DEV__) {
+        console.log('[KDS Debug] skipping round with no actionable items', {
+          orderId: order.id,
+          roundKey: key
+        })
+      }
+      continue
+    }
+    const allReady =
+      activeItems.length === 0 ||
+      activeItems.every(i => i.kitchen_status === 'ready')
     const anySent = activeItems.some(i => i.kitchen_status === 'sent')
     const ticketStatus: KDSTicket['status'] = allReady
       ? 'ready'
@@ -635,9 +724,10 @@ function mergeTickets (
   changed: boolean
 } {
   let changed = false
+  const dedupedIncoming = dedupeTicketsById(incoming)
   const mergedById: Record<string, KDSTicket> = {}
   const merged: KDSTicket[] = []
-  for (const ticket of incoming) {
+  for (const ticket of dedupedIncoming) {
     const prevRaw = existingById[ticket.ticket_id]
     const prev = prevRaw ? normalizeKdsTicket(prevRaw) : undefined
     // Preserve customer_name/table_name from existing ticket when broadcast omits them
@@ -717,11 +807,20 @@ function smartBucketTickets (
   prioritizedIds?: Set<string>,
   newOrderPosition?: 'left' | 'right'
 ) {
+  const sourceTickets = dedupeTicketsById(tickets)
+  if (__DEV__ && sourceTickets.length !== tickets.length) {
+    console.log('[KDS Debug] deduped duplicate ticket ids before bucketing', {
+      before: tickets.length,
+      after: sourceTickets.length,
+      duplicateCount: tickets.length - sourceTickets.length
+    })
+  }
+
   const pending: KDSTicket[] = []
   const cooking: KDSTicket[] = []
   const ready: KDSTicket[] = []
 
-  for (const t of tickets) {
+  for (const t of sourceTickets) {
     if (t.status === 'pending') pending.push(t)
     else if (t.status === 'cooking') cooking.push(t)
     else if (t.status === 'ready') ready.push(t)
@@ -999,7 +1098,9 @@ export const useKDSStore = create<KDSState>()(
                     : t
                 )
               : processed
-          const sorted = sortKdsTicketsStable(remapped)
+          const actionableRemapped = remapped.filter(ticketHasActionableItems)
+          const dedupedRemapped = dedupeTicketsById(actionableRemapped)
+          const sorted = sortKdsTicketsStable(dedupedRemapped)
           const { merged, mergedById, changed } = mergeTickets(
             sorted,
             get()._ticketsById
@@ -1082,6 +1183,18 @@ export const useKDSStore = create<KDSState>()(
           }
 
           const raw: KDSTicket[] = Array.isArray(data) ? data : data ?? []
+          if (__DEV__) {
+            console.log('[KDS Debug] background fetch raw tickets', {
+              locationId,
+              rawCount: raw.length,
+              sample: raw.slice(0, 5).map(t => ({
+                ticketId: t.ticket_id,
+                status: t.status,
+                orderId: t.db_order_id,
+                itemCount: t.items?.length ?? 0
+              }))
+            })
+          }
           const processed = overlayPendingActions(
             raw.map(t =>
               normalizeKdsTicket({
@@ -1099,7 +1212,19 @@ export const useKDSStore = create<KDSState>()(
                     : t
                 )
               : processed
-          const sorted = sortKdsTicketsStable(remapped)
+          const actionableRemapped = remapped.filter(ticketHasActionableItems)
+          const dedupedRemapped = dedupeTicketsById(actionableRemapped)
+          const sorted = sortKdsTicketsStable(dedupedRemapped)
+          if (__DEV__) {
+            console.log('[KDS Debug] background fetch processed tickets', {
+              locationId,
+              processedCount: processed.length,
+              remappedCount: remapped.length,
+              actionableCount: actionableRemapped.length,
+              dedupedCount: dedupedRemapped.length,
+              sortedCount: sorted.length
+            })
+          }
 
           // Preserve recalled/pending tickets not returned by server.
           // For display-filtered stations, marking an item 'ready' sets
@@ -1108,7 +1233,7 @@ export const useKDSStore = create<KDSState>()(
           // AND the item-level recalled flag (persisted in MMKV) so the
           // ticket survives even after a hot-reload that clears the Set.
           const currentTickets = get().tickets
-          const serverTicketIds = new Set(remapped.map(t => t.ticket_id))
+          const serverTicketIds = new Set(dedupedRemapped.map(t => t.ticket_id))
           const protectedMissing = currentTickets.filter(
             t =>
               !serverTicketIds.has(t.ticket_id) &&
@@ -1198,25 +1323,48 @@ export const useKDSStore = create<KDSState>()(
             ? 'ready'
             : null // "served" removes from KDS
 
+        // Skip non-actionable rows (voided/fully-refunded portions) for backend updates.
+        // These rows are display-only and can cause RPC failures if sent as status mutations.
+        const actionableItemIds = itemIds.filter(id => {
+          const item = ticket?.items.find(i => i.id === id)
+          if (!item) return false
+          return isActionableKitchenItem(item)
+        })
+
+        if (__DEV__) {
+          console.log('[KDS Debug] advanceTicketStatus request', {
+            ticketId,
+            currentStatus: ticket?.status,
+            newStatus,
+            requestedItemIds: itemIds.length,
+            actionableItemIds: actionableItemIds.length,
+            orderId
+          })
+        }
+
         // Cancel any in-flight per-item retries for this ticket so they don't
         // overwrite the whole-ticket status we're about to write (e.g. markItemDone
         // retries running after advanceTicketStatus would set items back to 'ready').
-        for (const id of itemIds) {
+        for (const id of actionableItemIds) {
           cancelRetry(`item_${ticketId}_${id}`)
         }
 
         // Register pending action (protects optimistic state from broadcast clobber)
         const itemStatusMap = new Map<string, string>()
-        for (const id of itemIds) itemStatusMap.set(id, newStatus)
-        _pendingActions.set(ticketId, {
-          ticketId,
-          targetStatus:
-            ticketStatus === null
-              ? 'done'
-              : (ticketStatus as KDSTicket['status']),
-          itemStatuses: itemStatusMap,
-          timestamp: Date.now()
-        })
+        for (const id of actionableItemIds) itemStatusMap.set(id, newStatus)
+        if (actionableItemIds.length > 0 || ticketStatus !== null) {
+          _pendingActions.set(ticketId, {
+            ticketId,
+            targetStatus:
+              ticketStatus === null
+                ? 'done'
+                : (ticketStatus as KDSTicket['status']),
+            itemStatuses: itemStatusMap,
+            timestamp: Date.now()
+          })
+        } else {
+          _pendingActions.delete(ticketId)
+        }
 
         let updatedTickets: KDSTicket[]
         let updatedById: Record<string, KDSTicket>
@@ -1284,16 +1432,27 @@ export const useKDSStore = create<KDSState>()(
           ...extraState
         })
 
+        if (__DEV__) {
+          console.log('[KDS Debug] advanceTicketStatus optimistic applied', {
+            ticketId,
+            newStatus,
+            ticketRemoved: ticketStatus === null,
+            activeTicketCount: updatedTickets.length,
+            doneCount:
+              (extraState.doneCount as number | undefined) ?? get().doneCount
+          })
+        }
+
         // Backend sync with cancellable retry (action-specific key to avoid cross-action cancellation)
         const retryKey = `advance_${ticketId}_${newStatus}`
         const client = getClient()
-        if (client && itemIds.length > 0) {
+        if (client && actionableItemIds.length > 0) {
           scheduleRetry(
             retryKey,
             () =>
               OrderService.bulkUpdateOrderItemStatus(
                 client,
-                itemIds,
+                actionableItemIds,
                 newStatus
               ),
             0,
@@ -1545,6 +1704,15 @@ export const useKDSStore = create<KDSState>()(
 
         // Build new tickets from broadcast
         const newTickets = buildTicketsFromBroadcast(filteredOrder)
+        if (__DEV__) {
+          console.log('[KDS Debug] broadcast built tickets', {
+            orderId: order.id,
+            orderStatus: order.status,
+            existingTicketsForOrder: orderTids?.size ?? 0,
+            builtCount: newTickets.length,
+            builtIds: newTickets.map(t => t.ticket_id)
+          })
+        }
 
         // Stabilize ticket_id and start_time_epoch for existing tickets so that:
         // (a) mergeTickets reuses the same reference (no FlatList re-mount animation)
@@ -1577,10 +1745,17 @@ export const useKDSStore = create<KDSState>()(
         const otherTickets = orderTids
           ? tickets.filter(t => !orderTids.has(t.ticket_id))
           : tickets
-        const rawMerged = sortKdsTicketsStable([
-          ...otherTickets,
-          ...stabilizedNewTickets
-        ])
+        const rawMerged = sortKdsTicketsStable(
+          dedupeTicketsById([...otherTickets, ...stabilizedNewTickets])
+        )
+        if (__DEV__) {
+          console.log('[KDS Debug] broadcast merge', {
+            orderId: order.id,
+            otherTickets: otherTickets.length,
+            stabilizedNewTickets: stabilizedNewTickets.length,
+            mergedCount: rawMerged.length
+          })
+        }
 
         // Overlay pending optimistic states to prevent broadcast clobber
         const overlaid = overlayPendingActions(rawMerged)
@@ -1857,8 +2032,15 @@ export const useKDSStore = create<KDSState>()(
         )
 
         // Re-derive ticket status
-        const allReady = updatedItems.every(i => i.kitchen_status === 'ready')
-        const anySent = updatedItems.some(i => i.kitchen_status === 'sent')
+        const actionableUpdatedItems = updatedItems.filter(i =>
+          isActionableKitchenItem(i)
+        )
+        const allReady =
+          actionableUpdatedItems.length === 0 ||
+          actionableUpdatedItems.every(i => i.kitchen_status === 'ready')
+        const anySent = actionableUpdatedItems.some(
+          i => i.kitchen_status === 'sent'
+        )
         const newTicketStatus: KDSTicket['status'] = allReady
           ? 'ready'
           : anySent
@@ -2169,6 +2351,23 @@ export const useKDSStore = create<KDSState>()(
             )
           }
         }
+      },
+
+      bulkMarkTicketsDone: (ticketIds: string[]) => {
+        const ticketSet = new Set(ticketIds)
+        const currentTickets = get().tickets.filter(t =>
+          ticketSet.has(t.ticket_id)
+        )
+        if (currentTickets.length === 0) return
+
+        for (const ticket of currentTickets) {
+          const itemIds = ticket.items.map(item => item.id)
+          if (itemIds.length === 0) continue
+          get().advanceTicketStatus(ticket.ticket_id, itemIds, 'served')
+        }
+
+        // Keep UX consistent with other bulk actions.
+        set({ selectedTicketIds: new Set<string>() })
       },
 
       // ─── Cleanup (for unmount) ──────────────────────────────────────

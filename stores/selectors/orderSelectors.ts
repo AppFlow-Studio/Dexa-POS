@@ -310,7 +310,6 @@ export function useWorkingSetOrders (): OrderProfile[] {
 // - Must have items
 
 const INACTIVE_STATUSES = new Set(['completed', 'voided', 'cancelled', 'void'])
-
 export function useStationOrders (): OrderProfile[] {
   const ordersById = useOrderStore(s => s.ordersById)
   const currentStationId = useOrderStore(s => s.currentStationId)
@@ -569,7 +568,7 @@ export const useRemoteOrderCount = useOtherStationOrderCount
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Filtered orders for order line display (today, all active non-dine-in).
+ * Filtered orders for order line display (today, all active with items).
  * Uses useStableOrderList for referential stability when content unchanged.
  */
 export function useOrderLineFilteredOrders (): OrderProfile[] {
@@ -587,6 +586,7 @@ export function useOrderLineFilteredOrders (): OrderProfile[] {
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]]
         if (!o) continue
+
         const openedAt = new Date(o.opened_at || 0).getTime()
         if (
           openedAt >= startTime &&

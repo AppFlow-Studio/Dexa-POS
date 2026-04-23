@@ -175,7 +175,7 @@ const MyProfileScreen = () => {
         >
           {/* Left: Profile Card */}
           {currentEmployee?.id && (
-            <View style={{ width: 240, flexShrink: 0 }}>
+            <View style={{ width: 360, flexShrink: 0 }}>
               <UserProfileCard employeeId={currentEmployee.id} />
             </View>
           )}

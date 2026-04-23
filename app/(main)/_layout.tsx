@@ -26,7 +26,7 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import type { OrderPayload, PaymentPayload } from '@/types/real-time'
 import { useAuth } from '@clerk/clerk-expo'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { Redirect, Slot } from 'expo-router'
+import { Redirect, Slot, usePathname } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import React, { useCallback, useEffect, useRef } from 'react'
 import {
@@ -45,10 +45,13 @@ function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
 
 export default function MainLayout () {
   const { colorScheme } = useColorScheme()
+  const pathname = usePathname()
   const { isSignedIn, isLoaded } = useAuth()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const isKDS = selectedStation?.station_type === 'kds'
+  const disableKeyboardAvoiding =
+    pathname === '/order-processing' || pathname.endsWith('/order-processing')
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null)
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null)
@@ -249,7 +252,14 @@ export default function MainLayout () {
       <OrderSyncRecoveryBridge locationId={selectedStore.id} />
       <KeyboardAvoidingView
         key={colorScheme}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={
+          disableKeyboardAvoiding
+            ? undefined
+            : Platform.OS === 'ios'
+            ? 'padding'
+            : 'height'
+        }
+        enabled={!disableKeyboardAvoiding}
         className='flex-1'
         style={{ backgroundColor: colors.screen }}
       >

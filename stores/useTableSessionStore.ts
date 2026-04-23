@@ -868,6 +868,93 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           const isOnline = getIsOnline()
           const supabase = getClient()
 
+          const normalizeTableIds = (ids: string[]) =>
+            Array.from(new Set(ids)).sort((left, right) =>
+              left.localeCompare(right)
+            )
+
+          const providedOrderId = params.localOrderId
+          let providedDbOrderId: string | undefined
+          if (providedOrderId) {
+            const { useOrderStore } =
+              require('@/stores/useOrderStore') as typeof import('@/stores/useOrderStore')
+            providedDbOrderId =
+              useOrderStore.getState().ordersById[providedOrderId]?.db_order_id
+          }
+
+          const orderLinkIds = new Set<string>()
+          if (providedOrderId) orderLinkIds.add(providedOrderId)
+          if (providedDbOrderId) orderLinkIds.add(providedDbOrderId)
+
+          if (orderLinkIds.size > 0) {
+            const linkedEntries = Object.entries(get().sessions).filter(
+              ([, session]) =>
+                !!session &&
+                session.status !== 'available' &&
+                !!session.order_id &&
+                orderLinkIds.has(session.order_id)
+            )
+
+            if (linkedEntries.length > 1) {
+              throw new Error(
+                'Order is linked to multiple active sessions. Please clear extra sessions before reseating.'
+              )
+            }
+
+            if (linkedEntries.length === 1) {
+              const [existingTableId, existingSession] = linkedEntries[0]
+              const existingTableIds = normalizeTableIds(
+                existingSession.merged_tables?.length
+                  ? existingSession.merged_tables
+                  : [existingTableId]
+              )
+              const requestedTableIds = normalizeTableIds(params.tableIds)
+              const sameTarget =
+                existingTableIds.length === requestedTableIds.length &&
+                existingTableIds.every(
+                  (tableId, index) => tableId === requestedTableIds[index]
+                )
+
+              if (sameTarget) {
+                return {
+                  sessionId: existingSession.id,
+                  orderId:
+                    params.createOrder !== false
+                      ? providedOrderId ?? existingSession.order_id
+                      : undefined
+                }
+              }
+
+              if (!isOnline || !supabase) {
+                throw new Error(
+                  'Cannot move an active table session while offline.'
+                )
+              }
+
+              const { error } = await FloorPlanService.transferTableSession(
+                supabase,
+                {
+                  p_session_id: existingSession.id,
+                  p_new_table_ids: params.tableIds
+                }
+              )
+
+              if (error) {
+                throw error
+              }
+
+              await useFloorPlanStore.getState().loadFloorPlanStatus()
+
+              return {
+                sessionId: existingSession.id,
+                orderId:
+                  params.createOrder !== false
+                    ? providedOrderId ?? existingSession.order_id
+                    : undefined
+              }
+            }
+          }
+
           // 1. Generate local IDs for optimistic update
           const localSessionId = `local_session_${Date.now()}_${Math.random()
             .toString(36)
@@ -928,6 +1015,28 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // Clear selection on floor plan store
           useFloorPlanStore.getState().clearSelection()
 
+          const hasActiveSessionConflict = (message?: string) => {
+            const text = (message || '').toLowerCase()
+            return text.includes('active session') && text.includes('available')
+          }
+
+          const tryResolveActiveSessionConflict = async () => {
+            // Force a fresh pull so we can adopt the backend-authoritative session.
+            await useFloorPlanStore.getState().loadFloorPlanStatus()
+            const refreshed = get().sessions[params.tableIds[0]]
+            if (refreshed && refreshed.status !== 'available') {
+              return {
+                resolved: true,
+                sessionId: refreshed.id,
+                orderId:
+                  params.createOrder !== false
+                    ? params.localOrderId ?? refreshed.order_id
+                    : undefined
+              }
+            }
+            return { resolved: false as const }
+          }
+
           // 4. Try backend if online
           if (isOnline && supabase) {
             try {
@@ -961,6 +1070,23 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                 }
               }
 
+              if (hasActiveSessionConflict(result.error)) {
+                try {
+                  const recovered = await tryResolveActiveSessionConflict()
+                  if (recovered.resolved) {
+                    return {
+                      sessionId: recovered.sessionId,
+                      orderId: recovered.orderId
+                    }
+                  }
+                } catch (recoveryErr) {
+                  console.warn(
+                    '[seatGuests] Failed to recover active-session conflict from backend state:',
+                    recoveryErr
+                  )
+                }
+              }
+
               // Backend error — resolve seating → seated so table is usable
               if (!result.success) {
                 console.error(
@@ -990,6 +1116,25 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                 })
               }
             } catch (err) {
+              const errorMessage =
+                err instanceof Error ? err.message : String(err)
+              if (hasActiveSessionConflict(errorMessage)) {
+                try {
+                  const recovered = await tryResolveActiveSessionConflict()
+                  if (recovered.resolved) {
+                    return {
+                      sessionId: recovered.sessionId,
+                      orderId: recovered.orderId
+                    }
+                  }
+                } catch (recoveryErr) {
+                  console.warn(
+                    '[seatGuests] Failed to recover exception active-session conflict from backend state:',
+                    recoveryErr
+                  )
+                }
+              }
+
               console.error('[seatGuests] Exception, queuing for retry:', err)
               _resolveSeatingToSeated(localSessionId)
               await queueOperation({

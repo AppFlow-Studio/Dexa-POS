@@ -1,5 +1,6 @@
 import { useToast } from '@/contexts/ToastContext'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { getDeviceId } from '@/lib/deviceId'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import {
@@ -14,14 +15,14 @@ import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useOrderSyncCounts } from '@/stores/useSyncStatusStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import type {
   FloorPlanObject,
-  ServerSection
+  ServerSection,
+  TableSession
 } from '@/types/db-floor-plan-types'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import {
@@ -41,7 +42,11 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Dimensions,
+  Keyboard,
   Modal,
+  Platform,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -75,56 +80,173 @@ const BillItemsAndTotals = React.memo(
     onSaveOrderNote: () => void
   }) => {
     const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
+    const [isOrderNoteEditorOpen, setIsOrderNoteEditorOpen] = useState(false)
+    const [keyboardTop, setKeyboardTop] = useState<number | null>(null)
+    const orderNoteInputRef = useRef<TextInput>(null)
+
+    useEffect(() => {
+      if (Platform.OS !== 'android') return
+
+      const showSub = Keyboard.addListener('keyboardDidShow', event => {
+        const fallbackTop =
+          Dimensions.get('window').height - (event.endCoordinates?.height ?? 0)
+        setKeyboardTop(event.endCoordinates?.screenY ?? fallbackTop)
+      })
+
+      const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+        setKeyboardTop(null)
+        setIsOrderNoteEditorOpen(false)
+      })
+
+      return () => {
+        showSub.remove()
+        hideSub.remove()
+      }
+    }, [])
 
     const handleToggleExpand = useCallback((itemId: string) => {
       setExpandedItemId(prev => (prev === itemId ? null : itemId))
     }, [])
 
+    const closeOrderNoteEditor = useCallback(() => {
+      setIsOrderNoteEditorOpen(false)
+      setKeyboardTop(null)
+      onSaveOrderNote()
+      Keyboard.dismiss()
+    }, [onSaveOrderNote])
+
+    const handleOrderNoteEditorBlur = useCallback(() => {
+      setIsOrderNoteEditorOpen(false)
+      setKeyboardTop(null)
+      onSaveOrderNote()
+    }, [onSaveOrderNote])
+
+    const focusOrderNoteEditor = useCallback(() => {
+      setTimeout(() => {
+        orderNoteInputRef.current?.focus()
+      }, 60)
+    }, [])
+
+    const renderOrderNoteInput = () => (
+      <View
+        className='h-9 rounded-lg flex-row items-center mb-1'
+        style={{
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          paddingHorizontal: 10,
+          gap: 7
+        }}
+      >
+        <NotebookPen size={13} color={colors.muted} />
+        <TextInput
+          ref={orderNoteInputRef}
+          value={orderNote ?? ''}
+          onChangeText={onChangeOrderNote}
+          onBlur={
+            Platform.OS === 'android'
+              ? handleOrderNoteEditorBlur
+              : onSaveOrderNote
+          }
+          onEndEditing={onSaveOrderNote}
+          placeholder='Add order note...'
+          placeholderTextColor={colors.muted}
+          multiline={false}
+          numberOfLines={1}
+          textAlignVertical='center'
+          style={{
+            flex: 1,
+            color: colors.heading,
+            fontSize: 12,
+            lineHeight: 16,
+            height: 18,
+            paddingHorizontal: 0,
+            paddingVertical: 0,
+            margin: 2,
+            includeFontPadding: false,
+            fontFamily: 'System'
+          }}
+        />
+      </View>
+    )
+
     return (
-      <>
+      <View style={{ flex: 1, position: 'relative' }}>
         <BillSummary
           cart={cart}
           expandedItemId={expandedItemId}
           onToggleExpand={handleToggleExpand}
         />
         <View className='px-3 pb-1'>
-          <View
-            className='h-9 rounded-lg flex-row items-center mb-1'
-            style={{
-              backgroundColor: colors.panel,
-              borderWidth: 1,
-              borderColor: colors.border,
-              paddingHorizontal: 10,
-              gap: 7
-            }}
-          >
-            <NotebookPen size={13} color={colors.muted} />
-            <TextInput
-              value={orderNote ?? ''}
-              onChangeText={onChangeOrderNote}
-              onBlur={onSaveOrderNote}
-              onEndEditing={onSaveOrderNote}
-              placeholder='Add order note...'
-              placeholderTextColor={colors.muted}
-              multiline={false}
-              numberOfLines={1}
-              textAlignVertical='center'
-              style={{
-                flex: 1,
-                color: colors.heading,
-                fontSize: 12,
-                lineHeight: 16,
-                height: 18,
-                paddingHorizontal: 0,
-                paddingVertical: 0,
-                margin: 2,
-                includeFontPadding: false,
-                fontFamily: 'System'
-              }}
-            />
-          </View>
+          {Platform.OS === 'android' ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setIsOrderNoteEditorOpen(true)}
+            >
+              <View
+                className='h-9 rounded-lg flex-row items-center mb-1'
+                style={{
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  paddingHorizontal: 10,
+                  gap: 7
+                }}
+              >
+                <NotebookPen size={13} color={colors.muted} />
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    flex: 1,
+                    color: (orderNote ?? '').trim()
+                      ? colors.heading
+                      : colors.muted,
+                    fontSize: 12,
+                    lineHeight: 16,
+                    fontFamily: 'System'
+                  }}
+                >
+                  {(orderNote ?? '').trim() || 'Add order note...'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            renderOrderNoteInput()
+          )}
         </View>
-      </>
+
+        {Platform.OS === 'android' && (
+          <Modal
+            transparent
+            visible={isOrderNoteEditorOpen}
+            animationType='fade'
+            onShow={focusOrderNoteEditor}
+            onRequestClose={closeOrderNoteEditor}
+          >
+            <Pressable
+              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.18)' }}
+              onPress={closeOrderNoteEditor}
+            >
+              <Pressable
+                onPress={() => {}}
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  right: 12,
+                  opacity: keyboardTop != null ? 1 : 0,
+                  top:
+                    keyboardTop != null
+                      ? Math.max(12, keyboardTop - 44)
+                      : undefined,
+                  bottom: keyboardTop == null ? 12 : undefined
+                }}
+              >
+                {renderOrderNoteInput()}
+              </Pressable>
+            </Pressable>
+          </Modal>
+        )}
+      </View>
     )
   },
   (prev, next) =>
@@ -178,7 +300,7 @@ const BillSectionContent = ({
     assignOrderToTable,
     setActiveOrder,
     retryFailedSyncs,
-    voidOrder,
+    clearCart,
     updateActiveOrderDetails
   } = useOrderStore(
     useShallow(s => ({
@@ -187,7 +309,7 @@ const BillSectionContent = ({
       assignOrderToTable: s.assignOrderToTable,
       setActiveOrder: s.setActiveOrder,
       retryFailedSyncs: s.retryFailedSyncs,
-      voidOrder: s.voidOrder,
+      clearCart: s.clearCart,
       updateActiveOrderDetails: s.updateActiveOrderDetails
     }))
   )
@@ -209,9 +331,11 @@ const BillSectionContent = ({
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore()
   const { show } = useToast()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const autoPrintKitchenTickets = useLocationConfigStore(
     s => s.config.printing.autoPrintKitchenTickets
   )
+  const deviceId = useMemo(() => getDeviceId(), [])
 
   // Memoize computed values to prevent unnecessary recalculations
   const cart = useMemo(() => activeOrderItems || [], [activeOrderItems])
@@ -505,7 +629,11 @@ const BillSectionContent = ({
   }, [sectionOptions, selectedSectionId])
 
   const getTableStatusLabel = useCallback((table: FloorPlanObject) => {
-    const status = table.session?.status ?? 'available'
+    const liveStatus =
+      useTableSessionStore.getState().sessions[table.id]?.status ??
+      table.session?.status ??
+      'available'
+    const status = liveStatus
     const labelMap: Record<string, string> = {
       available: 'Available',
       reserved: 'Reserved',
@@ -526,12 +654,40 @@ const BillSectionContent = ({
     return labelMap[status] || status
   }, [])
 
-  const handleSelectTable = useCallback(
-    (table: FloorPlanObject) => {
-      const isCurrentlyAssigned = table.id === activeOrderServiceLocation
-      const isAvailable = (table.session?.status ?? 'available') === 'available'
+  const isSessionLinkedToOrder = useCallback(
+    (session: TableSession | undefined) => {
+      if (!session?.order_id || !activeOrderId) return false
+      if (session.order_id === activeOrderId) return true
+      return (
+        !!activeOrder?.db_order_id &&
+        session.order_id === activeOrder.db_order_id
+      )
+    },
+    [activeOrder?.db_order_id, activeOrderId]
+  )
 
-      if (!isAvailable && !isCurrentlyAssigned) {
+  const ensureDineInOrderTableSession = useCallback(
+    async (table: FloorPlanObject): Promise<boolean> => {
+      if (activeOrderType !== 'dine_in' || !activeOrderId) {
+        return true
+      }
+
+      const sessionStore = useTableSessionStore.getState()
+      const destinationSession = sessionStore.sessions[table.id]
+      const destinationStatus =
+        destinationSession?.status ?? table.session?.status ?? 'available'
+      const linkedSessionEntries = Object.entries(sessionStore.sessions).filter(
+        ([, session]) => isSessionLinkedToOrder(session)
+      )
+      const hasLinkedSessionOnDestination = linkedSessionEntries.some(
+        ([tableId]) => tableId === table.id
+      )
+      const activeLinkedSourceEntries = linkedSessionEntries.filter(
+        ([tableId, session]) =>
+          tableId !== table.id && session.status !== 'available'
+      )
+
+      if (destinationStatus !== 'available' && !hasLinkedSessionOnDestination) {
         show({
           title: 'Table Unavailable',
           message: `${table.name} is currently ${getTableStatusLabel(
@@ -539,55 +695,143 @@ const BillSectionContent = ({
           ).toLowerCase()}.`,
           type: 'error'
         })
+        return false
+      }
+
+      if (activeLinkedSourceEntries.length > 1) {
+        show({
+          title: 'Multiple Session Conflict',
+          message:
+            'This order appears on multiple active table sessions. Please clear the extra table sessions before moving this order.',
+          type: 'error'
+        })
+        return false
+      }
+
+      const sourceEntry = activeLinkedSourceEntries[0]
+      const sourceSession = sourceEntry?.[1]
+      const shouldTransfer = !!sourceSession
+
+      if (shouldTransfer && sourceSession) {
+        if (
+          destinationStatus !== 'available' &&
+          !hasLinkedSessionOnDestination
+        ) {
+          show({
+            title: 'Table Unavailable',
+            message: `${table.name} is currently ${getTableStatusLabel(
+              table
+            ).toLowerCase()}.`,
+            type: 'error'
+          })
+          return false
+        }
+
+        if (!isOnline) {
+          show({
+            title: 'Offline Transfer Blocked',
+            message:
+              'You are offline. Reassigning an active dine-in table requires a live connection to transfer the session safely.',
+            type: 'warning'
+          })
+          return false
+        }
+
+        try {
+          await sessionStore.transferSession(sourceSession.id, [table.id])
+        } catch (error) {
+          console.error(
+            '[BillSection] Failed to transfer table session:',
+            error
+          )
+          show({
+            title: 'Transfer Failed',
+            message:
+              'Could not move this order to the selected table. Please try again.',
+            type: 'error'
+          })
+          return false
+        }
+      }
+
+      assignOrderToTable(activeOrderId, table.id)
+
+      const refreshedDestinationSession =
+        useTableSessionStore.getState().sessions[table.id]
+      const hasActiveDestinationSession =
+        !!refreshedDestinationSession &&
+        refreshedDestinationSession.status !== 'available'
+
+      if (!hasActiveDestinationSession) {
+        try {
+          await useTableSessionStore.getState().seatGuests({
+            tableIds: [table.id],
+            partySize: Math.max(1, activeOrder?.guest_count ?? 1),
+            createOrder: true,
+            localOrderId: activeOrderId,
+            selected_station: selectedStation?.id,
+            device_id: deviceId
+          })
+        } catch (error) {
+          console.error(
+            '[BillSection] Failed to start table session for dine-in order:',
+            error
+          )
+          show({
+            title: 'Session Start Failed',
+            message:
+              'Table was selected, but we could not start the table session. Please try again.',
+            type: 'error'
+          })
+          return false
+        }
+      }
+
+      return true
+    },
+    [
+      activeOrder?.guest_count,
+      activeOrderId,
+      activeOrderType,
+      assignOrderToTable,
+      deviceId,
+      getTableStatusLabel,
+      isOnline,
+      isSessionLinkedToOrder,
+      selectedStation?.id,
+      show
+    ]
+  )
+
+  const handleSelectTable = useCallback(
+    async (table: FloorPlanObject) => {
+      if (!(await ensureDineInOrderTableSession(table))) {
         return
       }
 
       setSelectedTable(table)
       setIsTableSelectorOpen(false)
     },
-    [activeOrderServiceLocation, getTableStatusLabel, setSelectedTable, show]
+    [ensureDineInOrderTableSession, setSelectedTable, show]
   )
 
-  const handleVoidOrder = useCallback(() => {
+  const handleClearCart = useCallback(() => {
     if (!activeOrderId || !activeOrder) return
     setIsVoidConfirmOpen(true)
   }, [activeOrder, activeOrderId])
 
-  const handleConfirmVoidOrder = useCallback(async () => {
+  const handleConfirmClearCart = useCallback(async () => {
     if (!activeOrderId || !activeOrder) return
 
-    const sessionStore = useTableSessionStore.getState()
-    const sessionId = activeOrder.session_id
-    const tableId = sessionId
-      ? sessionStore.sessionTableIndex[sessionId]?.[0] ??
-        sessionStore.getSessionBySessionId(sessionId)?.tableId ??
-        ''
-      : ''
-
-    if (tableId) {
-      await sessionStore.dispatchAction({
-        type: 'VOID_ORDER',
-        tableId,
-        orderId: activeOrder.id,
-        dbOrderId: activeOrder.db_order_id
-      })
-
-      if (activeOrder.session_id) {
-        await useReservationStore
-          .getState()
-          .completeReservationForSession(activeOrder.session_id)
-      }
-    } else {
-      voidOrder(activeOrderId)
-    }
+    clearCart()
 
     setIsVoidConfirmOpen(false)
     show({
-      title: 'Order Voided',
-      message: 'The current order has been successfully voided.',
+      title: 'Cart Cleared',
+      message: 'All items have been removed from the cart.',
       type: 'success'
     })
-  }, [activeOrder, activeOrderId, show, voidOrder])
+  }, [activeOrder, activeOrderId, clearCart, show])
 
   const handlePayClick = () => {
     // Safety guard: Prevent payment if button should be disabled
@@ -641,7 +885,7 @@ const BillSectionContent = ({
       )
   }
 
-  const handleSendToKitchen = () => {
+  const handleSendToKitchen = async () => {
     if (!checkEmployeeInShift(activeEmployeeId!)) {
       showClockInWall()
       return
@@ -666,7 +910,16 @@ const BillSectionContent = ({
       ) || []
 
     if (activeOrderType === 'dine_in' && selectedTable) {
-      assignOrderToTable(activeOrderId!, selectedTable.id)
+      const sessionReady = await ensureDineInOrderTableSession(selectedTable)
+      if (!sessionReady) {
+        show({
+          title: 'Session Required',
+          message:
+            'Could not confirm a valid table session for this order. Please reselect the table and try again.',
+          type: 'error'
+        })
+        return
+      }
       // Table session status updates are now handled through session-based APIs
       clearSelectedTable()
     }
@@ -808,7 +1061,7 @@ const BillSectionContent = ({
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={handleVoidOrder}
+              onPress={handleClearCart}
               className='h-8 w-8 rounded-lg items-center justify-center'
               style={{ backgroundColor: '#F87171' }}
             >
@@ -1267,9 +1520,9 @@ const BillSectionContent = ({
           borderTopRightRadius: 28,
           shadowColor: '#000000',
           shadowOffset: { width: 0, height: -10 },
-          shadowOpacity: 0.28,
+          shadowOpacity: 0.16,
           shadowRadius: 18,
-          elevation: 20
+          elevation: 2
         }}
       >
         <Totals cart={cart} />
@@ -1358,7 +1611,7 @@ const BillSectionContent = ({
                   color: colors.heading
                 }}
               >
-                Void Order
+                Clear Cart
               </DialogTitle>
             </DialogHeader>
             <Text
@@ -1369,7 +1622,7 @@ const BillSectionContent = ({
                 lineHeight: 20
               }}
             >
-              Are you sure you want to void this order? This action cannot be
+              Are you sure you want to clear this cart? This action cannot be
               undone.
             </Text>
           </View>
@@ -1395,7 +1648,7 @@ const BillSectionContent = ({
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleConfirmVoidOrder}
+              onPress={handleConfirmClearCart}
               className='flex-1 h-11 rounded-xl items-center justify-center'
               style={{ backgroundColor: colors.danger }}
             >
@@ -1406,7 +1659,7 @@ const BillSectionContent = ({
                   fontWeight: '700'
                 }}
               >
-                Void Order
+                Clear Cart
               </Text>
             </TouchableOpacity>
           </DialogFooter>

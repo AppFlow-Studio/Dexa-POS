@@ -117,6 +117,8 @@ export interface OrderLineSettings {
   daysToShow: number
   /** Controls how order line entries are presented in order-processing. */
   viewMode: 'default' | 'minimal'
+  /** Controls minimal-mode sheet height profile. */
+  minimalModeRows: 2 | 3
 }
 
 interface SettingsState extends DiningRoomSettings, DeliverySettings {
@@ -462,7 +464,11 @@ export const useSettingsStore = create<SettingsState>()(
         set({ defaultReceiptPrinterId: printerId }),
 
       // Order Line
-      orderLineSettings: { daysToShow: 0, viewMode: 'default' },
+      orderLineSettings: {
+        daysToShow: 0,
+        viewMode: 'default',
+        minimalModeRows: 3
+      },
 
       // Menu Display
       showMenuItemPrices: true,

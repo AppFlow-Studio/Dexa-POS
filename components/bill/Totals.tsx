@@ -2,6 +2,7 @@ import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import React, { useMemo } from 'react'
 import { Text, View } from 'react-native'
 
@@ -12,6 +13,7 @@ interface TotalsProps {
 const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
   // Phase 7: Use derived selector instead of 6 individual store selectors
   const totals = useActiveOrderTotals()
+  const defaultTaxRate = useStoreSettingsStore(s => s.taxRatesMap.standard ?? 0)
 
   // PERF: Single selector for active order - avoids subscribing to entire ordersById
   const activeOrder = useOrderStore(s =>
@@ -85,9 +87,6 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
     return null
   }
 
-  const taxRatePct =
-    totals.subtotal > 0 ? (totals.tax / totals.subtotal) * 100 : 0
-
   return (
     <View className='px-5 pt-4 pb-1.5'>
       <View className='flex-row justify-between items-center mb-1'>
@@ -112,7 +111,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
 
       <View className='flex-row justify-between items-center mb-1.5'>
         <Text style={{ color: colors.label, fontSize: 11 }}>
-          Tax ({taxRatePct.toFixed(2)}%)
+          Tax ({defaultTaxRate.toFixed(2)}%)
         </Text>
         <Text
           style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
