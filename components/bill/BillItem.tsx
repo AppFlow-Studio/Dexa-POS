@@ -4,7 +4,7 @@ import { PrinterService } from '@/services/printing/PrinterService'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
-import { useOrderStore } from '@/stores/useOrderStore'
+import { getItemEffectiveSubtotal, useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useItemSyncInfo } from '@/stores/useSyncStatusStore'
 import { AlertCircle, Banknote, Plus, Trash2 } from 'lucide-react-native'
@@ -436,9 +436,19 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     item.customizations.notes
 
   const baseLineTotal = item.price * item.quantity
-  const effectiveLineTotal =
+  const explicitLineTotal = getItemEffectiveSubtotal(item)
+  const rawSubtotal =
     typeof item.subtotal === 'number' ? item.subtotal : baseLineTotal
-  const itemDiscountAmount = Math.max(0, baseLineTotal - effectiveLineTotal)
+  const hasExplicitDiscountData =
+    (typeof item.discount_amount === 'number' &&
+      item.discount_amount > 0.005) ||
+    !!item.appliedDiscount
+  // Raw subtotal can be transiently wrong on first hydration; only trust it as a
+  // discounted display value when we also have explicit discount metadata.
+  const effectiveLineTotal = hasExplicitDiscountData
+    ? rawSubtotal
+    : explicitLineTotal
+  const itemDiscountAmount = Math.max(0, baseLineTotal - explicitLineTotal)
   const normalizedItemDiscountAmount = Math.max(
     0,
     typeof item.discount_amount === 'number'
@@ -456,11 +466,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         )
       : 1
   const hasVisibleDiscount =
-    !isVoided &&
-    (itemDiscountAmount > 0.005 ||
-      (typeof item.discount_amount === 'number' &&
-        item.discount_amount > 0.005) ||
-      !!item.appliedDiscount)
+    !isVoided && (itemDiscountAmount > 0.005 || hasExplicitDiscountData)
 
   const effectiveIsActive =
     isActive || isModifierActive || item.isDraft === true
@@ -492,16 +498,31 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     ? colors.warning
     : colors.muted
 
+  const voidedSurface = colors.danger + '14'
+  const voidedBorder = colors.danger + '40'
+  const voidedBadgeBackground = colors.danger + '20'
+  const refundedBadgeBackground = colors.danger + '14'
+  const partialRefundBadgeBackground = colors.warning + '18'
+  const paidBadgeBackground = colors.success + '18'
+  const partialPaidBadgeBackground = colors.warning + '18'
+
   return (
     <View
       className={`overflow-hidden py-2 ${
         effectiveIsActive
           ? 'border-2 border-blue-400 bg-blue-500/5 rounded-lg'
-          : isVoided
-          ? 'border bg-[#2a2020] border-red-900/50 opacity-60 rounded-lg'
           : ''
       }`}
       style={[
+        isVoided
+          ? {
+              borderWidth: 1,
+              borderRadius: 8,
+              borderColor: voidedBorder,
+              backgroundColor: voidedSurface,
+              opacity: 0.6
+            }
+          : undefined,
         !isVoided && isKitchenItem ? { opacity: 0.55 } : undefined,
         isActive
           ? {
@@ -559,10 +580,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       )}
 
       <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
-        <Animated.View
-          style={animatedStyle}
-          className={isVoided ? 'bg-[#2a2020]' : 'z-20'}
-        >
+        <Animated.View style={animatedStyle} className={isVoided ? '' : 'z-20'}>
           <TouchableOpacity
             onPress={isVoided ? undefined : handleNotesPress}
             activeOpacity={isVoided ? 1 : 0.85}
@@ -613,20 +631,32 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     paymentCoverage.isPartiallyPaid) && (
                     <View className='flex-row flex-wrap gap-1 mt-0.5'>
                       {isVoided && (
-                        <View className='bg-red-900/60 px-1.5 py-px rounded'>
+                        <View
+                          className='px-1.5 py-px rounded'
+                          style={{ backgroundColor: voidedBadgeBackground }}
+                        >
                           <Text
-                            style={{ fontSize: 9, fontWeight: '700' }}
-                            className='text-red-400'
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '700',
+                              color: colors.danger
+                            }}
                           >
                             VOID
                           </Text>
                         </View>
                       )}
                       {!isVoided && paymentCoverage.isFullyRefunded && (
-                        <View className='bg-red-900/40 px-1.5 py-px rounded'>
+                        <View
+                          className='px-1.5 py-px rounded'
+                          style={{ backgroundColor: refundedBadgeBackground }}
+                        >
                           <Text
-                            style={{ fontSize: 9, fontWeight: '700' }}
-                            className='text-red-400'
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '700',
+                              color: colors.danger
+                            }}
                           >
                             REFUNDED
                           </Text>
@@ -635,10 +665,18 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       {!isVoided &&
                         paymentCoverage.isPartiallyRefunded &&
                         paymentCoverage.isFullyPaid && (
-                          <View className='bg-orange-900/40 px-1.5 py-px rounded'>
+                          <View
+                            className='px-1.5 py-px rounded'
+                            style={{
+                              backgroundColor: partialRefundBadgeBackground
+                            }}
+                          >
                             <Text
-                              style={{ fontSize: 9, fontWeight: '700' }}
-                              className='text-orange-400'
+                              style={{
+                                fontSize: 9,
+                                fontWeight: '700',
+                                color: colors.warning
+                              }}
                             >
                               {paymentCoverage.refundedQty} REFUNDED
                             </Text>
@@ -652,24 +690,38 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                           paymentCoverage.isFullyPaid
                         ) &&
                         paymentCoverage.isFullyPaid && (
-                          <View className='flex-row items-center bg-green-900/40 px-1.5 py-px rounded gap-1'>
+                          <View
+                            className='flex-row items-center px-1.5 py-px rounded gap-1'
+                            style={{ backgroundColor: paidBadgeBackground }}
+                          >
                             {paymentCoverage.primaryMethod === 'Cash' &&
                               !paymentCoverage.isSplitMethod && (
                                 <Banknote size={9} color={colors.success} />
                               )}
                             <Text
-                              style={{ fontSize: 9, fontWeight: '700' }}
-                              className='text-green-400'
+                              style={{
+                                fontSize: 9,
+                                fontWeight: '700',
+                                color: colors.success
+                              }}
                             >
                               PAID {paymentCoverage.methodLabel}
                             </Text>
                           </View>
                         )}
                       {!isVoided && paymentCoverage.isPartiallyPaid && (
-                        <View className='bg-yellow-900/40 px-1.5 py-px rounded'>
+                        <View
+                          className='px-1.5 py-px rounded'
+                          style={{
+                            backgroundColor: partialPaidBadgeBackground
+                          }}
+                        >
                           <Text
-                            style={{ fontSize: 9, fontWeight: '700' }}
-                            className='text-yellow-400'
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '700',
+                              color: colors.warning
+                            }}
                           >
                             {paymentCoverage.netCoveredQty}/{item.quantity} PAID
                           </Text>
@@ -680,16 +732,16 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
                   {isVoided && item.void_reason && (
                     <Text
-                      style={{ fontSize: 10 }}
-                      className='text-red-400/60 mt-0.5 italic'
+                      style={{ fontSize: 10, color: colors.danger + 'AA' }}
+                      className='mt-0.5 italic'
                     >
                       {item.void_reason}
                     </Text>
                   )}
                   {paymentCoverage.hasRepaid && (
                     <Text
-                      style={{ fontSize: 9 }}
-                      className='text-gray-500 italic mt-0.5'
+                      style={{ fontSize: 9, color: colors.muted }}
+                      className='italic mt-0.5'
                     >
                       Refunded → Re-paid {paymentCoverage.repaidMethodLabel}
                     </Text>
@@ -782,12 +834,12 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     )}
                   {item.customizations.notes && (
                     <View className='flex-row items-start gap-1 mt-0.5'>
-                      <Text style={{ fontSize: 10 }} className='text-gray-500'>
+                      <Text style={{ fontSize: 10, color: colors.muted }}>
                         Note:
                       </Text>
                       <Text
-                        style={{ fontSize: 10 }}
-                        className='text-gray-300 italic flex-1'
+                        style={{ fontSize: 10, color: colors.label }}
+                        className='italic flex-1'
                       >
                         {item.customizations.notes}
                       </Text>
