@@ -728,3 +728,125 @@ describe("Payment Preview Edge Cases", () => {
     );
   });
 });
+
+// ============================================================================
+// SCENARIO 17: Dual Pricing with Percentage Discount
+// ============================================================================
+
+describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
+  it("applies percentage discount independently to card and cash subtotals", () => {
+    // 2x Cappuccino: $5.25 card, $5.00 cash
+    const items = [
+      createMockItem({
+        unitPrice: 5.25,
+        price: 5.25,
+        cashPrice: 5.00,
+        baseCashPrice: 5.00,
+        originalPrice: 5.00,
+        quantity: 2,
+        subtotal: 10.50,
+        cashSubtotal: 10.00,
+      }),
+    ];
+
+    const discount: Discount = { id: "d1", type: "percentage", value: 0.5, label: "50% off" };
+
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: discount,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Card: $10.50 * 50% = $5.25 discount
+    expect(result.discount_amount).toBe(5.25);
+    // Cash: $10.00 * 50% = $5.00 discount (NOT $5.25)
+    expect(result.cash_discount_amount).toBe(5.00);
+
+    // Card total: $5.25 + ($5.25 * 8.875%) = $5.25 + $0.47 = $5.72
+    expect(result.total_amount).toBe(5.72);
+    // Cash total: $5.00 + ($5.00 * 8.875%) = $5.00 + $0.44 = $5.44
+    expect(result.cash_total_amount).toBe(5.44);
+  });
+
+  it("applies fixed discount scaled proportionally to cash pricing", () => {
+    // Item: $10 card, $9.50 cash
+    const items = [
+      createMockItem({
+        unitPrice: 10.00,
+        price: 10.00,
+        cashPrice: 9.50,
+        baseCashPrice: 9.50,
+        originalPrice: 9.50,
+        quantity: 1,
+        subtotal: 10.00,
+        cashSubtotal: 9.50,
+      }),
+    ];
+
+    const discount: Discount = { id: "d2", type: "fixed", value: 5.00, label: "$5 off" };
+
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: discount,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Card discount: $5.00
+    expect(result.discount_amount).toBe(5.00);
+    // Cash discount: $5.00 * (9.50 / 10.00) = $4.75
+    expect(result.cash_discount_amount).toBe(4.75);
+
+    // Card total: ($10 - $5) + tax = $5.00 + $0.44 = $5.44
+    expect(result.total_amount).toBe(5.44);
+    // Cash total: ($9.50 - $4.75) + tax = $4.75 + $0.42 = $5.17
+    expect(result.cash_total_amount).toBe(5.17);
+  });
+
+  it("distributes cash discount correctly across multiple items", () => {
+    const items = [
+      createMockItem({
+        id: "i1",
+        unitPrice: 20.00,
+        price: 20.00,
+        cashPrice: 19.00,
+        baseCashPrice: 19.00,
+        originalPrice: 19.00,
+        quantity: 1,
+        subtotal: 20.00,
+        cashSubtotal: 19.00,
+      }),
+      createMockItem({
+        id: "i2",
+        unitPrice: 10.00,
+        price: 10.00,
+        cashPrice: 9.50,
+        baseCashPrice: 9.50,
+        originalPrice: 9.50,
+        quantity: 1,
+        subtotal: 10.00,
+        cashSubtotal: 9.50,
+      }),
+    ];
+
+    const discount: Discount = { id: "d3", type: "percentage", value: 0.25, label: "25% off" };
+
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: discount,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Card: $30 * 25% = $7.50 discount, net = $22.50
+    expect(result.discount_amount).toBe(7.50);
+    // Cash: $28.50 * 25% = $7.13 discount (rounded), net = $21.37
+    expect(result.cash_discount_amount).toBe(7.13);
+
+    // Verify cash total is based on cash discount, not card discount
+    // Cash net: $28.50 - $7.13 = $21.37
+    // Cash tax: per-item rounding
+    // Item1 cash net: $19 - ($7.13 * 19/28.5) = $19 - $4.75 = $14.25, tax = $1.26
+    // Item2 cash net: $9.50 - ($7.13 * 9.5/28.5) = $9.50 - $2.38 = $7.12, tax = $0.63
+    // Cash total: $21.37 + $1.89 = $23.26
+    expect(result.cash_total_amount).toBe(23.26);
+  });
+});

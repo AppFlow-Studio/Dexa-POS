@@ -254,6 +254,9 @@ export interface BroadcastOrderData {
   reversals?: Array<Record<string, unknown>>
   order_refund_items?: Array<Record<string, unknown>>
 
+  // Order discounts (from initial query joins — not present in realtime broadcasts)
+  order_discounts?: Array<Record<string, unknown>>
+
   // Per-payment item coverage (from order_payment_items junction table)
   payment_items?: Array<{
     id: string

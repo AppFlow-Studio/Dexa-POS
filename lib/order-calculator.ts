@@ -462,11 +462,16 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
   // =========================================================================
   
   let totalDiscountAmount = new Decimal(0);
-  
+  let totalCashDiscountAmount = new Decimal(0);
+
   if (checkDiscount) {
     if (checkDiscount.type === 'percentage') {
       // value is already a decimal fraction (e.g., 0.05 for 5%)
       totalDiscountAmount = grossCardSubtotal
+        .times(checkDiscount.value)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      // Apply same percentage to cash subtotal (matching SQL calculate_item_totals)
+      totalCashDiscountAmount = grossCashSubtotal
         .times(checkDiscount.value)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     } else {
@@ -475,6 +480,13 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
         new Decimal(checkDiscount.value),
         grossCardSubtotal
       ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      // Scale fixed discount proportionally for cash (matching SQL ratio: cash_price / card_price)
+      totalCashDiscountAmount = grossCardSubtotal.gt(0)
+        ? Decimal.min(
+            totalDiscountAmount.times(grossCashSubtotal).dividedBy(grossCardSubtotal),
+            grossCashSubtotal
+          ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+        : totalDiscountAmount;
     }
   }
 
@@ -483,29 +495,49 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
   // =========================================================================
   
   let distributedDiscount = new Decimal(0);
+  let distributedCashDiscount = new Decimal(0);
   const itemDiscounts: Decimal[] = [];
-  
+  const itemCashDiscounts: Decimal[] = [];
+
   for (let i = 0; i < itemData.length; i++) {
     const data = itemData[i];
-    
+
     // PostgreSQL: v_item_proportion := v_item.item_gross_subtotal / v_applicable_subtotal
     // PostgreSQL: v_item_discount_amount := ROUND(v_new_calculated_amount * v_item_proportion, 2)
-    const proportion = grossCardSubtotal.isZero() 
+    const cardProportion = grossCardSubtotal.isZero()
       ? new Decimal(0)
       : data.cardSubtotal.dividedBy(grossCardSubtotal);
-    
+
     let itemDiscount = totalDiscountAmount
-      .times(proportion)
+      .times(cardProportion)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    
+
     distributedDiscount = distributedDiscount.plus(itemDiscount);
     itemDiscounts.push(itemDiscount);
+
+    // Cash discount: distribute using cash proportions (matching SQL calculate_item_totals)
+    const cashProportion = grossCashSubtotal.isZero()
+      ? new Decimal(0)
+      : data.cashSubtotal.dividedBy(grossCashSubtotal);
+
+    let itemCashDiscount = totalCashDiscountAmount
+      .times(cashProportion)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+
+    distributedCashDiscount = distributedCashDiscount.plus(itemCashDiscount);
+    itemCashDiscounts.push(itemCashDiscount);
   }
-  
+
   // CRITICAL: Assign rounding remainder to last item (matching PostgreSQL)
-  if (itemData.length > 0 && !distributedDiscount.equals(totalDiscountAmount)) {
-    const remainder = totalDiscountAmount.minus(distributedDiscount);
-    itemDiscounts[itemDiscounts.length - 1] = itemDiscounts[itemDiscounts.length - 1].plus(remainder);
+  if (itemData.length > 0) {
+    if (!distributedDiscount.equals(totalDiscountAmount)) {
+      const remainder = totalDiscountAmount.minus(distributedDiscount);
+      itemDiscounts[itemDiscounts.length - 1] = itemDiscounts[itemDiscounts.length - 1].plus(remainder);
+    }
+    if (!distributedCashDiscount.equals(totalCashDiscountAmount)) {
+      const cashRemainder = totalCashDiscountAmount.minus(distributedCashDiscount);
+      itemCashDiscounts[itemCashDiscounts.length - 1] = itemCashDiscounts[itemCashDiscounts.length - 1].plus(cashRemainder);
+    }
   }
 
   // =========================================================================
@@ -527,10 +559,11 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
   for (let i = 0; i < itemData.length; i++) {
     const data = itemData[i];
     const itemDiscount = itemDiscounts[i];
-    
+    const itemCashDiscount = itemCashDiscounts[i];
+
     // Net subtotals (after discount)
     const itemNetCardSubtotal = data.cardSubtotal.minus(itemDiscount);
-    const itemNetCashSubtotal = data.cashSubtotal.minus(itemDiscount); // Same discount amount
+    const itemNetCashSubtotal = data.cashSubtotal.minus(itemCashDiscount);
     
     netCardSubtotal = netCardSubtotal.plus(itemNetCardSubtotal);
     netCashSubtotal = netCashSubtotal.plus(itemNetCashSubtotal);
@@ -667,6 +700,7 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
 
     // Discount
     discount_amount: totalDiscountAmount.toNumber(),
+    cash_discount_amount: totalCashDiscountAmount.toNumber(),
 
     // Net subtotals (post-discount) - these match effective_subtotal in PostgreSQL
     // effective_subtotal: netCardSubtotal.toDecimalPlaces(2).toNumber(),
@@ -712,6 +746,7 @@ function createEmptyTotals(): OrderTotals {
     outstanding_tax: 0,
     outstanding_total: 0,
     cash_subtotal: 0,
+    cash_discount_amount: 0,
     cash_tax_amount: 0,
     cash_total_amount: 0,
     cash_outstanding_subtotal: 0,

@@ -12,6 +12,7 @@ import type {
   BroadcastOrderPaymentData
 } from '@/hooks/realtime/useOrdersRealtime'
 import { normalizePlatform } from '@/lib/platformAliases'
+import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
 import type {
   CartItem,
   OrderPaymentItemCoverage,
@@ -679,6 +680,12 @@ export function transformBroadcastToOrder (
       backendOrder.total_amount,
     total_tax: backendOrder.card_tax_amount || backendOrder.tax_amount,
     total_discount: backendOrder.discount_amount,
+
+    // Eagerly restore discount metadata when order_discounts are present (from query joins)
+    ...(backendOrder.order_discounts && backendOrder.order_discounts.length > 0
+      ? restoreDiscountsFromBackend(backendOrder.order_discounts)
+      : {}),
+
     amount_paid: backendOrder.amount_paid,
     amount_due: backendOrder.amount_due,
     cash_amount_due: backendOrder.cash_amount_due,
@@ -806,6 +813,7 @@ export interface FetchedOrderData {
   // Nested relations from Supabase
   order_items?: FetchedOrderItem[]
   order_payments?: FetchedOrderPayment[]
+  order_discounts?: FetchedOrderDiscount[]
   metadata?: Record<string, unknown> | null
   stations?: { station_name: string } | null
   created_by_staff?: { first_name: string; last_name: string } | null
@@ -940,6 +948,23 @@ export interface FetchedOrderPayment {
 
   // Metadata
   metadata: Record<string, unknown> | null
+}
+
+export interface FetchedOrderDiscount {
+  id: string
+  discount_id: string | null
+  discount_name: string
+  discount_type: string
+  discount_value: number
+  calculated_amount: number
+  pre_discount_subtotal: number
+  source: string
+  applied_at: string
+  applied_by_staff_profiles_id: string | null
+  approved_by_staff_profiles_id: string | null
+  applied_to_item_ids: string[] | null
+  voided_at: string | null
+  created_at: string
 }
 
 /**
@@ -1217,6 +1242,11 @@ export function normalizeFetchedOrder (
 
     // Normalize nested order_payments
     order_payments: normalizeFetchedPayments(fetchedOrder.order_payments),
+
+    // Pass through order_discounts (filter out voided)
+    order_discounts: (fetchedOrder.order_discounts ?? [])
+      .filter(d => !d.voided_at)
+      .map(d => d as unknown as Record<string, unknown>),
 
     session_id: fetchedOrder.session_id ?? null,
     station_name:
