@@ -9,6 +9,7 @@ import android.view.Display
 import android.view.WindowManager
 import com.facebook.react.bridge.*
 import com.facebook.react.bridge.UiThreadUtil
+import com.facebook.react.common.JavascriptException
 
 /**
  * Native module for managing the secondary display Presentation.
@@ -20,9 +21,14 @@ import com.facebook.react.bridge.UiThreadUtil
  * automatically dismissed when the display goes away and re-created when
  * it comes back. This prevents WindowManager.BadTokenException crashes
  * that show a brief Android system dialog on Landi devices.
+ *
+ * Installs a Thread.UncaughtExceptionHandler while a Presentation is active
+ * to intercept JavascriptException and dismiss the Presentation silently
+ * instead of letting Android show the system crash dialog. Sentry captures
+ * the error on the JS side before it reaches native, so no reporting is lost.
  */
 class SecondaryDisplayModule(private val reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+    ReactContextBaseJavaModule(reactContext), LifecycleEventListener {
 
     companion object {
         const val TAG = "SecondaryDisplay"
@@ -36,7 +42,66 @@ class SecondaryDisplayModule(private val reactContext: ReactApplicationContext) 
     private var currentDisplayId: Int = -1
     private var isShowRequested: Boolean = false
     private var isListenerRegistered: Boolean = false
+    private var isLifecycleRegistered: Boolean = false
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // ==================== UNCAUGHT EXCEPTION GUARD ====================
+
+    private var previousUncaughtHandler: Thread.UncaughtExceptionHandler? = null
+    private var isExceptionGuardInstalled: Boolean = false
+
+    /**
+     * Install a Thread.UncaughtExceptionHandler that intercepts JavascriptException
+     * while a Presentation is active. This is the primary defense against the native
+     * Android crash dialog appearing on the CFD secondary display.
+     *
+     * The guard only swallows JavascriptException when presentation != null.
+     * All other exceptions pass through to the previous handler (Sentry, etc.).
+     */
+    private fun installExceptionGuard() {
+        if (isExceptionGuardInstalled) return
+
+        val currentHandler = Thread.getDefaultUncaughtExceptionHandler()
+        previousUncaughtHandler = currentHandler
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            if (presentation != null && isJavascriptException(throwable)) {
+                Log.w(TAG, "Caught JavascriptException with active Presentation — dismissing CFD silently", throwable)
+                try {
+                    mainHandler.post { dismissPresentation() }
+                } catch (_: Exception) {}
+                // Don't propagate — Sentry has already captured the error on the JS side.
+                // Propagating would show the crash dialog on the Presentation window.
+                return@setDefaultUncaughtExceptionHandler
+            }
+            // Not a CFD-related JS exception — pass to previous handler
+            currentHandler?.uncaughtException(thread, throwable)
+        }
+
+        isExceptionGuardInstalled = true
+        Log.d(TAG, "Exception guard installed")
+    }
+
+    private fun removeExceptionGuard() {
+        if (!isExceptionGuardInstalled) return
+
+        if (previousUncaughtHandler != null) {
+            Thread.setDefaultUncaughtExceptionHandler(previousUncaughtHandler)
+            previousUncaughtHandler = null
+        }
+
+        isExceptionGuardInstalled = false
+        Log.d(TAG, "Exception guard removed")
+    }
+
+    private fun isJavascriptException(throwable: Throwable): Boolean {
+        var current: Throwable? = throwable
+        while (current != null) {
+            if (current is JavascriptException) return true
+            current = current.cause
+        }
+        return false
+    }
 
     // ==================== DISPLAY LIFECYCLE LISTENER ====================
 
@@ -97,12 +162,38 @@ class SecondaryDisplayModule(private val reactContext: ReactApplicationContext) 
         }
     }
 
+    // ==================== LIFECYCLE EVENT LISTENER ====================
+
+    override fun onHostResume() {}
+    override fun onHostPause() {}
+
+    override fun onHostDestroy() {
+        // React context is being destroyed — dismiss the Presentation proactively
+        // before the React instance teardown can leave a dead surface showing.
+        Log.d(TAG, "onHostDestroy — dismissing presentation proactively")
+        dismissPresentation()
+    }
+
+    private fun registerLifecycleListener() {
+        if (isLifecycleRegistered) return
+        reactContext.addLifecycleEventListener(this)
+        isLifecycleRegistered = true
+    }
+
+    private fun unregisterLifecycleListener() {
+        if (!isLifecycleRegistered) return
+        reactContext.removeLifecycleEventListener(this)
+        isLifecycleRegistered = false
+    }
+
     // ==================== PUBLIC API ====================
 
     @ReactMethod
     fun show() {
         isShowRequested = true
         registerDisplayListener()
+        registerLifecycleListener()
+        installExceptionGuard()
         UiThreadUtil.runOnUiThread { tryShowPresentation() }
     }
 
@@ -111,12 +202,16 @@ class SecondaryDisplayModule(private val reactContext: ReactApplicationContext) 
         isShowRequested = false
         UiThreadUtil.runOnUiThread { dismissPresentation() }
         unregisterDisplayListener()
+        unregisterLifecycleListener()
+        removeExceptionGuard()
     }
 
     override fun invalidate() {
         super.invalidate()
         isShowRequested = false
         unregisterDisplayListener()
+        unregisterLifecycleListener()
+        removeExceptionGuard()
         UiThreadUtil.runOnUiThread {
             try {
                 presentation?.dismiss()

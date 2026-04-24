@@ -77,12 +77,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         icon: Receipt,
         route: '/settings/receipt-templates'
       },
-      {
-        id: 'payment-systems',
-        label: 'Payment & Pricing',
-        icon: Banknote,
-        route: '/settings/payment-systems'
-      },
+      // {
+      //   id: 'payment-systems',
+      //   label: 'Payment & Pricing',
+      //   icon: Banknote,
+      //   route: '/settings/payment-systems'
+      // },
       {
         id: 'cash-management',
         label: 'Cash Management',

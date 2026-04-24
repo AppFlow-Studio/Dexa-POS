@@ -1,6 +1,5 @@
 import {
-  calculateItemEffectiveCardPrice,
-  calculateItemEffectiveCashPrice
+  calculateOrderTotals
 } from '@/lib/order-calculator'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile } from '@/lib/types'
@@ -9,7 +8,7 @@ import { usePrintQueueStore } from '@/stores/usePrintQueueStore'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useReceiptTemplateStore } from '@/stores/useReceiptTemplateStore'
 import { useSeatingStore } from '@/stores/useSeatingStore'
-import { SelectedLocation } from '@/stores/useStoreSettingsStore'
+import { SelectedLocation, useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { PrintDocument } from '@/types/print-document'
 import {
   DocumentPrintJob,
@@ -872,46 +871,27 @@ function buildReceiptTemplateData (
 
   const nonVoidedItems = order.items.filter(item => !item.is_voided)
 
-  // Calculate totals (mirrors ReceiptModal.tsx logic)
-  const subtotal = nonVoidedItems.reduce(
-    (sum, item) => sum + calculateItemEffectiveCardPrice(item),
-    0
-  )
-  const cashSubtotal = nonVoidedItems.reduce(
-    (sum, item) => sum + calculateItemEffectiveCashPrice(item),
-    0
-  )
+  // Use the single source of truth for order totals — same as the app's order summary.
+  // This avoids fragile recomputation (e.g., weighted tax rate from item.taxRate which
+  // can be 0 on backend-synced items from another station).
+  const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap
+  const orderTotals = calculateOrderTotals({
+    items: order.items,
+    checkDiscount: order.checkDiscount ?? null,
+    taxRatesMap,
+    payments: order.payments ?? []
+  })
 
-  const tax =
-    order.total_tax ??
-    nonVoidedItems.reduce((sum, item) => sum + (item.taxAmount || 0), 0)
-
-  // Compute weighted-average tax rate from item-level rates (stored as whole numbers like 8.875)
-  const totalTaxableAmount = nonVoidedItems.reduce(
-    (sum, item) =>
-      sum + (item.is_tax_exempt ? 0 : calculateItemEffectiveCardPrice(item)),
-    0
-  )
-  const weightedTaxRate =
-    totalTaxableAmount > 0
-      ? nonVoidedItems.reduce((sum, item) => {
-          if (item.is_tax_exempt) return sum
-          const weight =
-            calculateItemEffectiveCardPrice(item) / totalTaxableAmount
-          return sum + (item.taxRate ?? 0) * weight
-        }, 0)
-      : 0
-
-  let cashTax = 0
-  if (cashSubtotal > 0 && weightedTaxRate > 0) {
-    cashTax = cashSubtotal * (weightedTaxRate / 100)
-  }
-
-  const discount = order.total_discount || 0
+  const subtotal = orderTotals.subtotal
+  const cashSubtotal = orderTotals.cash_subtotal
+  const tax = orderTotals.tax_amount
+  const cashTax = orderTotals.cash_tax_amount
+  const discount = orderTotals.discount_amount
   const tip =
     order.payments?.reduce((sum, p) => sum + (p.tip_amount || 0), 0) || 0
-  const total = order.total_amount || subtotal + tax - discount + tip
-  const cashTotal = cashSubtotal + cashTax - discount + tip
+  const total = order.total_amount || (orderTotals.total_amount + tip)
+  const cashTotal = orderTotals.cash_total_amount + tip
+  const weightedTaxRate = subtotal > 0 ? (tax / subtotal) * 100 : 0
 
   // Map items
   const items: ReceiptItemData[] = nonVoidedItems.map(item => {
@@ -941,11 +921,10 @@ function buildReceiptTemplateData (
     return {
       name: item.is_open_item ? item.open_item_name || item.name : item.name,
       quantity: item.quantity,
-      price: calculateItemEffectiveCardPrice(item),
+      price: item.subtotal,
       cashPrice:
-        calculateItemEffectiveCashPrice(item) !==
-        calculateItemEffectiveCardPrice(item)
-          ? calculateItemEffectiveCashPrice(item)
+        item.cashSubtotal !== item.subtotal
+          ? item.cashSubtotal
           : undefined,
       isVoided: item.is_voided ?? false,
       modifiers,

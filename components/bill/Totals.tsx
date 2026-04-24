@@ -32,7 +32,11 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         cashTotal: 0,
         cashSavings: 0,
         amountPaid: 0,
-        totalRefunded: 0
+        totalRefunded: 0,
+        discountLabel: 'Discount',
+        paidMethodLabel: 'Paid',
+        refundItems: [] as { name: string; amount: number }[],
+        refundOwed: 0
       }
     }
 
@@ -70,6 +74,50 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
     // Calculate savings if paying cash
     const cashSavings = balanceDue - cashBalanceDue
 
+    // Discount label with type info
+    let discountLabel = 'Discount'
+    if (activeOrder?.checkDiscount) {
+      const d = activeOrder.checkDiscount
+      discountLabel =
+        d.type === 'percentage'
+          ? `Discount (${Math.round(d.value * 100)}% off)`
+          : `Discount ($${d.value.toFixed(2)} off)`
+    } else if (activeOrder?.applied_discounts?.length) {
+      const d = activeOrder.applied_discounts[0]
+      discountLabel =
+        d.discount_type === 'percentage'
+          ? `Discount (${Math.round(d.discount_value * 100)}% off)`
+          : `Discount ($${d.discount_value.toFixed(2)} off)`
+    }
+
+    // Payment method label
+    const validPayments =
+      activeOrder?.payments?.filter(
+        (p: any) => !p.isVoided && p.amount > 0
+      ) ?? []
+    let paidMethodLabel = 'Paid'
+    if (validPayments.length === 1 && validPayments[0].method) {
+      paidMethodLabel = `Paid · ${validPayments[0].method.toLowerCase()}`
+    }
+
+    // Per-item refund data
+    const orderItems = activeOrder?.items ?? []
+    const refundItems = (activeOrder?.order_refund_items ?? []).map(r => {
+      const item = orderItems.find(
+        (i: any) =>
+          i.db_order_item_id === r.order_item_id || i.id === r.order_item_id
+      )
+      return {
+        name: item?.name ?? 'Item',
+        amount: r.total_refunded
+      }
+    })
+
+    // Refund owed: sum of pending reversals
+    const pendingReversalTotal = (activeOrder?.reversals ?? [])
+      .filter((rev: any) => rev.status === 'pending' && rev.reversal_type !== 'void')
+      .reduce((sum: number, rev: any) => sum + (rev.amount || 0), 0)
+
     return {
       hasPayments,
       isPaid,
@@ -79,7 +127,11 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       cashTotal,
       cashSavings: cashSavings > 0.01 ? cashSavings : 0,
       amountPaid: Math.max(0, amountPaid),
-      totalRefunded
+      totalRefunded,
+      discountLabel,
+      paidMethodLabel,
+      refundItems,
+      refundOwed: pendingReversalTotal
     }
   }, [totals, activeOrder])
 
@@ -92,7 +144,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       <View className='flex-row justify-between items-center mb-1'>
         <Text style={{ color: colors.label, fontSize: 11 }}>Subtotal</Text>
         <Text
-          style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+          style={{ color: colors.label, fontSize: 11, fontWeight: '600' }}
         >
           ${totals.subtotal.toFixed(2)}
         </Text>
@@ -100,9 +152,11 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
 
       {totals.discount > 0.001 && (
         <View className='flex-row justify-between items-center mb-1'>
-          <Text style={{ color: colors.label, fontSize: 11 }}>Discount</Text>
+          <Text style={{ color: colors.label, fontSize: 11 }}>
+            {paymentInfo.discountLabel}
+          </Text>
           <Text
-            style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}
+            style={{ color: colors.success, fontSize: 11, fontWeight: '600' }}
           >
             -${totals.discount.toFixed(2)}
           </Text>
@@ -114,7 +168,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
           Tax ({defaultTaxRate.toFixed(2)}%)
         </Text>
         <Text
-          style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+          style={{ color: colors.label, fontSize: 11, fontWeight: '600' }}
         >
           ${totals.tax.toFixed(2)}
         </Text>
@@ -122,7 +176,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
 
       <View className='flex-row justify-between items-end mt-2'>
         <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
-          Cash Total
+          Cash total
         </Text>
         <Text
           style={{
@@ -138,7 +192,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
 
       <View className='flex-row justify-between items-end mt-1.5'>
         <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
-          Card Total
+          Card total
         </Text>
         <Text
           style={{
@@ -152,11 +206,23 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         </Text>
       </View>
 
+      {(paymentInfo.hasPayments || paymentInfo.refundItems.length > 0 || paymentInfo.totalRefunded > 0) && (
+        <View
+          style={{
+            borderBottomWidth: 1,
+            borderStyle: 'dashed',
+            borderColor: colors.border,
+            marginTop: 8,
+            marginBottom: 4
+          }}
+        />
+      )}
+
       {paymentInfo.hasPayments && paymentInfo.balanceDue > 0.01 && (
         <View className='flex-row justify-between items-center mt-1'>
           <Text style={{ color: colors.label, fontSize: 11 }}>Balance Due</Text>
           <Text
-            style={{ color: colors.warning, fontSize: 11, fontWeight: '700' }}
+            style={{ color: colors.label, fontSize: 11, fontWeight: '600' }}
           >
             ${paymentInfo.balanceDue.toFixed(2)}
           </Text>
@@ -165,22 +231,65 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
 
       {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
         <View className='flex-row justify-between items-center mt-2'>
-          <Text style={{ color: colors.label, fontSize: 11 }}>Paid</Text>
+          <Text style={{ color: colors.label, fontSize: 11 }}>
+            {paymentInfo.paidMethodLabel}
+          </Text>
           <Text
-            style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}
+            style={{ color: colors.label, fontSize: 11, fontWeight: '600' }}
           >
             ${paymentInfo.amountPaid.toFixed(2)}
           </Text>
         </View>
       )}
 
-      {paymentInfo?.totalRefunded > 0 && (
-        <View className='flex-row justify-between items-center mt-0.5'>
-          <Text style={{ color: colors.label, fontSize: 11 }}>Refunded</Text>
+      {paymentInfo.refundItems.length > 0
+        ? paymentInfo.refundItems.map((ri, idx) => (
+            <View
+              key={idx}
+              className='flex-row justify-between items-center mt-0.5'
+            >
+              <Text style={{ color: colors.label, fontSize: 11 }}>
+                Refund · {ri.name}
+              </Text>
+              <Text
+                style={{
+                  color: colors.label,
+                  fontSize: 11,
+                  fontWeight: '600'
+                }}
+              >
+                ${ri.amount.toFixed(2)}
+              </Text>
+            </View>
+          ))
+        : paymentInfo.totalRefunded > 0 && (
+            <View className='flex-row justify-between items-center mt-0.5'>
+              <Text style={{ color: colors.label, fontSize: 11 }}>
+                Refunded
+              </Text>
+              <Text
+                style={{
+                  color: colors.label,
+                  fontSize: 11,
+                  fontWeight: '600'
+                }}
+              >
+                +${paymentInfo.totalRefunded.toFixed(2)}
+              </Text>
+            </View>
+          )}
+
+      {paymentInfo.refundOwed > 0.01 && (
+        <View className='flex-row justify-between items-center mt-1'>
           <Text
-            style={{ color: colors.danger, fontSize: 11, fontWeight: '700' }}
+            style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}
           >
-            +${paymentInfo.totalRefunded.toFixed(2)}
+            Refund owed
+          </Text>
+          <Text
+            style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}
+          >
+            ${paymentInfo.refundOwed.toFixed(2)}
           </Text>
         </View>
       )}

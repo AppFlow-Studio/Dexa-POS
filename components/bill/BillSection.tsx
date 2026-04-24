@@ -7,12 +7,10 @@ import {
   getAutoRetryCount,
   isAutoRetryInProgress
 } from '@/services/offlineSyncService'
-import { PrinterService } from '@/services/printing/PrinterService'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useDineInStore } from '@/stores/useDineInStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -65,6 +63,7 @@ import BillSummary from './BillSummary'
 import DiscountOverlay from './DiscountOverlay'
 import OrderDetails from './OrderDetails'
 import Totals from './Totals'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
 const BillItemsAndTotals = React.memo(
@@ -900,15 +899,6 @@ const BillSectionContent = ({
       return
     }
 
-    // Capture new items BEFORE sendNewItemsToKitchen (which merges/mutates statuses)
-    const currentOrder = activeOrderId
-      ? useOrderStore.getState().ordersById[activeOrderId]
-      : null
-    const newItems =
-      currentOrder?.items.filter(
-        item => !item.kitchen_status || item.kitchen_status === 'new'
-      ) || []
-
     if (activeOrderType === 'dine_in' && selectedTable) {
       const sessionReady = await ensureDineInOrderTableSession(selectedTable)
       if (!sessionReady) {
@@ -923,23 +913,8 @@ const BillSectionContent = ({
       // Table session status updates are now handled through session-based APIs
       clearSelectedTable()
     }
+    // Auto-print is now handled centrally inside sendNewItemsToKitchen
     sendNewItemsToKitchen()
-
-    // Auto-print kitchen tickets for new items
-    if (
-      autoPrintKitchenTickets &&
-      selectedStore &&
-      newItems.length > 0 &&
-      currentOrder
-    ) {
-      PrinterService.printKitchenTickets(
-        currentOrder,
-        newItems,
-        selectedStore
-      ).catch(e =>
-        console.warn('[BillSection] Auto-print kitchen tickets failed:', e)
-      )
-    }
   }
 
   // OPTIMIZED: Wrap callback with useCallback

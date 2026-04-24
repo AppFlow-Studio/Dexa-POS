@@ -19,6 +19,7 @@ v_effective_paid numeric;
 v_payment_refunded numeric;
 v_payment_voided numeric;
 v_card_total_calc numeric;
+v_cash_total_calc numeric;
 v_payment_based_due numeric;
 v_custom_refund_balance numeric;
 v_order record;
@@ -52,15 +53,16 @@ v_amount_paid := COALESCE(v_order.amount_paid, 0);
 
 -- Calculate amount_due from UNPAID items (item-level calculation)
 -- Account for refunded_quantity: refunded items need to be paid again
--- Formula: unpaid_qty = quantity - paid_quantity + refunded_quantity
+-- Formula: unpaid_qty = LEAST(quantity, quantity - paid_quantity + refunded_quantity)
+-- Cap at quantity to prevent over-counting from stale refunded/paid state
 SELECT
     COALESCE(SUM(
-        ROUND(subtotal * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
-        ROUND(tax_amount * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
+        ROUND(subtotal * LEAST(quantity, quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
+        ROUND(tax_amount * LEAST(quantity, quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
     ), 0),
     COALESCE(SUM(
-        ROUND(cash_subtotal * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
-        ROUND(cash_tax_amount * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
+        ROUND(cash_subtotal * LEAST(quantity, quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
+        ROUND(cash_tax_amount * LEAST(quantity, quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
     ), 0)
 INTO v_unpaid_card_total, v_unpaid_cash_total
 FROM public.order_items
@@ -91,8 +93,9 @@ FROM public.order_payments
 WHERE order_id = p_order_id
   AND (status = 'void' OR is_voided = true);
 
--- Calculate card total for payment-based due calculation
+-- Calculate card and cash totals for payment-based due calculation
 v_card_total_calc := v_card_subtotal + v_card_tax + v_service_charge;
+v_cash_total_calc := v_cash_subtotal + v_cash_tax + v_service_charge;
 
 -- Payment-based amount due = total - effective_paid (handles custom refunds)
 v_payment_based_due := GREATEST(v_card_total_calc - v_effective_paid, 0);
@@ -110,7 +113,11 @@ IF v_order.payment_status = 'paid' AND v_payment_refunded = 0 AND v_payment_void
     v_unpaid_cash_total := 0;
 ELSE
     v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
-    v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
+    -- Scale custom refund balance by cash/card ratio before adding to cash outstanding
+    v_unpaid_cash_total := v_unpaid_cash_total +
+      CASE WHEN v_card_total_calc > 0
+      THEN ROUND(v_custom_refund_balance * v_cash_total_calc / v_card_total_calc, 2)
+      ELSE v_custom_refund_balance END;
 END IF;
 
 -- Update order with totals

@@ -1,7 +1,7 @@
-import { calculateItemEffectiveCardPrice, calculateItemEffectiveCashPrice } from "@/lib/order-calculator";
+import { calculateOrderTotals } from "@/lib/order-calculator";
 import { CartItem, OrderProfile } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
-import { SelectedLocation } from "@/stores/useStoreSettingsStore";
+import { SelectedLocation, useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { colors } from "@/lib/theme";
 import { Barcode, Printer, QrCode, X } from "lucide-react-native";
@@ -150,8 +150,8 @@ const ItemRow: React.FC<{
   const itemName = item.is_open_item
     ? item.open_item_name || item.name
     : item.name;
-  const itemSubtotal = calculateItemEffectiveCardPrice(item);
-  const itemCashSubtotal = calculateItemEffectiveCashPrice(item);
+  const itemSubtotal = item.subtotal;
+  const itemCashSubtotal = item.cashSubtotal;
   const hasDifferentCashPrice = itemCashSubtotal !== itemSubtotal;
 
   return (
@@ -385,43 +385,24 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
       };
     }
 
-    const items = order.items.filter((item) => !item.is_voided);
+    // Use the single source of truth for order totals — same as the app's order summary.
+    const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
+    const orderTotals = calculateOrderTotals({
+      items: order.items,
+      checkDiscount: order.checkDiscount ?? null,
+      taxRatesMap,
+      payments: order.payments ?? [],
+    });
 
-    // Card prices (default)
-    const subtotal = items.reduce((sum, item) => {
-      return sum + calculateItemEffectiveCardPrice(item);
-    }, 0);
-
-    // Cash prices
-    const cashSubtotal = items.reduce((sum, item) => {
-      return sum + calculateItemEffectiveCashPrice(item);
-    }, 0);
-
-    // Use order-level tax for card, fall back to item-level calculation
-    const tax = order.total_tax ?? items.reduce((sum, item) => {
-      return sum + (item.taxAmount || 0);
-    }, 0);
-
-    // Calculate cash tax using the same tax rate applied to cash subtotal
-    // Derive tax rate from card pricing, apply to cash subtotal
-    let cashTax = 0;
-    if (subtotal > 0 && tax > 0) {
-      const effectiveTaxRate = tax / subtotal;
-      cashTax = cashSubtotal * effectiveTaxRate;
-    } else {
-      // Fall back to item-level if available
-      cashTax = items.reduce((sum, item) => {
-        return sum + (item.cashTaxAmount || 0);
-      }, 0);
-    }
-
-    const discount = order.total_discount || 0;
-
+    const subtotal = orderTotals.subtotal;
+    const cashSubtotal = orderTotals.cash_subtotal;
+    const tax = orderTotals.tax_amount;
+    const cashTax = orderTotals.cash_tax_amount;
+    const discount = orderTotals.discount_amount;
     const tip =
       order.payments?.reduce((sum, p) => sum + (p.tip_amount || 0), 0) || 0;
-
-    const total = order.total_amount || subtotal + tax - discount + tip;
-    const cashTotal = cashSubtotal + cashTax - discount + tip;
+    const total = order.total_amount || (orderTotals.total_amount + tip);
+    const cashTotal = orderTotals.cash_total_amount + tip;
 
     return { subtotal, cashSubtotal, tax, cashTax, discount, tip, total, cashTotal };
   }, [order]);

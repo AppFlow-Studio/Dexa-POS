@@ -339,10 +339,26 @@ const PreviousOrdersScreen = () => {
       if (o.order_status === 'draft' && o.items.length === 0) continue
       liveIds.add(id)
     }
+    // Build lookup from DB-fetched previous orders to patch stale active order statuses.
+    // usePreviousOrdersStore re-fetches from DB on screen focus, so this data is fresh.
+    const poByDbId = new Map<string, typeof previousOrders[number]>()
+    for (const po of previousOrders) {
+      if (po.db_order_id) poByDbId.set(po.db_order_id, po)
+    }
+
     const activeOrders: OrderProfile[] = []
     for (const id of liveIds) {
       const o = ordersById[id]
-      if (o) activeOrders.push(o)
+      if (!o) continue
+      // Patch stale paid_status using fresh DB data from previous orders store
+      if (o.db_order_id && o.paid_status === 'Refunded') {
+        const po = poByDbId.get(o.db_order_id)
+        if (po && po.paymentStatus === 'Paid') {
+          activeOrders.push({ ...o, paid_status: 'Paid' as const })
+          continue
+        }
+      }
+      activeOrders.push(o)
     }
 
     const activeIds = new Set(activeOrders.map(o => o.id))
@@ -367,7 +383,7 @@ const PreviousOrdersScreen = () => {
             server_name: po.server,
             order_status: po.voided
               ? 'void'
-              : po.refunded
+              : po.refunded && po.paymentStatus !== 'Paid'
               ? 'refunded'
               : po.closed_at
               ? 'completed'

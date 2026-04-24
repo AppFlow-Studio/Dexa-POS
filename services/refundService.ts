@@ -157,7 +157,7 @@ export class RefundService {
           availableForRefund,
           paymentMethod: p.payment_method,
           batchNumber: p.batch_number || "",
-          isVoidable: !p.is_settled, // null/false = unsettled = voidable; only true = batch-settled
+          isVoidable: !p.is_settled && refundedAmount === 0, // Void only if unsettled AND no prior refunds
           terminalId: p.terminal_id,
           terminalConfig: p.terminal_id ? terminalConfigMap.get(p.terminal_id) : undefined,
         };
@@ -294,6 +294,7 @@ export class RefundService {
         payment.availableForRefund,
         reversalType,
         returnDetails,
+        { restorePaidQuantity: true }, // Full payment void: restore paid_quantity on items
       ),
     ]);
 
@@ -306,25 +307,30 @@ export class RefundService {
       dbErrors.push(`Payment update failed: ${paymentResult.error.message || paymentResult.error}`);
     }
     
-    // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER applyRefundToPayment completes
-    // to avoid race condition where it reads stale refunded_amount data
-    const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
-      this.supabase,
-      request.orderId,
-    );
-    
-    if (orderResult.error) {
-      console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
-      dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
-    }
-
+    // Record refund items BEFORE recalculating totals — calculate_order_totals_fast
+    // reads refunded_quantity from order_items, so items must be recorded first.
+    // For full payment voids: skip refunded_quantity increment (paid_quantity restoration
+    // handles the void, and refunded_qty should not accumulate for payment cancellations).
     const refundItems = await this.buildFullRefundItems(request.orderId, reversal.id, request.reason, request.reasonDetail);
     if (refundItems.length > 0) {
       await OrderService.recordRefundItems(
         this.supabase,
         reversal.id,
         refundItems,
+        true, // skipQuantityUpdate: full payment void — don't increment refunded_qty
       );
+    }
+
+    // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER both applyRefundToPayment
+    // and recordRefundItems complete to avoid stale refunded_amount/refunded_quantity data
+    const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
+      this.supabase,
+      request.orderId,
+    );
+
+    if (orderResult.error) {
+      console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
+      dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
     }
 
     return {

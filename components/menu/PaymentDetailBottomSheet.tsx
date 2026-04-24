@@ -470,12 +470,22 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                 }
               )
             }
-            // Subtract refunded quantity to get net covered
+            // Subtract refunded quantity to get net covered.
+            // Only count refunds from non-void reversals linked to non-voided payments.
+            // Void reversals cancel the payment — they're not item-level refunds.
+            const nonVoidReversalIds = new Set(
+              ((order.reversals as ReversalRecord[]) || [])
+                .filter(r => r.status === 'completed' && r.reversal_type !== 'void')
+                .map(r => r.id)
+            )
             let refundedQty = 0
             if (order?.order_refund_items) {
               ;(order.order_refund_items as OrderRefundItemRecord[]).forEach(
                 (ri: OrderRefundItemRecord) => {
-                  if (ri.order_item_id === item.db_order_item_id)
+                  if (
+                    ri.order_item_id === item.db_order_item_id &&
+                    nonVoidReversalIds.has(ri.reversal_id)
+                  )
                     refundedQty += ri.quantity_refunded
                 }
               )
@@ -3890,8 +3900,17 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     // reliably via both optimistic patch and backend sync, whereas payment-level
     // refundedAmount can lag behind when syncOrderFromBackendComplete's payment
     // merge preserves a stale local payment (partially_refunded status gap).
+    // Exclude void reversals (payment cancellations, not item refunds) and
+    // refunds from voided payments (the item return is part of the cancelled payment).
+    const nonVoidedPaymentIds = new Set(
+      payments.filter(p => !p.isVoided).map(p => p.dbPaymentId)
+    )
     const reversalRefundTotal = ((order.reversals as ReversalRecord[]) || [])
-      .filter(r => r.status === 'completed')
+      .filter(r =>
+        r.status === 'completed' &&
+        r.reversal_type !== 'void' &&
+        nonVoidedPaymentIds.has(r.original_payment_id)
+      )
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
 
     // Use reversals when available, fall back to payment-level for legacy orders

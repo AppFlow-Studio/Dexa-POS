@@ -234,7 +234,8 @@ CREATE OR REPLACE FUNCTION apply_refund_to_payment(
   p_return_reference_id text DEFAULT NULL,
   p_return_number text DEFAULT NULL,
   p_return_reason text DEFAULT NULL,
-  p_initiated_by uuid DEFAULT NULL
+  p_initiated_by uuid DEFAULT NULL,
+  p_restore_paid_quantity boolean DEFAULT false
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -290,7 +291,8 @@ $$;
 -- ============================================
 CREATE OR REPLACE FUNCTION record_refund_items(
   p_reversal_id uuid,
-  p_items jsonb
+  p_items jsonb,
+  p_skip_quantity_update boolean DEFAULT false
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -330,12 +332,15 @@ BEGIN
       COALESCE((v_item->>'inventory_updated')::boolean, false)
     );
 
-    UPDATE order_items
-    SET refunded_quantity = COALESCE(refunded_quantity, 0)
-          + COALESCE((v_item->>'quantity_refunded')::integer, 0),
-        refunded_amount = COALESCE(refunded_amount, 0)
-          + COALESCE((v_item->>'total_refunded')::numeric, 0)
-    WHERE id = (v_item->>'order_item_id')::uuid;
+    -- Only update order_items state for non-void refunds
+    IF NOT p_skip_quantity_update THEN
+      UPDATE order_items
+      SET refunded_quantity = COALESCE(refunded_quantity, 0)
+            + COALESCE((v_item->>'quantity_refunded')::integer, 0),
+          refunded_amount = COALESCE(refunded_amount, 0)
+            + COALESCE((v_item->>'total_refunded')::numeric, 0)
+      WHERE id = (v_item->>'order_item_id')::uuid;
+    END IF;
   END LOOP;
 END;
 $$;
