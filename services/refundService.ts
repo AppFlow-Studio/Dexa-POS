@@ -803,7 +803,7 @@ export class RefundService {
       const { data: paymentItems } = await this.supabase
         .from("order_payment_items")
         .select(
-          "id, order_payment_id, quantity_paid, unit_price_paid, tax_paid, created_at",
+          "id, order_payment_id, quantity_paid, unit_price_paid, subtotal_paid, tax_paid, created_at",
         )
         .eq("order_item_id", itemRequest.orderItemId)
         .gt("quantity_paid", 0);
@@ -822,7 +822,12 @@ export class RefundService {
         const qtyFromThis = Math.min(remainingQty, availableQty);
         if (qtyFromThis <= 0) continue;
 
-        const unitPrice = Number(pi.unit_price_paid || 0);
+        // Use subtotal_paid (post-discount) to compute effective unit price
+        // subtotal_paid already accounts for discounts applied at payment time
+        // Use != null (not > 0) to preserve subtotal_paid=0 for fully discounted items
+        const unitPrice = availableQty > 0 && pi.subtotal_paid != null
+          ? Number(pi.subtotal_paid) / availableQty
+          : Number(pi.unit_price_paid || 0);
         const taxPerUnit =
           availableQty > 0 ? Number(pi.tax_paid || 0) / availableQty : 0;
         const subtotal = qtyFromThis * unitPrice;
@@ -863,7 +868,7 @@ export class RefundService {
     const { data: items } = await this.supabase
       .from("order_items")
       .select(
-        "id, quantity, paid_quantity, refunded_quantity, unit_price, tax_amount",
+        "id, quantity, paid_quantity, refunded_quantity, unit_price, discount_amount, subtotal, tax_amount",
       )
       .eq("order_id", orderId);
 
@@ -874,9 +879,15 @@ export class RefundService {
         const qty = Math.max(0, paidQuantity - alreadyRefunded);
         if (qty <= 0) return null;
 
-        const unitPrice = Number(item.unit_price || 0);
+        // Use discounted unit price when discount exists
+        // subtotal is post-discount for the full quantity, so divide by quantity
+        const itemQuantity = Number(item.quantity || 1);
+        const unitPrice = itemQuantity > 0 && Number(item.discount_amount || 0) > 0
+          ? Number(item.subtotal || 0) / itemQuantity
+          : Number(item.unit_price || 0);
+        // Tax is already computed on discounted amount, prorate by quantity
         const taxPerUnit =
-          paidQuantity > 0 ? Number(item.tax_amount || 0) / paidQuantity : 0;
+          itemQuantity > 0 ? Number(item.tax_amount || 0) / itemQuantity : 0;
         const subtotal = qty * unitPrice;
         const tax = qty * taxPerUnit;
         return {

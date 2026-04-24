@@ -2082,7 +2082,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     return Math.max(0, paidQty - refundedQty)
   }, [])
 
-  // Calculate selected items total (price + tax)
+  // Calculate selected items total (price + tax) using discounted prices
+  // Uses post-discount subtotal (item.subtotal) instead of original price (item.price)
   const selectedItemsTotal = useMemo(() => {
     if (!order?.items) return 0
     return order.items.reduce((sum: number, item: CartItem) => {
@@ -2092,9 +2093,14 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         maxQty
       )
       if (selectedQty <= 0) return sum
-      const itemSubtotal = (item.price || 0) * selectedQty
+      // subtotal is post-discount for the full quantity
+      // Use ?? (not ||) to preserve subtotal=0 for fully discounted items
+      const discountedUnitPrice = item.quantity > 0
+        ? (item.subtotal ?? (item.price || 0) * item.quantity) / item.quantity
+        : (item.price || 0)
       const perUnitTax =
         item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0
+      const itemSubtotal = discountedUnitPrice * selectedQty
       const itemTax = perUnitTax * selectedQty
       return sum + itemSubtotal + itemTax
     }, 0)
@@ -2388,13 +2394,19 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         if (qty <= 0) continue
         const item = order?.items?.find((i: CartItem) => i.id === itemId)
         if (!item) continue
-        const itemSubtotal = (item.price || 0) * qty
-        const perUnitTax =
-          item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0
+        // Use discounted price based on covering payment's pricing mode
+        const coveringPayment = getPaymentForItem(itemId)
+        const isCash = coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
+        const effectiveSubtotal = isCash ? (item.cashSubtotal ?? item.subtotal ?? 0) : (item.subtotal ?? 0)
+        const effectiveTax = isCash ? (item.cashTaxAmount ?? item.taxAmount ?? 0) : (item.taxAmount ?? 0)
+        const discountedUnitPrice = item.quantity > 0
+          ? effectiveSubtotal / item.quantity
+          : (item.price || 0)
+        const perUnitTax = item.quantity > 0 ? effectiveTax / item.quantity : 0
+        const itemSubtotal = discountedUnitPrice * qty
         const amount = itemSubtotal + perUnitTax * qty
 
         let paymentIdx: number | undefined
-        const coveringPayment = getPaymentForItem(itemId)
         if (coveringPayment) {
           paymentIdx = coveringPayment.originalPaymentIndex
         } else if (itemPaymentAssignment[itemId] !== undefined) {
@@ -2796,13 +2808,17 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           {item.name}
                         </Text>
                         <Text style={{ fontSize: 11, color: colors.muted }}>
-                          ${(item.price || 0)?.toFixed(2)}
+                          ${(item.quantity > 0 && (item.discount_amount || 0) > 0
+                            ? ((item.subtotal || 0) / item.quantity)
+                            : (item.price || 0)
+                          )?.toFixed(2)}
                           {(item.taxAmount || 0) > 0 &&
                             ` + $${(item.quantity > 0
                               ? (item.taxAmount || 0) / item.quantity
                               : 0
                             )?.toFixed(2)} tax`}{' '}
                           each
+                          {(item.discount_amount || 0) > 0 && ' (discounted)'}
                         </Text>
                         {maxQty <= 0 && (
                           <Text
