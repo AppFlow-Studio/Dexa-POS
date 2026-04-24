@@ -11,9 +11,9 @@ import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useDineInStore } from '@/stores/useDineInStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useOrderSyncCounts } from '@/stores/useSyncStatusStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
@@ -64,7 +64,6 @@ import BillSummary from './BillSummary'
 import DiscountOverlay from './DiscountOverlay'
 import OrderDetails from './OrderDetails'
 import Totals from './Totals'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
 const BillItemsAndTotals = React.memo(
@@ -488,6 +487,9 @@ const BillSectionContent = ({
   const handleOpenMoreOptions = useCallback(() => {
     moreOptionsSheetRef?.current?.expand()
   }, [moreOptionsSheetRef])
+
+  const isMoreButtonDisabled =
+    !activeOrderId || activeOrder?.check_status === 'Closed'
 
   const displayedTable = useMemo(
     () =>
@@ -1508,18 +1510,13 @@ const BillSectionContent = ({
             <View className='flex-row gap-2'>
               <TouchableOpacity
                 onPress={handleOpenMoreOptions}
-                disabled={
-                  !activeOrderId || (activeOrderItems?.length ?? 0) === 0
-                }
+                disabled={isMoreButtonDisabled}
                 className='w-[34%] h-10 items-center justify-center rounded-xl flex-row gap-1.5 shrink-0'
                 style={{
                   backgroundColor: colors.card,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  opacity:
-                    !activeOrderId || (activeOrderItems?.length ?? 0) === 0
-                      ? 0.4
-                      : 1
+                  opacity: isMoreButtonDisabled ? 0.4 : 1
                 }}
               >
                 <MoreHorizontal size={14} color={colors.label} />
