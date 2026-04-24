@@ -313,7 +313,9 @@ const PaymentMethodSelectionView: React.FC = () => {
           style={getStyles().proceedBtn}
           onPress={handleProceed}
         >
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+          <Text
+            style={{ color: colors.onSolid, fontWeight: '700', fontSize: 13 }}
+          >
             Proceed
           </Text>
         </TouchableOpacity>
