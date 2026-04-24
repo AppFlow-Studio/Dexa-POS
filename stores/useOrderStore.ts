@@ -9968,6 +9968,14 @@ export const useOrderStore = create<OrderState>()(
 
             if (!order) return
 
+            // Fully clear check-level discounts (local + backend void/queue) before item removal.
+            if (
+              order.checkDiscount ||
+              (order.applied_discounts?.length ?? 0) > 0
+            ) {
+              get().removeCheckDiscount(activeOrderId)
+            }
+
             // Update ordersById (not deprecated orders array)
             set(state => {
               const order = state.ordersById[activeOrderId]

@@ -5,7 +5,7 @@ import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import * as Application from 'expo-application'
-import { Clock, Timer } from 'lucide-react-native'
+import { Circle, Clock, Pause, Timer } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Image, Platform, Text, TouchableOpacity, View } from 'react-native'
 import CashTipDeclarationModal from './CashTipDeclarationModal'
@@ -175,7 +175,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
             declaredAmount,
             locationId,
             deviceId,
-            user?.profileId,
+            user?.profileId
           )
         } catch (e) {
           console.warn(
@@ -185,16 +185,26 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
         }
       }
 
-      // Clock out — wrap in try/catch so local state always updates
+      // Clock out. Only apply local clock-out after backend success.
+      // If backend says user is on break, sync local break state instead.
       try {
         await timeClock.clockOut(pin, locationId, deviceId)
+        if (employeeId) oldClockOut(employeeId)
+        replaceRoute('(auth)', 'pin-login')
       } catch (e) {
+        const errorMessage =
+          e instanceof Error ? e.message : typeof e === 'string' ? e : ''
+
+        if (
+          errorMessage.includes('END_BREAK_FIRST') ||
+          errorMessage.includes('ALREADY_ON_BREAK')
+        ) {
+          oldStartBreak()
+          return
+        }
+
         console.warn('[UserProfileCard] clockOut RPC failed:', e)
       }
-
-      // Always update local store regardless of RPC result
-      if (employeeId) oldClockOut(employeeId)
-      replaceRoute('(auth)', 'pin-login')
     },
     [selectedStore?.id, timeClock, deviceId, employeeId, oldClockOut]
   )
@@ -338,24 +348,37 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
                   : colors.muted + '10'
             }}
           >
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '600',
-                color:
-                  session && isBreak
-                    ? colors.warning
-                    : session
-                    ? colors.teal
-                    : colors.label
-              }}
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
             >
-              {session
-                ? isBreak
-                  ? '⏸  On Break'
-                  : '●  Clocked In'
-                : '○  Not Clocked In'}
-            </Text>
+              {session ? (
+                isBreak ? (
+                  <Pause size={12} color={colors.warning} />
+                ) : (
+                  <Clock size={12} color={colors.teal} />
+                )
+              ) : (
+                <Circle size={12} color={colors.label} />
+              )}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color:
+                    session && isBreak
+                      ? colors.warning
+                      : session
+                      ? colors.teal
+                      : colors.label
+                }}
+              >
+                {session
+                  ? isBreak
+                    ? 'On Break'
+                    : 'Clocked In'
+                  : 'Not Clocked In'}
+              </Text>
+            </View>
           </View>
         </View>
 
