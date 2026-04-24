@@ -109,13 +109,13 @@ import {
 } from '@/lib/pendingVoidOrderIds'
 import { detectConflict } from '@/services/conflictDetectionService'
 import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
+import { autoPrintKitchenTicketsIfEnabled } from '@/services/printing/autoPrintKitchen'
 import { useConflictStore } from '@/stores/useConflictStore'
 import {
   generateConflictToast,
   isConflictCritical
 } from '@/types/conflict-resolution'
 import { DejavooSaleTransactionResponse } from '@/types/dejavoo-spin-api'
-import { autoPrintKitchenTicketsIfEnabled } from '@/services/printing/autoPrintKitchen'
 
 // ============================================================================
 // PURE CALCULATION FUNCTIONS (Delegating to order-calculator module)
@@ -154,7 +154,7 @@ export const distributeDiscountToItems = distributeDiscountToItemsFromModule
 export function getItemEffectiveSubtotal (item: CartItem): number {
   const grossSubtotal = item.price * item.quantity
   const discountAmount = item.discount_amount ?? 0
-  return Math.round((grossSubtotal - discountAmount) * 100) / 100
+  return Math.max(0, Math.round((grossSubtotal - discountAmount) * 100) / 100)
 }
 
 /**
@@ -166,7 +166,10 @@ export function getItemEffectiveSubtotal (item: CartItem): number {
 export function getItemEffectiveCashSubtotal (item: CartItem): number {
   const grossCashSubtotal = (item.cashPrice || item.price) * item.quantity
   const discountAmount = item.discount_cash_amount ?? item.discount_amount ?? 0
-  return Math.round((grossCashSubtotal - discountAmount) * 100) / 100
+  return Math.max(
+    0,
+    Math.round((grossCashSubtotal - discountAmount) * 100) / 100
+  )
 }
 
 /**
@@ -2183,12 +2186,14 @@ const syncPaymentToBackend = async (
 
       // Sync payment status to previous orders store so both stores stay consistent
       if (order.db_order_id) {
-        usePreviousOrdersStore.getState().patchPreviousOrder(order.db_order_id, {
-          paymentStatus: isFullyPaid ? 'Paid' : 'In Progress',
-          refunded: false,
-          amount_paid: data.order_amount_paid,
-          amount_due: data.order_amount_due,
-        })
+        usePreviousOrdersStore
+          .getState()
+          .patchPreviousOrder(order.db_order_id, {
+            paymentStatus: isFullyPaid ? 'Paid' : 'In Progress',
+            refunded: false,
+            amount_paid: data.order_amount_paid,
+            amount_due: data.order_amount_due
+          })
       }
 
       // Clean up persistableOrderIds if no more unsynced data remains
@@ -3715,8 +3720,7 @@ export const useOrderStore = create<OrderState>()(
                         broadcastPaidStatus === 'Refunded' ||
                         existingOrder.paid_status === 'Refunded'
                       const isPaymentLocallyAhead =
-                        !isRefundTransition &&
-                        localPaidRank > broadcastPaidRank
+                        !isRefundTransition && localPaidRank > broadcastPaidRank
 
                       // Build updated order
                       const updatedOrder: OrderProfile = {
@@ -5017,8 +5021,13 @@ export const useOrderStore = create<OrderState>()(
 
             // Fetch discount metadata when discount exists but checkDiscount not yet restored
             // (e.g. order with discount applied on another station, synced via broadcast)
-            if (order && order.db_order_id && order.items.length > 0
-                && (order.total_discount ?? 0) > 0 && !order.checkDiscount) {
+            if (
+              order &&
+              order.db_order_id &&
+              order.items.length > 0 &&
+              (order.total_discount ?? 0) > 0 &&
+              !order.checkDiscount
+            ) {
               lastOrderDetailSyncAt.delete(order.db_order_id)
               get().syncOrderFromBackendComplete(orderId)
             }
@@ -9919,6 +9928,14 @@ export const useOrderStore = create<OrderState>()(
 
             if (!order) return
 
+            // Fully clear check-level discounts (local + backend void/queue) before item removal.
+            if (
+              order.checkDiscount ||
+              (order.applied_discounts?.length ?? 0) > 0
+            ) {
+              get().removeCheckDiscount(activeOrderId)
+            }
+
             // Update ordersById (not deprecated orders array)
             set(state => {
               const order = state.ordersById[activeOrderId]
@@ -11968,7 +11985,9 @@ export const useOrderStore = create<OrderState>()(
               // Preserve backend total_discount when checkDiscount hasn't been restored yet
               // (e.g. cross-station order where discount metadata is still being fetched)
               const preserveBackendDiscount =
-                totals.discount_amount === 0 && (o.total_discount ?? 0) > 0 && !o.checkDiscount
+                totals.discount_amount === 0 &&
+                (o.total_discount ?? 0) > 0 &&
+                !o.checkDiscount
               if (!preserveBackendDiscount) {
                 o.total_discount = totals.discount_amount
               }

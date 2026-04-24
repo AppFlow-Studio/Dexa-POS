@@ -10,7 +10,15 @@ import { useNotificationStore } from '@/stores/useNotificationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { useRouter } from 'expo-router'
-import { ArrowLeftRight, Bell, Coffee, LogOut, User } from 'lucide-react-native'
+import {
+  ArrowLeftRight,
+  Bell,
+  Clock,
+  Coffee,
+  LogOut,
+  Pause,
+  User
+} from 'lucide-react-native'
 import { useCallback, useEffect, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import SwitchAccountModal from './settings/security-and-login/SwitchAccountModal'
@@ -200,7 +208,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             declaredAmount,
             locationId,
             deviceId,
-            employee?.profileId,
+            employee?.profileId
           )
         } catch (e) {
           console.warn(
@@ -342,14 +350,27 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                         : `${colors.teal}20`
                     }}
                   >
-                    <Text
-                      className='text-xs font-semibold'
+                    <View
                       style={{
-                        color: isOnBreak ? colors.warning : colors.teal
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4
                       }}
                     >
-                      {isOnBreak ? '⏸ On Break' : '● On Duty'}
-                    </Text>
+                      {isOnBreak ? (
+                        <Pause size={10} color={colors.warning} />
+                      ) : (
+                        <Clock size={10} color={colors.teal} />
+                      )}
+                      <Text
+                        className='text-xs font-semibold'
+                        style={{
+                          color: isOnBreak ? colors.warning : colors.teal
+                        }}
+                      >
+                        {isOnBreak ? 'On Break' : 'On Duty'}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>

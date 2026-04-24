@@ -88,6 +88,7 @@ interface KDSState {
   ) => void
   handleOrderBroadcast: (payload: OrderBroadcastPayload) => void
   _processOrderBroadcast: (payload: OrderBroadcastPayload) => void
+  nowEpochMs: number
   incrementTimerTick: () => void
   scheduleRefetch: (locationId: string, immediate?: boolean) => void
 
@@ -879,6 +880,7 @@ export const useKDSStore = create<KDSState>()(
       isFetching: false,
       _hasHydrated: false,
       timerTick: 0,
+      nowEpochMs: Date.now(),
       focusedTicketId: null,
       setFocusedTicketId: id => set({ focusedTicketId: id }),
       bulkMode: false,
@@ -1457,8 +1459,11 @@ export const useKDSStore = create<KDSState>()(
               ),
             0,
             () => {
-              const lastLoc = get()._lastLocationId
-              if (lastLoc) get().scheduleRefetch(lastLoc)
+              // Only refetch if pending action hasn't already been reconciled by broadcast echo
+              if (_pendingActions.has(ticketId)) {
+                const lastLoc = get()._lastLocationId
+                if (lastLoc) get().scheduleRefetch(lastLoc)
+              }
 
               // Persist final order status after all items are served from KDS.
               if (newStatus === 'served' && orderId) {
@@ -1799,7 +1804,7 @@ export const useKDSStore = create<KDSState>()(
       },
 
       incrementTimerTick: () => {
-        set(state => ({ timerTick: state.timerTick + 1 }))
+        set(state => ({ timerTick: state.timerTick + 1, nowEpochMs: Date.now() }))
       },
 
       scheduleRefetch: (locationId: string, immediate?: boolean) => {
@@ -2101,8 +2106,11 @@ export const useKDSStore = create<KDSState>()(
               OrderService.bulkUpdateOrderItemStatus(client, [itemId], 'ready'),
             0,
             () => {
-              const lastLoc = get()._lastLocationId
-              if (lastLoc) get().scheduleRefetch(lastLoc)
+              // Only refetch if pending action hasn't already been reconciled by broadcast echo
+              if (_pendingActions.has(ticketId)) {
+                const lastLoc = get()._lastLocationId
+                if (lastLoc) get().scheduleRefetch(lastLoc)
+              }
             },
             () => {
               _pendingActions.delete(ticketId)

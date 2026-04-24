@@ -290,6 +290,32 @@ interface KDSTicketDisplaySettings {
   aggregateIdenticalItems: boolean
 }
 
+// ─── Ticket Timer (isolated re-render boundary) ─────────────────
+interface KDSTicketTimerProps {
+  startTimeEpoch: number
+  urgencyThresholds: UrgencyThresholds
+}
+
+const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
+  ({ startTimeEpoch, urgencyThresholds }) => {
+    // Single shared timestamp from store — 1 subscription per timer, no per-component Date.now()
+    const nowEpochMs = useKDSStore(s => s.nowEpochMs)
+    const timeElapsed = getBucketedElapsed(startTimeEpoch, undefined, nowEpochMs)
+    const urgencyLevel = getUrgencyLevel(startTimeEpoch, urgencyThresholds, nowEpochMs)
+    return (
+      <Text
+        style={{
+          color: urgencyLevel > 0 ? colors.danger : colors.label,
+          fontSize: 18,
+          fontWeight: '800'
+        }}
+      >
+        {timeElapsed}
+      </Text>
+    )
+  }
+)
+
 // ─── Ticket Card ──────────────────────────────────────────────────
 interface KDSTicketCardProps {
   ticket: KDSTicket
@@ -326,24 +352,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       useCallback(
         s => s.selectedTicketIds.has(ticket.ticket_id),
         [ticket.ticket_id]
-      )
-    )
-    const timeElapsed = useKDSStore(
-      useCallback(
-        s => {
-          void s.timerTick
-          return getBucketedElapsed(ticket.start_time_epoch)
-        },
-        [ticket.start_time_epoch]
-      )
-    )
-    const urgencyLevel = useKDSStore(
-      useCallback(
-        s => {
-          void s.timerTick
-          return getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds)
-        },
-        [ticket.start_time_epoch, urgencyThresholds]
       )
     )
 
@@ -734,16 +742,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               </View>
             </View>
 
-            {/* Timer */}
-            <Text
-              style={{
-                color: urgencyLevel > 0 ? colors.danger : colors.label,
-                fontSize: 18,
-                fontWeight: '800'
-              }}
-            >
-              {timeElapsed}
-            </Text>
+            {/* Timer (isolated re-render — only this component updates per second) */}
+            <KDSTicketTimer
+              startTimeEpoch={ticket.start_time_epoch}
+              urgencyThresholds={urgencyThresholds}
+            />
           </View>
 
           {/* Row 3: Customer + Table + Course (only shown when populated) */}
@@ -1187,17 +1190,9 @@ interface KDSDoneTicketCardProps {
 
 const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
   ({ ticket, onRecall }) => {
-    const timeElapsed = useKDSStore(
-      useCallback(
-        s => {
-          void s.timerTick
-          return getBucketedElapsed(
-            ticket.start_time_epoch,
-            ticket.done_time_epoch
-          )
-        },
-        [ticket.start_time_epoch, ticket.done_time_epoch]
-      )
+    const timeElapsed = useMemo(
+      () => getBucketedElapsed(ticket.start_time_epoch, ticket.done_time_epoch),
+      [ticket.start_time_epoch, ticket.done_time_epoch]
     )
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type)
@@ -1585,7 +1580,7 @@ const KitchenDisplayScreen = () => {
   const cookingTickets = useKDSStore(s => s.ticketsByStatus.cooking)
   const readyTickets = useKDSStore(s => s.ticketsByStatus.ready)
 
-  // Start the single global timer
+  // Start the single global timer (each KDSTicketTimer subscribes to timerTick directly)
   useKDSTimer()
 
   // Initialize KDS display config for this station
@@ -2127,15 +2122,47 @@ const KitchenDisplayScreen = () => {
     [recallDoneTicket]
   )
 
-  const getTicketsForColumn = useCallback(
-    (tickets: KDSTicket[], col: number) => {
-      return tickets.filter((_, i) => i % columnCount === col)
-    },
-    [columnCount]
-  )
+  // Stable column assignment: each ticket stays in its column across mutations.
+  // New tickets go to the shortest column. When a ticket is removed, only that
+  // column's remaining tickets shift up — other columns are untouched.
+  const columnAssignmentRef = useRef<Map<string, number>>(new Map())
 
   const activeTabTickets = listDataByStatus[activeStatus]
   const isDoneTab = activeStatus === 'done'
+
+  const columnizedTickets = useMemo(() => {
+    const cols: KDSTicket[][] = Array.from({ length: columnCount }, () => [])
+    const assignments = columnAssignmentRef.current
+    const activeIds = new Set<string>()
+
+    // First pass: place tickets that already have a column assignment
+    for (const ticket of activeTabTickets) {
+      activeIds.add(ticket.ticket_id)
+      const prevCol = assignments.get(ticket.ticket_id)
+      if (prevCol !== undefined && prevCol < columnCount) {
+        cols[prevCol].push(ticket)
+      }
+    }
+
+    // Second pass: assign new tickets to the shortest column
+    for (const ticket of activeTabTickets) {
+      const prevCol = assignments.get(ticket.ticket_id)
+      if (prevCol !== undefined && prevCol < columnCount) continue // already placed
+      let shortest = 0
+      for (let c = 1; c < columnCount; c++) {
+        if (cols[c].length < cols[shortest].length) shortest = c
+      }
+      assignments.set(ticket.ticket_id, shortest)
+      cols[shortest].push(ticket)
+    }
+
+    // Prune stale assignments for tickets no longer in the active tab
+    for (const id of assignments.keys()) {
+      if (!activeIds.has(id)) assignments.delete(id)
+    }
+
+    return cols
+  }, [activeTabTickets, columnCount])
 
   // Skeleton grid for loading state
   const renderSkeletons = () => (
@@ -2773,23 +2800,20 @@ const KitchenDisplayScreen = () => {
           showsVerticalScrollIndicator={true}
         >
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-            {Array.from({ length: columnCount }).map((_, col) => {
-              const columnTickets = getTicketsForColumn(activeTabTickets, col)
-              return (
-                <View
-                  key={`col-${activeStatus}-${col}`}
-                  style={{ flex: 1, paddingHorizontal: 2 }}
-                >
-                  {columnTickets.map((ticket, index) => (
-                    <View key={`${ticket.ticket_id}_${col}_${index}`}>
-                      {isDoneTab
-                        ? renderDoneTicketCard(ticket)
-                        : renderTicketCard(ticket)}
-                    </View>
-                  ))}
-                </View>
-              )
-            })}
+            {columnizedTickets.map((colTickets, col) => (
+              <View
+                key={`col-${activeStatus}-${col}`}
+                style={{ flex: 1, paddingHorizontal: 2 }}
+              >
+                {colTickets.map((ticket) => (
+                  <View key={ticket.ticket_id}>
+                    {isDoneTab
+                      ? renderDoneTicketCard(ticket)
+                      : renderTicketCard(ticket)}
+                  </View>
+                ))}
+              </View>
+            ))}
           </View>
         </ScrollView>
       )}

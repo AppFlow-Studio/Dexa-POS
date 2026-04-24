@@ -144,7 +144,12 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
     const discountAmount = calculateDiscountAmount(discount)
     if (discountAmount <= 0) return 'Please enter a valid discount amount.'
 
-    if (discountAmount - checkSubtotal > 0.001) {
+    const discountType = discount?.type ?? discount?.discount_type
+
+    if (
+      discountType === 'percentage' &&
+      discountAmount - checkSubtotal > 0.001
+    ) {
       return 'Discount is too high. It cannot reduce the total below $0.00.'
     }
 
@@ -551,9 +556,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                         activeOpacity={0.85}
                         onPress={() => setCustomDiscountValue(val.toString())}
                         style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 6,
-                          borderRadius: 20,
+                          paddingHorizontal: 14,
+                          paddingVertical: 8,
+                          borderRadius: 22,
                           marginRight: 6,
                           marginBottom: 6,
                           backgroundColor: isSelected
@@ -567,7 +572,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                       >
                         <Text
                           style={{
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: '700',
                             color: isSelected ? accentColor : colors.label
                           }}
