@@ -7,7 +7,7 @@ const TICK_INTERVAL_MS = 1000 // 1 second
 
 /**
  * Single global timer that drives all KDS card time displays.
- * Increments timerTick every 10s; pauses when app is backgrounded.
+ * Increments timerTick every second; pauses when app is backgrounded.
  */
 export function useKDSTimer () {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -58,11 +58,12 @@ export function useKDSTimer () {
  */
 export function getBucketedElapsed (
   startTimeEpoch: number,
-  doneTimeEpoch?: number
+  doneTimeEpoch?: number,
+  nowEpoch: number = Date.now()
 ): string {
   if (startTimeEpoch === 0) return '0:00'
 
-  const currentTime = doneTimeEpoch || Date.now()
+  const currentTime = doneTimeEpoch || nowEpoch
   const diffMs = currentTime - startTimeEpoch
   const totalSeconds = Math.floor(diffMs / 1000)
   const minutes = Math.floor(totalSeconds / 60)
@@ -87,10 +88,11 @@ const DEFAULT_THRESHOLDS: UrgencyThresholds = { yellow: 5, orange: 10, red: 15 }
  */
 export function getUrgencyLevel (
   startTimeEpoch: number,
-  thresholds: UrgencyThresholds = DEFAULT_THRESHOLDS
+  thresholds: UrgencyThresholds = DEFAULT_THRESHOLDS,
+  nowEpoch: number = Date.now()
 ): number {
   if (startTimeEpoch === 0) return 0
-  const diffMins = Math.floor((Date.now() - startTimeEpoch) / 60000)
+  const diffMins = Math.floor((nowEpoch - startTimeEpoch) / 60000)
   if (diffMins >= thresholds.red) return 3
   if (diffMins >= thresholds.orange) return 2
   if (diffMins >= thresholds.yellow) return 1
