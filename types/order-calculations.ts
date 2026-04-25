@@ -46,6 +46,7 @@ export interface OrderTotals {
 
   // Cash pricing totals
   cash_subtotal: number;
+  cash_discount_amount: number;
   cash_tax_amount: number;
   cash_total_amount: number;
 

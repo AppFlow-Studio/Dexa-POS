@@ -24,16 +24,20 @@
  * Mock react-native-mmkv (used by your stores)
  * MMKV is a native module - it won't work in Jest's Node environment
  */
-jest.mock("react-native-mmkv", () => ({
-  MMKV: jest.fn().mockImplementation(() => ({
+jest.mock("react-native-mmkv", () => {
+  const createInstance = () => ({
     getString: jest.fn(),
     set: jest.fn(),
     delete: jest.fn(),
     contains: jest.fn(),
     getAllKeys: jest.fn(() => []),
     clearAll: jest.fn(),
-  })),
-}));
+  });
+  return {
+    MMKV: jest.fn().mockImplementation(createInstance),
+    createMMKV: jest.fn().mockImplementation(createInstance),
+  };
+});
 
 /**
  * Mock expo-secure-store

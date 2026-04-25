@@ -32,6 +32,7 @@ export function useOrdersQuery({
         .from("orders")
         .select(
           `*, order_items(*, order_item_modifiers(*)), order_payments(*),
+           order_discounts(*),
            stations(station_name),
            created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)`,
         )

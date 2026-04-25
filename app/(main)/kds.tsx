@@ -1,3 +1,4 @@
+import KDSSettingsModal from '@/components/kds/KDSSettingsModal'
 import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import PinInputModal from '@/components/timeclock/PinInputModal'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
@@ -25,7 +26,6 @@ import { useRouter } from 'expo-router'
 import {
   ArrowUpToLine,
   CheckSquare,
-  CircleDotDashed,
   Flame,
   RotateCcw,
   ShoppingBag,
@@ -289,6 +289,40 @@ interface KDSTicketDisplaySettings {
   alphabeticalSort: boolean
   aggregateIdenticalItems: boolean
 }
+
+// ─── Ticket Timer (isolated re-render boundary) ─────────────────
+interface KDSTicketTimerProps {
+  startTimeEpoch: number
+  urgencyThresholds: UrgencyThresholds
+}
+
+const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
+  ({ startTimeEpoch, urgencyThresholds }) => {
+    // Single shared timestamp from store — 1 subscription per timer, no per-component Date.now()
+    const nowEpochMs = useKDSStore(s => s.nowEpochMs)
+    const timeElapsed = getBucketedElapsed(
+      startTimeEpoch,
+      undefined,
+      nowEpochMs
+    )
+    const urgencyLevel = getUrgencyLevel(
+      startTimeEpoch,
+      urgencyThresholds,
+      nowEpochMs
+    )
+    return (
+      <Text
+        style={{
+          color: urgencyLevel > 0 ? colors.danger : colors.label,
+          fontSize: 18,
+          fontWeight: '800'
+        }}
+      >
+        {timeElapsed}
+      </Text>
+    )
+  }
+)
 
 // ─── Ticket Card ──────────────────────────────────────────────────
 interface KDSTicketCardProps {
@@ -727,16 +761,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               </View>
             </View>
 
-            {/* Timer */}
-            <Text
-              style={{
-                color: urgencyLevel > 0 ? colors.danger : colors.label,
-                fontSize: 18,
-                fontWeight: '800'
-              }}
-            >
-              {timeElapsed}
-            </Text>
+            {/* Timer (isolated re-render — only this component updates per second) */}
+            <KDSTicketTimer
+              startTimeEpoch={ticket.start_time_epoch}
+              urgencyThresholds={urgencyThresholds}
+            />
           </View>
 
           {/* Row 3: Customer + Table + Course (only shown when populated) */}
@@ -1518,6 +1547,9 @@ const KitchenDisplayScreen = () => {
     })
   )
 
+  // Settings modal state
+  const [settingsVisible, setSettingsVisible] = useState(false)
+
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false)
   const [pendingBulkAction, setPendingBulkAction] = useState<
@@ -1567,12 +1599,33 @@ const KitchenDisplayScreen = () => {
     }, 600)
   }, [handleKDSLogout])
 
+  // Refresh button handler — fetches tickets + latest KDS config
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const promises: Promise<void>[] = []
+      if (selectedStore?.id) promises.push(fetchTickets(selectedStore.id))
+      if (selectedStation?.id)
+        promises.push(fetchKDSDisplay(selectedStation.id))
+      await Promise.all(promises)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [
+    refreshing,
+    selectedStore?.id,
+    selectedStation?.id,
+    fetchTickets,
+    fetchKDSDisplay
+  ])
+
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
   const pendingTickets = useKDSStore(s => s.ticketsByStatus.pending)
   const cookingTickets = useKDSStore(s => s.ticketsByStatus.cooking)
   const readyTickets = useKDSStore(s => s.ticketsByStatus.ready)
 
-  // Start the single global timer
+  // Start the single global timer (each KDSTicketTimer subscribes to timerTick directly)
   useKDSTimer()
 
   // One shared timestamp per global KDS tick to keep all cards in sync.
@@ -2119,15 +2172,70 @@ const KitchenDisplayScreen = () => {
     [recallDoneTicket]
   )
 
-  const getTicketsForColumn = useCallback(
-    (tickets: KDSTicket[], col: number) => {
-      return tickets.filter((_, i) => i % columnCount === col)
-    },
-    [columnCount]
-  )
+  // Stable column + position assignment: each ticket stays in its column AND
+  // keeps its relative position across mutations. New tickets go to the shortest
+  // column. When a ticket is removed, only that column's remaining tickets shift
+  // up — other columns are completely untouched.
+  const columnAssignmentRef = useRef<Map<string, number>>(new Map())
+  const prevColumnizedRef = useRef<KDSTicket[][]>([])
 
   const activeTabTickets = listDataByStatus[activeStatus]
   const isDoneTab = activeStatus === 'done'
+
+  const columnizedTickets = useMemo(() => {
+    const cols: KDSTicket[][] = Array.from({ length: columnCount }, () => [])
+    const assignments = columnAssignmentRef.current
+    const ticketMap = new Map(activeTabTickets.map(t => [t.ticket_id, t]))
+
+    // First pass: preserve order from previous columns for existing tickets
+    const placed = new Set<string>()
+    for (
+      let c = 0;
+      c < prevColumnizedRef.current.length && c < columnCount;
+      c++
+    ) {
+      const prevCol = prevColumnizedRef.current[c]
+      if (!prevCol) continue
+      for (const prevTicket of prevCol) {
+        const current = ticketMap.get(prevTicket.ticket_id)
+        if (current) {
+          cols[c].push(current)
+          placed.add(current.ticket_id)
+          assignments.set(current.ticket_id, c)
+        }
+      }
+    }
+
+    // Second pass: also pick up tickets with column assignments from a different
+    // tab that weren't in prevColumnized (e.g., tab switch back)
+    for (const ticket of activeTabTickets) {
+      if (placed.has(ticket.ticket_id)) continue
+      const prevCol = assignments.get(ticket.ticket_id)
+      if (prevCol !== undefined && prevCol < columnCount) {
+        cols[prevCol].push(ticket)
+        placed.add(ticket.ticket_id)
+      }
+    }
+
+    // Third pass: assign truly new tickets to the shortest column
+    for (const ticket of activeTabTickets) {
+      if (placed.has(ticket.ticket_id)) continue
+      let shortest = 0
+      for (let c = 1; c < columnCount; c++) {
+        if (cols[c].length < cols[shortest].length) shortest = c
+      }
+      assignments.set(ticket.ticket_id, shortest)
+      cols[shortest].push(ticket)
+    }
+
+    // Prune stale assignments
+    for (const id of assignments.keys()) {
+      if (!ticketMap.has(id)) assignments.delete(id)
+    }
+
+    prevColumnizedRef.current = cols
+    return cols
+  }, [activeTabTickets, columnCount])
 
   // Skeleton grid for loading state
   const renderSkeletons = () => (
@@ -2371,75 +2479,26 @@ const KitchenDisplayScreen = () => {
               style={{ width: 1, height: 20, backgroundColor: colors.border }}
             />
 
-            {/* KDS Display Badge */}
-            {displayName && (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: colors.teal + '15',
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: colors.teal + '30',
-                  gap: 4
-                }}
-              >
-                <Flame size={13} color={colors.urgencyElevated} />
-                <Text
-                  style={{
-                    color: colors.heading,
-                    fontSize: 12,
-                    fontWeight: '600'
-                  }}
-                  numberOfLines={1}
-                >
-                  {displayName}
-                </Text>
-                {routingMode === 'all' ? (
-                  <>
-                    <View
-                      style={{
-                        width: 1,
-                        height: 14,
-                        backgroundColor: colors.muted
-                      }}
-                    />
-                    <Text
-                      style={{
-                        color: colors.success,
-                        fontSize: 11,
-                        fontWeight: '700'
-                      }}
-                    >
-                      EXPO
-                    </Text>
-                  </>
-                ) : enrichedRules.length > 0 ? (
-                  <>
-                    <View
-                      style={{
-                        width: 1,
-                        height: 14,
-                        backgroundColor: colors.muted
-                      }}
-                    />
-                    <CircleDotDashed size={12} color={colors.label} />
-                    <Text
-                      style={{
-                        color: colors.label,
-                        fontSize: 11,
-                        fontWeight: '500'
-                      }}
-                      numberOfLines={1}
-                    >
-                      {enrichedRules.map(r => r.label).join(', ')}
-                    </Text>
-                  </>
-                ) : null}
-              </View>
-            )}
+            {/* Refresh Button (tap = refresh, long-press = settings) */}
+            <TouchableOpacity
+              onPress={handleRefresh}
+              onLongPress={() => setSettingsVisible(true)}
+              delayLongPress={400}
+              style={{
+                padding: 6,
+                borderRadius: 8,
+                backgroundColor: refreshing
+                  ? colors.teal + '15'
+                  : 'transparent',
+                borderWidth: 1,
+                borderColor: refreshing ? colors.teal + '30' : colors.border
+              }}
+            >
+              <RotateCcw
+                size={14}
+                color={refreshing ? colors.teal : colors.label}
+              />
+            </TouchableOpacity>
 
             {/* Auto-fire badge */}
             {kdsAutoFireEnabled && kdsAutoFireDelayMinutes ? (
@@ -2520,7 +2579,7 @@ const KitchenDisplayScreen = () => {
               style={{ width: 1, height: 20, backgroundColor: colors.border }}
             />
 
-            {/* Station Name | Time + Dot */}
+            {/* Station Name + EXPO tag | Time + Dot */}
             <View
               style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
             >
@@ -2528,6 +2587,7 @@ const KitchenDisplayScreen = () => {
                 <TouchableOpacity
                   onPress={handleStationTripleTap}
                   activeOpacity={1}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                 >
                   <Text
                     style={{
@@ -2538,6 +2598,17 @@ const KitchenDisplayScreen = () => {
                   >
                     {selectedStation.station_name}
                   </Text>
+                  {routingMode === 'all' && (
+                    <Text
+                      style={{
+                        color: colors.success,
+                        fontSize: 11,
+                        fontWeight: '700'
+                      }}
+                    >
+                      EXPO
+                    </Text>
+                  )}
                 </TouchableOpacity>
               )}
               {selectedStation?.station_name && (
@@ -2765,23 +2836,20 @@ const KitchenDisplayScreen = () => {
           showsVerticalScrollIndicator={true}
         >
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-            {Array.from({ length: columnCount }).map((_, col) => {
-              const columnTickets = getTicketsForColumn(activeTabTickets, col)
-              return (
-                <View
-                  key={`col-${activeStatus}-${col}`}
-                  style={{ flex: 1, paddingHorizontal: 2 }}
-                >
-                  {columnTickets.map((ticket, index) => (
-                    <View key={`${ticket.ticket_id}_${col}_${index}`}>
-                      {isDoneTab
-                        ? renderDoneTicketCard(ticket)
-                        : renderTicketCard(ticket)}
-                    </View>
-                  ))}
-                </View>
-              )
-            })}
+            {columnizedTickets.map((colTickets, col) => (
+              <View
+                key={`col-${activeStatus}-${col}`}
+                style={{ flex: 1, paddingHorizontal: 2 }}
+              >
+                {colTickets.map(ticket => (
+                  <View key={ticket.ticket_id}>
+                    {isDoneTab
+                      ? renderDoneTicketCard(ticket)
+                      : renderTicketCard(ticket)}
+                  </View>
+                ))}
+              </View>
+            ))}
           </View>
         </ScrollView>
       )}
@@ -3082,6 +3150,12 @@ const KitchenDisplayScreen = () => {
           })()}
         </Pressable>
       )}
+
+      {/* ─── KDS Settings Modal ─── */}
+      <KDSSettingsModal
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+      />
 
       {/* ─── PIN Modal ─── */}
       <PinInputModal

@@ -115,6 +115,7 @@ import {
   isConflictCritical
 } from '@/types/conflict-resolution'
 import { DejavooSaleTransactionResponse } from '@/types/dejavoo-spin-api'
+import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
 
 // ============================================================================
 // PURE CALCULATION FUNCTIONS (Delegating to order-calculator module)
@@ -205,51 +206,7 @@ function calculateOrderTotals (
  * Restore checkDiscount and applied_discounts from backend order_discounts data.
  * Handles type conversions between DB format and local state format.
  */
-function restoreDiscountsFromBackend (
-  orderDiscounts: any[]
-): Partial<OrderProfile> {
-  if (!orderDiscounts || orderDiscounts.length === 0) {
-    return { checkDiscount: null, applied_discounts: [] }
-  }
-
-  // Build applied_discounts array
-  const applied_discounts: OrderAppliedDiscount[] = orderDiscounts.map(
-    (od: any) => ({
-      local_id: `synced_${od.id}`,
-      order_discount_id: od.id,
-      discount_id: od.discount_id || null,
-      discount_name: od.discount_name || 'Discount',
-      discount_type:
-        od.discount_type === 'percentage'
-          ? 'percentage'
-          : ('fixed_amount' as const),
-      discount_value: od.discount_value,
-      source: od.source || ('preset' as const),
-      calculated_amount: od.calculated_amount || 0,
-      pre_discount_subtotal: od.pre_discount_subtotal || 0,
-      applied_by_staff_profiles_id: od.applied_by_staff_profiles_id || null,
-      approved_by_staff_profiles_id: od.approved_by_staff_profiles_id || null,
-      applied_at: od.applied_at || od.created_at,
-      applied_to_item_ids: od.applied_to_item_ids || [],
-      sync_status: 'synced' as const
-    })
-  )
-
-  // Build checkDiscount from the first active discount
-  // This is what the UI reads for the discount badge
-  const primary = orderDiscounts[0]
-  const checkDiscount: Discount = {
-    id: primary.discount_id || primary.id,
-    label: primary.discount_name || 'Discount',
-    value:
-      primary.discount_type === 'percentage'
-        ? primary.discount_value / 100 // DB stores 5 for 5%, local needs 0.05
-        : primary.discount_value,
-    type: primary.discount_type === 'percentage' ? 'percentage' : 'fixed'
-  }
-
-  return { checkDiscount, applied_discounts }
-}
+// restoreDiscountsFromBackend extracted to @/utils/discountUtils.ts
 
 /**
  * Transform backend OrderItemModifier[] to CartItem modifiers format.
@@ -5283,7 +5240,11 @@ export const useOrderStore = create<OrderState>()(
             // so every item (including newly added ones) has correct subtotal / discount_amount
             const itemsForState =
               activeOrder.checkDiscount && totals.discount_amount > 0
-                ? distributeDiscountToItems(updatedCart, totals.discount_amount)
+                ? distributeDiscountToItems(
+                    updatedCart,
+                    totals.discount_amount,
+                    totals.cash_discount_amount
+                  )
                 : updatedCart
 
             set(state => {
@@ -5611,7 +5572,8 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount && totals.discount_amount > 0
                 ? distributeDiscountToItems(
                     updatedItems,
-                    totals.discount_amount
+                    totals.discount_amount,
+                    totals.cash_discount_amount
                   )
                 : updatedItems
 
@@ -6614,7 +6576,8 @@ export const useOrderStore = create<OrderState>()(
               hasActiveCheckDiscount && totals.discount_amount > 0
                 ? distributeDiscountToItems(
                     updatedItems,
-                    totals.discount_amount
+                    totals.discount_amount,
+                    totals.cash_discount_amount
                   )
                 : distributeDiscountToItems(updatedItems, 0)
             set(state => {
@@ -7199,7 +7162,8 @@ export const useOrderStore = create<OrderState>()(
             // This ensures split payment views show correct prices even before RPC completes
             const itemsWithDistributedDiscount = distributeDiscountToItems(
               order.items,
-              totals.discount_amount
+              totals.discount_amount,
+              totals.cash_discount_amount
             )
 
             set(state => {
@@ -11985,6 +11949,7 @@ export const useOrderStore = create<OrderState>()(
                 outstanding_tax: 0,
                 outstanding_total: 0,
                 cash_subtotal: 0,
+                cash_discount_amount: 0,
                 cash_tax_amount: 0,
                 cash_total_amount: 0,
                 cash_outstanding_subtotal: 0,

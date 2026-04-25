@@ -1,4 +1,5 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { getJSON, setJSON } from "@/lib/storage";
 import { colors, spinnerColor } from "@/lib/theme";
 import { clearLocationData } from "@/services/cacheService";
 import {
@@ -127,41 +128,69 @@ const StoreSelectScreen = () => {
     queryFn: async (): Promise<{ locations: Location[]; orgLogoUrl: string | null; merchantPricing: { pricing_strategy: string; dual_pricing_percentage: number } | null }> => {
       if (!userId) return { locations: [], orgLogoUrl: null, merchantPricing: null };
 
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select(`*, members(*, organizations(id, name, imageURL))`)
-        .eq("id", userId)
-        .single();
+      const cacheKey = `accessible-locations:${userId}`;
 
-      if (userError) throw userError;
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select(`*, members(*, organizations(id, name, imageURL))`)
+          .eq("id", userId)
+          .single();
 
-      const orgLogoUrl = userData?.members?.[0]?.organizations?.imageURL ?? null;
-      const clerkOrgId = userData?.members?.[0]?.organizations?.id;
+        if (userError) throw userError;
 
-      if (!clerkOrgId) return { locations: [], orgLogoUrl, merchantPricing: null };
+        const orgLogoUrl = userData?.members?.[0]?.organizations?.imageURL ?? null;
+        const clerkOrgId = userData?.members?.[0]?.organizations?.id;
 
-      const { data: merchant, error: merchantError } = await supabase
-        .from("merchants")
-        .select("id, pricing_strategy, dual_pricing_percentage")
-        .eq("clerk_org_id", clerkOrgId)
-        .single();
+        if (!clerkOrgId) return { locations: [], orgLogoUrl, merchantPricing: null };
 
-      if (merchantError) throw merchantError;
-      if (!merchant) return { locations: [], orgLogoUrl, merchantPricing: null };
+        const { data: merchant, error: merchantError } = await supabase
+          .from("merchants")
+          .select("id, pricing_strategy, dual_pricing_percentage")
+          .eq("clerk_org_id", clerkOrgId)
+          .single();
 
-      const { data: locationsData, error: locationsError } = await supabase
-        .from("locations")
-        .select("*")
-        .eq("merchant_id", merchant.id)
-        .order("created_at", { ascending: false });
+        if (merchantError) throw merchantError;
+        if (!merchant) return { locations: [], orgLogoUrl, merchantPricing: null };
 
-      if (locationsError) throw locationsError;
+        // Get only locations this user has access to
+        const { data: accessibleLocations, error: accessError } = await supabase.rpc(
+          "get_user_accessible_locations",
+          { p_user_id: userId }
+        );
 
-      return {
-        locations: (locationsData as Location[]) || [],
-        orgLogoUrl,
-        merchantPricing: { pricing_strategy: merchant.pricing_strategy, dual_pricing_percentage: merchant.dual_pricing_percentage },
-      };
+        if (accessError) throw accessError;
+        if (!accessibleLocations || accessibleLocations.length === 0) {
+          return { locations: [], orgLogoUrl, merchantPricing: { pricing_strategy: merchant.pricing_strategy, dual_pricing_percentage: merchant.dual_pricing_percentage } };
+        }
+
+        const accessibleLocationIds = accessibleLocations.map((l: { location_id: string }) => l.location_id);
+
+        const { data: locationsData, error: locationsError } = await supabase
+          .from("locations")
+          .select("*")
+          .eq("merchant_id", merchant.id)
+          .in("id", accessibleLocationIds)
+          .order("created_at", { ascending: false });
+
+        if (locationsError) throw locationsError;
+
+        const result = {
+          locations: (locationsData as Location[]) || [],
+          orgLogoUrl,
+          merchantPricing: { pricing_strategy: merchant.pricing_strategy, dual_pricing_percentage: merchant.dual_pricing_percentage },
+        };
+
+        // Cache successful result for offline fallback
+        setJSON(cacheKey, result);
+
+        return result;
+      } catch (err) {
+        // Offline fallback: return cached data if available
+        const cached = getJSON<{ locations: Location[]; orgLogoUrl: string | null; merchantPricing: { pricing_strategy: string; dual_pricing_percentage: number } | null }>(cacheKey);
+        if (cached) return cached;
+        throw err;
+      }
     },
     enabled: !!userId,
   });
