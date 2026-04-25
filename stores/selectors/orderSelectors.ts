@@ -620,7 +620,7 @@ export function useOrderLineFilteredOrders (): OrderProfile[] {
 export function useOrder (
   orderId: string | null | undefined
 ): OrderProfile | null {
-  return useOrderStore(s => (orderId ? s.ordersById[orderId] ?? null : null))
+  return useOrderStore(s => (orderId ? s.getOrder(orderId) ?? null : null))
 }
 
 /**

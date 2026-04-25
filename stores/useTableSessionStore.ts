@@ -308,6 +308,7 @@ interface TableSessionStoreState {
   mergeTable: (sessionId: string, tableId: string) => Promise<void>
   unmergeTable: (sessionId: string, tableId: string) => Promise<void>
   advanceCourse: (sessionId: string) => Promise<void>
+  rekeyOrderId: (oldOrderId: string, newOrderId: string) => void
   linkOrderToSession: (sessionId: string, orderId: string) => Promise<void>
   clearTableSession: (tableId: string) => Promise<void>
   finishCleaning: (tableId: string) => Promise<void>
@@ -1513,6 +1514,31 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           if (actions.length > 0) {
             get().batchDispatch(actions)
+          }
+        },
+
+        // ------------------------------------------------------------------
+        // rekeyOrderId
+        // ------------------------------------------------------------------
+
+        rekeyOrderId: (oldOrderId: string, newOrderId: string) => {
+          if (!oldOrderId || !newOrderId || oldOrderId === newOrderId) return
+
+          const changedTableIds: string[] = []
+          set(state => {
+            for (const [tableId, session] of Object.entries(state.sessions)) {
+              if (session.order_id === oldOrderId) {
+                state.sessions[tableId] = {
+                  ...session,
+                  order_id: newOrderId
+                }
+                changedTableIds.push(tableId)
+              }
+            }
+          })
+
+          if (changedTableIds.length > 0) {
+            _scheduleSyncToFloorPlan(changedTableIds)
           }
         },
 

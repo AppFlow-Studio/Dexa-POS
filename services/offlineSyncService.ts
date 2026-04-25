@@ -1647,27 +1647,10 @@ function areDependenciesSatisfied (op: OfflineOperation): boolean {
     }
   }
 
-  // Item operations need parent order synced (additional check beyond create_order)
-  if (
-    (op.type === 'add_item' ||
-      op.type === 'update_item' ||
-      op.type === 'update_item_quantity' ||
-      op.type === 'replace_modifiers' ||
-      op.type === 'remove_item' ||
-      op.type === 'void_item') &&
-    op.localOrderId
-  ) {
-    // If localOrderId is still local (not a UUID), check if it's been synced
-    if (!isValidUUID(op.localOrderId)) {
-      const orderSynced = isSynced(op.localOrderId)
-      if (!orderSynced) {
-        console.log(
-          `[OfflineSync] ${op.type} blocked - parent order ${op.localOrderId} not synced yet`
-        )
-        return false
-      }
-    }
-  }
+  // Do NOT hard-block item ops on registry sync status alone.
+  // After reconnect, order ID resolution can be available via store rekey/mapping
+  // before offlineIdRegistry reflects it. The executor performs authoritative
+  // resolution and can retry safely when truly unresolved.
 
   return true
 }
@@ -1697,10 +1680,13 @@ async function updateBlockedOperations (): Promise<void> {
         op.status = 'pending'
         changed = true
       } else {
-        // Timeout: if blocked >5min and parent is dead/missing, dead-letter it
+        // Timeout handling is ONLY safe for explicit dependencies.
+        // For implicit deps (e.g. add_item waiting on create_order/order ID sync),
+        // op.dependsOn is usually undefined. Treating "no parent" as dead/missing
+        // incorrectly dead-letters valid offline item ops before reconciliation can recover.
         const BLOCKED_TIMEOUT_MS = 5 * 60 * 1000
         const blockedDuration = Date.now() - new Date(op.timestamp).getTime()
-        if (blockedDuration > BLOCKED_TIMEOUT_MS) {
+        if (blockedDuration > BLOCKED_TIMEOUT_MS && op.dependsOn) {
           const parent = op.dependsOn
             ? pendingOperations.find(p => p.id === op.dependsOn)
             : null
