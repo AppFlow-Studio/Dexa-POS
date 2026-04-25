@@ -320,6 +320,7 @@ const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
 // ─── Ticket Card ──────────────────────────────────────────────────
 interface KDSTicketCardProps {
   ticket: KDSTicket
+  nowEpochMs: number
   onAdvance: (
     ticketId: string,
     itemIds: string[],
@@ -340,6 +341,7 @@ interface KDSTicketCardProps {
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
   ({
     ticket,
+    nowEpochMs,
     onAdvance,
     onToggleSelect,
     onLongPress,
@@ -355,6 +357,15 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         [ticket.ticket_id]
       )
     )
+    // const timeElapsed = useMemo(
+    //   () => getBucketedElapsed(ticket.start_time_epoch, undefined, nowEpochMs),
+    //   [ticket.start_time_epoch, nowEpochMs]
+    // )
+    // const urgencyLevel = useMemo(
+    //   () =>
+    //     getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds, nowEpochMs),
+    //   [ticket.start_time_epoch, urgencyThresholds, nowEpochMs]
+    // )
 
     // Double-tap detection
     const lastTapRef = useRef(0)
@@ -1135,6 +1146,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
   (prev, next) => {
     // Skip re-render if callbacks and config are unchanged
     if (
+      prev.nowEpochMs !== next.nowEpochMs ||
       prev.onAdvance !== next.onAdvance ||
       prev.onToggleSelect !== next.onToggleSelect ||
       prev.onLongPress !== next.onLongPress ||
@@ -1424,6 +1436,7 @@ const KitchenDisplayScreen = () => {
   const recallTicket = useKDSStore(s => s.recallTicket)
   const doneTickets = useKDSStore(s => s.doneTickets)
   const doneCount = useKDSStore(s => s.doneCount)
+  const timerTick = useKDSStore(s => s.timerTick)
   const recallDoneTicket = useKDSStore(s => s.recallDoneTicket)
   const prioritizeTicket = useKDSStore(s => s.prioritizeTicket)
   const toggleRush = useKDSStore(s => s.toggleRush)
@@ -1600,6 +1613,9 @@ const KitchenDisplayScreen = () => {
 
   // Start the single global timer (each KDSTicketTimer subscribes to timerTick directly)
   useKDSTimer()
+
+  // One shared timestamp per global KDS tick to keep all cards in sync.
+  const nowEpochMs = useMemo(() => Date.now(), [timerTick])
 
   // Initialize KDS display config for this station
   useEffect(() => {
@@ -2112,6 +2128,7 @@ const KitchenDisplayScreen = () => {
     (item: KDSTicket) => (
       <KDSTicketCard
         ticket={item}
+        nowEpochMs={nowEpochMs}
         onAdvance={advanceWithUndo}
         onToggleSelect={toggleTicketSelection}
         onLongPress={handleTicketLongPress}
@@ -2129,7 +2146,8 @@ const KitchenDisplayScreen = () => {
       workflowMode,
       kdsHideDoneItems,
       displaySettings,
-      urgencyThresholds
+      urgencyThresholds,
+      nowEpochMs
     ]
   )
 
