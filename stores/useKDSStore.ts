@@ -790,45 +790,48 @@ function mergeTickets (
   return { merged, mergedById, changed }
 }
 
-/** Stable sort: prioritized tickets float to front within each bucket.
- *  Uses prevBucket to preserve existing priority ordering — new priorities append at end. */
+/** Positionally-stable bucket sort: existing tickets keep their position from
+ *  prevBucket. New tickets are inserted at the front (newestFirst) or back.
+ *  Prioritized tickets float to the front of the result. */
 function prioritySortBucket (
   bucket: KDSTicket[],
   prioritizedIds: Set<string>,
   prevBucket: KDSTicket[],
   newestFirst?: boolean
 ): KDSTicket[] {
-  if (prioritizedIds.size === 0) {
-    return newestFirst ? [...bucket].reverse() : bucket
-  }
+  if (bucket.length === 0) return bucket
 
-  // Get previously-prioritized tickets in their existing order
-  const prevPrioritizedOrder: string[] = []
-  for (const t of prevBucket) {
-    if (prioritizedIds.has(t.ticket_id)) prevPrioritizedOrder.push(t.ticket_id)
-  }
+  // Build lookup of current tickets by ID
+  const currentMap = new Map(bucket.map(t => [t.ticket_id, t]))
 
-  // Find newly prioritized tickets (not in previous priority section)
-  const prevPrioritySet = new Set(prevPrioritizedOrder)
-  const newlyPrioritized: string[] = []
-  for (const t of bucket) {
-    if (prioritizedIds.has(t.ticket_id) && !prevPrioritySet.has(t.ticket_id)) {
-      newlyPrioritized.push(t.ticket_id)
+  // Preserve order from prevBucket for tickets that still exist
+  const ordered: KDSTicket[] = []
+  const placed = new Set<string>()
+  for (const prev of prevBucket) {
+    const current = currentMap.get(prev.ticket_id)
+    if (current) {
+      ordered.push(current)
+      placed.add(prev.ticket_id)
     }
   }
 
-  // Build ordered priority list: existing order + new ones appended at end
-  const priorityOrder = [...prevPrioritizedOrder, ...newlyPrioritized]
-  const ticketMap = new Map(bucket.map(t => [t.ticket_id, t]))
+  // Collect new tickets (not in prevBucket)
+  const newTickets = bucket.filter(t => !placed.has(t.ticket_id))
+  if (newestFirst) {
+    // New tickets go to the front
+    ordered.unshift(...newTickets)
+  } else {
+    ordered.push(...newTickets)
+  }
 
-  const prioritized = priorityOrder
-    .map(id => ticketMap.get(id))
-    .filter((t): t is KDSTicket => t != null)
+  // Float prioritized tickets to front (preserving their relative order)
+  if (prioritizedIds.size > 0) {
+    const prioritized = ordered.filter(t => prioritizedIds.has(t.ticket_id))
+    const normal = ordered.filter(t => !prioritizedIds.has(t.ticket_id))
+    return [...prioritized, ...normal]
+  }
 
-  const normal = bucket.filter(t => !prioritizedIds.has(t.ticket_id))
-  const orderedNormal = newestFirst ? [...normal].reverse() : normal
-
-  return [...prioritized, ...orderedNormal]
+  return ordered
 }
 
 /** Bucket tickets into status groups, reusing unchanged array references */

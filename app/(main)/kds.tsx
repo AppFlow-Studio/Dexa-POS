@@ -2140,10 +2140,12 @@ const KitchenDisplayScreen = () => {
     [recallDoneTicket]
   )
 
-  // Stable column assignment: each ticket stays in its column across mutations.
-  // New tickets go to the shortest column. When a ticket is removed, only that
-  // column's remaining tickets shift up — other columns are untouched.
+  // Stable column + position assignment: each ticket stays in its column AND
+  // keeps its relative position across mutations. New tickets go to the shortest
+  // column. When a ticket is removed, only that column's remaining tickets shift
+  // up — other columns are completely untouched.
   const columnAssignmentRef = useRef<Map<string, number>>(new Map())
+  const prevColumnizedRef = useRef<KDSTicket[][]>([])
 
   const activeTabTickets = listDataByStatus[activeStatus]
   const isDoneTab = activeStatus === 'done'
@@ -2151,21 +2153,37 @@ const KitchenDisplayScreen = () => {
   const columnizedTickets = useMemo(() => {
     const cols: KDSTicket[][] = Array.from({ length: columnCount }, () => [])
     const assignments = columnAssignmentRef.current
-    const activeIds = new Set<string>()
+    const ticketMap = new Map(activeTabTickets.map(t => [t.ticket_id, t]))
 
-    // First pass: place tickets that already have a column assignment
-    for (const ticket of activeTabTickets) {
-      activeIds.add(ticket.ticket_id)
-      const prevCol = assignments.get(ticket.ticket_id)
-      if (prevCol !== undefined && prevCol < columnCount) {
-        cols[prevCol].push(ticket)
+    // First pass: preserve order from previous columns for existing tickets
+    const placed = new Set<string>()
+    for (let c = 0; c < prevColumnizedRef.current.length && c < columnCount; c++) {
+      const prevCol = prevColumnizedRef.current[c]
+      if (!prevCol) continue
+      for (const prevTicket of prevCol) {
+        const current = ticketMap.get(prevTicket.ticket_id)
+        if (current) {
+          cols[c].push(current)
+          placed.add(current.ticket_id)
+          assignments.set(current.ticket_id, c)
+        }
       }
     }
 
-    // Second pass: assign new tickets to the shortest column
+    // Second pass: also pick up tickets with column assignments from a different
+    // tab that weren't in prevColumnized (e.g., tab switch back)
     for (const ticket of activeTabTickets) {
+      if (placed.has(ticket.ticket_id)) continue
       const prevCol = assignments.get(ticket.ticket_id)
-      if (prevCol !== undefined && prevCol < columnCount) continue // already placed
+      if (prevCol !== undefined && prevCol < columnCount) {
+        cols[prevCol].push(ticket)
+        placed.add(ticket.ticket_id)
+      }
+    }
+
+    // Third pass: assign truly new tickets to the shortest column
+    for (const ticket of activeTabTickets) {
+      if (placed.has(ticket.ticket_id)) continue
       let shortest = 0
       for (let c = 1; c < columnCount; c++) {
         if (cols[c].length < cols[shortest].length) shortest = c
@@ -2174,11 +2192,12 @@ const KitchenDisplayScreen = () => {
       cols[shortest].push(ticket)
     }
 
-    // Prune stale assignments for tickets no longer in the active tab
+    // Prune stale assignments
     for (const id of assignments.keys()) {
-      if (!activeIds.has(id)) assignments.delete(id)
+      if (!ticketMap.has(id)) assignments.delete(id)
     }
 
+    prevColumnizedRef.current = cols
     return cols
   }, [activeTabTickets, columnCount])
 
