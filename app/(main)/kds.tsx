@@ -240,6 +240,18 @@ function getOrderTypeIcon (type: string | null) {
   return <UtensilsCrossed size={11} color={colors.orderTypeDineIn} />
 }
 
+function getDisplayTableName (tableName: string | null | undefined): string {
+  const value = (tableName || '').trim()
+  if (!value) return ''
+
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+
+  return isUuid ? '' : value
+}
+
 function matchesTypeFilter (
   ticket: KDSTicket,
   filter: OrderTypeFilter
@@ -430,8 +442,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       ticket.order_type?.toLowerCase() === 'dine_in' ||
       ticket.order_type?.toLowerCase() === 'dine in' ||
       !ticket.order_type
+    const displayTableName = getDisplayTableName(ticket.table_name)
     const hasMetaInfo = Boolean(
-      ticket.customer_name || ticket.table_name || ticket.course_number > 1
+      ticket.customer_name || displayTableName || ticket.course_number > 1
     )
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type)
@@ -784,8 +797,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 numberOfLines={1}
               >
                 {ticket.customer_name ? ticket.customer_name : ''}
-                {ticket.customer_name && ticket.table_name ? ' · ' : ''}
-                {ticket.table_name ? `Table ${ticket.table_name}` : ''}
+                {ticket.customer_name && displayTableName ? ' · ' : ''}
+                {displayTableName ? `Table ${displayTableName}` : ''}
                 {ticket.course_number > 1
                   ? ` · Course ${ticket.course_number}`
                   : ''}
@@ -1217,8 +1230,9 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type)
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type)
+    const displayTableName = getDisplayTableName(ticket.table_name)
     const hasMetaInfo = Boolean(
-      ticket.customer_name || ticket.table_name || ticket.course_number > 1
+      ticket.customer_name || displayTableName || ticket.course_number > 1
     )
 
     return (
@@ -1314,8 +1328,8 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                 numberOfLines={1}
               >
                 {ticket.customer_name ? ticket.customer_name : ''}
-                {ticket.customer_name && ticket.table_name ? ' · ' : ''}
-                {ticket.table_name ? `Table ${ticket.table_name}` : ''}
+                {ticket.customer_name && displayTableName ? ' · ' : ''}
+                {displayTableName ? `Table ${displayTableName}` : ''}
                 {ticket.course_number > 1
                   ? ` · Course ${ticket.course_number}`
                   : ''}
@@ -2109,7 +2123,8 @@ const KitchenDisplayScreen = () => {
       advanceTicketStatus(ticketId, itemIds, newStatus)
 
       // Build rich context for undo toast subtitle
-      const tablePart = ticket?.table_name ? `Table ${ticket.table_name}` : ''
+      const displayTableName = getDisplayTableName(ticket?.table_name)
+      const tablePart = displayTableName ? `Table ${displayTableName}` : ''
       const typePart = getOrderTypeLabel(ticket?.order_type ?? null)
       const itemPart = `${ticket?.item_count ?? itemIds.length} items`
       const parts = [tablePart, typePart, itemPart].filter(Boolean)
@@ -2967,8 +2982,10 @@ const KitchenDisplayScreen = () => {
                   numberOfLines={1}
                 >
                   {getOrderTypeLabel(actionMenu.ticket.order_type)}
-                  {actionMenu.ticket.table_name
-                    ? ` · Table ${actionMenu.ticket.table_name}`
+                  {getDisplayTableName(actionMenu.ticket.table_name)
+                    ? ` · Table ${getDisplayTableName(
+                        actionMenu.ticket.table_name
+                      )}`
                     : ''}
                   {actionMenu.ticket.item_count
                     ? ` · ${actionMenu.ticket.item_count} items`

@@ -1,3 +1,4 @@
+import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getDeviceId } from '@/lib/deviceId'
@@ -24,6 +25,7 @@ import type {
   TableSession
 } from '@/types/db-floor-plan-types'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { useRouter } from 'expo-router'
 import {
   AlertTriangle,
   Check,
@@ -266,6 +268,7 @@ const BillSectionContent = ({
   moreOptionsSheetRef?: React.RefObject<BottomSheetMethods>
   discountSheetRef?: React.RefObject<BottomSheetMethods>
 }) => {
+  const router = useRouter()
   // O(1) lookups - single shallow selector reduces subscription overhead
   const activeOrderId = useOrderStore(state => state.activeOrderId)
   const {
@@ -326,8 +329,10 @@ const BillSectionContent = ({
   const sections = useFloorPlanStore(s => s.sections)
   const activeFloorPlanId = useFloorPlanStore(s => s.activeFloorPlanId)
   const setActiveFloorPlan = useFloorPlanStore(s => s.setActiveFloorPlan)
+  const liveSessions = useTableSessionStore(s => s.sessions)
   const { activeEmployeeId } = useEmployeeStore()
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore()
+  const { hideLoading, showLoading } = useLoading()
   const { show } = useToast()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
@@ -463,6 +468,7 @@ const BillSectionContent = ({
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false)
   const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false)
   const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false)
+  const [selectorPartySize, setSelectorPartySize] = useState(1)
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
     null
   )
@@ -499,6 +505,15 @@ const BillSectionContent = ({
     [activeOrderServiceLocation, selectedTable, tables]
   )
 
+  const liveTableStatus = useMemo((): string | null => {
+    if (!displayedTable) return null
+    return (
+      liveSessions[displayedTable.id]?.status ??
+      displayedTable.session?.status ??
+      'available'
+    )
+  }, [displayedTable, liveSessions])
+
   const handleOpenTableSelector = useCallback(() => {
     setSelectedSectionId(
       selectedTable?.section_id ?? displayedTable?.section_id ?? null
@@ -510,6 +525,7 @@ const BillSectionContent = ({
         floorPlans[0]?.id ??
         null
     )
+    setSelectorPartySize(Math.max(1, activeOrder?.guest_count ?? 1))
 
     if (billSectionRef.current?.measureInWindow) {
       billSectionRef.current.measureInWindow((x, y, width, height) => {
@@ -522,6 +538,7 @@ const BillSectionContent = ({
     setIsTableSelectorOpen(true)
   }, [
     activeFloorPlanId,
+    activeOrder?.guest_count,
     displayedTable?.floor_plan_id,
     displayedTable?.section_id,
     floorPlans,
@@ -668,6 +685,28 @@ const BillSectionContent = ({
     [activeOrder?.db_order_id, activeOrderId]
   )
 
+  const linkedTableId = useMemo(() => {
+    if (displayedTable?.id) {
+      return displayedTable.id
+    }
+
+    const linkedEntry = Object.entries(liveSessions).find(([, session]) =>
+      isSessionLinkedToOrder(session)
+    )
+
+    return linkedEntry?.[0] ?? activeOrderServiceLocation ?? null
+  }, [
+    activeOrderServiceLocation,
+    displayedTable?.id,
+    isSessionLinkedToOrder,
+    liveSessions
+  ])
+
+  const linkedTableSession = useMemo(() => {
+    if (!linkedTableId) return null
+    return liveSessions[linkedTableId] ?? null
+  }, [linkedTableId, liveSessions])
+
   const ensureDineInOrderTableSession = useCallback(
     async (table: FloorPlanObject): Promise<boolean> => {
       if (activeOrderType !== 'dine_in' || !activeOrderId) {
@@ -766,14 +805,59 @@ const BillSectionContent = ({
 
       if (!hasActiveDestinationSession) {
         try {
-          await useTableSessionStore.getState().seatGuests({
-            tableIds: [table.id],
-            partySize: Math.max(1, activeOrder?.guest_count ?? 1),
-            createOrder: true,
-            localOrderId: activeOrderId,
-            selected_station: selectedStation?.id,
-            device_id: deviceId
+          const shouldCreateSessionOrder = !activeOrder?.db_order_id
+          console.log(
+            '[BillSection][TableSelect] Seating table session request',
+            {
+              activeOrderId,
+              activeDbOrderId: activeOrder?.db_order_id ?? null,
+              selectedTableId: table.id,
+              shouldCreateSessionOrder,
+              selectorPartySize
+            }
+          )
+
+          const seatingResult = await useTableSessionStore
+            .getState()
+            .seatGuests({
+              tableIds: [table.id],
+              partySize: Math.max(1, selectorPartySize),
+              createOrder: shouldCreateSessionOrder,
+              localOrderId: activeOrderId,
+              selected_station: selectedStation?.id,
+              device_id: deviceId
+            })
+
+          console.log('[BillSection][TableSelect] seatGuests result', {
+            activeOrderId,
+            activeDbOrderId: activeOrder?.db_order_id ?? null,
+            sessionId: seatingResult?.sessionId,
+            returnedOrderId: seatingResult?.orderId,
+            shouldCreateSessionOrder
           })
+
+          // If this order already exists in backend, seat the table session without
+          // creating a second backend order, then explicitly link the existing order.
+          if (
+            !shouldCreateSessionOrder &&
+            activeOrder?.db_order_id &&
+            seatingResult?.sessionId
+          ) {
+            console.log(
+              '[BillSection][TableSelect] Linking existing order to new session',
+              {
+                sessionId: seatingResult.sessionId,
+                dbOrderId: activeOrder.db_order_id,
+                localOrderId: activeOrderId
+              }
+            )
+            await useTableSessionStore
+              .getState()
+              .linkOrderToSession(
+                seatingResult.sessionId,
+                activeOrder.db_order_id
+              )
+          }
         } catch (error) {
           console.error(
             '[BillSection] Failed to start table session for dine-in order:',
@@ -792,6 +876,7 @@ const BillSectionContent = ({
       return true
     },
     [
+      activeOrder?.db_order_id,
       activeOrder?.guest_count,
       activeOrderId,
       activeOrderType,
@@ -801,6 +886,7 @@ const BillSectionContent = ({
       isOnline,
       isSessionLinkedToOrder,
       selectedStation?.id,
+      selectorPartySize,
       show
     ]
   )
@@ -816,6 +902,161 @@ const BillSectionContent = ({
     },
     [ensureDineInOrderTableSession, setSelectedTable, show]
   )
+
+  useEffect(() => {
+    if (
+      activeOrderType !== 'dine_in' ||
+      activeOrderPaidStatus !== 'Paid' ||
+      !linkedTableId ||
+      !linkedTableSession ||
+      linkedTableSession.status === 'paid' ||
+      linkedTableSession.status === 'cleaning'
+    ) {
+      return
+    }
+
+    void useTableSessionStore
+      .getState()
+      .dispatchAction({ type: 'FULL_PAYMENT', tableId: linkedTableId })
+  }, [
+    activeOrderPaidStatus,
+    activeOrderType,
+    linkedTableId,
+    linkedTableSession
+  ])
+
+  const handleCloseSession = useCallback(async () => {
+    if (!activeOrderId || !activeOrder) return
+
+    const isDineInOrder =
+      activeOrder.order_type === 'dine_in' ||
+      activeOrder.order_type === 'Dine In'
+
+    if (!isDineInOrder) {
+      show({
+        title: 'Session Not Available',
+        message: 'Only dine-in orders have table sessions.',
+        type: 'warning'
+      })
+      return
+    }
+
+    if (activeOrder.paid_status !== 'Paid') {
+      show({
+        title: 'Cannot Close Session',
+        message: 'Order must be fully paid before closing the table session.',
+        type: 'error'
+      })
+      return
+    }
+
+    if (!linkedTableId) {
+      show({
+        title: 'No Table Linked',
+        message: 'This order is not linked to an active table session.',
+        type: 'warning'
+      })
+      return
+    }
+
+    showLoading('Closing session...')
+
+    try {
+      const sessionStore = useTableSessionStore.getState()
+
+      if (activeOrder.check_status !== 'Closed') {
+        if (!activeOrder.db_order_id) {
+          throw new Error(
+            'Order must be synced to close check before closing session'
+          )
+        }
+
+        if (
+          linkedTableSession &&
+          !['check_presented', 'paying', 'paid', 'cleaning'].includes(
+            linkedTableSession.status
+          )
+        ) {
+          const presentCheckResult = await sessionStore.dispatchAction({
+            type: 'PRESENT_CHECK',
+            tableId: linkedTableId
+          })
+
+          if (!presentCheckResult.success) {
+            throw new Error(
+              presentCheckResult.error || 'Failed to present check'
+            )
+          }
+        }
+
+        const closeCheckResult = await sessionStore.dispatchAction({
+          type: 'CLOSE_CHECK',
+          tableId: linkedTableId,
+          orderId: activeOrder.id,
+          dbOrderId: activeOrder.db_order_id
+        })
+
+        if (!closeCheckResult.success) {
+          throw new Error(closeCheckResult.error || 'Failed to close check')
+        }
+
+        useOrderStore
+          .getState()
+          .updateActiveOrderDetails({ check_status: 'Closed' })
+      }
+
+      const currentSession = sessionStore.getSession(linkedTableId)
+      if (
+        currentSession &&
+        currentSession.status !== 'paid' &&
+        currentSession.status !== 'cleaning'
+      ) {
+        const paymentTransition = await sessionStore.dispatchAction({
+          type: 'FULL_PAYMENT',
+          tableId: linkedTableId
+        })
+
+        if (!paymentTransition.success) {
+          throw new Error(
+            paymentTransition.error ||
+              'Failed to finalize table session before closing'
+          )
+        }
+      }
+
+      const clearResult = await sessionStore.dispatchAction({
+        type: 'CLEAR_TABLE',
+        tableId: linkedTableId,
+        orderId: activeOrderId
+      })
+
+      if (!clearResult.success) {
+        throw new Error(clearResult.error || 'Failed to close session')
+      }
+
+      show({
+        title: 'Session Closed',
+        message: 'Table marked for cleaning.',
+        type: 'success'
+      })
+    } catch (error: any) {
+      show({
+        title: 'Failed to Close Session',
+        message: error.message || 'An unexpected error occurred.',
+        type: 'error'
+      })
+    } finally {
+      hideLoading()
+    }
+  }, [
+    activeOrder,
+    activeOrderId,
+    hideLoading,
+    linkedTableId,
+    linkedTableSession,
+    show,
+    showLoading
+  ])
 
   const handleClearCart = useCallback(() => {
     if (!activeOrderId || !activeOrder) return
@@ -877,12 +1118,26 @@ const BillSectionContent = ({
       setIsProcessing(false)
       return
     }
+
+    if (
+      activeOrderType === 'dine_in' &&
+      linkedTableId &&
+      linkedTableSession &&
+      !['check_presented', 'paying', 'paid', 'cleaning'].includes(
+        linkedTableSession.status
+      )
+    ) {
+      void useTableSessionStore
+        .getState()
+        .dispatchAction({ type: 'PRESENT_CHECK', tableId: linkedTableId })
+    }
+
     // Directly open the payment bottom sheet to the method selection
     usePaymentStore
       .getState()
       .open(
         'Card',
-        activeOrderServiceLocation || null,
+        linkedTableId || activeOrderServiceLocation || null,
         'payment-method-selection'
       )
   }
@@ -902,8 +1157,15 @@ const BillSectionContent = ({
       return
     }
 
-    if (activeOrderType === 'dine_in' && selectedTable) {
-      const sessionReady = await ensureDineInOrderTableSession(selectedTable)
+    const dineInTargetTable = selectedTable ?? displayedTable
+    const pendingKitchenItems = cart.filter(
+      item => !item.kitchen_status || item.kitchen_status === 'new'
+    )
+
+    if (activeOrderType === 'dine_in' && dineInTargetTable) {
+      const sessionReady = await ensureDineInOrderTableSession(
+        dineInTargetTable
+      )
       if (!sessionReady) {
         show({
           title: 'Session Required',
@@ -913,34 +1175,28 @@ const BillSectionContent = ({
         })
         return
       }
-      // Table session status updates are now handled through session-based APIs
+
+      if (pendingKitchenItems.length > 0) {
+        useTableSessionStore.getState().dispatch(dineInTargetTable.id, {
+          type: 'PATCH',
+          updates: {
+            status: 'ordered',
+            order_id: activeOrder?.db_order_id ?? activeOrderId
+          }
+        })
+      }
+
       clearSelectedTable()
     }
     // Auto-print is now handled centrally inside sendNewItemsToKitchen
-    sendNewItemsToKitchen()
+    await sendNewItemsToKitchen()
   }
 
   // OPTIMIZED: Wrap callback with useCallback
-  // Reuse existing empty draft order if one exists (prevents inflating order counts)
+  // Explicit New Order action should always create a fresh order number.
   const handleStartNewOrder = useCallback(() => {
-    // Check if there's already an empty draft order (not synced to backend)
-    const ordersById = useOrderStore.getState().ordersById
-    const existingEmptyDraft = Object.values(ordersById).find(
-      o =>
-        !o.db_order_id && // Not synced to backend
-        o.order_status === 'draft' &&
-        o.items.length === 0 &&
-        o.service_location_id === null // Not assigned to a table
-    )
-
-    if (existingEmptyDraft) {
-      // Reuse existing empty draft
-      setActiveOrder(existingEmptyDraft.id)
-    } else {
-      // Create new order only if no reusable draft exists
-      const newOrder = startNewOrder()
-      setActiveOrder(newOrder.id)
-    }
+    const newOrder = startNewOrder()
+    setActiveOrder(newOrder.id)
   }, [startNewOrder, setActiveOrder])
 
   if (!activeOrderId)
@@ -958,7 +1214,8 @@ const BillSectionContent = ({
         <TouchableOpacity
           className='px-4 py-2 bg-teal-600 rounded-lg active:opacity-80'
           onPress={() => {
-            startNewOrder()
+            const newOrder = startNewOrder()
+            setActiveOrder(newOrder.id)
           }}
         >
           <Text
@@ -1018,6 +1275,35 @@ const BillSectionContent = ({
                 Send
               </Text>
             </TouchableOpacity>
+            {activeOrderType === 'dine_in' && linkedTableId ? (
+              <TouchableOpacity
+                onPress={handleCloseSession}
+                disabled={activeOrderPaidStatus !== 'Paid'}
+                className='h-8 px-3 rounded-lg flex-row items-center justify-center'
+                style={{
+                  backgroundColor:
+                    activeOrderPaidStatus === 'Paid'
+                      ? colors.warning
+                      : colors.card,
+                  borderWidth: activeOrderPaidStatus === 'Paid' ? 0 : 1,
+                  borderColor: colors.border,
+                  opacity: activeOrderPaidStatus === 'Paid' ? 1 : 0.5
+                }}
+              >
+                <Text
+                  style={{
+                    color:
+                      activeOrderPaidStatus === 'Paid'
+                        ? colors.onSolid
+                        : colors.label,
+                    fontSize: 12,
+                    fontWeight: '500'
+                  }}
+                >
+                  Close Session
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <View className='flex-row items-center gap-1.5'>
@@ -1056,7 +1342,13 @@ const BillSectionContent = ({
               ? `Table ${displayedTable.name}`
               : 'Select Table'
           }
+          tableStatus={liveTableStatus}
           onOpenTableSelector={handleOpenTableSelector}
+          onViewTable={
+            displayedTable
+              ? () => router.push(`/tables/${displayedTable.id}` as any)
+              : undefined
+          }
         />
       )}
 
@@ -1134,7 +1426,10 @@ const BillSectionContent = ({
                   >
                     {
                       filteredTableOptions.filter(
-                        t => (t.session?.status ?? 'available') === 'available'
+                        t =>
+                          (liveSessions[t.id]?.status ??
+                            t.session?.status ??
+                            'available') === 'available'
                       ).length
                     }{' '}
                     of {filteredTableOptions.length} available
@@ -1253,6 +1548,103 @@ const BillSectionContent = ({
                   })}
                 </ScrollView>
               )}
+
+              {/* Party size stepper */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginTop: 10,
+                  paddingHorizontal: 2
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.label,
+                    fontSize: 12,
+                    fontWeight: '600'
+                  }}
+                >
+                  Guests
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    backgroundColor: colors.inset,
+                    borderRadius: 8,
+                    paddingHorizontal: 4,
+                    paddingVertical: 2
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() =>
+                      setSelectorPartySize(p => Math.max(1, p - 1))
+                    }
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 6,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor:
+                        selectorPartySize <= 1 ? 'transparent' : colors.card,
+                      opacity: selectorPartySize <= 1 ? 0.4 : 1
+                    }}
+                    disabled={selectorPartySize <= 1}
+                  >
+                    <Text
+                      style={{
+                        color: colors.heading,
+                        fontSize: 16,
+                        fontWeight: '600',
+                        lineHeight: 20
+                      }}
+                    >
+                      −
+                    </Text>
+                  </TouchableOpacity>
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontSize: 14,
+                      fontWeight: '700',
+                      minWidth: 20,
+                      textAlign: 'center'
+                    }}
+                  >
+                    {selectorPartySize}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setSelectorPartySize(p => Math.min(99, p + 1))
+                    }
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 6,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.card
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.heading,
+                        fontSize: 16,
+                        fontWeight: '600',
+                        lineHeight: 20
+                      }}
+                    >
+                      +
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
 
             {/* Divider */}
@@ -1291,17 +1683,24 @@ const BillSectionContent = ({
                   }}
                 >
                   {filteredTableOptions.map(table => {
+                    const liveStatusKey =
+                      liveSessions[table.id]?.status ??
+                      table.session?.status ??
+                      'available'
                     const statusLabel = getTableStatusLabel(table)
-                    const statusKey = table.session?.status ?? 'available'
                     const statusColor =
-                      TABLE_STATUS_COLORS[statusKey] || colors.muted
+                      TABLE_STATUS_COLORS[liveStatusKey] || colors.muted
                     const isCurrentlyAssigned =
                       table.id === activeOrderServiceLocation
+                    const tableSession = liveSessions[table.id]
+                    const isLinkedToThisOrder =
+                      isSessionLinkedToOrder(tableSession)
                     const isSelected =
                       selectedTable?.id === table.id ||
                       (!selectedTable && isCurrentlyAssigned)
-                    const isAvailable = statusKey === 'available'
-                    const isSelectable = isAvailable || isCurrentlyAssigned
+                    const isAvailable = liveStatusKey === 'available'
+                    const isSelectable =
+                      isAvailable || isCurrentlyAssigned || isLinkedToThisOrder
                     return (
                       <TouchableOpacity
                         key={table.id}

@@ -868,6 +868,13 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         seatGuests: async params => {
           const isOnline = getIsOnline()
           const supabase = getClient()
+          console.log('[TableSessionStore][seatGuests] Request received', {
+            tableIds: params.tableIds,
+            localOrderId: params.localOrderId ?? null,
+            createOrderParam: params.createOrder,
+            isOnline,
+            hasSupabaseClient: !!supabase
+          })
 
           const normalizeTableIds = (ids: string[]) =>
             Array.from(new Set(ids)).sort((left, right) =>
@@ -881,7 +888,30 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               require('@/stores/useOrderStore') as typeof import('@/stores/useOrderStore')
             providedDbOrderId =
               useOrderStore.getState().ordersById[providedOrderId]?.db_order_id
+
+            console.log(
+              '[TableSessionStore][seatGuests] Resolved provided order',
+              {
+                providedOrderId,
+                providedDbOrderId: providedDbOrderId ?? null
+              }
+            )
           }
+
+          // Create a session order only when explicitly requested AND there is no
+          // existing backend order yet. A localOrderId alone should not block order creation.
+          const shouldCreateOrder =
+            params.createOrder !== false && !providedDbOrderId
+
+          console.log(
+            '[TableSessionStore][seatGuests] Derived order creation mode',
+            {
+              providedOrderId: providedOrderId ?? null,
+              providedDbOrderId: providedDbOrderId ?? null,
+              createOrderParam: params.createOrder,
+              shouldCreateOrder
+            }
+          )
 
           const orderLinkIds = new Set<string>()
           if (providedOrderId) orderLinkIds.add(providedOrderId)
@@ -917,12 +947,18 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                 )
 
               if (sameTarget) {
+                console.log(
+                  '[TableSessionStore][seatGuests] Reusing existing session on same table target',
+                  {
+                    sessionId: existingSession.id,
+                    existingSessionOrderId: existingSession.order_id,
+                    providedOrderId: providedOrderId ?? null,
+                    shouldCreateOrder
+                  }
+                )
                 return {
                   sessionId: existingSession.id,
-                  orderId:
-                    params.createOrder !== false
-                      ? providedOrderId ?? existingSession.order_id
-                      : undefined
+                  orderId: providedOrderId ?? existingSession.order_id
                 }
               }
 
@@ -946,12 +982,19 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
               await useFloorPlanStore.getState().loadFloorPlanStatus()
 
+              console.log(
+                '[TableSessionStore][seatGuests] Transferred existing session to new table(s)',
+                {
+                  sessionId: existingSession.id,
+                  providedOrderId: providedOrderId ?? null,
+                  providedDbOrderId: providedDbOrderId ?? null,
+                  targetTableIds: params.tableIds
+                }
+              )
+
               return {
                 sessionId: existingSession.id,
-                orderId:
-                  params.createOrder !== false
-                    ? providedOrderId ?? existingSession.order_id
-                    : undefined
+                orderId: providedOrderId ?? existingSession.order_id
               }
             }
           }
@@ -984,7 +1027,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             party_size: params.partySize,
             guest_name: params.guestName,
             seated_at: new Date().toISOString(),
-            order_id: params.createOrder !== false ? localOrderId : undefined,
+            order_id:
+              params.localOrderId ||
+              (shouldCreateOrder ? localOrderId : undefined),
             reservation_id: params.reservationId ?? null,
             current_course: 1,
             needs_attention: false,
@@ -1002,7 +1047,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           )
 
           // Create optimistic order if caller didn't provide one (Path B & C)
-          if (!params.localOrderId && params.createOrder !== false) {
+          if (!params.localOrderId && shouldCreateOrder) {
             const { useOrderStore } = require('@/stores/useOrderStore')
             useOrderStore.getState().startNewOrder({
               tableId: params.tableIds[0],
@@ -1049,7 +1094,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                   guestPhone: params.guestPhone,
                   reservationId: params.reservationId,
                   waitlistId: params.waitlistId,
-                  createOrder: params.createOrder ?? true,
+                  createOrder: shouldCreateOrder,
                   localOrderId: localOrderId,
                   optimisticSession
                 },
@@ -1061,6 +1106,18 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                   deviceId,
                   stationId,
                   batchDispatch: get().batchDispatch
+                }
+              )
+
+              console.log(
+                '[TableSessionStore][seatGuests] handleSeatingEffect result',
+                {
+                  success: result.success,
+                  sessionId: result.sessionId,
+                  orderId: result.orderId,
+                  shouldCreateOrder,
+                  localOrderId,
+                  providedOrderId: params.localOrderId ?? null
                 }
               )
 
@@ -1105,7 +1162,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                     guestNotes: params.guestNotes,
                     reservationId: params.reservationId,
                     waitlistId: params.waitlistId,
-                    createOrder: params.createOrder,
+                    createOrder: shouldCreateOrder,
                     localSessionId,
                     merchantId,
                     staffId,
@@ -1148,7 +1205,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                   guestNotes: params.guestNotes,
                   reservationId: params.reservationId,
                   waitlistId: params.waitlistId,
-                  createOrder: params.createOrder,
+                  createOrder: shouldCreateOrder,
                   localSessionId,
                   merchantId,
                   staffId,
@@ -1173,7 +1230,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                 guestNotes: params.guestNotes,
                 reservationId: params.reservationId,
                 waitlistId: params.waitlistId,
-                createOrder: params.createOrder,
+                createOrder: shouldCreateOrder,
                 localSessionId,
                 merchantId,
                 staffId,
@@ -1188,7 +1245,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // Return local IDs so the UI can proceed
           return {
             sessionId: localSessionId,
-            orderId: params.createOrder !== false ? localOrderId : undefined
+            orderId:
+              params.localOrderId ||
+              (shouldCreateOrder ? localOrderId : undefined)
           }
         },
 

@@ -2411,6 +2411,25 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
             )
           }
 
+          const { data: backendOrder, error: verifyError } =
+            await _supabaseClient
+              .from('orders')
+              .select('status')
+              .eq('id', resolvedOrderId)
+              .single()
+
+          if (verifyError || backendOrder?.status === 'draft') {
+            console.warn(
+              '[OfflineSync:send_to_kitchen] Backend order remained draft after status update; deferring item sync',
+              {
+                resolvedOrderId,
+                verifyError,
+                backendStatus: backendOrder?.status
+              }
+            )
+            return false
+          }
+
           // 3. Update resolved item statuses
           if (resolvedItemIds.length > 0) {
             const { error: itemError } =
