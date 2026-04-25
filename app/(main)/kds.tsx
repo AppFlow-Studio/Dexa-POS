@@ -1,3 +1,4 @@
+import KDSSettingsModal from '@/components/kds/KDSSettingsModal'
 import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import PinInputModal from '@/components/timeclock/PinInputModal'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
@@ -1526,6 +1527,9 @@ const KitchenDisplayScreen = () => {
     })
   )
 
+  // Settings modal state
+  const [settingsVisible, setSettingsVisible] = useState(false)
+
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false)
   const [pendingBulkAction, setPendingBulkAction] = useState<
@@ -1574,6 +1578,20 @@ const KitchenDisplayScreen = () => {
       stationTapCountRef.current = 0
     }, 600)
   }, [handleKDSLogout])
+
+  // Refresh button handler — fetches tickets + latest KDS config
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const promises: Promise<void>[] = []
+      if (selectedStore?.id) promises.push(fetchTickets(selectedStore.id))
+      if (selectedStation?.id) promises.push(fetchKDSDisplay(selectedStation.id))
+      await Promise.all(promises)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshing, selectedStore?.id, selectedStation?.id, fetchTickets, fetchKDSDisplay])
 
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
   const pendingTickets = useKDSStore(s => s.ticketsByStatus.pending)
@@ -2406,75 +2424,24 @@ const KitchenDisplayScreen = () => {
               style={{ width: 1, height: 20, backgroundColor: colors.border }}
             />
 
-            {/* KDS Display Badge */}
-            {displayName && (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: colors.teal + '15',
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: colors.teal + '30',
-                  gap: 4
-                }}
-              >
-                <Flame size={13} color={colors.urgencyElevated} />
-                <Text
-                  style={{
-                    color: colors.heading,
-                    fontSize: 12,
-                    fontWeight: '600'
-                  }}
-                  numberOfLines={1}
-                >
-                  {displayName}
-                </Text>
-                {routingMode === 'all' ? (
-                  <>
-                    <View
-                      style={{
-                        width: 1,
-                        height: 14,
-                        backgroundColor: colors.muted
-                      }}
-                    />
-                    <Text
-                      style={{
-                        color: colors.success,
-                        fontSize: 11,
-                        fontWeight: '700'
-                      }}
-                    >
-                      EXPO
-                    </Text>
-                  </>
-                ) : enrichedRules.length > 0 ? (
-                  <>
-                    <View
-                      style={{
-                        width: 1,
-                        height: 14,
-                        backgroundColor: colors.muted
-                      }}
-                    />
-                    <CircleDotDashed size={12} color={colors.label} />
-                    <Text
-                      style={{
-                        color: colors.label,
-                        fontSize: 11,
-                        fontWeight: '500'
-                      }}
-                      numberOfLines={1}
-                    >
-                      {enrichedRules.map(r => r.label).join(', ')}
-                    </Text>
-                  </>
-                ) : null}
-              </View>
-            )}
+            {/* Refresh Button (tap = refresh, long-press = settings) */}
+            <TouchableOpacity
+              onPress={handleRefresh}
+              onLongPress={() => setSettingsVisible(true)}
+              delayLongPress={400}
+              style={{
+                padding: 6,
+                borderRadius: 8,
+                backgroundColor: refreshing ? colors.teal + '15' : 'transparent',
+                borderWidth: 1,
+                borderColor: refreshing ? colors.teal + '30' : colors.border,
+              }}
+            >
+              <RotateCcw
+                size={14}
+                color={refreshing ? colors.teal : colors.label}
+              />
+            </TouchableOpacity>
 
             {/* Auto-fire badge */}
             {kdsAutoFireEnabled && kdsAutoFireDelayMinutes ? (
@@ -2555,7 +2522,7 @@ const KitchenDisplayScreen = () => {
               style={{ width: 1, height: 20, backgroundColor: colors.border }}
             />
 
-            {/* Station Name | Time + Dot */}
+            {/* Station Name + EXPO tag | Time + Dot */}
             <View
               style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
             >
@@ -2563,6 +2530,7 @@ const KitchenDisplayScreen = () => {
                 <TouchableOpacity
                   onPress={handleStationTripleTap}
                   activeOpacity={1}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                 >
                   <Text
                     style={{
@@ -2573,6 +2541,17 @@ const KitchenDisplayScreen = () => {
                   >
                     {selectedStation.station_name}
                   </Text>
+                  {routingMode === 'all' && (
+                    <Text
+                      style={{
+                        color: colors.success,
+                        fontSize: 11,
+                        fontWeight: '700'
+                      }}
+                    >
+                      EXPO
+                    </Text>
+                  )}
                 </TouchableOpacity>
               )}
               {selectedStation?.station_name && (
@@ -3114,6 +3093,12 @@ const KitchenDisplayScreen = () => {
           })()}
         </Pressable>
       )}
+
+      {/* ─── KDS Settings Modal ─── */}
+      <KDSSettingsModal
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+      />
 
       {/* ─── PIN Modal ─── */}
       <PinInputModal

@@ -74,7 +74,7 @@ const ToggleRow = ({
     }}
   >
     <View style={{ flex: 1, marginRight: 12 }}>
-      <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500" }}>{label}</Text>
+      <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "500" }}>{label}</Text>
       {subtitle && (
         <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
       )}
@@ -83,7 +83,6 @@ const ToggleRow = ({
       value={value}
       onValueChange={onToggle}
       trackColor={{ false: colors.border, true: colors.teal }}
-      thumbColor="#fff"
     />
   </View>
 );
@@ -114,7 +113,7 @@ function DropdownRow<T extends string>({
         borderBottomColor: colors.border,
       }}
     >
-      <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500", flex: 1 }}>{label}</Text>
+      <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "500", flex: 1 }}>{label}</Text>
       <View>
         <TouchableOpacity
           onPress={() => setOpen(!open)}
@@ -129,7 +128,7 @@ function DropdownRow<T extends string>({
             borderColor: colors.border,
           }}
         >
-          <Text style={{ color: "#fff", fontSize: 12, marginRight: 4 }}>{currentLabel}</Text>
+          <Text style={{ color: colors.label, fontSize: 12, marginRight: 4 }}>{currentLabel}</Text>
           <ChevronDown size={14} color={colors.muted} />
         </TouchableOpacity>
         {open && (
@@ -139,7 +138,7 @@ function DropdownRow<T extends string>({
               top: 36,
               right: 0,
               zIndex: 50,
-              backgroundColor: colors.panel,
+              backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: 8,
@@ -161,12 +160,12 @@ function DropdownRow<T extends string>({
                 style={{
                   paddingHorizontal: 12,
                   paddingVertical: 8,
-                  backgroundColor: opt.value === value ? "rgba(59,130,246,0.15)" : "transparent",
+                  backgroundColor: opt.value === value ? colors.info + "20" : "transparent",
                 }}
               >
                 <Text
                   style={{
-                    color: opt.value === value ? colors.info : "#fff",
+                    color: opt.value === value ? colors.info : colors.heading,
                     fontSize: 12,
                     fontWeight: opt.value === value ? "600" : "400",
                   }}
@@ -224,7 +223,7 @@ function SoundPresetRow({
               borderColor: colors.border,
             }}
           >
-            <Text style={{ color: "#fff", fontSize: 11, marginRight: 4 }}>{currentLabel}</Text>
+            <Text style={{ color: colors.label, fontSize: 11, marginRight: 4 }}>{currentLabel}</Text>
             <ChevronDown size={12} color={colors.muted} />
           </TouchableOpacity>
           {open && (
@@ -234,7 +233,7 @@ function SoundPresetRow({
                 top: 30,
                 right: 0,
                 zIndex: 50,
-                backgroundColor: colors.panel,
+                backgroundColor: colors.card,
                 borderWidth: 1,
                 borderColor: colors.border,
                 borderRadius: 8,
@@ -256,12 +255,12 @@ function SoundPresetRow({
                   style={{
                     paddingHorizontal: 10,
                     paddingVertical: 6,
-                    backgroundColor: opt.value === value ? "rgba(59,130,246,0.15)" : "transparent",
+                    backgroundColor: opt.value === value ? colors.info + "20" : "transparent",
                   }}
                 >
                   <Text
                     style={{
-                      color: opt.value === value ? colors.info : "#fff",
+                      color: opt.value === value ? colors.info : colors.heading,
                       fontSize: 11,
                       fontWeight: opt.value === value ? "600" : "400",
                     }}
@@ -320,7 +319,7 @@ const StepperRow = ({
       borderBottomColor: colors.border,
     }}
   >
-    <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500", flex: 1 }}>{label}</Text>
+    <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "500", flex: 1 }}>{label}</Text>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <TouchableOpacity
         onPress={() => onChange(Math.max(min, value - step))}
@@ -337,9 +336,9 @@ const StepperRow = ({
           opacity: value <= min ? 0.4 : 1,
         }}
       >
-        <Minus size={14} color="#fff" />
+        <Minus size={14} color={colors.label} />
       </TouchableOpacity>
-      <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600", minWidth: 36, textAlign: "center" }}>
+      <Text style={{ color: colors.heading, fontSize: 14, fontWeight: "600", minWidth: 36, textAlign: "center" }}>
         {value}{suffix ?? ""}
       </Text>
       <TouchableOpacity
@@ -357,7 +356,7 @@ const StepperRow = ({
           opacity: value >= max ? 0.4 : 1,
         }}
       >
-        <Plus size={14} color="#fff" />
+        <Plus size={14} color={colors.label} />
       </TouchableOpacity>
     </View>
   </View>
@@ -547,7 +546,7 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Settings size={18} color={colors.teal} />
-                <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Settings</Text>
+                <Text style={{ color: colors.heading, fontSize: 16, fontWeight: "700" }}>Settings</Text>
                 <View
                   style={{
                     backgroundColor: colors.teal,
@@ -556,7 +555,7 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                     borderRadius: 6,
                   }}
                 >
-                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>KDS</Text>
+                  <Text style={{ color: colors.onSolid, fontSize: 10, fontWeight: "700" }}>KDS</Text>
                 </View>
               </View>
               <TouchableOpacity
@@ -588,7 +587,7 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                   >
                     <Text
                       style={{
-                        color: isActive ? "#fff" : colors.label,
+                        color: isActive ? colors.onSolid : colors.label,
                         fontSize: 13,
                         fontWeight: isActive ? "700" : "500",
                         textTransform: "capitalize",
