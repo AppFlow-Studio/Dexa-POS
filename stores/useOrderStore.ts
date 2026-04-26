@@ -3362,6 +3362,8 @@ export const useOrderStore = create<OrderState>()(
                         mapPaymentStatus(backendOrder.payment_status) &&
                       localOrder.order_status === backendOrder.status &&
                       localOrder.total_amount === backendOrder.card_total &&
+                      (localOrder.total_discount ?? 0) ===
+                        (backendOrder.discount_amount ?? 0) &&
                       localOrder.check_status === backendOrder.check_status &&
                       localOrder.items.length ===
                         (broadcastItemCount ?? localOrder.items.length) &&
@@ -3484,6 +3486,10 @@ export const useOrderStore = create<OrderState>()(
                       ? transformBroadcastItems(backendOrder.order_items)
                       : null
 
+                    // Track whether we preserved local discount state over a
+                    // conflicting broadcast (needs to be accessible after set())
+                    let localHasConfirmedDiscounts = false
+
                     set(state => {
                       const existingOrder = state.ordersById[localOrderId]
                       if (!existingOrder) return
@@ -3494,6 +3500,13 @@ export const useOrderStore = create<OrderState>()(
                         isOrderPendingVoid(localOrderId)
                       )
                         return
+
+                      // Determine if local order has discount state worth preserving.
+                      // Broadcasts omit order_discounts metadata, so discount_amount=0
+                      // may be stale when a confirmed discount exists locally.
+                      localHasConfirmedDiscounts =
+                        (existingOrder.applied_discounts?.length ?? 0) > 0 &&
+                        existingOrder.checkDiscount != null
 
                       // Phase 2.5: Merge broadcast items with local items
                       // Strategy: Keep pending local items, update synced items from broadcast
@@ -3726,13 +3739,21 @@ export const useOrderStore = create<OrderState>()(
                       const updatedOrder: OrderProfile = {
                         ...existingOrder,
 
-                        // Clear discount metadata if backend shows no discount
-                        ...(backendOrder.discount_amount === 0 &&
-                        !hasPendingChanges
-                          ? { checkDiscount: null, applied_discounts: [] }
+                        // Guard discount metadata: never clear locally-confirmed
+                        // discounts from a broadcast header alone — broadcasts omit
+                        // order_discounts metadata, so discount_amount=0 may be stale.
+                        ...(backendOrder.discount_amount === 0 && !hasPendingChanges
+                          ? localHasConfirmedDiscounts
+                            ? {} // Preserve local — verification sync queued below
+                            : { checkDiscount: null, applied_discounts: [] }
                           : {}),
-                        // Update total_discount from broadcast
-                        total_discount: backendOrder.discount_amount,
+                        // Preserve total_discount when local has confirmed discounts
+                        // and broadcast shows 0 (likely stale).
+                        total_discount:
+                          backendOrder.discount_amount === 0 &&
+                          localHasConfirmedDiscounts
+                            ? existingOrder.total_discount
+                            : backendOrder.discount_amount,
 
                         // Only update payment totals when broadcast is not stale
                         ...(isPaymentLocallyAhead
@@ -3835,7 +3856,11 @@ export const useOrderStore = create<OrderState>()(
                         state.activeOrderTotal = backendOrder.card_total
                         state.activeOrderTax = backendOrder.card_tax_amount
                         state.activeOrderSubtotal = backendOrder.card_subtotal
-                        state.activeOrderDiscount = backendOrder.discount_amount
+                        state.activeOrderDiscount =
+                          backendOrder.discount_amount === 0 &&
+                          localHasConfirmedDiscounts
+                            ? existingOrder.total_discount ?? 0
+                            : backendOrder.discount_amount
                         if (!isPaymentLocallyAhead) {
                           state.activeOrderOutstandingTotal =
                             backendOrder.amount_due
@@ -3845,6 +3870,20 @@ export const useOrderStore = create<OrderState>()(
                         state.activeOrderTotalCash = backendOrder.cash_total
                       }
                     })
+
+                    // Discount mismatch: broadcast says 0 but local has confirmed
+                    // discounts. Queue authoritative sync (bypasses cooldown) to
+                    // verify discount still exists in DB.
+                    if (
+                      backendOrder.discount_amount === 0 &&
+                      localHasConfirmedDiscounts &&
+                      !hasPendingChanges
+                    ) {
+                      lastOrderDetailSyncAt.delete(dbOrderId)
+                      queueMicrotask(() => {
+                        get().syncOrderFromBackendComplete(localOrderId)
+                      })
+                    }
 
                     // === PHASE 3: Queue updates if local changes pending ===
                     if (hasPendingChanges) {
@@ -4304,6 +4343,22 @@ export const useOrderStore = create<OrderState>()(
                   get().syncOrderFromBackendComplete(dbOrderId)
                 })
               }
+            } else if (
+              (!backendOrder.discount_amount ||
+                backendOrder.discount_amount === 0) &&
+              existing?.checkDiscount &&
+              (existing.applied_discounts?.length ?? 0) > 0
+            ) {
+              // Broadcast shows no discount but local has confirmed metadata.
+              // Preserve local state — broadcast header may be stale (discount
+              // RPC not yet reflected). Queue authoritative sync to verify.
+              orderProfile.checkDiscount = existing.checkDiscount
+              orderProfile.applied_discounts = existing.applied_discounts
+              orderProfile.total_discount = existing.total_discount
+              lastOrderDetailSyncAt.delete(dbOrderId)
+              queueMicrotask(() => {
+                get().syncOrderFromBackendComplete(dbOrderId)
+              })
             }
 
             // v2 broadcast preservation: keep existing data that header-only broadcast omits
@@ -4352,6 +4407,21 @@ export const useOrderStore = create<OrderState>()(
                 existing.order_refund_items
               ) {
                 orderProfile.order_refund_items = existing.order_refund_items
+              }
+
+              // Preserve discount metadata (broadcasts never include order_discounts)
+              if (
+                existing.checkDiscount &&
+                (existing.applied_discounts?.length ?? 0) > 0
+              ) {
+                orderProfile.checkDiscount = existing.checkDiscount
+                orderProfile.applied_discounts = existing.applied_discounts
+                if (
+                  !backendOrder.discount_amount ||
+                  backendOrder.discount_amount === 0
+                ) {
+                  orderProfile.total_discount = existing.total_discount
+                }
               }
             }
 
