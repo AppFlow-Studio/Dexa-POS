@@ -7,7 +7,6 @@ import TableContextSheet from '@/components/tables/TableContextSheet'
 import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
 import { useLoading } from '@/contexts/LoadingContext'
-import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
@@ -168,12 +167,7 @@ const TablesScreen = () => {
   }, [searchInput])
 
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore()
-  const { loggedInEmployee } = useEmployeeStore()
   const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
-
-  // Subscribe to realtime floor updates to trigger visual refresh
-  // This ensures the floor plan immediately reflects changes from other stations
-  const { floor } = useLocationRealtime()
 
   useEffect(() => {
     if (!activeFloorPlanId && floorPlans.length > 0) {

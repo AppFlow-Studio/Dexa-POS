@@ -47,7 +47,7 @@ import React, {
   useRef,
   useState
 } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { InteractionManager, Text, TouchableOpacity, View } from 'react-native'
 import { Portal as Teleport } from 'react-native-teleport'
 
 // Stable empty array to avoid new reference on every render
@@ -208,7 +208,12 @@ const TableOrderView = React.forwardRef<
   // Heavy close cleanup is deferred to unmount so it doesn't block the tap-to-close path.
   useEffect(() => {
     return () => {
-      useModifierSidebarStore.getState().cancelAndRemoveDraft()
+      queueMicrotask(() => {
+        const store = useModifierSidebarStore.getState()
+        if (store.isOpen) {
+          store.cancelAndRemoveDraft()
+        }
+      })
     }
   }, [])
 
@@ -251,10 +256,10 @@ const TableOrderView = React.forwardRef<
       return
     }
     // Fallback: progressive hydration for uncached orders.
-    // Defer by one frame so stage 1 paints first, then start stage 2 immediately.
+    // Defer stage 2 until after current interactions/transition work settles.
     setRenderStage(1)
     let rafId: number | null = null
-    const timer = setTimeout(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
       rafId = requestAnimationFrame(() => {
         setRenderStage(2)
         if (__DEV__) {
@@ -266,9 +271,9 @@ const TableOrderView = React.forwardRef<
           )
         }
       })
-    }, 0)
+    })
     return () => {
-      clearTimeout(timer)
+      task.cancel()
       if (rafId !== null) cancelAnimationFrame(rafId)
     }
   }, [currentTableId]) // renderStage intentionally NOT in deps
