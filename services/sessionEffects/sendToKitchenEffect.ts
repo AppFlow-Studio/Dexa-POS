@@ -106,6 +106,29 @@ export async function sendToKitchenEffect (
       return
     }
 
+    const { data: backendOrder, error: verifyError } = await supabase
+      .from('orders')
+      .select('status')
+      .eq('id', dbOrderId)
+      .single()
+
+    if (verifyError || backendOrder?.status === 'draft') {
+      console.warn(
+        '[sendToKitchenEffect] Order still draft after status update, deferring item sync',
+        {
+          dbOrderId,
+          verifyError,
+          backendStatus: backendOrder?.status
+        }
+      )
+      await queueFailedOperation(
+        'send_to_kitchen',
+        { localOrderId: orderId, localItemIds: itemIds },
+        orderId
+      )
+      return
+    }
+
     const targetStatus = getKitchenSentStatus()
     const result = await OrderService.bulkUpdateOrderItemStatus(
       supabase,

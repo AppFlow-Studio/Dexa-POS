@@ -80,10 +80,36 @@ export async function handleSeatingEffect (
     p_station_id: deps.stationId
   }
 
+  console.log('[handleSeatingEffect] Calling seat_guests_v3', {
+    tableIds,
+    localOrderId: params.localOrderId ?? null,
+    createOrder: params.createOrder,
+    rpcParams
+  })
+
   const { data, error } = await FloorPlanService.seatGuests(
     deps.supabase,
     rpcParams
   )
+
+  console.log('[handleSeatingEffect] seat_guests_v3 response', {
+    createOrder: params.createOrder,
+    localOrderId: params.localOrderId ?? null,
+    sessionId: data?.session_id ?? null,
+    orderId: data?.order_id ?? null,
+    error: error?.message ?? null
+  })
+
+  if (!params.createOrder && data?.order_id) {
+    console.warn(
+      '[handleSeatingEffect] createOrder=false but RPC returned an order_id',
+      {
+        localOrderId: params.localOrderId ?? null,
+        returnedOrderId: data.order_id,
+        sessionId: data.session_id ?? null
+      }
+    )
+  }
 
   if (error || !data) {
     // Dispatch SEAT_FAILED for all tables

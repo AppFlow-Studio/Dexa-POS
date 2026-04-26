@@ -124,30 +124,49 @@ const OrderProcessing = () => {
     const allOrders = orderIds.map(id => ordersById[id]).filter(Boolean)
 
     // Find drafts (O(N) search but only runs on mount/reset)
-    const emptyDraft = allOrders.find(
-      o =>
-        o.service_location_id === null &&
-        o.order_status === 'draft' &&
-        o.items.length === 0 &&
-        o.paid_status !== 'Paid' &&
-        !o.customer_name &&
-        !o.customer_id
-    )
+    const emptyDraft = [...allOrders]
+      .reverse()
+      .find(
+        o =>
+          o.service_location_id === null &&
+          o.order_status === 'draft' &&
+          o.items.length === 0 &&
+          o.paid_status !== 'Paid' &&
+          !o.customer_name &&
+          !o.customer_id
+      )
 
-    const globalDraft = allOrders.find(
-      o =>
-        o.service_location_id === null &&
-        o.order_status === 'draft' &&
-        o.paid_status !== 'Paid' &&
-        !o.customer_name &&
-        !o.customer_id
-    )
+    const globalDraft = [...allOrders]
+      .reverse()
+      .find(
+        o =>
+          o.service_location_id === null &&
+          o.order_status === 'draft' &&
+          o.paid_status !== 'Paid' &&
+          !o.customer_name &&
+          !o.customer_id
+      )
+
+    // Find dine-in draft (order with linked table that hasn't been paid)
+    const dineInDraft = [...allOrders]
+      .reverse()
+      .find(
+        o =>
+          o.service_location_id !== null &&
+          o.order_status === 'draft' &&
+          o.order_type === 'dine_in' &&
+          o.paid_status !== 'Paid' &&
+          !o.customer_name &&
+          !o.customer_id
+      )
 
     if (!activeOrderId) {
       if (emptyDraft) {
         setActiveOrder(emptyDraft.id)
       } else if (globalDraft) {
         setActiveOrder(globalDraft.id)
+      } else if (dineInDraft) {
+        setActiveOrder(dineInDraft.id)
       } else {
         const newOrder = startNewOrder()
         setActiveOrder(newOrder.id)
@@ -162,6 +181,8 @@ const OrderProcessing = () => {
         setActiveOrder(emptyDraft.id)
       } else if (globalDraft) {
         setActiveOrder(globalDraft.id)
+      } else if (dineInDraft) {
+        setActiveOrder(dineInDraft.id)
       } else {
         const newOrder = startNewOrder()
         setActiveOrder(newOrder.id)
@@ -243,27 +264,43 @@ const OrderProcessing = () => {
       return
     }
 
-    // Optimistic update — instant UI feedback
-    updateActiveOrderDetails({ check_status: 'Closed' })
-    showLoading('Closing check...')
-
     try {
-      const supabase = getOrderStoreSupabaseClient()
-      const { loggedInEmployee } = useEmployeeStore.getState()
-
-      if (!supabase) {
-        throw new Error('Database connection unavailable')
+      const tableId = currentActiveOrder.service_location_id
+      if (!tableId) {
+        throw new Error('Order is not linked to an active table session')
       }
 
-      const result = await OrderService.closeCheck(
-        supabase,
-        currentActiveOrder.db_order_id,
-        loggedInEmployee?.profileId || null
-      )
+      showLoading('Closing check...')
+
+      const sessionStore = useTableSessionStore.getState()
+      const tableSession = sessionStore.getSession(tableId)
+      if (
+        tableSession &&
+        !['check_presented', 'paying', 'paid', 'cleaning'].includes(
+          tableSession.status
+        )
+      ) {
+        const presentCheckResult = await sessionStore.dispatchAction({
+          type: 'PRESENT_CHECK',
+          tableId
+        })
+        if (!presentCheckResult.success) {
+          throw new Error(presentCheckResult.error || 'Failed to present check')
+        }
+      }
+
+      const result = await sessionStore.dispatchAction({
+        type: 'CLOSE_CHECK',
+        tableId,
+        orderId: currentActiveOrder.id,
+        dbOrderId: currentActiveOrder.db_order_id
+      })
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to close check')
       }
+
+      updateActiveOrderDetails({ check_status: 'Closed' })
 
       hideLoading()
       show({
@@ -273,8 +310,6 @@ const OrderProcessing = () => {
       })
     } catch (error: any) {
       console.error('Failed to close check:', error)
-      // Rollback optimistic update
-      updateActiveOrderDetails({ check_status: 'Opened' })
       hideLoading()
       show({
         title: 'Failed to Close Check',
@@ -546,6 +581,16 @@ const OrderProcessing = () => {
 
   const handleManageDrawer = useCallback(() => setCashDrawerSheetOpen(true), [])
   const handleNoSale = useCallback(() => setNoSaleModalOpen(true), [])
+
+  const activeSessionCount = useTableSessionStore(
+    s =>
+      Object.values(s.sessions).filter(
+        session =>
+          !!session &&
+          session.status !== 'available' &&
+          session.status !== 'cleaning'
+      ).length
+  )
 
   const renderOrderCard = useCallback(
     ({ item }: { item: OrderProfile }) => (
@@ -1051,6 +1096,32 @@ const OrderProcessing = () => {
                     accessibilityLabel='Go to tables'
                   >
                     <Sofa color={colors.label} size={14} />
+                    {activeSessionCount > 0 && (
+                      <View
+                        style={{
+                          minWidth: 18,
+                          height: 18,
+                          borderRadius: 9,
+                          marginLeft: 6,
+                          backgroundColor: colors.warning + '25',
+                          borderWidth: 1,
+                          borderColor: colors.warning + '45',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingHorizontal: 4
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.warning,
+                            fontSize: 9,
+                            fontWeight: '800'
+                          }}
+                        >
+                          {activeSessionCount}
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
 
                   <TouchableOpacity

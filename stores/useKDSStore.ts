@@ -18,6 +18,7 @@ import { isHeaderOnlyBroadcast } from '@/utils/orderTransformers'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useFloorPlanStore } from './useFloorPlanStore'
 import { useOrderStore } from './useOrderStore'
 import { useStoreSettingsStore } from './useStoreSettingsStore'
 import { useTableSessionStore } from './useTableSessionStore'
@@ -34,6 +35,24 @@ const getClient = () => {
     console.warn('[KDSStore] Supabase client not set')
   }
   return _supabaseClient!
+}
+
+function resolveKdsTableName (rawTableNumber?: string | null): string | null {
+  if (!rawTableNumber) return null
+
+  const value = rawTableNumber.trim()
+  if (!value) return null
+
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+
+  if (!isUuid) return value
+
+  const table = useFloorPlanStore.getState().tablesById[value]
+  const tableName = table?.name?.trim()
+  return tableName || null
 }
 
 interface KDSState {
@@ -354,7 +373,8 @@ function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
       const optimistic = pending.itemStatuses.get(item.id)
       const statusDiff = optimistic && item.kitchen_status !== optimistic
       const rushDiff =
-        pending.rushOverride != null && Boolean(item.rush) !== pending.rushOverride
+        pending.rushOverride != null &&
+        Boolean(item.rush) !== pending.rushOverride
       const recalledDiff = isRecalled && !item.recalled
       if (!statusDiff && !rushDiff && !recalledDiff) return item // reuse ref
       itemsChanged = true
@@ -370,7 +390,9 @@ function overlayPendingActions (tickets: KDSTicket[]): KDSTicket[] {
     } else {
       acc.push({
         ...ticket,
-        ...(statusMatches ? {} : { status: pending.targetStatus as KDSTicket['status'] }),
+        ...(statusMatches
+          ? {}
+          : { status: pending.targetStatus as KDSTicket['status'] }),
         ...(priorityMatches || pending.prioritized == null
           ? {}
           : { prioritized: pending.prioritized }),
@@ -436,6 +458,7 @@ function normalizeKdsTicket (ticket: KDSTicket): KDSTicket {
   return {
     ...ticket,
     items,
+    table_name: resolveKdsTableName(ticket.table_name),
     delivery_platform:
       normalizePlatform(ticket.delivery_platform) ??
       ticket.delivery_platform ??
@@ -664,7 +687,7 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
       order_type: order.order_type,
       order_source: order.order_source ?? null,
       delivery_platform: normalizePlatform(order.delivery_platform) ?? null,
-      table_name: order.table_number,
+      table_name: resolveKdsTableName(order.table_number),
       customer_name: order.customer_name ?? null,
       order_notes: order.special_instructions ?? null,
       start_time: fireTime ?? order.sent_to_kitchen_at,
@@ -1837,7 +1860,10 @@ export const useKDSStore = create<KDSState>()(
       },
 
       incrementTimerTick: () => {
-        set(state => ({ timerTick: state.timerTick + 1, nowEpochMs: Date.now() }))
+        set(state => ({
+          timerTick: state.timerTick + 1,
+          nowEpochMs: Date.now()
+        }))
       },
 
       scheduleRefetch: (locationId: string, immediate?: boolean) => {
@@ -2470,7 +2496,10 @@ export const useKDSStore = create<KDSState>()(
         const updatedTickets = tickets.filter(t => !removedIds.has(t.ticket_id))
         const updatedById = { ..._ticketsById }
         for (const id of removedIds) delete updatedById[id]
-        const updatedDone = [...newDoneTickets, ...get().doneTickets].slice(0, 50)
+        const updatedDone = [...newDoneTickets, ...get().doneTickets].slice(
+          0,
+          50
+        )
 
         const bucketed = smartBucketTickets(
           updatedTickets,

@@ -26,7 +26,6 @@ import { useRouter } from 'expo-router'
 import {
   ArrowUpToLine,
   CheckSquare,
-  CircleDotDashed,
   Flame,
   RotateCcw,
   ShoppingBag,
@@ -241,6 +240,18 @@ function getOrderTypeIcon (type: string | null) {
   return <UtensilsCrossed size={11} color={colors.orderTypeDineIn} />
 }
 
+function getDisplayTableName (tableName: string | null | undefined): string {
+  const value = (tableName || '').trim()
+  if (!value) return ''
+
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+
+  return isUuid ? '' : value
+}
+
 function matchesTypeFilter (
   ticket: KDSTicket,
   filter: OrderTypeFilter
@@ -301,8 +312,16 @@ const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
   ({ startTimeEpoch, urgencyThresholds }) => {
     // Single shared timestamp from store — 1 subscription per timer, no per-component Date.now()
     const nowEpochMs = useKDSStore(s => s.nowEpochMs)
-    const timeElapsed = getBucketedElapsed(startTimeEpoch, undefined, nowEpochMs)
-    const urgencyLevel = getUrgencyLevel(startTimeEpoch, urgencyThresholds, nowEpochMs)
+    const timeElapsed = getBucketedElapsed(
+      startTimeEpoch,
+      undefined,
+      nowEpochMs
+    )
+    const urgencyLevel = getUrgencyLevel(
+      startTimeEpoch,
+      urgencyThresholds,
+      nowEpochMs
+    )
     return (
       <Text
         style={{
@@ -357,15 +376,15 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         [ticket.ticket_id]
       )
     )
-    // const timeElapsed = useMemo(
-    //   () => getBucketedElapsed(ticket.start_time_epoch, undefined, nowEpochMs),
-    //   [ticket.start_time_epoch, nowEpochMs]
-    // )
-    // const urgencyLevel = useMemo(
-    //   () =>
-    //     getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds, nowEpochMs),
-    //   [ticket.start_time_epoch, urgencyThresholds, nowEpochMs]
-    // )
+    const timeElapsed = useMemo(
+      () => getBucketedElapsed(ticket.start_time_epoch, undefined, nowEpochMs),
+      [ticket.start_time_epoch, nowEpochMs]
+    )
+    const urgencyLevel = useMemo(
+      () =>
+        getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds, nowEpochMs),
+      [ticket.start_time_epoch, urgencyThresholds, nowEpochMs]
+    )
 
     // Double-tap detection
     const lastTapRef = useRef(0)
@@ -423,8 +442,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       ticket.order_type?.toLowerCase() === 'dine_in' ||
       ticket.order_type?.toLowerCase() === 'dine in' ||
       !ticket.order_type
+    const displayTableName = getDisplayTableName(ticket.table_name)
     const hasMetaInfo = Boolean(
-      ticket.customer_name || ticket.table_name || ticket.course_number > 1
+      ticket.customer_name || displayTableName || ticket.course_number > 1
     )
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type)
@@ -777,8 +797,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 numberOfLines={1}
               >
                 {ticket.customer_name ? ticket.customer_name : ''}
-                {ticket.customer_name && ticket.table_name ? ' · ' : ''}
-                {ticket.table_name ? `Table ${ticket.table_name}` : ''}
+                {ticket.customer_name && displayTableName ? ' · ' : ''}
+                {displayTableName ? `Table ${displayTableName}` : ''}
                 {ticket.course_number > 1
                   ? ` · Course ${ticket.course_number}`
                   : ''}
@@ -1210,8 +1230,9 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type)
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type)
+    const displayTableName = getDisplayTableName(ticket.table_name)
     const hasMetaInfo = Boolean(
-      ticket.customer_name || ticket.table_name || ticket.course_number > 1
+      ticket.customer_name || displayTableName || ticket.course_number > 1
     )
 
     return (
@@ -1307,8 +1328,8 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                 numberOfLines={1}
               >
                 {ticket.customer_name ? ticket.customer_name : ''}
-                {ticket.customer_name && ticket.table_name ? ' · ' : ''}
-                {ticket.table_name ? `Table ${ticket.table_name}` : ''}
+                {ticket.customer_name && displayTableName ? ' · ' : ''}
+                {displayTableName ? `Table ${displayTableName}` : ''}
                 {ticket.course_number > 1
                   ? ` · Course ${ticket.course_number}`
                   : ''}
@@ -1599,12 +1620,19 @@ const KitchenDisplayScreen = () => {
     try {
       const promises: Promise<void>[] = []
       if (selectedStore?.id) promises.push(fetchTickets(selectedStore.id))
-      if (selectedStation?.id) promises.push(fetchKDSDisplay(selectedStation.id))
+      if (selectedStation?.id)
+        promises.push(fetchKDSDisplay(selectedStation.id))
       await Promise.all(promises)
     } finally {
       setRefreshing(false)
     }
-  }, [refreshing, selectedStore?.id, selectedStation?.id, fetchTickets, fetchKDSDisplay])
+  }, [
+    refreshing,
+    selectedStore?.id,
+    selectedStation?.id,
+    fetchTickets,
+    fetchKDSDisplay
+  ])
 
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
   const pendingTickets = useKDSStore(s => s.ticketsByStatus.pending)
@@ -2095,7 +2123,8 @@ const KitchenDisplayScreen = () => {
       advanceTicketStatus(ticketId, itemIds, newStatus)
 
       // Build rich context for undo toast subtitle
-      const tablePart = ticket?.table_name ? `Table ${ticket.table_name}` : ''
+      const displayTableName = getDisplayTableName(ticket?.table_name)
+      const tablePart = displayTableName ? `Table ${displayTableName}` : ''
       const typePart = getOrderTypeLabel(ticket?.order_type ?? null)
       const itemPart = `${ticket?.item_count ?? itemIds.length} items`
       const parts = [tablePart, typePart, itemPart].filter(Boolean)
@@ -2175,7 +2204,11 @@ const KitchenDisplayScreen = () => {
 
     // First pass: preserve order from previous columns for existing tickets
     const placed = new Set<string>()
-    for (let c = 0; c < prevColumnizedRef.current.length && c < columnCount; c++) {
+    for (
+      let c = 0;
+      c < prevColumnizedRef.current.length && c < columnCount;
+      c++
+    ) {
       const prevCol = prevColumnizedRef.current[c]
       if (!prevCol) continue
       for (const prevTicket of prevCol) {
@@ -2469,9 +2502,11 @@ const KitchenDisplayScreen = () => {
               style={{
                 padding: 6,
                 borderRadius: 8,
-                backgroundColor: refreshing ? colors.teal + '15' : 'transparent',
+                backgroundColor: refreshing
+                  ? colors.teal + '15'
+                  : 'transparent',
                 borderWidth: 1,
-                borderColor: refreshing ? colors.teal + '30' : colors.border,
+                borderColor: refreshing ? colors.teal + '30' : colors.border
               }}
             >
               <RotateCcw
@@ -2821,7 +2856,7 @@ const KitchenDisplayScreen = () => {
                 key={`col-${activeStatus}-${col}`}
                 style={{ flex: 1, paddingHorizontal: 2 }}
               >
-                {colTickets.map((ticket) => (
+                {colTickets.map(ticket => (
                   <View key={ticket.ticket_id}>
                     {isDoneTab
                       ? renderDoneTicketCard(ticket)
@@ -2947,8 +2982,10 @@ const KitchenDisplayScreen = () => {
                   numberOfLines={1}
                 >
                   {getOrderTypeLabel(actionMenu.ticket.order_type)}
-                  {actionMenu.ticket.table_name
-                    ? ` · Table ${actionMenu.ticket.table_name}`
+                  {getDisplayTableName(actionMenu.ticket.table_name)
+                    ? ` · Table ${getDisplayTableName(
+                        actionMenu.ticket.table_name
+                      )}`
                     : ''}
                   {actionMenu.ticket.item_count
                     ? ` · ${actionMenu.ticket.item_count} items`
