@@ -1483,7 +1483,7 @@ const KitchenDisplayScreen = () => {
 
   // KDS display settings (from unified config)
   const kdsHighlightNotes = kdsConfig.highlightNotes
-  const kdsShowOrderNotes = kdsConfig.showOrderNotes
+  const kdsShowOrderNotes = (kdsConfig as any).showOrderNotes ?? true
   const kdsItemNameLines = kdsConfig.itemNameLines
   const kdsDisplayModifierGroupName = kdsConfig.displayModifierGroupName
   const kdsDisplayExclusionsAtTop = kdsConfig.displayExclusionsAtTop
