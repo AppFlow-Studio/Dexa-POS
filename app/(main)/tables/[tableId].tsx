@@ -13,6 +13,10 @@ export default function TableScreen () {
   const tableViewRef = useRef<TableOrderViewHandle>(null)
 
   const doGoBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back()
+      return
+    }
     router.replace('/tables')
   }, [router])
 

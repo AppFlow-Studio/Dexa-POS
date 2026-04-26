@@ -9,6 +9,7 @@ import {
   useOrderTotals
 } from '@/stores/selectors/orderSelectors'
 import { useCoursingStore } from '@/stores/useCoursingStore'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useReservationStore } from '@/stores/useReservationStore'
@@ -190,6 +191,8 @@ const QuickActionButton: React.FC<{
 
 const useTableData = (table: FloorPlanObject) => {
   const tablesById = useFloorPlanStore(s => s.tablesById)
+  const liveSession = useTableSessionStore(s => s.sessions[table.id])
+  const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
 
   // Get session order ID for payment calculations — reactive via useOrderByAnyId
   const sessionOrderId = table.session?.order_id || null
@@ -302,7 +305,11 @@ const useTableData = (table: FloorPlanObject) => {
 
     // Calculate display values from the single order
     const seatedTime = order.opened_at ? new Date(order.opened_at) : null
-    const serverDisplay = order.server_name || 'N/A'
+    const effectiveSession = liveSession ?? table.session
+    const serverFromSession = effectiveSession?.server_staff_id
+      ? getEmployeeByStaffId(effectiveSession.server_staff_id)?.fullName
+      : null
+    const serverDisplay = serverFromSession || order.server_name || 'N/A'
 
     // Use payment-aware totals from orderTotals selector
     // Falls back to simple calculation if selector not available
@@ -351,7 +358,14 @@ const useTableData = (table: FloorPlanObject) => {
       server: serverDisplay,
       orders: groupOrders
     }
-  }, [table, resolvedOrder, tablesById, orderTotals])
+  }, [
+    table,
+    resolvedOrder,
+    tablesById,
+    orderTotals,
+    liveSession,
+    getEmployeeByStaffId
+  ])
 }
 
 const ExpandedView: React.FC<{

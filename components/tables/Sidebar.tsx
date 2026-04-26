@@ -9,7 +9,7 @@ import {
   Lock,
   Utensils
 } from 'lucide-react-native'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   Easing,
@@ -54,14 +54,17 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // Get actual Realtime Channel status (not store status)
   const { floor } = useLocationRealtime()
+  const reconnectFloorRef = useRef(floor.reconnect)
+
+  useEffect(() => {
+    reconnectFloorRef.current = floor.reconnect
+  }, [floor.reconnect])
 
   // Determine connection status based on actual channel state
   // "Offline" = CHANNEL_ERROR (max retries reached) or CLOSED
   // "Syncing..." = actively reconnecting (TIMED_OUT or reconnectAttempts > 0 but not error)
-  const isOffline =
-    !floor.isConnected && floor.status.state === 'CHANNEL_ERROR'
-  const isSyncing =
-    !floor.isConnected && !isOffline
+  const isOffline = !floor.isConnected && floor.status.state === 'CHANNEL_ERROR'
+  const isSyncing = !floor.isConnected && !isOffline
 
   // Background periodic retry when channel is in error state
   // This handles both: internet restored AND server restored scenarios
@@ -76,25 +79,25 @@ const Sidebar: React.FC<SidebarProps> = ({
     // Initial retry after 5 seconds
     const initialRetryId = setTimeout(() => {
       console.log('[Sidebar] Initial retry attempt...')
-      floor.reconnect()
+      reconnectFloorRef.current()
     }, 5000)
 
     // Then periodic retry every 30 seconds
     const intervalId = setInterval(() => {
       console.log('[Sidebar] Periodic retry attempt...')
-      floor.reconnect()
+      reconnectFloorRef.current()
     }, 30000) // 30 seconds
 
     return () => {
       clearTimeout(initialRetryId)
       clearInterval(intervalId)
     }
-  }, [isOffline, floor])
+  }, [isOffline])
 
   // Manual reconnect handler (for tappable status indicator)
   const handleManualReconnect = () => {
     console.log('[Sidebar] Manual reconnect triggered')
-    floor.reconnect()
+    reconnectFloorRef.current()
     // Refetch floor plan data to recover missed events during connection drop
     useFloorPlanStore.getState().loadFloorPlanStatus()
   }
@@ -143,7 +146,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     { id: 'tables', icon: Utensils, label: 'Tables', isLocked: false },
     { id: 'waitlist', icon: Clock, label: 'Waitlist', isLocked: false },
-    { id: 'reservations', icon: CalendarClock, label: 'Reservations', isLocked: false }
+    {
+      id: 'reservations',
+      icon: CalendarClock,
+      label: 'Reservations',
+      isLocked: false
+    }
     // { id: "history", icon: BarChart3, label: "History", isLocked: true },
   ] as const
 
@@ -249,11 +257,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                   gap: 3,
                   borderRadius: 8,
                   borderWidth: 1,
-                  backgroundColor: isActive ? colors.teal + '20' : 'transparent',
+                  backgroundColor: isActive
+                    ? colors.teal + '20'
+                    : 'transparent',
                   borderColor: isActive ? colors.teal + '40' : 'transparent'
                 }}
               >
-                <item.icon size={13} color={isActive ? colors.teal : colors.label} />
+                <item.icon
+                  size={13}
+                  color={isActive ? colors.teal : colors.label}
+                />
                 <Animated.Text
                   style={[
                     textStyle,

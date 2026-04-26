@@ -547,8 +547,9 @@ const ModifierScreenContent = () => {
   const lastDraftMenuItemIdRef = useRef<string | null>(null)
   const actionHandledRef = useRef(false)
   const draftItemIdRef = useRef<string | null>(null)
-  const [visibleOptionCount, setVisibleOptionCount] = useState(16)
+  const [visibleOptionCount, setVisibleOptionCount] = useState(8)
   const [showSecondarySections, setShowSecondarySections] = useState(false)
+  const [showModifierOptions, setShowModifierOptions] = useState(false)
 
   // When the store opens a new item session (different item or cart entry),
   // reinitialize local reducer state without unmounting the component.
@@ -558,7 +559,11 @@ const ModifierScreenContent = () => {
   const prevSessionRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!sessionId || sessionId === prevSessionRef.current) return
+    if (!sessionId) {
+      prevSessionRef.current = null
+      return
+    }
+    if (sessionId === prevSessionRef.current) return
     prevSessionRef.current = sessionId
     if (__DEV__) {
       const openStartedAt = getLastModifierOpenStartedAt()
@@ -590,17 +595,18 @@ const ModifierScreenContent = () => {
       }
     })
 
-    // Render the first batch immediately, then expand to full options next tick.
-    setVisibleOptionCount(16)
+    // Render the first batch immediately.
+    setVisibleOptionCount(8)
     setShowSecondarySections(false)
-    const optionFrame = requestAnimationFrame(() => {
-      setVisibleOptionCount(Number.MAX_SAFE_INTEGER)
+    setShowModifierOptions(false)
+    const optionsFrame = requestAnimationFrame(() => {
+      setShowModifierOptions(true)
     })
     const secondaryFrame = requestAnimationFrame(() => {
       setShowSecondarySections(true)
     })
     return () => {
-      cancelAnimationFrame(optionFrame)
+      cancelAnimationFrame(optionsFrame)
       cancelAnimationFrame(secondaryFrame)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -684,12 +690,9 @@ const ModifierScreenContent = () => {
       return result
     }
     if (!baseMenuItem.modifierGroupIds) return null
-    const allGroups = useMenuStore.getState().modifierGroups
-    const modifiers = baseMenuItem.modifierGroupIds
-      .map((id: string) =>
-        allGroups.find((mg: ModifierCategory) => mg.id === id)
-      )
-      .filter((mg): mg is ModifierCategory => !!mg)
+    const modifiers = useMenuStore
+      .getState()
+      .getModifierGroupsByIds(baseMenuItem.modifierGroupIds)
     return { ...baseMenuItem, modifiers } as MenuItemWithModifiers
   }, [isOpen, baseMenuItem, precomputedModifiers])
 
@@ -933,6 +936,10 @@ const ModifierScreenContent = () => {
 
   const handleCategoryTabPress = useCallback((categoryId: string) => {
     dispatch({ type: 'SET_ACTIVE_CATEGORY', payload: categoryId })
+  }, [])
+
+  const handleNotesChange = useCallback((text: string) => {
+    dispatch({ type: 'SET_NOTES', payload: text })
   }, [])
 
   const handleQuantityDecrement = useCallback(() => {
@@ -1245,6 +1252,25 @@ const ModifierScreenContent = () => {
     return currentCategory.options.slice(0, visibleOptionCount)
   }, [currentCategory, visibleOptionCount])
 
+  // Progressively reveal options in chunks instead of mounting all options in one frame.
+  useEffect(() => {
+    if (!isOpen || !currentCategory) return
+    const totalOptions = currentCategory.options.length
+    if (visibleOptionCount >= totalOptions) return
+    const chunkSize = Math.max(12, Math.ceil(totalOptions / 4))
+
+    const timeoutId = setTimeout(() => {
+      setVisibleOptionCount(prev => Math.min(totalOptions, prev + chunkSize))
+    }, 16)
+
+    return () => clearTimeout(timeoutId)
+  }, [
+    isOpen,
+    currentCategory?.id,
+    currentCategory?.options.length,
+    visibleOptionCount
+  ])
+
   const hasModifiers = !!(
     menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0
   )
@@ -1540,7 +1566,7 @@ const ModifierScreenContent = () => {
             </ScrollView>
 
             {/* ── Active Category Options ──────────────────────────────── */}
-            {currentCategory && (
+            {currentCategory && showModifierOptions && (
               <View className='px-4 pt-3 pb-2'>
                 {/* Sub-header row */}
                 <View className='flex-row items-center justify-between mb-3'>
@@ -1677,7 +1703,7 @@ const ModifierScreenContent = () => {
           <NotesInput
             initialValue={state.notes}
             isReadOnly={isReadOnly}
-            onChange={text => dispatch({ type: 'SET_NOTES', payload: text })}
+            onChange={handleNotesChange}
           />
         </View>
 
@@ -1788,10 +1814,6 @@ const ModifierScreenContent = () => {
 }
 
 const ModifierScreen = () => {
-  const isOpen = useModifierSidebarStore(s => s.isOpen)
-
-  if (!isOpen) return null
-
   return <ModifierScreenContent />
 }
 
