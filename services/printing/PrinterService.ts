@@ -1,14 +1,16 @@
-import {
-  calculateOrderTotals
-} from '@/lib/order-calculator'
+import { calculateOrderTotals } from '@/lib/order-calculator'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile } from '@/lib/types'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { usePrintQueueStore } from '@/stores/usePrintQueueStore'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useReceiptTemplateStore } from '@/stores/useReceiptTemplateStore'
 import { useSeatingStore } from '@/stores/useSeatingStore'
-import { SelectedLocation, useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import {
+  SelectedLocation,
+  useStoreSettingsStore
+} from '@/stores/useStoreSettingsStore'
 import { PrintDocument } from '@/types/print-document'
 import {
   DocumentPrintJob,
@@ -84,7 +86,7 @@ export const PrinterService = {
     for (const label of copies) {
       const templateData: ReceiptTemplateData = {
         ...baseData,
-        copyLabel: copies.length > 1 ? label : (baseData.copyLabel ?? label),
+        copyLabel: copies.length > 1 ? label : baseData.copyLabel ?? label
       }
       const job = createJobForPrinter(
         printer,
@@ -147,7 +149,10 @@ export const PrinterService = {
 
       // Force seat grouping for reprint-all scenarios (context menu, more options)
       if (options?.forceGroupBySeat && ticketData.templateConfig) {
-        ticketData.templateConfig = { ...ticketData.templateConfig, groupBySeat: true }
+        ticketData.templateConfig = {
+          ...ticketData.templateConfig,
+          groupBySeat: true
+        }
       }
 
       const job = createJobForPrinter(
@@ -284,11 +289,27 @@ export const PrinterService = {
 
     // Sort by priority: Star Micronics first (has real DK port), then connected default receipt, etc.
     const sorted = [
-      ...drawerPrinters.filter(p => p.printerType === 'star_micronics' && p.isConnected),
-      ...drawerPrinters.filter(p => p.printerType === 'star_micronics' && !p.isConnected),
-      ...drawerPrinters.filter(p => p.printerType !== 'star_micronics' && p.isDefaultReceipt && p.isConnected),
-      ...drawerPrinters.filter(p => p.printerType !== 'star_micronics' && p.isDefaultReceipt && !p.isConnected),
-      ...drawerPrinters.filter(p => p.printerType !== 'star_micronics' && !p.isDefaultReceipt),
+      ...drawerPrinters.filter(
+        p => p.printerType === 'star_micronics' && p.isConnected
+      ),
+      ...drawerPrinters.filter(
+        p => p.printerType === 'star_micronics' && !p.isConnected
+      ),
+      ...drawerPrinters.filter(
+        p =>
+          p.printerType !== 'star_micronics' &&
+          p.isDefaultReceipt &&
+          p.isConnected
+      ),
+      ...drawerPrinters.filter(
+        p =>
+          p.printerType !== 'star_micronics' &&
+          p.isDefaultReceipt &&
+          !p.isConnected
+      ),
+      ...drawerPrinters.filter(
+        p => p.printerType !== 'star_micronics' && !p.isDefaultReceipt
+      )
     ]
     // Deduplicate (a printer may match multiple filters)
     const candidates = [...new Map(sorted.map(p => [p.id, p])).values()]
@@ -297,7 +318,9 @@ export const PrinterService = {
     for (const printer of candidates) {
       try {
         console.log(
-          `[PrinterService] Opening cash drawer via ${printer.printerType} (${printer.printerName}, addr=${printer.networkAddress ?? 'builtin'})`
+          `[PrinterService] Opening cash drawer via ${printer.printerType} (${
+            printer.printerName
+          }, addr=${printer.networkAddress ?? 'builtin'})`
         )
         const driver = getDriver(printer)
         if (!driver.isConnected()) {
@@ -306,7 +329,10 @@ export const PrinterService = {
         await driver.openCashDrawer()
         return true
       } catch (e) {
-        console.warn(`[PrinterService] Cash drawer failed on ${printer.printerName}:`, e)
+        console.warn(
+          `[PrinterService] Cash drawer failed on ${printer.printerName}:`,
+          e
+        )
         // Continue to next candidate
       }
     }
@@ -702,11 +728,17 @@ async function processNextJob (): Promise<void> {
     if (
       printer?.printerType === 'builtin_landi' &&
       (/PRINT_FAILED|NOT_INITIALIZED|PRINTER_ERROR/i.test(e?.code ?? '') ||
-       /print failed|not initialized|printer.*error|printer not ready/i.test(errorMsg))
+        /print failed|not initialized|printer.*error|printer not ready/i.test(
+          errorMsg
+        ))
     ) {
-      console.warn('[PrinterService] Landi print error, forcing re-init on next attempt')
+      console.warn(
+        '[PrinterService] Landi print error, forcing re-init on next attempt'
+      )
       const landiDriver = getDriver(printer)
-      try { await landiDriver.disconnect() } catch {}
+      try {
+        await landiDriver.disconnect()
+      } catch {}
     }
 
     console.error('[PrinterService] Print job failed:', errorMsg)
@@ -889,7 +921,7 @@ function buildReceiptTemplateData (
   const discount = orderTotals.discount_amount
   const tip =
     order.payments?.reduce((sum, p) => sum + (p.tip_amount || 0), 0) || 0
-  const total = order.total_amount || (orderTotals.total_amount + tip)
+  const total = order.total_amount || orderTotals.total_amount + tip
   const cashTotal = orderTotals.cash_total_amount + tip
   const weightedTaxRate = subtotal > 0 ? (tax / subtotal) * 100 : 0
 
@@ -923,13 +955,11 @@ function buildReceiptTemplateData (
       quantity: item.quantity,
       price: item.subtotal,
       cashPrice:
-        item.cashSubtotal !== item.subtotal
-          ? item.cashSubtotal
-          : undefined,
+        item.cashSubtotal !== item.subtotal ? item.cashSubtotal : undefined,
       isVoided: item.is_voided ?? false,
       modifiers,
       notes: item.customizations?.notes,
-      seatNumber: item.seatNumber ?? null,
+      seatNumber: item.seatNumber ?? null
     }
   })
 
@@ -942,7 +972,9 @@ function buildReceiptTemplateData (
       // Handle both nesting levels: local payments store full terminal response
       // ({ terminal_vendor, castles_transaction, raw_castles_response }),
       // backend-synced payments store just the inner castles_transaction object
-      const castlesRaw = td?.castlesTransaction as Record<string, any> | undefined
+      const castlesRaw = td?.castlesTransaction as
+        | Record<string, any>
+        | undefined
       const castles = (castlesRaw?.castles_transaction ?? castlesRaw) as
         | Record<string, string>
         | undefined
@@ -960,11 +992,13 @@ function buildReceiptTemplateData (
           dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode,
         aid: castles?.cardAID ?? (td as Record<string, any>)?.cardAID,
         tipAmount: p.tip_amount || undefined,
-        originalTipAmount: p.original_tip_amount != null && p.original_tip_amount !== p.tip_amount
-          ? p.original_tip_amount
-          : undefined,
+        originalTipAmount:
+          p.original_tip_amount != null &&
+          p.original_tip_amount !== p.tip_amount
+            ? p.original_tip_amount
+            : undefined,
         amountTendered: p.amountTendered ?? td?.amountTendered,
-        changeGiven: p.changeGiven ?? td?.changeGiven,
+        changeGiven: p.changeGiven ?? td?.changeGiven
       }
     })
 
@@ -1002,7 +1036,7 @@ function buildReceiptTemplateData (
     orderDate: dateStr,
     orderTime: timeStr,
     orderType: getOrderTypeDisplay(order.order_type),
-    tableName: order.service_location_name ?? undefined,
+    tableName: resolvePrintableTableName(order),
     customerName: order.customer_name,
     serverName: order.server_name,
     backendOrderNumber: order.order_number ?? undefined,
@@ -1024,8 +1058,8 @@ function buildReceiptTemplateData (
       'Thank you for your purchase!',
     headerMessage: template.headerText ?? undefined,
     maxCharsPerLine: printer.graphicsOnly
-      // ? Math.min(printer.maxCharsPerLine, 32)
-      ? 48
+      ? // ? Math.min(printer.maxCharsPerLine, 32)
+        48
       : printer.maxCharsPerLine,
     taxRate: weightedTaxRate / 100, // Convert from 8.875 to 0.08875
     templateConfig: template,
@@ -1114,7 +1148,7 @@ function buildKitchenTicketData (
     orderNumber:
       order.display_number || order.order_number || `#${order.id.slice(-4)}`,
     orderType: getOrderTypeDisplay(order.order_type),
-    tableName: order.service_location_name ?? undefined,
+    tableName: resolvePrintableTableName(order),
     serverName: order.server_name,
     timestamp,
     fullTimestamp,
@@ -1127,6 +1161,33 @@ function buildKitchenTicketData (
     templateConfig: template,
     readyByTime
   }
+}
+
+function resolvePrintableTableName (order: OrderProfile): string | undefined {
+  const rawName = order.service_location_name?.trim()
+  const rawId = order.service_location_id?.trim()
+
+  // Guard against printing UUID values as table labels.
+  const isUuid = (value?: string | null) =>
+    !!value &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+
+  if (rawName && !isUuid(rawName)) {
+    return rawName
+  }
+
+  if (rawId) {
+    const table = useFloorPlanStore.getState().tablesById[rawId]
+    const tableName = table?.name?.trim()
+    if (tableName) {
+      return tableName
+    }
+  }
+
+  // Last resort: only use the raw name if it is not UUID-like.
+  return rawName && !isUuid(rawName) ? rawName : undefined
 }
 
 function getOrderTypeDisplay (orderType: string | undefined): string {

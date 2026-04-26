@@ -1,6 +1,6 @@
 import { useToast } from '@/contexts/ToastContext'
 import { calculatePaidStatus } from '@/lib/order-calculator'
-import { colors } from '@/lib/theme'
+import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import type { OrderProfile } from '@/lib/types'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -116,8 +116,10 @@ import {
 
 const OrderDetailsComponent: React.FC<{
   tableLabel?: string
+  tableStatus?: string | null
   onOpenTableSelector?: () => void
-}> = ({ tableLabel, onOpenTableSelector }) => {
+  onViewTable?: () => void
+}> = ({ tableLabel, tableStatus, onOpenTableSelector, onViewTable }) => {
   const { show } = useToast()
 
   // PERF: Single useShallow selector - runs 1 function instead of 11
@@ -284,6 +286,7 @@ const OrderDetailsComponent: React.FC<{
 
   const isDineInSelected = orderType === 'dine_in'
   const isDeliverySelected = orderType === 'delivery'
+  const isOrderTypeLocked = checkStatus === 'Closed'
 
   return (
     <View className='px-3 pb-2 z-20'>
@@ -341,17 +344,58 @@ const OrderDetailsComponent: React.FC<{
               }}
             >
               <DiningTableIcon color={colors.label} size={14} />
-              <Text
-                style={{
-                  color: colors.heading,
-                  fontSize: 12,
-                  fontWeight: '600',
-                  flex: 1
-                }}
-                numberOfLines={1}
-              >
-                {tableLabel || 'Select Table'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: 12,
+                    fontWeight: '600'
+                  }}
+                  numberOfLines={1}
+                >
+                  {tableLabel || 'Select Table'}
+                </Text>
+                {!!tableStatus && tableStatus !== 'available' && (
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: '600',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.4,
+                      color: TABLE_STATUS_COLORS[tableStatus] || colors.muted,
+                      marginTop: 1
+                    }}
+                    numberOfLines={1}
+                  >
+                    {tableStatus.replace(/_/g, ' ')}
+                  </Text>
+                )}
+              </View>
+              {!!onViewTable && !!tableStatus && tableStatus !== 'available' && (
+                <TouchableOpacity
+                  onPress={e => {
+                    e.stopPropagation?.()
+                    onViewTable()
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{
+                    paddingHorizontal: 7,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                    backgroundColor: colors.teal
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.onSolid,
+                      fontSize: 10,
+                      fontWeight: '600'
+                    }}
+                  >
+                    View
+                  </Text>
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -430,19 +474,25 @@ const OrderDetailsComponent: React.FC<{
           return (
             <TouchableOpacity
               key={type.dbValue}
+              disabled={isOrderTypeLocked}
               onPress={() => {
-                if (activeOrderId) {
+                if (activeOrderId && !isOrderTypeLocked) {
                   updateActiveOrderDetails({ order_type: type.dbValue as any })
                 }
               }}
               className='flex-1 h-7 rounded-md items-center justify-center'
               style={{
-                backgroundColor: isActive ? colors.teal : 'transparent'
+                backgroundColor: isActive ? colors.teal : 'transparent',
+                opacity: isOrderTypeLocked && !isActive ? 0.45 : 1
               }}
             >
               <Text
                 style={{
-                  color: isActive ? colors.onSolid : colors.label,
+                  color: isActive
+                    ? colors.onSolid
+                    : isOrderTypeLocked
+                    ? colors.muted
+                    : colors.label,
                   fontSize: 11,
                   fontWeight: '600'
                 }}
@@ -453,6 +503,19 @@ const OrderDetailsComponent: React.FC<{
           )
         })}
       </View>
+
+      {isOrderTypeLocked && (
+        <Text
+          style={{
+            color: colors.muted,
+            fontSize: 10,
+            marginTop: 4,
+            paddingHorizontal: 2
+          }}
+        >
+          Order type is locked after the check is closed.
+        </Text>
+      )}
 
       {/* Status text */}
       {(orderStatus || paymentStatus || checkStatus) && (

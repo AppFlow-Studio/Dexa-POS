@@ -1,18 +1,19 @@
 import ServerSectionManager from '@/components/floor-plan/ServerSectionManager'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
 import MergeActionBar from '@/components/tables/MergeActionBar'
+import ServerSelectSheet from '@/components/tables/ServerSelectSheet'
 import Sidebar from '@/components/tables/Sidebar'
 import TableContextSheet from '@/components/tables/TableContextSheet'
 import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
 import { useLoading } from '@/contexts/LoadingContext'
-import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
 import { getDeviceId } from '@/lib/deviceId'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
+import { transferTableServer } from '@/services/serverAssignmentService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
@@ -116,6 +117,10 @@ const TablesScreen = () => {
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [isSectionManagerOpen, setSectionManagerOpen] = useState(false)
+  const [transferServerTarget, setTransferServerTarget] = useState<{
+    tableId: string
+    sessionId: string
+  } | null>(null)
   // overlayTableId removed in favor of router.push
 
   useEffect(() => {
@@ -162,11 +167,7 @@ const TablesScreen = () => {
   }, [searchInput])
 
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore()
-  const { loggedInEmployee } = useEmployeeStore()
-
-  // Subscribe to realtime floor updates to trigger visual refresh
-  // This ensures the floor plan immediately reflects changes from other stations
-  const { floor } = useLocationRealtime()
+  const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
 
   useEffect(() => {
     if (!activeFloorPlanId && floorPlans.length > 0) {
@@ -317,6 +318,69 @@ const TablesScreen = () => {
     },
     [tables, getOrder, setActiveOrder, syncOrderFromDatabase]
   )
+
+  const handleTransferServer = useCallback(
+    (tableId: string, sessionId: string) => {
+      setContextTable(null)
+      setTransferServerTarget({ tableId, sessionId })
+    },
+    []
+  )
+
+  const handleServerSelectedForTransfer = useCallback(
+    (name: string) => {
+      if (!transferServerTarget) return
+      const { tableId, sessionId } = transferServerTarget
+      setTransferServerTarget(null)
+
+      const employee = useEmployeeStore
+        .getState()
+        .employees.find(e => e.fullName === name)
+      const staffProfileId = employee?.profileId
+      if (!staffProfileId) return
+
+      // Optimistic update
+      useTableSessionStore.getState().dispatch(tableId, {
+        type: 'PATCH',
+        updates: { server_staff_id: staffProfileId }
+      })
+
+      // Keep order-based UI in sync (sidebar/details that read order.server_name)
+      const session = useTableSessionStore.getState().sessions[tableId]
+      const sessionOrderId = session?.order_id
+      if (sessionOrderId) {
+        const localOrder =
+          useOrderStore.getState().getOrderByDbId(sessionOrderId) ||
+          useOrderStore.getState().getOrder(sessionOrderId)
+        if (localOrder?.id) {
+          useOrderStore
+            .getState()
+            .patchOrder(localOrder.id, { server_name: name })
+        }
+      }
+
+      // Persist to DB
+      if (supabaseClient) {
+        transferTableServer(supabaseClient, sessionId, staffProfileId).catch(
+          err =>
+            console.warn(
+              '[handleServerSelectedForTransfer] DB update failed:',
+              err
+            )
+        )
+      }
+    },
+    [transferServerTarget, supabaseClient]
+  )
+
+  const currentTransferServerName = useMemo(() => {
+    if (!transferServerTarget) return null
+    const session =
+      useTableSessionStore.getState().sessions[transferServerTarget.tableId]
+    const staffId = session?.server_staff_id
+    if (!staffId) return null
+    return getEmployeeByStaffId(staffId)?.fullName || null
+  }, [transferServerTarget, getEmployeeByStaffId])
 
   const handleTableLongPress = useCallback(
     (table: FloorPlanObject) => {
@@ -1005,6 +1069,7 @@ const TablesScreen = () => {
         onSeatGuests={handleSheetSeatGuests}
         onSeatReservation={handleSeatReservation}
         onNavigate={handleSheetNavigate}
+        onTransferServer={handleTransferServer}
       />
       <GuestCountModal
         isOpen={isGuestModalOpen}
@@ -1019,6 +1084,14 @@ const TablesScreen = () => {
       <ServerSectionManager
         isOpen={isSectionManagerOpen}
         onClose={() => setSectionManagerOpen(false)}
+      />
+
+      {/* Transfer Server Sheet */}
+      <ServerSelectSheet
+        isOpen={transferServerTarget !== null}
+        onClose={() => setTransferServerTarget(null)}
+        onSelect={handleServerSelectedForTransfer}
+        currentServer={currentTransferServerName}
       />
     </View>
   )

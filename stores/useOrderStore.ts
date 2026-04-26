@@ -68,6 +68,7 @@ import { queueFailedOperation } from '@/services/offlineSyncInit'
 import {
   getIsOnline,
   getOperationsForOrder,
+  getOrderCreationOperationId,
   getPendingOperations,
   queueOperation,
   removeOperation,
@@ -108,7 +109,6 @@ import {
   isOrderPendingVoid
 } from '@/lib/pendingVoidOrderIds'
 import { detectConflict } from '@/services/conflictDetectionService'
-import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
 import { autoPrintKitchenTicketsIfEnabled } from '@/services/printing/autoPrintKitchen'
 import { useConflictStore } from '@/stores/useConflictStore'
 import {
@@ -116,6 +116,7 @@ import {
   isConflictCritical
 } from '@/types/conflict-resolution'
 import { DejavooSaleTransactionResponse } from '@/types/dejavoo-spin-api'
+import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
 
 // ============================================================================
 // PURE CALCULATION FUNCTIONS (Delegating to order-calculator module)
@@ -428,6 +429,30 @@ try {
 // same promise as items queued under the new db ID.
 const resolveQueueKey = (orderId: string): string => {
   return localIdToDbOrderId.get(orderId) || orderId
+}
+
+const rekeyLinkedStores = (oldOrderId: string, newOrderId: string): void => {
+  try {
+    const { useSeatingStore } =
+      require('@/stores/useSeatingStore') as typeof import('@/stores/useSeatingStore')
+    useSeatingStore.getState().rekeyEntry(oldOrderId, newOrderId)
+  } catch {
+    /* seating store not loaded yet */
+  }
+
+  try {
+    const { useTableSessionStore } =
+      require('@/stores/useTableSessionStore') as typeof import('@/stores/useTableSessionStore')
+    useTableSessionStore.getState().rekeyOrderId(oldOrderId, newOrderId)
+  } catch {
+    /* table session store not loaded yet */
+  }
+
+  try {
+    useCoursingStore.getState().rekeyEntry(oldOrderId, newOrderId)
+  } catch {
+    /* coursing store not loaded yet */
+  }
 }
 
 /** Exposed for dedup in create_order handler (offlineSyncInit). */
@@ -998,6 +1023,8 @@ const addItemToBackend = async (
 
     // Queue appropriate operation based on merge status
     if (__DEV__) console.log('[addItemToBackend] item 1', item)
+    const dependsOnCreateOrder =
+      getOrderCreationOperationId(order.id) || undefined
 
     let itemOpId: string
     if (isMerge && item.db_order_item_id) {
@@ -1046,6 +1073,7 @@ const addItemToBackend = async (
         },
         localOrderId: order.id,
         localItemId: item.id,
+        dependsOn: dependsOnCreateOrder,
         contextSnapshot: {
           orderType: order.order_type,
           course: useCoursingStore.getState().getWorkingCourse(order.id) || 1
@@ -1101,6 +1129,8 @@ const addItemToBackend = async (
 
       // Queue the add_item operation (will be processed after order syncs)
       if (__DEV__) console.log('[addItemToBackend] item 2', item)
+      const dependsOnCreateOrder =
+        getOrderCreationOperationId(order.id) || undefined
 
       await queueOperation({
         type: 'add_item',
@@ -1120,7 +1150,8 @@ const addItemToBackend = async (
           }
         },
         localOrderId: order.id,
-        localItemId: item.id
+        localItemId: item.id,
+        dependsOn: dependsOnCreateOrder
       })
       // Mark item as pending sync
       useOrderStore.setState(state => {
@@ -1160,6 +1191,8 @@ const addItemToBackend = async (
 
       // Register item and queue add_item with full item data
       await registerLocalId(item.id, 'item', order.id)
+      const dependsOnCreateOrder =
+        getOrderCreationOperationId(order.id) || undefined
       await queueOperation({
         type: 'add_item',
         params: {
@@ -1182,7 +1215,8 @@ const addItemToBackend = async (
           }
         },
         localOrderId: order.id,
-        localItemId: item.id
+        localItemId: item.id,
+        dependsOn: dependsOnCreateOrder
       })
 
       // Mark item as pending (not failed) so it stays in cart
@@ -1338,11 +1372,51 @@ const addItemToBackend = async (
             // Update order status first (draft → sent_to_kitchen) before setting
             // item statuses — the DB constraint rejects sent_to_kitchen_at on draft orders.
             if (dbOrderId) {
-              await OrderService.updateOrderStatus(
-                supabase,
-                dbOrderId,
-                getOrderSentStatus()
-              )
+              const { error: statusError } =
+                await OrderService.updateOrderStatus(
+                  supabase,
+                  dbOrderId,
+                  getOrderSentStatus()
+                )
+              if (
+                statusError &&
+                statusError.code !== 'P0001' &&
+                !statusError.message?.includes('already in')
+              ) {
+                console.warn(
+                  '[addItemToBackend] Failed to update order status before retroactive kitchen send:',
+                  statusError
+                )
+                queueFailedOperation(
+                  'send_to_kitchen',
+                  { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+                  resolveOrderKey()
+                )
+                return true
+              }
+
+              const { data: backendOrder, error: verifyError } = await supabase
+                .from('orders')
+                .select('status')
+                .eq('id', dbOrderId)
+                .single()
+
+              if (verifyError || backendOrder?.status === 'draft') {
+                console.warn(
+                  '[addItemToBackend] Backend order remained draft after status update; deferring retroactive kitchen send',
+                  {
+                    dbOrderId,
+                    verifyError,
+                    backendStatus: backendOrder?.status
+                  }
+                )
+                queueFailedOperation(
+                  'send_to_kitchen',
+                  { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+                  resolveOrderKey()
+                )
+                return true
+              }
             }
             await OrderService.bulkUpdateOrderItemStatus(
               supabase,
@@ -1673,11 +1747,50 @@ const addItemToBackend = async (
           // sets sent_to_kitchen_at on the order which is rejected if still draft
           // (valid_status_transitions constraint). Update order status first (idempotent).
           if (dbOrderId) {
-            await OrderService.updateOrderStatus(
+            const { error: statusError } = await OrderService.updateOrderStatus(
               supabase,
               dbOrderId,
               getOrderSentStatus()
             )
+            if (
+              statusError &&
+              statusError.code !== 'P0001' &&
+              !statusError.message?.includes('already in')
+            ) {
+              console.warn(
+                '[addItemToBackend] Failed to update order status before retroactive kitchen send:',
+                statusError
+              )
+              queueFailedOperation(
+                'send_to_kitchen',
+                { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+                resolveOrderKey()
+              )
+              return true
+            }
+
+            const { data: backendOrder, error: verifyError } = await supabase
+              .from('orders')
+              .select('status')
+              .eq('id', dbOrderId)
+              .single()
+
+            if (verifyError || backendOrder?.status === 'draft') {
+              console.warn(
+                '[addItemToBackend] Backend order remained draft after status update; deferring retroactive kitchen send',
+                {
+                  dbOrderId,
+                  verifyError,
+                  backendStatus: backendOrder?.status
+                }
+              )
+              queueFailedOperation(
+                'send_to_kitchen',
+                { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+                resolveOrderKey()
+              )
+              return true
+            }
           }
           await OrderService.bulkUpdateOrderItemStatus(
             supabase,
@@ -1966,6 +2079,51 @@ const syncPaymentToBackend = async (
         '[syncPaymentToBackend] Failed to process payment in backend:',
         error
       )
+
+      const errMessage = (error as any)?.message?.toLowerCase?.() || ''
+      const isNoUnpaidItemsError =
+        (error as any)?.code === 'P0001' &&
+        errMessage.includes('no unpaid items remaining')
+
+      if (isNoUnpaidItemsError) {
+        console.warn(
+          '[syncPaymentToBackend] No unpaid items remaining; treating as idempotent and reconciling state'
+        )
+
+        if (rollbackState) {
+          const activeOrderId = useOrderStore.getState().activeOrderId
+          useOrderStore.setState(state => {
+            state.ordersById[order.id] = rollbackState.order
+            if (order.id === activeOrderId) {
+              state.activeOrderSubtotal = rollbackState.activeOrderSubtotal
+              state.activeOrderTax = rollbackState.activeOrderTax
+              state.activeOrderTotal = rollbackState.activeOrderTotal
+              state.activeOrderDiscount = rollbackState.activeOrderDiscount
+              state.activeOrderOutstandingSubtotal =
+                rollbackState.activeOrderOutstandingSubtotal
+              state.activeOrderOutstandingTax =
+                rollbackState.activeOrderOutstandingTax
+              state.activeOrderOutstandingTotal =
+                rollbackState.activeOrderOutstandingTotal
+              state.activeOrderTotalCash = rollbackState.activeOrderTotalCash
+              state.activeOrderOutstandingCash =
+                rollbackState.activeOrderOutstandingCash
+            }
+          })
+        }
+
+        queueMicrotask(() => {
+          useOrderStore.getState().syncOrderFromBackendComplete(order.id)
+        })
+
+        toastService.show({
+          title: 'Already Paid',
+          message: 'Order has no unpaid items remaining.',
+          type: 'warning'
+        })
+
+        return true
+      }
 
       // ========================================================================
       // DON'T REVERT - Keep local state and queue for retry
@@ -4317,6 +4475,23 @@ export const useOrderStore = create<OrderState>()(
                 existingVersion,
                 serverVersion
               })
+
+              if (__DEV__) {
+                console.log('[OfflineReconnectDebug][UpsertStart]', {
+                  dbOrderId,
+                  existingItems: existing.items?.length ?? 0,
+                  existingPendingItems: existing.items?.filter(
+                    i => !i.db_order_item_id && !i.isDraft
+                  ).length,
+                  existingDraftItems: existing.items?.filter(i => i.isDraft)
+                    .length,
+                  incomingOrderItems: backendOrder.order_items?.length ?? 0,
+                  incomingItemCount: backendOrder.item_count,
+                  isHeaderOnly: isHeaderOnlyBroadcast(backendOrder),
+                  existingStatus: existing.order_status,
+                  incomingStatus: backendOrder.status
+                })
+              }
             }
 
             // Transform to OrderProfile (uses dbOrderId as id)
@@ -4423,6 +4598,84 @@ export const useOrderStore = create<OrderState>()(
                   orderProfile.total_discount = existing.total_discount
                 }
               }
+
+              // Reconnect safety: never let a transient/stale payload wipe local offline items.
+              // Preserve local pending/draft items and guard against destructive empty-item updates.
+              const backendHasNoItems = (orderProfile.items?.length ?? 0) === 0
+              const localHasItems = (existing.items?.length ?? 0) > 0
+              const hasQueueOpsForOrder = getPendingOperations().some(op => {
+                if (op.localOrderId === dbOrderId) return true
+                const mapped = localIdToDbOrderId.get(op.localOrderId)
+                return mapped === dbOrderId
+              })
+              const hasPendingLocalItems = existing.items.some(item => {
+                const syncStatus = useSyncStatusStore
+                  .getState()
+                  .itemSyncStatus.get(item.id)
+                return (
+                  (!item.db_order_item_id && !item.isDraft) ||
+                  item.isDraft ||
+                  syncStatus === 'pending' ||
+                  syncStatus === 'syncing'
+                )
+              })
+              const backendItemDbIds = new Set(
+                (orderProfile.items || [])
+                  .map(i => i.db_order_item_id)
+                  .filter(Boolean)
+              )
+              const localSyncedNotInBackend = existing.items.filter(
+                item =>
+                  item.db_order_item_id &&
+                  !backendItemDbIds.has(item.db_order_item_id)
+              )
+
+              if (hasPendingLocalItems || hasQueueOpsForOrder) {
+                const localPendingOrDraft = existing.items.filter(item => {
+                  const syncStatus = useSyncStatusStore
+                    .getState()
+                    .itemSyncStatus.get(item.id)
+                  return (
+                    item.isDraft ||
+                    (!item.db_order_item_id && !item.isDraft) ||
+                    syncStatus === 'pending' ||
+                    syncStatus === 'syncing'
+                  )
+                })
+
+                orderProfile.items = [
+                  ...(orderProfile.items || []),
+                  ...localPendingOrDraft,
+                  ...localSyncedNotInBackend
+                ]
+
+                if (__DEV__) {
+                  console.log('[OfflineReconnectDebug][UpsertPreserveLocal]', {
+                    dbOrderId,
+                    hasQueueOpsForOrder,
+                    preservedPendingOrDraft: localPendingOrDraft.length,
+                    preservedSyncedMissingFromBackend:
+                      localSyncedNotInBackend.length,
+                    finalItems: orderProfile.items.length
+                  })
+                }
+              } else if (backendHasNoItems && localHasItems && !isV2) {
+                // Defensive fallback for eventual consistency windows on reconnect:
+                // keep current items and schedule an authoritative full fetch.
+                orderProfile.items = existing.items
+                lastOrderDetailSyncAt.delete(dbOrderId)
+                if (__DEV__) {
+                  console.warn('[OfflineReconnectDebug][UpsertPreventedWipe]', {
+                    dbOrderId,
+                    localItems: existing.items.length,
+                    backendItems: 0,
+                    reason: 'non-v2 empty payload while local has items'
+                  })
+                }
+                queueMicrotask(() => {
+                  get().syncOrderFromBackendComplete(dbOrderId)
+                })
+              }
             }
 
             // Set broadcast item count for display
@@ -4438,6 +4691,16 @@ export const useOrderStore = create<OrderState>()(
               // Surgical dbOrderIdIndex maintenance
               state.dbOrderIdIndex[dbOrderId] = dbOrderId
             })
+
+            if (__DEV__) {
+              const post = get().ordersById[dbOrderId]
+              console.log('[OfflineReconnectDebug][UpsertCommitted]', {
+                dbOrderId,
+                committedItems: post?.items?.length ?? 0,
+                committedStatus: post?.order_status,
+                inOrderIds: get().orderIds.includes(dbOrderId)
+              })
+            }
 
             console.log(
               existing ? '[UpsertOrder] Updated:' : '[UpsertOrder] Created:',
@@ -4808,6 +5071,27 @@ export const useOrderStore = create<OrderState>()(
               for (const id of orderIds) {
                 const o = ordersById[id]
                 if (!o || !o.db_order_id) continue
+
+                // Never prune the active order or working-set orders.
+                if (id === get().activeOrderId) continue
+                if (get()._workingSetLookup[id]) continue
+
+                // Never prune orders with local pending item/payment sync.
+                const hasPendingItems = o.items.some(
+                  item => !item.db_order_item_id && !item.isDraft
+                )
+                const hasPendingPayments =
+                  o.payments?.some(
+                    p =>
+                      p.sync_status === 'pending' ||
+                      (!p.db_payment_id && !p.isVoided)
+                  ) ?? false
+                if (hasPendingItems || hasPendingPayments) continue
+
+                // Ownership-safe pruning:
+                // - keep own-station orders
+                // - keep orders with unknown station ownership (can happen during reconnect/rekey)
+                if (!o.station_id) continue
                 if (o.station_id === currentStationId) continue
                 if (inactiveSet.has(o.order_status ?? '')) continue
                 if (!serverDbIds.has(o.db_order_id)) {
@@ -5122,7 +5406,9 @@ export const useOrderStore = create<OrderState>()(
               : undefined
 
             const newOrder: OrderProfile = {
-              id: details?.orderId || `order_${Date.now()}`,
+              id:
+                details?.orderId ||
+                `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
               service_location_id: details?.tableId || null,
               order_status: 'draft',
               customer_name: '',
@@ -5310,7 +5596,11 @@ export const useOrderStore = create<OrderState>()(
             // so every item (including newly added ones) has correct subtotal / discount_amount
             const itemsForState =
               activeOrder.checkDiscount && totals.discount_amount > 0
-                ? distributeDiscountToItems(updatedCart, totals.discount_amount, totals.cash_discount_amount)
+                ? distributeDiscountToItems(
+                    updatedCart,
+                    totals.discount_amount,
+                    totals.cash_discount_amount
+                  )
                 : updatedCart
 
             set(state => {
@@ -5467,6 +5757,8 @@ export const useOrderStore = create<OrderState>()(
                     pendingItemAdditions.set(dbOrderId, existingPending)
                     pendingItemAdditions.delete(orderId)
                   }
+
+                  rekeyLinkedStores(orderId, dbOrderId)
                 }
 
                 // Create and track the sync promise - wrapped in queue to serialize additions
@@ -6884,6 +7176,8 @@ export const useOrderStore = create<OrderState>()(
                       delete state.persistableOrderIds[orderId]
                       state.persistableOrderIds[dbOrderId] = true
                     }
+
+                    syncTableOrderIdIndexForOrder(state, dbOrderId, snapshot)
                   })
 
                   // Migrate chain maps to new key
@@ -6897,10 +7191,13 @@ export const useOrderStore = create<OrderState>()(
                     pendingItemAdditions.set(dbOrderId, existingPending)
                     pendingItemAdditions.delete(orderId)
                   }
+
+                  rekeyLinkedStores(orderId, dbOrderId)
                 } else {
                   set(state => {
                     const order = state.ordersById[orderId]
                     if (!order) return
+                    const previousOrder = current(order)
                     order.db_order_id = dbOrderId
                     order.order_number = orderNumber
                     order.display_number = displayNumber
@@ -6908,6 +7205,7 @@ export const useOrderStore = create<OrderState>()(
                     order.sync_version = syncVersion ?? 1
                     order.opened_at = order.opened_at || createdAt
                     state.dbOrderIdIndex[dbOrderId] = orderId
+                    syncTableOrderIdIndexForOrder(state, orderId, previousOrder)
                   })
                 }
 
@@ -7809,8 +8107,52 @@ export const useOrderStore = create<OrderState>()(
               if (!order) return
               const previousOrder = current(order)
               order.service_location_id = tableId
+              order.order_type = 'dine_in' // Ensure order_type is set to dine_in when table assigned
               syncTableOrderIdIndexForOrder(state, orderId, previousOrder)
             })
+
+            // CRITICAL: Sync order_type change to backend if order is already synced
+            // This ensures backend order_type matches local order_type before send-to-kitchen
+            const order = get().ordersById[orderId]
+            if (order?.db_order_id) {
+              const supabase = _supabaseClient
+              const isOnline = getIsOnline()
+
+              if (!isOnline) {
+                // Queue for offline sync
+                queueFailedOperation(
+                  'update_order_details',
+                  {
+                    db_order_id: order.db_order_id,
+                    service_location_id: tableId,
+                    order_type: 'dine_in'
+                  },
+                  orderId
+                )
+              } else if (supabase) {
+                // Sync immediately online (fire-and-forget, errors logged)
+                ;(async () => {
+                  const { error } = await supabase
+                    .from('orders')
+                    .update({
+                      order_type: 'dine_in',
+                      table_number: tableId
+                    })
+                    .eq('id', order.db_order_id)
+
+                  if (error) {
+                    console.error(
+                      '[assignOrderToTable] Failed to sync order_type to backend:',
+                      error
+                    )
+                  } else {
+                    console.log(
+                      '[assignOrderToTable] Successfully synced order_type to backend'
+                    )
+                  }
+                })()
+              }
+            }
           },
 
           assignActiveOrderToTable: tableId => {
@@ -8062,6 +8404,26 @@ export const useOrderStore = create<OrderState>()(
             const order = get().ordersById[orderId] // O(1) lookup
             if (!order) return false
 
+            const prePaymentTotals = calculateOrderTotals(
+              order.items,
+              order.checkDiscount,
+              order.payments || [],
+              useStoreSettingsStore.getState().taxRatesMap
+            )
+            const outstandingBeforePayment =
+              method === 'Cash' && !forceCardPricing
+                ? prePaymentTotals.cash_outstanding_total
+                : prePaymentTotals.outstanding_total
+
+            if (outstandingBeforePayment <= 0.01) {
+              toastService.show({
+                title: 'Already Paid',
+                message: 'No unpaid items remaining on this order.',
+                type: 'warning'
+              })
+              return false
+            }
+
             // ================================================================
             // CAPTURE PREVIOUS STATE FOR ROLLBACK ON SYNC FAILURE
             // ================================================================
@@ -8252,6 +8614,15 @@ export const useOrderStore = create<OrderState>()(
                 }
               })
               .filter((c): c is OrderPaymentItemCoverage => c !== null)
+
+            if (itemsCovered.length === 0) {
+              toastService.show({
+                title: 'No Unpaid Items',
+                message: 'Select unpaid items or adjust payment amount.',
+                type: 'warning'
+              })
+              return false
+            }
 
             const newPayment: OrderProfilePayment = {
               id: localPaymentId, // Use local ID as temporary main ID
@@ -8829,6 +9200,33 @@ export const useOrderStore = create<OrderState>()(
 
             const removedCount = state.orderIds.length - keepSet.size
             if (removedCount <= 0) return
+
+            if (__DEV__) {
+              const removedCandidates = state.orderIds
+                .filter(id => !keepSet.has(id))
+                .map(id => {
+                  const o = state.ordersById[id]
+                  return {
+                    id,
+                    dbOrderId: o?.db_order_id,
+                    status: o?.order_status,
+                    items: o?.items?.length ?? 0,
+                    pendingItems:
+                      o?.items?.filter(i => !i.db_order_item_id && !i.isDraft)
+                        .length ?? 0,
+                    pendingPayments:
+                      o?.payments?.filter(
+                        p =>
+                          p.sync_status === 'pending' ||
+                          (!p.db_payment_id && !p.isVoided)
+                      ).length ?? 0
+                  }
+                })
+              console.warn('[OfflineReconnectDebug][ClearInactivePrune]', {
+                removedCount,
+                removedCandidates
+              })
+            }
 
             set(draft => {
               for (const id of draft.orderIds) {
@@ -9484,12 +9882,37 @@ export const useOrderStore = create<OrderState>()(
                       )
                       return // Don't update items if order status failed
                     }
-                    // THEN update item statuses in one bulk call
-                    return OrderService.bulkUpdateOrderItemStatus(
-                      supabase,
-                      dbItemIds,
-                      getKitchenSentStatus()
-                    )
+
+                    return supabase
+                      .from('orders')
+                      .select('status')
+                      .eq('id', currentOrder.db_order_id!)
+                      .single()
+                      .then(({ data: backendOrder, error: verifyError }) => {
+                        if (verifyError || backendOrder?.status === 'draft') {
+                          console.warn(
+                            '[fireActiveOrderToKitchen] Backend order remained draft after status update; deferring item sync',
+                            {
+                              dbOrderId: currentOrder.db_order_id,
+                              verifyError,
+                              backendStatus: backendOrder?.status
+                            }
+                          )
+                          queueFailedOperation(
+                            'send_to_kitchen',
+                            { localOrderId: activeOrderId, localItemIds },
+                            activeOrderId
+                          )
+                          return
+                        }
+
+                        // THEN update item statuses in one bulk call
+                        return OrderService.bulkUpdateOrderItemStatus(
+                          supabase,
+                          dbItemIds,
+                          getKitchenSentStatus()
+                        )
+                      })
                   })
                   .then(result => {
                     if (result?.error) {
@@ -9737,11 +10160,35 @@ export const useOrderStore = create<OrderState>()(
                       return
                     }
 
-                    return OrderService.bulkUpdateOrderItemStatus(
-                      supabase,
-                      dbItemIds,
-                      getKitchenSentStatus()
-                    )
+                    return supabase
+                      .from('orders')
+                      .select('status')
+                      .eq('id', freshOrder.db_order_id!)
+                      .single()
+                      .then(({ data: backendOrder, error: verifyError }) => {
+                        if (verifyError || backendOrder?.status === 'draft') {
+                          console.warn(
+                            '[sendNewItemsToKitchen] Backend order remained draft after status update; deferring item sync',
+                            {
+                              dbOrderId: freshOrder.db_order_id,
+                              verifyError,
+                              backendStatus: backendOrder?.status
+                            }
+                          )
+                          queueFailedOperation(
+                            'send_to_kitchen',
+                            { localOrderId: activeOrderId, localItemIds },
+                            activeOrderId
+                          )
+                          return
+                        }
+
+                        return OrderService.bulkUpdateOrderItemStatus(
+                          supabase,
+                          dbItemIds,
+                          getKitchenSentStatus()
+                        )
+                      })
                   })
                   .then(result => {
                     if (result?.error) {
@@ -9861,9 +10308,6 @@ export const useOrderStore = create<OrderState>()(
                 .map(item => item.db_order_item_id)
                 .filter((id): id is string => !!id)
 
-              const isDraft = order.order_status === 'draft'
-              const backendStatus = isDraft ? getOrderSentStatus() : 'preparing'
-
               if (dbItemIds.length === 0 && newItems.length > 0) {
                 // Items haven't synced to backend yet - queue for retry
                 // The queue handler will update order status + items atomically
@@ -9876,82 +10320,71 @@ export const useOrderStore = create<OrderState>()(
                   orderId
                 )
               } else if (dbItemIds.length > 0) {
-                if (isDraft) {
-                  // Draft order: must update order status FIRST (draft -> sent_to_kitchen/preparing)
-                  // before bulk_update_order_item_status can set sent_to_kitchen_at
-                  // (valid_status_transitions constraint rejects sent_to_kitchen_at on draft orders)
-                  const { error: statusError } =
-                    await OrderService.updateOrderStatus(
-                      supabase,
-                      order.db_order_id!,
-                      getOrderSentStatus()
-                    )
-                  if (
-                    statusError &&
-                    statusError.code !== 'P0001' &&
-                    !statusError.message?.includes('already in')
-                  ) {
-                    console.error(
-                      'Failed to update backend order status:',
-                      statusError
-                    )
-                    queueFailedOperation(
-                      'send_to_kitchen',
-                      { localOrderId: orderId, localItemIds },
-                      orderId
-                    )
-                    return
-                  }
-                  // THEN update item statuses
-                  const { error: itemError } =
-                    await OrderService.bulkUpdateOrderItemStatus(
-                      supabase,
-                      dbItemIds,
-                      getKitchenSentStatus()
-                    )
-                  if (itemError) {
-                    console.error(
-                      'Failed to bulk update item statuses:',
-                      itemError
-                    )
-                    queueFailedOperation(
-                      'send_to_kitchen',
-                      { localOrderId: orderId, localItemIds },
-                      orderId
-                    )
-                  }
-                } else {
-                  // Non-draft order: items first, then order status
-                  const { error: itemError } =
-                    await OrderService.bulkUpdateOrderItemStatus(
-                      supabase,
-                      dbItemIds,
-                      getKitchenSentStatus()
-                    )
-                  if (itemError) {
-                    console.error(
-                      'Failed to bulk update item statuses:',
-                      itemError
-                    )
-                    queueFailedOperation(
-                      'send_to_kitchen',
-                      { localOrderId: orderId, localItemIds },
-                      orderId
-                    )
-                    return
-                  }
-                  // Update order status
-                  const { error } = await supabase.rpc('update_order_status', {
-                    p_order_id: order.db_order_id,
-                    p_new_status: backendStatus
-                  })
-                  if (
-                    error &&
-                    error.code !== 'P0001' &&
-                    !error.message?.includes('already in')
-                  ) {
-                    console.error('Failed to sync status for order:', error)
-                  }
+                // Always transition backend status first, then verify backend is no longer draft.
+                // Local status can be optimistic and out of sync with backend reality.
+                const { error: statusError } =
+                  await OrderService.updateOrderStatus(
+                    supabase,
+                    order.db_order_id!,
+                    getOrderSentStatus()
+                  )
+                if (
+                  statusError &&
+                  statusError.code !== 'P0001' &&
+                  !statusError.message?.includes('already in')
+                ) {
+                  console.error(
+                    'Failed to update backend order status:',
+                    statusError
+                  )
+                  queueFailedOperation(
+                    'send_to_kitchen',
+                    { localOrderId: orderId, localItemIds },
+                    orderId
+                  )
+                  return
+                }
+
+                const { data: backendOrder, error: verifyError } =
+                  await supabase
+                    .from('orders')
+                    .select('status')
+                    .eq('id', order.db_order_id!)
+                    .single()
+
+                if (verifyError || backendOrder?.status === 'draft') {
+                  console.warn(
+                    '[sendNewItemsToKitchenForOrder] Backend order remained draft after status update; deferring item sync',
+                    {
+                      dbOrderId: order.db_order_id,
+                      verifyError,
+                      backendStatus: backendOrder?.status
+                    }
+                  )
+                  queueFailedOperation(
+                    'send_to_kitchen',
+                    { localOrderId: orderId, localItemIds },
+                    orderId
+                  )
+                  return
+                }
+
+                const { error: itemError } =
+                  await OrderService.bulkUpdateOrderItemStatus(
+                    supabase,
+                    dbItemIds,
+                    getKitchenSentStatus()
+                  )
+                if (itemError) {
+                  console.error(
+                    'Failed to bulk update item statuses:',
+                    itemError
+                  )
+                  queueFailedOperation(
+                    'send_to_kitchen',
+                    { localOrderId: orderId, localItemIds },
+                    orderId
+                  )
                 }
               }
             } else {
@@ -10453,6 +10886,8 @@ export const useOrderStore = create<OrderState>()(
                 return
               }
 
+              const previousOrder = current(order)
+
               // Create updated order with DB UUID as id
               const updatedOrder = {
                 ...order,
@@ -10470,12 +10905,21 @@ export const useOrderStore = create<OrderState>()(
               if (state.activeOrderId === tempId) {
                 state.activeOrderId = dbUuid
               }
+              state.workingSetOrderIds = state.workingSetOrderIds.map(id =>
+                id === tempId ? dbUuid : id
+              )
+              if (state._workingSetLookup[tempId]) {
+                delete state._workingSetLookup[tempId]
+                state._workingSetLookup[dbUuid] = true
+              }
               state.unsyncedOrderIds = state.unsyncedOrderIds.filter(
                 id => id !== tempId
               )
               // Surgical dbOrderIdIndex maintenance
               state.dbOrderIdIndex[dbUuid] = dbUuid
               delete state.dbOrderIdIndex[tempId]
+              // Keep table -> order mapping valid after key swap
+              syncTableOrderIdIndexForOrder(state, dbUuid, previousOrder)
               // Surgical persistableOrderIds maintenance
               if (state.persistableOrderIds[tempId]) {
                 delete state.persistableOrderIds[tempId]
@@ -10484,15 +10928,7 @@ export const useOrderStore = create<OrderState>()(
             })
 
             // Rekey satellite stores keyed by orderId
-            try {
-              const { useSeatingStore } =
-                require('@/stores/useSeatingStore') as typeof import('@/stores/useSeatingStore')
-              useSeatingStore.getState().rekeyEntry(tempId, dbUuid)
-            } catch {
-              /* seating store not loaded yet */
-            }
-
-            useCoursingStore.getState().rekeyEntry(tempId, dbUuid)
+            rekeyLinkedStores(tempId, dbUuid)
 
             console.log(`[rekeyOrder] Rekeyed order ${tempId} -> ${dbUuid}`)
           },
@@ -10524,6 +10960,8 @@ export const useOrderStore = create<OrderState>()(
               const order = state.ordersById[localOrderId]
               if (!order) return
 
+              const previousOrder = current(order)
+
               order.db_order_id = dbOrderId
               order.sync_status = 'synced' as const
               state.unsyncedOrderIds = state.unsyncedOrderIds.filter(
@@ -10531,6 +10969,7 @@ export const useOrderStore = create<OrderState>()(
               )
               // Surgical dbOrderIdIndex maintenance
               state.dbOrderIdIndex[dbOrderId] = localOrderId
+              syncTableOrderIdIndexForOrder(state, localOrderId, previousOrder)
             })
             console.log(
               `[updateOrderDbId] Updated order ${localOrderId} with db_order_id: ${dbOrderId}`
@@ -10546,7 +10985,16 @@ export const useOrderStore = create<OrderState>()(
             const state = get()
             // O(1) lookup via direct key or dbOrderIdIndex
             const localKey = state.dbOrderIdIndex[idOrDbId] ?? idOrDbId
-            return state.ordersById[localKey]
+            const direct = state.ordersById[localKey]
+            if (direct) return direct
+
+            // Fallback: stale local IDs can linger briefly in UI/session links
+            // after reconnect rekey. Resolve through persistent local->db mapping.
+            const mappedDbId = localIdToDbOrderId.get(idOrDbId)
+            if (!mappedDbId) return undefined
+
+            const mappedKey = state.dbOrderIdIndex[mappedDbId] ?? mappedDbId
+            return state.ordersById[mappedKey]
           },
 
           // Update local order with backend-generated data after sync
@@ -10765,6 +11213,8 @@ export const useOrderStore = create<OrderState>()(
                       delete state.persistableOrderIds[id]
                       state.persistableOrderIds[dbOrderId] = true
                     }
+
+                    syncTableOrderIdIndexForOrder(state, dbOrderId, snapshot)
                   })
 
                   // Migrate chain maps to new key
@@ -10778,10 +11228,13 @@ export const useOrderStore = create<OrderState>()(
                     pendingItemAdditions.set(dbOrderId, existingPending)
                     pendingItemAdditions.delete(id)
                   }
+
+                  rekeyLinkedStores(id, dbOrderId)
                 } else {
                   set(state => {
                     const order = state.ordersById[id]
                     if (!order) return
+                    const previousOrder = current(order)
                     order.db_order_id = dbOrderId
                     order.order_number = orderNumber
                     order.display_number = displayNumber
@@ -10789,6 +11242,7 @@ export const useOrderStore = create<OrderState>()(
                     order.sync_version = syncVersion ?? 1
                     order.opened_at = order.opened_at || createdAt
                     state.dbOrderIdIndex[dbOrderId] = id
+                    syncTableOrderIdIndexForOrder(state, id, previousOrder)
                   })
                 }
 
@@ -10816,12 +11270,6 @@ export const useOrderStore = create<OrderState>()(
                   console.error(
                     `[retryFailedSyncs] Retry failed for item ${item.id}:`,
                     err
-                  )
-                  updateItemSyncStatus(
-                    orderId,
-                    item.id,
-                    'failed',
-                    err?.message || 'Retry failed'
                   )
                   return false
                 })
@@ -11678,7 +12126,6 @@ export const useOrderStore = create<OrderState>()(
                 set(state => {
                   const existing = state.ordersById[localOrderId]
                   if (!existing) return
-
                   existing.db_order_id = dbOrderId
                   existing.session_id = sessionId
                   existing.local_session_id = sessionId
@@ -12560,6 +13007,17 @@ export const useOrderStore = create<OrderState>()(
                       !item.isDraft &&
                       !backendItemDbIds.has(item.db_order_item_id)
                   )
+
+                  if (__DEV__) {
+                    console.log('[OfflineReconnectDebug][FullSyncMergePlan]', {
+                      orderId: storeKey,
+                      backendItems: transformedItems.length,
+                      localPendingItems: localPendingItems.length,
+                      localDraftItems: localDraftItems.length,
+                      localSyncedMissingFromBackend:
+                        localSyncedNotInBackend.length
+                    })
+                  }
 
                   // Preserve locally-advanced kitchen_status and item_status.
                   // Mirrors the broadcast merge logic at line ~3436.

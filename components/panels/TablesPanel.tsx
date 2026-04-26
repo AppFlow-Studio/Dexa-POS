@@ -7,7 +7,7 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { ChevronDown, ChevronRight } from 'lucide-react-native'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   FlatList,
   RefreshControl,
@@ -218,13 +218,29 @@ const TablesPanel: React.FC = () => {
     )
   }, [floorPlans, activeFloorPlanId])
 
-  useMemo(() => {
+  useEffect(() => {
     if (activeFloorPlanId && sections[activeFloorPlanId] === undefined) {
       setSections(prev => ({ ...prev, [activeFloorPlanId]: true }))
     }
-  }, [activeFloorPlanId])
+  }, [activeFloorPlanId, sections])
 
   const activeTables = tables
+
+  useEffect(() => {
+    const validIds = new Set(activeTables.map(t => t.id))
+    setExpandedTableIds(prev => {
+      let changed = false
+      const next: Record<string, boolean> = {}
+      for (const [tableId, expanded] of Object.entries(prev)) {
+        if (validIds.has(tableId)) {
+          next[tableId] = expanded
+        } else {
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [activeTables])
   const isSeatable = (t: FloorPlanObject) =>
     t.category === 'table' || t.category === 'booth'
   const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
@@ -239,9 +255,21 @@ const TablesPanel: React.FC = () => {
     available: 6
   }
 
-  const ACTIVE_STATUSES = new Set(['seated', 'ordered', 'served', 'check_presented', 'paid'])
+  const ACTIVE_STATUSES = new Set([
+    'seated',
+    'ordered',
+    'served',
+    'check_presented',
+    'paid'
+  ])
 
-  const { uniqueServers, serverNames, displayTables, occupiedCount, capacityPercentage } = useMemo(() => {
+  const {
+    uniqueServers,
+    serverNames,
+    displayTables,
+    occupiedCount,
+    capacityPercentage
+  } = useMemo(() => {
     const serverSet = new Set<string>()
     const nameMap: Record<string, string> = {}
     const seenSessionIds = new Set<string>()
@@ -270,7 +298,8 @@ const TablesPanel: React.FC = () => {
       }
 
       // Filter by selected server
-      if (selectedServerId && session?.server_staff_id !== selectedServerId) continue
+      if (selectedServerId && session?.server_staff_id !== selectedServerId)
+        continue
 
       filtered.push(table)
       if (ACTIVE_STATUSES.has(session?.status?.toLowerCase() || '')) occupied++
@@ -286,8 +315,12 @@ const TablesPanel: React.FC = () => {
         return sa - sb
       }
       if (sortMode === 'duration') {
-        const ta = sessionA?.seated_at ? new Date(sessionA.seated_at).getTime() : Infinity
-        const tb = sessionB?.seated_at ? new Date(sessionB.seated_at).getTime() : Infinity
+        const ta = sessionA?.seated_at
+          ? new Date(sessionA.seated_at).getTime()
+          : Infinity
+        const tb = sessionB?.seated_at
+          ? new Date(sessionB.seated_at).getTime()
+          : Infinity
         return ta - tb
       }
       return 0
@@ -298,9 +331,16 @@ const TablesPanel: React.FC = () => {
       serverNames: nameMap,
       displayTables: filtered,
       occupiedCount: occupied,
-      capacityPercentage: filtered.length > 0 ? Math.floor((occupied / filtered.length) * 100) : 0,
+      capacityPercentage:
+        filtered.length > 0 ? Math.floor((occupied / filtered.length) * 100) : 0
     }
-  }, [activeTables, getEmployeeByStaffId, liveSessions, selectedServerId, sortMode])
+  }, [
+    activeTables,
+    getEmployeeByStaffId,
+    liveSessions,
+    selectedServerId,
+    sortMode
+  ])
 
   const totalTables = displayTables.length
 

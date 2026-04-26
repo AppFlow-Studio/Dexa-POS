@@ -26,7 +26,7 @@ import { initLogCollector } from '@/lib/logCollector'
 import { markNavigationEvent, setRootNavigationRef } from '@/lib/rootNavigation'
 import { POS_SCREEN_OPTIONS } from '@/lib/screenConfig'
 import { flushAllPendingWrites, secureStorage } from '@/lib/storage'
-import { colors, setThemeMode } from '@/lib/theme'
+import { colors, setThemeMode, spinnerColor } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { useCustomizationStore } from '@/stores/useCustomizationStore'
@@ -223,7 +223,9 @@ function ClerkGate ({ children }: { children: React.ReactNode }) {
     getToken().catch(() => {})
 
     graceTimerRef.current = setTimeout(() => {
-      console.warn('[ClerkGate] Grace period expired — session could not be recovered')
+      console.warn(
+        '[ClerkGate] Grace period expired — session could not be recovered'
+      )
       secureStorage.remove(CLERK_WAS_SIGNED_IN_KEY)
       setGraceExpired(true)
       graceTimerRef.current = null
@@ -240,8 +242,15 @@ function ClerkGate ({ children }: { children: React.ReactNode }) {
   // Clerk still loading — show spinner
   if (!isLoaded) {
     return (
-      <View className='flex-1 items-center justify-center bg-background'>
-        <ActivityIndicator size='large' />
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.screen
+        }}
+      >
+        <ActivityIndicator size='large' color={spinnerColor} />
       </View>
     )
   }
@@ -249,8 +258,15 @@ function ClerkGate ({ children }: { children: React.ReactNode }) {
   // Signed out but was previously signed in — wait for token refresh
   if (needsGrace) {
     return (
-      <View className='flex-1 items-center justify-center bg-background'>
-        <ActivityIndicator size='large' />
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.screen
+        }}
+      >
+        <ActivityIndicator size='large' color={spinnerColor} />
       </View>
     )
   }

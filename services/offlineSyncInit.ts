@@ -437,11 +437,38 @@ function resolveItemId (
   const fromRegistry = resolveToBackendId(localItemId)
   if (fromRegistry) return fromRegistry
 
-  // Fall back to store lookup
+  // Fall back to resilient store lookup.
+  // Orders can be re-keyed from local id -> db_order_id after create_order sync,
+  // so direct ordersById[localOrderId] may miss items queued pre-rekey.
   const store = _getOrderStore().getState()
-  const order = store.ordersById[localOrderId]
-  const item = order?.items.find((i: any) => i.id === localItemId)
-  return item?.db_order_item_id || null
+
+  const directOrder = store.ordersById[localOrderId]
+  const resolvedOrderId = resolveOrderId(localOrderId)
+  const mappedOrder = resolvedOrderId ? store.ordersById[resolvedOrderId] : null
+  const resilientOrder =
+    typeof store.getOrder === 'function' ? store.getOrder(localOrderId) : null
+
+  const candidateOrders = [directOrder, mappedOrder, resilientOrder].filter(
+    Boolean
+  ) as any[]
+
+  for (const order of candidateOrders) {
+    const item = order?.items?.find((i: any) => i.id === localItemId)
+    if (item?.db_order_item_id) {
+      return item.db_order_item_id
+    }
+  }
+
+  // Final fallback: scan all loaded orders by local item id.
+  // This guards against stale order keys during reconnect race windows.
+  for (const order of Object.values(store.ordersById) as any[]) {
+    const item = order?.items?.find((i: any) => i.id === localItemId)
+    if (item?.db_order_item_id) {
+      return item.db_order_item_id
+    }
+  }
+
+  return null
 }
 
 /**
@@ -492,7 +519,15 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
   try {
     switch (op.type) {
       case 'update_item_quantity': {
-        const { orderItemId, quantity, localOrderId, localItemId } = op.params
+        const {
+          orderItemId,
+          quantity,
+          localOrderId: paramsLocalOrderId,
+          localItemId: paramsLocalItemId
+        } = op.params
+
+        const localOrderId = paramsLocalOrderId || op.localOrderId
+        const localItemId = paramsLocalItemId || op.localItemId
 
         // Resolve item ID if it was a local ID
         const resolvedItemId =
@@ -1354,7 +1389,7 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
       // === OFFLINE-FIRST OPERATION HANDLERS ===
 
       case 'create_order': {
-        const { localOrderId, createOrderParams } = op.params
+        const { localOrderId } = op.params
         const store = _getOrderStore().getState()
         const selectedStore = useStoreSettingsStore.getState().selectedStore
 
@@ -1368,6 +1403,30 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
         if (!selectedStore) {
           console.error('[OfflineSync:create_order] FAILED - No store selected')
           return false
+        }
+
+        // Some older/fallback queued create_order ops can miss createOrderParams.
+        // Rebuild them from current local order + store context so replay can continue.
+        let createOrderParams = op.params.createOrderParams
+        if (!createOrderParams) {
+          const localOrder = store.ordersById[localOrderId]
+          createOrderParams = {
+            p_merchant_id: selectedStore.merchant_id,
+            p_location_id: selectedStore.id,
+            p_order_type: (localOrder?.order_type || 'dine_in') as any,
+            p_table_number: localOrder?.service_location_id || null,
+            p_customer_name: localOrder?.customer_name || null,
+            p_customer_phone: localOrder?.customer_phone || null,
+            p_special_instructions: null,
+            p_device_id: getDeviceId(),
+            p_created_by_staff_id:
+              useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+            p_station_id:
+              useStoreSettingsStore.getState().selectedStation?.id || null
+          }
+          console.warn(
+            `[OfflineSync:create_order] Missing createOrderParams for ${localOrderId}; rebuilt fallback params`
+          )
         }
 
         // Dedup guard: check if order was already created by a concurrent path
@@ -1500,6 +1559,9 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           console.log(
             `[OfflineSync:add_item] BLOCKED - Waiting for order sync (${localOrderId})`
           )
+          if (localItemId) {
+            useSyncStatusStore.getState().setSyncStatus(localItemId, 'pending')
+          }
           return false // Will be retried after order sync
         }
 
@@ -1624,12 +1686,24 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           console.error(
             `[OfflineSync:add_item] Order: ${localOrderId}, Item: ${localItemId}`
           )
+          if (localItemId) {
+            useSyncStatusStore
+              .getState()
+              .setSyncStatus(
+                localItemId,
+                'failed',
+                error?.message || 'Add item sync failed'
+              )
+          }
           return false
         }
 
         if (data?.order_item_id && localItemId) {
           // Update local item with backend ID
           store.updateItemDbId(storeKey, localItemId, data.order_item_id)
+
+          // Phase 7D: Mark replayed offline item as synced in dedicated sync store.
+          useSyncStatusStore.getState().setSyncStatus(localItemId, 'synced')
 
           // Register in ID registry
           await mapLocalToBackend(localItemId, data.order_item_id)
@@ -1675,11 +1749,32 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
               `[OfflineSync:add_item] Item was fired during sync, retroactively sending to kitchen`
             )
             try {
-              await OrderService.bulkUpdateOrderItemStatus(
-                _supabaseClient,
-                [data.order_item_id],
-                getKitchenSentStatus()
-              )
+              // Keep backend order out of draft before item kitchen status updates.
+              const { error: statusError } =
+                await OrderService.updateOrderStatus(
+                  _supabaseClient,
+                  actualDbOrderId,
+                  getOrderSentStatus() as any
+                )
+
+              if (
+                statusError &&
+                statusError.code !== 'P0001' &&
+                !statusError.message?.includes('already in')
+              ) {
+                throw statusError
+              }
+
+              const { error: kitchenError } =
+                await OrderService.bulkUpdateOrderItemStatus(
+                  _supabaseClient,
+                  [data.order_item_id],
+                  getKitchenSentStatus()
+                )
+
+              if (kitchenError) {
+                throw kitchenError
+              }
             } catch (retroErr) {
               console.warn(
                 `[OfflineSync:add_item] Retroactive kitchen send failed, queuing send_to_kitchen:`,
@@ -1698,6 +1793,15 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
             `[OfflineSync:add_item] No order_item_id in response — will retry`
           )
           console.warn(`[OfflineSync:add_item] Response:`, data)
+          if (localItemId) {
+            useSyncStatusStore
+              .getState()
+              .setSyncStatus(
+                localItemId,
+                'pending',
+                'Waiting for backend item ID'
+              )
+          }
           return false // Retry — don't silently drop the item
         }
 
@@ -2178,6 +2282,11 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
         )
 
         try {
+          const storeOrders = _getOrderStore().getState().ordersById
+          const liveOrder = Object.values(storeOrders).find(
+            (o: any) => o.db_order_id === resolvedOrderId
+          ) as any
+
           // 1. Resolve item IDs FIRST (before any RPC calls)
           let resolvedItemIds: string[] = []
           let unresolvedLocalItemIds: string[] = []
@@ -2204,13 +2313,9 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
             // never written to the resolveItemId map (race condition). Look up
             // db_order_item_id directly from ordersById for any matching local IDs.
             if (resolvedItemIds.length === 0) {
-              const storeOrders = _getOrderStore().getState().ordersById
-              const liveOrder = Object.values(storeOrders).find(
-                (o: any) => o.db_order_id === resolvedOrderId
-              )
               if (liveOrder) {
                 for (const localItemId of unresolvedLocalItemIds) {
-                  const liveItem = (liveOrder as any).items.find(
+                  const liveItem = liveOrder.items.find(
                     (i: any) => i.id === localItemId && i.db_order_item_id
                   )
                   if (liveItem?.db_order_item_id) {
@@ -2228,50 +2333,40 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
               // Resolved via live store — clear unresolved list so we don't re-queue them
               unresolvedLocalItemIds = []
             }
+          } else if (liveOrder?.items?.length) {
+            // Fallback: legacy/older queued ops may not carry item IDs.
+            // In that case, send all currently-fired items on the order.
+            resolvedItemIds = liveOrder.items
+              .filter(
+                (i: any) =>
+                  i.kitchen_status === getKitchenSentStatus() &&
+                  !!i.db_order_item_id
+              )
+              .map((i: any) => i.db_order_item_id)
+
+            const hasUnsyncedFiredItems = liveOrder.items.some(
+              (i: any) =>
+                i.kitchen_status === getKitchenSentStatus() &&
+                !i.db_order_item_id
+            )
+
+            if (resolvedItemIds.length === 0 && hasUnsyncedFiredItems) {
+              console.log(
+                '[OfflineSync:send_to_kitchen] Fired items exist but item IDs are not synced yet, will retry'
+              )
+              return false
+            }
+
+            if (resolvedItemIds.length > 0) {
+              console.log(
+                `[OfflineSync:send_to_kitchen] Derived ${resolvedItemIds.length} fired items from live order state`
+              )
+            }
           }
 
-          // 1b. Filter out items already sent to kitchen (another station may have sent them while we were offline)
-          if (resolvedItemIds.length > 0) {
-            const storeOrders = _getOrderStore().getState().ordersById
-            const liveOrder = Object.values(storeOrders).find(
-              (o: any) => o.db_order_id === resolvedOrderId
-            )
-            if ((liveOrder as any)?.items) {
-              const alreadySentIds = new Set(
-                (liveOrder as any).items
-                  .filter(
-                    (i: any) =>
-                      i.kitchen_status &&
-                      !['pending', 'new'].includes(i.kitchen_status)
-                  )
-                  .map((i: any) => i.db_order_item_id)
-                  .filter(Boolean)
-              )
-              if (alreadySentIds.size > 0) {
-                const beforeCount = resolvedItemIds.length
-                resolvedItemIds = resolvedItemIds.filter(
-                  id => !alreadySentIds.has(id)
-                )
-                if (beforeCount !== resolvedItemIds.length) {
-                  console.log(
-                    `[OfflineSync:send_to_kitchen] Filtered ${
-                      beforeCount - resolvedItemIds.length
-                    } already-sent items`
-                  )
-                }
-              }
-            }
-            // If all items already sent and no unresolved ones remain, we're done
-            if (
-              resolvedItemIds.length === 0 &&
-              unresolvedLocalItemIds.length === 0
-            ) {
-              console.log(
-                `[OfflineSync:send_to_kitchen] All items already sent — nothing to do`
-              )
-              return true
-            }
-          }
+          // Do NOT infer backend kitchen delivery from local optimistic statuses.
+          // Local items are marked sent immediately offline, so filtering by local
+          // state can incorrectly skip the actual backend KDS update after reconnect.
 
           // 2. Update order status
           // The bulk_update_order_item_status RPC sets sent_to_kitchen_at on the parent order,
@@ -2314,6 +2409,25 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
             console.log(
               `[OfflineSync:send_to_kitchen] Order status updated to "${backendStatus}"`
             )
+          }
+
+          const { data: backendOrder, error: verifyError } =
+            await _supabaseClient
+              .from('orders')
+              .select('status')
+              .eq('id', resolvedOrderId)
+              .single()
+
+          if (verifyError || backendOrder?.status === 'draft') {
+            console.warn(
+              '[OfflineSync:send_to_kitchen] Backend order remained draft after status update; deferring item sync',
+              {
+                resolvedOrderId,
+                verifyError,
+                backendStatus: backendOrder?.status
+              }
+            )
+            return false
           }
 
           // 3. Update resolved item statuses
