@@ -25,6 +25,14 @@ const nowMs = () =>
     : Date.now()
 
 let lastModifierOpenStartedAt = 0
+let deferredModifierResetTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearDeferredModifierResetTimer = () => {
+  if (deferredModifierResetTimer) {
+    clearTimeout(deferredModifierResetTimer)
+    deferredModifierResetTimer = null
+  }
+}
 
 export const getLastModifierOpenStartedAt = () => lastModifierOpenStartedAt
 
@@ -422,6 +430,8 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
     },
 
     open: config => {
+      clearDeferredModifierResetTimer()
+
       const {
         menuItem: menuItemParam,
         cartItem: cartItemParam,
@@ -671,8 +681,10 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         activeEditingItemId: null // Clear active item highlight
       })
 
-      // Phase 2: clear heavier payload if still closed next tick.
-      queueMicrotask(() => {
+      // Phase 2: clear heavier payload after close animation settles.
+      clearDeferredModifierResetTimer()
+      deferredModifierResetTimer = setTimeout(() => {
+        deferredModifierResetTimer = null
         const state = get()
         if (state.isOpen) return
         set({
@@ -694,7 +706,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           seatCount: 0,
           showSeatPicker: false
         })
-      })
+      }, 90)
     },
 
     cancelAndRemoveDraft: () => {
@@ -728,30 +740,39 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         }
       }
 
-      // Close the modal
+      // Close the modal immediately, then clear heavier payload after animation.
       set({
         isOpen: false,
         isMenuBlocked: false,
         selectedItemPosition: null,
-        activeEditingItemId: null,
-        mode: 'add',
-        menuItem: null,
-        cartItem: null,
-        categoryId: null,
-        menuId: null,
-        precomputedModifiers: null,
-        precomputedCategoriesById: null,
-        precomputedOptionsById: null,
-        initialSelections: null,
-        itemPrice: 0,
-        itemCashPrice: 0,
-        activeModifierCategory: null,
-        precomputedForItemId: null,
-        draftCreatedId: null,
-        seatOverride: null,
-        seatCount: 0,
-        showSeatPicker: false
+        activeEditingItemId: null
       })
+
+      clearDeferredModifierResetTimer()
+      deferredModifierResetTimer = setTimeout(() => {
+        deferredModifierResetTimer = null
+        const latest = get()
+        if (latest.isOpen) return
+        set({
+          mode: 'add',
+          menuItem: null,
+          cartItem: null,
+          categoryId: null,
+          menuId: null,
+          precomputedModifiers: null,
+          precomputedCategoriesById: null,
+          precomputedOptionsById: null,
+          initialSelections: null,
+          itemPrice: 0,
+          itemCashPrice: 0,
+          activeModifierCategory: null,
+          precomputedForItemId: null,
+          draftCreatedId: null,
+          seatOverride: null,
+          seatCount: 0,
+          showSeatPicker: false
+        })
+      }, 90)
     },
 
     setSelectedItemPosition: (position: ItemPosition | null) => {

@@ -3,7 +3,7 @@ import {
   selectIsFullscreen,
   useModifierSidebarStore
 } from '@/stores/useModifierSidebarStore'
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Dimensions, StyleSheet } from 'react-native'
 import Animated, {
   cancelAnimation,
@@ -27,9 +27,21 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window')
 const ModifierScreenOverlay: React.FC = () => {
   const isFullscreen = useModifierSidebarStore(selectIsFullscreen)
   const isOpen = useModifierSidebarStore(s => s.isOpen)
+  const [hasBeenShown, setHasBeenShown] = useState(false)
+  const [isPrimed, setIsPrimed] = useState(false)
 
   const translateY = useSharedValue(SCREEN_HEIGHT)
   const opacity = useSharedValue(0)
+
+  useEffect(() => {
+    if (isOpen) setHasBeenShown(true)
+  }, [isOpen])
+
+  useEffect(() => {
+    // Prime the heavy modifier tree shortly after mount so first open feels instant.
+    const timer = setTimeout(() => setIsPrimed(true), 250)
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (isFullscreen) {
@@ -60,14 +72,14 @@ const ModifierScreenOverlay: React.FC = () => {
     opacity: opacity.value
   }))
 
-  // Keep mounted while open so ModifierScreen renders during the slide animation.
-  // pointerEvents blocks touches when visually hidden (translateY = SCREEN_HEIGHT).
-  if (!isOpen) return null
+  // Keep mounted after first show so the heavy ModifierScreen tree is not
+  // remounted on every open/close cycle.
+  if (!hasBeenShown && !isPrimed) return null
 
   return (
     <Animated.View
       style={[styles.overlay, animatedStyle]}
-      pointerEvents={isOpen ? 'auto' : 'none'}
+      pointerEvents={isOpen && isFullscreen ? 'auto' : 'none'}
     >
       <ModifierScreen />
     </Animated.View>
