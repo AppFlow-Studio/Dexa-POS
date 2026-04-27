@@ -1086,6 +1086,61 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           }
         }
 
+        // ============================================================
+        // DEFENSIVE AUTH-CHECK (Bad-WiFi Phase 2 — Wave 1)
+        // ============================================================
+        // Before replaying a queued payment, ask the server whether a payment
+        // matching this op already landed. If yes, the previous attempt
+        // succeeded but the response was lost — DISCARD the queued op rather
+        // than re-charging the customer.
+        //
+        // Reuses the W2 idempotency-layer story (per-RPC keys close the same
+        // gap from the other side). This Wave 1 check is purely defensive:
+        // any error or false negative falls back to the existing behavior.
+        //
+        // Lookback window = max(time since op was queued + 5 min slack, 10 min).
+        // ============================================================
+        if (finalParams.p_order_id && isValidUUID(finalParams.p_order_id)) {
+          try {
+            const opAgeMs = Date.now() - new Date(op.timestamp).getTime()
+            const lookbackSeconds = Math.max(
+              600,
+              Math.ceil(opAgeMs / 1000) + 300
+            )
+            const amountCents =
+              typeof finalParams.p_amount === 'number' && finalParams.p_amount > 0
+                ? Math.round(finalParams.p_amount * 100)
+                : null
+
+            const { data: authCheck, error: authCheckError } =
+              await _supabaseClient.rpc('check_recent_payment', {
+                p_order_id: finalParams.p_order_id,
+                p_lookback_seconds: lookbackSeconds,
+                p_amount_cents: amountCents,
+                p_split_portion_index: finalParams.p_split_portion_index ?? null
+              })
+
+            if (authCheckError) {
+              // Don't block on the safety check failing — it's defensive only
+              console.warn(
+                '[OfflineSync:payment] check_recent_payment failed; proceeding (defensive only):',
+                authCheckError
+              )
+            } else if ((authCheck as any)?.matched) {
+              console.warn(
+                `[OfflineSync:payment] DUPLICATE-CHARGE PREVENTED — payment for order ${finalParams.p_order_id} (amount=${finalParams.p_amount ?? 'full-remaining'}, portion=${finalParams.p_split_portion_index ?? '-'}) already exists on server. Discarding queued op.`,
+                authCheck
+              )
+              return true // discard queued op without replaying
+            }
+          } catch (checkErr) {
+            console.warn(
+              '[OfflineSync:payment] check_recent_payment threw; proceeding (defensive only):',
+              checkErr
+            )
+          }
+        }
+
         console.log(
           '[OfflineSync:payment] Calling process_payment_v8 with:',
           JSON.stringify({

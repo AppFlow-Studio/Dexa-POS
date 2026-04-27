@@ -20,7 +20,8 @@
 CREATE OR REPLACE FUNCTION public.check_recent_payment(
   p_order_id UUID,
   p_lookback_seconds INTEGER DEFAULT 120,
-  p_amount_cents BIGINT DEFAULT NULL
+  p_amount_cents BIGINT DEFAULT NULL,
+  p_split_portion_index INTEGER DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -46,6 +47,9 @@ BEGIN
   -- captured_at = when payment was actually finalized (the right semantic for
   -- "recently completed"). initiated_at is when the row was first inserted and
   -- can be stale for multi-step flows.
+  --
+  -- p_split_portion_index disambiguates split payments where two portions
+  -- happen to have the same amount. When provided, match exactly on portion.
   SELECT
     op.id,
     op.captured_at,
@@ -54,7 +58,9 @@ BEGIN
     op.payment_method,
     op.reference_number,
     op.card_last_four,
-    op.status
+    op.status,
+    op.split_portion_index,
+    op.split_count
   INTO v_payment
   FROM public.order_payments op
   JOIN public.orders o ON o.id = op.order_id
@@ -63,6 +69,7 @@ BEGIN
     AND o.location_id = ANY(v_location_ids)
     AND op.captured_at > now() - (p_lookback_seconds || ' seconds')::INTERVAL
     AND (p_amount_cents IS NULL OR (op.amount * 100)::BIGINT = p_amount_cents)
+    AND (p_split_portion_index IS NULL OR op.split_portion_index = p_split_portion_index)
     AND op.status::text IN ('captured', 'partially_refunded', 'refunded')
     AND COALESCE(op.is_voided, false) = false
   ORDER BY op.captured_at DESC
@@ -81,12 +88,19 @@ BEGIN
     'payment_method', v_payment.payment_method,
     'reference_number', v_payment.reference_number,
     'card_last_four', v_payment.card_last_four,
-    'status', v_payment.status
+    'status', v_payment.status,
+    'split_portion_index', v_payment.split_portion_index,
+    'split_count', v_payment.split_count
   );
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.check_recent_payment(UUID, INTEGER, BIGINT) TO authenticated;
+-- Drop the old 3-arg signature explicitly (CREATE OR REPLACE doesn't replace
+-- across different argument lists). Safe even if the old version was never
+-- applied — DROP IF EXISTS is a no-op on missing functions.
+DROP FUNCTION IF EXISTS public.check_recent_payment(UUID, INTEGER, BIGINT);
+
+GRANT EXECUTE ON FUNCTION public.check_recent_payment(UUID, INTEGER, BIGINT, INTEGER) TO authenticated;
 
 COMMENT ON FUNCTION public.check_recent_payment IS
   'Wave 1 retry-safety check: server-side lookup for a recent payment matching order + amount. Avoids client clock skew. Conservative: callers should treat any error/timeout as "cannot verify".';
