@@ -17,6 +17,7 @@ import {
   Clover,
   CreditCard,
   DollarSign,
+  FlaskConical,
   Globe,
   LayoutGrid,
   List,
@@ -186,7 +187,23 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         route: '/settings/staff-timeclock'
       }
     ]
-  }
+  },
+  // Developer section — only visible in __DEV__ builds. The screen itself
+  // also redirects away in production as a defense-in-depth.
+  ...(__DEV__
+    ? [{
+        id: 'developer',
+        title: 'Developer',
+        items: [
+          {
+            id: 'dev-flags',
+            label: 'Bad-WiFi Phase 2 Flags',
+            icon: FlaskConical,
+            route: '/settings/dev-flags'
+          }
+        ]
+      }]
+    : [])
 ]
 
 const SidebarNavigation = () => {
