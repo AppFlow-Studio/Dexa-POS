@@ -5,6 +5,43 @@ import { isIdempotentEnabled, type IdempotentRpc } from './featureFlags'
 import { runWithDeadline } from './runWithDeadline'
 
 /**
+ * Classify an RPC error as transient (recoverable via offline queue retry)
+ * vs permanent (auth/schema/business-logic — surfaces to user).
+ *
+ * Used by callers to decide whether to silently queue (sync_status='pending')
+ * or mark-failed (sync_status='failed' → red banner). The latter should be
+ * reserved for errors the user actually needs to act on.
+ *
+ * Transient indicators:
+ *   - DEADLINE_EXCEEDED — the runWithDeadline timeout
+ *   - OFFLINE_QUEUED   — the executeWithFallback queue handoff
+ *   - PostgREST/network: code 'PGRST*' on its own can be either; we treat
+ *     fetch/network/timeout messages as transient
+ *   - No error object at all (raw fetch failure)
+ *   - Common JS network errors: 'Network request failed', 'fetch failed',
+ *     'TypeError: Failed to fetch'
+ */
+export function isTransientRpcError (err: unknown): boolean {
+  if (!err) return false
+  const e = err as { code?: string; message?: string; name?: string }
+  if (e.code === 'DEADLINE_EXCEEDED') return true
+  if (e.code === 'OFFLINE_QUEUED') return true
+  // PostgREST timeout/connect errors typically have status 0 or a network message
+  const msg = (e.message || '').toLowerCase()
+  if (
+    msg.includes('network') ||
+    msg.includes('fetch') ||
+    msg.includes('timeout') ||
+    msg.includes('aborted') ||
+    msg.includes('socket') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout')
+  ) return true
+  if (e.name === 'AbortError') return true
+  return false
+}
+
+/**
  * Resolves the UUID to pass as `p_idempotency_key` for a Category B RPC call.
  *
  * Reuse priority (avoids parallel key mechanisms):
