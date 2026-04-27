@@ -8,6 +8,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { queryClient } from "@/contexts/TanstackProvider";
 import { MerchantRole } from "@/lib/types";
 import { FloorPlanService } from "@/services/floorPlanService";
+import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import {
   initializeOfflineSync,
   isServiceInitialized,
@@ -89,6 +90,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setCoursingSupabaseClient(supabase);
       setSeatingSupabaseClient(supabase);
       setOfflineSyncSupabaseClient(supabase);
+      setupConnectionQuality(supabase);
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
       setKDSSupabaseClient(supabase);

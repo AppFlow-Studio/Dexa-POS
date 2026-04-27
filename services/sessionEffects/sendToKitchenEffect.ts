@@ -46,7 +46,9 @@ export async function sendToKitchenEffect (
   // Wait for any in-flight item syncs AND quantity updates to complete
   // before broadcasting to the kitchen (same logic as sendNewItemsToKitchen).
   // This covers Scenarios B, C, D — all pending promises resolve here.
-  await useOrderStore.getState().waitForPendingSyncs(orderId)
+  // Capped at 2000ms on the hot path: on slow WiFi, we'd rather queue the
+  // send-to-kitchen op than freeze the UI for 15s. See lets-look-into-this-stateless-blossom.md.
+  await useOrderStore.getState().waitForPendingSyncs(orderId, { maxMs: 2000 })
 
   // Re-read fresh state after the wait
   const freshOrder = useOrderStore.getState().ordersById[orderId]

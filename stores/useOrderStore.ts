@@ -67,6 +67,7 @@ import { normalizePlatform } from '@/lib/platformAliases'
 import { queueFailedOperation } from '@/services/offlineSyncInit'
 import {
   getIsOnline,
+  cancelPendingByEntity,
   getOperationsForOrder,
   getOrderCreationOperationId,
   getPendingOperations,
@@ -74,6 +75,8 @@ import {
   removeOperation,
   updateOperationParams
 } from '@/services/offlineSyncService'
+import { DEADLINES } from '@/lib/network/deadlines'
+import { runWithDeadline } from '@/lib/network/runWithDeadline'
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { paymentPreviewService } from '@/services/paymentPreviewService'
 import {
@@ -1334,10 +1337,19 @@ const addItemToBackend = async (
             }))
           )
           try {
-            await supabase.rpc('replace_order_item_modifiers_v2', {
-              p_order_item_id: addResult.order_item_id,
-              p_modifiers: modifierPayload
-            })
+            // rpc-discipline-allow: inline-wrapped Category A — replace_order_item_modifiers_v2 with retry safety
+            const { error: modError } = await runWithDeadline(
+              'replace_modifiers_inline',
+              DEADLINES.hotMutation,
+              async (signal) =>
+                await supabase
+                  .rpc('replace_order_item_modifiers_v2', {
+                    p_order_item_id: addResult.order_item_id,
+                    p_modifiers: modifierPayload
+                  })
+                  .abortSignal(signal)
+            )
+            if (modError) throw modError
             if (__DEV__)
               console.log(
                 '[addItemToBackend] Custom open-item modifiers saved:',
@@ -2090,6 +2102,7 @@ const syncPaymentToBackend = async (
       !paymentDetails.splitCount &&
       !paymentDetails.forceCardPricing
 
+    // rpc-discipline-allow: Category B payment — Option C accepted scope, deferred to deeper-optimizations
     const { data, error } = await supabase.rpc('process_payment_v8', {
       p_order_id: order.db_order_id,
       p_payment_method: paymentMethod,
@@ -2589,7 +2602,7 @@ interface OrderState {
 
   // Sync barrier methods
   hasPendingSyncs: (orderId: string) => boolean
-  waitForPendingSyncs: (orderId: string) => Promise<void>
+  waitForPendingSyncs: (orderId: string, opts?: { maxMs?: number }) => Promise<void>
   getSyncStatus: (orderId: string) => {
     pending: number
     failed: number
@@ -5157,8 +5170,13 @@ export const useOrderStore = create<OrderState>()(
             })
           },
 
-          waitForPendingSyncs: async (orderId: string) => {
-            const TIMEOUT_MS = 15000
+          waitForPendingSyncs: async (
+            orderId: string,
+            opts?: { maxMs?: number },
+          ) => {
+            // Default reduced 15s → 5s; hot-path callers pass {maxMs: 2000}.
+            // The sync barrier must not freeze the UI on slow WiFi.
+            const TIMEOUT_MS = opts?.maxMs ?? 5000
             const POLL_INTERVAL_MS = 100
             const start = Date.now()
 
@@ -6793,6 +6811,19 @@ export const useOrderStore = create<OrderState>()(
               const _dbId = get().ordersById[activeOrderId]?.db_order_id
               if (_dbId) lastLocalMutationAt[_dbId] = Date.now()
               lastLocalMutationAt[activeOrderId] = Date.now()
+            }
+
+            // If the add_item op is still pending in the offline queue (item
+            // never reached backend), drop it. Otherwise the queue would replay
+            // an add for an item the user already removed locally. Only drops
+            // `pending` ops; in-flight `processing` ops complete normally and
+            // the existing remove_item path below handles the cleanup.
+            if (!itemToHandle?.db_order_item_id) {
+              cancelPendingByEntity(`item:${itemId}`).catch(err => {
+                if (__DEV__) {
+                  console.warn('[removeItemFromActiveOrder] cancelPending failed:', err)
+                }
+              })
             }
 
             // Background sync (fire-and-forget)
@@ -10638,10 +10669,18 @@ export const useOrderStore = create<OrderState>()(
             ) {
               try {
                 // Call the void_payment RPC — prefer db_payment_id (backend UUID)
-                const { error } = await supabase.rpc('void_payment', {
-                  p_payment_id: paymentToVoid.db_payment_id ?? paymentToVoid.id,
-                  p_void_reason: 'User voided from split review'
-                })
+                // rpc-discipline-allow: inline-wrapped Category A — void_payment with retry safety
+                const { error } = await runWithDeadline(
+                  'void_payment_inline',
+                  DEADLINES.hotMutation,
+                  async (signal) =>
+                    await supabase
+                      .rpc('void_payment', {
+                        p_payment_id: paymentToVoid.db_payment_id ?? paymentToVoid.id,
+                        p_void_reason: 'User voided from split review'
+                      })
+                      .abortSignal(signal)
+                )
 
                 if (error) {
                   console.error('[voidPayment] Backend sync failed:', error)
@@ -12020,12 +12059,17 @@ export const useOrderStore = create<OrderState>()(
                     `[linkOrderToSession] Calling RPC for order ${order.db_order_id}`
                   )
 
-                  const { data, error } = await supabase.rpc(
-                    'link_order_to_session',
-                    {
-                      p_order_id: order.db_order_id,
-                      p_session_id: sessionId
-                    }
+                  // rpc-discipline-allow: inline-wrapped Category A — link_order_to_session with retry safety
+                  const { data, error } = await runWithDeadline<any>(
+                    'link_order_to_session_inline',
+                    DEADLINES.hotMutation,
+                    async (signal) =>
+                      await supabase
+                        .rpc('link_order_to_session', {
+                          p_order_id: order.db_order_id,
+                          p_session_id: sessionId
+                        })
+                        .abortSignal(signal)
                   )
 
                   if (error) {
@@ -12607,11 +12651,16 @@ export const useOrderStore = create<OrderState>()(
                 })
 
                 // Call get_order_details RPC
-                const { data, error } = await supabase.rpc(
-                  'get_order_details',
-                  {
-                    p_order_id: order.db_order_id
-                  }
+                // rpc-discipline-allow: inline-wrapped Category C read — get_order_details deadline-only
+                const { data, error } = await runWithDeadline<any>(
+                  'get_order_details_inline',
+                  DEADLINES.read,
+                  async (signal) =>
+                    await supabase
+                      .rpc('get_order_details', {
+                        p_order_id: order.db_order_id
+                      })
+                      .abortSignal(signal)
                 )
 
                 if (error) {

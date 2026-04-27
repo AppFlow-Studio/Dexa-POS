@@ -1,4 +1,6 @@
 import { getDeviceId } from '@/lib/deviceId'
+import { DEADLINES } from '@/lib/network/deadlines'
+import { runWithDeadline as _runWithDeadline } from '@/lib/network/runWithDeadline'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
   AddOrderItemParams,
@@ -19,6 +21,7 @@ import {
   UpdateOrderItemResult
 } from '@/types/db-order-management-types'
 import { SupabaseClient } from '@supabase/supabase-js'
+
 
 export type AddOpenItemParams = {
   p_order_id: string
@@ -288,12 +291,18 @@ export class OrderService {
     newStatus: OrderStatus,
     reason?: string
   ): Promise<{ data: Order | null; error: any }> {
-    const { data, error } = await client.rpc('update_order_status', {
-      p_order_id: orderId,
-      p_new_status: newStatus,
-      p_reason: reason
-    })
-    return { data, error }
+    return _runWithDeadline<Order>(
+      'update_order_status',
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client.rpc('update_order_status', {
+          p_order_id: orderId,
+          p_new_status: newStatus,
+          p_reason: reason
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -490,11 +499,17 @@ export class OrderService {
     orderItemId: string,
     reason: string
   ): Promise<{ data: boolean | null; error: any }> {
-    const { data, error } = await client.rpc('void_order_item', {
-      p_order_item_id: orderItemId,
-      p_void_reason: reason
-    })
-    return { data, error }
+    return _runWithDeadline<boolean>(
+      'void_order_item',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('void_order_item', {
+          p_order_item_id: orderItemId,
+          p_void_reason: reason
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -505,11 +520,17 @@ export class OrderService {
     paymentId: string,
     reason: string
   ): Promise<{ data: any; error: any }> {
-    const { data, error } = await client.rpc('void_payment', {
-      p_payment_id: paymentId,
-      p_void_reason: reason
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'void_payment',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('void_payment', {
+          p_payment_id: paymentId,
+          p_void_reason: reason
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -532,14 +553,20 @@ export class OrderService {
       }
     }
 
-    const { data, error } = await client.rpc(
-      'void_order_and_cancel_reservation',
-      {
-        p_order_id: orderId,
-        p_void_reason: voidReason || 'Order cancelled'
+    return _runWithDeadline<any>(
+      'void_order',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc(
+          'void_order_and_cancel_reservation',
+          {
+            p_order_id: orderId,
+            p_void_reason: voidReason || 'Order cancelled'
+          }
+        ).abortSignal(signal)
+        return { data, error }
       }
     )
-    return { data, error }
   }
 
   /**
@@ -730,11 +757,17 @@ export class OrderService {
     orderItemId: string,
     quantity: number
   ): Promise<{ data: UpdateOrderItemQuantityResult | null; error: any }> {
-    const { data, error } = await client.rpc('update_order_item_quantity_v2', {
-      p_order_item_id: orderItemId,
-      p_quantity: quantity
-    })
-    return { data, error }
+    return _runWithDeadline<UpdateOrderItemQuantityResult>(
+      'update_item_quantity',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('update_order_item_quantity_v2', {
+          p_order_item_id: orderItemId,
+          p_quantity: quantity
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -744,8 +777,14 @@ export class OrderService {
     client: SupabaseClient,
     params: UpdateOrderItemParams
   ): Promise<{ data: UpdateOrderItemResult | null; error: any }> {
-    const { data, error } = await client.rpc('update_order_item_v2', params)
-    return { data, error }
+    return _runWithDeadline<UpdateOrderItemResult>(
+      'update_item',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('update_order_item_v2', params).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -756,14 +795,20 @@ export class OrderService {
     orderItemId: string,
     modifiers: OrderItemModifier[]
   ): Promise<{ data: ReplaceOrderItemModifiersResult | null; error: any }> {
-    const { data, error } = await client.rpc(
-      'replace_order_item_modifiers_v2',
-      {
-        p_order_item_id: orderItemId,
-        p_modifiers: modifiers
+    return _runWithDeadline<ReplaceOrderItemModifiersResult>(
+      'replace_modifiers',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc(
+          'replace_order_item_modifiers_v2',
+          {
+            p_order_item_id: orderItemId,
+            p_modifiers: modifiers
+          }
+        ).abortSignal(signal)
+        return { data, error }
       }
     )
-    return { data, error }
   }
 
   /**
@@ -838,10 +883,16 @@ export class OrderService {
   ): Promise<{ data: any; error: any }> {
     if (__DEV__) console.log('we are removing it hard ')
 
-    const { data, error } = await client.rpc('remove_order_item', {
-      p_order_item_id: orderItemId
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'remove_item',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('remove_order_item', {
+          p_order_item_id: orderItemId
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -851,10 +902,16 @@ export class OrderService {
     client: SupabaseClient,
     orderItemIds: string[]
   ): Promise<{ data: any; error: any }> {
-    const { data, error } = await client.rpc('remove_order_items_batch', {
-      p_order_item_ids: orderItemIds
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'remove_items_batch',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('remove_order_items_batch', {
+          p_order_item_ids: orderItemIds
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -864,10 +921,16 @@ export class OrderService {
     client: SupabaseClient,
     orderId: string
   ): Promise<{ data: any; error: any }> {
-    const { data, error } = await client.rpc('clear_order_items', {
-      p_order_id: orderId
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'clear_order_items',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('clear_order_items', {
+          p_order_id: orderId
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -878,11 +941,17 @@ export class OrderService {
     orderId: string,
     cancelReason?: string
   ): Promise<{ data: any; error: any }> {
-    const { data, error } = await client.rpc('cancel_order', {
-      p_order_id: orderId,
-      p_cancel_reason: cancelReason || 'Customer cancelled'
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'cancel_order',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('cancel_order', {
+          p_order_id: orderId,
+          p_cancel_reason: cancelReason || 'Customer cancelled'
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   // --- Kitchen Status Operations ---
@@ -900,12 +969,18 @@ export class OrderService {
     if (orderItemIds.length === 0) {
       return { data: null, error: null }
     }
-    const { data, error } = await client.rpc('bulk_update_order_item_status', {
-      p_order_item_ids: orderItemIds,
-      p_status: status,
-      p_staff_id: staffId
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'bulk_update_order_item_status',
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client.rpc('bulk_update_order_item_status', {
+          p_order_item_ids: orderItemIds,
+          p_status: status,
+          p_staff_id: staffId
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -937,11 +1012,17 @@ export class OrderService {
     if (orderItemIds.length === 0) {
       return { data: null, error: null }
     }
-    const { data, error } = await client.rpc('toggle_rush_order_items', {
-      p_order_item_ids: orderItemIds,
-      p_rush: rush
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'toggle_rush_order_items',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('toggle_rush_order_items', {
+          p_order_item_ids: orderItemIds,
+          p_rush: rush
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -955,11 +1036,17 @@ export class OrderService {
     if (orderItemIds.length === 0) {
       return { data: null, error: null }
     }
-    const { data, error } = await client.rpc('toggle_priority_order_items', {
-      p_order_item_ids: orderItemIds,
-      p_is_prioritized: isPrioritized
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'toggle_priority_order_items',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('toggle_priority_order_items', {
+          p_order_item_ids: orderItemIds,
+          p_is_prioritized: isPrioritized
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -1041,13 +1128,19 @@ export class OrderService {
     } | null
     error: any
   }> {
-    const { data, error } = await client.rpc('lock_order_for_payment', {
-      p_order_id: orderId,
-      p_expected_version: expectedVersion,
-      p_station_id: stationId,
-      p_lock_duration_seconds: lockDurationSeconds
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'lock_order_for_payment',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('lock_order_for_payment', {
+          p_order_id: orderId,
+          p_expected_version: expectedVersion,
+          p_station_id: stationId,
+          p_lock_duration_seconds: lockDurationSeconds
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -1065,11 +1158,17 @@ export class OrderService {
     } | null
     error: any
   }> {
-    const { data, error } = await client.rpc('unlock_order_for_payment', {
-      p_order_id: orderId,
-      p_station_id: stationId
-    })
-    return { data, error }
+    return _runWithDeadline<any>(
+      'unlock_order_for_payment',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('unlock_order_for_payment', {
+          p_order_id: orderId,
+          p_station_id: stationId
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
   }
 
   /**
@@ -1113,10 +1212,17 @@ export class OrderService {
     if (__DEV__)
       console.log(`[OrderService:closeCheck] Staff ID: ${staffId || 'none'}`)
 
-    const { data, error } = await client.rpc('close_check', {
-      p_order_id: orderId,
-      p_staff_id: staffId || null
-    })
+    const { data, error } = await _runWithDeadline<any>(
+      'close_check',
+      DEADLINES.closeCheck,
+      async (signal) => {
+        const { data: d, error: e } = await client.rpc('close_check', {
+          p_order_id: orderId,
+          p_staff_id: staffId || null
+        }).abortSignal(signal)
+        return { data: d, error: e }
+      }
+    )
 
     if (error) {
       console.error('[OrderService:closeCheck] RPC error:', error)
@@ -1156,11 +1262,18 @@ export class OrderService {
         `[OrderService:reopenCheck] Reason: ${reason || 'No reason provided'}`
       )
 
-    const { data, error } = await client.rpc('reopen_check', {
-      p_order_id: orderId,
-      p_staff_id: staffId,
-      p_reason: reason || null
-    })
+    const { data, error } = await _runWithDeadline<any>(
+      'reopen_check',
+      DEADLINES.closeCheck,
+      async (signal) => {
+        const { data: d, error: e } = await client.rpc('reopen_check', {
+          p_order_id: orderId,
+          p_staff_id: staffId,
+          p_reason: reason || null
+        }).abortSignal(signal)
+        return { data: d, error: e }
+      }
+    )
 
     if (error) {
       console.error('[OrderService:reopenCheck] RPC error:', error)
