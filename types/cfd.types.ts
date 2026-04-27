@@ -132,6 +132,9 @@ export interface CFDPayload {
   // Payment method (when screenState is 'payment' or 'processing')
   paymentMethod?: 'cash' | 'card' | 'manual' | null
 
+  // Theme
+  themeMode?: 'light' | 'dark'
+
   // Timestamp
   timestamp: number
 }

@@ -57,6 +57,7 @@ interface CFDClientStore {
   loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
   loyaltyResult: CFDPayload['loyaltyResult'] | null
   paymentMethod: 'cash' | 'card' | null
+  themeMode: 'light' | 'dark'
 
   // Actions
   setPairing: (data: CFDPairingData) => void
@@ -116,6 +117,7 @@ export const useCFDClientStore = create<CFDClientStore>()(
       loyaltyPrompt: null,
       loyaltyResult: null,
       paymentMethod: null,
+      themeMode: 'dark',
 
       // Actions
       setPairing: data => {
@@ -187,7 +189,8 @@ export const useCFDClientStore = create<CFDClientStore>()(
           carouselImages: payload.carouselImages ?? get().carouselImages,
           loyaltyPrompt: payload.loyaltyPrompt ?? null,
           loyaltyResult: payload.loyaltyResult ?? null,
-          paymentMethod: payload.paymentMethod ?? null
+          paymentMethod: payload.paymentMethod ?? null,
+          themeMode: payload.themeMode ?? get().themeMode
         })
     }),
     {
