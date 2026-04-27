@@ -55,9 +55,11 @@ export async function openTab(
   amount: number,
   terminal: TerminalInstance,
   supabase: SupabaseClient,
+  onTransactionStart?: (refId: string) => void,
 ): Promise<PreAuthResult> {
   try {
     const referenceId = generateRefId("AUTH");
+    onTransactionStart?.(referenceId);
     let terminalResponse: Record<string, unknown> | undefined;
     let rrn: string | undefined;
     let stan: string | undefined;
@@ -248,6 +250,7 @@ export async function increaseTab(
   newAmount: number,
   terminal: TerminalInstance,
   supabase: SupabaseClient,
+  onTransactionStart?: (refId: string) => void,
 ): Promise<IncrementResult> {
   try {
     const store = useOrderStore.getState();
@@ -263,6 +266,7 @@ export async function increaseTab(
     if (terminal.type === "castles") {
       // Castles supports native incremental auth
       const referenceId = generateRefId("INCR");
+      onTransactionStart?.(referenceId);
       const result = await terminal.service.processAuthIncremental({
         amount: newAmount,
         referenceId,
@@ -342,6 +346,7 @@ export async function closeTab(
   tipAmount: number,
   terminal: TerminalInstance,
   supabase: SupabaseClient,
+  onTransactionStart?: (refId: string) => void,
 ): Promise<CaptureResult> {
   try {
     const store = useOrderStore.getState();
@@ -357,6 +362,7 @@ export async function closeTab(
 
     // 1. Call terminal to capture
     if (terminal.type === "castles") {
+      onTransactionStart?.(referenceId);
       const result = await terminal.service.processAuthComplete({
         captureAmount: captureAmount + tipAmount,
         referenceId,
@@ -370,11 +376,13 @@ export async function closeTab(
 
       terminalResponse = result.terminalResponse;
     } else {
+      const dejavooRef = payment.preAuthReferenceId ?? referenceId;
+      onTransactionStart?.(dejavooRef);
       const result = await terminal.api
         .capture()
         .amount(captureAmount)
         .tip(tipAmount)
-        .referenceId(payment.preAuthReferenceId ?? referenceId)
+        .referenceId(dejavooRef)
         .execute();
 
       if (!result.success) {
@@ -480,6 +488,7 @@ export async function releaseTab(
   paymentId: string,
   terminal: TerminalInstance,
   supabase: SupabaseClient,
+  onTransactionStart?: (refId: string) => void,
 ): Promise<VoidResult> {
   try {
     const store = useOrderStore.getState();
@@ -493,6 +502,7 @@ export async function releaseTab(
     // 1. Call terminal to release hold FIRST (before backend)
     if (terminal.type === "castles") {
       const referenceId = generateRefId("VOID");
+      onTransactionStart?.(referenceId);
       const result = await terminal.service.processVoid({
         rrn: payment.preAuthRrn,
         stan: payment.preAuthStan,
@@ -503,10 +513,12 @@ export async function releaseTab(
         return { success: false, error: result.error || "Failed to release hold on terminal" };
       }
     } else {
+      const dejavooRef = payment.preAuthReferenceId ?? "";
+      onTransactionStart?.(dejavooRef);
       const result = await terminal.api
         .void()
         .amount(payment.preAuthAmount ?? payment.amount)
-        .referenceId(payment.preAuthReferenceId ?? "")
+        .referenceId(dejavooRef)
         .execute();
 
       if (!result.success) {
