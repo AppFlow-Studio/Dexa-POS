@@ -1,5 +1,8 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { v4 as uuidv4 } from 'uuid'
+import { DEADLINES } from './deadlines'
 import { isIdempotentEnabled, type IdempotentRpc } from './featureFlags'
+import { runWithDeadline } from './runWithDeadline'
 
 /**
  * Resolves the UUID to pass as `p_idempotency_key` for a Category B RPC call.
@@ -58,4 +61,43 @@ export function withIdempotency<P extends Record<string, any>> (
     name: v2Name,
     params: { ...params, p_idempotency_key } as P & { p_idempotency_key: string }
   }
+}
+
+/**
+ * Composed helper: idempotency-key swap + deadline-wrap in one call.
+ *
+ * Why combined:
+ *   - Idempotency makes retries SAFE (server dedupes via _idempotency_claim).
+ *   - Deadline-wrap makes retries TRIGGER (timeout → error → caller's queue).
+ * Together they bring Category B RPCs into the connectionQuality state
+ * machine on the same terms as the Phase 1 / Option C Category A wraps.
+ *
+ * On deadline timeout, returns Supabase-shaped `{ data: null, error: {
+ * code: 'DEADLINE_EXCEEDED' } }` — caller's existing error path runs.
+ *
+ * Telemetry: timeouts report to `connectionQuality.reportTimeout(rpc, ms)`,
+ * driving fast → degraded → slow transitions and `processQueueNow()` on
+ * recovery (via the slow→fast hook in `setupConnectionQuality.ts`).
+ */
+export async function rpcWithIdempotency<T = unknown> (
+  client: SupabaseClient,
+  rpc: IdempotentRpc,
+  v1Name: string,
+  v2Name: string,
+  params: Record<string, any>,
+  opts?: {
+    /** Deadline in ms. Defaults to DEADLINES.hotMutation (2500ms). */
+    deadline?: number
+    /** Override key for retry-stable operations (queue replays). */
+    keyOverride?: string
+  }
+): Promise<{ data: T | null; error: any }> {
+  const { name, params: rpcParams } = withIdempotency(
+    rpc, v1Name, v2Name, params, opts?.keyOverride
+  )
+  const deadlineMs = opts?.deadline ?? DEADLINES.hotMutation
+  return runWithDeadline<T>(rpc, deadlineMs, async (signal) => {
+    const { data, error } = await client.rpc(name, rpcParams).abortSignal(signal)
+    return { data: data as T | null, error }
+  })
 }

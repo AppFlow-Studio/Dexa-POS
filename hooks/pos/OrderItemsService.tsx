@@ -3,7 +3,8 @@
 // React Native / TypeScript
 // ============================================================================
 
-import { withIdempotency } from '@/lib/network/idempotencyKey';
+import { DEADLINES } from '@/lib/network/deadlines';
+import { rpcWithIdempotency, withIdempotency } from '@/lib/network/idempotencyKey';
 import { getSyncJSON, setSyncJSON } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
 import { v4 as uuidv4 } from 'uuid';
@@ -196,29 +197,32 @@ class OrderItemService {
     if (isOnline) {
       // ONLINE: Call RPC directly
 
-      const { name: _rpc, params: _rpcParams } = withIdempotency('add_order_item', 'add_order_item_v2', 'add_order_item_v3', {
-        p_order_id: params.orderId,
-        p_menu_item_id: params.menuItemId,
-        p_location_exclusive_item_id: params.locationExclusiveItemId,
-        p_item_name: params.itemName,
-        p_item_description: params.itemDescription,
-        p_category_name: params.categoryName,
-        p_unit_price: params.unitPrice,
-        p_cash_price: params.cashPrice,
-        p_use_cash_price: params.useCashPrice ?? true,
-        p_quantity: params.quantity,
-        p_selected_size_id: params.selectedSizeId,
-        p_selected_size_name: params.selectedSizeName,
-        p_size_price_modifier: params.sizePriceModifier,
-        p_special_instructions: params.specialInstructions,
-        p_modifiers: params.modifiers || [],
-        p_prep_station: params.prepStation,
-        p_course_number: params.courseNumber
-      });
-      const { data, error } = await supabase.rpc(_rpc, _rpcParams);
+      const { data, error } = await rpcWithIdempotency<{ order_item_id: string }>(
+        supabase, 'add_order_item', 'add_order_item_v2', 'add_order_item_v3',
+        {
+          p_order_id: params.orderId,
+          p_menu_item_id: params.menuItemId,
+          p_location_exclusive_item_id: params.locationExclusiveItemId,
+          p_item_name: params.itemName,
+          p_item_description: params.itemDescription,
+          p_category_name: params.categoryName,
+          p_unit_price: params.unitPrice,
+          p_cash_price: params.cashPrice,
+          p_use_cash_price: params.useCashPrice ?? true,
+          p_quantity: params.quantity,
+          p_selected_size_id: params.selectedSizeId,
+          p_selected_size_name: params.selectedSizeName,
+          p_size_price_modifier: params.sizePriceModifier,
+          p_special_instructions: params.specialInstructions,
+          p_modifiers: params.modifiers || [],
+          p_prep_station: params.prepStation,
+          p_course_number: params.courseNumber
+        },
+        { deadline: DEADLINES.hotMutation }
+      );
 
       if (error) throw error;
-      return { success: true, itemId: data.order_item_id, isOffline: false };
+      return { success: true, itemId: data!.order_item_id, isOffline: false };
     } else {
       // OFFLINE: Queue operation + optimistic update
       const tempId = `TEMP-${uuidv4()}`;
@@ -450,13 +454,12 @@ class OrderItemService {
       // NOTE: see services/orderService.ts:replaceOrderItemModifiers — both
       // the legacy 2-arg and new 3-arg variants share the name '_v2'. Postgres
       // dispatches by signature; passing p_idempotency_key routes to the new one.
-      const { name: _rpc, params: _rpcParams } = withIdempotency(
-        'replace_order_item_modifiers',
-        'replace_order_item_modifiers_v2',
-        'replace_order_item_modifiers_v2',
-        { p_order_item_id: orderItemId, p_modifiers: modifiers }
+      const { data, error } = await rpcWithIdempotency(
+        supabase, 'replace_order_item_modifiers',
+        'replace_order_item_modifiers_v2', 'replace_order_item_modifiers_v2',
+        { p_order_item_id: orderItemId, p_modifiers: modifiers },
+        { deadline: DEADLINES.hotMutation }
       );
-      const { data, error } = await supabase.rpc(_rpc, _rpcParams);
 
       if (error) throw error;
       return { success: true, isOffline: false };
@@ -504,8 +507,9 @@ class OrderItemService {
     const isOnline = await this.queue.isOnline();
     const supabase = useSupabaseClient();
     if (isOnline) {
-      const { name: _rpc, params: _rpcParams } = withIdempotency(
-        'add_order_item_modifier', 'add_order_item_modifier', 'add_order_item_modifier_v2',
+      const { data, error } = await rpcWithIdempotency<{ modifier_id: string }>(
+        supabase, 'add_order_item_modifier',
+        'add_order_item_modifier', 'add_order_item_modifier_v2',
         {
           p_order_item_id: orderItemId,
           p_modifier_group_id: modifier.modifier_group_id,
@@ -514,12 +518,12 @@ class OrderItemService {
           p_modifier_name: modifier.modifier_name,
           p_price_modifier: modifier.price_modifier,
           p_quantity: modifier.quantity
-        }
+        },
+        { deadline: DEADLINES.hotMutation }
       );
-      const { data, error } = await supabase.rpc(_rpc, _rpcParams);
 
       if (error) throw error;
-      return { success: true, modifierId: data.modifier_id, isOffline: false };
+      return { success: true, modifierId: data!.modifier_id, isOffline: false };
     } else {
       const tempModifierId = `TEMP-MOD-${uuidv4()}`;
 
@@ -566,11 +570,12 @@ class OrderItemService {
     const isOnline = await this.queue.isOnline();
     const supabase = useSupabaseClient();
     if (isOnline) {
-      const { name: _rpc, params: _rpcParams } = withIdempotency(
-        'remove_order_item_modifier', 'remove_order_item_modifier', 'remove_order_item_modifier_v2',
-        { p_modifier_id: modifierId }
+      const { data, error } = await rpcWithIdempotency(
+        supabase, 'remove_order_item_modifier',
+        'remove_order_item_modifier', 'remove_order_item_modifier_v2',
+        { p_modifier_id: modifierId },
+        { deadline: DEADLINES.hotMutation }
       );
-      const { data, error } = await supabase.rpc(_rpc, _rpcParams);
 
       if (error) throw error;
       return { success: true, isOffline: false };
@@ -647,14 +652,15 @@ class OrderItemService {
     const isOnline = await this.queue.isOnline();
     const supabase = useSupabaseClient();
     if (isOnline) {
-      const { name: _rpc, params: _rpcParams } = withIdempotency(
-        'duplicate_order_item', 'duplicate_order_item', 'duplicate_order_item_v2',
-        { p_order_item_id: orderItemId, p_quantity: quantity }
+      const { data, error } = await rpcWithIdempotency<{ new_item_id: string }>(
+        supabase, 'duplicate_order_item',
+        'duplicate_order_item', 'duplicate_order_item_v2',
+        { p_order_item_id: orderItemId, p_quantity: quantity },
+        { deadline: DEADLINES.hotMutation }
       );
-      const { data, error } = await supabase.rpc(_rpc, _rpcParams);
 
       if (error) throw error;
-      return { success: true, newItemId: data.new_item_id, isOffline: false };
+      return { success: true, newItemId: data!.new_item_id, isOffline: false };
     } else {
       const tempId = `TEMP-${uuidv4()}`;
 

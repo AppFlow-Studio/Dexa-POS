@@ -1,6 +1,6 @@
 import { getDeviceId } from '@/lib/deviceId'
 import { DEADLINES } from '@/lib/network/deadlines'
-import { withIdempotency } from '@/lib/network/idempotencyKey'
+import { rpcWithIdempotency, withIdempotency } from '@/lib/network/idempotencyKey'
 import { runWithDeadline as _runWithDeadline } from '@/lib/network/runWithDeadline'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
@@ -146,8 +146,10 @@ export class OrderService {
       }
     }
 
-    const { name, params: rpcParams } = withIdempotency('create_order', 'create_order_v2', 'create_order_v3', params)
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency<Order>(
+      client, 'create_order', 'create_order_v2', 'create_order_v3', params,
+      { deadline: DEADLINES.closeCheck }
+    )
 
     if (error) {
       console.error(`[OrderService:createOrder] FAILED:`, error)
@@ -183,8 +185,10 @@ export class OrderService {
         `[OrderService:addOpenItem] ====== ADDING OPEN ITEM ======`,
         params
       )
-    const { name, params: rpcParams } = withIdempotency('add_open_item', 'add_open_item_v2', 'add_open_item_v3', params)
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency<AddOpenItemResult>(
+      client, 'add_open_item', 'add_open_item_v2', 'add_open_item_v3', params,
+      { deadline: DEADLINES.hotMutation }
+    )
     if (error || !data) {
       console.error(`[OrderService:addOpenItem] FAILED:`, error)
       return { data: data as any, error }
@@ -272,8 +276,10 @@ export class OrderService {
     // console.log(`[OrderService:addOrderItem] Item: ${params.p_item_name}`);
     // console.log(`[OrderService:addOrderItem] Qty: ${params.p_quantity}, Price: ${params.p_unit_price}`);
     // console.log(`[OrderService:addOrderItem] ADD_ORDER_ITEM_V2:`, params);
-    const { name, params: rpcParams } = withIdempotency('add_order_item', 'add_order_item_v2', 'add_order_item_v3', params)
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency<AddOrderItemResult>(
+      client, 'add_order_item', 'add_order_item_v2', 'add_order_item_v3', params,
+      { deadline: DEADLINES.hotMutation }
+    )
 
     if (error || !data) {
       console.error(`[OrderService:addOrderItem] FAILED:`, error)
@@ -385,18 +391,21 @@ export class OrderService {
       approved_by?: string | null
     }
   ): Promise<{ data: any | null; error: any }> {
-    const { name, params: rpcParams } = withIdempotency('create_reversal', 'create_reversal', 'create_reversal_v2', {
-      p_original_payment_id: params.original_payment_id,
-      p_original_psp_reference: params.original_psp_reference,
-      p_reversal_reference_id: params.reversal_reference_id,
-      p_reversal_type: params.reversal_type,
-      p_amount: params.amount,
-      p_reason_code: params.reason_code,
-      p_reason_description: params.reason_description ?? null,
-      p_initiated_by: params.initiated_by,
-      p_approved_by: params.approved_by ?? null
-    })
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency(
+      client, 'create_reversal', 'create_reversal', 'create_reversal_v2',
+      {
+        p_original_payment_id: params.original_payment_id,
+        p_original_psp_reference: params.original_psp_reference,
+        p_reversal_reference_id: params.reversal_reference_id,
+        p_reversal_type: params.reversal_type,
+        p_amount: params.amount,
+        p_reason_code: params.reason_code,
+        p_reason_description: params.reason_description ?? null,
+        p_initiated_by: params.initiated_by,
+        p_approved_by: params.approved_by ?? null
+      },
+      { deadline: DEADLINES.read }  // refund money path — give it more headroom than hotMutation
+    )
     return { data, error }
   }
 
@@ -446,19 +455,22 @@ export class OrderService {
     },
     options?: { restorePaidQuantity?: boolean }
   ): Promise<{ data: any | null; error: any }> {
-    const { name, params: rpcParams } = withIdempotency('apply_refund_to_payment', 'apply_refund_to_payment', 'apply_refund_to_payment_v2', {
-      p_payment_id: paymentId,
-      p_refund_amount: refundAmount,
-      p_reversal_type: reversalType,
-      p_return_rrn: returnDetails?.rrn ?? null,
-      p_return_auth_code: returnDetails?.authCode ?? null,
-      p_return_reference_id: returnDetails?.referenceId ?? null,
-      p_return_number: returnDetails?.transactionNumber ?? null,
-      p_return_reason: returnDetails?.reason ?? null,
-      p_initiated_by: returnDetails?.initiatedBy ?? null,
-      p_restore_paid_quantity: options?.restorePaidQuantity ?? false
-    })
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency(
+      client, 'apply_refund_to_payment', 'apply_refund_to_payment', 'apply_refund_to_payment_v2',
+      {
+        p_payment_id: paymentId,
+        p_refund_amount: refundAmount,
+        p_reversal_type: reversalType,
+        p_return_rrn: returnDetails?.rrn ?? null,
+        p_return_auth_code: returnDetails?.authCode ?? null,
+        p_return_reference_id: returnDetails?.referenceId ?? null,
+        p_return_number: returnDetails?.transactionNumber ?? null,
+        p_return_reason: returnDetails?.reason ?? null,
+        p_initiated_by: returnDetails?.initiatedBy ?? null,
+        p_restore_paid_quantity: options?.restorePaidQuantity ?? false
+      },
+      { deadline: DEADLINES.read }  // refund money path
+    )
     if (__DEV__) console.log('applyRefundToPayment', data, error)
     return { data, error }
   }
@@ -474,12 +486,15 @@ export class OrderService {
     items: Array<Record<string, unknown>>,
     skipQuantityUpdate: boolean = false
   ): Promise<{ data: any | null; error: any }> {
-    const { name, params: rpcParams } = withIdempotency('record_refund_items', 'record_refund_items', 'record_refund_items_v2', {
-      p_reversal_id: reversalId,
-      p_items: items,
-      p_skip_quantity_update: skipQuantityUpdate
-    })
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency(
+      client, 'record_refund_items', 'record_refund_items', 'record_refund_items_v2',
+      {
+        p_reversal_id: reversalId,
+        p_items: items,
+        p_skip_quantity_update: skipQuantityUpdate
+      },
+      { deadline: DEADLINES.read }  // refund money path
+    )
     return { data, error }
   }
 
@@ -829,16 +844,19 @@ export class OrderService {
     orderItemId: string,
     modifier: Omit<OrderItemModifier, 'id' | 'order_item_id' | 'total_price'>
   ): Promise<{ data: any; error: any }> {
-    const { name, params: rpcParams } = withIdempotency('add_order_item_modifier', 'add_order_item_modifier', 'add_order_item_modifier_v2', {
-      p_order_item_id: orderItemId,
-      p_modifier_group_id: modifier.modifier_group_id,
-      p_modifier_item_id: modifier.modifier_item_id,
-      p_modifier_group_name: modifier.modifier_group_name,
-      p_modifier_name: modifier.modifier_name,
-      p_price_modifier: modifier.price_modifier,
-      p_quantity: modifier.quantity
-    })
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency(
+      client, 'add_order_item_modifier', 'add_order_item_modifier', 'add_order_item_modifier_v2',
+      {
+        p_order_item_id: orderItemId,
+        p_modifier_group_id: modifier.modifier_group_id,
+        p_modifier_item_id: modifier.modifier_item_id,
+        p_modifier_group_name: modifier.modifier_group_name,
+        p_modifier_name: modifier.modifier_name,
+        p_price_modifier: modifier.price_modifier,
+        p_quantity: modifier.quantity
+      },
+      { deadline: DEADLINES.hotMutation }
+    )
     return { data, error }
   }
 
@@ -849,10 +867,11 @@ export class OrderService {
     client: SupabaseClient,
     modifierId: string
   ): Promise<{ data: any; error: any }> {
-    const { name, params: rpcParams } = withIdempotency('remove_order_item_modifier', 'remove_order_item_modifier', 'remove_order_item_modifier_v2', {
-      p_modifier_id: modifierId
-    })
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency(
+      client, 'remove_order_item_modifier', 'remove_order_item_modifier', 'remove_order_item_modifier_v2',
+      { p_modifier_id: modifierId },
+      { deadline: DEADLINES.hotMutation }
+    )
     return { data, error }
   }
 
@@ -877,11 +896,11 @@ export class OrderService {
     orderItemId: string,
     quantity?: number
   ): Promise<{ data: DuplicateOrderItemResult | null; error: any }> {
-    const { name, params: rpcParams } = withIdempotency('duplicate_order_item', 'duplicate_order_item', 'duplicate_order_item_v2', {
-      p_order_item_id: orderItemId,
-      p_quantity: quantity
-    })
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency<DuplicateOrderItemResult>(
+      client, 'duplicate_order_item', 'duplicate_order_item', 'duplicate_order_item_v2',
+      { p_order_item_id: orderItemId, p_quantity: quantity },
+      { deadline: DEADLINES.hotMutation }
+    )
     return { data, error }
   }
 
@@ -1007,11 +1026,11 @@ export class OrderService {
     if (orderItemIds.length === 0) {
       return { data: null, error: null }
     }
-    const { name, params: rpcParams } = withIdempotency('recall_kds_items', 'recall_kds_items', 'recall_kds_items_v2', {
-      p_order_item_ids: orderItemIds,
-      p_target_status: targetStatus
-    })
-    const { data, error } = await client.rpc(name, rpcParams)
+    const { data, error } = await rpcWithIdempotency(
+      client, 'recall_kds_items', 'recall_kds_items', 'recall_kds_items_v2',
+      { p_order_item_ids: orderItemIds, p_target_status: targetStatus },
+      { deadline: DEADLINES.hotMutation }
+    )
     return { data, error }
   }
 
