@@ -273,7 +273,7 @@ const PreviousOrdersScreen = () => {
   const [searchText, setSearchText] = useState('')
   const [sortBy, setSortBy] = useState<'date' | 'total' | 'status'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
-  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set())
+  const [activeFilter, setActiveFilter] = useState<string | null>(null)
   const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync()
 
   // Date window
@@ -461,29 +461,22 @@ const PreviousOrdersScreen = () => {
       })
     }
 
-    // Status filters
-    if (activeFilters.has('needs-attention')) {
+    // Status / type filter (single-select)
+    if (activeFilter === 'needs-attention') {
       filtered = filtered.filter(o => o.paid_status === 'Pending')
-    }
-    if (activeFilters.has('refunded')) {
+    } else if (activeFilter === 'refunded') {
       filtered = filtered.filter(
         o =>
           o.order_status === 'refunded' ||
           (o.payments || []).some(p => (p.refundedAmount ?? 0) > 0)
       )
-    }
-
-    // Order type filters
-    if (activeFilters.has('dine-in')) {
+    } else if (activeFilter === 'dine-in') {
       filtered = filtered.filter(o => o.order_type === 'dine_in')
-    }
-    if (activeFilters.has('takeaway')) {
+    } else if (activeFilter === 'takeaway') {
       filtered = filtered.filter(o => o.order_type === 'takeout')
-    }
-    if (activeFilters.has('delivery')) {
+    } else if (activeFilter === 'delivery') {
       filtered = filtered.filter(o => o.order_type === 'delivery')
-    }
-    if (activeFilters.has('online')) {
+    } else if (activeFilter === 'online') {
       filtered = filtered.filter(
         o => o.order_source?.toLowerCase() === 'online'
       )
@@ -513,24 +506,16 @@ const PreviousOrdersScreen = () => {
     })
 
     return filtered
-  }, [allOrders, searchText, activeFilters, sortBy, sortOrder])
+  }, [allOrders, searchText, activeFilter, sortBy, sortOrder])
 
   // Mutation hooks
   const closeCheckMutation = useCloseCheck()
   const reopenCheckMutation = useReopenCheck()
   const voidOrderMutation = useVoidOrder()
 
-  // ─── Filter toggle ──────────────────────────────────────
+  // ─── Filter toggle (single-select) ────────────────────
   const toggleFilter = useCallback((filter: string) => {
-    setActiveFilters(prev => {
-      const next = new Set(prev)
-      if (next.has(filter)) {
-        next.delete(filter)
-      } else {
-        next.add(filter)
-      }
-      return next
-    })
+    setActiveFilter(prev => (prev === filter ? null : filter))
   }, [])
 
   // ─── Sort toggle ────────────────────────────────────────
@@ -742,42 +727,42 @@ const PreviousOrdersScreen = () => {
           >
             <FilterPill
               label='Needs Attention'
-              isActive={activeFilters.has('needs-attention')}
+              isActive={activeFilter === 'needs-attention'}
               onPress={() => toggleFilter('needs-attention')}
               icon={<AlertTriangle color={colors.teal} size={13} />}
               count={filterCounts.needsAttention}
             />
             <FilterPill
               label='Refunded'
-              isActive={activeFilters.has('refunded')}
+              isActive={activeFilter === 'refunded'}
               onPress={() => toggleFilter('refunded')}
               icon={<RotateCcw color={colors.teal} size={13} />}
               count={filterCounts.refunded}
             />
             <FilterPill
               label='Online'
-              isActive={activeFilters.has('online')}
+              isActive={activeFilter === 'online'}
               onPress={() => toggleFilter('online')}
               icon={<Globe color={colors.teal} size={13} />}
               count={filterCounts.online}
             />
             <FilterPill
               label='Dine-In'
-              isActive={activeFilters.has('dine-in')}
+              isActive={activeFilter === 'dine-in'}
               onPress={() => toggleFilter('dine-in')}
               icon={<Utensils color={colors.teal} size={13} />}
               count={filterCounts.dineIn}
             />
             <FilterPill
               label='Takeaway'
-              isActive={activeFilters.has('takeaway')}
+              isActive={activeFilter === 'takeaway'}
               onPress={() => toggleFilter('takeaway')}
               icon={<ShoppingBag color={colors.teal} size={13} />}
               count={filterCounts.takeaway}
             />
             <FilterPill
               label='Delivery'
-              isActive={activeFilters.has('delivery')}
+              isActive={activeFilter === 'delivery'}
               onPress={() => toggleFilter('delivery')}
               icon={<Truck color={colors.teal} size={13} />}
               count={filterCounts.delivery}
