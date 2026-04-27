@@ -174,21 +174,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         </Text>
       </View>
 
-      <View className='flex-row justify-between items-end mt-2'>
-        <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
-          Cash total
-        </Text>
-        <Text
-          style={{
-            color: colors.heading,
-            fontSize: 16,
-            lineHeight: 18,
-            fontWeight: '800'
-          }}
-        >
-          ${paymentInfo.cashTotal.toFixed(2)}
-        </Text>
-      </View>
+     
 
       <View className='flex-row justify-between items-end mt-1.5'>
         <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
@@ -203,6 +189,21 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
           }}
         >
           ${paymentInfo.cardTotal.toFixed(2)}
+        </Text>
+      </View>
+       <View className='flex-row justify-between items-end mt-2'>
+        <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
+          Cash total
+        </Text>
+        <Text
+          style={{
+            color: colors.heading,
+            fontSize: 16,
+            lineHeight: 18,
+            fontWeight: '800'
+          }}
+        >
+          ${paymentInfo.cashTotal.toFixed(2)}
         </Text>
       </View>
 
