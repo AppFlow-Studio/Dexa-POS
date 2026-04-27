@@ -38,6 +38,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
+import { Calendar, DateData } from 'react-native-calendars'
 import Animated, {
   FadeIn,
   FadeOut,
@@ -357,6 +358,8 @@ const AddReservationModal: React.FC<{
   const [partySize, setPartySize] = useState(2)
   const [phone, setPhone] = useState('')
   const [selectedDate, setSelectedDate] = useState<Date>(defaultDate)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [calendarDraftDate, setCalendarDraftDate] = useState<Date>(defaultDate)
   const [selHour, setSelHour] = useState('19')
   const [selMin, setSelMin] = useState('00')
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([])
@@ -375,6 +378,18 @@ const AddReservationModal: React.FC<{
   )
   const selectedTime = `${selHour}:${selMin}`
   const selectedTimeIndex = Math.max(0, timeOptions.indexOf(selectedTime))
+  const calendarDraftKey =
+    toIsoDateKeySafe(calendarDraftDate) ?? toIsoDateKeySafe(selectedDate) ?? ''
+
+  const calendarMarkedDates = useMemo(
+    () => ({
+      [calendarDraftKey]: {
+        selected: true,
+        selectedColor: colors.teal
+      }
+    }),
+    [calendarDraftKey]
+  )
 
   useEffect(() => {
     if (!visible) return
@@ -449,6 +464,8 @@ const AddReservationModal: React.FC<{
     setPartySize(2)
     setPhone('')
     setSelectedDate(defaultDate)
+    setCalendarDraftDate(defaultDate)
+    setShowDatePicker(false)
     setSelHour('19')
     setSelMin('00')
     setSelectedTableIds([])
@@ -494,483 +511,130 @@ const AddReservationModal: React.FC<{
   } as const
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType='fade'
-      onRequestClose={handleClose}
-    >
-      <Pressable
-        style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
-        onPress={handleClose}
+    <>
+      <Modal
+        visible={visible}
+        transparent
+        animationType='fade'
+        onRequestClose={handleClose}
       >
-        <View
-          style={{
-            width: '100%',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            paddingTop: 28
-          }}
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onPress={handleClose}
         >
-          <Pressable
-            onPress={() => {}}
+          <View
             style={{
-              backgroundColor: colors.panel,
-              borderRadius: 20,
-              width: '96%',
-              maxWidth: 980,
-              borderWidth: 1,
-              borderColor: colors.border,
-              overflow: 'hidden',
-              shadowColor: '#000000',
-              shadowOpacity: 0.25,
-              shadowRadius: 18,
-              shadowOffset: { width: 0, height: 10 },
-              elevation: 10
+              width: '100%',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              paddingTop: 28
             }}
           >
-            {/* Header */}
-            <View
+            <Pressable
+              onPress={() => {}}
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingHorizontal: 20,
-                paddingTop: 16,
-                paddingBottom: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border
+                backgroundColor: colors.panel,
+                borderRadius: 20,
+                width: '96%',
+                maxWidth: 980,
+                borderWidth: 1,
+                borderColor: colors.border,
+                overflow: 'hidden',
+                shadowColor: '#000000',
+                shadowOpacity: 0.25,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: 10
               }}
             >
-              <View>
-                <Text
-                  style={{
-                    fontSize: 17,
-                    fontWeight: '800',
-                    color: colors.heading
-                  }}
-                >
-                  {title}
-                </Text>
-                <Text
-                  style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
-                >
-                  {subtitle}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={handleClose}
+              {/* Header */}
+              <View
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: colors.danger + '15',
-                  borderWidth: 1,
-                  borderColor: colors.danger + '35'
+                  justifyContent: 'space-between',
+                  paddingHorizontal: 20,
+                  paddingTop: 16,
+                  paddingBottom: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border
                 }}
               >
-                <X size={14} color={colors.danger} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ padding: 14, gap: 10 }}>
-              {/* Customer search — full width at top */}
-              <View style={surfaceCard}>
-                <Text style={labelStyle}>Customer (Optional)</Text>
-                {linkedCustomer ? (
-                  /* Linked customer badge */
-                  <View
+                <View>
+                  <Text
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: colors.teal + '50',
-                      backgroundColor: colors.teal + '10',
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      gap: 10
+                      fontSize: 17,
+                      fontWeight: '800',
+                      color: colors.heading
                     }}
                   >
+                    {title}
+                  </Text>
+                  <Text
+                    style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                  >
+                    {subtitle}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleClose}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: colors.danger + '15',
+                    borderWidth: 1,
+                    borderColor: colors.danger + '35'
+                  }}
+                >
+                  <X size={14} color={colors.danger} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ padding: 14, gap: 10 }}>
+                {/* Customer search — full width at top */}
+                <View style={surfaceCard}>
+                  <Text style={labelStyle}>Customer (Optional)</Text>
+                  {linkedCustomer ? (
+                    /* Linked customer badge */
                     <View
                       style={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: 15,
-                        backgroundColor: colors.teal + '20',
-                        borderWidth: 1,
-                        borderColor: colors.teal + '40',
+                        flexDirection: 'row',
                         alignItems: 'center',
-                        justifyContent: 'center'
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: colors.teal + '50',
+                        backgroundColor: colors.teal + '10',
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        gap: 10
                       }}
                     >
-                      <Text
-                        style={{
-                          fontSize: 13,
-                          fontWeight: '700',
-                          color: colors.teal
-                        }}
-                      >
-                        {(linkedCustomer.name ?? 'G')[0].toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontSize: 13,
-                          fontWeight: '600',
-                          color: colors.heading
-                        }}
-                      >
-                        {linkedCustomer.name}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: colors.label }}>
-                        {linkedCustomer.phone ??
-                          linkedCustomer.phoneNumber ??
-                          ''}
-                      </Text>
-                    </View>
-                    {(linkedCustomer.total_orders ?? 0) > 0 && (
                       <View
                         style={{
-                          paddingHorizontal: 7,
-                          paddingVertical: 3,
-                          borderRadius: 5,
-                          backgroundColor: colors.teal + '20'
+                          width: 30,
+                          height: 30,
+                          borderRadius: 15,
+                          backgroundColor: colors.teal + '20',
+                          borderWidth: 1,
+                          borderColor: colors.teal + '40',
+                          alignItems: 'center',
+                          justifyContent: 'center'
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 10,
+                            fontSize: 13,
                             fontWeight: '700',
                             color: colors.teal
                           }}
                         >
-                          {linkedCustomer.total_orders} visits
+                          {(linkedCustomer.name ?? 'G')[0].toUpperCase()}
                         </Text>
                       </View>
-                    )}
-                    <TouchableOpacity
-                      onPress={clearCustomer}
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 5,
-                        borderRadius: 6,
-                        backgroundColor: colors.screen,
-                        borderWidth: 1,
-                        borderColor: colors.border
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: '700',
-                          color: colors.label
-                        }}
-                      >
-                        Change
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  /* Search input + quick results */
-                  <View>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        ...inputStyle,
-                        backgroundColor: colors.panel,
-                        paddingHorizontal: 10,
-                        gap: 8
-                      }}
-                    >
-                      <Search size={14} color={colors.muted} />
-                      <TextInput
-                        value={customerQuery}
-                        onChangeText={setCustomerQuery}
-                        placeholder='Search by name or phone...'
-                        placeholderTextColor={colors.muted}
-                        style={{ flex: 1, color: colors.heading, fontSize: 13 }}
-                      />
-                      {customerQuery.length > 0 && (
-                        <TouchableOpacity onPress={() => setCustomerQuery('')}>
-                          <X size={12} color={colors.muted} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                    {customerQuery.trim().length >= 2 &&
-                      customerResults.length > 0 && (
-                        <View
-                          style={{
-                            marginTop: 6,
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            backgroundColor: colors.card,
-                            overflow: 'hidden'
-                          }}
-                        >
-                          {customerResults.map((c, i) => (
-                            <TouchableOpacity
-                              key={c.id}
-                              onPress={() => handleSelectCustomer(c)}
-                              style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                gap: 8,
-                                paddingHorizontal: 10,
-                                paddingVertical: 9,
-                                borderTopWidth: i > 0 ? 1 : 0,
-                                borderTopColor: colors.border
-                              }}
-                            >
-                              <View
-                                style={{
-                                  width: 26,
-                                  height: 26,
-                                  borderRadius: 13,
-                                  backgroundColor: colors.teal + '16',
-                                  alignItems: 'center',
-                                  justifyContent: 'center'
-                                }}
-                              >
-                                <Text
-                                  style={{
-                                    fontSize: 10,
-                                    fontWeight: '700',
-                                    color: colors.teal
-                                  }}
-                                >
-                                  {(c.name ?? 'G')[0].toUpperCase()}
-                                </Text>
-                              </View>
-                              <View style={{ flex: 1 }}>
-                                <Text
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: '700',
-                                    color: colors.heading
-                                  }}
-                                  numberOfLines={1}
-                                >
-                                  {c.name ?? 'Guest'}
-                                </Text>
-                                <Text
-                                  style={{ fontSize: 11, color: colors.muted }}
-                                  numberOfLines={1}
-                                >
-                                  {c.phone ?? c.phoneNumber ?? 'No phone'}
-                                </Text>
-                              </View>
-                              <Text
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: '700',
-                                  color: colors.teal
-                                }}
-                              >
-                                Select
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    {customerQuery.trim().length >= 2 &&
-                      customerResults.length === 0 && (
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: colors.muted,
-                            marginTop: 6
-                          }}
-                        >
-                          No matching customer. Continue as new guest.
-                        </Text>
-                      )}
-                  </View>
-                )}
-              </View>
-
-              {/* Main Two-Column Layout */}
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={[surfaceCard, { flex: 0.48, gap: 10 }]}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      gap: 8,
-                      alignItems: 'flex-end'
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={labelStyle}>Guest Name</Text>
-                      <TextInput
-                        value={name}
-                        onChangeText={setName}
-                        placeholder='Enter name'
-                        placeholderTextColor={colors.muted}
-                        style={inputStyle}
-                        autoCapitalize='words'
-                      />
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => setIsVip(v => !v)}
-                      style={{
-                        width: 54,
-                        height: 40,
-                        borderRadius: 8,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderWidth: 1,
-                        backgroundColor: isVip
-                          ? colors.warning + '20'
-                          : colors.screen,
-                        borderColor: isVip
-                          ? colors.warning + '50'
-                          : colors.border,
-                        gap: 1
-                      }}
-                    >
-                      <Star
-                        size={15}
-                        color={isVip ? colors.warning : colors.muted}
-                      />
-                      <Text
-                        style={{
-                          fontSize: 9,
-                          fontWeight: '700',
-                          color: isVip ? colors.warning : colors.muted
-                        }}
-                      >
-                        VIP
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={labelStyle}>Phone</Text>
-                      <TextInput
-                        value={phone}
-                        onChangeText={setPhone}
-                        keyboardType='phone-pad'
-                        placeholder='Phone number'
-                        placeholderTextColor={colors.muted}
-                        style={inputStyle}
-                      />
-                    </View>
-                    <View style={{ width: 170 }}>
-                      <Text style={labelStyle}>Party Size</Text>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          overflow: 'hidden',
-                          height: 40
-                        }}
-                      >
-                        <TouchableOpacity
-                          onPress={() => setPartySize(n => Math.max(1, n - 1))}
-                          style={{
-                            width: 40,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderRightWidth: 1,
-                            borderRightColor: colors.border
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 18,
-                              color: colors.label,
-                              lineHeight: 22
-                            }}
-                          >
-                            −
-                          </Text>
-                        </TouchableOpacity>
-                        <View
-                          style={{
-                            flex: 1,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: colors.screen
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: '700',
-                              color: colors.heading
-                            }}
-                          >
-                            {partySize} {partySize === 1 ? 'guest' : 'guests'}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          onPress={() => setPartySize(n => n + 1)}
-                          style={{
-                            width: 40,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderLeftWidth: 1,
-                            borderLeftColor: colors.border
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 18,
-                              color: colors.teal,
-                              lineHeight: 22
-                            }}
-                          >
-                            +
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-
-                  <View>
-                    <Text style={labelStyle}>Date</Text>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6
-                      }}
-                    >
-                      <TouchableOpacity
-                        onPress={() => setSelectedDate(d => addDays(d, -1))}
-                        style={{
-                          width: 34,
-                          height: 40,
-                          borderRadius: 8,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          backgroundColor: colors.screen
-                        }}
-                      >
-                        <ChevronLeft size={14} color={colors.label} />
-                      </TouchableOpacity>
-                      <View
-                        style={{
-                          flex: 1,
-                          height: 40,
-                          borderRadius: 8,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          backgroundColor: colors.screen
-                        }}
-                      >
+                      <View style={{ flex: 1 }}>
                         <Text
                           style={{
                             fontSize: 13,
@@ -978,39 +642,330 @@ const AddReservationModal: React.FC<{
                             color: colors.heading
                           }}
                         >
-                          {formatDateLabel(selectedDate)}
+                          {linkedCustomer.name}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.label }}>
+                          {linkedCustomer.phone ??
+                            linkedCustomer.phoneNumber ??
+                            ''}
                         </Text>
                       </View>
+                      {(linkedCustomer.total_orders ?? 0) > 0 && (
+                        <View
+                          style={{
+                            paddingHorizontal: 7,
+                            paddingVertical: 3,
+                            borderRadius: 5,
+                            backgroundColor: colors.teal + '20'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: '700',
+                              color: colors.teal
+                            }}
+                          >
+                            {linkedCustomer.total_orders} visits
+                          </Text>
+                        </View>
+                      )}
                       <TouchableOpacity
-                        onPress={() => setSelectedDate(d => addDays(d, 1))}
+                        onPress={clearCustomer}
                         style={{
-                          width: 34,
+                          paddingHorizontal: 8,
+                          paddingVertical: 5,
+                          borderRadius: 6,
+                          backgroundColor: colors.screen,
+                          borderWidth: 1,
+                          borderColor: colors.border
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: '700',
+                            color: colors.label
+                          }}
+                        >
+                          Change
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    /* Search input + quick results */
+                    <View>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          ...inputStyle,
+                          backgroundColor: colors.panel,
+                          paddingHorizontal: 10,
+                          gap: 8
+                        }}
+                      >
+                        <Search size={14} color={colors.muted} />
+                        <TextInput
+                          value={customerQuery}
+                          onChangeText={setCustomerQuery}
+                          placeholder='Search by name or phone...'
+                          placeholderTextColor={colors.muted}
+                          style={{
+                            flex: 1,
+                            color: colors.heading,
+                            fontSize: 13
+                          }}
+                        />
+                        {customerQuery.length > 0 && (
+                          <TouchableOpacity
+                            onPress={() => setCustomerQuery('')}
+                          >
+                            <X size={12} color={colors.muted} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      {customerQuery.trim().length >= 2 &&
+                        customerResults.length > 0 && (
+                          <View
+                            style={{
+                              marginTop: 6,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              backgroundColor: colors.card,
+                              overflow: 'hidden'
+                            }}
+                          >
+                            {customerResults.map((c, i) => (
+                              <TouchableOpacity
+                                key={c.id}
+                                onPress={() => handleSelectCustomer(c)}
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 9,
+                                  borderTopWidth: i > 0 ? 1 : 0,
+                                  borderTopColor: colors.border
+                                }}
+                              >
+                                <View
+                                  style={{
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: 13,
+                                    backgroundColor: colors.teal + '16',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: '700',
+                                      color: colors.teal
+                                    }}
+                                  >
+                                    {(c.name ?? 'G')[0].toUpperCase()}
+                                  </Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      fontWeight: '700',
+                                      color: colors.heading
+                                    }}
+                                    numberOfLines={1}
+                                  >
+                                    {c.name ?? 'Guest'}
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      fontSize: 11,
+                                      color: colors.muted
+                                    }}
+                                    numberOfLines={1}
+                                  >
+                                    {c.phone ?? c.phoneNumber ?? 'No phone'}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: '700',
+                                    color: colors.teal
+                                  }}
+                                >
+                                  Select
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
+                      {customerQuery.trim().length >= 2 &&
+                        customerResults.length === 0 && (
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              color: colors.muted,
+                              marginTop: 6
+                            }}
+                          >
+                            No matching customer. Continue as new guest.
+                          </Text>
+                        )}
+                    </View>
+                  )}
+                </View>
+
+                {/* Main Two-Column Layout */}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={[surfaceCard, { flex: 0.48, gap: 10 }]}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        gap: 8,
+                        alignItems: 'flex-end'
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={labelStyle}>Guest Name</Text>
+                        <TextInput
+                          value={name}
+                          onChangeText={setName}
+                          placeholder='Enter name'
+                          placeholderTextColor={colors.muted}
+                          style={inputStyle}
+                          autoCapitalize='words'
+                        />
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => setIsVip(v => !v)}
+                        style={{
+                          width: 54,
                           height: 40,
                           borderRadius: 8,
                           alignItems: 'center',
                           justifyContent: 'center',
                           borderWidth: 1,
-                          borderColor: colors.border,
-                          backgroundColor: colors.screen
+                          backgroundColor: isVip
+                            ? colors.warning + '20'
+                            : colors.screen,
+                          borderColor: isVip
+                            ? colors.warning + '50'
+                            : colors.border,
+                          gap: 1
                         }}
                       >
-                        <ChevronRight size={14} color={colors.label} />
+                        <Star
+                          size={15}
+                          color={isVip ? colors.warning : colors.muted}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 9,
+                            fontWeight: '700',
+                            color: isVip ? colors.warning : colors.muted
+                          }}
+                        >
+                          VIP
+                        </Text>
                       </TouchableOpacity>
                     </View>
-                  </View>
 
-                  <View>
-                    <Text style={labelStyle}>Time</Text>
-                    <View
-                      style={{
-                        borderRadius: 10,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.panel,
-                        padding: 8,
-                        gap: 8
-                      }}
-                    >
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={labelStyle}>Phone</Text>
+                        <TextInput
+                          value={phone}
+                          onChangeText={setPhone}
+                          keyboardType='phone-pad'
+                          placeholder='Phone number'
+                          placeholderTextColor={colors.muted}
+                          style={inputStyle}
+                        />
+                      </View>
+                      <View style={{ width: 170 }}>
+                        <Text style={labelStyle}>Party Size</Text>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            overflow: 'hidden',
+                            height: 40
+                          }}
+                        >
+                          <TouchableOpacity
+                            onPress={() =>
+                              setPartySize(n => Math.max(1, n - 1))
+                            }
+                            style={{
+                              width: 40,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRightWidth: 1,
+                              borderRightColor: colors.border
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 18,
+                                color: colors.label,
+                                lineHeight: 22
+                              }}
+                            >
+                              −
+                            </Text>
+                          </TouchableOpacity>
+                          <View
+                            style={{
+                              flex: 1,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: colors.screen
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 13,
+                                fontWeight: '700',
+                                color: colors.heading
+                              }}
+                            >
+                              {partySize} {partySize === 1 ? 'guest' : 'guests'}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => setPartySize(n => n + 1)}
+                            style={{
+                              width: 40,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderLeftWidth: 1,
+                              borderLeftColor: colors.border
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 18,
+                                color: colors.teal,
+                                lineHeight: 22
+                              }}
+                            >
+                              +
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View>
+                      <Text style={labelStyle}>Date</Text>
                       <View
                         style={{
                           flexDirection: 'row',
@@ -1019,137 +974,73 @@ const AddReservationModal: React.FC<{
                         }}
                       >
                         <TouchableOpacity
-                          onPress={() => shiftTime(-1)}
-                          disabled={selectedTimeIndex <= 0}
+                          onPress={() => setSelectedDate(d => addDays(d, -1))}
                           style={{
                             width: 34,
-                            height: 34,
+                            height: 40,
                             borderRadius: 8,
                             alignItems: 'center',
                             justifyContent: 'center',
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.panel,
-                            opacity: selectedTimeIndex <= 0 ? 0.4 : 1
+                            backgroundColor: colors.screen
                           }}
                         >
                           <ChevronLeft size={14} color={colors.label} />
                         </TouchableOpacity>
-                        <View
+                        <TouchableOpacity
+                          onPress={() => {
+                            setCalendarDraftDate(selectedDate)
+                            setShowDatePicker(true)
+                          }}
+                          activeOpacity={0.8}
                           style={{
                             flex: 1,
-                            height: 34,
-                            borderRadius: 8,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderWidth: 1,
-                            borderColor: colors.teal + '50',
-                            backgroundColor: colors.teal + '16'
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 15,
-                              fontWeight: '800',
-                              color: colors.teal
-                            }}
-                          >
-                            {formatPreset(selectedTime)}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          onPress={() => shiftTime(1)}
-                          disabled={selectedTimeIndex >= timeOptions.length - 1}
-                          style={{
-                            width: 34,
-                            height: 34,
+                            height: 40,
                             borderRadius: 8,
                             alignItems: 'center',
                             justifyContent: 'center',
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.panel,
-                            opacity:
-                              selectedTimeIndex >= timeOptions.length - 1
-                                ? 0.4
-                                : 1
+                            backgroundColor: colors.screen
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: '600',
+                              color: colors.heading
+                            }}
+                          >
+                            {formatDateLabel(selectedDate)}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setSelectedDate(d => addDays(d, 1))}
+                          style={{
+                            width: 34,
+                            height: 40,
+                            borderRadius: 8,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.screen
                           }}
                         >
                           <ChevronRight size={14} color={colors.label} />
                         </TouchableOpacity>
                       </View>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          backgroundColor: colors.panel,
-                          overflow: 'hidden',
-                          alignSelf: 'center'
-                        }}
-                      >
-                        <DrumColumn
-                          items={HOURS.map(h => h.value)}
-                          selected={selHour}
-                          onSelect={setSelHour}
-                          width={118}
-                          renderItem={(value, active) => {
-                            const label =
-                              HOURS.find(h => h.value === value)?.label ?? value
-                            return (
-                              <Text
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: active ? '700' : '500',
-                                  color: active ? colors.heading : colors.muted
-                                }}
-                              >
-                                {label}
-                              </Text>
-                            )
-                          }}
-                        />
-                        <View
-                          style={{ width: 1, backgroundColor: colors.border }}
-                        />
-                        <DrumColumn
-                          items={MINUTES.map(m => m.value)}
-                          selected={selMin}
-                          onSelect={setSelMin}
-                          width={86}
-                          renderItem={(value, active) => {
-                            const label =
-                              MINUTES.find(m => m.value === value)?.label ??
-                              value
-                            return (
-                              <Text
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: active ? '700' : '500',
-                                  color: active ? colors.heading : colors.muted
-                                }}
-                              >
-                                {label}
-                              </Text>
-                            )
-                          }}
-                        />
-                      </View>
                     </View>
-                  </View>
-                </View>
 
-                <View style={[surfaceCard, { flex: 0.52, gap: 10 }]}>
-                  {availableTables.length > 0 && (
                     <View>
-                      <Text style={labelStyle}>Table (Optional)</Text>
+                      <Text style={labelStyle}>Time</Text>
                       <View
                         style={{
                           borderRadius: 10,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          backgroundColor: colors.screen,
+                          backgroundColor: colors.panel,
                           padding: 8,
                           gap: 8
                         }}
@@ -1158,110 +1049,410 @@ const AddReservationModal: React.FC<{
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            justifyContent: 'space-between'
+                            gap: 6
                           }}
                         >
-                          <Text style={{ fontSize: 11, color: colors.muted }}>
-                            {selectedTableIds.length === 0
-                              ? 'No table selected'
-                              : `${selectedTableIds.length} table${
-                                  selectedTableIds.length > 1 ? 's' : ''
-                                } selected`}
-                          </Text>
-                          {selectedTableIds.length > 0 && (
-                            <TouchableOpacity
-                              onPress={() => setSelectedTableIds([])}
+                          <TouchableOpacity
+                            onPress={() => shiftTime(-1)}
+                            disabled={selectedTimeIndex <= 0}
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 8,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              backgroundColor: colors.panel,
+                              opacity: selectedTimeIndex <= 0 ? 0.4 : 1
+                            }}
+                          >
+                            <ChevronLeft size={14} color={colors.label} />
+                          </TouchableOpacity>
+                          <View
+                            style={{
+                              flex: 1,
+                              height: 34,
+                              borderRadius: 8,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderWidth: 1,
+                              borderColor: colors.teal + '50',
+                              backgroundColor: colors.teal + '16'
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 15,
+                                fontWeight: '800',
+                                color: colors.teal
+                              }}
                             >
-                              <Text
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: '700',
-                                  color: colors.teal
-                                }}
-                              >
-                                Clear all
-                              </Text>
-                            </TouchableOpacity>
-                          )}
+                              {formatPreset(selectedTime)}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => shiftTime(1)}
+                            disabled={
+                              selectedTimeIndex >= timeOptions.length - 1
+                            }
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 8,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              backgroundColor: colors.panel,
+                              opacity:
+                                selectedTimeIndex >= timeOptions.length - 1
+                                  ? 0.4
+                                  : 1
+                            }}
+                          >
+                            <ChevronRight size={14} color={colors.label} />
+                          </TouchableOpacity>
                         </View>
                         <View
                           style={{
                             flexDirection: 'row',
-                            flexWrap: 'wrap',
-                            gap: 6
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.panel,
+                            overflow: 'hidden',
+                            alignSelf: 'center'
                           }}
                         >
-                          {availableTables.map(t => {
-                            const active = selectedTableIds.includes(t.id)
-                            return (
-                              <TouchableOpacity
-                                key={t.id}
-                                onPress={() => toggleTable(t.id)}
-                                style={{
-                                  minWidth: 52,
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 7,
-                                  borderRadius: 8,
-                                  borderWidth: 1,
-                                  backgroundColor: active
-                                    ? colors.teal + '20'
-                                    : t.occupied
-                                    ? colors.warning + '10'
-                                    : colors.panel,
-                                  borderColor: active
-                                    ? colors.teal + '60'
-                                    : t.occupied
-                                    ? colors.warning + '40'
-                                    : colors.border,
-                                  alignItems: 'center'
-                                }}
-                              >
+                          <DrumColumn
+                            items={HOURS.map(h => h.value)}
+                            selected={selHour}
+                            onSelect={setSelHour}
+                            width={118}
+                            renderItem={(value, active) => {
+                              const label =
+                                HOURS.find(h => h.value === value)?.label ??
+                                value
+                              return (
                                 <Text
                                   style={{
-                                    fontSize: 12,
-                                    fontWeight: '700',
+                                    fontSize: 14,
+                                    fontWeight: active ? '700' : '500',
                                     color: active
-                                      ? colors.teal
-                                      : t.occupied
-                                      ? colors.warning
-                                      : colors.label
+                                      ? colors.heading
+                                      : colors.muted
                                   }}
                                 >
-                                  {t.name}
+                                  {label}
                                 </Text>
-                              </TouchableOpacity>
-                            )
-                          })}
+                              )
+                            }}
+                          />
+                          <View
+                            style={{ width: 1, backgroundColor: colors.border }}
+                          />
+                          <DrumColumn
+                            items={MINUTES.map(m => m.value)}
+                            selected={selMin}
+                            onSelect={setSelMin}
+                            width={86}
+                            renderItem={(value, active) => {
+                              const label =
+                                MINUTES.find(m => m.value === value)?.label ??
+                                value
+                              return (
+                                <Text
+                                  style={{
+                                    fontSize: 14,
+                                    fontWeight: active ? '700' : '500',
+                                    color: active
+                                      ? colors.heading
+                                      : colors.muted
+                                  }}
+                                >
+                                  {label}
+                                </Text>
+                              )
+                            }}
+                          />
                         </View>
                       </View>
                     </View>
-                  )}
+                  </View>
 
-                  <View>
-                    <Text style={labelStyle}>Notes (Optional)</Text>
-                    <TextInput
-                      value={notes}
-                      onChangeText={setNotes}
-                      placeholder='Allergies, occasion...'
-                      placeholderTextColor={colors.muted}
-                      multiline
-                      style={{
-                        ...inputStyle,
-                        height: 94,
-                        textAlignVertical: 'top'
-                      }}
-                    />
+                  <View style={[surfaceCard, { flex: 0.52, gap: 10 }]}>
+                    {availableTables.length > 0 && (
+                      <View>
+                        <Text style={labelStyle}>Table (Optional)</Text>
+                        <View
+                          style={{
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.screen,
+                            padding: 8,
+                            gap: 8
+                          }}
+                        >
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between'
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, color: colors.muted }}>
+                              {selectedTableIds.length === 0
+                                ? 'No table selected'
+                                : `${selectedTableIds.length} table${
+                                    selectedTableIds.length > 1 ? 's' : ''
+                                  } selected`}
+                            </Text>
+                            {selectedTableIds.length > 0 && (
+                              <TouchableOpacity
+                                onPress={() => setSelectedTableIds([])}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: '700',
+                                    color: colors.teal
+                                  }}
+                                >
+                                  Clear all
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              flexWrap: 'wrap',
+                              gap: 6
+                            }}
+                          >
+                            {availableTables.map(t => {
+                              const active = selectedTableIds.includes(t.id)
+                              return (
+                                <TouchableOpacity
+                                  key={t.id}
+                                  onPress={() => toggleTable(t.id)}
+                                  style={{
+                                    minWidth: 52,
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 7,
+                                    borderRadius: 8,
+                                    borderWidth: 1,
+                                    backgroundColor: active
+                                      ? colors.teal + '20'
+                                      : t.occupied
+                                      ? colors.warning + '10'
+                                      : colors.panel,
+                                    borderColor: active
+                                      ? colors.teal + '60'
+                                      : t.occupied
+                                      ? colors.warning + '40'
+                                      : colors.border,
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      fontWeight: '700',
+                                      color: active
+                                        ? colors.teal
+                                        : t.occupied
+                                        ? colors.warning
+                                        : colors.label
+                                    }}
+                                  >
+                                    {t.name}
+                                  </Text>
+                                </TouchableOpacity>
+                              )
+                            })}
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                    <View>
+                      <Text style={labelStyle}>Notes (Optional)</Text>
+                      <TextInput
+                        value={notes}
+                        onChangeText={setNotes}
+                        placeholder='Allergies, occasion...'
+                        placeholderTextColor={colors.muted}
+                        multiline
+                        style={{
+                          ...inputStyle,
+                          height: 94,
+                          textAlignVertical: 'top'
+                        }}
+                      />
+                    </View>
                   </View>
                 </View>
+
+                {/* Actions */}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    onPress={handleClose}
+                    style={{
+                      flex: 1,
+                      height: 46,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.screen
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '600',
+                        color: colors.label
+                      }}
+                    >
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleSubmit}
+                    disabled={isLoading}
+                    style={{
+                      flex: 2,
+                      height: 46,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.teal,
+                      borderWidth: 1,
+                      borderColor: colors.teal,
+                      opacity: isLoading ? 0.75 : 1
+                    }}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator color='#000000' size='small' />
+                    ) : (
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '700',
+                          color: '#000000'
+                        }}
+                      >
+                        {submitLabel}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setShowDatePicker(false)}
+        statusBarTranslucent
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onPress={() => setShowDatePicker(false)}
+        >
+          <View
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 16
+            }}
+          >
+            <Pressable
+              onPress={() => {}}
+              style={{
+                width: '100%',
+                maxWidth: 460,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.panel,
+                overflow: 'hidden'
+              }}
+            >
+              <View
+                style={{
+                  paddingHorizontal: 16,
+                  paddingTop: 14,
+                  paddingBottom: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '700',
+                    color: colors.heading
+                  }}
+                >
+                  Select Reservation Date
+                </Text>
+                <Text
+                  style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                >
+                  {formatDateLabel(calendarDraftDate)}
+                </Text>
               </View>
 
-              {/* Actions */}
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ paddingHorizontal: 10, paddingTop: 10 }}>
+                <Calendar
+                  current={calendarDraftKey}
+                  onDayPress={(day: DateData) => {
+                    const picked = new Date(`${day.dateString}T00:00:00`)
+                    if (Number.isFinite(picked.getTime())) {
+                      setCalendarDraftDate(picked)
+                    }
+                  }}
+                  markedDates={calendarMarkedDates}
+                  theme={{
+                    calendarBackground: colors.panel,
+                    monthTextColor: colors.heading,
+                    dayTextColor: colors.heading,
+                    textDisabledColor: colors.muted,
+                    selectedDayBackgroundColor: colors.teal,
+                    selectedDayTextColor: '#000000',
+                    todayTextColor: colors.teal,
+                    arrowColor: colors.teal,
+                    textSectionTitleColor: colors.label
+                  }}
+                />
+              </View>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 10,
+                  paddingHorizontal: 14,
+                  paddingTop: 10,
+                  paddingBottom: 14,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border
+                }}
+              >
                 <TouchableOpacity
-                  onPress={handleClose}
+                  onPress={() => setShowDatePicker(false)}
                   style={{
                     flex: 1,
-                    height: 46,
+                    height: 40,
                     borderRadius: 10,
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1272,7 +1463,7 @@ const AddReservationModal: React.FC<{
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: '600',
                       color: colors.label
                     }}
@@ -1281,40 +1472,37 @@ const AddReservationModal: React.FC<{
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={handleSubmit}
-                  disabled={isLoading}
+                  onPress={() => {
+                    setSelectedDate(calendarDraftDate)
+                    setShowDatePicker(false)
+                  }}
                   style={{
-                    flex: 2,
-                    height: 46,
+                    flex: 1,
+                    height: 40,
                     borderRadius: 10,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: colors.teal,
                     borderWidth: 1,
                     borderColor: colors.teal,
-                    opacity: isLoading ? 0.75 : 1
+                    backgroundColor: colors.teal
                   }}
                 >
-                  {isLoading ? (
-                    <ActivityIndicator color='#000000' size='small' />
-                  ) : (
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: '700',
-                        color: '#000000'
-                      }}
-                    >
-                      {submitLabel}
-                    </Text>
-                  )}
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: '#000000'
+                    }}
+                  >
+                    Apply Date
+                  </Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </Pressable>
-        </View>
-      </Pressable>
-    </Modal>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+    </>
   )
 }
 
