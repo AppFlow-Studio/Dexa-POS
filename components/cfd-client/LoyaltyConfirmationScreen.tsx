@@ -40,6 +40,130 @@ export function LoyaltyConfirmationScreen () {
     opacity: iconOpacity.value
   }))
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.screen
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.panel
+    },
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12
+    },
+    headerIconBox: {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    restaurantName: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.heading
+    },
+    headerBadge: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.teal,
+      backgroundColor: `${colors.teal}18`,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 20,
+      overflow: 'hidden'
+    },
+    body: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 32
+    },
+    iconContainer: {
+      width: 84,
+      height: 84,
+      borderRadius: 42,
+      backgroundColor: colors.teal,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 22
+    },
+    title: {
+      fontSize: 40,
+      fontWeight: '700',
+      color: colors.teal,
+      letterSpacing: -0.8,
+      marginBottom: 8,
+      textAlign: 'center'
+    },
+    subtitle: {
+      fontSize: 18,
+      color: colors.label,
+      textAlign: 'center',
+      marginBottom: 14
+    },
+    welcomeText: {
+      fontSize: 20,
+      color: colors.heading,
+      fontWeight: '500',
+      marginBottom: 14
+    },
+    redeemCard: {
+      marginTop: 6,
+      width: '100%',
+      maxWidth: 560,
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      alignItems: 'center'
+    },
+    redeemTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.heading,
+      textAlign: 'center'
+    },
+    redeemProgramsText: {
+      marginTop: 4,
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.teal,
+      textAlign: 'center'
+    },
+    rewardBanner: {
+      marginTop: 22,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8
+    },
+    rewardBannerText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.heading
+    }
+  })
+
   return (
     <View style={styles.container}>
       <Animated.View
@@ -100,127 +224,3 @@ export function LoyaltyConfirmationScreen () {
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.screen
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.panel
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12
-  },
-  headerIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  restaurantName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.heading
-  },
-  headerBadge: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.teal,
-    backgroundColor: `${colors.teal}18`,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-    overflow: 'hidden'
-  },
-  body: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32
-  },
-  iconContainer: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: colors.teal,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 22
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: colors.teal,
-    letterSpacing: -0.8,
-    marginBottom: 8,
-    textAlign: 'center'
-  },
-  subtitle: {
-    fontSize: 18,
-    color: colors.label,
-    textAlign: 'center',
-    marginBottom: 14
-  },
-  welcomeText: {
-    fontSize: 20,
-    color: colors.heading,
-    fontWeight: '500',
-    marginBottom: 14
-  },
-  redeemCard: {
-    marginTop: 6,
-    width: '100%',
-    maxWidth: 560,
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    alignItems: 'center'
-  },
-  redeemTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.heading,
-    textAlign: 'center'
-  },
-  redeemProgramsText: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.teal,
-    textAlign: 'center'
-  },
-  rewardBanner: {
-    marginTop: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
-  },
-  rewardBannerText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.heading
-  }
-})

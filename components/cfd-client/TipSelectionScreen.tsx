@@ -103,6 +103,198 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
     })
   }
 
+  const styles = StyleSheet.create({
+    outer: {
+      flex: 1,
+      backgroundColor: colors.screen
+    },
+    body: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 24,
+      paddingVertical: 24,
+      gap: 20
+    },
+    titleSection: {
+      alignItems: 'center',
+      gap: 4
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: colors.heading
+    },
+    subtitle: {
+      fontSize: 13,
+      fontWeight: '400',
+      color: colors.label
+    },
+    presetGrid: {
+      flexDirection: 'row',
+      gap: 12,
+      width: '100%',
+      maxWidth: 680
+    },
+    presetCardWrapper: {
+      flex: 1
+    },
+    presetCard: {
+      width: '100%',
+      paddingVertical: 24,
+      paddingHorizontal: 12,
+      borderRadius: 14,
+      backgroundColor: colors.panel,
+      alignItems: 'center',
+      gap: 6
+    },
+    presetCardSelected: {
+      borderWidth: 2,
+      borderColor: colors.teal,
+      backgroundColor: `${colors.teal}15`
+    },
+    presetPct: {
+      fontSize: 26,
+      fontWeight: '800',
+      color: colors.heading
+    },
+    presetPctSelected: {
+      color: colors.heading
+    },
+    presetAmt: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.teal
+    },
+    presetAmtSelected: {
+      color: colors.teal
+    },
+    actionsSection: {
+      width: '100%',
+      maxWidth: 680,
+      gap: 14,
+      alignItems: 'center'
+    },
+    customBtn: {
+      width: '100%',
+      paddingVertical: 14,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.teal,
+      backgroundColor: `${colors.teal}08`,
+      alignItems: 'center'
+    },
+    customBtnActive: {
+      backgroundColor: `${colors.teal}18`
+    },
+    customBtnText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.teal
+    },
+    noTipBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 12
+    },
+    noTipText: {
+      fontSize: 13,
+      color: colors.label,
+      fontWeight: '500'
+    },
+    // Modal
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    modalCard: {
+      width: 340,
+      backgroundColor: colors.panel,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      gap: 12,
+      alignItems: 'center'
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.heading
+    },
+    modalAmountBox: {
+      width: '100%',
+      paddingVertical: 14,
+      backgroundColor: colors.screen,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center'
+    },
+    modalAmountText: {
+      fontSize: 28,
+      fontWeight: '700',
+      color: colors.teal
+    },
+    numpad: {
+      width: '100%',
+      gap: 10
+    },
+    numpadRow: {
+      flexDirection: 'row',
+      gap: 8
+    },
+    numKey: {
+      flex: 1,
+      height: 48,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    numKeyAction: {
+      backgroundColor: colors.screen
+    },
+    numKeyText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.heading
+    },
+    confirmBtn: {
+      width: '100%',
+      paddingVertical: 15,
+      borderRadius: 14,
+      backgroundColor: colors.teal,
+      borderWidth: 1,
+      borderColor: colors.teal,
+      alignItems: 'center'
+    },
+    confirmBtnDisabled: {
+      backgroundColor: colors.screen,
+      borderColor: colors.border,
+      opacity: 0.6
+    },
+    confirmBtnText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.onSolid
+    },
+    confirmBtnTextDisabled: {
+      color: colors.label
+    },
+    cancelBtn: {
+      paddingVertical: 8
+    },
+    cancelBtnText: {
+      fontSize: 14,
+      color: colors.label,
+      fontWeight: '500'
+    }
+  })
+
   return (
     <View style={styles.outer}>
       <View style={styles.body}>
@@ -263,195 +455,3 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  outer: {
-    flex: 1,
-    backgroundColor: colors.screen
-  },
-  body: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    gap: 20
-  },
-  titleSection: {
-    alignItems: 'center',
-    gap: 4
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.heading
-  },
-  subtitle: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: colors.label
-  },
-  presetGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-    maxWidth: 680
-  },
-  presetCardWrapper: {
-    flex: 1
-  },
-  presetCard: {
-    width: '100%',
-    paddingVertical: 24,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: colors.panel,
-    alignItems: 'center',
-    gap: 6
-  },
-  presetCardSelected: {
-    borderWidth: 2,
-    borderColor: colors.teal,
-    backgroundColor: `${colors.teal}15`
-  },
-  presetPct: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.heading
-  },
-  presetPctSelected: {
-    color: colors.heading
-  },
-  presetAmt: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.teal
-  },
-  presetAmtSelected: {
-    color: colors.teal
-  },
-  actionsSection: {
-    width: '100%',
-    maxWidth: 680,
-    gap: 14,
-    alignItems: 'center'
-  },
-  customBtn: {
-    width: '100%',
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: colors.teal,
-    backgroundColor: `${colors.teal}08`,
-    alignItems: 'center'
-  },
-  customBtnActive: {
-    backgroundColor: `${colors.teal}18`
-  },
-  customBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.teal
-  },
-  noTipBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12
-  },
-  noTipText: {
-    fontSize: 13,
-    color: colors.label,
-    fontWeight: '500'
-  },
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  modalCard: {
-    width: 340,
-    backgroundColor: colors.panel,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    gap: 12,
-    alignItems: 'center'
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.heading
-  },
-  modalAmountBox: {
-    width: '100%',
-    paddingVertical: 14,
-    backgroundColor: colors.screen,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center'
-  },
-  modalAmountText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.teal
-  },
-  numpad: {
-    width: '100%',
-    gap: 10
-  },
-  numpadRow: {
-    flexDirection: 'row',
-    gap: 8
-  },
-  numKey: {
-    flex: 1,
-    height: 48,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  numKeyAction: {
-    backgroundColor: colors.screen
-  },
-  numKeyText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.heading
-  },
-  confirmBtn: {
-    width: '100%',
-    paddingVertical: 15,
-    borderRadius: 14,
-    backgroundColor: colors.teal,
-    borderWidth: 1,
-    borderColor: colors.teal,
-    alignItems: 'center'
-  },
-  confirmBtnDisabled: {
-    backgroundColor: colors.screen,
-    borderColor: colors.border,
-    opacity: 0.6
-  },
-  confirmBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#000'
-  },
-  confirmBtnTextDisabled: {
-    color: colors.label
-  },
-  cancelBtn: {
-    paddingVertical: 8
-  },
-  cancelBtnText: {
-    fontSize: 14,
-    color: colors.label,
-    fontWeight: '500'
-  }
-})

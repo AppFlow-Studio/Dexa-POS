@@ -1317,6 +1317,40 @@ const addItemToBackend = async (
                 : i
             )
         })
+
+        // Persist custom modifiers (open items) to backend — add_open_item_v2 doesn't
+        // accept modifiers, so we save them via replace_order_item_modifiers_v2 now.
+        const openItemModifiers = item.customizations?.modifiers
+        if (openItemModifiers && openItemModifiers.length > 0) {
+          const modifierPayload = openItemModifiers.flatMap(group =>
+            group.options.map(opt => ({
+              modifier_group_id: null,
+              modifier_item_id: null,
+              modifier_group_name: group.categoryName,
+              modifier_name: opt.name,
+              price_modifier: opt.price ?? 0,
+              quantity: 1,
+              is_no: false
+            }))
+          )
+          try {
+            await supabase.rpc('replace_order_item_modifiers_v2', {
+              p_order_item_id: addResult.order_item_id,
+              p_modifiers: modifierPayload
+            })
+            if (__DEV__)
+              console.log(
+                '[addItemToBackend] Custom open-item modifiers saved:',
+                modifierPayload.length
+              )
+          } catch (modErr) {
+            console.warn(
+              '[addItemToBackend] Failed to save open-item modifiers:',
+              modErr
+            )
+          }
+        }
+
         // Phase 7D: Set sync status in dedicated store (not on item)
         useSyncStatusStore.getState().setSyncStatus(item.id, 'synced')
 
@@ -3749,6 +3783,18 @@ export const useOrderStore = create<OrderState>()(
                                       kitchen_status: localItem.kitchen_status,
                                       item_status: localItem.item_status
                                     }
+                                  : {}),
+                                // Preserve local open-item modifiers — backend doesn't store them
+                                ...(localItem.is_open_item &&
+                                localItem.customizations?.modifiers?.length &&
+                                !broadcastItem.customizations?.modifiers?.length
+                                  ? {
+                                      customizations: {
+                                        ...broadcastItem.customizations,
+                                        modifiers:
+                                          localItem.customizations.modifiers
+                                      }
+                                    }
                                   : {})
                               }
                             }
@@ -3831,6 +3877,18 @@ export const useOrderStore = create<OrderState>()(
                                     kitchen_status: pendingItem.kitchen_status,
                                     item_status: pendingItem.item_status
                                   }
+                                : {}),
+                              // Preserve local open-item modifiers — backend doesn't store them
+                              ...(pendingItem.is_open_item &&
+                              pendingItem.customizations?.modifiers?.length &&
+                              !si.customizations?.modifiers?.length
+                                ? {
+                                    customizations: {
+                                      ...si.customizations,
+                                      modifiers:
+                                        pendingItem.customizations.modifiers
+                                    }
+                                  }
                                 : {})
                             }
                           }
@@ -3900,7 +3958,8 @@ export const useOrderStore = create<OrderState>()(
                         // Guard discount metadata: never clear locally-confirmed
                         // discounts from a broadcast header alone — broadcasts omit
                         // order_discounts metadata, so discount_amount=0 may be stale.
-                        ...(backendOrder.discount_amount === 0 && !hasPendingChanges
+                        ...(backendOrder.discount_amount === 0 &&
+                        !hasPendingChanges
                           ? localHasConfirmedDiscounts
                             ? {} // Preserve local — verification sync queued below
                             : { checkDiscount: null, applied_discounts: [] }
@@ -4497,7 +4556,8 @@ export const useOrderStore = create<OrderState>()(
             // Transform to OrderProfile (uses dbOrderId as id)
             const orderProfile = transformBroadcastToOrder(
               backendOrder,
-              sourceStationName
+              sourceStationName,
+              existing ?? undefined
             )
 
             // Broadcasts carry discount_amount (number) but NOT order_discounts metadata.
@@ -4582,99 +4642,6 @@ export const useOrderStore = create<OrderState>()(
                 existing.order_refund_items
               ) {
                 orderProfile.order_refund_items = existing.order_refund_items
-              }
-
-              // Preserve discount metadata (broadcasts never include order_discounts)
-              if (
-                existing.checkDiscount &&
-                (existing.applied_discounts?.length ?? 0) > 0
-              ) {
-                orderProfile.checkDiscount = existing.checkDiscount
-                orderProfile.applied_discounts = existing.applied_discounts
-                if (
-                  !backendOrder.discount_amount ||
-                  backendOrder.discount_amount === 0
-                ) {
-                  orderProfile.total_discount = existing.total_discount
-                }
-              }
-
-              // Reconnect safety: never let a transient/stale payload wipe local offline items.
-              // Preserve local pending/draft items and guard against destructive empty-item updates.
-              const backendHasNoItems = (orderProfile.items?.length ?? 0) === 0
-              const localHasItems = (existing.items?.length ?? 0) > 0
-              const hasQueueOpsForOrder = getPendingOperations().some(op => {
-                if (op.localOrderId === dbOrderId) return true
-                const mapped = localIdToDbOrderId.get(op.localOrderId)
-                return mapped === dbOrderId
-              })
-              const hasPendingLocalItems = existing.items.some(item => {
-                const syncStatus = useSyncStatusStore
-                  .getState()
-                  .itemSyncStatus.get(item.id)
-                return (
-                  (!item.db_order_item_id && !item.isDraft) ||
-                  item.isDraft ||
-                  syncStatus === 'pending' ||
-                  syncStatus === 'syncing'
-                )
-              })
-              const backendItemDbIds = new Set(
-                (orderProfile.items || [])
-                  .map(i => i.db_order_item_id)
-                  .filter(Boolean)
-              )
-              const localSyncedNotInBackend = existing.items.filter(
-                item =>
-                  item.db_order_item_id &&
-                  !backendItemDbIds.has(item.db_order_item_id)
-              )
-
-              if (hasPendingLocalItems || hasQueueOpsForOrder) {
-                const localPendingOrDraft = existing.items.filter(item => {
-                  const syncStatus = useSyncStatusStore
-                    .getState()
-                    .itemSyncStatus.get(item.id)
-                  return (
-                    item.isDraft ||
-                    (!item.db_order_item_id && !item.isDraft) ||
-                    syncStatus === 'pending' ||
-                    syncStatus === 'syncing'
-                  )
-                })
-
-                orderProfile.items = [
-                  ...(orderProfile.items || []),
-                  ...localPendingOrDraft,
-                  ...localSyncedNotInBackend
-                ]
-
-                if (__DEV__) {
-                  console.log('[OfflineReconnectDebug][UpsertPreserveLocal]', {
-                    dbOrderId,
-                    hasQueueOpsForOrder,
-                    preservedPendingOrDraft: localPendingOrDraft.length,
-                    preservedSyncedMissingFromBackend:
-                      localSyncedNotInBackend.length,
-                    finalItems: orderProfile.items.length
-                  })
-                }
-              } else if (backendHasNoItems && localHasItems && !isV2) {
-                // Defensive fallback for eventual consistency windows on reconnect:
-                // keep current items and schedule an authoritative full fetch.
-                orderProfile.items = existing.items
-                lastOrderDetailSyncAt.delete(dbOrderId)
-                if (__DEV__) {
-                  console.warn('[OfflineReconnectDebug][UpsertPreventedWipe]', {
-                    dbOrderId,
-                    localItems: existing.items.length,
-                    backendItems: 0,
-                    reason: 'non-v2 empty payload while local has items'
-                  })
-                }
-                queueMicrotask(() => {
-                  get().syncOrderFromBackendComplete(dbOrderId)
-                })
               }
             }
 
@@ -12722,6 +12689,12 @@ export const useOrderStore = create<OrderState>()(
                   return aTime < bTime ? -1 : aTime > bTime ? 1 : 0
                 })
 
+                const existingItemsByDbId = new Map(
+                  (order.items || [])
+                    .filter(item => item.db_order_item_id)
+                    .map(item => [item.db_order_item_id!, item] as const)
+                )
+
                 // Transform items with nested modifiers to CartItem format
                 // Uses the shared mapBackendItemToCartItem for consistency with broadcast transforms
                 const transformedItems: CartItem[] = itemsData.map(
@@ -12735,7 +12708,8 @@ export const useOrderStore = create<OrderState>()(
 
                     return mapBackendItemToCartItem(
                       item as BackendItemInput,
-                      transformedModifiers
+                      transformedModifiers,
+                      existingItemsByDbId.get(item.id)
                     )
                   }
                 )

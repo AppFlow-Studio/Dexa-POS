@@ -44,6 +44,121 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
 
   const displayText = formatUSPhone(phoneDigits)
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.screen,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 14,
+      paddingHorizontal: 32,
+      paddingVertical: 28
+    },
+    iconCircle: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.tealMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 2
+    },
+    headline: {
+      fontSize: 28,
+      fontWeight: '700',
+      color: colors.heading,
+      textAlign: 'center',
+      letterSpacing: -0.3
+    },
+    phoneCard: {
+      width: 300,
+      backgroundColor: colors.screen,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      gap: 3
+    },
+    phoneText: {
+      fontSize: 30,
+      fontWeight: '600',
+      color: colors.heading,
+      letterSpacing: 0.5
+    },
+    phoneTextPlaceholder: {
+      color: colors.heading
+    },
+    keypad: {
+      width: 300,
+      gap: 8
+    },
+    numpadRow: {
+      flexDirection: 'row',
+      gap: 6
+    },
+    numKey: {
+      flex: 1,
+      height: 50,
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    numKeyAction: {
+      backgroundColor: 'transparent'
+    },
+    numKeyText: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.heading
+    },
+    numKeySmall: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.label
+    },
+    footer: {
+      flexDirection: 'row',
+      gap: 10,
+      width: 300,
+      marginTop: 2
+    },
+    skipBtn: {
+      flex: 1,
+      minHeight: 48,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'transparent'
+    },
+    skipBtnText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.label
+    },
+    continueBtn: {
+      flex: 1,
+      minHeight: 48,
+      borderRadius: 10,
+      backgroundColor: colors.teal,
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    continueBtnDisabled: {
+      opacity: 0.42
+    },
+    continueBtnText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.onSolid
+    }
+  })
+
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
@@ -127,118 +242,3 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.screen,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 14,
-    paddingHorizontal: 32,
-    paddingVertical: 28
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.tealMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2
-  },
-  headline: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.heading,
-    textAlign: 'center',
-    letterSpacing: -0.3
-  },
-  phoneCard: {
-    width: 300,
-    backgroundColor: colors.screen,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    gap: 3
-  },
-  phoneText: {
-    fontSize: 30,
-    fontWeight: '600',
-    color: colors.heading,
-    letterSpacing: 0.5
-  },
-  phoneTextPlaceholder: {
-    color: colors.heading
-  },
-  keypad: {
-    width: 300,
-    gap: 8
-  },
-  numpadRow: {
-    flexDirection: 'row',
-    gap: 6
-  },
-  numKey: {
-    flex: 1,
-    height: 50,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  numKeyAction: {
-    backgroundColor: 'transparent'
-  },
-  numKeyText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.heading
-  },
-  numKeySmall: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.label
-  },
-  footer: {
-    flexDirection: 'row',
-    gap: 10,
-    width: 300,
-    marginTop: 2
-  },
-  skipBtn: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent'
-  },
-  skipBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.label
-  },
-  continueBtn: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 10,
-    backgroundColor: colors.teal,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  continueBtnDisabled: {
-    opacity: 0.42
-  },
-  continueBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.onSolid
-  }
-})

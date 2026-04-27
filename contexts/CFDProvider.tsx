@@ -1,5 +1,6 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { isValidUUID } from '@/lib/offlineIdRegistry'
+import { useColorScheme } from '@/lib/useColorScheme'
 import { detectNativeHardware } from '@/native/HardwareDetection'
 import {
   dismissSecondaryDisplay,
@@ -271,6 +272,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const tipsConfig = useLocationConfigStore(s => s.config.tips)
   const tipPresetPercentages = tipsConfig.presetPercentages
 
+  // Theme — propagated to external CFD tablet so it mirrors the POS color scheme
+  const { colorScheme } = useColorScheme()
+
   // Loyalty
   const merchantHasLoyalty = useLoyaltyStore(s => s.merchantHasLoyalty)
 
@@ -310,7 +314,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     return activeOrder.items
       .map(
         i =>
-          `${i.id}:${i.quantity}:${i.unitPrice}:${i.cashPrice}:${i.is_voided}:${i.seatNumber}:${i.courseNumber}:${i.name}:${i.open_item_name ?? ''}`
+          `${i.id}:${i.quantity}:${i.unitPrice}:${i.cashPrice}:${i.is_voided}:${
+            i.seatNumber
+          }:${i.courseNumber}:${i.name}:${i.open_item_name ?? ''}`
       )
       .join('|')
   }, [activeOrder?.items])
@@ -1036,7 +1042,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       loyaltyResult:
         activeScreenState === 'loyalty_confirmation'
           ? useCFDBuiltinStore.getState().loyaltyResult
-          : null
+          : null,
+      themeMode: colorScheme
     }
 
     // Payment state transitions need immediate delivery; ordering state can be debounced
@@ -1080,7 +1087,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     pathname, // Essential for responding to screen changes
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
-    paymentActiveSplit
+    paymentActiveSplit,
+    colorScheme
   ])
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
@@ -1346,13 +1354,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           logoUrl: organizationLogoUrl,
           primaryColor: '#10b981'
         },
-        paymentMethod: (
-          paymentView === 'cash'
-            ? 'cash'
-            : paymentView === 'card' || paymentView === 'manual'
-            ? 'card'
-            : null
-        ) as 'cash' | 'card' | 'manual' | null,
+        paymentMethod: (paymentView === 'cash'
+          ? 'cash'
+          : paymentView === 'card' || paymentView === 'manual'
+          ? 'card'
+          : null) as 'cash' | 'card' | 'manual' | null,
         loyaltyResult: null
       }
 
@@ -1454,7 +1460,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         subtotalForTip: Math.round(currentBase * 100), // CONVERT TO CENTS
         presetPercentages: presetPercentages || tipPresetPercentages,
         allowCustom: tipsConfig.allowCustom ?? true,
-        maxTipPercentage: tipsConfig.maxTipPercentage ?? 100,
+        maxTipPercentage: tipsConfig.maxTipPercentage ?? 100
       }
       tipConfigRef.current = config
       controllerRef.current?.showTipSelection(

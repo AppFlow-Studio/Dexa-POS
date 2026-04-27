@@ -180,6 +180,7 @@ export class CFDController {
       carouselImages: this.lastPayload.carouselImages,
       loyaltyPrompt: this.lastPayload.loyaltyPrompt,
       loyaltyResult: this.lastPayload.loyaltyResult,
+      themeMode: this.lastPayload.themeMode,
       timestamp: Date.now()
     }
 
@@ -231,6 +232,7 @@ export class CFDController {
     orderingPanelImages?: CFDPayload['orderingPanelImages']
     tipConfig?: CFDPayload['tipConfig']
     loyaltyResult?: CFDPayload['loyaltyResult'] | null
+    themeMode?: 'light' | 'dark'
   }): void {
     const screenState =
       params.screenState || (params.items.length > 0 ? 'ordering' : 'idle')
