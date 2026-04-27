@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native'
 import { connectionQuality } from './connectionQuality'
 
 export class DeadlineExceededError extends Error {
@@ -40,6 +41,26 @@ export async function withDeadline<T> (
     if (err instanceof DeadlineExceededError) {
       if (!isExempt(opName)) {
         connectionQuality.reportTimeout(opName, ms)
+        // Sentry breadcrumb so per-op deadline rates are searchable.
+        // Probes are exempt to avoid drowning the dashboard during real outages.
+        try {
+          Sentry.addBreadcrumb({
+            category: 'connection_quality.timeout',
+            level: 'warning',
+            message: `Deadline exceeded: ${opName} (${ms}ms)`,
+            data: { opName, deadlineMs: ms },
+          })
+          const sentryAny = Sentry as any
+          if (sentryAny.metrics?.distribution) {
+            sentryAny.metrics.distribution(
+              'connection_quality.deadline_exceeded',
+              1,
+              { tags: { op: opName } },
+            )
+          }
+        } catch {
+          // never let observability errors mask the real failure
+        }
       }
     }
     throw err

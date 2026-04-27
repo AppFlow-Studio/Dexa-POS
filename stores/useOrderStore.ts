@@ -75,6 +75,7 @@ import {
   removeOperation,
   updateOperationParams
 } from '@/services/offlineSyncService'
+import { resolveBackendPrices } from '@/lib/cartItemPricing'
 import { DEADLINES } from '@/lib/network/deadlines'
 import { runWithDeadline } from '@/lib/network/runWithDeadline'
 import { OrderDiscountService } from '@/services/orderDiscountService'
@@ -1588,6 +1589,24 @@ const addItemToBackend = async (
         item.cashPrice
       )
 
+    if (
+      __DEV__ &&
+      (item.baseCashPrice == null || item.baseCardPrice == null)
+    ) {
+      console.warn(
+        '[addItemToBackend] CartItem missing base prices — adder bug.',
+        {
+          itemId: item.id,
+          menuItemId: item.menuItemId,
+          name: item.name,
+          baseCardPrice: item.baseCardPrice,
+          baseCashPrice: item.baseCashPrice,
+        },
+      )
+    }
+
+    const { p_unit_price, p_cash_unit_price } = resolveBackendPrices(item)
+
     const addItemParams: AddOrderItemParams = {
       p_order_id: dbOrderId,
       p_menu_item_id: item.menuItemId || undefined,
@@ -1598,9 +1617,11 @@ const addItemToBackend = async (
       p_item_name: item.name,
       p_category_name: item.category_name || 'Uncategorized',
 
-      // Prices (per unit, before quantity multiplication)
-      p_unit_price: item.baseCardPrice ?? item.originalPrice, // Card base price (modifiers added by backend)
-      p_cash_unit_price: item.baseCashPrice || item.originalPrice, // Cash base price (modifiers added by backend)
+      // Prices (per unit, before quantity multiplication).
+      // Resolved via lib/cartItemPricing.ts so the cash-side fallback chain
+      // never lands on the card price (root cause of historical $0.13 drift).
+      p_unit_price,
+      p_cash_unit_price,
 
       // Size details
       p_selected_size_id: item.customizations?.size?.id || undefined,
@@ -2463,10 +2484,28 @@ const syncPaymentToBackend = async (
         const staffId = loggedInEmployee?.profileId
 
         if (supabase && staffId && order.db_order_id) {
+          const dbOrderIdForQueue = order.db_order_id
+          const localOrderIdForQueue = order.id
           OrderService.closeCheck(supabase, order.db_order_id, staffId)
-            .then(res => {
+            .then(async res => {
               if (!res.success) {
                 console.error('[syncPayment] Auto-close failed:', res.error)
+                // Bad-WiFi guard: deadline-wrap surfaces as success=false with
+                // DEADLINE_EXCEEDED in the error message. Queue so the close
+                // intent isn't lost when the network recovers.
+                if (
+                  typeof res.error === 'string' &&
+                  res.error.includes('DEADLINE_EXCEEDED')
+                ) {
+                  await queueOperation({
+                    type: 'close_check',
+                    params: {
+                      orderId: dbOrderIdForQueue,
+                      staffId,
+                    },
+                    localOrderId: localOrderIdForQueue,
+                  })
+                }
               } else {
                 console.log(
                   '[syncPayment] Auto-closed check successfully:',
@@ -6118,7 +6157,21 @@ export const useOrderStore = create<OrderState>()(
                     p_special_instructions:
                       updatedItem.customizations?.notes || null
                   })
-                    .then(response => {
+                    .then(async response => {
+                      // Bad-WiFi guard: queue if deadline-wrap fired.
+                      if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                        await queueOperation({
+                          type: 'update_item',
+                          params: {
+                            orderItemId: dbOrderItemId,
+                            specialInstructions:
+                              updatedItem.customizations?.notes || null
+                          },
+                          localOrderId: orderId,
+                          localItemId: updatedItem.id
+                        })
+                        return
+                      }
                       if (response.data && response.data.success) {
                         // SUCCESS: Apply backend data (instructions don't change pricing, but include for consistency)
                         console.log('[updateOrderItem] Sync succeeded')
@@ -6201,7 +6254,21 @@ export const useOrderStore = create<OrderState>()(
                     dbOrderItemId,
                     allModifiers
                   )
-                    .then(response => {
+                    .then(async response => {
+                      // Bad-WiFi guard: deadline-wrap returns resolved promise on
+                      // slow network. Queue here since .catch() won't fire.
+                      if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                        await queueOperation({
+                          type: 'replace_modifiers',
+                          params: {
+                            orderItemId: dbOrderItemId,
+                            modifiers: allModifiers
+                          },
+                          localOrderId: orderId,
+                          localItemId: updatedItem.id
+                        })
+                        return
+                      }
                       if (response.data && response.data.success) {
                         // SUCCESS: Apply backend-calculated data immediately
                         console.log(
@@ -6838,6 +6905,18 @@ export const useOrderStore = create<OrderState>()(
                 // Item was sent to kitchen - use VOID (soft delete, keeps record)
                 const reason = voidReason || 'User voided'
                 OrderService.voidOrderItem(_supabaseClient, dbItemId, reason)
+                  .then(async response => {
+                    // Bad-WiFi guard: deadline-wrap resolves with error payload.
+                    // Queue here so .catch() (only fires on thrown errors) doesn't miss it.
+                    if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                      await queueOperation({
+                        type: 'void_item',
+                        params: { orderItemId: dbItemId, reason },
+                        localOrderId: activeOrderId,
+                        localItemId: itemId
+                      })
+                    }
+                  })
                   .catch(async err => {
                     console.error('Failed to void item:', err)
                     // Queue for offline retry
@@ -6854,6 +6933,16 @@ export const useOrderStore = create<OrderState>()(
               } else {
                 // Item was NOT sent to kitchen - use REMOVE (hard delete)
                 OrderService.removeOrderItem(_supabaseClient, dbItemId)
+                  .then(async response => {
+                    if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                      await queueOperation({
+                        type: 'remove_item',
+                        params: { orderItemId: dbItemId },
+                        localOrderId: activeOrderId,
+                        localItemId: itemId
+                      })
+                    }
+                  })
                   .catch(async err => {
                     console.error('Failed to remove item:', err)
                     // Queue for offline retry
@@ -6998,7 +7087,28 @@ export const useOrderStore = create<OrderState>()(
                   latestQuantity
                 ).then(response => ({ response, latestQuantity }))
               })
-              .then(({ response, latestQuantity }) => {
+              .then(async ({ response, latestQuantity }) => {
+                // Bad-WiFi guard: deadline-wrap returns a resolved promise with
+                // OFFLINE_QUEUED-shape error on slow network. Without this branch,
+                // we'd fall through and lyingly mark sync_status='synced',
+                // corrupting waitForPendingSyncs.
+                if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                  const latestQueuedQuantity =
+                    get().ordersById[activeOrderId]?.items.find(
+                      i => i.id === itemId
+                    )?.quantity ?? latestQuantity
+                  await queueOperation({
+                    type: 'update_item_quantity',
+                    params: {
+                      orderItemId: dbItemId,
+                      quantity: latestQueuedQuantity
+                    },
+                    localOrderId: activeOrderId,
+                    localItemId: itemId
+                  })
+                  useSyncStatusStore.getState().setSyncStatus(itemId, 'synced')
+                  return false
+                }
                 if (response.data?.success) {
                   // Ignore stale response if local quantity has advanced further.
                   // This prevents visual rollback when users increment repeatedly

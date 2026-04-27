@@ -135,6 +135,26 @@ jest.mock("react-native-reanimated", () => {
   return Reanimated;
 });
 
+/**
+ * Mock @sentry/react-native
+ * Native bridge unavailable in Jest; we just want the API surface.
+ */
+jest.mock("@sentry/react-native", () => ({
+  init: jest.fn(),
+  addBreadcrumb: jest.fn(),
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+  setContext: jest.fn(),
+  setTag: jest.fn(),
+  setUser: jest.fn(),
+  reactNavigationIntegration: jest.fn(() => ({})),
+  metrics: {
+    distribution: jest.fn(),
+    gauge: jest.fn(),
+    increment: jest.fn(),
+  },
+}));
+
 // ============================================================================
 // GLOBAL TEST UTILITIES
 // ============================================================================

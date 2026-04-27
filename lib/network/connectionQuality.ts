@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native'
 import { DEADLINES } from './deadlines'
 
 export type Quality = 'fast' | 'degraded' | 'slow' | 'probing'
@@ -120,9 +121,12 @@ class ConnectionQuality {
     if (this.state === next) return
     const prev = this.state
 
+    let slowDurationMs: number | null = null
+
     if (prev === 'slow' || prev === 'probing') {
       if (this.slowEnteredAt !== null) {
-        this.metrics.slowModeTotalMs += Date.now() - this.slowEnteredAt
+        slowDurationMs = Date.now() - this.slowEnteredAt
+        this.metrics.slowModeTotalMs += slowDurationMs
         this.slowEnteredAt = null
       }
       this.stopProbeLoop()
@@ -137,6 +141,42 @@ class ConnectionQuality {
 
     this.state = next
     this.notifyDebounced()
+
+    // Sentry observability:
+    //  - breadcrumb on every state change (helps correlate captured errors with network state)
+    //  - setContext so any unrelated error captured during slow-mode is auto-tagged
+    //  - measurement on slow→fast for tuning the deadlines.ts constants
+    try {
+      Sentry.addBreadcrumb({
+        category: 'connection_quality',
+        level: next === 'slow' ? 'warning' : 'info',
+        message: `Connection quality: ${prev} → ${next}`,
+        data: {
+          prev,
+          next,
+          timeoutsInWindow: this.timeouts.length,
+          ...(slowDurationMs !== null ? { slowDurationMs } : {}),
+        },
+      })
+      Sentry.setContext('connection_quality', {
+        state: next,
+        lastTransitionAt: Date.now(),
+      })
+      if (slowDurationMs !== null && next === 'fast') {
+        const sentryAny = Sentry as any
+        if (sentryAny.metrics?.distribution) {
+          sentryAny.metrics.distribution(
+            'connection_quality.slow_mode_duration_ms',
+            slowDurationMs,
+            { unit: 'millisecond' },
+          )
+        }
+      }
+    } catch (err) {
+      if (__DEV__) {
+        console.warn('[connectionQuality] sentry breadcrumb error:', err)
+      }
+    }
 
     if ((prev === 'slow' || prev === 'probing') && next === 'fast') {
       try {

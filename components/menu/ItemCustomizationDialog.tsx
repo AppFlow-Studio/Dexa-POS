@@ -102,6 +102,11 @@ const ItemCustomizationDialog: React.FC = () => {
         originalPrice: menuItem.price,
         price: total / quantity, // includes size/add-ons
         cashPrice: menuItem.effective_cash_price ?? menuItem.price, // Cash base price for proper modifier calculation
+        // Base prices (no modifiers) — required so addItemToBackend sends
+        // correct p_unit_price/p_cash_unit_price to the RPC. Without these,
+        // the server's 4% cash-discount fallback fires.
+        baseCardPrice: menuItem.price,
+        baseCashPrice: menuItem.effective_cash_price ?? menuItem.price,
         image: menuItem.image,
         customizations: { size: selectedSize, addOns: selectedAddOns, notes },
         availableDiscount: menuItem.availableDiscount,

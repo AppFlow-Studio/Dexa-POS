@@ -351,6 +351,11 @@ function _createDraftInOpen (
     price: itemPrice,
     unitPrice: sourceItem.price,
     cashPrice: cashPrice,
+    // Base prices (no modifiers) — required so addItemToBackend sends correct
+    // p_unit_price/p_cash_unit_price. Without baseCashPrice, the server's
+    // 4% fallback fires and stores a wrong cash_price (e.g., 3.95 × 0.96 = 3.79).
+    baseCardPrice: itemPrice,
+    baseCashPrice: cashPrice,
     image: sourceItem.image,
     isDraft: true,
     seatNumber: activeSeat ?? undefined,
