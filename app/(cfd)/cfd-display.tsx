@@ -1,9 +1,10 @@
 import { CFDScreenRouter } from '@/components/cfd-client/CFDScreenRouter'
 import { useCFDClient } from '@/contexts/CFDClientContext'
 import { CFDExternalDisplayProvider } from '@/contexts/CFDDisplayDataContext'
-import { iosOnly } from '@/lib/safeAnimations'
 import { replaceRoute } from '@/lib/rootNavigation'
-import { colors } from '@/lib/theme'
+import { iosOnly } from '@/lib/safeAnimations'
+import { colors, setThemeMode } from '@/lib/theme'
+import { useColorScheme } from '@/lib/useColorScheme'
 import { useCFDClientStore } from '@/stores/useCFDClientStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { router } from 'expo-router'
@@ -31,7 +32,14 @@ export default function CFDDisplayScreen () {
     sendLoyaltyJoin,
     reconnect
   } = useCFDClient()
-  const { isPaired, connectionStatus } = useCFDClientStore()
+  const { isPaired, connectionStatus, themeMode } = useCFDClientStore()
+  const { setColorScheme } = useColorScheme()
+
+  // Mirror the POS theme on this CFD tablet whenever the source changes
+  useEffect(() => {
+    setThemeMode(themeMode)
+    setColorScheme(themeMode)
+  }, [themeMode, setColorScheme])
 
   const tapCountRef = useRef(0)
   const lastTapTimeRef = useRef(0)

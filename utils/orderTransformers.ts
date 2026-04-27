@@ -12,7 +12,6 @@ import type {
   BroadcastOrderPaymentData
 } from '@/hooks/realtime/useOrdersRealtime'
 import { normalizePlatform } from '@/lib/platformAliases'
-import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
 import type {
   CartItem,
   OrderPaymentItemCoverage,
@@ -21,6 +20,7 @@ import type {
   OrderRefundItemRecord,
   ReversalRecord
 } from '@/lib/types'
+import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
 
 /**
  * Check if a broadcast payload is header-only (v2 — no items/reversals/refund_items).
@@ -188,9 +188,16 @@ export interface BackendItemInput {
  */
 export function mapBackendItemToCartItem (
   item: BackendItemInput,
-  modifiers: CartItem['customizations']['modifiers']
+  modifiers: CartItem['customizations']['modifiers'],
+  existingItem?: CartItem
 ): CartItem {
   const isOpenItem = item.is_open_item || false
+  const effectiveModifiers =
+    modifiers && modifiers.length > 0
+      ? modifiers
+      : isOpenItem
+      ? existingItem?.customizations?.modifiers
+      : undefined
 
   // Resolve price: open items use open_item_price, regular items use unit_price
   const unitPrice = isOpenItem
@@ -271,7 +278,7 @@ export function mapBackendItemToCartItem (
             priceModifier: item.size_price_modifier || 0
           }
         : undefined,
-      modifiers: modifiers,
+      modifiers: effectiveModifiers,
       notes: item.special_instructions || undefined
     }
   }
@@ -284,14 +291,16 @@ export function mapBackendItemToCartItem (
  * @returns Array of CartItem objects for local store
  */
 export function transformBroadcastItems (
-  items: BroadcastOrderItemData[] | undefined
+  items: BroadcastOrderItemData[] | undefined,
+  existingItemsByDbId?: Map<string, CartItem>
 ): CartItem[] {
   if (!items || items.length === 0) return []
 
   return items.map(item => {
     const cartItem = mapBackendItemToCartItem(
       item as unknown as BackendItemInput,
-      transformBroadcastModifiers(item.modifiers)
+      transformBroadcastModifiers(item.modifiers),
+      existingItemsByDbId?.get(item.id)
     )
     // Broadcast items use remote_ prefix for local ID
     return {
@@ -637,10 +646,16 @@ export function mapOrderType (
  */
 export function transformBroadcastToOrder (
   backendOrder: BroadcastOrderData,
-  sourceStationName?: string | null
+  sourceStationName?: string | null,
+  existingOrder?: OrderProfile
 ): OrderProfile {
   // Use db_order_id directly as local ID (no prefix)
   const localId = backendOrder.id
+  const existingItemsByDbId = new Map(
+    (existingOrder?.items || [])
+      .filter(item => item.db_order_item_id)
+      .map(item => [item.db_order_item_id!, item] as const)
+  )
 
   return {
     // Core identifiers - use db_order_id as both id and db_order_id
@@ -665,7 +680,9 @@ export function transformBroadcastToOrder (
     server_name:
       backendOrder.server_name || backendOrder.assigned_server_id || undefined,
     created_by_staff_profile_id:
-      backendOrder.created_by_staff_id ?? backendOrder.assigned_server_id ?? null,
+      backendOrder.created_by_staff_id ??
+      backendOrder.assigned_server_id ??
+      null,
     customer_name: backendOrder.customer_name || '',
     customer_phone: backendOrder.customer_phone || undefined,
     customer_email: backendOrder.customer_email || undefined,
@@ -693,7 +710,7 @@ export function transformBroadcastToOrder (
     // Items — v2 (header-only) broadcasts omit items; fetch on-demand via syncOrderFromBackendComplete
     items: isHeaderOnlyBroadcast(backendOrder)
       ? []
-      : transformBroadcastItems(backendOrder.order_items),
+      : transformBroadcastItems(backendOrder.order_items, existingItemsByDbId),
 
     // Broadcast item count (v2) — used for display when items array is empty
     _broadcastItemCount: backendOrder.item_count,
@@ -710,11 +727,11 @@ export function transformBroadcastToOrder (
     // v2 broadcasts omit these — preserved from existing order in upsertOrder
     reversals: isHeaderOnlyBroadcast(backendOrder)
       ? undefined
-      : ((backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined),
+      : (backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined,
     order_refund_items: isHeaderOnlyBroadcast(backendOrder)
       ? undefined
-      : ((backendOrder.order_refund_items as unknown as OrderRefundItemRecord[]) ??
-        undefined),
+      : (backendOrder.order_refund_items as unknown as OrderRefundItemRecord[]) ??
+        undefined,
 
     // Timestamps
     opened_at: backendOrder.created_at,

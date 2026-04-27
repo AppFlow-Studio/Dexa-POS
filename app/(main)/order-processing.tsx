@@ -24,6 +24,7 @@ import {
   getOrderStoreSupabaseClient,
   useOrderStore
 } from '@/stores/useOrderStore'
+import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
@@ -215,6 +216,11 @@ const OrderProcessing = () => {
   const handleRetrieve = useCallback(
     (orderId: string) => {
       setActiveOrder(orderId)
+      const order = useOrderStore.getState().ordersById[orderId]
+      const serviceLocationId = order?.service_location_id ?? null
+      usePaymentStore
+        .getState()
+        .open('Card', serviceLocationId, 'payment-method-selection')
     },
     [setActiveOrder]
   )
@@ -1645,6 +1651,9 @@ const OrderProcessing = () => {
           isOpen={isItemsModalOpen}
           onClose={handleCloseItemsModal}
           orderId={selectedOrderId}
+          onRetrieve={
+            selectedOrderId ? () => handleRetrieve(selectedOrderId) : undefined
+          }
         />
       )}
 

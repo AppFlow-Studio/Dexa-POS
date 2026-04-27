@@ -389,7 +389,7 @@ export function OrderingScreen () {
               }}
             />
 
-            {/* Total (cash) */}
+            {/* Total (card) */}
             <View
               style={{
                 flexDirection: 'row',
@@ -401,16 +401,16 @@ export function OrderingScreen () {
               <Text
                 style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
               >
-                Total (cash)
+                Total (card)
               </Text>
               <Text
                 style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
               >
-                {formatCurrency(displayTotalCash)}
+                {formatCurrency(displayTotalCard)}
               </Text>
             </View>
 
-            {/* Total (card) */}
+            {/* Total (cash) */}
             <View
               style={{
                 flexDirection: 'row',
@@ -422,7 +422,7 @@ export function OrderingScreen () {
               <Text
                 style={{ color: colors.label, fontSize: 14, fontWeight: '600' }}
               >
-                Total (card)
+                Total (cash)
               </Text>
               <Text
                 style={{
@@ -431,7 +431,7 @@ export function OrderingScreen () {
                   fontWeight: '700'
                 }}
               >
-                {formatCurrency(displayTotalCard)}
+                {formatCurrency(displayTotalCash)}
               </Text>
             </View>
 
@@ -816,7 +816,9 @@ const CartItemRow = React.memo(function CartItemRow ({
                   >
                     <Text
                       style={{
-                        color: isNegativeModifier ? colors.danger : '#E0E0E0',
+                        color: isNegativeModifier
+                          ? colors.danger
+                          : colors.label,
                         fontSize: 10,
                         fontWeight: isNegativeModifier ? '600' : '400',
                         flexShrink: 1
