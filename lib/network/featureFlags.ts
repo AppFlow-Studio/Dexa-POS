@@ -17,6 +17,7 @@ export type IdempotentRpc =
   | 'add_order_item_modifier'
   | 'remove_order_item_modifier'
   | 'duplicate_order_item'
+  | 'replace_order_item_modifiers'
   | 'recall_kds_items'
   | 'add_open_item'
   | 'create_order'
