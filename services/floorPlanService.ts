@@ -20,6 +20,7 @@ import type {
   SeatGuestsParams,
   SeatGuestsResponse
 } from '@/types/sessionRpcTypes'
+import { withIdempotency } from '@/lib/network/idempotencyKey'
 import { SupabaseClient } from '@supabase/supabase-js'
 
 export class FloorPlanService {
@@ -306,7 +307,13 @@ export class FloorPlanService {
     data: SeatGuestsResponse | null
     error: any
   }> {
-    const { data, error } = await client.rpc('seat_guests_v3', params)
+    // NOTE: client always calls 'seat_guests_v3'. Two functions exist on
+    // staging with the same name — Postgres dispatches by signature.
+    // Passing p_idempotency_key routes to the array-param + idempotency version.
+    const { name, params: rpcParams } = withIdempotency(
+      'seat_guests', 'seat_guests_v3', 'seat_guests_v3', params as Record<string, any>
+    )
+    const { data, error } = await client.rpc(name, rpcParams)
     // Handle JSONB error: RPC returns { success: false, error: "..." }
     if (!error && data && data.success === false) {
       return {

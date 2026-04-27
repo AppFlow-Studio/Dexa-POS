@@ -1,5 +1,6 @@
 import { getDeviceId } from '@/lib/deviceId'
 import { DEADLINES } from '@/lib/network/deadlines'
+import { withIdempotency } from '@/lib/network/idempotencyKey'
 import { runWithDeadline as _runWithDeadline } from '@/lib/network/runWithDeadline'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
@@ -145,7 +146,8 @@ export class OrderService {
       }
     }
 
-    const { data, error } = await client.rpc('create_order_v2', params)
+    const { name, params: rpcParams } = withIdempotency('create_order', 'create_order_v2', 'create_order_v3', params)
+    const { data, error } = await client.rpc(name, rpcParams)
 
     if (error) {
       console.error(`[OrderService:createOrder] FAILED:`, error)
@@ -181,7 +183,8 @@ export class OrderService {
         `[OrderService:addOpenItem] ====== ADDING OPEN ITEM ======`,
         params
       )
-    const { data, error } = await client.rpc('add_open_item_v2', params)
+    const { name, params: rpcParams } = withIdempotency('add_open_item', 'add_open_item_v2', 'add_open_item_v3', params)
+    const { data, error } = await client.rpc(name, rpcParams)
     if (error || !data) {
       console.error(`[OrderService:addOpenItem] FAILED:`, error)
       return { data: data as any, error }
@@ -269,7 +272,8 @@ export class OrderService {
     // console.log(`[OrderService:addOrderItem] Item: ${params.p_item_name}`);
     // console.log(`[OrderService:addOrderItem] Qty: ${params.p_quantity}, Price: ${params.p_unit_price}`);
     // console.log(`[OrderService:addOrderItem] ADD_ORDER_ITEM_V2:`, params);
-    const { data, error } = await client.rpc('add_order_item_v2', params)
+    const { name, params: rpcParams } = withIdempotency('add_order_item', 'add_order_item_v2', 'add_order_item_v3', params)
+    const { data, error } = await client.rpc(name, rpcParams)
 
     if (error || !data) {
       console.error(`[OrderService:addOrderItem] FAILED:`, error)
@@ -381,7 +385,7 @@ export class OrderService {
       approved_by?: string | null
     }
   ): Promise<{ data: any | null; error: any }> {
-    const { data, error } = await client.rpc('create_reversal', {
+    const { name, params: rpcParams } = withIdempotency('create_reversal', 'create_reversal', 'create_reversal_v2', {
       p_original_payment_id: params.original_payment_id,
       p_original_psp_reference: params.original_psp_reference,
       p_reversal_reference_id: params.reversal_reference_id,
@@ -392,6 +396,7 @@ export class OrderService {
       p_initiated_by: params.initiated_by,
       p_approved_by: params.approved_by ?? null
     })
+    const { data, error } = await client.rpc(name, rpcParams)
     return { data, error }
   }
 
@@ -441,7 +446,7 @@ export class OrderService {
     },
     options?: { restorePaidQuantity?: boolean }
   ): Promise<{ data: any | null; error: any }> {
-    const { data, error } = await client.rpc('apply_refund_to_payment', {
+    const { name, params: rpcParams } = withIdempotency('apply_refund_to_payment', 'apply_refund_to_payment', 'apply_refund_to_payment_v2', {
       p_payment_id: paymentId,
       p_refund_amount: refundAmount,
       p_reversal_type: reversalType,
@@ -453,6 +458,7 @@ export class OrderService {
       p_initiated_by: returnDetails?.initiatedBy ?? null,
       p_restore_paid_quantity: options?.restorePaidQuantity ?? false
     })
+    const { data, error } = await client.rpc(name, rpcParams)
     if (__DEV__) console.log('applyRefundToPayment', data, error)
     return { data, error }
   }
@@ -468,11 +474,12 @@ export class OrderService {
     items: Array<Record<string, unknown>>,
     skipQuantityUpdate: boolean = false
   ): Promise<{ data: any | null; error: any }> {
-    const { data, error } = await client.rpc('record_refund_items', {
+    const { name, params: rpcParams } = withIdempotency('record_refund_items', 'record_refund_items', 'record_refund_items_v2', {
       p_reversal_id: reversalId,
       p_items: items,
       p_skip_quantity_update: skipQuantityUpdate
     })
+    const { data, error } = await client.rpc(name, rpcParams)
     return { data, error }
   }
 
@@ -799,13 +806,16 @@ export class OrderService {
       'replace_modifiers',
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc(
+        // NOTE: both v1 and v2 share the function NAME 'replace_order_item_modifiers_v2'
+        // (the legacy 2-arg overload pre-existed on staging). Postgres dispatches by
+        // signature: passing p_idempotency_key routes to the new 3-arg version.
+        const { name, params: rpcParams } = withIdempotency(
+          'replace_order_item_modifiers',
           'replace_order_item_modifiers_v2',
-          {
-            p_order_item_id: orderItemId,
-            p_modifiers: modifiers
-          }
-        ).abortSignal(signal)
+          'replace_order_item_modifiers_v2',
+          { p_order_item_id: orderItemId, p_modifiers: modifiers }
+        )
+        const { data, error } = await client.rpc(name, rpcParams).abortSignal(signal)
         return { data, error }
       }
     )
@@ -819,7 +829,7 @@ export class OrderService {
     orderItemId: string,
     modifier: Omit<OrderItemModifier, 'id' | 'order_item_id' | 'total_price'>
   ): Promise<{ data: any; error: any }> {
-    const { data, error } = await client.rpc('add_order_item_modifier', {
+    const { name, params: rpcParams } = withIdempotency('add_order_item_modifier', 'add_order_item_modifier', 'add_order_item_modifier_v2', {
       p_order_item_id: orderItemId,
       p_modifier_group_id: modifier.modifier_group_id,
       p_modifier_item_id: modifier.modifier_item_id,
@@ -828,6 +838,7 @@ export class OrderService {
       p_price_modifier: modifier.price_modifier,
       p_quantity: modifier.quantity
     })
+    const { data, error } = await client.rpc(name, rpcParams)
     return { data, error }
   }
 
@@ -838,9 +849,10 @@ export class OrderService {
     client: SupabaseClient,
     modifierId: string
   ): Promise<{ data: any; error: any }> {
-    const { data, error } = await client.rpc('remove_order_item_modifier', {
+    const { name, params: rpcParams } = withIdempotency('remove_order_item_modifier', 'remove_order_item_modifier', 'remove_order_item_modifier_v2', {
       p_modifier_id: modifierId
     })
+    const { data, error } = await client.rpc(name, rpcParams)
     return { data, error }
   }
 
@@ -865,10 +877,11 @@ export class OrderService {
     orderItemId: string,
     quantity?: number
   ): Promise<{ data: DuplicateOrderItemResult | null; error: any }> {
-    const { data, error } = await client.rpc('duplicate_order_item', {
+    const { name, params: rpcParams } = withIdempotency('duplicate_order_item', 'duplicate_order_item', 'duplicate_order_item_v2', {
       p_order_item_id: orderItemId,
       p_quantity: quantity
     })
+    const { data, error } = await client.rpc(name, rpcParams)
     return { data, error }
   }
 
@@ -994,10 +1007,11 @@ export class OrderService {
     if (orderItemIds.length === 0) {
       return { data: null, error: null }
     }
-    const { data, error } = await client.rpc('recall_kds_items', {
+    const { name, params: rpcParams } = withIdempotency('recall_kds_items', 'recall_kds_items', 'recall_kds_items_v2', {
       p_order_item_ids: orderItemIds,
       p_target_status: targetStatus
     })
+    const { data, error } = await client.rpc(name, rpcParams)
     return { data, error }
   }
 

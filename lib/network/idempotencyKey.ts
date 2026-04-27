@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { isIdempotentEnabled, type IdempotentRpc } from './featureFlags'
 
 /**
  * Resolves the UUID to pass as `p_idempotency_key` for a Category B RPC call.
@@ -32,4 +33,29 @@ export function getOrCreateIdempotencyKey (sig: IdempotencyOpSignature): string 
   if (sig.paymentJournalKey) return sig.paymentJournalKey
   if (sig.queueKey) return sig.queueKey
   return uuidv4()
+}
+
+/**
+ * Helper for Wave 2 client wiring. Returns the RPC name + params to use
+ * based on the per-RPC feature flag. When the flag is OFF, returns the
+ * v(n) name and original params (zero behavior change). When ON, returns
+ * the v(n+1) name and params with a fresh `p_idempotency_key`.
+ *
+ * Use the optional `keyOverride` to supply a key that must survive across
+ * retries (e.g. paymentJournal.idempotencyKey, OfflineOperation.idempotencyKey).
+ */
+export function withIdempotency<P extends Record<string, any>> (
+  rpc: IdempotentRpc,
+  v1Name: string,
+  v2Name: string,
+  params: P,
+  keyOverride?: string
+): { name: string; params: P & { p_idempotency_key?: string } } {
+  if (!isIdempotentEnabled(rpc)) return { name: v1Name, params }
+  const p_idempotency_key =
+    keyOverride ?? getOrCreateIdempotencyKey({ op: rpc })
+  return {
+    name: v2Name,
+    params: { ...params, p_idempotency_key } as P & { p_idempotency_key: string }
+  }
 }
