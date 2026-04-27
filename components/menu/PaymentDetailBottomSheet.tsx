@@ -2082,8 +2082,21 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     return Math.max(0, paidQty - refundedQty)
   }, [])
 
+  // Helper: find which payment covers a given item via itemsCovered
+  const getPaymentForItem = useCallback(
+    (itemId: string): PaymentRowData | null => {
+      for (const payment of refundablePayments) {
+        if (payment.itemsCovered?.some(ic => ic.itemId === itemId)) {
+          return payment
+        }
+      }
+      return null
+    },
+    [refundablePayments]
+  )
+
   // Calculate selected items total (price + tax) using discounted prices
-  // Uses post-discount subtotal (item.subtotal) instead of original price (item.price)
+  // Uses post-discount subtotal with correct cash/card pricing per covering payment
   const selectedItemsTotal = useMemo(() => {
     if (!order?.items) return 0
     return order.items.reduce((sum: number, item: CartItem) => {
@@ -2093,18 +2106,20 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         maxQty
       )
       if (selectedQty <= 0) return sum
-      // subtotal is post-discount for the full quantity
-      // Use ?? (not ||) to preserve subtotal=0 for fully discounted items
+      // Use discounted price based on covering payment's pricing mode
+      const coveringPayment = getPaymentForItem(item.db_order_item_id || '')
+      const isCash = coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
+      const effectiveSubtotal = isCash ? (item.cashSubtotal ?? item.subtotal ?? 0) : (item.subtotal ?? 0)
+      const effectiveTax = isCash ? (item.cashTaxAmount ?? item.taxAmount ?? 0) : (item.taxAmount ?? 0)
       const discountedUnitPrice = item.quantity > 0
-        ? (item.subtotal ?? (item.price || 0) * item.quantity) / item.quantity
+        ? effectiveSubtotal / item.quantity
         : (item.price || 0)
-      const perUnitTax =
-        item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0
+      const perUnitTax = item.quantity > 0 ? effectiveTax / item.quantity : 0
       const itemSubtotal = discountedUnitPrice * selectedQty
       const itemTax = perUnitTax * selectedQty
       return sum + itemSubtotal + itemTax
     }, 0)
-  }, [selectedItems, order?.items, getRefundableQty])
+  }, [selectedItems, order?.items, getRefundableQty, getPaymentForItem])
 
   // Calculate per-payment refund total
   const paymentRefundTotal = useMemo(() => {
@@ -2156,18 +2171,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
 
   const itemsDisabled = isZeroRefundable
 
-  // Helper: find which payment covers a given item via itemsCovered
-  const getPaymentForItem = useCallback(
-    (itemId: string): PaymentRowData | null => {
-      for (const payment of refundablePayments) {
-        if (payment.itemsCovered?.some(ic => ic.itemId === itemId)) {
-          return payment
-        }
-      }
-      return null
-    },
-    [refundablePayments]
-  )
+  // getPaymentForItem moved above selectedItemsTotal (line ~2085) so both
+  // selectedItemsTotal and buildPerPaymentDetails can use it for cash/card pricing.
 
   // Helper: get human-readable payment label
   const getPaymentLabel = useCallback((payment: PaymentRowData): string => {
@@ -2808,17 +2813,14 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           {item.name}
                         </Text>
                         <Text style={{ fontSize: 11, color: colors.muted }}>
-                          ${(item.quantity > 0 && (item.discount_amount || 0) > 0
-                            ? ((item.subtotal || 0) / item.quantity)
-                            : (item.price || 0)
-                          )?.toFixed(2)}
-                          {(item.taxAmount || 0) > 0 &&
-                            ` + $${(item.quantity > 0
-                              ? (item.taxAmount || 0) / item.quantity
-                              : 0
-                            )?.toFixed(2)} tax`}{' '}
-                          each
-                          {(item.discount_amount || 0) > 0 && ' (discounted)'}
+                          {(() => {
+                            const isCash = coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
+                            const effSub = isCash ? (item.cashSubtotal ?? item.subtotal ?? 0) : (item.subtotal ?? 0)
+                            const effTax = isCash ? (item.cashTaxAmount ?? item.taxAmount ?? 0) : (item.taxAmount ?? 0)
+                            const unitPrice = item.quantity > 0 ? effSub / item.quantity : (item.price || 0)
+                            const unitTax = item.quantity > 0 ? effTax / item.quantity : 0
+                            return `$${unitPrice.toFixed(2)}${unitTax > 0 ? ` + $${unitTax.toFixed(2)} tax` : ''} each${(item.discount_amount || 0) > 0 ? ' (discounted)' : ''}`
+                          })()}
                         </Text>
                         {maxQty <= 0 && (
                           <Text

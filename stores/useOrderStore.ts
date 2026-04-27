@@ -3520,6 +3520,8 @@ export const useOrderStore = create<OrderState>()(
                         mapPaymentStatus(backendOrder.payment_status) &&
                       localOrder.order_status === backendOrder.status &&
                       localOrder.total_amount === backendOrder.card_total &&
+                      (localOrder.total_discount ?? 0) ===
+                        (backendOrder.discount_amount ?? 0) &&
                       localOrder.check_status === backendOrder.check_status &&
                       localOrder.items.length ===
                         (broadcastItemCount ?? localOrder.items.length) &&
@@ -3642,6 +3644,10 @@ export const useOrderStore = create<OrderState>()(
                       ? transformBroadcastItems(backendOrder.order_items)
                       : null
 
+                    // Track whether we preserved local discount state over a
+                    // conflicting broadcast (needs to be accessible after set())
+                    let localHasConfirmedDiscounts = false
+
                     set(state => {
                       const existingOrder = state.ordersById[localOrderId]
                       if (!existingOrder) return
@@ -3652,6 +3658,13 @@ export const useOrderStore = create<OrderState>()(
                         isOrderPendingVoid(localOrderId)
                       )
                         return
+
+                      // Determine if local order has discount state worth preserving.
+                      // Broadcasts omit order_discounts metadata, so discount_amount=0
+                      // may be stale when a confirmed discount exists locally.
+                      localHasConfirmedDiscounts =
+                        (existingOrder.applied_discounts?.length ?? 0) > 0 &&
+                        existingOrder.checkDiscount != null
 
                       // Phase 2.5: Merge broadcast items with local items
                       // Strategy: Keep pending local items, update synced items from broadcast
@@ -3884,13 +3897,21 @@ export const useOrderStore = create<OrderState>()(
                       const updatedOrder: OrderProfile = {
                         ...existingOrder,
 
-                        // Clear discount metadata if backend shows no discount
-                        ...(backendOrder.discount_amount === 0 &&
-                        !hasPendingChanges
-                          ? { checkDiscount: null, applied_discounts: [] }
+                        // Guard discount metadata: never clear locally-confirmed
+                        // discounts from a broadcast header alone — broadcasts omit
+                        // order_discounts metadata, so discount_amount=0 may be stale.
+                        ...(backendOrder.discount_amount === 0 && !hasPendingChanges
+                          ? localHasConfirmedDiscounts
+                            ? {} // Preserve local — verification sync queued below
+                            : { checkDiscount: null, applied_discounts: [] }
                           : {}),
-                        // Update total_discount from broadcast
-                        total_discount: backendOrder.discount_amount,
+                        // Preserve total_discount when local has confirmed discounts
+                        // and broadcast shows 0 (likely stale).
+                        total_discount:
+                          backendOrder.discount_amount === 0 &&
+                          localHasConfirmedDiscounts
+                            ? existingOrder.total_discount
+                            : backendOrder.discount_amount,
 
                         // Only update payment totals when broadcast is not stale
                         ...(isPaymentLocallyAhead
@@ -3993,7 +4014,11 @@ export const useOrderStore = create<OrderState>()(
                         state.activeOrderTotal = backendOrder.card_total
                         state.activeOrderTax = backendOrder.card_tax_amount
                         state.activeOrderSubtotal = backendOrder.card_subtotal
-                        state.activeOrderDiscount = backendOrder.discount_amount
+                        state.activeOrderDiscount =
+                          backendOrder.discount_amount === 0 &&
+                          localHasConfirmedDiscounts
+                            ? existingOrder.total_discount ?? 0
+                            : backendOrder.discount_amount
                         if (!isPaymentLocallyAhead) {
                           state.activeOrderOutstandingTotal =
                             backendOrder.amount_due
@@ -4003,6 +4028,20 @@ export const useOrderStore = create<OrderState>()(
                         state.activeOrderTotalCash = backendOrder.cash_total
                       }
                     })
+
+                    // Discount mismatch: broadcast says 0 but local has confirmed
+                    // discounts. Queue authoritative sync (bypasses cooldown) to
+                    // verify discount still exists in DB.
+                    if (
+                      backendOrder.discount_amount === 0 &&
+                      localHasConfirmedDiscounts &&
+                      !hasPendingChanges
+                    ) {
+                      lastOrderDetailSyncAt.delete(dbOrderId)
+                      queueMicrotask(() => {
+                        get().syncOrderFromBackendComplete(localOrderId)
+                      })
+                    }
 
                     // === PHASE 3: Queue updates if local changes pending ===
                     if (hasPendingChanges) {
@@ -4479,6 +4518,22 @@ export const useOrderStore = create<OrderState>()(
                   get().syncOrderFromBackendComplete(dbOrderId)
                 })
               }
+            } else if (
+              (!backendOrder.discount_amount ||
+                backendOrder.discount_amount === 0) &&
+              existing?.checkDiscount &&
+              (existing.applied_discounts?.length ?? 0) > 0
+            ) {
+              // Broadcast shows no discount but local has confirmed metadata.
+              // Preserve local state — broadcast header may be stale (discount
+              // RPC not yet reflected). Queue authoritative sync to verify.
+              orderProfile.checkDiscount = existing.checkDiscount
+              orderProfile.applied_discounts = existing.applied_discounts
+              orderProfile.total_discount = existing.total_discount
+              lastOrderDetailSyncAt.delete(dbOrderId)
+              queueMicrotask(() => {
+                get().syncOrderFromBackendComplete(dbOrderId)
+              })
             }
 
             // v2 broadcast preservation: keep existing data that header-only broadcast omits
@@ -4527,84 +4582,6 @@ export const useOrderStore = create<OrderState>()(
                 existing.order_refund_items
               ) {
                 orderProfile.order_refund_items = existing.order_refund_items
-              }
-
-              // Reconnect safety: never let a transient/stale payload wipe local offline items.
-              // Preserve local pending/draft items and guard against destructive empty-item updates.
-              const backendHasNoItems = (orderProfile.items?.length ?? 0) === 0
-              const localHasItems = (existing.items?.length ?? 0) > 0
-              const hasQueueOpsForOrder = getPendingOperations().some(op => {
-                if (op.localOrderId === dbOrderId) return true
-                const mapped = localIdToDbOrderId.get(op.localOrderId)
-                return mapped === dbOrderId
-              })
-              const hasPendingLocalItems = existing.items.some(item => {
-                const syncStatus = useSyncStatusStore
-                  .getState()
-                  .itemSyncStatus.get(item.id)
-                return (
-                  (!item.db_order_item_id && !item.isDraft) ||
-                  item.isDraft ||
-                  syncStatus === 'pending' ||
-                  syncStatus === 'syncing'
-                )
-              })
-              const backendItemDbIds = new Set(
-                (orderProfile.items || [])
-                  .map(i => i.db_order_item_id)
-                  .filter(Boolean)
-              )
-              const localSyncedNotInBackend = existing.items.filter(
-                item =>
-                  item.db_order_item_id &&
-                  !backendItemDbIds.has(item.db_order_item_id)
-              )
-
-              if (hasPendingLocalItems || hasQueueOpsForOrder) {
-                const localPendingOrDraft = existing.items.filter(item => {
-                  const syncStatus = useSyncStatusStore
-                    .getState()
-                    .itemSyncStatus.get(item.id)
-                  return (
-                    item.isDraft ||
-                    (!item.db_order_item_id && !item.isDraft) ||
-                    syncStatus === 'pending' ||
-                    syncStatus === 'syncing'
-                  )
-                })
-
-                orderProfile.items = [
-                  ...(orderProfile.items || []),
-                  ...localPendingOrDraft,
-                  ...localSyncedNotInBackend
-                ]
-
-                if (__DEV__) {
-                  console.log('[OfflineReconnectDebug][UpsertPreserveLocal]', {
-                    dbOrderId,
-                    hasQueueOpsForOrder,
-                    preservedPendingOrDraft: localPendingOrDraft.length,
-                    preservedSyncedMissingFromBackend:
-                      localSyncedNotInBackend.length,
-                    finalItems: orderProfile.items.length
-                  })
-                }
-              } else if (backendHasNoItems && localHasItems && !isV2) {
-                // Defensive fallback for eventual consistency windows on reconnect:
-                // keep current items and schedule an authoritative full fetch.
-                orderProfile.items = existing.items
-                lastOrderDetailSyncAt.delete(dbOrderId)
-                if (__DEV__) {
-                  console.warn('[OfflineReconnectDebug][UpsertPreventedWipe]', {
-                    dbOrderId,
-                    localItems: existing.items.length,
-                    backendItems: 0,
-                    reason: 'non-v2 empty payload while local has items'
-                  })
-                }
-                queueMicrotask(() => {
-                  get().syncOrderFromBackendComplete(dbOrderId)
-                })
               }
             }
 
