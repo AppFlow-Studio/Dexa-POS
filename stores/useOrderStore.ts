@@ -93,7 +93,6 @@ import {
   type BackendItemInput,
   type FetchedOrderData
 } from '@/utils/orderTransformers'
-import { isTransientRpcError } from '@/lib/network/idempotencyKey'
 import { useSyncStatusStore } from './useSyncStatusStore'
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
@@ -1278,15 +1277,12 @@ const addItemToBackend = async (
         await OrderService.addOpenItem(supabase, addOpenParams)
 
       if (addError) {
-        const transient = isTransientRpcError(addError)
-        if (transient) {
-          // Bad-WiFi guard: silently queue, keep item as 'pending' (no red banner)
-          if (__DEV__) console.log('[addItemToBackend] open item: transient error → silent queue:', addError)
-          useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
-        } else {
-          console.error('Failed to add open item to backend:', addError)
-          markItemFailed(item.id, addError.message || 'Item sync failed')
-        }
+        // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
+        // Item stays 'pending'. The queue + idempotency-key replay handle recovery
+        // transparently. User never sees a red 'failed to sync' banner for what
+        // is, in practice, always a transient network issue.
+        if (__DEV__) console.log('[addItemToBackend] open item sync error → silent queue:', addError)
+        useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
         await queueOperation({
           type: 'add_item',
           params: {
@@ -1531,15 +1527,9 @@ const addItemToBackend = async (
         )
 
       if (updateError) {
-        const transient = isTransientRpcError(updateError)
-        if (transient) {
-          if (__DEV__) console.log('[addItemToBackend] qty update: transient error → silent queue:', updateError)
-          useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
-        } else {
-          console.error('Failed to update item quantity in backend:', updateError)
-          markItemFailed(item.id, updateError.message || 'Quantity update failed')
-        }
-        // Queue for retry (always)
+        // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
+        if (__DEV__) console.log('[addItemToBackend] qty update sync error → silent queue:', updateError)
+        useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
         await queueOperation({
           type: 'update_item_quantity',
           params: {
@@ -1689,17 +1679,11 @@ const addItemToBackend = async (
       await OrderService.addOrderItem(supabase, addItemParams)
 
     if (addError) {
-      const transient = isTransientRpcError(addError)
-      if (transient) {
-        // Bad-WiFi guard: silently queue, keep item as 'pending' (no red banner).
-        // Idempotency-key on v(n+1) ensures replay is safe.
-        if (__DEV__) console.log('[addItemToBackend] add item: transient error → silent queue:', addError)
-        useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
-      } else {
-        console.error('Failed to add item to backend:', addError)
-        // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
-        markItemFailed(item.id, addError.message || 'Item sync failed')
-      }
+      // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
+      // Item stays 'pending', queue replays on slow→fast recovery, idempotency-
+      // key on v(n+1) makes replay safe.
+      if (__DEV__) console.log('[addItemToBackend] add item sync error → silent queue:', addError)
+      useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
       await queueOperation({
         type: 'add_item',
         params: {
@@ -1912,15 +1896,9 @@ const addItemToBackend = async (
 
     return true
   } catch (error: any) {
-    const transient = isTransientRpcError(error)
-    if (transient) {
-      if (__DEV__) console.log('[addItemToBackend] caught transient error → silent queue:', error)
-      useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
-    } else {
-      console.error('Backend sync error:', error)
-      // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
-      markItemFailed(item.id, error?.message || 'Sync failed')
-    }
+    // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
+    if (__DEV__) console.log('[addItemToBackend] caught backend sync error → silent queue:', error)
+    useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
     await queueOperation({
       type: 'add_item',
       params: {
