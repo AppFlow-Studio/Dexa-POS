@@ -15,6 +15,17 @@ import {
   type LoyaltyEarnResult
 } from '@/services/loyalty/loyaltyService'
 import { queueOperation } from '@/services/offlineSyncService'
+import {
+  setCFDLoyaltyHandlers,
+  triggerCFDLoyaltyJoin,
+  triggerCFDLoyaltySkip,
+  triggerCFDPhoneSubmit
+} from '@/lib/cfdLoyaltyTriggers'
+import { isCFDSalesPathname } from '@/lib/cfdRouting'
+import {
+  setActionHandler as setCFDWebViewActionHandler,
+  setSnapshotProvider as setCFDWebViewSnapshotProvider
+} from '@/services/cfd/CFDWebViewBridge'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useCFDBuiltinStore } from '@/stores/useCFDBuiltinStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
@@ -43,21 +54,13 @@ import React, {
 } from 'react'
 
 const DEBUG = __DEV__
-let loyaltyJoinTrigger: (() => void) | null = null
-let loyaltyPhoneSubmitTrigger: ((phone: string) => void) | null = null
-let loyaltySkipTrigger: (() => void) | null = null
 
-export function triggerCFDLoyaltyJoin () {
-  loyaltyJoinTrigger?.()
-}
-
-export function triggerCFDPhoneSubmit (phone: string) {
-  loyaltyPhoneSubmitTrigger?.(phone)
-}
-
-export function triggerCFDLoyaltySkip () {
-  loyaltySkipTrigger?.()
-}
+// Re-export the loyalty trigger helpers so any existing importer of
+// `@/contexts/CFDProvider` keeps working. Real implementation lives in
+// `@/lib/cfdLoyaltyTriggers` so `CFDScreenRouter` (and the WebView web
+// bundle) can depend on it without pulling the rest of CFDProvider's
+// native graph.
+export { triggerCFDLoyaltyJoin, triggerCFDLoyaltySkip, triggerCFDPhoneSubmit }
 
 function Log (msg: string) {
   if (DEBUG) console.log(msg)
@@ -259,13 +262,21 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const debouncedBuiltinUpdateRef = useRef(
     debounce((data: Record<string, unknown>, fingerprint: string) => {
       if (fingerprint === lastBuiltinFingerprintRef.current) return
+      // Single write — the store internally mirrors to the WebView bridge.
       useCFDBuiltinStore.getState().update(data as any)
       lastBuiltinFingerprintRef.current = fingerprint
-    }, 100)
+      lastBuiltinScreenStateRef.current =
+        (data.screenState as string | undefined) ??
+        lastBuiltinScreenStateRef.current
+    }, 60)
   )
   // Fingerprint of the last payload pushed to the built-in store. Lets us skip
   // dispatching when no field that the secondary display reads has changed.
   const lastBuiltinFingerprintRef = useRef('')
+  // Last screenState we actually dispatched. Used to bypass the debounce on
+  // screen-state transitions (idle ↔ ordering ↔ payment) so transitions feel
+  // instant; cart-edit churn within the same screenState still gets batched.
+  const lastBuiltinScreenStateRef = useRef<string>('')
 
   // Store settings
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
@@ -279,6 +290,53 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   )
   const tipsConfig = useLocationConfigStore(s => s.config.tips)
   const tipPresetPercentages = tipsConfig.presetPercentages
+
+  // CFD WebView snapshot provider — pushes the full current display state
+  // to the WebView on mount/reload so it catches up on every accumulated
+  // useCFDBuiltinStore write (carouselImages, orderingPanelImages, branding,
+  // etc.) — not just the most recent partial.
+  useEffect(() => {
+    setCFDWebViewSnapshotProvider(() => {
+      const s = useCFDBuiltinStore.getState()
+      return {
+        screenState: s.screenState,
+        serverName: s.serverName,
+        customerName: s.customerName,
+        customerPhone: s.customerPhone,
+        orderNumber: s.orderNumber,
+        orderType: s.orderType,
+        tableName: s.tableName,
+        guestCount: s.guestCount,
+        items: s.items,
+        subtotal: s.subtotal,
+        subtotalCash: s.subtotalCash,
+        subtotalCard: s.subtotalCard,
+        discountAmount: s.discountAmount,
+        taxAmount: s.taxAmount,
+        taxCash: s.taxCash,
+        taxCard: s.taxCard,
+        tipAmount: s.tipAmount,
+        tipPercentage: s.tipPercentage,
+        total: s.total,
+        totalCash: s.totalCash,
+        totalCard: s.totalCard,
+        savingsAmount: s.savingsAmount,
+        outstandingTotal: s.outstandingTotal,
+        amountPaid: s.amountPaid,
+        branding: s.branding,
+        layout: s.layout,
+        orderingPanelImages: s.orderingPanelImages,
+        tipConfig: s.tipConfig,
+        carouselImages: s.carouselImages,
+        loyaltyPrompt: s.loyaltyPrompt,
+        loyaltyResult: s.loyaltyResult,
+        paymentMethod: s.paymentMethod
+      }
+    })
+    return () => {
+      setCFDWebViewSnapshotProvider(null)
+    }
+  }, [])
 
   // Theme — propagated to external CFD tablet so it mirrors the POS color scheme
   const { colorScheme } = useColorScheme()
@@ -488,6 +546,18 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       })
 
       controllerRef.current = ctrl
+
+      // Route WebView (built-in CFD) user actions through the same dispatch
+      // path as the off-device WebSocket clients. Bridge no-ops if no WebView
+      // is mounted.
+      setCFDWebViewActionHandler(message => {
+        if (controllerRef.current !== ctrl) return
+        try {
+          ctrl.routeClientMessage(JSON.stringify(message))
+        } catch (err) {
+          console.error('[CFD] WebView action route error:', err)
+        }
+      })
 
       try {
         const info = await ctrl.start({
@@ -709,6 +779,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       cancelled = true
       if (retryTimer) clearTimeout(retryTimer)
       console.log('[useCFD] Stopping Server...')
+      setCFDWebViewActionHandler(null)
       controllerRef.current?.stop()
       controllerRef.current = null
       setServerStatus('disabled')
@@ -876,11 +947,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     if (!controller || !isConnected) return
 
     // A "Sales Screen" indicates the cashier is actively taking or editing an order.
-    // If we're on a dashboard or settings, the customer shouldn't see order details.
-    const isSalesScreen =
-      pathname.includes('order-processing') ||
-      pathname.includes('tables') ||
-      pathname.includes('floor-plan')
+    // Shared with the builtin (WebView) sync effect — see `lib/cfdRouting.ts`.
+    const isSalesScreen = isCFDSalesPathname(pathname)
 
     // We show order data IF:
     // 1. We are in an active transaction state (Tip Selection, Payment, etc.)
@@ -1216,74 +1284,99 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       // Frozen totals are active — showProcessing/showApproved/showDeclined own the display directly
       if (frozenTotalsRef.current) return
 
-      const isSalesScreen =
-        pathname.includes('order-processing') ||
-        pathname.includes('tables') ||
-        pathname.includes('floor-plan')
+      // Shared helper — see lib/cfdRouting.ts. Floor-plan / waitlist /
+      // edit-layout / clean-table are NOT sales context.
+      const isSalesScreen = isCFDSalesPathname(pathname)
       const shouldShowOrderData =
         !!activeScreenState || (isSalesScreen && !!activeOrder)
 
       if (!shouldShowOrderData) {
-        // Debounce idle transition to prevent flicker during screen navigation
-        if (!builtinIdleTimerRef.current) {
-          builtinIdleTimerRef.current = setTimeout(() => {
-            try {
-              const s = activeScreenStateRef.current
-              const storeState = useCFDBuiltinStore.getState().screenState
-              if (
-                s === 'loyalty_prompt' ||
-                s === 'loyalty_confirmation' ||
-                storeState === 'loyalty_prompt' ||
-                storeState === 'loyalty_confirmation'
-              ) {
-                builtinIdleTimerRef.current = null
-                return
+        // Build the idle payload once — used by both the immediate-dispatch
+        // (transition from non-idle, e.g. operator navigated away) and the
+        // debounced path (already-idle defensive flicker guard).
+        const dispatchIdle = () => {
+          try {
+            const s = activeScreenStateRef.current
+            const storeState = useCFDBuiltinStore.getState().screenState
+            if (
+              s === 'loyalty_prompt' ||
+              s === 'loyalty_confirmation' ||
+              storeState === 'loyalty_prompt' ||
+              storeState === 'loyalty_confirmation'
+            ) {
+              return
+            }
+            useCFDBuiltinStore.getState().update({
+              screenState: 'idle',
+              serverName: null,
+              customerName: null,
+              customerPhone: null,
+              orderNumber: null,
+              orderType: null,
+              tableName: null,
+              guestCount: null,
+              items: [],
+              subtotal: 0,
+              subtotalCash: 0,
+              subtotalCard: 0,
+              discountAmount: 0,
+              taxAmount: 0,
+              taxCash: 0,
+              taxCard: 0,
+              tipAmount: 0,
+              tipPercentage: null,
+              total: 0,
+              totalCash: 0,
+              totalCard: 0,
+              savingsAmount: 0,
+              outstandingTotal: 0,
+              amountPaid: 0,
+              tipConfig: null,
+              paymentMethod: null,
+              loyaltyPrompt: null,
+              loyaltyResult: null,
+              branding: {
+                restaurantName: selectedStore?.name ?? '',
+                locationCode: selectedStore?.code ?? null,
+                logoUrl: organizationLogoUrl,
+                primaryColor: '#10b981'
+              },
+              layout: {
+                showOrderingRightPanel: showCFDOrderingRightPanel,
+                orderingRightPanelMode: cfdOrderingRightPanelMode
               }
-              useCFDBuiltinStore.getState().update({
-                screenState: 'idle',
-                serverName: null,
-                customerName: null,
-                customerPhone: null,
-                orderNumber: null,
-                orderType: null,
-                tableName: null,
-                guestCount: null,
-                items: [],
-                subtotal: 0,
-                subtotalCash: 0,
-                subtotalCard: 0,
-                discountAmount: 0,
-                taxAmount: 0,
-                taxCash: 0,
-                taxCard: 0,
-                tipAmount: 0,
-                tipPercentage: null,
-                total: 0,
-                totalCash: 0,
-                totalCard: 0,
-                savingsAmount: 0,
-                outstandingTotal: 0,
-                amountPaid: 0,
-                tipConfig: null,
-                paymentMethod: null,
-                loyaltyPrompt: null,
-                loyaltyResult: null,
-                branding: {
-                  restaurantName: selectedStore?.name ?? '',
-                  locationCode: selectedStore?.code ?? null,
-                  logoUrl: organizationLogoUrl,
-                  primaryColor: '#10b981'
-                },
-                layout: {
-                  showOrderingRightPanel: showCFDOrderingRightPanel,
-                  orderingRightPanelMode: cfdOrderingRightPanelMode
-                }
-              })
-              builtinIdleTimerRef.current = null
-            } catch (err) {
-              console.error('[CFD] Builtin idle transition error:', err)
+            })
+            lastBuiltinScreenStateRef.current = 'idle'
+          } catch (err) {
+            console.error('[CFD] Builtin idle transition error:', err)
+          }
+        }
+
+        // Transition from a non-idle state — dispatch immediately. The 500ms
+        // debounce was added to debounce flicker between mid-payment swaps;
+        // a navigation-driven idle has nothing to flicker against and should
+        // feel instant on the secondary display.
+        if (lastBuiltinScreenStateRef.current !== 'idle') {
+          if (builtinIdleTimerRef.current) {
+            clearTimeout(builtinIdleTimerRef.current)
+            builtinIdleTimerRef.current = null
+          }
+          dispatchIdle()
+          return () => {
+            if (builtinIdleTimerRef.current) {
+              clearTimeout(builtinIdleTimerRef.current)
               builtinIdleTimerRef.current = null
             }
+          }
+        }
+
+        // Already idle — keep the 500ms anti-flicker debounce as a defensive
+        // guard (rarely fires; just absorbs short bursts of non-sales-screen
+        // state changes without re-dispatching the same payload).
+        if (!builtinIdleTimerRef.current) {
+          builtinIdleTimerRef.current = setTimeout(() => {
+            builtinIdleTimerRef.current = null
+            dispatchIdle()
           }, 500)
         }
         return () => {
@@ -1381,13 +1474,43 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         ? activeOrder?.service_location_id ?? null
         : null
 
+      const computedOrderNumber =
+        activeOrder?.display_number ?? activeOrder?.order_number ?? null
+
+      const computedPaymentMethod = (paymentView === 'cash'
+        ? 'cash'
+        : paymentView === 'card' || paymentView === 'manual'
+        ? 'card'
+        : null) as 'cash' | 'card' | 'manual' | null
+
+      // Structural fingerprint — short-circuits the dispatch when nothing the
+      // built-in display reads has changed. Computed BEFORE the payload object
+      // so we skip the ~30-field allocation entirely on no-op fires (which
+      // happen on every keystroke during cart edits).
+      const builtinFingerprint =
+        `${itemsFingerprint}|${screenState}|${computedPaymentMethod ?? ''}|` +
+        `${pathname}|${activeOrderCustomerName ?? ''}|` +
+        `${activeOrderCustomerPhone ?? ''}|${computedOrderNumber ?? ''}|` +
+        `${activeOrderOrderType ?? ''}|${builtinTableName ?? ''}|` +
+        `${activeOrderGuestCount ?? ''}|` +
+        `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|` +
+        `${cardTotal}|${cashTotal}|${displayDiscountAmount}|${displayTipAmount}|` +
+        `${currentTip.percentage ?? ''}|${displayOutstandingTotal}|` +
+        `${displayAmountPaid}|${savingsAmount}|` +
+        `${selectedStore?.name ?? ''}|${selectedStore?.code ?? ''}|` +
+        `${organizationLogoUrl ?? ''}|${showCFDOrderingRightPanel ? 1 : 0}|` +
+        `${cfdOrderingRightPanelMode}`
+
+      if (builtinFingerprint === lastBuiltinFingerprintRef.current) {
+        return
+      }
+
       const updatePayload = {
         screenState,
         serverName: null,
         customerName: activeOrder?.customer_name ?? null,
         customerPhone: activeOrder?.customer_phone ?? null,
-        orderNumber:
-          activeOrder?.display_number ?? activeOrder?.order_number ?? null,
+        orderNumber: computedOrderNumber,
         orderType: activeOrder?.order_type ?? null,
         tableName: builtinTableName,
         guestCount: activeOrder?.guest_count ?? null,
@@ -1419,35 +1542,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           logoUrl: organizationLogoUrl,
           primaryColor: '#10b981'
         },
-        paymentMethod: (paymentView === 'cash'
-          ? 'cash'
-          : paymentView === 'card' || paymentView === 'manual'
-          ? 'card'
-          : null) as 'cash' | 'card' | 'manual' | null,
+        paymentMethod: computedPaymentMethod,
         loyaltyResult: null
-      }
-
-      // Structural fingerprint — short-circuits the dispatch when nothing the
-      // built-in display reads has changed. The store's own `update()` already
-      // does ref-equality checks, but `branding`/`layout`/`items` get fresh
-      // object references here every run, defeating that check; the fingerprint
-      // dedupes before we even touch the store.
-      const builtinFingerprint =
-        `${itemsFingerprint}|${screenState}|${updatePayload.paymentMethod ?? ''}|` +
-        `${pathname}|${activeOrderCustomerName ?? ''}|` +
-        `${activeOrderCustomerPhone ?? ''}|${updatePayload.orderNumber ?? ''}|` +
-        `${activeOrderOrderType ?? ''}|${builtinTableName ?? ''}|` +
-        `${activeOrderGuestCount ?? ''}|` +
-        `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|` +
-        `${cardTotal}|${cashTotal}|${displayDiscountAmount}|${displayTipAmount}|` +
-        `${currentTip.percentage ?? ''}|${displayOutstandingTotal}|` +
-        `${displayAmountPaid}|${savingsAmount}|` +
-        `${selectedStore?.name ?? ''}|${selectedStore?.code ?? ''}|` +
-        `${organizationLogoUrl ?? ''}|${showCFDOrderingRightPanel ? 1 : 0}|` +
-        `${cfdOrderingRightPanelMode}`
-
-      if (builtinFingerprint === lastBuiltinFingerprintRef.current) {
-        return
       }
 
       // Payment-related states need immediate updates; ordering states are debounced
@@ -1459,10 +1555,18 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         screenState === 'declined' ||
         screenState === 'tip_selection'
 
-      if (isPaymentState) {
+      // Bypass debounce on a screenState change so transitions land
+      // immediately (idle ↔ ordering, etc. — no perceptible 60ms delay).
+      // Same-screen churn (rapid cart edits) still goes through the debounce.
+      const isScreenStateTransition =
+        screenState !== lastBuiltinScreenStateRef.current
+
+      if (isPaymentState || isScreenStateTransition) {
         debouncedBuiltinUpdateRef.current.cancel()
+        // Store mirrors to WebView internally.
         useCFDBuiltinStore.getState().update(updatePayload)
         lastBuiltinFingerprintRef.current = builtinFingerprint
+        lastBuiltinScreenStateRef.current = screenState
       } else {
         debouncedBuiltinUpdateRef.current(updatePayload, builtinFingerprint)
       }
@@ -1487,7 +1591,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeOrderTax,
     activeOrderTotal,
     activeOrderOutstandingTotal,
-    orderTotals,
+    // `orderTotals` intentionally NOT in deps: it returns a fresh object on
+    // every order mutation (status, sync_version, etc.), defeating the granular
+    // selectors above. The body still reads it via closure; it's captured fresh
+    // on every render that's actually relevant (items/payments/discount), all
+    // of which are already represented in this dep list.
     currentTip,
     activeScreenState,
     activePaymentMethod,
@@ -1808,6 +1916,27 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     clearTimeout(resultAutoIdleTimerRef.current)
     resultAutoIdleTimerRef.current = null
   }, [])
+
+  // When the operator navigates AWAY from a sales screen while a result-state
+  // auto-idle timer is in flight (4s for `approved`, 3s for `declined`, 6s
+  // for `loyalty_confirmation`), cancel the timer immediately and clear
+  // `activeScreenState` so the builtin sync effect transitions to idle on
+  // the next tick. Without this, the CFD would keep showing the previous
+  // screen for up to ~4s after the operator's already moved on.
+  useEffect(() => {
+    if (isCFDSalesPathname(pathname)) return
+    const stuck = activeScreenStateRef.current
+    if (
+      stuck === 'approved' ||
+      stuck === 'declined' ||
+      stuck === 'loyalty_confirmation'
+    ) {
+      clearResultAutoIdleTimer()
+      clearLoyaltyTimer()
+      frozenTotalsRef.current = null
+      setActiveScreenState(null)
+    }
+  }, [pathname, clearResultAutoIdleTimer, clearLoyaltyTimer])
 
   const scheduleLoyaltyReturnToIdle = useCallback(
     (requestId: number, traceStage: string, timeoutMs = 6000) => {
@@ -2488,17 +2617,19 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   }, [clearLoyaltyTimer])
 
   useEffect(() => {
-    loyaltyJoinTrigger = showLoyaltyPrompt
-    loyaltyPhoneSubmitTrigger = phone => {
-      void handleBuiltinPhoneSubmit(phone)
-    }
-    loyaltySkipTrigger = handleBuiltinLoyaltySkip
+    setCFDLoyaltyHandlers({
+      onJoin: showLoyaltyPrompt,
+      onPhoneSubmit: phone => {
+        void handleBuiltinPhoneSubmit(phone)
+      },
+      onSkip: handleBuiltinLoyaltySkip
+    })
     return () => {
-      if (loyaltyJoinTrigger === showLoyaltyPrompt) {
-        loyaltyJoinTrigger = null
-      }
-      loyaltyPhoneSubmitTrigger = null
-      loyaltySkipTrigger = null
+      setCFDLoyaltyHandlers({
+        onJoin: null,
+        onPhoneSubmit: null,
+        onSkip: null
+      })
     }
   }, [showLoyaltyPrompt, handleBuiltinPhoneSubmit, handleBuiltinLoyaltySkip])
 

@@ -1,4 +1,4 @@
-import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { Delete } from 'lucide-react-native'

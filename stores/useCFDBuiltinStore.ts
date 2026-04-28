@@ -2,6 +2,13 @@
 // Zustand store for built-in secondary display (ReactRootView on Presentation).
 // POS writes via .getState().update(), secondary display reads reactively.
 // No persistence — ephemeral, reset on app restart.
+//
+// `update()` also mirrors every write to the CFD WebView bridge. The bridge
+// is a no-op when no WebView is registered (legacy ReactSurface mode), so
+// this is free. When the WebView is mounted, every screen-transition site
+// in CFDProvider — even the ones that don't go through the debounced sync
+// effect — automatically reaches the WebView.
+import { pushPayload as pushCFDWebViewPayload } from '@/services/cfd/CFDWebViewBridge'
 import type {
   CFDBranding,
   CFDCartItem,
@@ -99,6 +106,12 @@ export const useCFDBuiltinStore = create<CFDBuiltinState>()((set, get) => ({
     )
     if (!hasChange) return
     set(data)
+    // Mirror to WebView. Silent no-op if no WebView mounted.
+    try {
+      pushCFDWebViewPayload(data as Record<string, unknown>)
+    } catch (err) {
+      console.error('[CFDBuiltinStore] WebView mirror failed:', err)
+    }
   },
   reset: () => set(initialState)
 }))

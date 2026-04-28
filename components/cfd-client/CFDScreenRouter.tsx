@@ -1,11 +1,11 @@
 // components/cfd-client/CFDScreenRouter.tsx
 // Shared screen-state router used by both external CFD tablets and built-in secondary displays.
-import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import {
   triggerCFDLoyaltyJoin,
   triggerCFDLoyaltySkip,
   triggerCFDPhoneSubmit
-} from '@/contexts/CFDProvider'
+} from '@/lib/cfdLoyaltyTriggers'
 import { colors } from '@/lib/theme'
 import { useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'

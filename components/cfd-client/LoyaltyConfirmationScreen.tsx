@@ -1,5 +1,5 @@
 // components/cfd-client/LoyaltyConfirmationScreen.tsx
-import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { Check, Gift, UtensilsCrossed } from 'lucide-react-native'
