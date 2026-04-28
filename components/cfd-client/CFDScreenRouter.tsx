@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import { iosOnly } from '@/lib/safeAnimations'
+import { Platform } from 'react-native'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
 
 import { IdleScreen } from './IdleScreen'
@@ -155,9 +156,17 @@ export function CFDScreenRouter ({
     }
   }
 
+  // The `key` is the trigger that makes Reanimated's entering/exiting layout
+  // animations replay on screen change. On web/Android those animations are
+  // stripped (see `iosOnly`), so the key change only causes a wasted unmount
+  // + remount of the entire screen subtree — major culprit for sluggish
+  // screen transitions on the WebView CFD. Only set the key on iOS where the
+  // fade actually plays.
+  const animatedKey = Platform.OS === 'ios' ? transitionKey : undefined
+
   return (
     <Animated.View
-      key={transitionKey}
+      key={animatedKey}
       entering={iosOnly(FadeIn.duration(260))}
       exiting={iosOnly(FadeOut.duration(180))}
       style={styles.container}

@@ -2,7 +2,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Animated, {
   Easing,
@@ -30,7 +30,8 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
     amountPaid,
     tipAmount,
     savingsAmount,
-    paymentMethod
+    paymentMethod,
+    themeMode
   } = useCFDDisplayData()
 
   const isCash = paymentMethod === 'cash'
@@ -86,7 +87,7 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
   }))
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulseOpacity.value }))
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.screen
@@ -178,7 +179,7 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
       textAlign: 'center',
       marginTop: 8
     }
-  })
+  }), [themeMode])
 
   return (
     <View style={styles.container}>

@@ -52,6 +52,8 @@ interface CFDBuiltinState {
   paymentMethod: 'cash' | 'card' | 'manual' | null
   loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
   loyaltyResult: CFDPayload['loyaltyResult'] | null
+  merchantHasLoyalty: boolean
+  themeMode: 'light' | 'dark'
 
   // Actions
   update: (data: Partial<Omit<CFDBuiltinState, 'update' | 'reset'>>) => void
@@ -90,7 +92,9 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   carouselImages: [],
   paymentMethod: null,
   loyaltyPrompt: null,
-  loyaltyResult: null
+  loyaltyResult: null,
+  merchantHasLoyalty: false,
+  themeMode: 'dark'
 }
 
 export const useCFDBuiltinStore = create<CFDBuiltinState>()((set, get) => ({

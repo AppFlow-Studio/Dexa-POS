@@ -56,8 +56,9 @@ interface CFDClientStore {
   carouselImages: string[]
   loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
   loyaltyResult: CFDPayload['loyaltyResult'] | null
-  paymentMethod: 'cash' | 'card' | null
+  paymentMethod: 'cash' | 'card' | 'manual' | null
   themeMode: 'light' | 'dark'
+  merchantHasLoyalty: boolean
 
   // Actions
   setPairing: (data: CFDPairingData) => void
@@ -118,6 +119,7 @@ export const useCFDClientStore = create<CFDClientStore>()(
       loyaltyResult: null,
       paymentMethod: null,
       themeMode: 'dark',
+      merchantHasLoyalty: false,
 
       // Actions
       setPairing: data => {
@@ -190,7 +192,11 @@ export const useCFDClientStore = create<CFDClientStore>()(
           loyaltyPrompt: payload.loyaltyPrompt ?? null,
           loyaltyResult: payload.loyaltyResult ?? null,
           paymentMethod: payload.paymentMethod ?? null,
-          themeMode: payload.themeMode ?? get().themeMode
+          themeMode: payload.themeMode ?? get().themeMode,
+          // Carry forward when payload omits — POS includes this on every
+          // update once cached, but defensive in case of partial payloads.
+          merchantHasLoyalty:
+            payload.merchantHasLoyalty ?? get().merchantHasLoyalty
         })
     }),
     {
@@ -199,7 +205,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
       partialize: state => ({
         isPaired: state.isPaired,
         connection: state.connection,
-        branding: state.branding
+        branding: state.branding,
+        // Persist so the loyalty CTA gate on the result screen renders
+        // correctly across app restarts and offline boots.
+        merchantHasLoyalty: state.merchantHasLoyalty
       })
     }
   )

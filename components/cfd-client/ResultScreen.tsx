@@ -2,7 +2,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { Check, CircleAlert, Gift, UtensilsCrossed } from 'lucide-react-native'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   FadeInUp,
@@ -27,7 +27,9 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
     paymentMethod,
     tipAmount,
     customerName,
-    customerPhone
+    customerPhone,
+    merchantHasLoyalty,
+    themeMode
   } = useCFDDisplayData()
 
   const isCash = paymentMethod === 'cash'
@@ -55,7 +57,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
     opacity: iconOpacity.value
   }))
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.screen
@@ -176,7 +178,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
       fontWeight: '700',
       color: colors.teal
     }
-  })
+  }), [themeMode])
 
   return (
     <View style={styles.container}>
@@ -250,7 +252,7 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
             : 'Please try a different payment method'}
         </Animated.Text>
 
-        {success ? (
+        {success && merchantHasLoyalty ? (
           <Animated.View entering={iosOnly(FadeInUp.duration(280).delay(280))}>
             <TouchableOpacity
               activeOpacity={0.85}

@@ -3,7 +3,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { Check, Gift, UtensilsCrossed } from 'lucide-react-native'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Animated, {
   FadeIn,
@@ -17,7 +17,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 export function LoyaltyConfirmationScreen () {
-  const { loyaltyResult, branding } = useCFDDisplayData()
+  const { loyaltyResult, branding, themeMode } = useCFDDisplayData()
   const programs = loyaltyResult?.programs ?? []
   const hasProgramResults = programs.length > 0
   const customerName = loyaltyResult?.customerName
@@ -40,7 +40,7 @@ export function LoyaltyConfirmationScreen () {
     opacity: iconOpacity.value
   }))
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.screen
@@ -162,7 +162,7 @@ export function LoyaltyConfirmationScreen () {
       fontWeight: '600',
       color: colors.heading
     }
-  })
+  }), [themeMode])
 
   return (
     <View style={styles.container}>

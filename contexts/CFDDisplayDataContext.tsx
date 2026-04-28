@@ -61,7 +61,9 @@ export function CFDExternalDisplayProvider ({
     carouselImages: s.carouselImages,
     loyaltyPrompt: s.loyaltyPrompt,
     loyaltyResult: s.loyaltyResult,
-    paymentMethod: s.paymentMethod
+    paymentMethod: s.paymentMethod,
+    merchantHasLoyalty: s.merchantHasLoyalty,
+    themeMode: s.themeMode
   })))
 
   const data = useMemo<CFDDisplayData>(() => ({
@@ -98,7 +100,9 @@ export function CFDExternalDisplayProvider ({
     carouselImages: store.carouselImages,
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
-    paymentMethod: store.paymentMethod ?? null
+    paymentMethod: store.paymentMethod ?? null,
+    merchantHasLoyalty: store.merchantHasLoyalty,
+    themeMode: store.themeMode
   }), [store])
 
   return (
@@ -146,7 +150,9 @@ export function CFDBuiltinDisplayProvider ({
     carouselImages: s.carouselImages,
     loyaltyPrompt: s.loyaltyPrompt,
     loyaltyResult: s.loyaltyResult,
-    paymentMethod: s.paymentMethod
+    paymentMethod: s.paymentMethod,
+    merchantHasLoyalty: s.merchantHasLoyalty,
+    themeMode: s.themeMode
   })))
 
   const data = useMemo<CFDDisplayData>(() => ({
@@ -183,7 +189,9 @@ export function CFDBuiltinDisplayProvider ({
     carouselImages: store.carouselImages,
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
-    paymentMethod: store.paymentMethod ?? null
+    paymentMethod: store.paymentMethod ?? null,
+    merchantHasLoyalty: store.merchantHasLoyalty,
+    themeMode: store.themeMode
   }), [store])
 
   return (

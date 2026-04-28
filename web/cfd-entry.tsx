@@ -20,6 +20,7 @@ import {
   triggerCFDLoyaltySkip,
   triggerCFDPhoneSubmit,
 } from "@/lib/cfdLoyaltyTriggers";
+import { setThemeMode } from "@/lib/theme";
 import type {
   CFDMessage,
   CFDPayload,
@@ -58,16 +59,45 @@ function postToHost(message: CFDMessage) {
   }
 }
 
+function applyTheme(mode: "light" | "dark") {
+  try {
+    setThemeMode(mode);
+    // NativeWind v4 web reads `dark:` variants from the html element class.
+    // Match the POS so Tailwind dark/light variants resolve correctly inside
+    // the WebView's V8.
+    const cls = document.documentElement.classList;
+    if (mode === "dark") {
+      cls.add("dark");
+      cls.remove("light");
+    } else {
+      cls.add("light");
+      cls.remove("dark");
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[CFDWebView] applyTheme failed", err);
+  }
+}
+
 function installBridge() {
   // POS -> WebView: state updates
   window.__cfdRecv = (payload) => {
     try {
+      const prevTheme = useCFDWebDisplayStore.getState().themeMode;
       useCFDWebDisplayStore.getState().applyPayload(payload);
+      const nextTheme = useCFDWebDisplayStore.getState().themeMode;
+      if (prevTheme !== nextTheme) {
+        applyTheme(nextTheme);
+      }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[CFDWebView] applyPayload failed", err);
     }
   };
+
+  // Apply current theme on bridge install (covers the case where the snapshot
+  // was already pushed before this listener was wired up).
+  applyTheme(useCFDWebDisplayStore.getState().themeMode);
 
   // Register loyalty handlers so CFDScreenRouter's fallback path also posts
   // back to the host (defense in depth — the screens already get explicit

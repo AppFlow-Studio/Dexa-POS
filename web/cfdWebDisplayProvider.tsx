@@ -20,7 +20,9 @@
 
 import {
   CFDDisplayDataContext,
+  CFDDisplayStoreContext,
   type CFDDisplayData,
+  type CFDDisplayStoreApi,
 } from "@/contexts/CFDDisplayDataContext.base";
 import type { CFDPayload, CFDScreenState } from "@/types/cfd.types";
 import React, { useMemo } from "react";
@@ -62,6 +64,8 @@ const initialState: CFDDisplayData = {
   loyaltyPrompt: null,
   loyaltyResult: null,
   paymentMethod: null,
+  merchantHasLoyalty: false,
+  themeMode: "dark",
 };
 
 interface CFDWebDisplayStore extends CFDDisplayData {
@@ -70,9 +74,28 @@ interface CFDWebDisplayStore extends CFDDisplayData {
   reset: () => void;
 }
 
+// Last applied payload fingerprint — module-scoped so dedup survives store
+// re-creation. Mirrors the host-side wsFingerprint pattern (CFDProvider.tsx)
+// so the WebView side also short-circuits redundant payloads.
+let lastAppliedFingerprint = "";
+
 export const useCFDWebDisplayStore = create<CFDWebDisplayStore>()((set) => ({
   ...initialState,
   applyPayload: (payload) => {
+    // Cheap dedup: if the host re-pushes an identical payload (different code
+    // paths, race against snapshot push, etc.), skip the set() entirely so
+    // every useStore selector keeps its current ref and no consumer
+    // re-renders. JSON.stringify cost is microseconds for typical payloads.
+    let fingerprint = "";
+    try {
+      fingerprint = JSON.stringify(payload);
+    } catch {
+      // Cyclic / non-serializable — fall through and apply.
+    }
+    if (fingerprint && fingerprint === lastAppliedFingerprint) {
+      return;
+    }
+    lastAppliedFingerprint = fingerprint;
     set((current) => ({
       // Carry forward existing values if the payload omits a field.
       ...current,
@@ -109,6 +132,9 @@ export const useCFDWebDisplayStore = create<CFDWebDisplayStore>()((set) => ({
       loyaltyPrompt: payload.loyaltyPrompt ?? current.loyaltyPrompt,
       loyaltyResult: payload.loyaltyResult ?? current.loyaltyResult,
       paymentMethod: payload.paymentMethod ?? current.paymentMethod,
+      merchantHasLoyalty:
+        payload.merchantHasLoyalty ?? current.merchantHasLoyalty,
+      themeMode: payload.themeMode ?? current.themeMode,
     }));
   },
   setScreenState: (state) => set({ screenState: state }),
@@ -161,14 +187,24 @@ export function CFDWebDisplayProvider({
       loyaltyPrompt: s.loyaltyPrompt,
       loyaltyResult: s.loyaltyResult,
       paymentMethod: s.paymentMethod,
+      merchantHasLoyalty: s.merchantHasLoyalty,
+      themeMode: s.themeMode,
     }))
   );
 
   const value = useMemo<CFDDisplayData>(() => store, [store]);
 
+  // Expose the underlying Zustand store API so interactive screens can use
+  // `useCFDDisplayField(key)` to subscribe to one field instead of the whole
+  // payload. The bound hook satisfies StoreApi<CFDDisplayData> because
+  // CFDWebDisplayStore extends CFDDisplayData.
+  const storeApi = useCFDWebDisplayStore as unknown as CFDDisplayStoreApi;
+
   return (
-    <CFDDisplayDataContext.Provider value={value}>
-      {children}
-    </CFDDisplayDataContext.Provider>
+    <CFDDisplayStoreContext.Provider value={storeApi}>
+      <CFDDisplayDataContext.Provider value={value}>
+        {children}
+      </CFDDisplayDataContext.Provider>
+    </CFDDisplayStoreContext.Provider>
   );
 }
