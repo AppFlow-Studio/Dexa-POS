@@ -3674,6 +3674,14 @@ export const useOrderStore = create<OrderState>()(
                     // for own-station orders and updates sync_version correctly.
                     // ═══════════════════════════════════════════════════════════
                     if (!isOwnStationOrder) {
+                      // B.3: Always flash the "another station updated this
+                      // order" ring on remote updates, even when we suppress
+                      // the toast (severity='silent'). The cashier should see
+                      // *something* changed; the toast is just the noisy form.
+                      useConflictStore
+                        .getState()
+                        .markOrderAsUpdated(localOrderId)
+
                       if (isOrderPendingVoid(localOrderId)) {
                         if (__DEV__)
                           console.log(
@@ -3726,12 +3734,18 @@ export const useOrderStore = create<OrderState>()(
                                 conflict.conflictType
                               )
                           } else {
-                            // Non-critical - record and show toast
+                            // Non-critical - record and show toast (unless silent)
                             useConflictStore.getState().recordConflict(conflict)
 
-                            // Show toast notification for significant conflicts
-                            const toastData = generateConflictToast(conflict)
-                            if (conflict.severity !== 'info') {
+                            // Skip toast for 'info' (auto-resolved minor) and
+                            // 'silent' (B.4 — locally-clean order, recorded for
+                            // audit only). Show for 'warning' which means the
+                            // cashier had something at risk.
+                            if (
+                              conflict.severity !== 'info' &&
+                              conflict.severity !== 'silent'
+                            ) {
+                              const toastData = generateConflictToast(conflict)
                               toastService.show({
                                 title: 'Order Update Conflict',
                                 type:
@@ -4471,6 +4485,23 @@ export const useOrderStore = create<OrderState>()(
                   }
                 )
               return accept
+            }
+
+            // 2c. Drafts are station-private. By this point the order is not
+            // ours (rejected at step 2) and not external (returned at step 2b).
+            // A remote POS station's draft has no business inflating
+            // ordersById / MMKV / realtime CPU on this device until its owner
+            // advances the status. Reject regardless of view_scope.
+            //
+            // FIELD NAME: BroadcastOrderData.status (NOT order_status — that's
+            // the post-transform OrderProfile field). See
+            // hooks/realtime/useOrdersRealtime.ts:178.
+            if (backendOrder.status === 'draft') {
+              if (__DEV__)
+                console.log(
+                  '[RemoteOrder] REJECT: remote draft (other station)'
+                )
+              return false
             }
 
             // 3. Check view_scope (POS-to-POS station visibility)

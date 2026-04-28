@@ -3,6 +3,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { OrderProfile } from "@/lib/types";
 import {
   normalizeFetchedOrder,
@@ -12,28 +13,39 @@ import {
 import { useEffect, useRef } from "react";
 import { queryClient } from "@/contexts/TanstackProvider";
 
+// `active(locationId)` is intentionally a *prefix*. The full queryKey used by
+// useOrdersQuery is [...active(locationId), stationId ?? ''], so a station
+// switch refetches with the right server-side filter. Callers that only know
+// locationId (useOrderSyncRecovery, PosSyncProvider) should use this prefix
+// with prefix-matching APIs (invalidateQueries, isFetching, queryCache.find with
+// exact:false) — never with getQueryState (exact match) directly.
 export const orderQueryKeys = {
   all: ["orders"] as const,
   active: (locationId: string) => ["orders", "active", locationId] as const,
 };
 
+const STATION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function useOrdersQuery({
   locationId,
+  stationId,
   enabled = true,
 }: {
   locationId: string | null;
+  stationId: string | null;
   enabled?: boolean;
 }) {
   const supabase = useSupabaseClient();
 
   const query = useQuery({
-    queryKey: orderQueryKeys.active(locationId ?? ""),
+    queryKey: [...orderQueryKeys.active(locationId ?? ""), stationId ?? ""],
     queryFn: async (): Promise<OrderProfile[]> => {
       if (!locationId) throw new Error("No location ID");
       // Deadline-wrapped: bad WiFi falls back to TanStack offlineFirst cache.
       const { data, error } = await withDeadline(
-        async (signal) =>
-          await supabase
+        async (signal) => {
+          let q = supabase
             .from("orders")
             .select(
               `*, order_items(*, order_item_modifiers(*)), order_payments(*),
@@ -42,9 +54,23 @@ export function useOrdersQuery({
                created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)`,
             )
             .eq("location_id", locationId)
-            .in("status", ["draft", "pending", "sent_to_kitchen", "preparing", "ready"])
+            .in("status", ["draft", "pending", "sent_to_kitchen", "preparing", "ready"]);
+
+          // Drop other-stations' drafts at the source. station_id IS NULL keeps
+          // external/online drafts (no POS station). UUID guard: stationId is
+          // string-interpolated into a PostgREST filter and supabase-js does not
+          // sanitize .or() — fall back to unfiltered query if the value is not a
+          // UUID. The selector + realtime guard still hide remote drafts client-side.
+          if (stationId && STATION_ID_RE.test(stationId)) {
+            q = q.or(
+              `status.neq.draft,station_id.is.null,station_id.eq.${stationId}`,
+            );
+          }
+
+          return await q
             .order("created_at", { ascending: false })
-            .abortSignal(signal),
+            .abortSignal(signal);
+        },
         DEADLINES.read,
         "orders_query",
       );
@@ -140,8 +166,41 @@ function hydrateWorkspace(
     serverIds.push(key);
   }
 
-  const newOrdersById = { ...preserved, ...serverMap };
-  const newOrderIds = [...new Set([...preservedIds, ...serverIds])];
+  let newOrdersById: Record<string, OrderProfile> = { ...preserved, ...serverMap };
+  let newOrderIds = [...new Set([...preservedIds, ...serverIds])];
+
+  // One-shot cleanup of MMKV-persisted remote drafts from before the
+  // station-private-drafts change. Drafts owned by other stations have no
+  // business in this device's ordersById; drop them on every hydrate. Drafts
+  // with no station_id (external/online) pass through.
+  const myStationId =
+    useStoreSettingsStore.getState().selectedStation?.id ?? null;
+  if (myStationId) {
+    const filteredById: Record<string, OrderProfile> = {};
+    let pruned = 0;
+    for (const id of newOrderIds) {
+      const o = newOrdersById[id];
+      if (!o) continue;
+      if (
+        o.order_status === "draft" &&
+        o.station_id != null &&
+        o.station_id !== myStationId
+      ) {
+        pruned++;
+        continue;
+      }
+      filteredById[id] = o;
+    }
+    if (pruned > 0) {
+      newOrdersById = filteredById;
+      newOrderIds = newOrderIds.filter((id) => filteredById[id]);
+      if (__DEV__) {
+        console.log(
+          `[hydrateWorkspace] Pruned ${pruned} remote-station draft(s) from local store`,
+        );
+      }
+    }
+  }
 
   // Skip setState if nothing meaningful changed — avoids Immer draft + MMKV serialization.
   // Server orders are always new object instances (transformBroadcastToOrder creates fresh objects),

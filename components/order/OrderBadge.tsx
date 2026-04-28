@@ -717,6 +717,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   // PERFORMANCE: Get currentStationId via selector (not getState() during render)
   const currentStationId = useOrderStore(s => s.currentStationId)
   const activeOrderId = useOrderStore(s => s.activeOrderId)
+  const setActiveOrder = useOrderStore(s => s.setActiveOrder)
 
   // Phase 6: Check if order was recently updated by another station
   const wasRecentlyUpdated = useWasOrderRecentlyUpdated(
@@ -825,7 +826,10 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   // PERFORMANCE: Memoize callbacks to prevent recreation
   const handleClose = useCallback(() => setShowTooltip(false), [])
   const handleOpen = useCallback(() => setShowTooltip(true), [])
-  const handleRetrieve = useCallback(() => onRetrieve(), [onRetrieve])
+  const handleSetActive = useCallback(
+    () => setActiveOrder(order.id),
+    [setActiveOrder, order.id]
+  )
 
   // Badge elevation: active, recently updated, or popover open
   const isActive = activeOrderId === order.id || wasRecentlyUpdated
@@ -905,7 +909,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
                 }}
               >
                 <TouchableOpacity
-                  onPress={handleRetrieve}
+                  onPress={handleSetActive}
                   className='flex-row items-center px-3 py-1.5'
                 >
                   {wasRecentlyUpdated && (

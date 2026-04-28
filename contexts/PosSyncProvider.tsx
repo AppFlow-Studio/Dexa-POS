@@ -75,9 +75,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
-  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS)
+  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS).
+  // stationId is part of the queryKey so the server-side draft filter refetches
+  // when the user switches stations on the same device.
   useOrdersQuery({
     locationId: selectedStore?.id ?? null,
+    stationId: selectedStation?.id ?? null,
     enabled: !!selectedStore?.id && !isKDS,
   });
 
@@ -557,11 +560,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
           // Refresh orders when app resumes — only if data is older than staleTime.
           // useOrderSyncRecovery handles reconnection-triggered refetches separately.
+          // queryKey now includes stationId, so use a prefix-matching cache lookup
+          // (exact:false) instead of getQueryState (which is exact-match).
           if (storeSettings.selectedStore?.id) {
-            const qState = queryClient.getQueryState(
-              orderQueryKeys.active(storeSettings.selectedStore.id),
-            );
-            const dataAge = Date.now() - (qState?.dataUpdatedAt ?? 0);
+            const cached = queryClient
+              .getQueryCache()
+              .find({
+                queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+                exact: false,
+              });
+            const dataAge = Date.now() - (cached?.state.dataUpdatedAt ?? 0);
             if (dataAge > 2 * 60 * 1000) {
               queryClient.invalidateQueries({
                 queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
