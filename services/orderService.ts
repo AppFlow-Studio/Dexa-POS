@@ -178,7 +178,8 @@ export class OrderService {
    */
   static async addOpenItem (
     client: SupabaseClient,
-    params: AddOpenItemParams
+    params: AddOpenItemParams,
+    opts?: { keyOverride?: string }
   ): Promise<{ data: AddOpenItemResult | null; error: any }> {
     if (__DEV__)
       console.log(
@@ -187,7 +188,7 @@ export class OrderService {
       )
     const { data, error } = await rpcWithIdempotency<AddOpenItemResult>(
       client, 'add_open_item', 'add_open_item_v2', 'add_open_item_v3', params,
-      { deadline: DEADLINES.hotMutation }
+      { deadline: DEADLINES.hotMutation, keyOverride: opts?.keyOverride }
     )
     if (error || !data) {
       console.error(`[OrderService:addOpenItem] FAILED:`, error)
@@ -268,17 +269,14 @@ export class OrderService {
    */
   static async addOrderItem (
     client: SupabaseClient,
-    params: AddOrderItemParams
+    params: AddOrderItemParams,
+    opts?: { keyOverride?: string }
   ): Promise<{ data: AddOrderItemResult | null; error: any }> {
     if (__DEV__)
       console.log(`[OrderService:addOrderItem] ====== ADDING ITEM ======`)
-    // console.log(`[OrderService:addOrderItem] Order: ${params.p_order_id}`);
-    // console.log(`[OrderService:addOrderItem] Item: ${params.p_item_name}`);
-    // console.log(`[OrderService:addOrderItem] Qty: ${params.p_quantity}, Price: ${params.p_unit_price}`);
-    // console.log(`[OrderService:addOrderItem] ADD_ORDER_ITEM_V2:`, params);
     const { data, error } = await rpcWithIdempotency<AddOrderItemResult>(
       client, 'add_order_item', 'add_order_item_v2', 'add_order_item_v3', params,
-      { deadline: DEADLINES.hotMutation }
+      { deadline: DEADLINES.hotMutation, keyOverride: opts?.keyOverride }
     )
 
     if (error || !data) {

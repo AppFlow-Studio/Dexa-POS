@@ -46,6 +46,7 @@ import {
   queueDependentOperation,
   queueOperation
 } from '@/services/offlineSyncService'
+import { toIdempotencyKey } from '@/lib/network/idempotencyKey'
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { AddOpenItemParams, OrderService } from '@/services/orderService'
 import { useCoursingStore } from '@/stores/useCoursingStore'
@@ -1722,17 +1723,30 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           }
         }
 
+        // Wave 2.7: stable per-tap key for replay safety. Use the local
+        // CartItem id (transformed to a deterministic UUID) so that the
+        // first attempt and every queue replay submit the same key — the
+        // server-side _idempotency_claim then dedupes, preventing the
+        // duplicate-insert bug observed on bad WiFi.
+        // Fall back to op.idempotencyKey (uuidv4 stamped at queue time)
+        // if for some reason localItemId is missing.
+        const idempotencyKeyOverride = localItemId
+          ? toIdempotencyKey(localItemId)
+          : op.idempotencyKey
+
         let data: any
         let error: any
         if (isOpenItem) {
           ;({ data, error } = await OrderService.addOpenItem(
             _supabaseClient,
-            params as AddOpenItemParams
+            params as AddOpenItemParams,
+            { keyOverride: idempotencyKeyOverride }
           ))
         } else {
           ;({ data, error } = await OrderService.addOrderItem(
             _supabaseClient,
-            params as AddOrderItemParams
+            params as AddOrderItemParams,
+            { keyOverride: idempotencyKeyOverride }
           ))
         }
 

@@ -1,8 +1,27 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidv4, v5 as uuidv5 } from 'uuid'
 import { DEADLINES } from './deadlines'
 import { isIdempotentEnabled, type IdempotentRpc } from './featureFlags'
 import { runWithDeadline } from './runWithDeadline'
+
+/**
+ * Fixed namespace for Bad-WiFi Phase 2 deterministic idempotency keys.
+ * Generated once via uuidv4(); MUST NOT change — would invalidate dedup
+ * across deploys.
+ */
+const PHASE2_NAMESPACE = '7d2a8f4e-9b3c-4e2a-8f1d-3c5b7e9a1b2c'
+
+/**
+ * Deterministically transform any local string id (e.g. CartItem id like
+ * `<compositeKey>_<timestamp>_<random>`) into a valid UUID suitable for
+ * `p_idempotency_key`. Same input → same output across attempts and across
+ * the client/queue boundary. If the input is already a valid UUID, the
+ * transformation still applies (deterministic, but namespaced — to keep
+ * the contract uniform).
+ */
+export function toIdempotencyKey (localId: string): string {
+  return uuidv5(localId, PHASE2_NAMESPACE)
+}
 
 /**
  * Classify an RPC error as transient (recoverable via offline queue retry)

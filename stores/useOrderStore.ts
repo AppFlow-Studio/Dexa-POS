@@ -93,6 +93,7 @@ import {
   type BackendItemInput,
   type FetchedOrderData
 } from '@/utils/orderTransformers'
+import { toIdempotencyKey } from '@/lib/network/idempotencyKey'
 import { useSyncStatusStore } from './useSyncStatusStore'
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
@@ -1274,7 +1275,11 @@ const addItemToBackend = async (
           JSON.stringify(addOpenParams, null, 2)
         )
       const { data: addResult, error: addError } =
-        await OrderService.addOpenItem(supabase, addOpenParams)
+        await OrderService.addOpenItem(supabase, addOpenParams, {
+          // Wave 2.7: stable per-tap key. Same item.id across retries → same
+          // server-side idempotency key → at most one insert per tap.
+          keyOverride: toIdempotencyKey(item.id)
+        })
 
       if (addError) {
         // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
@@ -1676,7 +1681,11 @@ const addItemToBackend = async (
     // );
     // console.log("Calling OrderService.addOrderItem now...");
     const { data: addResult, error: addError } =
-      await OrderService.addOrderItem(supabase, addItemParams)
+      await OrderService.addOrderItem(supabase, addItemParams, {
+        // Wave 2.7: stable per-tap key. Same item.id across retries → same
+        // server-side idempotency key → at most one insert per tap.
+        keyOverride: toIdempotencyKey(item.id)
+      })
 
     if (addError) {
       // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
