@@ -4,6 +4,7 @@ import { colors } from '@/lib/theme'
 import { Check, CircleAlert, Gift, UtensilsCrossed } from 'lucide-react-native'
 import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { RawClickButton } from './RawClickButton'
 import Animated, {
   FadeInUp,
   cancelAnimation,
@@ -16,9 +17,10 @@ import Animated, {
 interface Props {
   success: boolean
   onJoinLoyalty?: () => void
+  onSkip?: () => void
 }
 
-export function ResultScreen ({ success, onJoinLoyalty }: Props) {
+export function ResultScreen ({ success, onJoinLoyalty, onSkip }: Props) {
   const {
     branding,
     total,
@@ -177,6 +179,23 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
       fontSize: 18,
       fontWeight: '700',
       color: colors.teal
+    },
+    skipBtn: {
+      marginTop: 14,
+      paddingHorizontal: 22,
+      paddingVertical: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: 'transparent',
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    skipBtnText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.label,
+      letterSpacing: 0.2
     }
   }), [themeMode])
 
@@ -254,13 +273,38 @@ export function ResultScreen ({ success, onJoinLoyalty }: Props) {
 
         {success && merchantHasLoyalty ? (
           <Animated.View entering={iosOnly(FadeInUp.duration(280).delay(280))}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onJoinLoyalty}
+            {/*
+              RawClickButton — direct DOM `click` listener via View ref,
+              no Pressable / TouchableOpacity / responder system. The
+              Approved → loyalty_prompt transition was paying ~1s of
+              touch-pipeline overhead on Android WebView; this button
+              fires the handler the same frame the browser dispatches
+              the click event.
+            */}
+            <RawClickButton
+              onPress={onJoinLoyalty ?? (() => {})}
               style={styles.loyaltyCta}
+              accessibilityLabel={loyaltyCtaLabel}
             >
               <Gift size={18} color={colors.teal} strokeWidth={2.2} />
               <Text style={styles.loyaltyCtaText}>{loyaltyCtaLabel}</Text>
+            </RawClickButton>
+          </Animated.View>
+        ) : null}
+
+        {/* Skip / Done — manual dismissal. The Approved screen no longer
+            auto-idles after 6s; the customer (or operator via Start New
+            Order) drives the transition. */}
+        {success && onSkip ? (
+          <Animated.View entering={iosOnly(FadeInUp.duration(280).delay(340))}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={onSkip}
+              style={styles.skipBtn}
+            >
+              <Text style={styles.skipBtnText}>
+                {merchantHasLoyalty ? 'Skip' : 'Done'}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
         ) : null}

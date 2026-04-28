@@ -162,13 +162,47 @@ function CFDWebApp() {
   };
 
   const handleLoyaltySkip = () => {
+    // Optimistic local transition so the screen flips immediately.
+    // Used by both the loyalty phone-prompt Skip and the Approved
+    // screen Skip / Done button.
+    try {
+      useCFDWebDisplayStore.getState().setScreenState("idle");
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[CFDWebView] optimistic idle on skip failed", err);
+    }
     postToHost({ type: "loyalty_skip", timestamp: Date.now() });
     triggerCFDLoyaltySkip();
   };
 
   const handleLoyaltyJoin = () => {
+    // Diagnostic timing — three timestamps so we can see exactly where
+    // any visible delay between tap and keypad lives:
+    //   T0: handler entered (Pressable onPress fired — touch-release)
+    //   T1: optimistic setScreenState completed (store updated)
+    //   T2: postToHost completed (message dispatched to host)
+    // The "tap → keypad" lag visible to the customer is the gap from
+    // T0 to the next paint after T1.
+    const t0 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    try {
+      useCFDWebDisplayStore.getState().setScreenState("loyalty_prompt");
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[CFDWebView] optimistic loyalty_prompt failed", err);
+    }
+    const t1 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
     postToHost({ type: "loyalty_join", timestamp: Date.now() });
     triggerCFDLoyaltyJoin();
+    const t2 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    // eslint-disable-next-line no-console
+    console.log(
+      `[CFDWebView] handleLoyaltyJoin: setScreenState=${(t1 - t0).toFixed(
+        1
+      )}ms, postToHost=${(t2 - t1).toFixed(1)}ms`
+    );
   };
 
   return (

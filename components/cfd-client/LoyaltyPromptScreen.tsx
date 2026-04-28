@@ -2,19 +2,27 @@
 import { useCFDDisplayField } from '@/contexts/CFDDisplayDataContext.base'
 import { colors } from '@/lib/theme'
 import { Delete, Gift } from 'lucide-react-native'
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from 'react-native'
+import { RawClickButton } from './RawClickButton'
 
 interface Props {
   onPhoneSubmitted: (phone: string) => void
   onSkip: () => void
+  /**
+   * Whether this screen is currently visible to the customer. The screen
+   * is permanently mounted by CFDScreenRouter (display: none toggle)
+   * so first-mount cost doesn't block the Approved → keypad transition.
+   * `visible` lets us reset phoneDigits + isSubmitting between sessions
+   * so a returning customer always starts with an empty input.
+   */
+  visible?: boolean
 }
 
 const PHONE_DIGITS = 10
@@ -29,201 +37,76 @@ function formatUSPhone (digits: string): string {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
 }
 
-// Module-scope styles. StyleSheet.create runs ONCE per theme (per app
-// load), not per render — important because react-native-web's
-// StyleSheet.create does real CSS-in-JS work (class registration,
-// hashing) and was a measurable cost on every keystroke when defined
-// inside the component.
-const stylesByTheme = {
-  dark: makeStyles('dark'),
-  light: makeStyles('light')
-} as const
-
-function makeStyles (_themeMode: 'light' | 'dark') {
-  // The `colors` import is theme-aware via setThemeMode (lib/theme.ts).
-  // Each call here resolves against the current theme palette at the
-  // time the module first loads. We re-read inside makeStyles so theme
-  // switches that happen after first render still produce fresh values
-  // when the cache rebuilds (see refresh logic in the component).
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.screen
-    },
-    body: {
-      // ScrollView contentContainer — keeps content centered when there's
-      // room, allows scroll on short viewports.
-      flexGrow: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      paddingHorizontal: 24,
-      paddingTop: 14,
-      paddingBottom: 6
-    },
-    iconCircle: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: colors.tealMuted,
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    headline: {
-      fontSize: 22,
-      fontWeight: '700',
-      color: colors.heading,
-      textAlign: 'center',
-      letterSpacing: -0.2
-    },
-    phoneCard: {
-      width: 300,
-      backgroundColor: colors.screen,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      alignItems: 'center'
-    },
-    phoneText: {
-      fontSize: 24,
-      fontWeight: '600',
-      color: colors.heading,
-      letterSpacing: 0.5
-    },
-    phoneTextPlaceholder: {
-      color: colors.heading
-    },
-    keypad: {
-      width: 300,
-      gap: 4
-    },
-    numpadRow: {
-      flexDirection: 'row',
-      gap: 4
-    },
-    numKey: {
-      flex: 1,
-      height: 42,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 9,
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    numKeyAction: {
-      backgroundColor: colors.screen
-    },
-    numKeyText: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: colors.heading
-    },
-    numKeySmall: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: colors.label
-    },
-    footer: {
-      flexDirection: 'row',
-      gap: 10,
-      width: '100%',
-      paddingHorizontal: 24,
-      paddingTop: 8,
-      paddingBottom: 12,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      backgroundColor: colors.screen,
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    footerInner: {
-      flexDirection: 'row',
-      gap: 10,
-      width: 300
-    },
-    skipBtn: {
-      flex: 1,
-      minHeight: 40,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'transparent'
-    },
-    skipBtnText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.label
-    },
-    continueBtn: {
-      flex: 1,
-      minHeight: 40,
-      borderRadius: 10,
-      backgroundColor: colors.teal,
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    continueBtnDisabled: {
-      opacity: 0.42
-    },
-    continueBtnText: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: colors.onSolid
-    },
-    submittingOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.45)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 24
-    },
-    submittingCard: {
-      width: '100%',
-      maxWidth: 360,
-      backgroundColor: colors.panel,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: 16,
-      paddingVertical: 28,
-      paddingHorizontal: 24,
-      alignItems: 'center',
-      gap: 14,
-      shadowColor: '#000',
-      shadowOpacity: 0.25,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 6
-    },
-    submittingText: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: colors.heading,
-      letterSpacing: 0.2,
-      textAlign: 'center'
-    },
-    submittingSubtext: {
-      fontSize: 13,
-      fontWeight: '500',
-      color: colors.label,
-      textAlign: 'center'
-    }
-  })
+// Custom keypad implementation — bypasses the TouchableOpacity wrapper
+// entirely.
+//
+// Why: TouchableOpacity's per-key event handling on Android WebView was
+// causing "press 3 then 4 → 33" — the second tap's `touchstart` was
+// occasionally being interpreted as a `touchmove` continuation of the
+// first touch, so the second key never fired and the customer perceived
+// a duplicate of the first digit. Switching to `Pressable` (the newer,
+// leaner React Native press primitive that compiles to a plain
+// `<div role="button">` with native click handling on web) sidesteps the
+// flaky TouchableOpacity/PressResponder combo.
+//
+// Each key is its own memoized component with a stable, per-key onPress
+// closure. With React.memo + the parent passing a stable `onPress`
+// callback, the buttons never re-render after first mount — the only
+// thing that re-renders on a keystroke is the phone display Text.
+type KeypadStyles = {
+  keypad: any
+  numpadRow: any
+  numKey: any
+  numKeyAction: any
+  numKeyText: any
+  numKeySmall: any
 }
 
-// Memoized keypad. Receives a stable `onPress` ref-callback from the
-// parent so its props reference equality holds across the parent's
-// per-keystroke re-renders, and React.memo can skip its render entirely.
-// The keypad is ~12 TouchableOpacity + Text nodes — by far the heaviest
-// part of the screen — so skipping it on every keystroke removes the
-// dominant lag in V8.
+interface KeyButtonProps {
+  label: string | null
+  digit: string
+  styleKey: 'numKey' | 'numKeyAction'
+  textStyleKey: 'numKeyText' | 'numKeySmall'
+  onPress: (key: string) => void
+  styles: KeypadStyles
+  iconSlot?: React.ReactNode
+}
+const KeyButton = memo(function KeyButton ({
+  label,
+  digit,
+  styleKey,
+  textStyleKey,
+  onPress,
+  styles,
+  iconSlot
+}: KeyButtonProps) {
+  // Per-key stable closure. Logged so we can prove which key fired on
+  // each tap if the wrong-digit symptom recurs.
+  const handlePress = useCallback(() => {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log(`[Keypad] press digit=${digit}`)
+    }
+    onPress(digit)
+  }, [digit, onPress])
+  return (
+    <RawClickButton
+      onPress={handlePress}
+      style={
+        styleKey === 'numKeyAction'
+          ? [styles.numKey, styles.numKeyAction]
+          : styles.numKey
+      }
+      accessibilityLabel={label ?? digit}
+    >
+      {iconSlot ?? <Text style={styles[textStyleKey]}>{label}</Text>}
+    </RawClickButton>
+  )
+})
+
 interface KeypadProps {
   onPress: (key: string) => void
-  styles: ReturnType<typeof makeStyles>
+  styles: KeypadStyles
 }
 const Keypad = memo(function Keypad ({ onPress, styles }: KeypadProps) {
   return (
@@ -235,49 +118,57 @@ const Keypad = memo(function Keypad ({ onPress, styles }: KeypadProps) {
       ].map((row, ri) => (
         <View key={ri} style={styles.numpadRow}>
           {row.map(key => (
-            <TouchableOpacity
+            <KeyButton
               key={key}
-              activeOpacity={0.7}
-              onPress={() => onPress(key)}
-              style={styles.numKey}
-            >
-              <Text style={styles.numKeyText}>{key}</Text>
-            </TouchableOpacity>
+              label={key}
+              digit={key}
+              styleKey='numKey'
+              textStyleKey='numKeyText'
+              onPress={onPress}
+              styles={styles}
+            />
           ))}
         </View>
       ))}
       <View style={styles.numpadRow}>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => onPress('clear')}
-          style={[styles.numKey, styles.numKeyAction]}
-        >
-          <Text style={styles.numKeySmall}>clear</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => onPress('0')}
-          style={styles.numKey}
-        >
-          <Text style={styles.numKeyText}>0</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => onPress('backspace')}
-          style={[styles.numKey, styles.numKeyAction]}
-        >
-          <Delete size={16} color={colors.heading} />
-        </TouchableOpacity>
+        <KeyButton
+          label='clear'
+          digit='clear'
+          styleKey='numKeyAction'
+          textStyleKey='numKeySmall'
+          onPress={onPress}
+          styles={styles}
+        />
+        <KeyButton
+          label='0'
+          digit='0'
+          styleKey='numKey'
+          textStyleKey='numKeyText'
+          onPress={onPress}
+          styles={styles}
+        />
+        <KeyButton
+          label={null}
+          digit='backspace'
+          styleKey='numKeyAction'
+          textStyleKey='numKeyText'
+          onPress={onPress}
+          styles={styles}
+          iconSlot={<Delete size={16} color={colors.heading} />}
+        />
       </View>
     </View>
   )
 })
 
-export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
-  // Field-level subscription so unrelated host pushes (cart updates,
-  // totals, etc.) don't re-render the keypad mid-input.
+export function LoyaltyPromptScreen ({
+  onPhoneSubmitted,
+  onSkip,
+  visible = true
+}: Props) {
+  // Field-level subscription so unrelated host pushes don't re-render
+  // the keypad mid-input. themeMode also gates the StyleSheet rebuild.
   const themeMode = useCFDDisplayField('themeMode')
-  const styles = stylesByTheme[themeMode] ?? stylesByTheme.dark
 
   const [phoneDigits, setPhoneDigits] = useState('')
   const phoneDigitsRef = useRef(phoneDigits)
@@ -285,16 +176,25 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
   const canSubmit = phoneDigits.length === PHONE_DIGITS
 
   // Submission state — the host's auto-earn lookup after `onPhoneSubmitted`
-  // can take several seconds. Without local feedback the customer just
-  // stares at an unchanged screen. The overlay locks input + shows a
-  // spinner immediately on Continue. Auto-clears on unmount or after a
-  // 12s safety reset (in case the host fails to advance the screen).
+  // can take several seconds. The overlay locks input + shows a spinner
+  // immediately on Continue. Auto-clears on unmount or after 12s safety.
   const [isSubmitting, setIsSubmitting] = useState(false)
   useEffect(() => {
     if (!isSubmitting) return
     const t = setTimeout(() => setIsSubmitting(false), 12000)
     return () => clearTimeout(t)
   }, [isSubmitting])
+
+  // Reset the prompt when it goes hidden so the next customer (or the
+  // same customer, on a new sale) starts with a clean input. The
+  // component is permanently mounted by CFDScreenRouter, so unmount-
+  // based reset would never fire.
+  useEffect(() => {
+    if (!visible) {
+      setPhoneDigits('')
+      setIsSubmitting(false)
+    }
+  }, [visible])
 
   // Stable callback so the memoized Keypad never re-renders.
   const handleKey = useCallback((key: string) => {
@@ -321,14 +221,189 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
 
   const displayText = formatUSPhone(phoneDigits)
 
+  // Styles inside the component, keyed on themeMode. `colors` from
+  // `@/lib/theme` is theme-aware (mutates on `setThemeMode`), so we
+  // rebuild the StyleSheet whenever themeMode changes — otherwise
+  // light-mode CFD ends up rendering with whatever theme was active at
+  // module load time. Per-keystroke cost is just the deps-equality
+  // check; the StyleSheet.create call itself runs only on theme change.
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          flex: 1,
+          backgroundColor: colors.screen
+        },
+        body: {
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          paddingHorizontal: 24,
+          paddingTop: 14,
+          paddingBottom: 6
+        },
+        iconCircle: {
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: colors.tealMuted,
+          alignItems: 'center',
+          justifyContent: 'center'
+        },
+        headline: {
+          fontSize: 22,
+          fontWeight: '700',
+          color: colors.heading,
+          textAlign: 'center',
+          letterSpacing: -0.2
+        },
+        phoneCard: {
+          width: 300,
+          backgroundColor: colors.screen,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          paddingVertical: 6,
+          paddingHorizontal: 12,
+          alignItems: 'center'
+        },
+        phoneText: {
+          fontSize: 24,
+          fontWeight: '600',
+          color: colors.heading,
+          letterSpacing: 0.5
+        },
+        phoneTextPlaceholder: {
+          color: colors.heading
+        },
+        keypad: {
+          width: 300,
+          gap: 4
+        },
+        numpadRow: {
+          flexDirection: 'row',
+          gap: 4
+        },
+        numKey: {
+          flex: 1,
+          height: 42,
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 9,
+          alignItems: 'center',
+          justifyContent: 'center'
+        },
+        numKeyAction: {
+          backgroundColor: colors.screen
+        },
+        numKeyText: {
+          fontSize: 18,
+          fontWeight: '700',
+          color: colors.heading
+        },
+        numKeySmall: {
+          fontSize: 12,
+          fontWeight: '700',
+          color: colors.label
+        },
+        footer: {
+          flexDirection: 'row',
+          gap: 10,
+          width: '100%',
+          paddingHorizontal: 24,
+          paddingTop: 8,
+          paddingBottom: 12,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          backgroundColor: colors.screen,
+          alignItems: 'center',
+          justifyContent: 'center'
+        },
+        footerInner: {
+          flexDirection: 'row',
+          gap: 10,
+          width: 300
+        },
+        skipBtn: {
+          flex: 1,
+          minHeight: 40,
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'transparent'
+        },
+        skipBtnText: {
+          fontSize: 14,
+          fontWeight: '600',
+          color: colors.label
+        },
+        continueBtn: {
+          flex: 1,
+          minHeight: 40,
+          borderRadius: 10,
+          backgroundColor: colors.teal,
+          alignItems: 'center',
+          justifyContent: 'center'
+        },
+        continueBtnDisabled: {
+          opacity: 0.42
+        },
+        continueBtnText: {
+          fontSize: 14,
+          fontWeight: '700',
+          color: colors.onSolid
+        },
+        submittingOverlay: {
+          ...StyleSheet.absoluteFillObject,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 24
+        },
+        submittingCard: {
+          width: '100%',
+          maxWidth: 360,
+          backgroundColor: colors.panel,
+          borderColor: colors.border,
+          borderWidth: 1,
+          borderRadius: 16,
+          paddingVertical: 28,
+          paddingHorizontal: 24,
+          alignItems: 'center',
+          gap: 14,
+          shadowColor: '#000',
+          shadowOpacity: 0.25,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6
+        },
+        submittingText: {
+          fontSize: 18,
+          fontWeight: '700',
+          color: colors.heading,
+          letterSpacing: 0.2,
+          textAlign: 'center'
+        },
+        submittingSubtext: {
+          fontSize: 13,
+          fontWeight: '500',
+          color: colors.label,
+          textAlign: 'center'
+        }
+      }),
+    [themeMode]
+  )
+
   return (
     <View style={styles.container}>
-      {/* Body scrolls on short viewports; centers on tall ones */}
-      <ScrollView
-        contentContainerStyle={styles.body}
-        keyboardShouldPersistTaps='always'
-        showsVerticalScrollIndicator={false}
-      >
+      {/* Body — plain View instead of ScrollView. Compact layout fits
+          the CFD viewport without scrolling, and dropping ScrollView
+          shaves a non-trivial first-mount cost on the WebView. */}
+      <View style={styles.body}>
         <View style={styles.iconCircle}>
           <Gift size={24} color={colors.teal} strokeWidth={2.2} />
         </View>
@@ -347,10 +422,10 @@ export function LoyaltyPromptScreen ({ onPhoneSubmitted, onSkip }: Props) {
         </View>
 
         <Keypad onPress={handleKey} styles={styles} />
-      </ScrollView>
+      </View>
 
-      {/* Footer pinned outside the ScrollView — Skip / Continue are
-          guaranteed visible at any viewport height. */}
+      {/* Footer — Skip / Continue pinned to the bottom of the
+          container so they're guaranteed visible at any viewport. */}
       <View style={styles.footer}>
         <View style={styles.footerInner}>
           <TouchableOpacity

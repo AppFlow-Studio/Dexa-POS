@@ -383,7 +383,21 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   }, [colorScheme])
 
   // Loyalty
-  const merchantHasLoyalty = useLoyaltyStore(s => s.merchantHasLoyalty)
+  // Kill switch — set EXPO_PUBLIC_CFD_DISABLE_LOYALTY=1 to bypass the
+  // entire CFD loyalty flow (no Join CTA on the Approved screen, no
+  // auto-loyalty trigger after payment, no loyalty_prompt /
+  // loyalty_confirmation transitions). Use this while we work through
+  // the loyalty path's stability issues; flip back to 0 / unset when
+  // the flow is fixed.
+  const cfdLoyaltyDisabled =
+    process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY === '1' ||
+    process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY === 'true'
+  const rawMerchantHasLoyalty = useLoyaltyStore(s => s.merchantHasLoyalty)
+  // The CFD reads merchantHasLoyalty to decide whether to show the
+  // "Join Loyalty" CTA on the Approved screen. Forcing it to false
+  // when the kill switch is on hides that CTA naturally — no extra
+  // gate needed in ResultScreen.
+  const merchantHasLoyalty = cfdLoyaltyDisabled ? false : rawMerchantHasLoyalty
 
   // Mirror merchantHasLoyalty (persisted in useLoyaltyStore via MMKV) into
   // useCFDBuiltinStore so the WebView/legacy CFD pick it up on every load,
@@ -799,6 +813,19 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           },
           onLoyaltyJoin: () => {
             if (controllerRef.current !== ctrl) return
+            // Kill switch — drop the request and reset to idle so a
+            // stray client-side Join tap (or a stale state on an
+            // external CFD client) can't drag us into the broken path.
+            if (cfdLoyaltyDisabled) {
+              console.log(
+                '[useCFD] Loyalty Join ignored — loyalty disabled flag'
+              )
+              clearResultAutoIdleTimer()
+              clearLoyaltyTimer()
+              setActiveScreenState(null)
+              ctrl.showIdle()
+              return
+            }
             // Customer EXPLICITLY pressed Join — they want to type their
             // phone now. Skip the silent auto-earn lookup path (which
             // can sit on backend lookups for several seconds before
@@ -2596,6 +2623,15 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   )
 
   const showLoyaltyPrompt = useCallback(() => {
+    // Kill switch — bail to idle so no caller can drag the CFD into
+    // the loyalty path while it's being stabilized.
+    if (cfdLoyaltyDisabled) {
+      console.log('[CFD] showLoyaltyPrompt skipped — loyalty disabled flag')
+      clearResultAutoIdleTimer()
+      controllerRef.current?.showIdle()
+      setActiveScreenState(null)
+      return
+    }
     clearResultAutoIdleTimer()
     const currentScreenState = activeScreenStateRef.current
     if (
@@ -3105,6 +3141,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
   const showLoyaltyConfirmation = useCallback(
     (result: LoyaltyEarnResult[], customerName?: string) => {
+      if (cfdLoyaltyDisabled) {
+        console.log('[CFD] showLoyaltyConfirmation skipped — loyalty disabled flag')
+        controllerRef.current?.showIdle()
+        setActiveScreenState(null)
+        return
+      }
       setActiveScreenState('loyalty_confirmation')
       controllerRef.current?.showLoyaltyConfirmation(result, customerName)
       useCFDBuiltinStore.getState().update({
@@ -3159,30 +3201,27 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     showIdle()
   }, [activeOrderId, completedPaymentInfo, showIdle])
 
-  // Auto-return to idle after payment result display
+  // Auto-return to idle after payment result display.
+  //
+  // Approved is now MANUAL-ONLY: the customer presses Skip / Join, or
+  // the operator transitions away (Start New Order, navigate, etc.).
+  // The previous 6s / 1.5s timers were dismissing the receipt before
+  // the customer could read it, especially with loyalty offered.
+  //
+  // Declined still flashes briefly — there's no customer action to
+  // wait for, and a stuck "Declined" screen would block the operator
+  // from retrying.
   useEffect(() => {
     clearResultAutoIdleTimer()
 
-    // Auto-idle calibrated to the result-screen content:
-    //   - Approved + merchantHasLoyalty=true → keep visible long enough for
-    //     the customer to read and tap the Join Loyalty CTA (6s).
-    //   - Approved without a CTA → quick flash and out (1.5s).
-    //   - Declined → quick flash, no CTA to interact with (1.5s).
-    // Combined with the navigation-aware cancellation, the operator can also
-    // immediately move on by navigating away.
-    if (activeScreenState === 'approved') {
-      const ms = merchantHasLoyalty ? 6000 : 1500
-      resultAutoIdleTimerRef.current = setTimeout(() => {
-        showIdle()
-      }, ms)
-    } else if (activeScreenState === 'declined') {
+    if (activeScreenState === 'declined') {
       resultAutoIdleTimerRef.current = setTimeout(() => showIdle(), 1500)
     }
 
     return () => {
       clearResultAutoIdleTimer()
     }
-  }, [activeScreenState, clearResultAutoIdleTimer, showIdle, merchantHasLoyalty])
+  }, [activeScreenState, clearResultAutoIdleTimer, showIdle])
 
   const disconnectClient = useCallback((clientId: string) => {
     controllerRef.current?.unpairClient(clientId)

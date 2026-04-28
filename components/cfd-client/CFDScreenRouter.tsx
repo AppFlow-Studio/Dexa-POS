@@ -93,17 +93,31 @@ export function CFDScreenRouter ({
 
   const prevResolvedStateRef = useRef<string>('init')
   useEffect(() => {
-    if (!__DEV__) return
     if (prevResolvedStateRef.current === resolvedState) return
-    console.log('[CFD Router Trace] state-transition', {
-      from: prevResolvedStateRef.current,
-      to: resolvedState,
-      rawScreenState: screenState,
-      itemCount: items.length,
-      loyaltyProgramCount,
-      hasLoyaltyCustomer: hasLoyaltyCustomerContext,
-      hasLoyaltyResultCustomer: !!loyaltyCustomerName
-    })
+    // Unconditional perf log — pairs with cfd-entry.tsx's
+    // `[CFDWebView] handleLoyaltyJoin: setScreenState=…ms` line so we
+    // can measure the gap between optimistic flip and CFDScreenRouter
+    // observing the new state. Small gap (<30ms) → render path is
+    // clean and any remaining perceived lag is below the JS layer
+    // (WebView compositor). Large gap → render bottleneck to chase.
+    const t =
+      typeof performance !== 'undefined'
+        ? performance.now().toFixed(0)
+        : String(Date.now())
+    console.log(
+      `[CFD Router] resolvedState=${resolvedState} from=${prevResolvedStateRef.current} at ${t}ms`
+    )
+    if (__DEV__) {
+      console.log('[CFD Router Trace] state-transition', {
+        from: prevResolvedStateRef.current,
+        to: resolvedState,
+        rawScreenState: screenState,
+        itemCount: items.length,
+        loyaltyProgramCount,
+        hasLoyaltyCustomer: hasLoyaltyCustomerContext,
+        hasLoyaltyResultCustomer: !!loyaltyCustomerName
+      })
+    }
     prevResolvedStateRef.current = resolvedState
   }, [
     resolvedState,
@@ -116,7 +130,10 @@ export function CFDScreenRouter ({
     hasLoyaltyCustomerContext
   ])
 
-  const renderScreen = () => {
+  // Renders the *non-loyalty* rotating screens. LoyaltyPromptScreen is
+  // permanently mounted in a separate stack layer (see the JSX below) so
+  // its first-mount cost doesn't block the Approved → keypad transition.
+  const renderRotatingScreen = () => {
     try {
       switch (resolvedState) {
         case 'idle':
@@ -132,16 +149,18 @@ export function CFDScreenRouter ({
         case 'processing':
           return <PaymentScreen processing />
         case 'approved':
-          return <ResultScreen success onJoinLoyalty={handleLoyaltyJoin} />
-        case 'declined':
-          return <ResultScreen success={false} />
-        case 'loyalty_prompt':
           return (
-            <LoyaltyPromptScreen
-              onPhoneSubmitted={onPhoneSubmitted ?? triggerCFDPhoneSubmit}
+            <ResultScreen
+              success
+              onJoinLoyalty={handleLoyaltyJoin}
               onSkip={onLoyaltySkip ?? triggerCFDLoyaltySkip}
             />
           )
+        case 'declined':
+          return <ResultScreen success={false} />
+        case 'loyalty_prompt':
+          // Handled by the always-mounted layer below — render nothing here.
+          return null
         case 'loyalty_confirmation':
           return <LoyaltyConfirmationScreen />
         default:
@@ -155,6 +174,8 @@ export function CFDScreenRouter ({
       return <IdleScreen />
     }
   }
+
+  const isLoyaltyPrompt = resolvedState === 'loyalty_prompt'
 
   // The `key` is the trigger that makes Reanimated's entering/exiting layout
   // animations replay on screen change. On web/Android those animations are
@@ -171,7 +192,39 @@ export function CFDScreenRouter ({
       exiting={iosOnly(FadeOut.duration(180))}
       style={styles.container}
     >
-      <View style={styles.screenContent}>{renderScreen()}</View>
+      <View style={styles.screenContent}>
+        {/* Rotating layer — Idle / Ordering / Result / etc. */}
+        <View
+          style={[
+            styles.layer,
+            isLoyaltyPrompt && styles.layerHidden
+          ]}
+        >
+          {renderRotatingScreen()}
+        </View>
+
+        {/* Loyalty-prompt layer — ALWAYS MOUNTED. The keypad's 12
+            TouchableOpacity nodes + StyleSheet.create + ScrollView
+            ancestors are notoriously slow to spin up on Android
+            WebView's V8 (~150-400ms cold). Pre-mounting eliminates
+            that cost: every transition into loyalty_prompt is now
+            just a `display: 'flex'` toggle. The component receives
+            `visible` so it can reset its phoneDigits state when it
+            goes hidden, so a returning customer always sees an empty
+            input. */}
+        <View
+          style={[
+            styles.layer,
+            !isLoyaltyPrompt && styles.layerHidden
+          ]}
+        >
+          <LoyaltyPromptScreen
+            visible={isLoyaltyPrompt}
+            onPhoneSubmitted={onPhoneSubmitted ?? triggerCFDPhoneSubmit}
+            onSkip={onLoyaltySkip ?? triggerCFDLoyaltySkip}
+          />
+        </View>
+      </View>
       {resolvedState !== 'idle' ? (
         <View pointerEvents='none' style={styles.dexaFooterWrap}>
           <Text style={styles.dexaFooterText}>Powered by DEXA</Text>
@@ -186,7 +239,16 @@ const styles = StyleSheet.create({
     flex: 1
   },
   screenContent: {
-    flex: 1
+    flex: 1,
+    position: 'relative'
+  },
+  // Both rotating + loyalty-prompt layers absolutely fill the
+  // screenContent. Toggling display swaps them without remounting.
+  layer: {
+    ...StyleSheet.absoluteFillObject
+  },
+  layerHidden: {
+    display: 'none'
   },
   dexaFooterWrap: {
     minHeight: 20,
