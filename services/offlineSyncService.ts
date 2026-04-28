@@ -13,8 +13,10 @@
 
 import { connectionQuality } from '@/lib/network/connectionQuality'
 import { DEADLINES } from '@/lib/network/deadlines'
+import { isBlockedAddItemEnabled } from '@/lib/network/featureFlags'
 import { isSynced, isValidUUID } from '@/lib/offlineIdRegistry'
 import { getSyncJSON, setSyncJSON } from '@/lib/storage'
+import * as Sentry from '@sentry/react-native'
 import { v4 as uuidv4 } from 'uuid'
 // @ts-ignore - NetInfo types not recognized but package is installed
 import NetInfo from '@react-native-community/netinfo'
@@ -150,6 +152,11 @@ export interface OfflineOperation {
   rollbackOnBundleFailure?: boolean // Whether to rollback if bundle fails
   expectedVersion?: number // For optimistic locking checks
   idempotencyKey?: string // UUID for server-side dedup, auto-generated if not provided
+  // Wave 2.8: track block transitions so the dispatcher can distinguish
+  // dependency-wait from real failures and dead-letter pathological loops.
+  blockedAtMs?: number
+  blockCount?: number
+  blockReason?: string
 }
 
 export interface SyncResult {
@@ -171,6 +178,11 @@ const MAX_QUEUE_SIZE = 500
 const MAX_DEAD_LETTER_SIZE = 50
 const OPERATION_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 const OPERATION_TIMEOUT_MS = 30_000
+// Wave 2.8: cap on consecutive block transitions to prevent pathological
+// ping-pong (blocked → pending → blocked → ...) when a registry mapping
+// keeps being cleared. After this many blocks, the op moves to dead-letter
+// with reason 'block_count_exceeded'.
+const MAX_BLOCK_COUNT = 20
 
 const PAYMENT_TYPES: OperationType[] = [
   'process_payment',
@@ -201,7 +213,14 @@ export function isTransientError (error: any): boolean {
     if (status === 408 || status === 429) return true
     return false // 4xx are permanent
   }
+  // Wave 2.8: explicit match for the idempotency-in-flight raise from
+  // _idempotency_claim. Postgres errcode 40001 (serialization_failure)
+  // surfaces via Supabase JS as { code: '40001', message: 'idempotency_in_flight: ...' }.
+  // The default-true at the bottom would already catch it, but making it
+  // explicit avoids relying on the fallback for a known transient class.
+  if (status === '40001') return true
   const msg = (error.message ?? error.msg ?? '').toLowerCase()
+  if (msg.includes('idempotency_in_flight')) return true
   if (
     msg.includes('network') ||
     msg.includes('timeout') ||
@@ -1159,6 +1178,100 @@ export function getOrderCreationOperationId (
 }
 
 /**
+ * Wave 2.8: side-channel "blocked" transition for the executor.
+ *
+ * Used when an op's prerequisites are unmet at execution time (e.g. add_item
+ * waiting on order ID resolution). Marks the op blocked without bumping the
+ * retry counter — the dispatcher honors `status === 'blocked'` and skips
+ * `handleOperationFailure`, so the op naturally re-evaluates on the next
+ * `updateBlockedOperations` cycle without burning the retry budget.
+ *
+ * Caps at MAX_BLOCK_COUNT to prevent unbounded ping-pong when a registry
+ * mapping keeps being cleared. If the op's order has been voided/cancelled
+ * since queueing, sets status='discarded' instead so it never wakes.
+ *
+ * Gated by the kill switch flag `bad_wifi.blocked_add_item_v1` (default true).
+ */
+export async function markOperationBlocked (
+  operationId: string,
+  reason: string
+): Promise<void> {
+  if (!isBlockedAddItemEnabled()) {
+    // Kill switch off — fall back to legacy retry-burning behavior.
+    return
+  }
+
+  const op = pendingOperations.find(o => o.id === operationId)
+  if (!op) return
+
+  // If the order has been voided/cancelled since this op was queued, mark
+  // discarded so it never wakes. Lazy require to avoid circular deps.
+  try {
+    const { useOrderStore } = require('@/stores/useOrderStore')
+    const order = useOrderStore.getState().ordersById[op.localOrderId]
+    if (
+      order?.order_status === 'void' ||
+      order?.order_status === 'cancelled'
+    ) {
+      op.status = 'discarded'
+      await saveQueueToStorage()
+      return
+    }
+  } catch {
+    // Store lookup failed — proceed with block. Better to block than to
+    // misclassify as discarded based on a missing store.
+  }
+
+  const blockCount = (op.blockCount ?? 0) + 1
+  if (blockCount > MAX_BLOCK_COUNT) {
+    console.warn(
+      `[OfflineSync] markOperationBlocked: ${op.type} (${op.id}) exceeded MAX_BLOCK_COUNT (${MAX_BLOCK_COUNT}) — moving to dead-letter`
+    )
+    moveToDeadLetter(op)
+    pendingOperations = pendingOperations.filter(o => o.id !== op.id)
+    await saveQueueToStorage()
+    try {
+      Sentry.addBreadcrumb({
+        category: 'offline_sync.dead_letter_after_block',
+        level: 'warning',
+        message: `${op.type} dead-lettered after ${blockCount} blocks`,
+        data: {
+          op_type: op.type,
+          local_order_id: op.localOrderId,
+          reason: 'block_count_exceeded',
+          underlying_reason: reason,
+          block_count: blockCount
+        }
+      })
+    } catch {}
+    return
+  }
+
+  op.status = 'blocked'
+  op.blockCount = blockCount
+  op.blockReason = reason
+  if (!op.blockedAtMs) {
+    op.blockedAtMs = Date.now()
+  }
+  await saveQueueToStorage()
+
+  try {
+    Sentry.addBreadcrumb({
+      category: 'offline_sync.op_blocked',
+      level: 'info',
+      message: `${op.type} blocked: ${reason}`,
+      data: {
+        op_type: op.type,
+        local_order_id: op.localOrderId,
+        reason,
+        block_count: blockCount,
+        depends_on: op.dependsOn ?? null
+      }
+    })
+  } catch {}
+}
+
+/**
  * Cancel all operations for an order (e.g., when order is voided).
  */
 export async function cancelOrderOperations (
@@ -1742,6 +1855,23 @@ async function updateBlockedOperations (): Promise<void> {
       if (areDependenciesSatisfied(op)) {
         op.status = 'pending'
         changed = true
+        // Wave 2.8: surface dependency-clear as a discrete event so we can
+        // measure wake-on-create-order latency in dashboards.
+        try {
+          Sentry.addBreadcrumb({
+            category: 'offline_sync.op_unblocked',
+            level: 'info',
+            message: `${op.type} unblocked`,
+            data: {
+              op_type: op.type,
+              local_order_id: op.localOrderId,
+              block_count: op.blockCount ?? 0,
+              blocked_for_ms: op.blockedAtMs
+                ? Date.now() - op.blockedAtMs
+                : null
+            }
+          })
+        } catch {}
       } else {
         // Timeout handling is ONLY safe for explicit dependencies.
         // For implicit deps (e.g. add_item waiting on create_order/order ID sync),
@@ -1948,11 +2078,39 @@ async function processQueue (): Promise<void> {
           console.log(
             `[OfflineSync] ✓ SUCCESS: ${operation.type} (${operation.id})`
           )
+          // Wave 2.8: emit blocked_then_resolved when an op that previously
+          // blocked completes successfully. Duration helps validate that the
+          // wake-on-create-order path is closing on a reasonable timeline.
+          if (operation.blockedAtMs) {
+            try {
+              Sentry.addBreadcrumb({
+                category: 'offline_sync.blocked_then_resolved',
+                level: 'info',
+                message: `${operation.type} resolved after block`,
+                data: {
+                  op_type: operation.type,
+                  local_order_id: operation.localOrderId,
+                  duration_ms: Date.now() - operation.blockedAtMs,
+                  block_count: operation.blockCount ?? 0
+                }
+              })
+            } catch {}
+          }
           await removeOperation(operation.id)
           successCount++
 
           // After completing an operation, unblock dependent operations
           await updateBlockedOperations()
+        } else if ((operation.status as string) === 'blocked') {
+          // Wave 2.8: executor signaled "blocked" via side-channel
+          // (markOperationBlocked). Skip retry-counter bump and
+          // handleOperationFailure — updateBlockedOperations on the next
+          // ready-op pass will re-evaluate dependencies. Cast required
+          // because TS narrowed status to 'processing' before the await,
+          // unaware that markOperationBlocked mutates op.status during it.
+          console.log(
+            `[OfflineSync] ↺ BLOCKED: ${operation.type} (${operation.id}) — retry budget preserved`
+          )
         } else {
           operation.retryCount++
           failCount++
@@ -1964,9 +2122,17 @@ async function processQueue (): Promise<void> {
           operation.id,
           error
         )
-        operation.retryCount++
-        failCount++
-        handleOperationFailure(operation, error)
+        // Wave 2.8: even on thrown errors, honor the blocked side-channel.
+        // The executor sets status='blocked' before any throw it doesn't own.
+        if ((operation.status as string) === 'blocked') {
+          console.log(
+            `[OfflineSync] ↺ BLOCKED (thrown): ${operation.type} (${operation.id}) — retry budget preserved`
+          )
+        } else {
+          operation.retryCount++
+          failCount++
+          handleOperationFailure(operation, error)
+        }
       }
     }
 

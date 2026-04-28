@@ -40,6 +40,7 @@ import {
   hasPendingOrderCreation,
   initOfflineSyncService,
   isServiceInitialized,
+  markOperationBlocked,
   OfflineOperation,
   OPERATION_PRIORITY,
   processQueueNow,
@@ -1491,11 +1492,14 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           console.log(
             `[OfflineSync:create_order] Order already exists: ${localOrderId} → ${existingDbId}, skipping RPC`
           )
-          // Ensure local store is consistent
+          // Wave 2.8e: register synchronously persisted registry mapping FIRST
+          // so a force-quit between the two calls leaves the registry truth-source
+          // intact (resolveOrderId checks registry first per offlineSyncInit.ts:387).
+          await mapLocalToBackend(localOrderId, existingDbId)
+          // Then propagate to the in-memory Zustand store (debounced MMKV persist).
           if (!store.ordersById[existingDbId]?.db_order_id) {
             store.updateOrderDbId(localOrderId, existingDbId)
           }
-          await mapLocalToBackend(localOrderId, existingDbId)
           return true
         }
 
@@ -1520,11 +1524,13 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           const backendId = orderData.order_id || orderData.id
 
           if (backendId) {
-            // Update local order with backend ID
-            store.updateOrderDbId(localOrderId, backendId)
-
-            // Register in ID registry for future lookups
+            // Wave 2.8e: register synchronously persisted registry mapping FIRST
+            // so a force-quit between the two calls leaves the registry truth-source
+            // intact (resolveOrderId checks registry first per offlineSyncInit.ts:387).
             await mapLocalToBackend(localOrderId, backendId)
+
+            // Then propagate to the in-memory Zustand store (debounced MMKV persist).
+            store.updateOrderDbId(localOrderId, backendId)
 
             // Update local order with backend-generated data (order_number, display_number, etc.)
             // Use backendId since updateOrderDbId already rekeyed the order from localOrderId -> backendId
@@ -1618,7 +1624,13 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           if (localItemId) {
             useSyncStatusStore.getState().setSyncStatus(localItemId, 'pending')
           }
-          return false // Will be retried after order sync
+          // Wave 2.8b: side-channel block — prevents handleOperationFailure
+          // from burning retry budget on what is structurally a dependency
+          // wait. The dispatcher honors `op.status === 'blocked'` and skips
+          // the retry-count bump. updateBlockedOperations will re-promote
+          // this op to 'pending' once create_order completes.
+          await markOperationBlocked(op.id, 'order_id_unresolved')
+          return false // Status now 'blocked', dispatcher won't bump retry
         }
 
         // Determine the correct store key — after rekey it's the backend UUID

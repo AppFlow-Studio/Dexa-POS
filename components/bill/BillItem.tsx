@@ -1,3 +1,4 @@
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import { PrinterService } from '@/services/printing/PrinterService'
@@ -7,9 +8,10 @@ import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { getItemEffectiveSubtotal, useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useItemSyncInfo } from '@/stores/useSyncStatusStore'
+import { useToastStore } from '@/stores/useToastStore'
 import { AlertCircle, Banknote, Plus, Trash2 } from 'lucide-react-native'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -144,6 +146,14 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
   // Single subscription for both sync status and error (halves sync store subscriptions per item)
   const { status: syncStatus, error: syncError } = useItemSyncInfo(item.id)
+  // Wave 2.8c: gate the optimistic-pending dot on actual network trouble.
+  // During normal-flow optimistic latency the dot would flicker on every tap;
+  // we only want it when the merchant should know syncing isn't immediate.
+  const { rawIsOnline, quality } = useNetworkStatus()
+  const isNetworkDegraded =
+    !rawIsOnline || quality === 'slow' || quality === 'probing'
+  const retrySingleItemSync = useOrderStore(s => s.retrySingleItemSync)
+  const showToast = useToastStore(s => s.show)
 
   // If caller passes payment info, skip the per-item store subscriptions entirely.
   // Fall back to store subscriptions only when props are not provided (legacy call sites).
@@ -616,10 +626,69 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     >
                       {item.name}
                     </Text>
-                    {syncStatus === 'pending' || syncStatus === 'syncing' ? (
+                    {/* Wave 2.8c: failed chip — tappable retry. Always
+                        visible when status='failed' (dead-letter). */}
+                    {syncStatus === 'failed' && !isVoided && !orderHasPayments ? (
+                      <TouchableOpacity
+                        onPress={async () => {
+                          if (!activeOrderId) return
+                          const result = await retrySingleItemSync(
+                            activeOrderId,
+                            item.id
+                          )
+                          if (result === 'parent_dead') {
+                            showToast({
+                              title: 'Order create failed',
+                              message:
+                                'See Settings → General → Failed Syncs to retry the order.',
+                              type: 'error',
+                              duration: 6000
+                            })
+                          } else if (result === 'not_found') {
+                            showToast({
+                              title: 'Sync entry missing',
+                              message:
+                                "Couldn't find the queued operation. Please re-add the item.",
+                              type: 'warning'
+                            })
+                          } else {
+                            showToast({
+                              title: 'Retrying…',
+                              message: 'Re-queued for sync.',
+                              type: 'success',
+                              duration: 2000
+                            })
+                          }
+                        }}
+                        onLongPress={() => {
+                          if (__DEV__) {
+                            Alert.alert(
+                              'Sync error',
+                              syncError || '(no error text)'
+                            )
+                          }
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityLabel='Retry sync for this item'
+                      >
+                        <View className='flex-row items-center gap-1'>
+                          <AlertCircle size={13} color={colors.danger} />
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: '700',
+                              color: colors.danger
+                            }}
+                          >
+                            Retry
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ) : (syncStatus === 'pending' || syncStatus === 'syncing') &&
+                      isNetworkDegraded ? (
+                      // Pending dot only when the network is actually struggling.
+                      // Hidden during normal optimistic flow to avoid flicker.
                       <ActivityIndicator size={10} color={colors.info} />
-                    ) : syncStatus === 'failed' ? (
-                      <AlertCircle size={13} color={colors.danger} />
                     ) : null}
                   </View>
 
