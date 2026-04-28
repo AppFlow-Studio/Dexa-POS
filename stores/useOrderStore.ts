@@ -66,13 +66,17 @@ import {
 import { normalizePlatform } from '@/lib/platformAliases'
 import { queueFailedOperation } from '@/services/offlineSyncInit'
 import {
+  cancelOrderOperations,
   getIsOnline,
   cancelPendingByEntity,
+  getDeadLetterOperations,
   getOperationsForOrder,
   getOrderCreationOperationId,
   getPendingOperations,
+  processQueueNow,
   queueOperation,
   removeOperation,
+  retryDeadLetterOperation,
   updateOperationParams
 } from '@/services/offlineSyncService'
 import { resolveBackendPrices } from '@/lib/cartItemPricing'
@@ -1288,6 +1292,11 @@ const addItemToBackend = async (
         // is, in practice, always a transient network issue.
         if (__DEV__) console.log('[addItemToBackend] open item sync error → silent queue:', addError)
         useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
+        // Wave 2.8a: link to in-flight create_order so updateBlockedOperations
+        // treats this as 'blocked' (not 'pending') until the order is synced.
+        // Prevents retry budget burn when order_id can't yet be resolved.
+        const dependsOnCreateOrder =
+          getOrderCreationOperationId(order.id) || undefined
         await queueOperation({
           type: 'add_item',
           params: {
@@ -1298,7 +1307,8 @@ const addItemToBackend = async (
             is_open_item: true
           },
           localOrderId: order.id,
-          localItemId: item.id
+          localItemId: item.id,
+          dependsOn: dependsOnCreateOrder
         })
         return false
       }
@@ -1693,6 +1703,11 @@ const addItemToBackend = async (
       // key on v(n+1) makes replay safe.
       if (__DEV__) console.log('[addItemToBackend] add item sync error → silent queue:', addError)
       useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
+      // Wave 2.8a: link to in-flight create_order so updateBlockedOperations
+      // treats this as 'blocked' (not 'pending') until the order is synced.
+      // Prevents retry budget burn when order_id can't yet be resolved.
+      const dependsOnCreateOrder =
+        getOrderCreationOperationId(order.id) || undefined
       await queueOperation({
         type: 'add_item',
         params: {
@@ -1702,7 +1717,8 @@ const addItemToBackend = async (
           addItemParams
         },
         localOrderId: order.id,
-        localItemId: item.id
+        localItemId: item.id,
+        dependsOn: dependsOnCreateOrder
       })
       return false
     }
@@ -1908,6 +1924,11 @@ const addItemToBackend = async (
     // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
     if (__DEV__) console.log('[addItemToBackend] caught backend sync error → silent queue:', error)
     useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
+    // Wave 2.8a: link to in-flight create_order so updateBlockedOperations
+    // treats this as 'blocked' (not 'pending') until the order is synced.
+    // Prevents retry budget burn when order_id can't yet be resolved.
+    const dependsOnCreateOrder =
+      getOrderCreationOperationId(order.id) || undefined
     await queueOperation({
       type: 'add_item',
       params: {
@@ -1926,7 +1947,8 @@ const addItemToBackend = async (
         }
       },
       localOrderId: order.id,
-      localItemId: item.id
+      localItemId: item.id,
+      dependsOn: dependsOnCreateOrder
     })
     return false
   }
@@ -2888,6 +2910,13 @@ interface OrderState {
   patchOrder: (orderId: string, patch: Partial<OrderProfile>) => void
   // Retry failed syncs for an order
   retryFailedSyncs: (orderId: string) => Promise<void>
+  // Wave 2.8c: retry a single item's queued sync from the BillItem chip.
+  // Returns a hint to the UI: 'retried' (kicked queue), 'parent_dead'
+  // (route user to Failed Syncs), 'not_found' (no op anywhere).
+  retrySingleItemSync: (
+    orderId: string,
+    itemId: string
+  ) => Promise<'retried' | 'parent_dead' | 'not_found'>
   // Sync order from database (manual refresh)
   syncOrderFromDatabase: (orderId: string) => Promise<string | null>
   // Sync order from database complete ( manual refresh )
@@ -10623,6 +10652,15 @@ export const useOrderStore = create<OrderState>()(
               }
             })
 
+            // Wave 2.8d: discard any queued ops for this order so blocked
+            // add_item ops don't wake post-void and add items to a voided
+            // record. Fire-and-forget — never block the void UX. voidPayment
+            // and voidAllPayments deliberately do NOT cancel ops, since the
+            // order remains live for re-payment.
+            cancelOrderOperations(orderId).catch(err =>
+              console.error('[voidOrder] cancelOrderOperations failed:', err)
+            )
+
             // 2. Sync to backend (fire-and-forget)
             const supabase = getOrderStoreSupabaseClient()
             if (supabase && order?.db_order_id) {
@@ -11410,6 +11448,54 @@ export const useOrderStore = create<OrderState>()(
 
               registerSyncOperation(item.id, syncPromise)
             }
+          },
+
+          // Wave 2.8c: per-item retry from BillItem chip. Scans dead-letter
+          // first (where 'failed' chips originate), then active queue.
+          // Returns a hint so the UI can pick the right toast.
+          retrySingleItemSync: async (orderId, itemId) => {
+            // 1. Dead-letter scan — most common path for 'failed' chip.
+            const deadLettered = getDeadLetterOperations().find(
+              op =>
+                op.type === 'add_item' &&
+                op.localOrderId === orderId &&
+                op.localItemId === itemId
+            )
+            if (deadLettered) {
+              await retryDeadLetterOperation(deadLettered.id)
+              // The executor uses uuidv5(localItemId) — server returns cached
+              // result if already processed, otherwise inserts once.
+              return 'retried'
+            }
+
+            // 2. Active queue scan — if op is currently 'blocked' check parent.
+            const active = getOperationsForOrder(orderId).find(
+              op => op.type === 'add_item' && op.localItemId === itemId
+            )
+            if (active) {
+              if (active.status === 'blocked' && active.dependsOn) {
+                const parent = getDeadLetterOperations().find(
+                  op => op.id === active.dependsOn
+                )
+                if (parent) {
+                  // Parent create_order is dead — child can't proceed without
+                  // operator action.
+                  return 'parent_dead'
+                }
+              }
+              // Kick the queue. If it executes successfully the chip clears;
+              // if it blocks again the user can retry (block_count cap will
+              // eventually dead-letter).
+              processQueueNow({ force: true }).catch(() => {})
+              return 'retried'
+            }
+
+            // 3. Op is genuinely missing — sync_status='failed' without a
+            // backing queue entry shouldn't happen, but log it.
+            console.warn(
+              `[retrySingleItemSync] No op found for order=${orderId} item=${itemId}`
+            )
+            return 'not_found'
           },
 
           // ============================================================================

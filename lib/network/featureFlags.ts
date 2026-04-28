@@ -28,6 +28,7 @@ export type IdempotentRpc =
 
 const FLAG_PREFIX = 'idempotent.'
 const RECOVERY_UI_KEY = 'flag.paymentRecoveryUI'
+const BLOCKED_ADD_ITEM_KEY = 'bad_wifi.blocked_add_item_v1'
 
 const cache = new Map<string, boolean>()
 const listeners = new Set<() => void>()
@@ -66,6 +67,25 @@ export function isPaymentRecoveryUIEnabled (): boolean {
 
 export function setPaymentRecoveryUIEnabled (enabled: boolean): void {
   writeBool(RECOVERY_UI_KEY, enabled)
+}
+
+// Wave 2.8: gates the markOperationBlocked side-channel + dispatcher guard.
+// When false, add_item ops with unresolved order ID fall back to the legacy
+// retry-burning behavior (rollback path).
+export function isBlockedAddItemEnabled (): boolean {
+  if (cache.has(BLOCKED_ADD_ITEM_KEY)) {
+    return cache.get(BLOCKED_ADD_ITEM_KEY) as boolean
+  }
+  const v = storage.getBoolean(BLOCKED_ADD_ITEM_KEY)
+  // Default true — opposite of the per-RPC idempotency flags. This is a
+  // correctness fix, not a rollout flag.
+  const value = v ?? true
+  cache.set(BLOCKED_ADD_ITEM_KEY, value)
+  return value
+}
+
+export function setBlockedAddItemEnabled (enabled: boolean): void {
+  writeBool(BLOCKED_ADD_ITEM_KEY, enabled)
 }
 
 export function subscribeFlags (listener: () => void): () => void {
