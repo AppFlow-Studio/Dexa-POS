@@ -11,6 +11,8 @@
  * - Full context capture for reliable replay
  */
 
+import { connectionQuality } from '@/lib/network/connectionQuality'
+import { DEADLINES } from '@/lib/network/deadlines'
 import { isSynced, isValidUUID } from '@/lib/offlineIdRegistry'
 import { getSyncJSON, setSyncJSON } from '@/lib/storage'
 import { v4 as uuidv4 } from 'uuid'
@@ -551,10 +553,24 @@ function startNetInfoPolling (): void {
   }, NETINFO_POLL_INTERVAL_MS)
 }
 
+let _lastBackgroundedAt: number | null = null
+
 function startAppStateListener (): void {
   appStateSubscription?.remove()
   appStateSubscription = AppState.addEventListener('change', nextAppState => {
+    if (nextAppState !== 'active' && isInitialized) {
+      _lastBackgroundedAt = Date.now()
+    }
     if (nextAppState === 'active' && isInitialized) {
+      // If we were backgrounded long enough that connection quality may
+      // have gone stale, re-evaluate from scratch. Brief flickers don't reset.
+      if (
+        _lastBackgroundedAt !== null &&
+        Date.now() - _lastBackgroundedAt > DEADLINES.appForegroundResetMs
+      ) {
+        connectionQuality.reset()
+      }
+      _lastBackgroundedAt = null
       // Evict stale business day cache on foreground (handles rollover)
       try {
         const { getCurrentBusinessDay } = require('@/lib/businessDay')
@@ -629,6 +645,9 @@ function handleNetworkChange (state: NetInfoState): void {
       _offlineSinceTs = Date.now()
     } else {
       _offlineSinceTs = null
+      // NetInfo flipped from offline → online. Re-evaluate connection
+      // quality from scratch instead of carrying stale `slow` state.
+      connectionQuality.reset()
     }
 
     console.log(
@@ -991,6 +1010,37 @@ export async function removeOperation (operationId: string): Promise<void> {
 }
 
 /**
+ * Drop all `pending` (not yet executing) operations matching an entity key.
+ *
+ * Used when a local entity is removed before its mutations have synced —
+ * e.g., user adds an item then removes it before the queued add_item runs.
+ * Without this, the queue would replay the add_item for a non-existent
+ * local entity.
+ *
+ * Operations in `processing` state are intentionally NOT dropped (they're
+ * mid-flight; let them complete normally). Returns the count of dropped ops
+ * for observability.
+ */
+export async function cancelPendingByEntity (
+  entityKey: string,
+): Promise<{ dropped: number }> {
+  if (!entityKey) return { dropped: 0 }
+  const before = pendingOperations.length
+  const toDrop = pendingOperations.filter(
+    op => op.entityKey === entityKey && op.status === 'pending',
+  )
+  if (toDrop.length === 0) return { dropped: 0 }
+  for (const op of toDrop) removeFromIndex(op)
+  pendingOperations = pendingOperations.filter(
+    op => !(op.entityKey === entityKey && op.status === 'pending'),
+  )
+  const dropped = before - pendingOperations.length
+  await saveQueueToStorage()
+  onQueueChange?.(getActivePendingCount())
+  return { dropped }
+}
+
+/**
  * Mark an operation as discarded (conflict resolution).
  */
 export async function discardOperation (operationId: string): Promise<void> {
@@ -1160,8 +1210,21 @@ function notifyOnlineStatusListeners (): void {
 
 /**
  * Get current online status.
+ *
+ * Returns false if either NetInfo says offline OR the connection-quality
+ * state machine has flipped to slow (repeated deadline exceedances).
+ * This makes existing offline branches in stores/services automatically
+ * route to the queue when WiFi is technically connected but practically dead.
  */
 export function getIsOnline (): boolean {
+  return isOnline && !connectionQuality.isSlow()
+}
+
+/**
+ * Raw NetInfo-based online status, ignoring connection-quality slow-mode.
+ * For diagnostics/UI only — not for routing decisions.
+ */
+export function getRawIsOnline (): boolean {
   return isOnline
 }
 

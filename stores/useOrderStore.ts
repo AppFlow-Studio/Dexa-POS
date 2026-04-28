@@ -67,6 +67,7 @@ import { normalizePlatform } from '@/lib/platformAliases'
 import { queueFailedOperation } from '@/services/offlineSyncInit'
 import {
   getIsOnline,
+  cancelPendingByEntity,
   getOperationsForOrder,
   getOrderCreationOperationId,
   getPendingOperations,
@@ -74,6 +75,9 @@ import {
   removeOperation,
   updateOperationParams
 } from '@/services/offlineSyncService'
+import { resolveBackendPrices } from '@/lib/cartItemPricing'
+import { DEADLINES } from '@/lib/network/deadlines'
+import { runWithDeadline } from '@/lib/network/runWithDeadline'
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { paymentPreviewService } from '@/services/paymentPreviewService'
 import {
@@ -89,6 +93,7 @@ import {
   type BackendItemInput,
   type FetchedOrderData
 } from '@/utils/orderTransformers'
+import { toIdempotencyKey } from '@/lib/network/idempotencyKey'
 import { useSyncStatusStore } from './useSyncStatusStore'
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
@@ -1270,11 +1275,19 @@ const addItemToBackend = async (
           JSON.stringify(addOpenParams, null, 2)
         )
       const { data: addResult, error: addError } =
-        await OrderService.addOpenItem(supabase, addOpenParams)
+        await OrderService.addOpenItem(supabase, addOpenParams, {
+          // Wave 2.7: stable per-tap key. Same item.id across retries → same
+          // server-side idempotency key → at most one insert per tap.
+          keyOverride: toIdempotencyKey(item.id)
+        })
 
       if (addError) {
-        console.error('Failed to add open item to backend:', addError)
-        markItemFailed(item.id, addError.message || 'Item sync failed')
+        // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
+        // Item stays 'pending'. The queue + idempotency-key replay handle recovery
+        // transparently. User never sees a red 'failed to sync' banner for what
+        // is, in practice, always a transient network issue.
+        if (__DEV__) console.log('[addItemToBackend] open item sync error → silent queue:', addError)
+        useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
         await queueOperation({
           type: 'add_item',
           params: {
@@ -1334,10 +1347,19 @@ const addItemToBackend = async (
             }))
           )
           try {
-            await supabase.rpc('replace_order_item_modifiers_v2', {
-              p_order_item_id: addResult.order_item_id,
-              p_modifiers: modifierPayload
-            })
+            // rpc-discipline-allow: inline-wrapped Category A — replace_order_item_modifiers_v2 with retry safety
+            const { error: modError } = await runWithDeadline(
+              'replace_modifiers_inline',
+              DEADLINES.hotMutation,
+              async (signal) =>
+                await supabase
+                  .rpc('replace_order_item_modifiers_v2', {
+                    p_order_item_id: addResult.order_item_id,
+                    p_modifiers: modifierPayload
+                  })
+                  .abortSignal(signal)
+            )
+            if (modError) throw modError
             if (__DEV__)
               console.log(
                 '[addItemToBackend] Custom open-item modifiers saved:',
@@ -1510,9 +1532,9 @@ const addItemToBackend = async (
         )
 
       if (updateError) {
-        console.error('Failed to update item quantity in backend:', updateError)
-        markItemFailed(item.id, updateError.message || 'Quantity update failed')
-        // Queue for retry
+        // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
+        if (__DEV__) console.log('[addItemToBackend] qty update sync error → silent queue:', updateError)
+        useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
         await queueOperation({
           type: 'update_item_quantity',
           params: {
@@ -1576,6 +1598,24 @@ const addItemToBackend = async (
         item.cashPrice
       )
 
+    if (
+      __DEV__ &&
+      (item.baseCashPrice == null || item.baseCardPrice == null)
+    ) {
+      console.warn(
+        '[addItemToBackend] CartItem missing base prices — adder bug.',
+        {
+          itemId: item.id,
+          menuItemId: item.menuItemId,
+          name: item.name,
+          baseCardPrice: item.baseCardPrice,
+          baseCashPrice: item.baseCashPrice,
+        },
+      )
+    }
+
+    const { p_unit_price, p_cash_unit_price } = resolveBackendPrices(item)
+
     const addItemParams: AddOrderItemParams = {
       p_order_id: dbOrderId,
       p_menu_item_id: item.menuItemId || undefined,
@@ -1586,9 +1626,11 @@ const addItemToBackend = async (
       p_item_name: item.name,
       p_category_name: item.category_name || 'Uncategorized',
 
-      // Prices (per unit, before quantity multiplication)
-      p_unit_price: item.baseCardPrice ?? item.originalPrice, // Card base price (modifiers added by backend)
-      p_cash_unit_price: item.baseCashPrice || item.originalPrice, // Cash base price (modifiers added by backend)
+      // Prices (per unit, before quantity multiplication).
+      // Resolved via lib/cartItemPricing.ts so the cash-side fallback chain
+      // never lands on the card price (root cause of historical $0.13 drift).
+      p_unit_price,
+      p_cash_unit_price,
 
       // Size details
       p_selected_size_id: item.customizations?.size?.id || undefined,
@@ -1639,12 +1681,18 @@ const addItemToBackend = async (
     // );
     // console.log("Calling OrderService.addOrderItem now...");
     const { data: addResult, error: addError } =
-      await OrderService.addOrderItem(supabase, addItemParams)
+      await OrderService.addOrderItem(supabase, addItemParams, {
+        // Wave 2.7: stable per-tap key. Same item.id across retries → same
+        // server-side idempotency key → at most one insert per tap.
+        keyOverride: toIdempotencyKey(item.id)
+      })
 
     if (addError) {
-      console.error('Failed to add item to backend:', addError)
-      // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
-      markItemFailed(item.id, addError.message || 'Item sync failed')
+      // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
+      // Item stays 'pending', queue replays on slow→fast recovery, idempotency-
+      // key on v(n+1) makes replay safe.
+      if (__DEV__) console.log('[addItemToBackend] add item sync error → silent queue:', addError)
+      useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
       await queueOperation({
         type: 'add_item',
         params: {
@@ -1857,9 +1905,9 @@ const addItemToBackend = async (
 
     return true
   } catch (error: any) {
-    console.error('Backend sync error:', error)
-    // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
-    markItemFailed(item.id, error?.message || 'Sync failed')
+    // Match Option C update-RPC pattern: silent queue + log, no markItemFailed.
+    if (__DEV__) console.log('[addItemToBackend] caught backend sync error → silent queue:', error)
+    useSyncStatusStore.getState().setSyncStatus(item.id, 'pending')
     await queueOperation({
       type: 'add_item',
       params: {
@@ -2090,6 +2138,7 @@ const syncPaymentToBackend = async (
       !paymentDetails.splitCount &&
       !paymentDetails.forceCardPricing
 
+    // rpc-discipline-allow: Category B payment — Option C accepted scope, deferred to deeper-optimizations
     const { data, error } = await supabase.rpc('process_payment_v8', {
       p_order_id: order.db_order_id,
       p_payment_method: paymentMethod,
@@ -2450,10 +2499,28 @@ const syncPaymentToBackend = async (
         const staffId = loggedInEmployee?.profileId
 
         if (supabase && staffId && order.db_order_id) {
+          const dbOrderIdForQueue = order.db_order_id
+          const localOrderIdForQueue = order.id
           OrderService.closeCheck(supabase, order.db_order_id, staffId)
-            .then(res => {
+            .then(async res => {
               if (!res.success) {
                 console.error('[syncPayment] Auto-close failed:', res.error)
+                // Bad-WiFi guard: deadline-wrap surfaces as success=false with
+                // DEADLINE_EXCEEDED in the error message. Queue so the close
+                // intent isn't lost when the network recovers.
+                if (
+                  typeof res.error === 'string' &&
+                  res.error.includes('DEADLINE_EXCEEDED')
+                ) {
+                  await queueOperation({
+                    type: 'close_check',
+                    params: {
+                      orderId: dbOrderIdForQueue,
+                      staffId,
+                    },
+                    localOrderId: localOrderIdForQueue,
+                  })
+                }
               } else {
                 console.log(
                   '[syncPayment] Auto-closed check successfully:',
@@ -2589,7 +2656,7 @@ interface OrderState {
 
   // Sync barrier methods
   hasPendingSyncs: (orderId: string) => boolean
-  waitForPendingSyncs: (orderId: string) => Promise<void>
+  waitForPendingSyncs: (orderId: string, opts?: { maxMs?: number }) => Promise<void>
   getSyncStatus: (orderId: string) => {
     pending: number
     failed: number
@@ -5157,8 +5224,13 @@ export const useOrderStore = create<OrderState>()(
             })
           },
 
-          waitForPendingSyncs: async (orderId: string) => {
-            const TIMEOUT_MS = 15000
+          waitForPendingSyncs: async (
+            orderId: string,
+            opts?: { maxMs?: number },
+          ) => {
+            // Default reduced 15s → 5s; hot-path callers pass {maxMs: 2000}.
+            // The sync barrier must not freeze the UI on slow WiFi.
+            const TIMEOUT_MS = opts?.maxMs ?? 5000
             const POLL_INTERVAL_MS = 100
             const start = Date.now()
 
@@ -6100,7 +6172,21 @@ export const useOrderStore = create<OrderState>()(
                     p_special_instructions:
                       updatedItem.customizations?.notes || null
                   })
-                    .then(response => {
+                    .then(async response => {
+                      // Bad-WiFi guard: queue if deadline-wrap fired.
+                      if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                        await queueOperation({
+                          type: 'update_item',
+                          params: {
+                            orderItemId: dbOrderItemId,
+                            specialInstructions:
+                              updatedItem.customizations?.notes || null
+                          },
+                          localOrderId: orderId,
+                          localItemId: updatedItem.id
+                        })
+                        return
+                      }
                       if (response.data && response.data.success) {
                         // SUCCESS: Apply backend data (instructions don't change pricing, but include for consistency)
                         console.log('[updateOrderItem] Sync succeeded')
@@ -6183,7 +6269,21 @@ export const useOrderStore = create<OrderState>()(
                     dbOrderItemId,
                     allModifiers
                   )
-                    .then(response => {
+                    .then(async response => {
+                      // Bad-WiFi guard: deadline-wrap returns resolved promise on
+                      // slow network. Queue here since .catch() won't fire.
+                      if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                        await queueOperation({
+                          type: 'replace_modifiers',
+                          params: {
+                            orderItemId: dbOrderItemId,
+                            modifiers: allModifiers
+                          },
+                          localOrderId: orderId,
+                          localItemId: updatedItem.id
+                        })
+                        return
+                      }
                       if (response.data && response.data.success) {
                         // SUCCESS: Apply backend-calculated data immediately
                         console.log(
@@ -6795,6 +6895,19 @@ export const useOrderStore = create<OrderState>()(
               lastLocalMutationAt[activeOrderId] = Date.now()
             }
 
+            // If the add_item op is still pending in the offline queue (item
+            // never reached backend), drop it. Otherwise the queue would replay
+            // an add for an item the user already removed locally. Only drops
+            // `pending` ops; in-flight `processing` ops complete normally and
+            // the existing remove_item path below handles the cleanup.
+            if (!itemToHandle?.db_order_item_id) {
+              cancelPendingByEntity(`item:${itemId}`).catch(err => {
+                if (__DEV__) {
+                  console.warn('[removeItemFromActiveOrder] cancelPending failed:', err)
+                }
+              })
+            }
+
             // Background sync (fire-and-forget)
             if (itemToHandle?.db_order_item_id && _supabaseClient) {
               const dbItemId = itemToHandle.db_order_item_id
@@ -6807,6 +6920,18 @@ export const useOrderStore = create<OrderState>()(
                 // Item was sent to kitchen - use VOID (soft delete, keeps record)
                 const reason = voidReason || 'User voided'
                 OrderService.voidOrderItem(_supabaseClient, dbItemId, reason)
+                  .then(async response => {
+                    // Bad-WiFi guard: deadline-wrap resolves with error payload.
+                    // Queue here so .catch() (only fires on thrown errors) doesn't miss it.
+                    if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                      await queueOperation({
+                        type: 'void_item',
+                        params: { orderItemId: dbItemId, reason },
+                        localOrderId: activeOrderId,
+                        localItemId: itemId
+                      })
+                    }
+                  })
                   .catch(async err => {
                     console.error('Failed to void item:', err)
                     // Queue for offline retry
@@ -6823,6 +6948,16 @@ export const useOrderStore = create<OrderState>()(
               } else {
                 // Item was NOT sent to kitchen - use REMOVE (hard delete)
                 OrderService.removeOrderItem(_supabaseClient, dbItemId)
+                  .then(async response => {
+                    if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                      await queueOperation({
+                        type: 'remove_item',
+                        params: { orderItemId: dbItemId },
+                        localOrderId: activeOrderId,
+                        localItemId: itemId
+                      })
+                    }
+                  })
                   .catch(async err => {
                     console.error('Failed to remove item:', err)
                     // Queue for offline retry
@@ -6967,7 +7102,28 @@ export const useOrderStore = create<OrderState>()(
                   latestQuantity
                 ).then(response => ({ response, latestQuantity }))
               })
-              .then(({ response, latestQuantity }) => {
+              .then(async ({ response, latestQuantity }) => {
+                // Bad-WiFi guard: deadline-wrap returns a resolved promise with
+                // OFFLINE_QUEUED-shape error on slow network. Without this branch,
+                // we'd fall through and lyingly mark sync_status='synced',
+                // corrupting waitForPendingSyncs.
+                if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                  const latestQueuedQuantity =
+                    get().ordersById[activeOrderId]?.items.find(
+                      i => i.id === itemId
+                    )?.quantity ?? latestQuantity
+                  await queueOperation({
+                    type: 'update_item_quantity',
+                    params: {
+                      orderItemId: dbItemId,
+                      quantity: latestQueuedQuantity
+                    },
+                    localOrderId: activeOrderId,
+                    localItemId: itemId
+                  })
+                  useSyncStatusStore.getState().setSyncStatus(itemId, 'synced')
+                  return false
+                }
                 if (response.data?.success) {
                   // Ignore stale response if local quantity has advanced further.
                   // This prevents visual rollback when users increment repeatedly
@@ -10638,10 +10794,18 @@ export const useOrderStore = create<OrderState>()(
             ) {
               try {
                 // Call the void_payment RPC — prefer db_payment_id (backend UUID)
-                const { error } = await supabase.rpc('void_payment', {
-                  p_payment_id: paymentToVoid.db_payment_id ?? paymentToVoid.id,
-                  p_void_reason: 'User voided from split review'
-                })
+                // rpc-discipline-allow: inline-wrapped Category A — void_payment with retry safety
+                const { error } = await runWithDeadline(
+                  'void_payment_inline',
+                  DEADLINES.hotMutation,
+                  async (signal) =>
+                    await supabase
+                      .rpc('void_payment', {
+                        p_payment_id: paymentToVoid.db_payment_id ?? paymentToVoid.id,
+                        p_void_reason: 'User voided from split review'
+                      })
+                      .abortSignal(signal)
+                )
 
                 if (error) {
                   console.error('[voidPayment] Backend sync failed:', error)
@@ -12020,12 +12184,17 @@ export const useOrderStore = create<OrderState>()(
                     `[linkOrderToSession] Calling RPC for order ${order.db_order_id}`
                   )
 
-                  const { data, error } = await supabase.rpc(
-                    'link_order_to_session',
-                    {
-                      p_order_id: order.db_order_id,
-                      p_session_id: sessionId
-                    }
+                  // rpc-discipline-allow: inline-wrapped Category A — link_order_to_session with retry safety
+                  const { data, error } = await runWithDeadline<any>(
+                    'link_order_to_session_inline',
+                    DEADLINES.hotMutation,
+                    async (signal) =>
+                      await supabase
+                        .rpc('link_order_to_session', {
+                          p_order_id: order.db_order_id,
+                          p_session_id: sessionId
+                        })
+                        .abortSignal(signal)
                   )
 
                   if (error) {
@@ -12607,11 +12776,16 @@ export const useOrderStore = create<OrderState>()(
                 })
 
                 // Call get_order_details RPC
-                const { data, error } = await supabase.rpc(
-                  'get_order_details',
-                  {
-                    p_order_id: order.db_order_id
-                  }
+                // rpc-discipline-allow: inline-wrapped Category C read — get_order_details deadline-only
+                const { data, error } = await runWithDeadline<any>(
+                  'get_order_details_inline',
+                  DEADLINES.read,
+                  async (signal) =>
+                    await supabase
+                      .rpc('get_order_details', {
+                        p_order_id: order.db_order_id
+                      })
+                      .abortSignal(signal)
                 )
 
                 if (error) {

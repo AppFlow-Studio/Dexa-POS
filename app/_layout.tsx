@@ -22,6 +22,7 @@ import { TanstackProvider } from '@/contexts/TanstackProvider'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { NAV_THEME } from '@/lib/constants'
 import { initImmer } from '@/lib/initImmer'
+import { logger } from '@/lib/logger'
 import { initLogCollector } from '@/lib/logCollector'
 import { markNavigationEvent, setRootNavigationRef } from '@/lib/rootNavigation'
 import { POS_SCREEN_OPTIONS } from '@/lib/screenConfig'
@@ -98,6 +99,18 @@ Sentry.init({
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
   // spotlight: __DEV__,
 })
+
+// Wire structured logger → Sentry breadcrumbs. logger.warn/error calls
+// land as breadcrumbs on captured events, helping debug "what was the app
+// doing right before this exception?" reports from the field.
+logger.onLog = (level, category, message, data) => {
+  Sentry.addBreadcrumb({
+    category: `app.${category}`,
+    level: level === 'error' ? 'error' : level === 'warn' ? 'warning' : 'info',
+    message,
+    data,
+  })
+}
 
 async function checkForUpdate () {
   try {

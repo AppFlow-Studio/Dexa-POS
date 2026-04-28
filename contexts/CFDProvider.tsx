@@ -245,19 +245,27 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   )
   const loyaltyFlowRequestIdRef = useRef(0)
   const queuedLoyaltyOrderIdsRef = useRef<Set<string>>(new Set())
+  // Dedupe via cheap structural fingerprints — replaces a per-flush
+  // JSON.stringify of the entire cart. The fingerprint is checked at flush
+  // time (after debounce) so canceling a queued dispatch leaves
+  // lastPayloadHashRef accurate to what was actually sent.
   const debouncedUpdateRef = useRef(
-    debounce((ctrl: CFDController, params: any) => {
-      const hash = JSON.stringify(params)
-      if (hash === lastPayloadHashRef.current) return
-      lastPayloadHashRef.current = hash
+    debounce((ctrl: CFDController, params: any, fingerprint: string) => {
+      if (fingerprint === lastPayloadHashRef.current) return
       ctrl.updateOrder(params)
+      lastPayloadHashRef.current = fingerprint
     }, 150)
   )
   const debouncedBuiltinUpdateRef = useRef(
-    debounce((data: Record<string, unknown>) => {
+    debounce((data: Record<string, unknown>, fingerprint: string) => {
+      if (fingerprint === lastBuiltinFingerprintRef.current) return
       useCFDBuiltinStore.getState().update(data as any)
+      lastBuiltinFingerprintRef.current = fingerprint
     }, 100)
   )
+  // Fingerprint of the last payload pushed to the built-in store. Lets us skip
+  // dispatching when no field that the secondary display reads has changed.
+  const lastBuiltinFingerprintRef = useRef('')
 
   // Store settings
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
@@ -304,6 +312,35 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const activeOrderDiscount = useOrderStore(s => s.activeOrderDiscount)
   const activeOrderOutstandingTotal = useOrderStore(
     s => s.activeOrderOutstandingTotal
+  )
+
+  // Granular field selectors — used as effect deps so unrelated `activeOrder`
+  // mutations (status, sync state, etc.) don't re-fire the CFD payload pipelines.
+  const activeOrderCustomerName = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.customer_name ?? null : null
+  )
+  const activeOrderCustomerPhone = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.customer_phone ?? null : null
+  )
+  const activeOrderDisplayNumber = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.display_number ?? null : null
+  )
+  const activeOrderOrderNumber = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.order_number ?? null : null
+  )
+  const activeOrderOrderType = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.order_type ?? null : null
+  )
+  const activeOrderServiceLocationId = useOrderStore(s =>
+    s.activeOrderId
+      ? s.ordersById[s.activeOrderId]?.service_location_id ?? null
+      : null
+  )
+  const activeOrderGuestCount = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.guest_count ?? null : null
+  )
+  const activeOrderAmountPaid = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.amount_paid ?? 0 : 0
   )
 
   // Content-based fingerprint so cfdItems transform only runs when actual item
@@ -1046,6 +1083,25 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       themeMode: colorScheme
     }
 
+    // Structural fingerprint — replaces a per-flush JSON.stringify of the full
+    // cart. itemsFingerprint already covers item-level changes; the rest are
+    // scalars composed into a single string for cheap equality.
+    const wsFingerprint =
+      `${itemsFingerprint}|${activeScreenState ?? ''}|${activePaymentMethod ?? ''}|` +
+      `${pathname}|${colorScheme}|${displayCustomerName ?? ''}|` +
+      `${activeOrder?.customer_phone ?? ''}|${displayOrderNumber ?? ''}|` +
+      `${displayOrderType ?? ''}|${displayTableName ?? ''}|${displayGuestCount ?? ''}|` +
+      `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|${cardTotal}|${cashTotal}|` +
+      `${displayDiscountAmount}|${displayTipAmount}|${currentTip.percentage ?? ''}|` +
+      `${displayOutstandingTotal}|${displayAmountPaid}|${savingsAmount}|` +
+      `${showCFDOrderingRightPanel ? 1 : 0}|${cfdOrderingRightPanelMode}`
+
+    if (wsFingerprint === lastPayloadHashRef.current) {
+      return () => {
+        debouncedUpdateRef.current.cancel()
+      }
+    }
+
     // Payment state transitions need immediate delivery; ordering state can be debounced
     const isPaymentState =
       activeScreenState === 'payment' ||
@@ -1058,21 +1114,30 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
     if (isPaymentState) {
       debouncedUpdateRef.current.cancel()
-      const hash = JSON.stringify(params)
-      if (hash !== lastPayloadHashRef.current) {
-        lastPayloadHashRef.current = hash
-        controller.updateOrder(params)
-      }
+      controller.updateOrder(params)
+      lastPayloadHashRef.current = wsFingerprint
     } else {
-      debouncedUpdateRef.current(controller, params)
+      debouncedUpdateRef.current(controller, params, wsFingerprint)
     }
 
     return () => {
       debouncedUpdateRef.current.cancel()
     }
+    // Intentionally narrowed: activeOrder is read from closure but excluded from
+    // deps so unrelated order mutations (status, sync state) don't refire this
+    // effect. The granular selectors below cover every field actually used.
+    // itemsFingerprint is subsumed by cfdItems (which is memoized on it).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isConnected,
-    activeOrder,
+    activeOrderCustomerName,
+    activeOrderCustomerPhone,
+    activeOrderDisplayNumber,
+    activeOrderOrderNumber,
+    activeOrderOrderType,
+    activeOrderServiceLocationId,
+    activeOrderGuestCount,
+    activeOrderAmountPaid,
     cfdItems,
     activeOrderSubtotal,
     activeOrderDiscount,
@@ -1362,6 +1427,29 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         loyaltyResult: null
       }
 
+      // Structural fingerprint — short-circuits the dispatch when nothing the
+      // built-in display reads has changed. The store's own `update()` already
+      // does ref-equality checks, but `branding`/`layout`/`items` get fresh
+      // object references here every run, defeating that check; the fingerprint
+      // dedupes before we even touch the store.
+      const builtinFingerprint =
+        `${itemsFingerprint}|${screenState}|${updatePayload.paymentMethod ?? ''}|` +
+        `${pathname}|${activeOrderCustomerName ?? ''}|` +
+        `${activeOrderCustomerPhone ?? ''}|${updatePayload.orderNumber ?? ''}|` +
+        `${activeOrderOrderType ?? ''}|${builtinTableName ?? ''}|` +
+        `${activeOrderGuestCount ?? ''}|` +
+        `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|` +
+        `${cardTotal}|${cashTotal}|${displayDiscountAmount}|${displayTipAmount}|` +
+        `${currentTip.percentage ?? ''}|${displayOutstandingTotal}|` +
+        `${displayAmountPaid}|${savingsAmount}|` +
+        `${selectedStore?.name ?? ''}|${selectedStore?.code ?? ''}|` +
+        `${organizationLogoUrl ?? ''}|${showCFDOrderingRightPanel ? 1 : 0}|` +
+        `${cfdOrderingRightPanelMode}`
+
+      if (builtinFingerprint === lastBuiltinFingerprintRef.current) {
+        return
+      }
+
       // Payment-related states need immediate updates; ordering states are debounced
       // to batch rapid cart changes and reduce secondary display render pressure.
       const isPaymentState =
@@ -1374,15 +1462,25 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       if (isPaymentState) {
         debouncedBuiltinUpdateRef.current.cancel()
         useCFDBuiltinStore.getState().update(updatePayload)
+        lastBuiltinFingerprintRef.current = builtinFingerprint
       } else {
-        debouncedBuiltinUpdateRef.current(updatePayload)
+        debouncedBuiltinUpdateRef.current(updatePayload, builtinFingerprint)
       }
     } catch (err) {
       console.error('[CFD] Builtin display sync effect error:', err)
     }
+    // Intentionally narrowed — see WebSocket effect above for rationale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     hasBuiltinCfd,
-    activeOrder,
+    activeOrderCustomerName,
+    activeOrderCustomerPhone,
+    activeOrderDisplayNumber,
+    activeOrderOrderNumber,
+    activeOrderOrderType,
+    activeOrderServiceLocationId,
+    activeOrderGuestCount,
+    activeOrderAmountPaid,
     cfdItems,
     activeOrderSubtotal,
     activeOrderDiscount,

@@ -9,6 +9,11 @@
  * exponential backoff. Operations that exhaust retries are dead-lettered;
  * those are surfaced for manual review in the settings panel only.
  *
+ * IMPORTANT: This badge consults `rawIsOnline` (raw NetInfo state), NOT the
+ * effective `isOnline` which also reflects connection-quality slow-mode.
+ * Slow-mode silently queues mutations in the background; surfacing it as
+ * "Offline" would scare operators on flaky-but-connected WiFi.
+ *
  * Reanimated entering/exiting animations were intentionally removed here to
  * avoid the Fabric `Unable to find viewState for tag` crash class
  * (software-mansion/react-native-reanimated#6908).
@@ -24,10 +29,11 @@ import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 export function NetworkStatusBadge(): React.ReactElement | null {
-  const { isOnline, pendingSyncCount } = useNetworkStatus();
+  const { rawIsOnline, pendingSyncCount } = useNetworkStatus();
   const { forceOffline, toggleForceOffline } = useForceOfflineToggle();
 
-  if (isOnline) return null;
+  // Only render when truly offline (NetInfo says so). Slow-mode is invisible.
+  if (rawIsOnline) return null;
 
   const suffix = forceOffline ? " (forced)" : "";
   const label =

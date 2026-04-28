@@ -1,5 +1,7 @@
 // services/orderDiscountService.ts
 
+import { DEADLINES } from "@/lib/network/deadlines";
+import { rpcWithIdempotency } from "@/lib/network/idempotencyKey";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export type DiscountType = "percentage" | "fixed_amount";
@@ -102,19 +104,23 @@ export class OrderDiscountService {
   ): Promise<DiscountResult> {
     console.log("[OrderDiscountService:applyDiscount]", params);
 
-    const { data, error } = await client.rpc("manage_order_discount", {
-      p_action: "apply",
-      p_order_id: params.order_id,
-      p_staff_id: params.staff_id,
-      p_discount_id: params.discount_id ?? null,
-      p_discount_name: params.discount_name,
-      p_discount_type: params.discount_type,
-      p_discount_value: params.discount_value,
-      p_source: params.source ?? "preset",
-      p_reason: params.reason ?? null,
-      p_applied_to_item_ids: params.applied_to_item_ids ?? null,
-      p_approved_by_staff_id: params.approved_by_staff_id ?? null,
-    });
+    const { data, error } = await rpcWithIdempotency(
+      client, "manage_order_discount", "manage_order_discount", "manage_order_discount_v2",
+      {
+        p_action: "apply",
+        p_order_id: params.order_id,
+        p_staff_id: params.staff_id,
+        p_discount_id: params.discount_id ?? null,
+        p_discount_name: params.discount_name,
+        p_discount_type: params.discount_type,
+        p_discount_value: params.discount_value,
+        p_source: params.source ?? "preset",
+        p_reason: params.reason ?? null,
+        p_applied_to_item_ids: params.applied_to_item_ids ?? null,
+        p_approved_by_staff_id: params.approved_by_staff_id ?? null,
+      },
+      { deadline: DEADLINES.hotMutation },
+    );
 
     if (error) {
       console.error("[OrderDiscountService:applyDiscount] RPC error:", error);
@@ -179,13 +185,17 @@ export class OrderDiscountService {
   ): Promise<DiscountResult> {
     console.log("[OrderDiscountService:voidDiscount]", params);
 
-    const { data, error } = await client.rpc("manage_order_discount", {
-      p_action: "void",
-      p_order_id: params.order_id,
-      p_staff_id: params.staff_id,
-      p_order_discount_id: params.order_discount_id,
-      p_void_reason: params.void_reason ?? null,
-    });
+    const { data, error } = await rpcWithIdempotency(
+      client, "manage_order_discount", "manage_order_discount", "manage_order_discount_v2",
+      {
+        p_action: "void",
+        p_order_id: params.order_id,
+        p_staff_id: params.staff_id,
+        p_order_discount_id: params.order_discount_id,
+        p_void_reason: params.void_reason ?? null,
+      },
+      { deadline: DEADLINES.hotMutation },
+    );
 
     if (error) {
       console.error("[OrderDiscountService:voidDiscount] RPC error:", error);

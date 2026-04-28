@@ -31,7 +31,7 @@ import {
   TrendingUp,
   XCircle
 } from 'lucide-react-native'
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import {
   ActivityIndicator,
   StyleSheet,
@@ -60,6 +60,9 @@ const PreAuthPaymentView: React.FC = () => {
   const defaultAmount = useLocationConfigStore(
     s => s.config.preAuth.defaultAmount
   )
+  const tipPresetPercentages = useLocationConfigStore(
+    s => s.config.tips.presetPercentages
+  )
 
   const supabase = useSupabaseClient()
 
@@ -74,10 +77,32 @@ const PreAuthPaymentView: React.FC = () => {
     return String(totals?.amountDue ?? totals?.total ?? 0)
   })
   const [tipAmount, setTipAmount] = useState('0')
+  const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
+    null
+  )
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // Tracks the in-flight pre-auth so handleBack can best-effort cancel it.
+  // refId is the Dejavoo ReferenceId used for /v2/Payment/AbortTransaction;
+  // Castles cancels by force-closing the TCP socket (suspend()), no refId needed.
+  const inFlightRef = useRef<{
+    refId: string | null
+    cancelled: boolean
+  } | null>(null)
 
   const parsedAmount = parseFloat(amount) || 0
   const parsedTip = parseFloat(tipAmount) || 0
+
+  const handleTipPreset = (percent: number) => {
+    const calculated = (percent / 100) * parsedAmount
+    setTipAmount(calculated.toFixed(2))
+    setSelectedTipPreset(percent)
+  }
+
+  const handleTipChange = (value: string) => {
+    setTipAmount(value)
+    setSelectedTipPreset(null)
+  }
 
   // Tab exceeds hold warning
   const outstandingAmount = totals?.amountDue ?? totals?.total ?? 0
@@ -86,7 +111,48 @@ const PreAuthPaymentView: React.FC = () => {
       ? outstandingAmount > (preAuth.preAuthAmount ?? 0)
       : false
 
-  const handleBack = () => {
+  const cancelInFlightTransaction = async () => {
+    const terminal = selectedStation?.payment_terminal
+    if (!terminal) return
+
+    if (terminal.terminal_type === 'castles') {
+      const service = getSharedCastlesService()
+      try {
+        await service.suspend()
+      } catch (e) {
+        console.warn('[PreAuthPaymentView] Castles suspend failed', e)
+      }
+      service.resume()
+      return
+    }
+
+    const refId = inFlightRef.current?.refId
+    if (!refId) return
+    try {
+      const api = new DejavooSpinAPI(supabase)
+      await api.loadTerminal(terminal.id || '', terminal)
+      await api.abortTransaction().referenceId(refId).execute()
+    } catch (e) {
+      console.warn('[PreAuthPaymentView] Dejavoo abort failed', e)
+    }
+  }
+
+  const handleBack = async () => {
+    if (isProcessing) {
+      if (inFlightRef.current) inFlightRef.current.cancelled = true
+      toastService.show({
+        title: 'Cancelling…',
+        message: 'Aborting transaction on terminal',
+        type: 'warning'
+      })
+      await cancelInFlightTransaction()
+      toastService.show({
+        title: 'Transaction Cancelled',
+        message: 'If a hold was placed, void it from the terminal directly.',
+        type: 'warning',
+        duration: 5000
+      })
+    }
     setPreAuthMode(null)
     setView('payment-method-selection')
   }
@@ -145,6 +211,7 @@ const PreAuthPaymentView: React.FC = () => {
       return
     }
 
+    inFlightRef.current = { refId: null, cancelled: false }
     setIsProcessing(true)
     setTransactionProcessing(true)
 
@@ -163,7 +230,10 @@ const PreAuthPaymentView: React.FC = () => {
         orderId,
         parsedAmount,
         terminalInstance,
-        supabase
+        supabase,
+        id => {
+          if (inFlightRef.current) inFlightRef.current.refId = id
+        }
       )
 
       if (!result.success) {
@@ -177,6 +247,7 @@ const PreAuthPaymentView: React.FC = () => {
       })
       close()
     } catch (err) {
+      if (inFlightRef.current?.cancelled) return
       const msg = err instanceof Error ? err.message : 'Failed to open tab'
       toastService.show({
         title: 'Pre-Auth Failed',
@@ -184,6 +255,7 @@ const PreAuthPaymentView: React.FC = () => {
         type: 'error'
       })
     } finally {
+      inFlightRef.current = null
       setIsProcessing(false)
       setTransactionProcessing(false)
     }
@@ -201,6 +273,7 @@ const PreAuthPaymentView: React.FC = () => {
       return
     }
 
+    inFlightRef.current = { refId: null, cancelled: false }
     setIsProcessing(true)
     setTransactionProcessing(true)
 
@@ -217,7 +290,10 @@ const PreAuthPaymentView: React.FC = () => {
         preAuth.id,
         parsedAmount,
         terminalInstance,
-        supabase
+        supabase,
+        id => {
+          if (inFlightRef.current) inFlightRef.current.refId = id
+        }
       )
 
       if (!result.success) {
@@ -231,6 +307,7 @@ const PreAuthPaymentView: React.FC = () => {
       })
       setPreAuthMode('capture')
     } catch (err) {
+      if (inFlightRef.current?.cancelled) return
       const msg = err instanceof Error ? err.message : 'Failed to increase tab'
       toastService.show({
         title: 'Increment Failed',
@@ -238,6 +315,7 @@ const PreAuthPaymentView: React.FC = () => {
         type: 'error'
       })
     } finally {
+      inFlightRef.current = null
       setIsProcessing(false)
       setTransactionProcessing(false)
     }
@@ -255,6 +333,7 @@ const PreAuthPaymentView: React.FC = () => {
       return
     }
 
+    inFlightRef.current = { refId: null, cancelled: false }
     setIsProcessing(true)
     setTransactionProcessing(true)
 
@@ -272,7 +351,10 @@ const PreAuthPaymentView: React.FC = () => {
         parsedAmount,
         parsedTip,
         terminalInstance,
-        supabase
+        supabase,
+        id => {
+          if (inFlightRef.current) inFlightRef.current.refId = id
+        }
       )
 
       if (!result.success) {
@@ -288,6 +370,7 @@ const PreAuthPaymentView: React.FC = () => {
       })
       setView('success')
     } catch (err) {
+      if (inFlightRef.current?.cancelled) return
       const msg = err instanceof Error ? err.message : 'Failed to close tab'
       toastService.show({
         title: 'Capture Failed',
@@ -295,6 +378,7 @@ const PreAuthPaymentView: React.FC = () => {
         type: 'error'
       })
     } finally {
+      inFlightRef.current = null
       setIsProcessing(false)
       setTransactionProcessing(false)
     }
@@ -312,6 +396,7 @@ const PreAuthPaymentView: React.FC = () => {
       return
     }
 
+    inFlightRef.current = { refId: null, cancelled: false }
     setIsProcessing(true)
     setTransactionProcessing(true)
 
@@ -327,7 +412,10 @@ const PreAuthPaymentView: React.FC = () => {
         orderId,
         preAuth.id,
         terminalInstance,
-        supabase
+        supabase,
+        id => {
+          if (inFlightRef.current) inFlightRef.current.refId = id
+        }
       )
 
       if (!result.success) {
@@ -342,9 +430,11 @@ const PreAuthPaymentView: React.FC = () => {
       setPreAuthMode(null)
       setView('payment-method-selection')
     } catch (err) {
+      if (inFlightRef.current?.cancelled) return
       const msg = err instanceof Error ? err.message : 'Failed to release tab'
       toastService.show({ title: 'Void Failed', message: msg, type: 'error' })
     } finally {
+      inFlightRef.current = null
       setIsProcessing(false)
       setTransactionProcessing(false)
     }
@@ -397,7 +487,6 @@ const PreAuthPaymentView: React.FC = () => {
         <TouchableOpacity
           style={getStyles().backBtn}
           onPress={handleBack}
-          disabled={isProcessing}
         >
           <ArrowLeft size={18} color={colors.label} />
         </TouchableOpacity>
@@ -495,12 +584,47 @@ const PreAuthPaymentView: React.FC = () => {
       {mode === 'capture' && (
         <View style={getStyles().inputSection}>
           <Text style={getStyles().inputLabel}>Tip Amount</Text>
+          {tipPresetPercentages?.length > 0 && (
+            <View style={getStyles().tipPresetRow}>
+              {tipPresetPercentages.map(percent => {
+                const isActive = selectedTipPreset === percent
+                return (
+                  <TouchableOpacity
+                    key={percent}
+                    onPress={() => handleTipPreset(percent)}
+                    disabled={isProcessing || parsedAmount <= 0}
+                    style={[
+                      getStyles().tipPresetBtn,
+                      isActive && getStyles().tipPresetBtnActive
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        getStyles().tipPresetPercent,
+                        isActive && { color: colors.heading }
+                      ]}
+                    >
+                      {percent}%
+                    </Text>
+                    <Text
+                      style={[
+                        getStyles().tipPresetAmount,
+                        isActive && { color: colors.teal }
+                      ]}
+                    >
+                      ${((percent / 100) * parsedAmount).toFixed(2)}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          )}
           <View style={getStyles().amountRow}>
             <Text style={getStyles().dollarSign}>$</Text>
             <TextInput
               style={getStyles().amountInput}
               value={tipAmount}
-              onChangeText={setTipAmount}
+              onChangeText={handleTipChange}
               keyboardType='decimal-pad'
               placeholder='0.00'
               placeholderTextColor={colors.muted}
@@ -557,7 +681,7 @@ const PreAuthPaymentView: React.FC = () => {
         {mode === 'capture' && (
           <>
             <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: colors.success }]}
+              style={[getStyles().primaryBtn, { backgroundColor: colors.success }]}
               onPress={handleCloseTab}
               disabled={isProcessing || parsedAmount <= 0}
               activeOpacity={0.8}
@@ -732,6 +856,34 @@ const getStyles = () =>
       color: colors.teal,
       marginTop: 8,
       textAlign: 'right'
+    },
+    tipPresetRow: {
+      flexDirection: 'row',
+      gap: 6,
+      marginBottom: 8
+    },
+    tipPresetBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      backgroundColor: colors.panel,
+      borderColor: colors.border,
+      alignItems: 'center'
+    },
+    tipPresetBtnActive: {
+      backgroundColor: `${colors.teal}15`,
+      borderColor: colors.teal
+    },
+    tipPresetPercent: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.muted
+    },
+    tipPresetAmount: {
+      fontSize: 10,
+      marginTop: 1,
+      color: colors.muted
     },
     footer: {
       paddingHorizontal: 14,

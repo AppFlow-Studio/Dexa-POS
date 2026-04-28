@@ -89,7 +89,12 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
       const newItem = {
         ...item,
         id: generateCartItemId(item.menuItemId, item.customizations),
-        isDraft: false
+        isDraft: false,
+        // Defensive backfill: source items from older legacy paths might lack
+        // base prices. Without these, addItemToBackend sends NULL to the RPC
+        // and the server's 4% cash-discount fallback fires.
+        baseCardPrice: item.baseCardPrice ?? item.price ?? item.originalPrice,
+        baseCashPrice: item.baseCashPrice ?? item.cashPrice ?? item.price,
       }
       addItemToActiveOrder(newItem)
       addedCount++

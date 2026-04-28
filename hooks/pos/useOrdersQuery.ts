@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { withDeadline } from "@/lib/network/withDeadline";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { OrderProfile } from "@/lib/types";
 import {
@@ -28,17 +30,24 @@ export function useOrdersQuery({
     queryKey: orderQueryKeys.active(locationId ?? ""),
     queryFn: async (): Promise<OrderProfile[]> => {
       if (!locationId) throw new Error("No location ID");
-      const { data, error } = await supabase
-        .from("orders")
-        .select(
-          `*, order_items(*, order_item_modifiers(*)), order_payments(*),
-           order_discounts(*),
-           stations(station_name),
-           created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)`,
-        )
-        .eq("location_id", locationId)
-        .in("status", ["draft", "pending", "sent_to_kitchen", "preparing", "ready"])
-        .order("created_at", { ascending: false });
+      // Deadline-wrapped: bad WiFi falls back to TanStack offlineFirst cache.
+      const { data, error } = await withDeadline(
+        async (signal) =>
+          await supabase
+            .from("orders")
+            .select(
+              `*, order_items(*, order_item_modifiers(*)), order_payments(*),
+               order_discounts(*),
+               stations(station_name),
+               created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)`,
+            )
+            .eq("location_id", locationId)
+            .in("status", ["draft", "pending", "sent_to_kitchen", "preparing", "ready"])
+            .order("created_at", { ascending: false })
+            .abortSignal(signal),
+        DEADLINES.read,
+        "orders_query",
+      );
       if (error) throw error;
       return (data ?? []).map((o) => {
         const normalized = normalizeFetchedOrder(o as FetchedOrderData);

@@ -319,8 +319,11 @@ const BillSectionContent = ({
     s.activeOrderId ? s.ordersById[s.activeOrderId] : null
   )
 
-  // Offline sync state — subscribe directly to offlineSyncService for reliable updates
-  const { isOnline, pendingSyncCount } = useNetworkStatus()
+  // Offline sync state — subscribe directly to offlineSyncService for reliable updates.
+  // `isOnline` is the effective status (false during connection-quality slow-mode, used
+  // for routing decisions). `rawIsOnline` is raw NetInfo (used for UI affordances so
+  // slow-mode queues silently in the background).
+  const { isOnline, rawIsOnline, pendingSyncCount } = useNetworkStatus()
 
   const { selectedTable, clearSelectedTable } = useDineInStore()
   const setSelectedTable = useDineInStore(s => s.setSelectedTable)
@@ -1796,15 +1799,17 @@ const BillSectionContent = ({
         </View>
       </Modal>
 
-      {/* Offline / Sync Status Banner — only for errors or issues, not routine sync */}
-      {(!isOnline ||
+      {/* Offline / Sync Status Banner — only for errors or issues, not routine sync.
+          Uses rawIsOnline (NetInfo) so connection-quality slow-mode silently queues
+          in the background instead of surfacing scary "Offline Mode" UX. */}
+      {(!rawIsOnline ||
         hasFailedSyncs ||
         activeOrderPayments?.some(p => p.sync_status === 'pending')) && (
         <View
           className='px-3 py-1.5 gap-y-1'
           style={{ backgroundColor: colors.background }}
         >
-          {!isOnline && (
+          {!rawIsOnline && (
             <View className='flex-row items-center justify-center bg-amber-600 px-2.5 py-1.5 rounded-md'>
               <WifiOff size={12} color='#FFFFFF' />
               <Text
@@ -1817,7 +1822,7 @@ const BillSectionContent = ({
             </View>
           )}
 
-          {isOnline && hasFailedSyncs && (
+          {rawIsOnline && hasFailedSyncs && (
             <TouchableOpacity
               onPress={handleRetryFailedSyncs}
               disabled={autoRetryState.isRetrying}
@@ -1861,7 +1866,7 @@ const BillSectionContent = ({
             </TouchableOpacity>
           )}
 
-          {isOnline &&
+          {rawIsOnline &&
             !hasFailedSyncs &&
             activeOrderPayments?.some(p => p.sync_status === 'pending') && (
               <View className='flex-row items-center justify-center bg-amber-600/70 px-2.5 py-1.5 rounded-md'>

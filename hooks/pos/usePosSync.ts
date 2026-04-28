@@ -1,4 +1,6 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { withDeadline } from "@/lib/network/withDeadline";
 import { PosSyncData } from "@/types/menu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -19,15 +21,28 @@ export const usePosSync = (locationId: string | null) => {
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
 
-      // Fetch Menu, Ingredients, and Modifier Ingredients in parallel
+      // Fetch Menu, Ingredients, and Modifier Ingredients in parallel.
+      // Wrapped with deadline so bad WiFi falls back to TanStack `offlineFirst` cache
+      // instead of hanging the UI. See plan: lets-look-into-this-stateless-blossom.md.
       const [syncResult, menuItemIngredientsResult, modifierIngredientsResult] =
-        await Promise.all([
-          supabase.rpc("get_pos_full_sync", {
-            p_location_id: locationId,
-          }),
-          supabase.from("menu_item_ingredients").select("*"),
-          supabase.from("modifier_group_item_ingredients").select("*"),
-        ]);
+        await withDeadline(
+          (signal) =>
+            Promise.all([
+              supabase
+                .rpc("get_pos_full_sync", { p_location_id: locationId })
+                .abortSignal(signal),
+              supabase
+                .from("menu_item_ingredients")
+                .select("*")
+                .abortSignal(signal),
+              supabase
+                .from("modifier_group_item_ingredients")
+                .select("*")
+                .abortSignal(signal),
+            ]),
+          DEADLINES.menuSync,
+          "pos_sync",
+        );
 
       if (syncResult.error) {
         // Log this to Sentry immediately - critical failure
