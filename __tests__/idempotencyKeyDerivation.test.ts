@@ -59,7 +59,11 @@ jest.mock('@/lib/storage', () => {
   }
 })
 
-import { toUpdateItemKey, toUpdateQuantityKey } from '@/lib/network/idempotencyKey'
+import {
+  toBulkUpdateStatusKey,
+  toUpdateItemKey,
+  toUpdateQuantityKey
+} from '@/lib/network/idempotencyKey'
 import { withIdempotency } from '@/lib/network/idempotencyKey'
 import { setIdempotentEnabled } from '@/lib/network/featureFlags'
 
@@ -157,6 +161,43 @@ describe('toUpdateItemKey — allowlist + canonicalization', () => {
     expect(k).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     )
+  })
+})
+
+describe('toBulkUpdateStatusKey — Wave 3.0d-4 retry safety', () => {
+  it('is deterministic for same (sortedIds, status)', () => {
+    expect(toBulkUpdateStatusKey([ITEM_A, ITEM_B], 'ready')).toBe(
+      toBulkUpdateStatusKey([ITEM_A, ITEM_B], 'ready')
+    )
+  })
+
+  it('order-insensitive — [a,b] and [b,a] produce the same key', () => {
+    expect(toBulkUpdateStatusKey([ITEM_A, ITEM_B], 'ready')).toBe(
+      toBulkUpdateStatusKey([ITEM_B, ITEM_A], 'ready')
+    )
+  })
+
+  it('differs when status differs (Mark Ready vs Mark Served on same items)', () => {
+    expect(toBulkUpdateStatusKey([ITEM_A], 'ready')).not.toBe(
+      toBulkUpdateStatusKey([ITEM_A], 'served')
+    )
+  })
+
+  it('differs when item set differs (subset of items keyed independently)', () => {
+    expect(toBulkUpdateStatusKey([ITEM_A], 'ready')).not.toBe(
+      toBulkUpdateStatusKey([ITEM_A, ITEM_B], 'ready')
+    )
+  })
+
+  it('returns a UUID-shaped string', () => {
+    const k = toBulkUpdateStatusKey([ITEM_A], 'sent')
+    expect(k).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    )
+  })
+
+  it('handles single-item input', () => {
+    expect(() => toBulkUpdateStatusKey([ITEM_A], 'ready')).not.toThrow()
   })
 })
 

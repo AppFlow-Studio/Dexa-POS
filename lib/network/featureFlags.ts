@@ -37,6 +37,8 @@ export type IdempotentRpc =
   // Wave 3.0a — UPDATE-op retrofit
   | 'update_order_item_quantity'
   | 'update_order_item'
+  // Wave 3.0d-4 — bulk status retrofit (Send to Kitchen / Mark Ready / Served / Preparing)
+  | 'bulk_update_order_item_status'
 
 const FLAG_PREFIX = 'idempotent.'
 const RECOVERY_UI_KEY = 'flag.paymentRecoveryUI'
@@ -69,6 +71,7 @@ const envRpcOverride: Partial<Record<IdempotentRpc, boolean>> = {
   process_payment: isTruthyEnv(process.env.EXPO_PUBLIC_IDEMPOTENT_PROCESS_PAYMENT),
   update_order_item_quantity: isTruthyEnv(process.env.EXPO_PUBLIC_IDEMPOTENT_UPDATE_ORDER_ITEM_QUANTITY),
   update_order_item: isTruthyEnv(process.env.EXPO_PUBLIC_IDEMPOTENT_UPDATE_ORDER_ITEM),
+  bulk_update_order_item_status: isTruthyEnv(process.env.EXPO_PUBLIC_IDEMPOTENT_BULK_UPDATE_ORDER_ITEM_STATUS),
 }
 
 function readBool (key: string): boolean {

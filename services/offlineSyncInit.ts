@@ -98,6 +98,7 @@ if (__DEV__) {
   }
 }
 import {
+  toBulkUpdateStatusKey,
   toIdempotencyKey,
   toUpdateItemKey,
   toUpdateQuantityKey
@@ -1980,11 +1981,20 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
                 throw statusError
               }
 
+              // Wave 3.0d-4: keyOverride for retry-safety. Same item set +
+              // status → cached result on retry, no fire_time drift.
+              const kitchenSentStatus = getKitchenSentStatus()
               const { error: kitchenError } =
                 await OrderService.bulkUpdateOrderItemStatus(
                   _supabaseClient,
                   [data.order_item_id],
-                  getKitchenSentStatus()
+                  kitchenSentStatus,
+                  {
+                    keyOverride: toBulkUpdateStatusKey(
+                      [data.order_item_id],
+                      kitchenSentStatus
+                    )
+                  }
                 )
 
               if (kitchenError) {
@@ -2647,11 +2657,20 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
 
           // 3. Update resolved item statuses
           if (resolvedItemIds.length > 0) {
+            // Wave 3.0d-4: keyOverride for retry-safety. Same item set +
+            // status → cached result on retry, no fire_time drift.
+            const kitchenSentStatus = getKitchenSentStatus()
             const { error: itemError } =
               await OrderService.bulkUpdateOrderItemStatus(
                 _supabaseClient,
                 resolvedItemIds,
-                getKitchenSentStatus()
+                kitchenSentStatus,
+                {
+                  keyOverride: toBulkUpdateStatusKey(
+                    resolvedItemIds,
+                    kitchenSentStatus
+                  )
+                }
               )
 
             if (itemError) {
@@ -2851,10 +2870,14 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
         }
 
         try {
+          // Wave 3.0d-4: per-intent key. If this is a retry, the server-side
+          // cache returns the prior result and skips re-stamping fire_time /
+          // updated_at / sync_version.
           const { error } = await OrderService.bulkUpdateOrderItemStatus(
             _supabaseClient,
             resolvedItemIds,
-            status
+            status,
+            { keyOverride: toBulkUpdateStatusKey(resolvedItemIds, status) }
           )
           if (error) {
             console.error(

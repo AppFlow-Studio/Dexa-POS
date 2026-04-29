@@ -102,6 +102,7 @@ import {
   type FetchedOrderData
 } from '@/utils/orderTransformers'
 import {
+  toBulkUpdateStatusKey,
   toIdempotencyKey,
   toUpdateItemKey,
   toUpdateQuantityKey
@@ -1598,7 +1599,13 @@ const addItemToBackend = async (
             const ksResp = await OrderService.bulkUpdateOrderItemStatus(
               supabase,
               allDbItemIds,
-              kitchenSentStatus
+              kitchenSentStatus,
+              {
+                keyOverride: toBulkUpdateStatusKey(
+                  allDbItemIds,
+                  kitchenSentStatus
+                )
+              }
             )
             if (
               ksResp?.error?.code === 'DEADLINE_EXCEEDED' ||
@@ -2103,7 +2110,13 @@ const addItemToBackend = async (
           const ksResp2 = await OrderService.bulkUpdateOrderItemStatus(
             supabase,
             allDbItemIds2,
-            kitchenSentStatus2
+            kitchenSentStatus2,
+            {
+              keyOverride: toBulkUpdateStatusKey(
+                allDbItemIds2,
+                kitchenSentStatus2
+              )
+            }
           )
           if (
             ksResp2?.error?.code === 'DEADLINE_EXCEEDED' ||
@@ -6129,6 +6142,24 @@ export const useOrderStore = create<OrderState>()(
             } else {
               // 4. New item: add to cart
               syncItemId = newItem.id
+
+              // Wave 2.6: clear stale sync state for this id BEFORE we attach
+              // the cart item. `generateCartItemId(menuItemId, customizations)`
+              // (in ModifierScreen) is deterministic, so adding the same menu
+              // item with the same modifier combo on a NEW order reuses an old
+              // cart-item id. Without this cleanup, the old order's failed
+              // `useSyncStatusStore` entry — or a dead-lettered op persisted
+              // in MMKV — surfaces on the new cart line as
+              // "Add failed — Failed N times — N attempts just now".
+              // Both calls are no-ops when no stale state exists.
+              useSyncStatusStore.getState().clearSyncStatus(syncItemId)
+              dropQueuedOpsForItem(syncItemId).catch(err =>
+                console.error(
+                  '[addItemToActiveOrder] dropQueuedOpsForItem failed:',
+                  err
+                )
+              )
+
               const newCartItem: CartItem = {
                 ...newItem,
                 paidQuantity: 0,
@@ -8199,33 +8230,95 @@ export const useOrderStore = create<OrderState>()(
 
             let syncNeeded = false
 
-            // Sync customer details to orders table
-            if (details.customer_name !== undefined) {
-              try {
-                const { error } = await supabase
-                  .from('orders')
-                  .update({
-                    customer_name: details.customer_name,
-                    customer_id: details.customer_id,
-                    customer_phone:
-                      details.customer_phone ?? order.customer_phone ?? null,
-                    customer_email:
-                      details.customer_email ?? order.customer_email ?? null
-                  })
-                  .eq('id', order.db_order_id)
+            // Wave 2.4: collapse the four orders-table raw `.update()` calls
+            // (customer, order_type, delivery_address, notes) into a single
+            // server-guarded RPC. Closes the cross-station race where B's
+            // broadcast hadn't landed on A yet but A was mid-update — RLS
+            // doesn't check station_id, so the raw updates were the last
+            // unguarded mutation surface for orders.
+            //
+            // `table_sessions.party_size` is intentionally still a raw
+            // update — it's a different table with a different ownership
+            // model (table session, not order station).
+            const hasOrdersTableUpdate =
+              details.customer_name !== undefined ||
+              details.order_type !== undefined ||
+              details.delivery_address !== undefined ||
+              details.notes !== undefined
 
-                if (error) {
-                  console.error('Failed to sync customer details:', error)
+            if (hasOrdersTableUpdate) {
+              try {
+                const stationId =
+                  useStoreSettingsStore.getState().selectedStation?.id ?? null
+                const orderTypeValue =
+                  details.order_type !== undefined
+                    ? details.order_type?.toLowerCase() ?? null
+                    : null
+                const { data: rpcData, error: rpcError } =
+                  await OrderService.updateOrderDetails(
+                    supabase,
+                    order.db_order_id,
+                    stationId,
+                    {
+                      ...(details.customer_name !== undefined
+                        ? {
+                            customer: {
+                              id: details.customer_id ?? null,
+                              name: details.customer_name ?? null,
+                              phone:
+                                details.customer_phone ??
+                                order.customer_phone ??
+                                null,
+                              email:
+                                details.customer_email ??
+                                order.customer_email ??
+                                null
+                            }
+                          }
+                        : {}),
+                      ...(details.order_type !== undefined
+                        ? { orderType: orderTypeValue }
+                        : {}),
+                      ...(details.delivery_address !== undefined
+                        ? { deliveryAddress: details.delivery_address ?? null }
+                        : {}),
+                      ...(details.notes !== undefined
+                        ? { notes: details.notes || null }
+                        : {})
+                    }
+                  )
+
+                if (isOwnershipError(rpcData, rpcError)) {
+                  console.warn(
+                    '[updateActiveOrderDetails] ownership rejected — order owned by another station'
+                  )
+                  toastService.show({
+                    title: 'Edit blocked',
+                    message:
+                      'This order moved to another station. Take over to continue.',
+                    type: 'warning'
+                  })
+                } else if (rpcError) {
+                  console.error(
+                    'Failed to sync order details:',
+                    rpcError
+                  )
+                } else if (rpcData?.success === false) {
+                  console.error(
+                    'Failed to sync order details:',
+                    rpcData?.error
+                  )
                 } else {
-                  console.log('Synced customer details to backend')
+                  console.log('Synced order details to backend')
                   syncNeeded = true
                 }
               } catch (error) {
-                console.error('Failed to sync customer details:', error)
+                console.error('Failed to sync order details:', error)
               }
             }
 
             // Sync guest_count to table_sessions.party_size
+            // (separate from update_order_details_v1 — different table scope)
             if (
               details.guest_count !== undefined &&
               order.service_location_id
@@ -8253,51 +8346,6 @@ export const useOrderStore = create<OrderState>()(
                 } catch (error) {
                   console.error('Failed to sync guest_count:', error)
                 }
-              }
-            }
-
-            // Sync order_type to orders table
-            if (details.order_type !== undefined) {
-              const dbOrderType =
-                details.order_type?.toLowerCase() || order.order_type
-              try {
-                const { error } = await supabase
-                  .from('orders')
-                  .update({ order_type: dbOrderType })
-                  .eq('id', order.db_order_id)
-                if (error) console.error('Failed to sync order_type:', error)
-                else syncNeeded = true
-              } catch (error) {
-                console.error('Failed to sync order_type:', error)
-              }
-            }
-
-            // Sync delivery_address to orders table
-            if (details.delivery_address !== undefined) {
-              try {
-                const { error } = await supabase
-                  .from('orders')
-                  .update({ delivery_address: details.delivery_address })
-                  .eq('id', order.db_order_id)
-                if (error)
-                  console.error('Failed to sync delivery_address:', error)
-                else syncNeeded = true
-              } catch (error) {
-                console.error('Failed to sync delivery_address:', error)
-              }
-            }
-
-            // Sync order notes to orders.special_instructions
-            if (details.notes !== undefined) {
-              try {
-                const { error } = await supabase
-                  .from('orders')
-                  .update({ special_instructions: details.notes || null })
-                  .eq('id', order.db_order_id)
-                if (error) console.error('Failed to sync notes:', error)
-                else syncNeeded = true
-              } catch (error) {
-                console.error('Failed to sync notes:', error)
               }
             }
 
@@ -10338,7 +10386,8 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  'ready'
+                  'ready',
+                  { keyOverride: toBulkUpdateStatusKey(dbItemIds, 'ready') }
                 )
                   .then(response => {
                     if ((response as any)?.error) {
@@ -10436,7 +10485,8 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  'served'
+                  'served',
+                  { keyOverride: toBulkUpdateStatusKey(dbItemIds, 'served') }
                 )
                   .then(response => {
                     if ((response as any)?.error) {
@@ -10523,7 +10573,8 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  'preparing'
+                  'preparing',
+                  { keyOverride: toBulkUpdateStatusKey(dbItemIds, 'preparing') }
                 )
                   .then(response => {
                     if ((response as any)?.error) {
@@ -10609,7 +10660,8 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  'ready'
+                  'ready',
+                  { keyOverride: toBulkUpdateStatusKey(dbItemIds, 'ready') }
                 )
                   .then(response => {
                     if ((response as any)?.error) {
@@ -10703,7 +10755,8 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  'served'
+                  'served',
+                  { keyOverride: toBulkUpdateStatusKey(dbItemIds, 'served') }
                 )
                   .then(response => {
                     if ((response as any)?.error) {

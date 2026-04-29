@@ -83,6 +83,25 @@ export function toUpdateItemKey (params: Record<string, unknown>): string {
 }
 
 /**
+ * Wave 3.0d-4: per-intent key for `bulk_update_order_item_status_v2`.
+ *
+ * Same `(sortedItemIds, status)` retried → same key → server returns cached
+ * result and SKIPS the UPDATE entirely (so fire_time / sync_version are
+ * stamped exactly once, not on every retry).
+ *
+ * Sorts the ids so input order doesn't change the key — `[a, b]` and
+ * `[b, a]` are the same intent. Status is part of the key so a Mark Ready
+ * vs a Mark Served on the same items dedupe independently.
+ */
+export function toBulkUpdateStatusKey (
+  orderItemIds: string[],
+  status: string
+): string {
+  const sorted = [...orderItemIds].sort().join(',')
+  return uuidv5(`bulk_update_status:${status}:${sorted}`, PHASE2_NAMESPACE)
+}
+
+/**
  * Classify an RPC error as transient (recoverable via offline queue retry)
  * vs permanent (auth/schema/business-logic — surfaces to user).
  *

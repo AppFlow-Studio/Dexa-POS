@@ -614,6 +614,59 @@ export class OrderService {
   }
 
   /**
+   * Wave 2.4: server-guarded order-details update.
+   *
+   * Replaces four raw `.from('orders').update()` sites in
+   * `useOrderStore.updateActiveOrderDetails`. The boolean flags let the
+   * caller explicitly clear a field (set null) without a sentinel —
+   * COALESCE alone would treat null as "preserve". Callers should set
+   * the flag for any block they want to mutate and pass null/undefined
+   * for fields within that block they want to clear.
+   *
+   * Pass `selectedStation.id` for cross-station ownership enforcement.
+   * Null is permissive (back-compat) and matches the helper's contract.
+   */
+  static async updateOrderDetails (
+    client: SupabaseClient,
+    orderId: string,
+    stationId: string | null,
+    updates: {
+      customer?: {
+        id: string | null
+        name: string | null
+        phone: string | null
+        email: string | null
+      }
+      orderType?: string | null
+      deliveryAddress?: string | null
+      notes?: string | null
+    }
+  ): Promise<{ data: any; error: any }> {
+    return _runWithDeadline<any>(
+      'update_order_details_v1',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('update_order_details_v1', {
+          p_order_id: orderId,
+          p_station_id: stationId,
+          p_update_customer: updates.customer !== undefined,
+          p_customer_id: updates.customer?.id ?? null,
+          p_customer_name: updates.customer?.name ?? null,
+          p_customer_phone: updates.customer?.phone ?? null,
+          p_customer_email: updates.customer?.email ?? null,
+          p_update_order_type: updates.orderType !== undefined,
+          p_order_type: updates.orderType ?? null,
+          p_update_delivery_address: updates.deliveryAddress !== undefined,
+          p_delivery_address: updates.deliveryAddress ?? null,
+          p_update_notes: updates.notes !== undefined,
+          p_notes: updates.notes ?? null
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
+  }
+
+  /**
    * Void an entire order and cancel linked seated reservation(s) atomically.
    */
   static async voidOrder (
@@ -1072,26 +1125,41 @@ export class OrderService {
    * Bulk update order item statuses (for Send to Kitchen / Fire Course)
    * Automatically handles sent_to_kitchen_at and updated_at timestamps
    */
+  /**
+   * Wave 3.0d-4: per-intent idempotency. Same `(sortedItemIds, status)` retried
+   * → same key → server returns the cached `{updated_count, affected_order_ids}`
+   * jsonb and SKIPS the UPDATE entirely. Without this, retries re-stamp
+   * fire_time / updated_at / sync_version on every attempt — drift in audit
+   * timestamps and false-positive optimistic-lock conflicts elsewhere.
+   *
+   * Routing: when EXPO_PUBLIC_IDEMPOTENT_BULK_UPDATE_ORDER_ITEM_STATUS=1 (or
+   * the MMKV flag is on), routes to v2 with the key. Off → falls back to v1
+   * via withIdempotency's name swap (zero behavior change for the rollback
+   * path).
+   *
+   * Callers must derive `keyOverride` via `toBulkUpdateStatusKey(ids, status)`
+   * BEFORE the first attempt so retries reuse the same key.
+   */
   static async bulkUpdateOrderItemStatus (
     client: SupabaseClient,
     orderItemIds: string[],
     status: 'sent' | 'preparing' | 'ready' | 'served',
-    staffId?: string
+    opts?: { staffId?: string; keyOverride?: string }
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
       return { data: null, error: null }
     }
-    return _runWithDeadline<any>(
+    return rpcWithIdempotency<any>(
+      client,
       'bulk_update_order_item_status',
-      DEADLINES.sendToKitchen,
-      async (signal) => {
-        const { data, error } = await client.rpc('bulk_update_order_item_status', {
-          p_order_item_ids: orderItemIds,
-          p_status: status,
-          p_staff_id: staffId
-        }).abortSignal(signal)
-        return { data, error }
-      }
+      'bulk_update_order_item_status',     // v1 name (no key)
+      'bulk_update_order_item_status_v2',  // v2 name (with key)
+      {
+        p_order_item_ids: orderItemIds,
+        p_status: status,
+        p_staff_id: opts?.staffId
+      },
+      { deadline: DEADLINES.sendToKitchen, keyOverride: opts?.keyOverride }
     )
   }
 
