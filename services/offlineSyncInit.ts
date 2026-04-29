@@ -81,6 +81,21 @@ if (__DEV__) {
       discardDeadLetterOperation(op.id)
     }
   }
+  // Wave 3.0f-3 dev helpers — trigger cart-shape reconcile from Metro
+  // without waiting for AppState foreground or connectionQuality slow→fast.
+  // Returns a ReconcileResult / ReconcileResult[] you can read inline.
+  //   __reconcile()                       — reconcile every owned order
+  //   __reconcile(orderId)                — reconcile one order
+  //   __reconcile(orderId, { force: 1 })  — bypass 30s cooldown
+  ;(globalThis as any).__reconcile = (
+    orderId?: string,
+    opts?: { force?: boolean }
+  ) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const reconcile = require('@/services/cartShapeReconcile')
+    if (!orderId) return reconcile.reconcileAllOwnedOrders()
+    return reconcile.reconcileOrderCartShape(orderId, opts ?? {})
+  }
 }
 import {
   toIdempotencyKey,
