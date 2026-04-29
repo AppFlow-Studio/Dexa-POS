@@ -1,4 +1,5 @@
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import { PrinterService } from '@/services/printing/PrinterService'
@@ -143,6 +144,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const isModifierActive = useModifierSidebarStore(
     s => s.activeEditingItemId === item.id
   )
+  // Wave 2.2: when the active order is owned by another station, show this
+  // line as visually muted and force the modifier sheet into read-only mode
+  // so the user can still inspect modifiers but can't dead-end edit them.
+  const isReadOnlyForStation = useIsActiveOrderReadOnly()
 
   // Single subscription for both sync status and error (halves sync store subscriptions per item)
   const { status: syncStatus, error: syncError } = useItemSyncInfo(item.id)
@@ -343,7 +348,12 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     e.stopPropagation()
     if (swipeActivatedRef.current) return
 
-    if (isEditable && !isKitchenItem) {
+    // Wave 2.2: tap still opens the modifier sheet so the user can inspect
+    // what's on the line, but in view-only mode when another station owns
+    // the order. Edit operations on the modifier sheet are also gated by
+    // `_checkCartEditable` at the store layer (Wave 1) — this is the UX
+    // signal that reaching the sheet won't let them save.
+    if (isEditable && !isKitchenItem && !isReadOnlyForStation) {
       openToEdit(item, activeOrderId)
     } else {
       openToView(item, activeOrderId)
@@ -590,7 +600,15 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       )}
 
       <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
-        <Animated.View style={animatedStyle} className={isVoided ? '' : 'z-20'}>
+        <Animated.View
+          style={[
+            animatedStyle,
+            // Wave 2.2: dim the row when the active order is owned by
+            // another station so users see the read-only state at a glance.
+            isReadOnlyForStation && !isVoided ? { opacity: 0.5 } : null
+          ]}
+          className={isVoided ? '' : 'z-20'}
+        >
           <TouchableOpacity
             onPress={isVoided ? undefined : handleNotesPress}
             activeOpacity={isVoided ? 1 : 0.85}

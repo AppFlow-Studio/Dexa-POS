@@ -119,6 +119,7 @@ interface FloorPlanState {
   createFloorPlan: (name: string, description?: string) => Promise<string>
   updateFloorPlan: (id: string, updates: Partial<FloorPlan>) => Promise<void>
   deleteFloorPlan: (id: string) => Promise<void>
+  loadFloorPlans: () => Promise<void>
   loadFloorPlanStatus: () => Promise<void>
   loadFloorPlanStatusIfStale: (ttlMs?: number) => Promise<void>
   refreshTableSessions: () => Promise<void>
@@ -593,6 +594,19 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           set({ activeFloorPlanId: floorPlanId, isLoading: true })
           await get().loadFloorPlanStatus()
           set({ isLoading: false })
+        },
+
+        loadFloorPlans: async () => {
+          const supabase = getClient()
+          const locationId = get().locationId
+          if (!supabase || !locationId) return
+          const { data, error } =
+            await FloorPlanService.getLocationFloorPlans(supabase, locationId)
+          if (error) {
+            set({ error: error.message })
+            return
+          }
+          set({ floorPlans: data || [] })
         },
 
         createFloorPlan: async (name: string, description?: string) => {

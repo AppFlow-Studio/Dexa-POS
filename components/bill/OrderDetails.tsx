@@ -1,5 +1,6 @@
 import { useToast } from '@/contexts/ToastContext'
 import { calculatePaidStatus } from '@/lib/order-calculator'
+import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import type { OrderProfile } from '@/lib/types'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
@@ -286,7 +287,12 @@ const OrderDetailsComponent: React.FC<{
 
   const isDineInSelected = orderType === 'dine_in'
   const isDeliverySelected = orderType === 'delivery'
-  const isOrderTypeLocked = checkStatus === 'Closed'
+  // Wave 2.2: cross-station gate composes with the existing Closed-check
+  // lock. Either condition disables the segmented control; the subtitle
+  // below branches on which fired so the user sees the right reason.
+  const isReadOnlyForStation = useIsActiveOrderReadOnly()
+  const isOrderTypeLocked =
+    checkStatus === 'Closed' || isReadOnlyForStation
 
   return (
     <View className='px-3 pb-2 z-20'>
@@ -513,7 +519,9 @@ const OrderDetailsComponent: React.FC<{
             paddingHorizontal: 2
           }}
         >
-          Order type is locked after the check is closed.
+          {isReadOnlyForStation
+            ? 'Order type is locked while another station owns this order.'
+            : 'Order type is locked after the check is closed.'}
         </Text>
       )}
 
