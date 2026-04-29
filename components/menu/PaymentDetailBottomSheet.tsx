@@ -27,6 +27,7 @@ import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import { getTerminalMatchInfo } from '@/utils/terminalMatchGuard'
+import { round2 } from '@/utils/money'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { formatDistanceToNow } from 'date-fns'
 import { usePathname, useRouter } from 'expo-router'
@@ -1334,7 +1335,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           dbPaymentId: payment.dbPaymentId,
           orderAmount: payment.orderAmount,
           currentTip: payment.currentTip,
-          newTip: parseFloat(tipAmounts[payment.paymentIndex] || '0') || 0,
+          newTip: round2(parseFloat(tipAmounts[payment.paymentIndex] || '0') || 0),
           referenceId: payment.referenceId,
           rrn: payment.rrn,
           last4: payment.last4
@@ -2115,9 +2116,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         ? effectiveSubtotal / item.quantity
         : (item.price || 0)
       const perUnitTax = item.quantity > 0 ? effectiveTax / item.quantity : 0
-      const itemSubtotal = discountedUnitPrice * selectedQty
-      const itemTax = perUnitTax * selectedQty
-      return sum + itemSubtotal + itemTax
+      const itemSubtotal = round2(discountedUnitPrice * selectedQty)
+      const itemTax = round2(perUnitTax * selectedQty)
+      return sum + round2(itemSubtotal + itemTax)
     }, 0)
   }, [selectedItems, order?.items, getRefundableQty, getPaymentForItem])
 

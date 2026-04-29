@@ -21,6 +21,7 @@ import type {
   ReversalRecord
 } from '@/lib/types'
 import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
+import { round2 } from '@/utils/money'
 
 /**
  * Check if a broadcast payload is header-only (v2 — no items/reversals/refund_items).
@@ -52,7 +53,7 @@ export function deriveCashSavings (
     payment.original_amount != null &&
     payment.original_amount > payment.amount
   ) {
-    return Number((payment.original_amount - payment.amount).toFixed(2))
+    return round2(payment.original_amount - payment.amount)
   }
 
   // Fallback: derive from order-level cash:card ratio
@@ -63,7 +64,7 @@ export function deriveCashSavings (
     orderCashTotal > 0
   ) {
     const ratio = orderCardTotal / orderCashTotal
-    return Number((payment.amount * (ratio - 1)).toFixed(2))
+    return round2(payment.amount * (ratio - 1))
   }
 
   return undefined

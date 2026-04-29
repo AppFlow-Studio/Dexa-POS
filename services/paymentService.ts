@@ -1,5 +1,6 @@
 // services/paymentService.ts
 
+import { round2 } from '@/utils/money';
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 
 // ============================================================================
@@ -196,9 +197,8 @@ export function calculateEvenSplit(
   total: number,
   splitCount: number,
 ): { perPerson: number; lastPerson: number } {
-  const perPerson = Math.floor((total / splitCount) * 100) / 100;
-  const lastPerson =
-    Math.round((total - perPerson * (splitCount - 1)) * 100) / 100;
+  const perPerson = round2(Math.floor((total / splitCount) * 100) / 100);
+  const lastPerson = round2(total - perPerson * (splitCount - 1));
   return { perPerson, lastPerson };
 }
 

@@ -1,4 +1,5 @@
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { round2 } from '@/utils/money';
 import { OrderService } from "@/services/orderService";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
@@ -830,8 +831,8 @@ export class RefundService {
           : Number(pi.unit_price_paid || 0);
         const taxPerUnit =
           availableQty > 0 ? Number(pi.tax_paid || 0) / availableQty : 0;
-        const subtotal = qtyFromThis * unitPrice;
-        const tax = qtyFromThis * taxPerUnit;
+        const subtotal = round2(qtyFromThis * unitPrice);
+        const tax = round2(qtyFromThis * taxPerUnit);
         paymentAllocations.push({
           paymentId: pi.order_payment_id,
           paymentItemId: pi.id,
@@ -839,7 +840,7 @@ export class RefundService {
           unitPrice,
           subtotal,
           tax,
-          total: subtotal + tax,
+          total: round2(subtotal + tax),
         });
 
         remainingQty -= qtyFromThis;
@@ -888,8 +889,8 @@ export class RefundService {
         // Tax is already computed on discounted amount, prorate by quantity
         const taxPerUnit =
           itemQuantity > 0 ? Number(item.tax_amount || 0) / itemQuantity : 0;
-        const subtotal = qty * unitPrice;
-        const tax = qty * taxPerUnit;
+        const subtotal = round2(qty * unitPrice);
+        const tax = round2(qty * taxPerUnit);
         return {
           reversal_id: reversalId,
           order_item_id: item.id,
@@ -897,7 +898,7 @@ export class RefundService {
           unit_price_refunded: unitPrice,
           subtotal_refunded: subtotal,
           tax_refunded: tax,
-          total_refunded: subtotal + tax,
+          total_refunded: round2(subtotal + tax),
           refund_reason: reason,
           refund_reason_detail: reasonDetail,
           return_to_inventory: false,

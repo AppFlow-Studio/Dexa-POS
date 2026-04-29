@@ -1,6 +1,7 @@
 import { useRefreshActiveOrder } from '@/hooks/pos/useRefreshActiveOrder'
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
+import { round2 } from '@/utils/money'
 import {
   calculateItemEffectiveCashPrice,
   useOrderStore
@@ -67,16 +68,16 @@ function getSelectedItemDiscountedValues (
   if (originalQuantity > 0 && originalDiscount > 0) {
     const perUnitDiscount = originalDiscount / originalQuantity
     const itemDiscountAmount =
-      Math.round(perUnitDiscount * quantityToPay * 100) / 100
+      round2(perUnitDiscount * quantityToPay)
     return {
-      subtotal: Math.round((grossSubtotal - itemDiscountAmount) * 100) / 100,
+      subtotal: round2(grossSubtotal - itemDiscountAmount),
       discountAmount: itemDiscountAmount
     }
   }
 
   // No order-level discount - just return gross subtotal
   return {
-    subtotal: Math.round(grossSubtotal * 100) / 100,
+    subtotal: round2(grossSubtotal),
     discountAmount: 0
   }
 }
@@ -148,9 +149,9 @@ function calculateSelectedCashTax (
     tax += itemSubtotal * taxRateDecimal
   }
 
-  subtotal = Math.round(subtotal * 100) / 100
-  tax = Math.round(tax * 100) / 100
-  const total = Math.round((subtotal + tax) * 100) / 100
+  subtotal = round2(subtotal)
+  tax = round2(tax)
+  const total = round2(subtotal + tax)
 
   return { subtotal, tax, total }
 }

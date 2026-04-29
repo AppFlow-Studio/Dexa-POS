@@ -61,6 +61,7 @@ import {
   calculatePaidStatus,
   distributeDiscountToItems as distributeDiscountToItemsFromModule,
   invalidateCalculationCache,
+  round2,
   scheduleCalculationCacheInvalidation
 } from '@/lib/order-calculator'
 import { normalizePlatform } from '@/lib/platformAliases'
@@ -137,6 +138,9 @@ import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
 export const calculateItemEffectiveCashPrice =
   calculateItemEffectiveCashPriceFromModule
 
+// Re-export round2 for consumers that import from this module
+export { round2 } from '@/lib/order-calculator'
+
 /**
  * Calculate paid_status PURELY from the order's payments array.
  * @see @/lib/order-calculator.ts for implementation
@@ -160,7 +164,7 @@ export const distributeDiscountToItems = distributeDiscountToItemsFromModule
 export function getItemEffectiveSubtotal (item: CartItem): number {
   const grossSubtotal = item.price * item.quantity
   const discountAmount = item.discount_amount ?? 0
-  return Math.max(0, Math.round((grossSubtotal - discountAmount) * 100) / 100)
+  return Math.max(0, round2(grossSubtotal - discountAmount))
 }
 
 /**
@@ -172,10 +176,7 @@ export function getItemEffectiveSubtotal (item: CartItem): number {
 export function getItemEffectiveCashSubtotal (item: CartItem): number {
   const grossCashSubtotal = (item.cashPrice || item.price) * item.quantity
   const discountAmount = item.discount_cash_amount ?? item.discount_amount ?? 0
-  return Math.max(
-    0,
-    Math.round((grossCashSubtotal - discountAmount) * 100) / 100
-  )
+  return Math.max(0, round2(grossCashSubtotal - discountAmount))
 }
 
 /**
@@ -8592,9 +8593,7 @@ export const useOrderStore = create<OrderState>()(
               if (cashOutstanding > 0 && cardOutstanding > cashOutstanding) {
                 // Proportional: ratio of this payment to cash outstanding * total savings
                 const ratio = Math.min(amount / cashOutstanding, 1)
-                cashSavingsValue = parseFloat(
-                  (ratio * (cardOutstanding - cashOutstanding)).toFixed(2)
-                )
+                cashSavingsValue = round2(ratio * (cardOutstanding - cashOutstanding))
               }
 
               // FALLBACK 1: Backend-synced amount_due / cash_amount_due ratio
@@ -8611,9 +8610,7 @@ export const useOrderStore = create<OrderState>()(
                   cashDue > 0 &&
                   cardDue > cashDue
                 ) {
-                  cashSavingsValue = parseFloat(
-                    (amount * (cardDue / cashDue - 1)).toFixed(2)
-                  )
+                  cashSavingsValue = round2(amount * (cardDue / cashDue - 1))
                 }
               }
 
@@ -8626,9 +8623,7 @@ export const useOrderStore = create<OrderState>()(
                     ?.dual_pricing_percentage
                 if (dualPricingPct != null && dualPricingPct > 0) {
                   const rate = dualPricingPct / 100
-                  cashSavingsValue = parseFloat(
-                    ((amount * rate) / (1 - rate)).toFixed(2)
-                  )
+                  cashSavingsValue = round2((amount * rate) / (1 - rate))
                 }
               }
             }
