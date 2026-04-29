@@ -6590,10 +6590,16 @@ export const useOrderStore = create<OrderState>()(
                           err
                         )
                       }
-                    } else if (response?.error) {
-                      // Non-DEADLINE response error — queue so we don't drop.
+                    } else if (response?.error || response?.data?.success === false) {
+                      // Wave 3.0f-1: catch BOTH non-DEADLINE response errors AND
+                      // success:false payloads. Pre-3.0f only checked .error,
+                      // missing the case where the server returned a structured
+                      // failure with no error field — the response slipped past
+                      // success:true and silently fell through.
                       if (__DEV__) console.log('[QTY-DIAG-MOD] MERGE RESPONSE-ERROR-QUEUE', {
-                        survivorDbId, mergedQuantity, errCode: response.error?.code, errMessage: response.error?.message
+                        survivorDbId, mergedQuantity,
+                        errCode: response?.error?.code,
+                        success: response?.data?.success
                       })
                       await queueOperation({
                         type: 'update_item_quantity',
@@ -6748,10 +6754,13 @@ export const useOrderStore = create<OrderState>()(
                             err
                           )
                         }
-                      } else if (response?.error) {
-                        // Non-DEADLINE response error — queue so we don't drop.
+                      } else if (response?.error || response?.data?.success === false) {
+                        // Wave 3.0f-1: catch BOTH non-DEADLINE response errors AND
+                        // success:false payloads (see MERGE branch above for why).
                         if (__DEV__) console.log('[QTY-DIAG-MOD] NORMAL RESPONSE-ERROR-QUEUE', {
-                          dbOrderItemId, qty: updatedItem.quantity, errCode: response.error?.code, errMessage: response.error?.message
+                          dbOrderItemId, qty: updatedItem.quantity,
+                          errCode: response?.error?.code,
+                          success: response?.data?.success
                         })
                         await queueOperation({
                           type: 'update_item_quantity',
@@ -6798,6 +6807,31 @@ export const useOrderStore = create<OrderState>()(
                     .then(async response => {
                       // Bad-WiFi guard: queue if deadline-wrap fired.
                       if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                        await queueOperation({
+                          type: 'update_item',
+                          params: {
+                            orderItemId: dbOrderItemId,
+                            specialInstructions:
+                              updatedItem.customizations?.notes || null
+                          },
+                          localOrderId: orderId,
+                          localItemId: updatedItem.id
+                        })
+                        return
+                      }
+                      // Wave 3.0f-1: non-DEADLINE resolved error / success:false
+                      // also has to queue. Pre-3.0f, this fell through silently
+                      // and the local edit drifted from server.
+                      if (response?.error || response?.data?.success === false) {
+                        if (__DEV__)
+                          console.log(
+                            '[updateOrderItem] RESPONSE-ERROR-QUEUE',
+                            {
+                              dbOrderItemId,
+                              errCode: (response?.error as any)?.code,
+                              success: response?.data?.success
+                            }
+                          )
                         await queueOperation({
                           type: 'update_item',
                           params: {
@@ -6896,6 +6930,32 @@ export const useOrderStore = create<OrderState>()(
                       // Bad-WiFi guard: deadline-wrap returns resolved promise on
                       // slow network. Queue here since .catch() won't fire.
                       if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                        await queueOperation({
+                          type: 'replace_modifiers',
+                          params: {
+                            orderItemId: dbOrderItemId,
+                            modifiers: allModifiers
+                          },
+                          localOrderId: orderId,
+                          localItemId: updatedItem.id
+                        })
+                        return
+                      }
+                      // Wave 3.0f-1: non-DEADLINE resolved error / success:false
+                      // also has to queue. Same hole as the qty + special-
+                      // instructions paths — modifier edits silently drifted
+                      // pre-3.0f when the RPC returned anything but a clean
+                      // success.
+                      if (response?.error || response?.data?.success === false) {
+                        if (__DEV__)
+                          console.log(
+                            '[replaceOrderItemModifiers] RESPONSE-ERROR-QUEUE',
+                            {
+                              dbOrderItemId,
+                              errCode: (response?.error as any)?.code,
+                              success: response?.data?.success
+                            }
+                          )
                         await queueOperation({
                           type: 'replace_modifiers',
                           params: {
@@ -7778,6 +7838,36 @@ export const useOrderStore = create<OrderState>()(
                 // corrupting waitForPendingSyncs.
                 if (response?.error?.code === 'DEADLINE_EXCEEDED') {
                   if (__DEV__) console.log('[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE', { itemId, dbItemId, latestQuantity })
+                  const latestQueuedQuantity =
+                    get().ordersById[activeOrderId]?.items.find(
+                      i => i.id === itemId
+                    )?.quantity ?? latestQuantity
+                  await queueOperation({
+                    type: 'update_item_quantity',
+                    params: {
+                      orderItemId: dbItemId,
+                      quantity: latestQueuedQuantity
+                    },
+                    localOrderId: activeOrderId,
+                    localItemId: itemId
+                  })
+                  useSyncStatusStore.getState().setSyncStatus(itemId, 'synced')
+                  return false
+                }
+                // Wave 3.0f-1: non-DEADLINE resolved error OR success:false →
+                // server did NOT apply the qty, but pre-3.0f code fell through
+                // to the unconditional setSyncStatus('synced') below, hiding
+                // the drift. Queue the op so the dispatcher can retry; if it
+                // dead-letters, Wave 3.0e onOperationFailed flips the chip.
+                if (response?.error || response?.data?.success === false) {
+                  if (__DEV__)
+                    console.log('[QTY-DIAG] RESPONSE-ERROR-QUEUE', {
+                      itemId,
+                      dbItemId,
+                      latestQuantity,
+                      errCode: (response?.error as any)?.code,
+                      success: response?.data?.success
+                    })
                   const latestQueuedQuantity =
                     get().ordersById[activeOrderId]?.items.find(
                       i => i.id === itemId

@@ -171,6 +171,12 @@ export interface OfflineOperation {
   // Wave 3.0e: epoch ms when the op transitioned to dead-letter. Used to
   // render relative timestamps ("10 attempts since 4:32pm") in the subtitle.
   deadLetteredAtMs?: number
+  // Wave 3.0f-2: count of slow-mode reprieves the op has received. When
+  // connectionQuality.isSlow() is true at MAX_RETRY_ATTEMPTS, we reset
+  // retryCount and increment this counter instead of dead-lettering. Capped
+  // at MAX_SLOW_MODE_REPRIEVES — after that, the op finally dead-letters
+  // with code 'SUSTAINED_BAD_WIFI'.
+  slowModeRetryCount?: number
 }
 
 export interface SyncResult {
@@ -208,6 +214,15 @@ const MAX_BLOCK_COUNT = 20
 // retryCount cleanly. Wave 3.1: bumped 120s → 600s to match the longer retry
 // budget (10 attempts at exponential backoff capped at 20s ≈ 150s + headroom).
 const STUCK_OP_TIMEOUT_MS = 600_000
+
+// Wave 3.0f-2: when connectionQuality.isSlow() at MAX_RETRY_ATTEMPTS, give
+// the op another full retry budget instead of dead-lettering. The diagnosis
+// is "WiFi is bad, not the op" — dead-lettering would surface a Retry chip
+// for an op that will succeed once the network recovers. Capped at this many
+// reprieves so we don't loop forever on a permanently-down server.
+// 3 reprieves × 10 retries × ~15s avg = ~450s of trying ≈ 7.5 min before
+// the op finally dead-letters with SUSTAINED_BAD_WIFI.
+const MAX_SLOW_MODE_REPRIEVES = 3
 
 const PAYMENT_TYPES: OperationType[] = [
   'process_payment',
@@ -2110,14 +2125,52 @@ async function handleOperationFailure (
 ): Promise<void> {
   const permanent = error && !isTransientError(error)
 
+  // Wave 3.0f-2: slow-mode reprieve. If the diagnosis is "WiFi is bad" (not a
+  // permanent server rejection, just exhausted retries) AND the
+  // connectionQuality state machine still flags the network as slow, give the
+  // op another full retry budget instead of dead-lettering. Capped at
+  // MAX_SLOW_MODE_REPRIEVES so a permanently-unreachable backend eventually
+  // does dead-letter.
+  if (
+    !permanent &&
+    operation.retryCount >= MAX_RETRY_ATTEMPTS &&
+    connectionQuality.isSlow() &&
+    (operation.slowModeRetryCount ?? 0) < MAX_SLOW_MODE_REPRIEVES
+  ) {
+    operation.slowModeRetryCount =
+      (operation.slowModeRetryCount ?? 0) + 1
+    operation.retryCount = 0
+    operation.status = 'pending'
+    console.log(
+      `[OfflineSync] ↻ SLOW-MODE REPRIEVE (${operation.slowModeRetryCount}/${MAX_SLOW_MODE_REPRIEVES}): ${operation.type} (${operation.id}) — WiFi still slow, not giving up`
+    )
+    await saveQueueToStorage()
+    scheduleAutoRetry(operation)
+    return
+  }
+
   if (permanent || operation.retryCount >= MAX_RETRY_ATTEMPTS) {
-    const reason = permanent ? 'permanent error' : 'max retries'
+    const exhaustedSlowMode =
+      !permanent &&
+      (operation.slowModeRetryCount ?? 0) >= MAX_SLOW_MODE_REPRIEVES
+    const reason = permanent
+      ? 'permanent error'
+      : exhaustedSlowMode
+      ? 'sustained bad wifi'
+      : 'max retries'
     console.log(
       `[OfflineSync] ✗ DEAD-LETTERED (${reason}): ${operation.type} (${operation.id})`
     )
     // Wave 3.0e: capture the last error so the operator-facing subtitle can
     // show "network too slow" vs "server rejected" vs "max retries".
-    if (error) {
+    if (exhaustedSlowMode) {
+      operation.lastError = {
+        code: 'SUSTAINED_BAD_WIFI',
+        message: `Tried for ~${Math.round(
+          (MAX_SLOW_MODE_REPRIEVES * MAX_RETRY_ATTEMPTS * 15) / 60
+        )} min — WiFi never recovered`
+      }
+    } else if (error) {
       const code =
         (error as any).code ??
         (error as any).status ??

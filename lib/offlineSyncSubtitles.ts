@@ -130,6 +130,9 @@ export function isRetryable (op: OfflineOperation): boolean {
   ) {
     return false
   }
+  // SUSTAINED_BAD_WIFI is technically retryable (network may have recovered
+  // by the time the operator sees the chip), so leave it true. The user can
+  // tap Retry; the next attempt will succeed if WiFi is back.
   return true
 }
 
@@ -143,6 +146,8 @@ function describeCause (op: OfflineOperation): string {
   switch (code) {
     case 'DEADLINE_EXCEEDED':
       return 'Network too slow'
+    case 'SUSTAINED_BAD_WIFI':
+      return 'WiFi never recovered'
     case 'MAX_RETRIES':
       return `Failed ${op.retryCount} times`
     case 'PERMANENT':
