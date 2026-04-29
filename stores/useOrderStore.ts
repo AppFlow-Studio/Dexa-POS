@@ -4472,6 +4472,11 @@ export const useOrderStore = create<OrderState>()(
                         // Broadcast wins by default — `claim_order_v1` is the
                         // authority for ownership.
                         station_id: backendOrder.station_id,
+                        // Wave 2.7: also propagate station_name so the read-only
+                        // banner can render "Owned by Station X" with the
+                        // current owner's display name (not the original
+                        // creator from `_sourceStationName`).
+                        station_name: backendOrder.station_name ?? null,
 
                         // UPDATE sync_version from broadcast to prevent false conflict detection
                         sync_version:
@@ -14342,6 +14347,16 @@ export const useOrderStore = create<OrderState>()(
                       transformedItems[i] = {
                         ...transformedItems[i],
                         quantity: localItem.quantity
+                      }
+                    }
+
+                    // Wave 3.0d-5: preserve locally-voided state. The void RPC
+                    // may be queued/in-flight; without this, the merge un-voids
+                    // the item locally and it reappears on the bill.
+                    if (localItem.is_voided && !transformedItems[i].is_voided) {
+                      transformedItems[i] = {
+                        ...transformedItems[i],
+                        is_voided: true
                       }
                     }
                   }

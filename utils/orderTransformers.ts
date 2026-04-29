@@ -666,6 +666,10 @@ export function transformBroadcastToOrder (
 
     // Station tracking (for display purposes)
     station_id: backendOrder.station_id,
+    // Wave 2.7: `station_name` mirrors `station_id` semantics — current
+    // owner's display name. Distinct from `_sourceStationName` which is
+    // pinned to the ORIGINAL creator and used for orderline cards.
+    station_name: sourceStationName || null,
     _sourceStationId: backendOrder.station_id,
     _sourceStationName: sourceStationName || null,
 

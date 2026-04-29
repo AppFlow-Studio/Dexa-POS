@@ -15,7 +15,7 @@ import {
   setOfflineSyncSupabaseClient,
 } from "@/services/offlineSyncInit";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
-import { useCartShapeReconcile } from "@/hooks/useCartShapeReconcile";
+import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
 import { setSeatingSupabaseClient } from "@/stores/useSeatingStore";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -127,12 +127,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
 
-  // Wave 3.0f-3: cart-shape reconcile on slow→fast + foreground recovery.
-  // Gated by EXPO_PUBLIC_CART_SHAPE_RECONCILE=1 inside the service. Only
-  // fires for orders this station owns (other-station orders are read-
-  // refreshed via the existing broadcast / syncOrderFromBackendComplete
-  // path). KDS skips the subscriptions since it doesn't author orders.
-  useCartShapeReconcile({ enabled: !isKDS });
+  // Wave 3.0d-5: combined order reconcile on slow→fast + foreground recovery.
+  // Sequenced: cart-shape push (3.0f-3) → 500ms gap → header pull (3.0d-5).
+  // Each pass is independently flag-gated (EXPO_PUBLIC_CART_SHAPE_RECONCILE
+  // and EXPO_PUBLIC_ORDER_HEADER_RECONCILE). KDS skips both — it doesn't
+  // author or display orders in the order-processing sense.
+  useOrderReconcile({ enabled: !isKDS });
 
   // Device detection & heartbeat lifecycle
   useEffect(() => {

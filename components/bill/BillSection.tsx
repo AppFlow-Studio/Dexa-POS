@@ -470,7 +470,14 @@ const BillSectionContent = ({
   // Lever 2: read-only when the active order belongs to another station.
   const isReadOnly = useIsActiveOrderReadOnly()
   const activeOrderForReadOnly = useActiveOrder()
-  const sourceStationName = activeOrderForReadOnly?._sourceStationName ?? null
+  // Wave 2.7: prefer `station_name` (current owner — refreshed by broadcast,
+  // hydrate, and the focus-time recheck) over `_sourceStationName` (original
+  // creator — never changes after order creation). Fallback chain so the
+  // banner still has a label on legacy orders that pre-date Wave 2.7.
+  const sourceStationName =
+    activeOrderForReadOnly?.station_name ??
+    activeOrderForReadOnly?._sourceStationName ??
+    null
   const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
   const [isClaimModalOpen, setClaimModalOpen] = useState(false)
   const [isClaiming, setClaiming] = useState(false)

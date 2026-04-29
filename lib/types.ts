@@ -947,7 +947,11 @@ export interface OrderProfile {
   order_refund_items?: OrderRefundItemRecord[]
 
   // === STATION TRACKING ===
-  station_id?: string | null // Station that created this order
+  station_id?: string | null // Current OWNER station (mutable via claim_order_v1)
+  // Wave 2.7: display name for the current owner. Mirrors `station_id`
+  // semantics — refreshed by realtime broadcast, hydrate, and the focus-time
+  // recheck. Distinct from `_sourceStationName` (pinned to original creator).
+  station_name?: string | null
   _sourceStationId?: string | null // Original creating station ID (for display)
   _sourceStationName?: string | null // Original creating station name (for display)
 

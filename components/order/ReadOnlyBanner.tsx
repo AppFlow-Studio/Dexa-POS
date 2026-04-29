@@ -63,7 +63,7 @@ const ReadOnlyBanner: React.FC<ReadOnlyBannerProps> = ({
           style={{ fontSize: 11, color: colors.label, marginTop: 1 }}
           numberOfLines={1}
         >
-          Owned by {stationLabel}. Take over to edit.
+          Currently owned by {stationLabel}. Take over to edit.
         </Text>
       </View>
       <TouchableOpacity

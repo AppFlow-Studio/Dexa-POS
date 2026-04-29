@@ -96,6 +96,21 @@ if (__DEV__) {
     if (!orderId) return reconcile.reconcileAllOwnedOrders()
     return reconcile.reconcileOrderCartShape(orderId, opts ?? {})
   }
+  // Wave 3.0d-5 dev helpers — trigger header reconcile (server→local pull
+  // for kitchen statuses, payments, paid_status, totals, refunds, order
+  // status). No ownership gate. Returns HeaderReconcileResult[].
+  //   __reconcileHeader()                       — reconcile every active order
+  //   __reconcileHeader(orderId)                — reconcile one order
+  //   __reconcileHeader(orderId, { force: 1 })  — bypass cooldown + pending guard
+  ;(globalThis as any).__reconcileHeader = (
+    orderId?: string,
+    opts?: { force?: boolean }
+  ) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const headerReconcile = require('@/services/orderHeaderReconcile')
+    if (!orderId) return headerReconcile.reconcileAllActiveOrdersHeader()
+    return headerReconcile.reconcileOrderHeader(orderId, opts ?? {})
+  }
 }
 import {
   toBulkUpdateStatusKey,

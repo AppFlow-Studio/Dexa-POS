@@ -20,6 +20,7 @@ import { PrinterService } from '@/services/printing/PrinterService'
 import { useSearchStore } from '@/stores/searchStore'
 import { useOrderLineFilteredOrders } from '@/stores/selectors/orderSelectors'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import { useActiveOrderOwnershipRecheck } from '@/hooks/orders/useActiveOrderOwnershipRecheck'
 import {
   getOrderStoreSupabaseClient,
   useOrderStore
@@ -71,6 +72,12 @@ const OrderProcessing = () => {
   const router = useRouter()
   const { height: windowHeight } = useWindowDimensions()
   const { colorScheme } = useColorScheme()
+
+  // Wave 2.7: per-order ownership recheck on screen focus + connectionQuality
+  // recovery. Closes the gap between Wave 2.1 (realtime) and Wave 2.1.1
+  // (polling/reconnect refetch) where local `station_id` could be stale
+  // because a broadcast was missed or backgrounded.
+  useActiveOrderOwnershipRecheck()
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
