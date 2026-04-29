@@ -22,7 +22,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       type: TimeClockActionType,
       pinCode: string,
       locationId: string,
-      deviceId: string
+      deviceId: string,
     ) => {
       console.log("[useTimeClock] performAction called:", {
         type,
@@ -110,13 +110,15 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                     .eq("id", data.shift_id)
                     .single();
                   if (shiftData?.clock_in_time) {
-                    const empId = useEmployeeStore.getState().employees.find(
-                      e => e.profileId === data.staff_id
-                    )?.id;
+                    const empId = useEmployeeStore
+                      .getState()
+                      .employees.find((e) => e.profileId === data.staff_id)?.id;
                     if (empId) {
                       useTimeclockStore.setState((state: any) => {
                         if (state.sessions[empId]) {
-                          state.sessions[empId].clockInTime = new Date(shiftData.clock_in_time);
+                          state.sessions[empId].clockInTime = new Date(
+                            shiftData.clock_in_time,
+                          );
                         }
                       });
                     }
@@ -265,7 +267,8 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                 clock_out: "Failed to clock out. Please try again.",
                 break_start: "Failed to start break. Please try again.",
                 break_end: "Failed to end break. Please try again.",
-                declare_cash_tips: "Failed to declare cash tips. Please try again.",
+                declare_cash_tips:
+                  "Failed to declare cash tips. Please try again.",
               };
               errorToastMessage = errorMessages[type];
             }
@@ -292,7 +295,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
         return { success: true, queued: true };
       }
     },
-    [store, supabase, options]
+    [store, supabase, options],
   );
 
   // 2. Sync Processor (The "Queue Flusher")
@@ -312,7 +315,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
         console.log(`Syncing action: ${actionToProcess.type}`);
 
         let error: any;
-        if (actionToProcess.type === 'declare_cash_tips') {
+        if (actionToProcess.type === "declare_cash_tips") {
           // Resolve the correct shiftId for this declaration
           let resolvedShiftId = actionToProcess.shiftId;
           const staffId = actionToProcess.staffProfileId;
@@ -337,7 +340,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                 if (shiftDate < today) {
                   // Stale shift — find the most recent shift for this employee today
                   console.warn(
-                    `[useTimeClock] Stale shift detected (${shiftDate}), looking for today's shift`
+                    `[useTimeClock] Stale shift detected (${shiftDate}), looking for today's shift`,
                   );
                   const { data: todayShift } = await supabase
                     .from("staff_shifts")
@@ -351,7 +354,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
 
                   if (todayShift?.id) {
                     console.log(
-                      `[useTimeClock] Re-associating declaration to today's shift: ${todayShift.id}`
+                      `[useTimeClock] Re-associating declaration to today's shift: ${todayShift.id}`,
                     );
                     resolvedShiftId = todayShift.id;
                   } else {
@@ -373,7 +376,10 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                 }
               }
             } catch (e) {
-              console.warn("[useTimeClock] Stale shift check failed, using original:", e);
+              console.warn(
+                "[useTimeClock] Stale shift check failed, using original:",
+                e,
+              );
             }
           }
 
@@ -392,14 +398,22 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                 resolvedShiftId = shiftData.id;
               }
             } catch (e) {
-              console.warn("[useTimeClock] Failed to resolve shift for declaration:", e);
+              console.warn(
+                "[useTimeClock] Failed to resolve shift for declaration:",
+                e,
+              );
             }
           }
 
           if (!resolvedShiftId) {
-            console.error("[useTimeClock] Cannot declare tips: no shiftId resolved");
+            console.error(
+              "[useTimeClock] Cannot declare tips: no shiftId resolved",
+            );
             store.removeFromQueue(actionToProcess.id);
-            error = { code: "NO_SHIFT", message: "Could not resolve shift for tip declaration" };
+            error = {
+              code: "NO_SHIFT",
+              message: "Could not resolve shift for tip declaration",
+            };
           } else {
             // Route cash tip declarations to the dedicated RPC
             const res = await supabase.rpc("declare_cash_tips_for_shift", {
@@ -420,13 +434,14 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
           // Fallback for clock_out: if the RPC fails (PIN rejected, state mismatch, etc.),
           // directly update staff_shifts instead of silently losing the clock-out.
           // This prevents stale sessions that stay "active" forever.
-          if (error && actionToProcess.type === 'clock_out') {
+          if (error && actionToProcess.type === "clock_out") {
             const fallbackShiftId = actionToProcess.shiftId;
             const fallbackStaffId = actionToProcess.staffProfileId;
-            const clockOutTime = actionToProcess.timestamp || new Date().toISOString();
+            const clockOutTime =
+              actionToProcess.timestamp || new Date().toISOString();
 
             console.warn(
-              `[useTimeClock] clock_out RPC failed (${error.message}), attempting direct shift update fallback`
+              `[useTimeClock] clock_out RPC failed (${error.message}), attempting direct shift update fallback`,
             );
 
             let targetShiftId = fallbackShiftId;
@@ -447,7 +462,10 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                   targetShiftId = activeShift.id;
                 }
               } catch (e) {
-                console.warn("[useTimeClock] Failed to find active shift for fallback:", e);
+                console.warn(
+                  "[useTimeClock] Failed to find active shift for fallback:",
+                  e,
+                );
               }
             }
 
@@ -463,13 +481,22 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                   .in("status", ["active", "on_break"]);
 
                 if (!updateError) {
-                  console.log("[useTimeClock] Fallback clock-out succeeded for shift:", targetShiftId);
+                  console.log(
+                    "[useTimeClock] Fallback clock-out succeeded for shift:",
+                    targetShiftId,
+                  );
                   error = null; // Clear the error — fallback worked
                 } else {
-                  console.error("[useTimeClock] Fallback clock-out also failed:", updateError);
+                  console.error(
+                    "[useTimeClock] Fallback clock-out also failed:",
+                    updateError,
+                  );
                 }
               } catch (e) {
-                console.error("[useTimeClock] Fallback clock-out exception:", e);
+                console.error(
+                  "[useTimeClock] Fallback clock-out exception:",
+                  e,
+                );
               }
             }
           }
@@ -520,12 +547,38 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       deviceId: string,
       staffProfileId?: string,
     ): Promise<{ success: boolean; queued?: boolean }> => {
+      let resolvedShiftId = shiftId;
+
+      // If shift ID is missing (common in SessionDock), resolve the latest open shift.
+      if (!resolvedShiftId && staffProfileId && locationId) {
+        const { data: activeShift, error: lookupError } = await supabase
+          .from("staff_shifts")
+          .select("id")
+          .eq("staff_profile_id", staffProfileId)
+          .eq("location_id", locationId)
+          .in("status", ["active", "on_break"])
+          .order("clock_in_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!lookupError && activeShift?.id) {
+          resolvedShiftId = activeShift.id;
+        }
+      }
+
       const netState = await NetInfo.fetch();
 
       if (netState.isConnected && netState.isInternetReachable) {
         try {
+          if (!resolvedShiftId) {
+            throw {
+              code: "NO_SHIFT",
+              message: "Could not resolve shift for cash tip declaration",
+            };
+          }
+
           const { error } = await supabase.rpc("declare_cash_tips_for_shift", {
-            p_shift_id: shiftId,
+            p_shift_id: resolvedShiftId,
             p_amount: amount,
           });
           if (error) throw error;
@@ -544,7 +597,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
               locationId,
               timestamp: new Date().toISOString(),
               deviceId,
-              shiftId,
+              shiftId: resolvedShiftId,
               cashTipAmount: amount,
               staffProfileId,
             });
@@ -561,7 +614,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
           locationId,
           timestamp: new Date().toISOString(),
           deviceId,
-          shiftId,
+          shiftId: resolvedShiftId,
           cashTipAmount: amount,
           staffProfileId,
         });
