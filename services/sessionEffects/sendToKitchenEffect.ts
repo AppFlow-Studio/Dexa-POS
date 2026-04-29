@@ -10,6 +10,7 @@ import {
   getKitchenSentStatus,
   getOrderSentStatus
 } from '@/lib/kitchenStatusUtils'
+import { toBulkUpdateStatusKey } from '@/lib/network/idempotencyKey'
 import type { SideEffectContext } from '@/lib/sessionSideEffects'
 import { queueFailedOperation } from '@/services/offlineSyncInit'
 import { OrderService } from '@/services/orderService'
@@ -135,7 +136,8 @@ export async function sendToKitchenEffect (
     const result = await OrderService.bulkUpdateOrderItemStatus(
       supabase,
       dbItemIds,
-      targetStatus
+      targetStatus,
+      { keyOverride: toBulkUpdateStatusKey(dbItemIds, targetStatus) }
     )
     if (result?.error) {
       await queueFailedOperation(

@@ -2752,7 +2752,13 @@ const syncPaymentToBackend = async (
             OrderService.bulkUpdateOrderItemStatus(
               supabase,
               kitchenSentDbIds,
-              'sent'
+              'sent',
+              {
+                keyOverride: toBulkUpdateStatusKey(
+                  kitchenSentDbIds,
+                  'sent'
+                )
+              }
             )
               .then(() => {
                 if (__DEV__)
@@ -11057,10 +11063,17 @@ export const useOrderStore = create<OrderState>()(
                         }
 
                         // THEN update item statuses in one bulk call
+                        const kitchenSent = getKitchenSentStatus()
                         return OrderService.bulkUpdateOrderItemStatus(
                           supabase,
                           dbItemIds,
-                          getKitchenSentStatus()
+                          kitchenSent,
+                          {
+                            keyOverride: toBulkUpdateStatusKey(
+                              dbItemIds,
+                              kitchenSent
+                            )
+                          }
                         )
                       })
                   })
@@ -11337,10 +11350,17 @@ export const useOrderStore = create<OrderState>()(
                           return
                         }
 
+                        const kitchenSent = getKitchenSentStatus()
                         return OrderService.bulkUpdateOrderItemStatus(
                           supabase,
                           dbItemIds,
-                          getKitchenSentStatus()
+                          kitchenSent,
+                          {
+                            keyOverride: toBulkUpdateStatusKey(
+                              dbItemIds,
+                              kitchenSent
+                            )
+                          }
                         )
                       })
                   })
@@ -11524,11 +11544,18 @@ export const useOrderStore = create<OrderState>()(
                   return
                 }
 
+                const kitchenSent = getKitchenSentStatus()
                 const { error: itemError } =
                   await OrderService.bulkUpdateOrderItemStatus(
                     supabase,
                     dbItemIds,
-                    getKitchenSentStatus()
+                    kitchenSent,
+                    {
+                      keyOverride: toBulkUpdateStatusKey(
+                        dbItemIds,
+                        kitchenSent
+                      )
+                    }
                   )
                 if (itemError) {
                   console.error(

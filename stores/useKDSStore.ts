@@ -4,6 +4,7 @@ import type {
   OrderBroadcastPayload
 } from '@/hooks/realtime/useOrdersRealtime'
 import { getKitchenSentStatus } from '@/lib/kitchenStatusUtils'
+import { toBulkUpdateStatusKey } from '@/lib/network/idempotencyKey'
 import { normalizePlatform } from '@/lib/platformAliases'
 import { createLazyPersistStorage } from '@/lib/storage'
 import { OrderService } from '@/services/orderService'
@@ -1511,7 +1512,13 @@ export const useKDSStore = create<KDSState>()(
               OrderService.bulkUpdateOrderItemStatus(
                 client,
                 actionableItemIds,
-                newStatus
+                newStatus,
+                {
+                  keyOverride: toBulkUpdateStatusKey(
+                    actionableItemIds,
+                    newStatus
+                  )
+                }
               ),
             0,
             () => {
@@ -2166,7 +2173,12 @@ export const useKDSStore = create<KDSState>()(
           scheduleRetry(
             retryKey,
             () =>
-              OrderService.bulkUpdateOrderItemStatus(client, [itemId], 'ready'),
+              OrderService.bulkUpdateOrderItemStatus(
+                client,
+                [itemId],
+                'ready',
+                { keyOverride: toBulkUpdateStatusKey([itemId], 'ready') }
+              ),
             0,
             () => {
               // Only refetch if pending action hasn't already been reconciled by broadcast echo
@@ -2402,7 +2414,10 @@ export const useKDSStore = create<KDSState>()(
             const retryKey = `bulk_${status}_${Date.now()}`
             scheduleRetry(
               retryKey,
-              () => OrderService.bulkUpdateOrderItemStatus(client, ids, status),
+              () =>
+                OrderService.bulkUpdateOrderItemStatus(client, ids, status, {
+                  keyOverride: toBulkUpdateStatusKey(ids, status)
+                }),
               0,
               () => {
                 const lastLoc = get()._lastLocationId
@@ -2474,7 +2489,13 @@ export const useKDSStore = create<KDSState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   client,
                   actionableItemIds,
-                  'served'
+                  'served',
+                  {
+                    keyOverride: toBulkUpdateStatusKey(
+                      actionableItemIds,
+                      'served'
+                    )
+                  }
                 ),
               0,
               () => {
