@@ -1,3 +1,4 @@
+import { createLazyPersistStorage } from "@/lib/storage";
 import { ScheduleTemplate } from "@/lib/types";
 import uuid from "react-native-uuid";
 import { create } from "zustand";
@@ -10,7 +11,7 @@ interface ScheduleTemplateState {
     addTemplate: (templateData: Omit<ScheduleTemplate, "id">) => void;
     updateTemplate: (
       templateId: string,
-      updatedData: Partial<Omit<ScheduleTemplate, "id">>
+      updatedData: Partial<Omit<ScheduleTemplate, "id">>,
     ) => void;
     deleteTemplate: (templateId: string) => void;
     duplicateTemplate: (templateId: string) => void;
@@ -36,21 +37,21 @@ export const useScheduleTemplateStore = create<ScheduleTemplateState>()(
             templates: state.templates.map((template) =>
               template.id === templateId
                 ? { ...template, ...updatedData }
-                : template
+                : template,
             ),
           })),
         deleteTemplate: (templateId) =>
           set((state) => ({
             templates: state.templates.filter(
-              (template) => template.id !== templateId
+              (template) => template.id !== templateId,
             ),
             activeTemplateIds: state.activeTemplateIds.filter(
-              (id) => id !== templateId
+              (id) => id !== templateId,
             ),
           })),
         duplicateTemplate: (templateId) => {
           const templateToDuplicate = get().templates.find(
-            (template) => template.id === templateId
+            (template) => template.id === templateId,
           );
           if (templateToDuplicate) {
             const newTemplate: ScheduleTemplate = {
@@ -75,12 +76,15 @@ export const useScheduleTemplateStore = create<ScheduleTemplateState>()(
     }),
     {
       name: "schedule-template-storage", // unique name
+      storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         templates: state.templates,
         activeTemplateIds: state.activeTemplateIds,
       }),
-    }
-  )
+    },
+  ),
 );
 
 // Export actions for easier consumption

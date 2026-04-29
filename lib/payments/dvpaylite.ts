@@ -1,5 +1,6 @@
 // lib/payments/dvpaylite.ts
 import { Linking } from "react-native";
+import Decimal from 'decimal.js';
 
 // TODO: Backend integration - pass supabase client and call supabase.rpc("process_payment_v2", params)
 interface DVPayLiteRequest {
@@ -31,8 +32,8 @@ export class DVPayLiteClient {
     const request: DVPayLiteRequest = {
       type: "SALE",
       applicationType: "DVPAYLITE",
-      amount: Math.round(amount * 100).toString(), // Convert to cents
-      tipAmount: Math.round(tipAmount * 100).toString(),
+      amount: new Decimal(amount).times(100).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toString(), // Convert to cents
+      tipAmount: new Decimal(tipAmount).times(100).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toString(),
       refId: orderId,
       invoiceNumber: orderNumber,
     };

@@ -20,6 +20,7 @@ import { create } from 'zustand'
 import {
   calculateItemEffectiveCashPrice,
   getOrderStoreSupabaseClient,
+  round2,
   useOrderStore
 } from './useOrderStore'
 type PaymentMethod = 'Card' | 'Cash' | 'Split'
@@ -585,7 +586,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
 
       // Round to 2 decimal places
-      return Math.round((subtotal + tax) * 100) / 100
+      return round2(subtotal + tax)
     }
 
     // Helper function to calculate tax for split items using CASH pricing
@@ -619,7 +620,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
 
       // Round to 2 decimal places
-      return Math.round((subtotal + tax) * 100) / 100
+      return round2(subtotal + tax)
     }
 
     // 1. Recalculate amounts if needed (Split by Item logic - now includes tax for both card and cash)
@@ -690,7 +691,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           const unitPrice = isCashPayment
             ? item.cashPrice ?? item.price ?? item.unitPrice ?? 0
             : item.price ?? item.unitPrice ?? 0
-          const amount = Math.round(unitPrice * item.quantity * 100) / 100
+          const amount = round2(unitPrice * item.quantity)
           return {
             // Use local item.id as fallback for offline items without db_order_item_id.
             // The offline sync handler resolves local IDs to backend UUIDs via resolveItemId().

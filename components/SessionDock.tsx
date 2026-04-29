@@ -1,220 +1,191 @@
-import { useToast } from '@/contexts/ToastContext'
-import { useTimeClock } from '@/hooks/useTimeclock'
-import { getDeviceId } from '@/lib/deviceId'
-import { replaceRoute } from '@/lib/rootNavigation'
-import { colors } from '@/lib/theme'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useNotificationSheetStore } from '@/stores/useNotificationSheetStore'
-import { useNotificationStore } from '@/stores/useNotificationStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useTimeclockStore } from '@/stores/useTimeclockStore'
-import { useRouter } from 'expo-router'
+import { useToast } from "@/contexts/ToastContext";
+import { useTimeClock } from "@/hooks/useTimeclock";
+import { getDeviceId } from "@/lib/deviceId";
+import { replaceRoute } from "@/lib/rootNavigation";
+import { colors } from "@/lib/theme";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
+import { useNotificationStore } from "@/stores/useNotificationStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { useRouter } from "expo-router";
 import {
-  ArrowLeftRight,
-  Bell,
-  Clock,
-  Coffee,
-  LogOut,
-  Pause,
-  User
-} from 'lucide-react-native'
-import { useCallback, useEffect, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
-import SwitchAccountModal from './settings/security-and-login/SwitchAccountModal'
-import BreakEndedModal from './timeclock/BreakEndedModal'
-import CashTipDeclarationModal from './timeclock/CashTipDeclarationModal'
-import PinInputModal from './timeclock/PinInputModal'
+    ArrowLeftRight,
+    Bell,
+    Clock,
+    Coffee,
+    LogOut,
+    Pause,
+    User,
+} from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
+import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
+import BreakEndedModal from "./timeclock/BreakEndedModal";
+import CashTipDeclarationModal from "./timeclock/CashTipDeclarationModal";
+import PinInputModal from "./timeclock/PinInputModal";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from './ui/dropdown-menu'
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
-const BREAK_DURATION_MIN = 30
+const BREAK_DURATION_MIN = 30;
 
 // Countdown component for on-break users
 const BreakCountdown = ({ startTime }: { startTime: Date }) => {
   // Tick state to trigger re-render every second without flashing an initial default
-  const [tick, setTick] = useState(0)
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     // Update immediately on mount to avoid any visible lag
-    setTick(t => t + 1)
+    setTick((t) => t + 1);
     const interval = setInterval(() => {
-      setTick(t => t + 1)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [startTime])
+      setTick((t) => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
 
   // Derive display on every render using current time
-  const now = Date.now()
-  const start = new Date(startTime).getTime()
-  const diff = now - start
-  const breakDurationMs = BREAK_DURATION_MIN * 60 * 1000
-  const isOvertime = diff >= breakDurationMs
+  const now = Date.now();
+  const start = new Date(startTime).getTime();
+  const diff = now - start;
+  const breakDurationMs = BREAK_DURATION_MIN * 60 * 1000;
+  const isOvertime = diff >= breakDurationMs;
 
-  let displayTime: string
+  let displayTime: string;
   if (isOvertime) {
-    const overtime = diff - breakDurationMs
-    const minutes = Math.floor((overtime / (1000 * 60)) % 60)
-    const seconds = Math.floor((overtime / 1000) % 60)
-    displayTime = `+${String(minutes).padStart(2, '0')}:${String(
-      seconds
-    ).padStart(2, '0')}`
+    const overtime = diff - breakDurationMs;
+    const minutes = Math.floor((overtime / (1000 * 60)) % 60);
+    const seconds = Math.floor((overtime / 1000) % 60);
+    displayTime = `+${String(minutes).padStart(2, "0")}:${String(
+      seconds,
+    ).padStart(2, "0")}`;
   } else {
-    const remaining = Math.max(0, breakDurationMs - diff)
-    const minutes = Math.floor((remaining / 1000 / 60) % 60)
-    const seconds = Math.floor((remaining / 1000) % 60)
-    displayTime = `${String(minutes).padStart(2, '0')}:${String(
-      seconds
-    ).padStart(2, '0')}`
+    const remaining = Math.max(0, breakDurationMs - diff);
+    const minutes = Math.floor((remaining / 1000 / 60) % 60);
+    const seconds = Math.floor((remaining / 1000) % 60);
+    displayTime = `${String(minutes).padStart(2, "0")}:${String(
+      seconds,
+    ).padStart(2, "0")}`;
   }
 
   return (
     <Text
       className={`text-xs font-bold ${
-        isOvertime ? 'text-red-400' : 'text-yellow-400'
+        isOvertime ? "text-red-400" : "text-yellow-400"
       }`}
     >
       {displayTime}
     </Text>
-  )
-}
+  );
+};
 
 // Individual chip for each user session
 const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const { sessions, activeEmployeeId, endBreak, startBreak } =
-    useTimeclockStore()
-  const { employees, signOut } = useEmployeeStore()
+    useTimeclockStore();
+  const { employees, signOut } = useEmployeeStore();
   const isBreakAndSwitchEnabled = useLocationConfigStore(
-    s => s.config.timeclock.breakAndSwitchEnabled
-  )
-  const { markAllAsRead } = useNotificationStore()
-  const router = useRouter()
-  const { show } = useToast()
+    (s) => s.config.timeclock.breakAndSwitchEnabled,
+  );
+  const { markAllAsRead } = useNotificationStore();
+  const router = useRouter();
+  const { show } = useToast();
 
-  const openSheet = useNotificationSheetStore(state => state.openSheet)
+  const openSheet = useNotificationSheetStore((state) => state.openSheet);
 
-  const [isPinModalOpen, setPinModalOpen] = useState(false)
-  const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false)
-  const [isBreakPinModalOpen, setBreakPinModalOpen] = useState(false)
-  const [deviceId, setDeviceId] = useState<string>('unknown')
-  const [showCashDeclaration, setShowCashDeclaration] = useState(false)
+  const [isPinModalOpen, setPinModalOpen] = useState(false);
+  const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
+  const [isBreakPinModalOpen, setBreakPinModalOpen] = useState(false);
+  const [deviceId, setDeviceId] = useState<string>("unknown");
+  const [showCashDeclaration, setShowCashDeclaration] = useState(false);
 
   // Backend hook for time clock actions
-  const timeClock = useTimeClock()
-  const selectedStore = useStoreSettingsStore(state => state.selectedStore)
+  const timeClock = useTimeClock();
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
 
   // Get device ID on mount
   useEffect(() => {
-    setDeviceId(getDeviceId())
-  }, [])
+    setDeviceId(getDeviceId());
+  }, []);
 
-  const session = sessions[sessionId]
-  const employee = employees.find(e => e.id === session?.employeeId)
+  const session = sessions[sessionId];
+  const employee = employees.find((e) => e.id === session?.employeeId);
+  const employeeId = employee?.id;
+  const employeeProfileId = employee?.profileId;
 
-  const unreadCount = useNotificationStore(state =>
+  const unreadCount = useNotificationStore((state) =>
     employee
       ? state.notifications.filter(
-          n => n.employeeId === employee.id && !n.isRead
+          (n) => n.employeeId === employee.id && !n.isRead,
         ).length
-      : 0
-  )
-
-  if (!session || !employee) return null
-
-  const isActive = activeEmployeeId === session.employeeId
-  const isOnBreak = session.status === 'onBreak'
-  const isClockedIn = session.status === 'clockedIn'
-
-  const handleOpenNotificationPanel = () => {
-    openSheet()
-  }
-
-  const handlePress = () => {
-    if (isActive) return
-    setPinModalOpen(true)
-  }
-
-  const handlePinSuccess = () => {
-    setPinModalOpen(false)
-    if (isOnBreak) {
-      setBreakEndedModalOpen(true)
-    } else {
-      useTimeclockStore.getState().setActiveEmployee(session.employeeId)
-    }
-  }
-
-  const handleStartBreak = () => {
-    if (isClockedIn) {
-      // Show PIN modal for backend verification
-      setBreakPinModalOpen(true)
-    }
-  }
+      : 0,
+  );
 
   const handleBreakPinConfirm = async (pin: string) => {
-    setBreakPinModalOpen(false)
+    setBreakPinModalOpen(false);
 
-    const locationId = selectedStore?.id
+    const locationId = selectedStore?.id;
     if (!locationId) {
       show({
-        title: 'Error',
-        message: 'No location selected',
-        type: 'error'
-      })
-      return
+        title: "Error",
+        message: "No location selected",
+        type: "error",
+      });
+      return;
     }
 
     // Call backend
-    await timeClock.startBreak(pin, locationId, deviceId)
+    await timeClock.startBreak(pin, locationId, deviceId);
     // Also update old store for local UI sync
-    startBreak()
+    startBreak();
 
     if (isBreakAndSwitchEnabled) {
       show({
-        title: 'Break Started',
-        message: 'Your break has started. Ready for the next user to log in.',
-        type: 'success'
-      })
-      signOut()
-      replaceRoute('(auth)', 'pin-login')
+        title: "Break Started",
+        message: "Your break has started. Ready for the next user to log in.",
+        type: "success",
+      });
+      signOut();
+      replaceRoute("(auth)", "pin-login");
     } else {
       show({
-        title: 'Break Started',
-        message: 'Your break has started.',
-        type: 'success'
-      })
+        title: "Break Started",
+        message: "Your break has started.",
+        type: "success",
+      });
     }
-  }
+  };
 
   const handleLogout = () => {
-    setShowCashDeclaration(true)
-  }
+    setShowCashDeclaration(true);
+  };
 
   const handleDeclarationComplete = useCallback(
     async (declaredAmount: number) => {
-      setShowCashDeclaration(false)
-      const locationId = selectedStore?.id
-      if (!locationId) return
+      setShowCashDeclaration(false);
+      const locationId = selectedStore?.id;
+      if (!locationId) return;
 
       // Declare cash tips (non-blocking — queued if offline)
-      const shiftId = timeClock.shiftId
-      if (shiftId || employee?.profileId) {
+      const shiftId = timeClock.shiftId;
+      if (shiftId || employeeProfileId) {
         try {
           await timeClock.declareCashTips(
-            shiftId || '',
+            shiftId || "",
             declaredAmount,
             locationId,
             deviceId,
-            employee?.profileId
-          )
+            employeeProfileId,
+          );
         } catch (e) {
           console.warn(
-            '[SessionDock] Cash tip declaration failed, proceeding:',
-            e
-          )
+            "[SessionDock] Cash tip declaration failed, proceeding:",
+            e,
+          );
         }
       }
 
@@ -222,33 +193,66 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
       try {
         // Need PIN for RPC — but SessionDock doesn't have it.
         // Fall back to local-only clock-out (matches original handleLogout behavior)
-        useTimeclockStore.getState().clockOut(employee.id)
+        if (employeeId) {
+          useTimeclockStore.getState().clockOut(employeeId);
+        }
       } catch (e) {
-        console.warn('[SessionDock] clockOut failed:', e)
+        console.warn("[SessionDock] clockOut failed:", e);
       }
 
-      replaceRoute('(auth)', 'pin-login')
+      replaceRoute("(auth)", "pin-login");
     },
-    [selectedStore?.id, timeClock, deviceId, employee.id]
-  )
+    [selectedStore?.id, timeClock, deviceId, employeeId, employeeProfileId],
+  );
 
   const handleDeclarationCancel = useCallback(() => {
-    setShowCashDeclaration(false)
-  }, [])
+    setShowCashDeclaration(false);
+  }, []);
+
+  if (!session || !employee) return null;
+
+  const isActive = activeEmployeeId === session.employeeId;
+  const isOnBreak = session.status === "onBreak";
+  const isClockedIn = session.status === "clockedIn";
+
+  const handleOpenNotificationPanel = () => {
+    openSheet();
+  };
+
+  const handlePress = () => {
+    if (isActive) return;
+    setPinModalOpen(true);
+  };
+
+  const handlePinSuccess = () => {
+    setPinModalOpen(false);
+    if (isOnBreak) {
+      setBreakEndedModalOpen(true);
+    } else {
+      useTimeclockStore.getState().setActiveEmployee(session.employeeId);
+    }
+  };
+
+  const handleStartBreak = () => {
+    if (isClockedIn) {
+      // Show PIN modal for backend verification
+      setBreakPinModalOpen(true);
+    }
+  };
 
   const initials = employee.fullName
-    .split(' ')
+    .split(" ")
     .map((n: string) => n.charAt(0))
-    .join('')
+    .join("")
     .toUpperCase()
-    .slice(0, 2)
+    .slice(0, 2);
 
   // For active employee, show teal circle + name, circle opens dropdown
   if (isActive) {
     return (
       <>
         <DropdownMenu>
-          <View className='flex-row items-center gap-2'>
+          <View className="flex-row items-center gap-2">
             {/* Avatar circle — tapping opens dropdown */}
             <DropdownMenuTrigger
               style={{
@@ -256,15 +260,15 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 height: 30,
                 borderRadius: 21,
                 backgroundColor: colors.tealMuted,
-                alignItems: 'center',
-                justifyContent: 'center'
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <Text
                 style={{
                   color: colors.heading,
                   fontSize: 13,
-                  fontWeight: 'bold'
+                  fontWeight: "bold",
                 }}
               >
                 {initials}
@@ -272,13 +276,13 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               {unreadCount > 0 && (
                 <View
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     top: -2,
                     right: -2,
                     width: 8,
                     height: 8,
                     borderRadius: 4,
-                    backgroundColor: colors.danger
+                    backgroundColor: colors.danger,
                   }}
                 />
               )}
@@ -286,10 +290,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             {/* Name — non-interactive */}
             <View>
               <Text
-                className='font-medium text-xs leading-tight'
+                className="font-medium text-xs leading-tight"
                 style={{ color: colors.heading }}
               >
-                {employee.fullName.split(' ')[0]}
+                {employee.fullName.split(" ")[0]}
               </Text>
               {isOnBreak && session.breakStartTime && (
                 <BreakCountdown startTime={session.breakStartTime} />
@@ -298,63 +302,63 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           </View>
 
           <DropdownMenuContent
-            className='w-[300px] rounded-2xl shadow-2xl mt-3 overflow-hidden p-0'
+            className="w-[300px] rounded-2xl shadow-2xl mt-3 overflow-hidden p-0"
             style={{
               backgroundColor: colors.panel,
               borderWidth: 1,
-              borderColor: colors.border
+              borderColor: colors.border,
             }}
           >
             {/* Hero header */}
             <View
               style={{ backgroundColor: colors.card }}
-              className='px-5 pt-5 pb-4'
+              className="px-5 pt-5 pb-4"
             >
-              <View className='flex-row items-center gap-3'>
+              <View className="flex-row items-center gap-3">
                 <View
                   style={{
                     width: 46,
                     height: 46,
                     borderRadius: 23,
                     backgroundColor: colors.tealMuted,
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
                   <Text
                     style={{
                       color: colors.heading,
                       fontSize: 15,
-                      fontWeight: 'bold'
+                      fontWeight: "bold",
                     }}
                   >
                     {initials}
                   </Text>
                 </View>
-                <View className='flex-1'>
+                <View className="flex-1">
                   <Text
                     style={{
                       fontSize: 16,
-                      fontWeight: 'bold',
-                      color: colors.heading
+                      fontWeight: "bold",
+                      color: colors.heading,
                     }}
                     numberOfLines={1}
                   >
                     {employee.fullName}
                   </Text>
                   <View
-                    className='mt-1 self-start px-2 py-0.5 rounded-full'
+                    className="mt-1 self-start px-2 py-0.5 rounded-full"
                     style={{
                       backgroundColor: isOnBreak
                         ? `${colors.warning}20`
-                        : `${colors.teal}20`
+                        : `${colors.teal}20`,
                     }}
                   >
                     <View
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 4
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
                       }}
                     >
                       {isOnBreak ? (
@@ -363,12 +367,12 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                         <Clock size={10} color={colors.teal} />
                       )}
                       <Text
-                        className='text-xs font-semibold'
+                        className="text-xs font-semibold"
                         style={{
-                          color: isOnBreak ? colors.warning : colors.teal
+                          color: isOnBreak ? colors.warning : colors.teal,
                         }}
                       >
-                        {isOnBreak ? 'On Break' : 'On Duty'}
+                        {isOnBreak ? "On Break" : "On Duty"}
                       </Text>
                     </View>
                   </View>
@@ -380,13 +384,13 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             <View style={{ height: 1, backgroundColor: colors.border }} />
 
             {/* Menu items */}
-            <View className='py-1.5'>
+            <View className="py-1.5">
               <DropdownMenuItem
-                onPress={() => router.push('/my-profile')}
-                className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
+                onPress={() => router.push("/my-profile")}
+                className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
               >
                 <View
-                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{ backgroundColor: colors.screen }}
                 >
                   <User size={16} color={colors.label} />
@@ -395,8 +399,8 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   style={{
                     color: colors.heading,
                     fontSize: 14,
-                    fontWeight: '500',
-                    flex: 1
+                    fontWeight: "500",
+                    flex: 1,
                   }}
                 >
                   My Profile
@@ -405,23 +409,23 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
               <DropdownMenuItem
                 onPress={handleOpenNotificationPanel}
-                className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
+                className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
               >
                 <View
-                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{ backgroundColor: colors.screen }}
                 >
                   <Bell size={16} color={colors.label} />
                   {unreadCount > 0 && (
                     <View
-                      className='absolute -top-1 -right-1 w-4 h-4 rounded-full items-center justify-center'
+                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full items-center justify-center"
                       style={{ backgroundColor: colors.teal }}
                     >
                       <Text
                         style={{
                           color: colors.onSolid,
                           fontSize: 9,
-                          fontWeight: 'bold'
+                          fontWeight: "bold",
                         }}
                       >
                         {unreadCount}
@@ -433,19 +437,19 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   style={{
                     color: colors.heading,
                     fontSize: 14,
-                    fontWeight: '500',
-                    flex: 1
+                    fontWeight: "500",
+                    flex: 1,
                   }}
                 >
                   Notifications
                 </Text>
                 {unreadCount > 0 && (
                   <View
-                    className='px-2 py-0.5 rounded-full'
+                    className="px-2 py-0.5 rounded-full"
                     style={{ backgroundColor: `${colors.teal}20` }}
                   >
                     <Text
-                      className='text-xs font-bold'
+                      className="text-xs font-bold"
                       style={{ color: colors.teal }}
                     >
                       {unreadCount}
@@ -456,10 +460,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
               <DropdownMenuItem
                 onPress={() => setPinModalOpen(true)}
-                className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
+                className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
               >
                 <View
-                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{ backgroundColor: colors.screen }}
                 >
                   <ArrowLeftRight size={16} color={colors.label} />
@@ -468,8 +472,8 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   style={{
                     color: colors.heading,
                     fontSize: 14,
-                    fontWeight: '500',
-                    flex: 1
+                    fontWeight: "500",
+                    flex: 1,
                   }}
                 >
                   Switch Account
@@ -481,22 +485,22 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   height: 1,
                   backgroundColor: colors.border,
                   marginHorizontal: 16,
-                  marginVertical: 4
+                  marginVertical: 4,
                 }}
               />
 
               <DropdownMenuItem
                 onPress={handleStartBreak}
                 disabled={!isClockedIn || isOnBreak}
-                className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
+                className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
               >
                 <View
-                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{
                     backgroundColor:
                       !isClockedIn || isOnBreak
                         ? colors.screen
-                        : `${colors.warning}20`
+                        : `${colors.warning}20`,
                   }}
                 >
                   <Coffee
@@ -507,13 +511,13 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   />
                 </View>
                 <Text
-                  className='text-sm font-medium flex-1'
+                  className="text-sm font-medium flex-1"
                   style={{
                     color:
-                      !isClockedIn || isOnBreak ? colors.muted : colors.heading
+                      !isClockedIn || isOnBreak ? colors.muted : colors.heading,
                   }}
                 >
-                  {isOnBreak ? 'On Break' : 'Start Break'}
+                  {isOnBreak ? "On Break" : "Start Break"}
                 </Text>
               </DropdownMenuItem>
 
@@ -522,22 +526,22 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   height: 1,
                   backgroundColor: colors.border,
                   marginHorizontal: 16,
-                  marginVertical: 4
+                  marginVertical: 4,
                 }}
               />
 
               <DropdownMenuItem
                 onPress={handleLogout}
-                className='px-4 py-3 flex-row items-center gap-3 active:bg-white/5'
+                className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
               >
                 <View
-                  className='w-8 h-8 rounded-lg items-center justify-center'
+                  className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{ backgroundColor: `${colors.danger}20` }}
                 >
                   <LogOut size={16} color={colors.danger} />
                 </View>
                 <Text
-                  className='text-sm font-medium flex-1'
+                  className="text-sm font-medium flex-1"
                   style={{ color: colors.danger }}
                 >
                   Sign out
@@ -553,24 +557,24 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         <BreakEndedModal
           isOpen={isBreakEndedModalOpen}
           onClockIn={() => {
-            endBreak(employee.id)
-            setBreakEndedModalOpen(false)
+            endBreak(employee.id);
+            setBreakEndedModalOpen(false);
           }}
           shift={session}
         />
         <PinInputModal
           isOpen={isBreakPinModalOpen}
-          title='Start Break'
-          subtitle='Enter your PIN to confirm'
+          title="Start Break"
+          subtitle="Enter your PIN to confirm"
           onConfirm={handleBreakPinConfirm}
           onCancel={() => setBreakPinModalOpen(false)}
         />
         <CashTipDeclarationModal
           isOpen={showCashDeclaration}
-          shiftId={timeClock.shiftId || ''}
-          staffProfileId={employee?.profileId || ''}
-          locationId={selectedStore?.id || ''}
-          employeeName={employee?.fullName || ''}
+          shiftId={timeClock.shiftId || ""}
+          staffProfileId={employee?.profileId || ""}
+          locationId={selectedStore?.id || ""}
+          employeeName={employee?.fullName || ""}
           clockInTime={
             session?.clockInTime ? new Date(session.clockInTime) : new Date()
           }
@@ -578,7 +582,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           onCancel={handleDeclarationCancel}
         />
       </>
-    )
+    );
   }
 
   // For non-active employees, show teal circle + name
@@ -587,23 +591,23 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
       <TouchableOpacity
         onPress={handlePress}
         activeOpacity={0.75}
-        className='flex-row items-center gap-2'
+        className="flex-row items-center gap-2"
       >
-        <View className='relative'>
+        <View className="relative">
           <View
             className={`w-7 h-7 rounded-full items-center justify-center ${
-              isOnBreak ? 'bg-amber-500/70' : 'bg-teal-500/40'
+              isOnBreak ? "bg-amber-500/70" : "bg-teal-500/40"
             }`}
           >
-            <Text className='text-white text-[10px] font-bold'>{initials}</Text>
+            <Text className="text-white text-[10px] font-bold">{initials}</Text>
           </View>
           {unreadCount > 0 && (
-            <View className='absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full' />
+            <View className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
           )}
         </View>
         <View>
-          <Text className='font-medium text-xs text-label'>
-            {employee.fullName.split(' ')[0]}
+          <Text className="font-medium text-xs text-label">
+            {employee.fullName.split(" ")[0]}
           </Text>
           {isOnBreak && session.breakStartTime && (
             <BreakCountdown startTime={session.breakStartTime} />
@@ -617,30 +621,30 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
       <BreakEndedModal
         isOpen={isBreakEndedModalOpen}
         onClockIn={() => {
-          endBreak(employee.id)
-          setBreakEndedModalOpen(false)
+          endBreak(employee.id);
+          setBreakEndedModalOpen(false);
         }}
         shift={session}
       />
     </>
-  )
-}
+  );
+};
 
 // The main dock component
 const SessionDock = () => {
-  const { sessions, activeEmployeeId } = useTimeclockStore()
+  const { sessions, activeEmployeeId } = useTimeclockStore();
 
   const activeSessionId = Object.keys(sessions).find(
-    id => sessions[id].employeeId === activeEmployeeId
-  )
+    (id) => sessions[id].employeeId === activeEmployeeId,
+  );
 
   return (
     <>
-      <View style={{ alignItems: 'flex-end' }}>
+      <View style={{ alignItems: "flex-end" }}>
         {activeSessionId && <SessionChip sessionId={activeSessionId} />}
       </View>
     </>
-  )
-}
+  );
+};
 
-export default SessionDock
+export default SessionDock;

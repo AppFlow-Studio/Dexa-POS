@@ -117,6 +117,8 @@ export const useRefundFraudGuardStore = create<RefundFraudGuardState>()(
     {
       name: "dexa-pos-refund-fraud-guard",
       storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         events: state.events,
       }),

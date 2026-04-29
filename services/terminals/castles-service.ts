@@ -11,49 +11,53 @@
 // ============================================================
 
 import type {
-  CastlesConnectionConfig,
-  CastlesGetDataRequest,
-  CastlesGetDataResponse,
-  CastlesGetDataResult,
-  CastlesRefundRequest,
-  CastlesRefundResult,
-  CastlesReturn2IdleRequest,
-  CastlesSaleRequest,
-  CastlesSaleResult,
-  CastlesSettlementHostInfo,
-  CastlesSettlementHostResult,
-  CastlesSettlementRawResponse,
-  CastlesSettlementRequest,
-  CastlesSettlementResult,
-  CastlesTipAdjustRequest,
-  CastlesTipAdjustResult,
-  CastlesVoidRequest,
-  CastlesVoidResult,
-  CastlesPreAuthRequest,
-  CastlesPreAuthResult,
-  CastlesAuthIncrementalRequest,
-  CastlesAuthIncrementalResult,
-  CastlesAuthCompleteRequest,
-  CastlesAuthCompleteResult,
+    CastlesAuthCompleteRequest,
+    CastlesAuthCompleteResult,
+    CastlesAuthIncrementalRequest,
+    CastlesAuthIncrementalResult,
+    CastlesConnectionConfig,
+    CastlesGetDataRequest,
+    CastlesGetDataResponse,
+    CastlesGetDataResult,
+    CastlesPreAuthRequest,
+    CastlesPreAuthResult,
+    CastlesRefundRequest,
+    CastlesRefundResult,
+    CastlesReturn2IdleRequest,
+    CastlesSaleRequest,
+    CastlesSaleResult,
+    CastlesSettlementHostInfo,
+    CastlesSettlementHostResult,
+    CastlesSettlementRawResponse,
+    CastlesSettlementRequest,
+    CastlesSettlementResult,
+    CastlesTipAdjustRequest,
+    CastlesTipAdjustResult,
+    CastlesVoidRequest,
+    CastlesVoidResult,
 } from "@/types/castles";
 import {
-  CASTLES_CONNECT_MAX_RETRIES,
-  CASTLES_CONNECT_RETRY_DELAY_MS,
-  CASTLES_CONNECT_TIMEOUT_MS,
-  CASTLES_GET_DATA_TIMEOUT_MS,
-  CASTLES_RETURN2IDLE_TIMEOUT_MS,
-  CASTLES_SETTLEMENT_TIMEOUT_MS,
-  CASTLES_SOCKET_TIMEOUT_MS,
-  CASTLES_SUCCESS_CODE,
+    CASTLES_CONNECT_MAX_RETRIES,
+    CASTLES_CONNECT_RETRY_DELAY_MS,
+    CASTLES_CONNECT_TIMEOUT_MS,
+    CASTLES_GET_DATA_TIMEOUT_MS,
+    CASTLES_RETURN2IDLE_TIMEOUT_MS,
+    CASTLES_SETTLEMENT_TIMEOUT_MS,
+    CASTLES_SOCKET_TIMEOUT_MS,
+    CASTLES_SUCCESS_CODE,
 } from "@/types/castles";
+import * as Sentry from "@sentry/react-native";
 import { Mutex } from "async-mutex";
-import type { ICastlesTransport, CastlesTransportConfig } from "./castles-transport.types";
-import { createCastlesTransport } from "./castles-transport-factory";
 import {
-  type CastlesRawResponse,
-  buildCastlesTerminalResponse,
-  parseCastlesReturnCode,
+    type CastlesRawResponse,
+    buildCastlesTerminalResponse,
+    parseCastlesReturnCode,
 } from "./castles-response-mapper";
+import { createCastlesTransport } from "./castles-transport-factory";
+import type {
+    CastlesTransportConfig,
+    ICastlesTransport,
+} from "./castles-transport.types";
 
 export type CastlesStatusCallback = (notification: {
   txnStatus?: string;
@@ -148,7 +152,9 @@ export class CastlesService {
         await this.transport!.connect();
 
         if (this._postConnectDelayMs > 0) {
-          console.log(`[CastlesService] Post-connect delay: ${this._postConnectDelayMs}ms`);
+          console.log(
+            `[CastlesService] Post-connect delay: ${this._postConnectDelayMs}ms`,
+          );
           await this._delay(this._postConnectDelayMs);
         }
 
@@ -170,7 +176,9 @@ export class CastlesService {
 
           await this._delay(500);
         } else {
-          console.log("[CastlesService] Skipping return2Idle (diagnostic override)");
+          console.log(
+            "[CastlesService] Skipping return2Idle (diagnostic override)",
+          );
         }
 
         // Verify CastlesPay is responsive
@@ -213,9 +221,17 @@ export class CastlesService {
       }
     }
 
-    throw new Error(
+    const connectErr = new Error(
       `[CastlesService] Failed to connect after ${CASTLES_CONNECT_MAX_RETRIES} attempts: ${lastError?.message}`,
     );
+    Sentry.captureException(connectErr, {
+      tags: {
+        terminal_ip: config.host,
+        terminal_port: String(config.port ?? 8080),
+        source: "castles_connect",
+      },
+    });
+    throw connectErr;
   }
 
   /** Disconnect and clean up the transport (no mutex). */
@@ -239,7 +255,9 @@ export class CastlesService {
    */
   private async _gracefulDisconnectInner(): Promise<void> {
     if (this.transport?.isOpen) {
-      console.log("[CastlesService] Graceful disconnect: sending return2Idle before close...");
+      console.log(
+        "[CastlesService] Graceful disconnect: sending return2Idle before close...",
+      );
       try {
         const payload = JSON.stringify({
           txnPosTxnId: "000000",
@@ -336,8 +354,12 @@ export class CastlesService {
   }
 
   // ── Tuning setters ──
-  setSkipReturn2Idle(skip: boolean): void { this._skipReturn2Idle = skip; }
-  setPostConnectDelay(ms: number): void { this._postConnectDelayMs = ms; }
+  setSkipReturn2Idle(skip: boolean): void {
+    this._skipReturn2Idle = skip;
+  }
+  setPostConnectDelay(ms: number): void {
+    this._postConnectDelayMs = ms;
+  }
 
   // ============================================================
   // TCP DIAGNOSTICS
@@ -403,15 +425,12 @@ export class CastlesService {
       };
     }
 
-    addLog(
-      `No response after 8s. Buffer: "${result.data || "(empty)"}"`,
-    );
+    addLog(`No response after 8s. Buffer: "${result.data || "(empty)"}"`);
     addLog("Terminal accepted TCP but did not respond to getData");
     return {
       tcpConnected: true,
       dataReceived: false,
-      error:
-        "Terminal accepted TCP connection but did not respond",
+      error: "Terminal accepted TCP connection but did not respond",
       log,
     };
   }
@@ -519,9 +538,12 @@ export class CastlesService {
             : raw.txnStatusMessage ||
               parseCastlesReturnCode(raw.txnReturnCode).message;
 
-          console.log('[CastlesService] processSale response:', {
-            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
-            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          console.log("[CastlesService] processSale response:", {
+            txnRrn: raw.txnRrn,
+            txnRRN: raw.txnRRN,
+            txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId,
+            txnReturnCode: raw.txnReturnCode,
           });
 
           // Defer return2Idle — don't block the payment result for up to 8s
@@ -530,7 +552,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -574,9 +599,12 @@ export class CastlesService {
             timeout,
           );
 
-          console.log('[CastlesService] tipAdjust response:', {
-            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
-            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          console.log("[CastlesService] tipAdjust response:", {
+            txnRrn: raw.txnRrn,
+            txnRRN: raw.txnRRN,
+            txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId,
+            txnReturnCode: raw.txnReturnCode,
           });
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
@@ -589,7 +617,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -612,7 +643,10 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesVoidResult> {
     if (!params.rrn && !params.stan) {
-      return { success: false, error: "At least one of rrn or stan is required for void" };
+      return {
+        success: false,
+        error: "At least one of rrn or stan is required for void",
+      };
     }
 
     return this._withRetry(async () => {
@@ -633,9 +667,12 @@ export class CastlesService {
             timeout,
           );
 
-          console.log('[CastlesService] processVoid response:', {
-            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
-            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          console.log("[CastlesService] processVoid response:", {
+            txnRrn: raw.txnRrn,
+            txnRRN: raw.txnRRN,
+            txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId,
+            txnReturnCode: raw.txnReturnCode,
           });
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
@@ -648,7 +685,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -696,7 +736,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -746,7 +789,8 @@ export class CastlesService {
         // Determine overall success
         const topLevelOk = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
         const anyHostSucceeded = hosts.some((h) => h.success);
-        const allHostsSucceeded = hosts.length > 0 && hosts.every((h) => h.success);
+        const allHostsSucceeded =
+          hosts.length > 0 && hosts.every((h) => h.success);
 
         const success = topLevelOk || allHostsSucceeded;
         const partialSuccess = !success && anyHostSucceeded;
@@ -808,7 +852,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -835,7 +882,10 @@ export class CastlesService {
     stan?: string;
   }): Promise<CastlesAuthIncrementalResult> {
     if (!params.rrn && !params.stan) {
-      return { success: false, error: "At least one of rrn or stan is required for incremental auth" };
+      return {
+        success: false,
+        error: "At least one of rrn or stan is required for incremental auth",
+      };
     }
 
     return this._withRetry(async () => {
@@ -867,12 +917,18 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          console.error("[CastlesService] processAuthIncremental error:", message);
+          console.error(
+            "[CastlesService] processAuthIncremental error:",
+            message,
+          );
           await this._forceReturn2Idle();
           return {
             success: false,
@@ -894,7 +950,10 @@ export class CastlesService {
     stan?: string;
   }): Promise<CastlesAuthCompleteResult> {
     if (!params.rrn && !params.stan) {
-      return { success: false, error: "At least one of rrn or stan is required for auth complete" };
+      return {
+        success: false,
+        error: "At least one of rrn or stan is required for auth complete",
+      };
     }
 
     return this._withRetry(async () => {
@@ -926,7 +985,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -998,11 +1060,13 @@ export class CastlesService {
    */
   private _deferReturn2Idle(): void {
     queueMicrotask(() => {
-      this._mutex.runExclusive(async () => {
-        await this._tryReturn2Idle();
-      }).catch(err => {
-        console.warn('[CastlesService] Deferred return2Idle failed:', err);
-      });
+      this._mutex
+        .runExclusive(async () => {
+          await this._tryReturn2Idle();
+        })
+        .catch((err) => {
+          console.warn("[CastlesService] Deferred return2Idle failed:", err);
+        });
     });
   }
 
@@ -1055,7 +1119,9 @@ export class CastlesService {
     }
 
     const config = this.config;
-    console.log("[CastlesService] Force return2Idle: closing transport and reconnecting...");
+    console.log(
+      "[CastlesService] Force return2Idle: closing transport and reconnecting...",
+    );
 
     this._disconnectInner();
     // Let the native executor drain any pending Runnable from the disconnect
@@ -1142,9 +1208,13 @@ export class CastlesService {
         );
 
         if (this._watchdogConsecutiveFailures >= 2 && this.config) {
-          console.log("[CastlesService] Watchdog: reconnecting after consecutive failures...");
+          console.log(
+            "[CastlesService] Watchdog: reconnecting after consecutive failures...",
+          );
           try {
-            await this._mutex.runExclusive(() => this._connectInner(this.config!));
+            await this._mutex.runExclusive(() =>
+              this._connectInner(this.config!),
+            );
             this._watchdogConsecutiveFailures = 0;
           } catch (reconErr) {
             console.error(
@@ -1156,7 +1226,9 @@ export class CastlesService {
       }
     }, intervalMs);
 
-    console.log(`[CastlesService] Watchdog started (interval: ${intervalMs}ms)`);
+    console.log(
+      `[CastlesService] Watchdog started (interval: ${intervalMs}ms)`,
+    );
   }
 
   stopWatchdog(): void {
@@ -1206,7 +1278,9 @@ export class CastlesService {
 
     // Transport is definitely dead — reconnect
     if (!this.transport?.isOpen) {
-      console.log("[CastlesService] _ensureConnected: transport closed, reconnecting...");
+      console.log(
+        "[CastlesService] _ensureConnected: transport closed, reconnecting...",
+      );
       await this._connectInner(this.config);
       return;
     }
@@ -1224,7 +1298,9 @@ export class CastlesService {
           5_000,
         );
       } catch {
-        console.warn("[CastlesService] _ensureConnected: probe failed, reconnecting...");
+        console.warn(
+          "[CastlesService] _ensureConnected: probe failed, reconnecting...",
+        );
         await this._connectInner(this.config);
       }
     }
@@ -1239,11 +1315,18 @@ export class CastlesService {
   ): Promise<T> {
     const first = await fn();
 
-    if (!first.success && first.error && isConnectionError(first.error) && this.config) {
+    if (
+      !first.success &&
+      first.error &&
+      isConnectionError(first.error) &&
+      this.config
+    ) {
       if (this._suspended) {
         return first; // don't attempt reconnect; caller gets the original failure
       }
-      console.log("[CastlesService] Connection error detected, retrying after reconnect...");
+      console.log(
+        "[CastlesService] Connection error detected, retrying after reconnect...",
+      );
       try {
         await this._mutex.runExclusive(() => this._connectInner(this.config!));
       } catch (reconErr) {
@@ -1484,7 +1567,10 @@ function buildSettlementErrorMessage(
   const failedHosts = hosts.filter((h) => !h.success);
   if (failedHosts.length > 0) {
     const details = failedHosts
-      .map((h) => `${h.acquirerName}: ${h.hostMessage || parseCastlesReturnCode(h.returnCode).message}`)
+      .map(
+        (h) =>
+          `${h.acquirerName}: ${h.hostMessage || parseCastlesReturnCode(h.returnCode).message}`,
+      )
       .join("; ");
     return `Settlement failed for: ${details}`;
   }
@@ -1545,7 +1631,7 @@ export function getSharedCastlesService(): CastlesService {
 if (__DEV__ && (module as any).hot) {
   (module as any).hot.dispose(() => {
     if (_sharedInstance) {
-      console.log('[CastlesService] Hot refresh: tearing down TCP socket');
+      console.log("[CastlesService] Hot refresh: tearing down TCP socket");
       _sharedInstance.disconnect();
       _sharedInstance = null;
     }

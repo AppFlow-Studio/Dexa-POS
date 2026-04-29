@@ -4,7 +4,7 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { TimeClockAction, TimeClockActionType } from "@/types/time-clock";
 import NetInfo from "@react-native-community/netinfo";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 export interface UseTimeClockOptions {
@@ -22,7 +22,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       type: TimeClockActionType,
       pinCode: string,
       locationId: string,
-      deviceId: string
+      deviceId: string,
     ) => {
       console.log("[useTimeClock] performAction called:", {
         type,
@@ -110,13 +110,15 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                     .eq("id", data.shift_id)
                     .single();
                   if (shiftData?.clock_in_time) {
-                    const empId = useEmployeeStore.getState().employees.find(
-                      e => e.profileId === data.staff_id
-                    )?.id;
+                    const empId = useEmployeeStore
+                      .getState()
+                      .employees.find((e) => e.profileId === data.staff_id)?.id;
                     if (empId) {
                       useTimeclockStore.setState((state: any) => {
                         if (state.sessions[empId]) {
-                          state.sessions[empId].clockInTime = new Date(shiftData.clock_in_time);
+                          state.sessions[empId].clockInTime = new Date(
+                            shiftData.clock_in_time,
+                          );
                         }
                       });
                     }
@@ -265,7 +267,8 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                 clock_out: "Failed to clock out. Please try again.",
                 break_start: "Failed to start break. Please try again.",
                 break_end: "Failed to end break. Please try again.",
-                declare_cash_tips: "Failed to declare cash tips. Please try again.",
+                declare_cash_tips:
+                  "Failed to declare cash tips. Please try again.",
               };
               errorToastMessage = errorMessages[type];
             }
@@ -292,224 +295,8 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
         return { success: true, queued: true };
       }
     },
-    [store, supabase, options]
+    [store, supabase, options],
   );
-
-  // 2. Sync Processor (The "Queue Flusher")
-  useEffect(() => {
-    const processQueue = async () => {
-      if (store.offlineQueue.length === 0 || store.isSyncing) return;
-
-      const netState = await NetInfo.fetch();
-      if (!netState.isConnected || !netState.isInternetReachable) return;
-
-      store.setSyncing(true);
-
-      // Process strictly in order (FIFO)
-      const actionToProcess = store.offlineQueue[0];
-
-      try {
-        console.log(`Syncing action: ${actionToProcess.type}`);
-
-        let error: any;
-        if (actionToProcess.type === 'declare_cash_tips') {
-          // Resolve the correct shiftId for this declaration
-          let resolvedShiftId = actionToProcess.shiftId;
-          const staffId = actionToProcess.staffProfileId;
-          const locId = actionToProcess.locationId;
-
-          // If shiftId is present, check if it's stale (from a previous day).
-          // When a user clocks out of a multi-day stale session and declares tips,
-          // the declaration should go to the most recent shift (today's or the
-          // clock-out day), not the original stale shift from days ago.
-          if (resolvedShiftId && staffId) {
-            try {
-              const { data: shiftCheck } = await supabase
-                .from("staff_shifts")
-                .select("id, clock_in_time")
-                .eq("id", resolvedShiftId)
-                .single();
-
-              if (shiftCheck?.clock_in_time) {
-                const shiftDate = shiftCheck.clock_in_time.split("T")[0];
-                const today = new Date().toISOString().split("T")[0];
-
-                if (shiftDate < today) {
-                  // Stale shift — find the most recent shift for this employee today
-                  console.warn(
-                    `[useTimeClock] Stale shift detected (${shiftDate}), looking for today's shift`
-                  );
-                  const { data: todayShift } = await supabase
-                    .from("staff_shifts")
-                    .select("id")
-                    .eq("staff_profile_id", staffId)
-                    .eq("location_id", locId)
-                    .gte("clock_in_time", `${today}T00:00:00`)
-                    .order("clock_in_time", { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-
-                  if (todayShift?.id) {
-                    console.log(
-                      `[useTimeClock] Re-associating declaration to today's shift: ${todayShift.id}`
-                    );
-                    resolvedShiftId = todayShift.id;
-                  } else {
-                    // No shift today — fall back to most recent shift overall
-                    const { data: latestShift } = await supabase
-                      .from("staff_shifts")
-                      .select("id")
-                      .eq("staff_profile_id", staffId)
-                      .eq("location_id", locId)
-                      .order("clock_in_time", { ascending: false })
-                      .limit(1)
-                      .maybeSingle();
-
-                    if (latestShift?.id) {
-                      resolvedShiftId = latestShift.id;
-                    }
-                    // else keep original stale shiftId — better than losing the declaration
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn("[useTimeClock] Stale shift check failed, using original:", e);
-            }
-          }
-
-          // If shiftId was missing entirely (clock-in was also offline), resolve by staffProfileId
-          if (!resolvedShiftId && staffId) {
-            try {
-              const { data: shiftData } = await supabase
-                .from("staff_shifts")
-                .select("id")
-                .eq("staff_profile_id", staffId)
-                .eq("location_id", locId)
-                .order("clock_in_time", { ascending: false })
-                .limit(1)
-                .single();
-              if (shiftData?.id) {
-                resolvedShiftId = shiftData.id;
-              }
-            } catch (e) {
-              console.warn("[useTimeClock] Failed to resolve shift for declaration:", e);
-            }
-          }
-
-          if (!resolvedShiftId) {
-            console.error("[useTimeClock] Cannot declare tips: no shiftId resolved");
-            store.removeFromQueue(actionToProcess.id);
-            error = { code: "NO_SHIFT", message: "Could not resolve shift for tip declaration" };
-          } else {
-            // Route cash tip declarations to the dedicated RPC
-            const res = await supabase.rpc("declare_cash_tips_for_shift", {
-              p_shift_id: resolvedShiftId,
-              p_amount: actionToProcess.cashTipAmount!,
-            });
-            error = res.error;
-          }
-        } else {
-          const res = await supabase.rpc("handle_time_clock", {
-            p_pin_code: actionToProcess.pinCode,
-            p_location_id: actionToProcess.locationId,
-            p_action_type: actionToProcess.type,
-            p_device_id: actionToProcess.deviceId,
-          });
-          error = res.error;
-
-          // Fallback for clock_out: if the RPC fails (PIN rejected, state mismatch, etc.),
-          // directly update staff_shifts instead of silently losing the clock-out.
-          // This prevents stale sessions that stay "active" forever.
-          if (error && actionToProcess.type === 'clock_out') {
-            const fallbackShiftId = actionToProcess.shiftId;
-            const fallbackStaffId = actionToProcess.staffProfileId;
-            const clockOutTime = actionToProcess.timestamp || new Date().toISOString();
-
-            console.warn(
-              `[useTimeClock] clock_out RPC failed (${error.message}), attempting direct shift update fallback`
-            );
-
-            let targetShiftId = fallbackShiftId;
-
-            // If no shiftId, try to find the active shift for this employee
-            if (!targetShiftId && fallbackStaffId) {
-              try {
-                const { data: activeShift } = await supabase
-                  .from("staff_shifts")
-                  .select("id")
-                  .eq("staff_profile_id", fallbackStaffId)
-                  .eq("location_id", actionToProcess.locationId)
-                  .in("status", ["active", "on_break"])
-                  .order("clock_in_time", { ascending: false })
-                  .limit(1)
-                  .maybeSingle();
-                if (activeShift?.id) {
-                  targetShiftId = activeShift.id;
-                }
-              } catch (e) {
-                console.warn("[useTimeClock] Failed to find active shift for fallback:", e);
-              }
-            }
-
-            if (targetShiftId) {
-              try {
-                const { error: updateError } = await supabase
-                  .from("staff_shifts")
-                  .update({
-                    clock_out_time: clockOutTime,
-                    status: "completed",
-                  })
-                  .eq("id", targetShiftId)
-                  .in("status", ["active", "on_break"]);
-
-                if (!updateError) {
-                  console.log("[useTimeClock] Fallback clock-out succeeded for shift:", targetShiftId);
-                  error = null; // Clear the error — fallback worked
-                } else {
-                  console.error("[useTimeClock] Fallback clock-out also failed:", updateError);
-                }
-              } catch (e) {
-                console.error("[useTimeClock] Fallback clock-out exception:", e);
-              }
-            }
-          }
-        }
-
-        if (error) {
-          console.error("Sync failed for action", actionToProcess.id, error);
-          const isLogicError =
-            error.code && !error.message?.includes("network");
-          if (isLogicError) {
-            store.removeFromQueue(actionToProcess.id);
-            toastService.show({
-              title: "Sync Warning",
-              message:
-                "An offline action could not be processed. It has been removed.",
-              type: "warning",
-            });
-          }
-        } else {
-          store.removeFromQueue(actionToProcess.id);
-          if (store.offlineQueue.length === 1) {
-            toastService.show({
-              title: "Sync Complete",
-              message: "All pending actions have been synced.",
-              type: "success",
-            });
-          }
-        }
-      } catch (e) {
-        console.error("Critical Sync Error", e);
-      } finally {
-        store.setSyncing(false);
-      }
-    };
-
-    processQueue();
-
-    const interval = setInterval(processQueue, 10000);
-    return () => clearInterval(interval);
-  }, [store.offlineQueue, store.isSyncing, supabase]);
 
   // Cash tip declaration — separate from performAction (no optimistic status change)
   const declareCashTips = useCallback(
@@ -520,12 +307,38 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       deviceId: string,
       staffProfileId?: string,
     ): Promise<{ success: boolean; queued?: boolean }> => {
+      let resolvedShiftId = shiftId;
+
+      // If shift ID is missing (common in SessionDock), resolve the latest open shift.
+      if (!resolvedShiftId && staffProfileId && locationId) {
+        const { data: activeShift, error: lookupError } = await supabase
+          .from("staff_shifts")
+          .select("id")
+          .eq("staff_profile_id", staffProfileId)
+          .eq("location_id", locationId)
+          .in("status", ["active", "on_break"])
+          .order("clock_in_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!lookupError && activeShift?.id) {
+          resolvedShiftId = activeShift.id;
+        }
+      }
+
       const netState = await NetInfo.fetch();
 
       if (netState.isConnected && netState.isInternetReachable) {
         try {
+          if (!resolvedShiftId) {
+            throw {
+              code: "NO_SHIFT",
+              message: "Could not resolve shift for cash tip declaration",
+            };
+          }
+
           const { error } = await supabase.rpc("declare_cash_tips_for_shift", {
-            p_shift_id: shiftId,
+            p_shift_id: resolvedShiftId,
             p_amount: amount,
           });
           if (error) throw error;
@@ -544,7 +357,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
               locationId,
               timestamp: new Date().toISOString(),
               deviceId,
-              shiftId,
+              shiftId: resolvedShiftId,
               cashTipAmount: amount,
               staffProfileId,
             });
@@ -561,7 +374,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
           locationId,
           timestamp: new Date().toISOString(),
           deviceId,
-          shiftId,
+          shiftId: resolvedShiftId,
           cashTipAmount: amount,
           staffProfileId,
         });

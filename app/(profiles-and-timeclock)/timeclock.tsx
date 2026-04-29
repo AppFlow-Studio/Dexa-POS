@@ -1,203 +1,204 @@
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { replaceRoute } from '@/lib/rootNavigation'
-import { colors, spinnerColor } from '@/lib/theme'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { format } from 'date-fns'
-import { router } from 'expo-router'
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { replaceRoute } from "@/lib/rootNavigation";
+import { colors, spinnerColor } from "@/lib/theme";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { format } from "date-fns";
+import { router } from "expo-router";
 import {
-  ArrowLeft,
-  Calendar as CalendarIcon,
-  CircleCheckBig,
-  Clock3,
-  MoonStar,
-  RefreshCw,
-  Users
-} from 'lucide-react-native'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+    ArrowLeft,
+    Calendar as CalendarIcon,
+    CircleCheckBig,
+    Clock3,
+    MoonStar,
+    RefreshCw,
+    Users,
+} from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native'
-import { Calendar, DateData } from 'react-native-calendars'
-import Popover from 'react-native-popover-view'
+    ActivityIndicator,
+    FlatList,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { Calendar, DateData } from "react-native-calendars";
+import Popover from "react-native-popover-view";
 
 // Types for staff_shifts table
 interface StaffShift {
-  id: string
-  staff_profile_id: string
-  status: string
-  clock_in_time: string | null
-  clock_out_time: string | null
-  break_logs: Array<{ start: string; end: string | null; type: string }> | null
-  hourly_rate_snapshot: number | null
-  created_at: string
+  id: string;
+  staff_profile_id: string;
+  status: string;
+  clock_in_time: string | null;
+  clock_out_time: string | null;
+  break_logs: Array<{ start: string; end: string | null; type: string }> | null;
+  hourly_rate_snapshot: number | null;
+  created_at: string;
 }
 
 interface ShiftDisplayEntry {
-  id: string
-  employeeName: string
-  role: string
-  clockIn: string
-  breakStart: string | null
-  breakEnd: string | null
-  clockOut: string | null
-  duration: string
-  status: string
+  id: string;
+  employeeName: string;
+  role: string;
+  clockIn: string;
+  breakStart: string | null;
+  breakEnd: string | null;
+  clockOut: string | null;
+  duration: string;
+  status: string;
 }
 
 const DailyShiftReportScreen = () => {
-  const supabase = useSupabaseClient()
-  const [selectedDate, setSelectedDate] = useState(new Date())
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [shifts, setShifts] = useState<StaffShift[]>([])
+  const supabase = useSupabaseClient();
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [shifts, setShifts] = useState<StaffShift[]>([]);
 
-  const employees = useEmployeeStore(state => state.employees)
-  const selectedStore = useStoreSettingsStore(state => state.selectedStore)
+  const employees = useEmployeeStore((state) => state.employees);
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
 
   // Create map of profileId -> employee info
   const employeeMap = useMemo(() => {
     return new Map(
-      employees.map(emp => [
+      employees.map((emp) => [
         emp.profileId,
-        { name: emp.fullName, role: emp.role }
-      ])
-    )
-  }, [employees])
+        { name: emp.fullName, role: emp.role },
+      ]),
+    );
+  }, [employees]);
 
   // Fetch shifts from backend
   const fetchShifts = useCallback(async () => {
     if (!selectedStore?.id) {
-      setError('No store selected')
-      return
+      setError("No store selected");
+      return;
     }
 
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
       // Get start and end of selected date
-      const dateStr = format(selectedDate, 'yyyy-MM-dd')
-      const startOfDay = `${dateStr}T00:00:00.000Z`
-      const endOfDay = `${dateStr}T23:59:59.999Z`
+      const dateStr = format(selectedDate, "yyyy-MM-dd");
+      const startOfDay = `${dateStr}T00:00:00.000Z`;
+      const endOfDay = `${dateStr}T23:59:59.999Z`;
 
       const { data, error: queryError } = await supabase
-        .from('staff_shifts')
+        .from("staff_shifts")
         .select(
-          'id, staff_profile_id, status, clock_in_time, clock_out_time, break_logs, hourly_rate_snapshot, created_at'
+          "id, staff_profile_id, status, clock_in_time, clock_out_time, break_logs, hourly_rate_snapshot, created_at",
         )
-        .eq('location_id', selectedStore.id)
-        .gte('clock_in_time', startOfDay)
-        .lte('clock_in_time', endOfDay)
-        .order('clock_in_time', { ascending: false })
+        .eq("location_id", selectedStore.id)
+        .gte("clock_in_time", startOfDay)
+        .lte("clock_in_time", endOfDay)
+        .order("clock_in_time", { ascending: false });
 
-      if (queryError) throw queryError
+      if (queryError) throw queryError;
 
-      setShifts(data || [])
+      setShifts(data || []);
     } catch (err: any) {
-      console.error('Failed to fetch shifts:', err)
-      setError(err.message || 'Failed to load shifts')
+      console.error("Failed to fetch shifts:", err);
+      setError(err.message || "Failed to load shifts");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [supabase, selectedStore?.id, selectedDate])
+  }, [supabase, selectedStore?.id, selectedDate]);
 
   // Fetch shifts when date or store changes
   useEffect(() => {
-    fetchShifts()
-  }, [fetchShifts])
+    fetchShifts();
+  }, [fetchShifts]);
 
   // Transform shifts into display format
   const shiftsForDisplay: ShiftDisplayEntry[] = useMemo(() => {
-    return shifts.map(shift => {
-      const employee = employeeMap.get(shift.staff_profile_id)
+    return shifts.map((shift) => {
+      const employee = employeeMap.get(shift.staff_profile_id);
 
       // Calculate duration
-      let durationStr = '—'
+      let durationStr = "—";
       if (shift.clock_in_time && shift.clock_out_time) {
-        const clockIn = new Date(shift.clock_in_time)
-        const clockOut = new Date(shift.clock_out_time)
-        let totalMs = clockOut.getTime() - clockIn.getTime()
+        const clockIn = new Date(shift.clock_in_time);
+        const clockOut = new Date(shift.clock_out_time);
+        let totalMs = clockOut.getTime() - clockIn.getTime();
 
         // Subtract break time if applicable
         if (shift.break_logs && Array.isArray(shift.break_logs)) {
           for (const brk of shift.break_logs) {
             if (brk.start && brk.end) {
               const breakMs =
-                new Date(brk.end).getTime() - new Date(brk.start).getTime()
-              totalMs -= breakMs
+                new Date(brk.end).getTime() - new Date(brk.start).getTime();
+              totalMs -= breakMs;
             }
           }
         }
 
-        const hours = totalMs / (1000 * 60 * 60)
-        durationStr = `${hours.toFixed(2)}h`
-      } else if (shift.status === 'active' || shift.status === 'on_break') {
-        durationStr = 'In Progress'
+        const hours = totalMs / (1000 * 60 * 60);
+        durationStr = `${hours.toFixed(2)}h`;
+      } else if (shift.status === "active" || shift.status === "on_break") {
+        durationStr = "In Progress";
       }
 
       // Get first break start/end
-      const firstBreak = shift.break_logs?.[0]
+      const firstBreak = shift.break_logs?.[0];
 
       return {
         id: shift.id,
-        employeeName: employee?.name || 'Unknown',
-        role: employee?.role || '—',
+        employeeName: employee?.name || "Unknown",
+        role: employee?.role || "—",
         clockIn: shift.clock_in_time || shift.created_at,
         breakStart: firstBreak?.start || null,
         breakEnd: firstBreak?.end || null,
         clockOut: shift.clock_out_time,
         duration: durationStr,
-        status: shift.status
-      }
-    })
-  }, [shifts, employeeMap])
+        status: shift.status,
+      };
+    });
+  }, [shifts, employeeMap]);
 
   const summaryCards = useMemo(() => {
-    const total = shiftsForDisplay.length
+    const total = shiftsForDisplay.length;
     const active = shiftsForDisplay.filter(
-      shift => shift.status === 'active'
-    ).length
+      (shift) => shift.status === "active",
+    ).length;
     const onBreak = shiftsForDisplay.filter(
-      shift => shift.status === 'on_break'
-    ).length
+      (shift) => shift.status === "on_break",
+    ).length;
     const completed = shiftsForDisplay.filter(
-      shift => shift.status === 'completed'
-    ).length
+      (shift) => shift.status === "completed",
+    ).length;
 
     return [
-      { label: 'Shifts', value: total.toString(), icon: Users },
-      { label: 'Active', value: active.toString(), icon: Clock3 },
-      { label: 'On Break', value: onBreak.toString(), icon: MoonStar },
-      { label: 'Completed', value: completed.toString(), icon: CircleCheckBig }
-    ]
-  }, [shiftsForDisplay])
+      { label: "Shifts", value: total.toString(), icon: Users },
+      { label: "Active", value: active.toString(), icon: Clock3 },
+      { label: "On Break", value: onBreak.toString(), icon: MoonStar },
+      { label: "Completed", value: completed.toString(), icon: CircleCheckBig },
+    ];
+  }, [shiftsForDisplay]);
 
   const onDateChange = (day: DateData) => {
-    setSelectedDate(new Date(day.timestamp))
-    setIsCalendarOpen(false)
-  }
+    setSelectedDate(new Date(day.timestamp));
+    setIsCalendarOpen(false);
+  };
 
   const calendarTheme = {
+    backgroundColor: colors.panel,
     calendarBackground: colors.panel,
-    monthTextColor: '#FFFFFF',
-    dayTextColor: '#FFFFFF',
+    monthTextColor: colors.heading,
+    dayTextColor: colors.heading,
     textDisabledColor: colors.muted,
     selectedDayBackgroundColor: colors.teal,
-    selectedDayTextColor: '#FFFFFF',
+    selectedDayTextColor: colors.onSolid,
     todayTextColor: colors.teal,
     arrowColor: colors.teal,
-    textSectionTitleColor: colors.label
-  }
+    textSectionTitleColor: colors.label,
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'active':
+      case "active":
         return (
           <View
             style={{
@@ -205,11 +206,11 @@ const DailyShiftReportScreen = () => {
               height: 8,
               borderRadius: 999,
               marginRight: 8,
-              backgroundColor: colors.teal
+              backgroundColor: colors.teal,
             }}
           />
-        )
-      case 'on_break':
+        );
+      case "on_break":
         return (
           <View
             style={{
@@ -217,14 +218,14 @@ const DailyShiftReportScreen = () => {
               height: 8,
               borderRadius: 999,
               marginRight: 8,
-              backgroundColor: colors.teal
+              backgroundColor: colors.teal,
             }}
           />
-        )
+        );
       default:
-        return null
+        return null;
     }
-  }
+  };
 
   const renderShiftItem = ({ item }: { item: ShiftDisplayEntry }) => (
     <View
@@ -235,22 +236,22 @@ const DailyShiftReportScreen = () => {
         backgroundColor: colors.card,
         padding: 12,
         marginBottom: 8,
-        gap: 8
+        gap: 8,
       }}
     >
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 8
+          flexDirection: "row",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 8,
         }}
       >
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
           {getStatusBadge(item.status)}
           <View style={{ flex: 1, gap: 2 }}>
             <Text
-              style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}
               numberOfLines={1}
             >
               {item.employeeName}
@@ -259,7 +260,7 @@ const DailyShiftReportScreen = () => {
               style={{ fontSize: 11, color: colors.label }}
               numberOfLines={1}
             >
-              {item.role !== '—' ? item.role : 'Employee'}
+              {item.role !== "—" ? item.role : "Employee"}
             </Text>
           </View>
         </View>
@@ -269,42 +270,42 @@ const DailyShiftReportScreen = () => {
             paddingHorizontal: 8,
             paddingVertical: 4,
             backgroundColor:
-              item.status === 'active'
-                ? colors.teal + '18'
-                : item.status === 'on_break'
-                ? colors.teal + '14'
-                : colors.panel,
+              item.status === "active"
+                ? colors.teal + "18"
+                : item.status === "on_break"
+                  ? colors.teal + "14"
+                  : colors.panel,
             borderWidth: 1,
             borderColor:
-              item.status === 'active'
-                ? colors.teal + '45'
-                : item.status === 'on_break'
-                ? colors.teal + '40'
-                : colors.border
+              item.status === "active"
+                ? colors.teal + "45"
+                : item.status === "on_break"
+                  ? colors.teal + "40"
+                  : colors.border,
           }}
         >
           <Text
             style={{
               fontSize: 10,
-              fontWeight: '700',
+              fontWeight: "700",
               color:
-                item.status === 'active'
+                item.status === "active"
                   ? colors.teal
-                  : item.status === 'on_break'
-                  ? colors.teal
-                  : colors.label
+                  : item.status === "on_break"
+                    ? colors.teal
+                    : colors.label,
             }}
           >
-            {item.status === 'active'
-              ? 'Active'
-              : item.status === 'on_break'
-              ? 'On Break'
-              : 'Completed'}
+            {item.status === "active"
+              ? "Active"
+              : item.status === "on_break"
+                ? "On Break"
+                : "Completed"}
           </Text>
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         <View
           style={{
             flexGrow: 1,
@@ -313,16 +314,16 @@ const DailyShiftReportScreen = () => {
             padding: 8,
             backgroundColor: colors.panel,
             borderWidth: 1,
-            borderColor: colors.border
+            borderColor: colors.border,
           }}
         >
           <Text
             style={{
               fontSize: 9,
               color: colors.muted,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5
+              fontWeight: "700",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
             }}
           >
             Clock In
@@ -331,11 +332,11 @@ const DailyShiftReportScreen = () => {
             style={{
               fontSize: 12,
               color: colors.heading,
-              fontWeight: '700',
-              marginTop: 2
+              fontWeight: "700",
+              marginTop: 2,
             }}
           >
-            {format(new Date(item.clockIn), 'p')}
+            {format(new Date(item.clockIn), "p")}
           </Text>
         </View>
         <View
@@ -346,16 +347,16 @@ const DailyShiftReportScreen = () => {
             padding: 8,
             backgroundColor: colors.panel,
             borderWidth: 1,
-            borderColor: colors.border
+            borderColor: colors.border,
           }}
         >
           <Text
             style={{
               fontSize: 9,
               color: colors.muted,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5
+              fontWeight: "700",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
             }}
           >
             Break
@@ -364,12 +365,12 @@ const DailyShiftReportScreen = () => {
             style={{
               fontSize: 12,
               color: colors.heading,
-              fontWeight: '700',
-              marginTop: 2
+              fontWeight: "700",
+              marginTop: 2,
             }}
           >
-            {item.breakStart ? format(new Date(item.breakStart), 'p') : '—'}
-            {item.breakEnd ? ` - ${format(new Date(item.breakEnd), 'p')}` : ''}
+            {item.breakStart ? format(new Date(item.breakStart), "p") : "—"}
+            {item.breakEnd ? ` - ${format(new Date(item.breakEnd), "p")}` : ""}
           </Text>
         </View>
         <View
@@ -380,16 +381,16 @@ const DailyShiftReportScreen = () => {
             padding: 8,
             backgroundColor: colors.panel,
             borderWidth: 1,
-            borderColor: colors.border
+            borderColor: colors.border,
           }}
         >
           <Text
             style={{
               fontSize: 9,
               color: colors.muted,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5
+              fontWeight: "700",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
             }}
           >
             Clock Out
@@ -398,11 +399,11 @@ const DailyShiftReportScreen = () => {
             style={{
               fontSize: 12,
               color: colors.heading,
-              fontWeight: '700',
-              marginTop: 2
+              fontWeight: "700",
+              marginTop: 2,
             }}
           >
-            {item.clockOut ? format(new Date(item.clockOut), 'p') : '—'}
+            {item.clockOut ? format(new Date(item.clockOut), "p") : "—"}
           </Text>
         </View>
         <View
@@ -413,16 +414,16 @@ const DailyShiftReportScreen = () => {
             padding: 8,
             backgroundColor: colors.panel,
             borderWidth: 1,
-            borderColor: colors.border
+            borderColor: colors.border,
           }}
         >
           <Text
             style={{
               fontSize: 9,
               color: colors.muted,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5
+              fontWeight: "700",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
             }}
           >
             Duration
@@ -431,8 +432,8 @@ const DailyShiftReportScreen = () => {
             style={{
               fontSize: 12,
               color: colors.teal,
-              fontWeight: '800',
-              marginTop: 2
+              fontWeight: "800",
+              marginTop: 2,
             }}
           >
             {item.duration}
@@ -440,7 +441,7 @@ const DailyShiftReportScreen = () => {
         </View>
       </View>
     </View>
-  )
+  );
 
   const renderListHeader = () => (
     <View style={{ gap: 10, marginBottom: 10 }}>
@@ -451,35 +452,35 @@ const DailyShiftReportScreen = () => {
           borderColor: colors.border,
           backgroundColor: colors.panel,
           padding: 14,
-          gap: 12
+          gap: 12,
         }}
       >
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 12
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
           }}
         >
           <View style={{ flex: 1, gap: 6 }}>
             <View
               style={{
-                alignSelf: 'flex-start',
+                alignSelf: "flex-start",
                 paddingHorizontal: 10,
                 paddingVertical: 5,
                 borderRadius: 999,
-                backgroundColor: colors.teal + '18',
+                backgroundColor: colors.teal + "18",
                 borderWidth: 1,
-                borderColor: colors.teal + '45'
+                borderColor: colors.teal + "45",
               }}
             >
               <Text
                 style={{
                   fontSize: 10,
-                  fontWeight: '700',
+                  fontWeight: "700",
                   color: colors.teal,
-                  letterSpacing: 0.6
+                  letterSpacing: 0.6,
                 }}
               >
                 Timeclock
@@ -488,9 +489,9 @@ const DailyShiftReportScreen = () => {
             <Text
               style={{
                 fontSize: 20,
-                fontWeight: '800',
+                fontWeight: "800",
                 color: colors.heading,
-                lineHeight: 24
+                lineHeight: 24,
               }}
             >
               Daily Shift Report
@@ -511,8 +512,8 @@ const DailyShiftReportScreen = () => {
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              alignItems: 'center',
-              justifyContent: 'center'
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <RefreshCw
@@ -522,9 +523,9 @@ const DailyShiftReportScreen = () => {
             <Text
               style={{
                 fontSize: 11,
-                fontWeight: '700',
+                fontWeight: "700",
                 color: colors.label,
-                marginTop: 4
+                marginTop: 4,
               }}
             >
               Refresh
@@ -532,9 +533,9 @@ const DailyShiftReportScreen = () => {
           </TouchableOpacity>
         </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {summaryCards.map(card => {
-            const Icon = card.icon
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {summaryCards.map((card) => {
+            const Icon = card.icon;
             return (
               <View
                 key={card.label}
@@ -546,23 +547,23 @@ const DailyShiftReportScreen = () => {
                   borderColor: colors.border,
                   backgroundColor: colors.card,
                   padding: 10,
-                  gap: 6
+                  gap: 6,
                 }}
               >
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
                   }}
                 >
                   <Text
                     style={{
                       fontSize: 10,
                       color: colors.muted,
-                      fontWeight: '700',
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5
+                      fontWeight: "700",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
                     }}
                   >
                     {card.label}
@@ -572,35 +573,35 @@ const DailyShiftReportScreen = () => {
                 <Text
                   style={{
                     fontSize: 18,
-                    fontWeight: '800',
-                    color: colors.heading
+                    fontWeight: "800",
+                    color: colors.heading,
                   }}
                 >
                   {card.value}
                 </Text>
               </View>
-            )
+            );
           })}
         </View>
       </View>
 
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
           gap: 10,
           borderRadius: 14,
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
           paddingHorizontal: 12,
-          paddingVertical: 10
+          paddingVertical: 10,
         }}
       >
         <View style={{ flex: 1 }}>
           <Text
-            style={{ fontSize: 12, color: colors.heading, fontWeight: '700' }}
+            style={{ fontSize: 12, color: colors.heading, fontWeight: "700" }}
           >
             Selected Date
           </Text>
@@ -615,20 +616,20 @@ const DailyShiftReportScreen = () => {
             <TouchableOpacity
               onPress={() => setIsCalendarOpen(true)}
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
+                flexDirection: "row",
+                alignItems: "center",
                 gap: 8,
-                backgroundColor: colors.teal + '18',
+                backgroundColor: colors.teal + "18",
                 borderWidth: 1,
-                borderColor: colors.teal + '45',
+                borderColor: colors.teal + "45",
                 paddingHorizontal: 12,
                 paddingVertical: 10,
-                borderRadius: 999
+                borderRadius: 999,
               }}
             >
               <CalendarIcon color={colors.teal} size={16} />
-              <Text style={{ color: colors.heading, fontWeight: '700' }}>
-                {format(selectedDate, 'PPP')}
+              <Text style={{ color: colors.heading, fontWeight: "700" }}>
+                {format(selectedDate, "PPP")}
               </Text>
             </TouchableOpacity>
           }
@@ -640,51 +641,51 @@ const DailyShiftReportScreen = () => {
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: 12,
-              overflow: 'hidden'
+              overflow: "hidden",
             }}
           >
             <Calendar
-              current={format(selectedDate, 'yyyy-MM-dd')}
+              current={format(selectedDate, "yyyy-MM-dd")}
               onDayPress={onDateChange}
               theme={calendarTheme}
               markedDates={{
-                [format(selectedDate, 'yyyy-MM-dd')]: {
+                [format(selectedDate, "yyyy-MM-dd")]: {
                   selected: true,
-                  selectedColor: colors.teal
-                }
+                  selectedColor: colors.teal,
+                },
               }}
             />
           </View>
         </Popover>
       </View>
     </View>
-  )
+  );
 
   return (
-    <View className='flex-1 bg-screen'>
-      <View className='flex-1 p-4 gap-4'>
+    <View className="flex-1 bg-screen">
+      <View className="flex-1 p-4 gap-4">
         <TouchableOpacity
           onPress={() =>
             router.canGoBack()
               ? router.back()
-              : replaceRoute('(auth)', 'pin-login')
+              : replaceRoute("(auth)", "pin-login")
           }
           style={{
-            alignSelf: 'flex-start',
-            flexDirection: 'row',
-            alignItems: 'center',
+            alignSelf: "flex-start",
+            flexDirection: "row",
+            alignItems: "center",
             gap: 6,
             paddingHorizontal: 10,
             paddingVertical: 8,
             borderRadius: 999,
             borderWidth: 1,
             borderColor: colors.border,
-            backgroundColor: colors.panel
+            backgroundColor: colors.panel,
           }}
         >
           <ArrowLeft color={colors.label} size={18} />
           <Text
-            style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}
+            style={{ color: colors.label, fontSize: 11, fontWeight: "700" }}
           >
             Back
           </Text>
@@ -693,15 +694,15 @@ const DailyShiftReportScreen = () => {
         {error && (
           <View
             style={{
-              backgroundColor: colors.danger + '15',
+              backgroundColor: colors.danger + "15",
               borderWidth: 1,
-              borderColor: colors.danger + '40',
+              borderColor: colors.danger + "40",
               borderRadius: 12,
-              padding: 12
+              padding: 12,
             }}
           >
             <Text
-              style={{ color: colors.danger, fontSize: 12, fontWeight: '600' }}
+              style={{ color: colors.danger, fontSize: 12, fontWeight: "600" }}
             >
               {error}
             </Text>
@@ -715,22 +716,22 @@ const DailyShiftReportScreen = () => {
             borderRadius: 18,
             borderWidth: 1,
             borderColor: colors.border,
-            overflow: 'hidden'
+            overflow: "hidden",
           }}
         >
           <FlatList
             data={shiftsForDisplay}
-            keyExtractor={item => item.id}
+            keyExtractor={(item) => item.id}
             renderItem={renderShiftItem}
             ListHeaderComponent={renderListHeader}
             contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
             ListEmptyComponent={
               <View
-                style={{ paddingVertical: 24, alignItems: 'center', gap: 8 }}
+                style={{ paddingVertical: 24, alignItems: "center", gap: 8 }}
               >
                 {isLoading ? (
                   <>
-                    <ActivityIndicator size='large' color={spinnerColor} />
+                    <ActivityIndicator size="large" color={spinnerColor} />
                     <Text style={{ color: colors.label, fontSize: 12 }}>
                       Loading shifts...
                     </Text>
@@ -749,7 +750,7 @@ const DailyShiftReportScreen = () => {
         </View>
       </View>
     </View>
-  )
-}
+  );
+};
 
-export default DailyShiftReportScreen
+export default DailyShiftReportScreen;

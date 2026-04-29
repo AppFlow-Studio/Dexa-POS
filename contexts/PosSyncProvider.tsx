@@ -1,57 +1,65 @@
-import { useStationLoginSync } from "@/hooks/useStationLoginSync";
-import { useInventorySync } from "@/hooks/pos/useInventorySync";
-import { usePreviousOrdersBootstrap } from "@/hooks/pos/usePreviousOrdersBootstrap";
-import { useOrdersQuery, orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
-import { usePosSync } from "@/hooks/pos/usePosSync";
-import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { queryClient } from "@/contexts/TanstackProvider";
+import { useInventorySync } from "@/hooks/pos/useInventorySync";
+import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
+import { usePosSync } from "@/hooks/pos/usePosSync";
+import { usePreviousOrdersBootstrap } from "@/hooks/pos/usePreviousOrdersBootstrap";
+import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
+import { useStationLoginSync } from "@/hooks/useStationLoginSync";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
+import { getStorageSizeStats } from "@/lib/storage";
 import { MerchantRole } from "@/lib/types";
 import { FloorPlanService } from "@/services/floorPlanService";
-import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import {
-  initializeOfflineSync,
-  isServiceInitialized,
-  setOfflineSyncSupabaseClient,
-} from "@/services/offlineSyncInit";
-import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
-import { setSeatingSupabaseClient } from "@/stores/useSeatingStore";
-import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
-import {
-  setFloorPlanSupabaseClient,
-  useFloorPlanStore,
-} from "@/stores/useFloorPlanStore";
-import { useInventoryStore } from "@/stores/useInventoryStore";
-import { useMenuStore } from "@/stores/useMenuStore";
-import {
-  setOrderStoreSupabaseClient,
-  useOrderStore,
-} from "@/stores/useOrderStore";
-import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
-import { useSettingsStore, SyncableDiningSettings } from "@/stores/useSettingsStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { initLocationConfigSync } from "@/services/locationConfigSync";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { setKDSSupabaseClient, useKDSStore } from "@/stores/useKDSStore";
-import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
-import {
-  detectAndStoreCapabilities,
-  startHeartbeat,
-  stopHeartbeat,
-  startTerminalHealthCheck,
-  stopTerminalHealthCheck,
-  startStarPrinterHealthCheck,
-  stopStarPrinterHealthCheck,
+    detectAndStoreCapabilities,
+    startHeartbeat,
+    startStarPrinterHealthCheck,
+    startTerminalHealthCheck,
+    stopHeartbeat,
+    stopStarPrinterHealthCheck,
+    stopTerminalHealthCheck,
 } from "@/services/hardware";
+import { initLocationConfigSync } from "@/services/locationConfigSync";
 import {
-  startStarPrinterDiscoveryService,
-  stopStarPrinterDiscoveryService,
+    initializeOfflineSync,
+    isServiceInitialized,
+    setOfflineSyncSupabaseClient,
+} from "@/services/offlineSyncInit";
+import {
+    startStarPrinterDiscoveryService,
+    stopStarPrinterDiscoveryService,
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
-import { CASTLES_DEFAULT_PORT } from "@/types/castles";
+import {
+    startTimeclockSyncProcessor,
+    stopTimeclockSyncProcessor,
+} from "@/services/timeclockSyncProcessor";
+import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
+import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
+import {
+    setFloorPlanSupabaseClient,
+    useFloorPlanStore,
+} from "@/stores/useFloorPlanStore";
+import { useInventoryStore } from "@/stores/useInventoryStore";
+import { setKDSSupabaseClient } from "@/stores/useKDSStore";
+import { useMenuStore } from "@/stores/useMenuStore";
+import {
+    setOrderStoreSupabaseClient
+} from "@/stores/useOrderStore";
+import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
+import { setSeatingSupabaseClient } from "@/stores/useSeatingStore";
+import {
+    SyncableDiningSettings,
+    useSettingsStore,
+} from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
+import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { TaxRate } from "@/types/menu";
+import * as Sentry from "@sentry/react-native";
 import React, { useCallback, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
 
@@ -72,6 +80,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     (state) => state.selectedStation,
   );
   const isKDS = selectedStation?.station_type === "kds";
+  const hasCheckedStorageSizeRef = useRef(false);
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
@@ -323,6 +332,48 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [selectedStore?.id, isKDS, syncEmployees, syncFloorPlans, syncTaxRates]);
+
+  // Run timeclock queue processor at app scope so it is not tied to mounted screens.
+  useEffect(() => {
+    if (supabase && selectedStore?.id && !isKDS) {
+      startTimeclockSyncProcessor(supabase);
+    }
+
+    return () => {
+      stopTimeclockSyncProcessor();
+    };
+  }, [supabase, selectedStore?.id, isKDS]);
+
+  useEffect(() => {
+    if (hasCheckedStorageSizeRef.current) return;
+    hasCheckedStorageSizeRef.current = true;
+
+    const TEN_MB = 10 * 1024 * 1024;
+    const stats = getStorageSizeStats();
+    const buckets = [
+      { name: "general", ...stats.general },
+      { name: "secure", ...stats.secure },
+      { name: "sync", ...stats.sync },
+    ];
+
+    for (const bucket of buckets) {
+      if (bucket.totalBytes > TEN_MB) {
+        Sentry.captureMessage("MMKV bucket size exceeded 10MB", {
+          level: "warning",
+          tags: {
+            source: "storage_monitor",
+            bucket: bucket.name,
+          },
+          extra: {
+            totalBytes: bucket.totalBytes,
+            keyCount: bucket.keyCount,
+            thresholdBytes: TEN_MB,
+          },
+        });
+      }
+    }
+  }, []);
+
   const setMenuData = useMenuStore((state) => state.setMenuData);
   const setSyncState = useMenuStore((state) => state.setSyncState);
 
@@ -346,7 +397,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   standaloneDataRef.current = standaloneData;
 
   // --- INVENTORY SYNC --- (skip for KDS)
-  const { data: inventoryData } = useInventorySync(isKDS ? null : (selectedStore?.id ?? null));
+  const { data: inventoryData } = useInventorySync(
+    isKDS ? null : (selectedStore?.id ?? null),
+  );
   const setInventoryData = useInventoryStore((state) => state.setInventoryData);
   const setInventorySupabase = useInventoryStore(
     (state) => state.setSupabaseClient,
@@ -622,14 +675,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     const locationId = selectedStore?.id;
     if (!locationId || !supabase) return;
 
-    const myStationId = useStoreSettingsStore.getState().selectedStation?.id ?? null;
+    const myStationId =
+      useStoreSettingsStore.getState().selectedStation?.id ?? null;
     const cleanup = initLocationConfigSync(supabase, locationId, myStationId);
 
     // Backward compat: still hydrate dining settings into old store during migration
     if (selectedStore?.public_metadata?.dining_settings) {
-      useSettingsStore.getState().updateDiningSettings(
-        selectedStore.public_metadata.dining_settings as Partial<SyncableDiningSettings>
-      );
+      useSettingsStore
+        .getState()
+        .updateDiningSettings(
+          selectedStore.public_metadata
+            .dining_settings as Partial<SyncableDiningSettings>,
+        );
     }
 
     return cleanup;

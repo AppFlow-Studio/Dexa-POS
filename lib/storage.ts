@@ -60,11 +60,8 @@ export const syncStorage = createMMKV({
  */
 const debouncedWriters: Record<string, ReturnType<typeof debounce>> = {};
 
-const ORDER_STORE_KEY = "order-store-storage";
-
 function debouncedSetItem(name: string, value: string): void {
-  // Use longer debounce for the order store (large payload)
-  const delay = name === ORDER_STORE_KEY ? 1500 : 300;
+  const delay = 300;
   if (!debouncedWriters[name]) {
     debouncedWriters[name] = debounce((v: string) => {
       storage.set(name, v);
@@ -122,7 +119,7 @@ const lazyWriters: Record<string, ReturnType<typeof debounce>> = {};
 let isFlushing = false;
 
 function lazyDebouncedWrite(name: string, value: unknown): void {
-  const delay = name === ORDER_STORE_KEY ? 1500 : 300;
+  const delay = 300;
   if (!lazyWriters[name]) {
     lazyWriters[name] = debounce((v: unknown) => {
       const str = JSON.stringify(v);
@@ -496,5 +493,32 @@ export function getStorageStats(): {
       keyCount: syncStorage.getAllKeys().length,
       keys: syncStorage.getAllKeys(),
     },
+  };
+}
+
+export function getStorageSizeStats(): {
+  general: { keyCount: number; totalBytes: number };
+  secure: { keyCount: number; totalBytes: number };
+  sync: { keyCount: number; totalBytes: number };
+} {
+  const measureBucket = (bucket: typeof storage) => {
+    const keys = bucket.getAllKeys();
+    let totalBytes = 0;
+    for (const key of keys) {
+      const value = bucket.getString(key);
+      if (value != null) {
+        totalBytes += value.length;
+      }
+    }
+    return {
+      keyCount: keys.length,
+      totalBytes,
+    };
+  };
+
+  return {
+    general: measureBucket(storage),
+    secure: measureBucket(secureStorage),
+    sync: measureBucket(syncStorage),
   };
 }
