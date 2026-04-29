@@ -1690,6 +1690,44 @@ export async function retryDeadLetterOperation (
 }
 
 /**
+ * __DEV__-only: synthesize a dead-lettered op for UI verification.
+ * Bypasses the queue/retry pipeline so the operator can validate banner +
+ * per-item chip rendering without burning through 11 NLC retries.
+ *
+ * Usage from Metro console: __seedDeadLetter({ type, localOrderId, ... })
+ */
+export function _devSeedDeadLetter (
+  partial: Partial<OfflineOperation> & {
+    type: OperationType
+    localOrderId: string
+  }
+): string {
+  if (!__DEV__) {
+    throw new Error('_devSeedDeadLetter is __DEV__ only')
+  }
+  const id =
+    partial.id ?? `op_seed_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  const op: OfflineOperation = {
+    id,
+    type: partial.type,
+    params: partial.params ?? {},
+    localOrderId: partial.localOrderId,
+    localItemId: partial.localItemId,
+    timestamp: partial.timestamp ?? new Date().toISOString(),
+    retryCount: partial.retryCount ?? MAX_RETRY_ATTEMPTS,
+    status: 'failed',
+    priority: OPERATION_PRIORITY[partial.type] ?? 99,
+    lastError: partial.lastError ?? {
+      code: 'DEADLINE_EXCEEDED',
+      message: 'Seeded for UI verification'
+    },
+    deadLetteredAtMs: partial.deadLetteredAtMs ?? Date.now()
+  }
+  moveToDeadLetter(op)
+  return id
+}
+
+/**
  * Permanently discard a dead-lettered operation.
  */
 export function discardDeadLetterOperation (operationId: string): void {

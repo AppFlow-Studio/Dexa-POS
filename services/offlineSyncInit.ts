@@ -33,6 +33,9 @@ import {
   findOrCreateCustomerByPhone
 } from '@/services/loyalty/loyaltyService'
 import {
+  _devSeedDeadLetter,
+  discardDeadLetterOperation,
+  getDeadLetterOperations,
   getFailedPayments,
   getIsOnline,
   getOfflineDurationMs,
@@ -47,7 +50,8 @@ import {
   OPERATION_PRIORITY,
   processQueueNow,
   queueDependentOperation,
-  queueOperation
+  queueOperation,
+  retryDeadLetterOperation
 } from '@/services/offlineSyncService'
 import { connectionQuality } from '@/lib/network/connectionQuality'
 
@@ -60,6 +64,23 @@ if (__DEV__) {
     isSlow: connectionQuality.isSlow(),
     isOnline: getIsOnline()
   })
+  // Wave 3.0e dev helpers — verify dead-letter UI without burning through
+  // 11 NLC retries. From Metro console:
+  //   __seedDeadLetter({ type: 'send_to_kitchen', localOrderId: 'order_xxx' })
+  //   __seedDeadLetter({ type: 'update_item_status', localOrderId: 'order_xxx',
+  //                      params: { status: 'ready', localItemIds: ['item_xxx'] } })
+  //   __deadLetters()                — list current dead-letter snapshot
+  //   __retryDeadLetter(opId)        — pull one back into pending
+  //   __clearDeadLetters()           — remove all dead-letter ops (for cleanup)
+  ;(globalThis as any).__seedDeadLetter = _devSeedDeadLetter
+  ;(globalThis as any).__deadLetters = () => getDeadLetterOperations()
+  ;(globalThis as any).__retryDeadLetter = (id: string) =>
+    retryDeadLetterOperation(id)
+  ;(globalThis as any).__clearDeadLetters = () => {
+    for (const op of getDeadLetterOperations()) {
+      discardDeadLetterOperation(op.id)
+    }
+  }
 }
 import {
   toIdempotencyKey,
