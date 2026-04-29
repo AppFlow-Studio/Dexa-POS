@@ -25,6 +25,9 @@ export type IdempotentRpc =
   | 'record_refund_items'
   | 'create_reversal'
   | 'process_payment'
+  // Wave 3.0a — UPDATE-op retrofit
+  | 'update_order_item_quantity'
+  | 'update_order_item'
 
 const FLAG_PREFIX = 'idempotent.'
 const RECOVERY_UI_KEY = 'flag.paymentRecoveryUI'

@@ -224,6 +224,12 @@ export interface AddOrderItemParams {
   p_menu_id?: string;
   p_menu_name?: string;
   p_category_id?: string;
+
+  // Wave 1.1 station-ownership guard. The server-side RPC rejects writes
+  // against orders owned by another station via _assert_order_station_match.
+  // Pass the cashier's `useStoreSettingsStore.getState().selectedStation?.id`.
+  // NULL/undefined bypasses the check (legacy clients keep working).
+  p_station_id?: string | null;
 }
 
 // Result from add_order_item RPC

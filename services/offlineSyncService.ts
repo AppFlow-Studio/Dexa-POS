@@ -157,6 +157,11 @@ export interface OfflineOperation {
   blockedAtMs?: number
   blockCount?: number
   blockReason?: string
+  // PR D.3: timestamp of the FIRST execution attempt. Used by the stuck-op
+  // timeout to dead-letter ops that have been bouncing between pending and
+  // processing for >STUCK_OP_TIMEOUT_MS without ever resolving — the silent-
+  // queue scenarios where retryCount never advanced cleanly.
+  firstAttemptedAtMs?: number
 }
 
 export interface SyncResult {
@@ -183,6 +188,13 @@ const OPERATION_TIMEOUT_MS = 30_000
 // keeps being cleared. After this many blocks, the op moves to dead-letter
 // with reason 'block_count_exceeded'.
 const MAX_BLOCK_COUNT = 20
+
+// PR D.3: a queued op that's been alive for longer than this without succeeding
+// gets force-failed. Belt-and-suspenders for the silent-queue era and any
+// future code path that pre-marks an item 'pending' and then never increments
+// retryCount cleanly. Tuned long enough that legitimate slow networks finish
+// their MAX_RETRY_ATTEMPTS=5 backoff (~62s total) and still have headroom.
+const STUCK_OP_TIMEOUT_MS = 120_000
 
 const PAYMENT_TYPES: OperationType[] = [
   'process_payment',
@@ -1636,6 +1648,78 @@ export function discardDeadLetterOperation (operationId: string): void {
 }
 
 /**
+ * PR D.2: retry every failed-or-dead-lettered operation tied to a given
+ * local item id. Used by the FailedItemRow "Retry" affordance — the cashier
+ * doesn't know about op ids, only item ids.
+ *
+ * Resets retryCount, restores from dead-letter if needed, and kicks
+ * scheduleSync. Returns the number of operations re-queued (0 if none found).
+ */
+export async function retrySyncForItem (
+  itemId: string
+): Promise<number> {
+  let count = 0
+
+  // Pull matching ops out of the dead-letter queue first.
+  const dlMatches = deadLetterQueue.filter(op => op.localItemId === itemId)
+  for (const op of dlMatches) {
+    deadLetterQueue = deadLetterQueue.filter(o => o.id !== op.id)
+    op.status = 'pending'
+    op.retryCount = 0
+    op.firstAttemptedAtMs = undefined
+    pendingOperations.push(op)
+    addToIndex(op)
+    count++
+  }
+  if (dlMatches.length > 0) saveDeadLetterToStorage()
+
+  // Reset any failed ops still in the active queue.
+  for (const op of pendingOperations) {
+    if (op.localItemId === itemId && op.status === 'failed') {
+      op.status = 'pending'
+      op.retryCount = 0
+      op.firstAttemptedAtMs = undefined
+      count++
+    }
+  }
+
+  if (count > 0) {
+    await saveQueueToStorage()
+    onQueueChange?.(getActivePendingCount())
+    if (isOnline) scheduleSync()
+  }
+
+  return count
+}
+
+/**
+ * PR D.2 / Lever 3: drop every queued operation tied to a local item id.
+ * Used by the FailedItemRow "Remove" affordance when the user gives up on
+ * a permanently-failed add. The local optimistic item is removed by the
+ * caller via removeItemFromActiveOrder.
+ */
+export async function dropQueuedOpsForItem (itemId: string): Promise<number> {
+  let count = 0
+  const before = pendingOperations.length
+  pendingOperations = pendingOperations.filter(op => {
+    if (op.localItemId === itemId) {
+      removeFromIndex(op)
+      count++
+      return false
+    }
+    return true
+  })
+  const dlBefore = deadLetterQueue.length
+  deadLetterQueue = deadLetterQueue.filter(op => op.localItemId !== itemId)
+  count += dlBefore - deadLetterQueue.length
+
+  if (pendingOperations.length !== before) await saveQueueToStorage()
+  if (deadLetterQueue.length !== dlBefore) saveDeadLetterToStorage()
+  onQueueChange?.(getActivePendingCount())
+  return count
+}
+
+/**
  * Prune expired operations from the pending queue.
  * Non-payment ops older than OPERATION_TTL_MS are discarded.
  * Payment ops are moved to dead letter for manual review.
@@ -2063,7 +2147,35 @@ async function processQueue (): Promise<void> {
 
       // Mark as processing
       operation.status = 'processing'
+      // PR D.3: stamp first-attempt time on first dispatch so the stuck-op
+      // timeout can detect ops that never resolve cleanly.
+      if (!operation.firstAttemptedAtMs) {
+        operation.firstAttemptedAtMs = Date.now()
+      }
       await saveQueueToStorage()
+
+      // PR D.3: stuck-op timeout. If the op has been alive for >STUCK_OP_TIMEOUT_MS
+      // and we're still trying, dead-letter it instead of letting it ride forever.
+      // The retry budget (MAX_RETRY_ATTEMPTS=5 with backoff ≈ 62s) should fire
+      // first under normal conditions; this catches the edge cases where it
+      // doesn't (e.g., scheduling glitch, kill-switch, silent-queue legacy).
+      if (
+        operation.firstAttemptedAtMs &&
+        Date.now() - operation.firstAttemptedAtMs > STUCK_OP_TIMEOUT_MS
+      ) {
+        console.log(
+          `[OfflineSync] ✗ STUCK ${Math.round(
+            (Date.now() - operation.firstAttemptedAtMs) / 1000
+          )}s — dead-lettering: ${operation.type} (${operation.id})`
+        )
+        operation.retryCount = MAX_RETRY_ATTEMPTS
+        await handleOperationFailure(
+          operation,
+          new Error(`Stuck for >${STUCK_OP_TIMEOUT_MS / 1000}s`)
+        )
+        failCount++
+        continue
+      }
 
       try {
         console.log(

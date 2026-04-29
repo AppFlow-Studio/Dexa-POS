@@ -47,7 +47,11 @@ import {
   queueDependentOperation,
   queueOperation
 } from '@/services/offlineSyncService'
-import { toIdempotencyKey } from '@/lib/network/idempotencyKey'
+import {
+  toIdempotencyKey,
+  toUpdateItemKey,
+  toUpdateQuantityKey
+} from '@/lib/network/idempotencyKey'
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { AddOpenItemParams, OrderService } from '@/services/orderService'
 import { useCoursingStore } from '@/stores/useCoursingStore'
@@ -544,17 +548,32 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           return false
         }
 
+        // Wave 3.0a: per-intent key. Same (item, qty) on retry → cached.
         const { error } = await OrderService.updateOrderItemQuantity(
           _supabaseClient,
           resolvedItemId,
-          quantity
+          quantity,
+          { keyOverride: toUpdateQuantityKey(resolvedItemId, quantity) }
         )
         return !error
       }
 
       case 'update_item': {
-        const { orderItemId, specialInstructions, localOrderId, localItemId } =
-          op.params
+        // Wave 3.0a: forward all allowlisted params from op.params.
+        // Pre-fix this case only forwarded p_special_instructions, which
+        // silently dropped p_quantity / p_unit_price / p_seat_number when
+        // the queue collapsed an update_item_quantity into a later
+        // update_item op. Per-intent keys would then mis-cache the partial
+        // params. See plan 3.0a-4b.
+        const {
+          orderItemId,
+          quantity,
+          unitPrice,
+          specialInstructions,
+          seatNumber,
+          localOrderId,
+          localItemId
+        } = op.params
 
         const resolvedItemId =
           localItemId && localOrderId
@@ -568,10 +587,19 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           return false
         }
 
-        const { error } = await OrderService.updateOrderItem(_supabaseClient, {
+        const fullParams = {
           p_order_item_id: resolvedItemId,
-          p_special_instructions: specialInstructions
-        })
+          p_quantity: quantity,
+          p_unit_price: unitPrice,
+          p_special_instructions: specialInstructions,
+          p_seat_number: seatNumber
+        }
+
+        const { error } = await OrderService.updateOrderItem(
+          _supabaseClient,
+          fullParams,
+          { keyOverride: toUpdateItemKey(fullParams) }
+        )
         return !error
       }
 

@@ -354,6 +354,25 @@ const OpenItemAdder = ({
       return
     }
 
+    // Lever 2: don't let the modal close as if it succeeded if the active order
+    // belongs to another station. The store-level _checkCartEditable would
+    // silently no-op the add otherwise.
+    const myStationId = useOrderStore.getState().currentStationId
+    if (
+      activeOrder &&
+      activeOrder.station_id != null &&
+      myStationId != null &&
+      activeOrder.station_id !== myStationId
+    ) {
+      show({
+        title: 'Read-only',
+        message:
+          'This order is owned by another station. Take over to add items.',
+        type: 'warning'
+      })
+      return
+    }
+
     // User enters the cash/base price; card price is increased by the dual pricing percentage
     let cardPrice: number
     let cashPrice: number

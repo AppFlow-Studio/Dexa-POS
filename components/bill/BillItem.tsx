@@ -626,64 +626,85 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     >
                       {item.name}
                     </Text>
-                    {/* Wave 2.8c: failed chip — tappable retry. Always
-                        visible when status='failed' (dead-letter). */}
+                    {/* Wave 2.8c + PR D.1: failed chip — tappable retry, with
+                        a sibling Remove affordance so the cashier can give up
+                        on a permanently-failed add (e.g. cross-station ownership
+                        rejection) instead of letting the optimistic ghost ride
+                        forever. */}
                     {syncStatus === 'failed' && !isVoided && !orderHasPayments ? (
-                      <TouchableOpacity
-                        onPress={async () => {
-                          if (!activeOrderId) return
-                          const result = await retrySingleItemSync(
-                            activeOrderId,
-                            item.id
-                          )
-                          if (result === 'parent_dead') {
-                            showToast({
-                              title: 'Order create failed',
-                              message:
-                                'See Settings → General → Failed Syncs to retry the order.',
-                              type: 'error',
-                              duration: 6000
-                            })
-                          } else if (result === 'not_found') {
-                            showToast({
-                              title: 'Sync entry missing',
-                              message:
-                                "Couldn't find the queued operation. Please re-add the item.",
-                              type: 'warning'
-                            })
-                          } else {
-                            showToast({
-                              title: 'Retrying…',
-                              message: 'Re-queued for sync.',
-                              type: 'success',
-                              duration: 2000
-                            })
-                          }
-                        }}
-                        onLongPress={() => {
-                          if (__DEV__) {
-                            Alert.alert(
-                              'Sync error',
-                              syncError || '(no error text)'
+                      <View className='flex-row items-center gap-2'>
+                        <TouchableOpacity
+                          onPress={async () => {
+                            if (!activeOrderId) return
+                            const result = await retrySingleItemSync(
+                              activeOrderId,
+                              item.id
                             )
-                          }
-                        }}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        accessibilityLabel='Retry sync for this item'
-                      >
-                        <View className='flex-row items-center gap-1'>
-                          <AlertCircle size={13} color={colors.danger} />
+                            if (result === 'parent_dead') {
+                              showToast({
+                                title: 'Order create failed',
+                                message:
+                                  'See Settings → General → Failed Syncs to retry the order.',
+                                type: 'error',
+                                duration: 6000
+                              })
+                            } else if (result === 'not_found') {
+                              showToast({
+                                title: 'Sync entry missing',
+                                message:
+                                  "Couldn't find the queued operation. Please re-add the item.",
+                                type: 'warning'
+                              })
+                            } else {
+                              showToast({
+                                title: 'Retrying…',
+                                message: 'Re-queued for sync.',
+                                type: 'success',
+                                duration: 2000
+                              })
+                            }
+                          }}
+                          onLongPress={() => {
+                            if (__DEV__) {
+                              Alert.alert(
+                                'Sync error',
+                                syncError || '(no error text)'
+                              )
+                            }
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel='Retry sync for this item'
+                        >
+                          <View className='flex-row items-center gap-1'>
+                            <AlertCircle size={13} color={colors.danger} />
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: '700',
+                                color: colors.danger
+                              }}
+                            >
+                              Retry
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => removeItemFromActiveOrder(item.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel='Remove this failed item from the cart'
+                        >
                           <Text
                             style={{
                               fontSize: 10,
                               fontWeight: '700',
-                              color: colors.danger
+                              color: colors.muted,
+                              textDecorationLine: 'underline'
                             }}
                           >
-                            Retry
+                            Remove
                           </Text>
-                        </View>
-                      </TouchableOpacity>
+                        </TouchableOpacity>
+                      </View>
                     ) : (syncStatus === 'pending' || syncStatus === 'syncing') &&
                       isNetworkDegraded ? (
                       // Pending dot only when the network is actually struggling.

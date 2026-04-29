@@ -1,7 +1,7 @@
 # DM-010-05: Waitlist Guest Notifications — Implementation Summary
 
 ## Overview
-Implemented full SMS notification pipeline for waitlisted guests using Twilio. Guests receive SMS when their table is ready, with tracking for notification attempts, failures, and auto-expiry after grace period.
+Implemented full SMS notification pipeline for waitlisted guests using Telnyx. Guests receive SMS when their table is ready, with tracking for notification attempts, failures, and auto-expiry after grace period.
 
 ## Files Created
 
@@ -13,15 +13,14 @@ Implemented full SMS notification pipeline for waitlisted guests using Twilio. G
 
 ### 2. Supabase Edge Function
 **File:** `supabase/functions/notify-waitlist-guest/index.ts`
-- Deno TypeScript function that sends SMS via Twilio REST API
+- Deno TypeScript function that sends SMS via Telnyx REST API (`POST https://api.telnyx.com/v2/messages`, Bearer auth, JSON body)
 - Normalizes phone to E.164 format (handles 10/11 digit US numbers)
 - Calls `record_waitlist_sms_result` RPC to log success/failure in DB
-- Returns `{success, sms, reason}` response
+- Returns `{success, sms, reason}` response (failure responses include `provider_error`)
 
 **Required Secrets:**
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_AUTH_TOKEN`
-- `TWILIO_FROM_NUMBER`
+- `TELNYX_API_KEY`
+- `TELNYX_FROM_NUMBER` (defaults to `+18556810275` if unset)
 
 ## Files Modified
 
@@ -81,7 +80,7 @@ Implemented full SMS notification pipeline for waitlisted guests using Twilio. G
    - RPC marks `status='notified'`, `notified_at=NOW()`, increments `notification_count`
    - Returns `{phone, party_name, store_name, message_template}`
 4. Store calls edge function `notify-waitlist-guest` with phone + message
-5. Edge function sends SMS via Twilio, calls `record_waitlist_sms_result` RPC
+5. Edge function sends SMS via Telnyx, calls `record_waitlist_sms_result` RPC
 6. Toast shown: "SMS sent to {name}" or "SMS failed — notify verbally"
 
 ### Re-Notify (Attempts 2-3)
@@ -118,11 +117,14 @@ Implemented full SMS notification pipeline for waitlisted guests using Twilio. G
   ```bash
   supabase functions deploy notify-waitlist-guest
   ```
-- [ ] Set Twilio secrets
+- [ ] Set Telnyx secrets
   ```bash
-  supabase secrets set TWILIO_ACCOUNT_SID=...
-  supabase secrets set TWILIO_AUTH_TOKEN=...
-  supabase secrets set TWILIO_FROM_NUMBER=...
+  supabase secrets set TELNYX_API_KEY=...
+  supabase secrets set TELNYX_FROM_NUMBER=+18556810275
+  ```
+- [ ] Unset legacy Twilio secrets (one-time)
+  ```bash
+  supabase secrets unset TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM_NUMBER
   ```
 - [ ] Add party with phone → Notify → SMS received, `notification_count=1` in DB
 - [ ] Add party without phone → Notify → "No Phone" toast, `notification_count=1`, no SMS
@@ -153,7 +155,7 @@ To make customizable:
 **Two-step flow** (RPC + Edge Function):
 - RPC updates DB atomically: marks notified, increments count
 - Edge function sends SMS, records result in separate RPC call
-- Ensures DB consistency even if Twilio fails (entry is marked `notified` by intent)
+- Ensures DB consistency even if the SMS provider fails (entry is marked `notified` by intent)
 - SMS failures tracked separately via `notification_failures`
 
 **Why two RPCs for record?**
@@ -162,7 +164,7 @@ To make customizable:
 - Client-side guard ensures max 3 total; DB guards prevent re-opening
 
 **Phone normalization:**
-- Edge function handles E.164 conversion client-side (Twilio requires it)
+- Edge function handles E.164 conversion client-side (Telnyx requires it)
 - Strips non-digits, prepends `+1` for 10-digit US numbers
 - Supports 11-digit and international formats
 
@@ -170,7 +172,7 @@ To make customizable:
 
 1. **No custom SMS template** — template is hardcoded in edge function
 2. **Grace period not configurable** — hardcoded to 10 minutes
-3. **No retry logic for Twilio** — single attempt; staff must re-notify manually if failed
+3. **No retry logic for the SMS provider** — single attempt; staff must re-notify manually if failed
 4. **Phone format assumption** — assumes US numbers; international support basic
 
 ## Related Components

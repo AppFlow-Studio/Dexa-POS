@@ -20,6 +20,7 @@ import {
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
+import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
 import React, { useCallback, useMemo } from 'react'
 import {
   ImageSourcePropType,
@@ -230,7 +231,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
     [item.modifierGroupIds]
   )
 
-  const isDisabled = item.availability === false
+  const isReadOnly = useIsActiveOrderReadOnly()
+  const isDisabled = item.availability === false || isReadOnly
 
   const handlePressIn = useCallback(() => {
     setMenuBlockedSync(true)

@@ -8,7 +8,10 @@ import {
   getAutoRetryCount,
   isAutoRetryInProgress
 } from '@/services/offlineSyncService'
-import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
+import { useActiveOrderTotals, useActiveOrder } from '@/stores/selectors/orderSelectors'
+import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
+import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
+import ClaimOrderModal from '@/components/order/ClaimOrderModal'
 import { useDineInStore } from '@/stores/useDineInStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -459,14 +462,43 @@ const BillSectionContent = ({
     }
   }, [isPaymentSheetOpen])
 
+  // Lever 2: read-only when the active order belongs to another station.
+  const isReadOnly = useIsActiveOrderReadOnly()
+  const activeOrderForReadOnly = useActiveOrder()
+  const sourceStationName = activeOrderForReadOnly?._sourceStationName ?? null
+  const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
+  const [isClaimModalOpen, setClaimModalOpen] = useState(false)
+  const [isClaiming, setClaiming] = useState(false)
+
+  const handleTakeOver = useCallback(() => {
+    setClaimModalOpen(true)
+  }, [])
+
+  const handleCancelClaim = useCallback(() => {
+    if (isClaiming) return
+    setClaimModalOpen(false)
+  }, [isClaiming])
+
+  const handleConfirmClaim = useCallback(async () => {
+    if (isClaiming) return
+    setClaiming(true)
+    try {
+      await claimActiveOrder()
+    } finally {
+      setClaiming(false)
+      setClaimModalOpen(false)
+    }
+  }, [claimActiveOrder, isClaiming])
+
   // Memoize pay button disabled state - prevents clicking when balance due is 0 or no items
   const isPayButtonDisabled = useMemo(
     () =>
       !activeOrderId ||
       cart.length === 0 ||
       displayBalanceDue <= 0 ||
-      isProcessing,
-    [activeOrderId, cart.length, displayBalanceDue, isProcessing]
+      isProcessing ||
+      isReadOnly,
+    [activeOrderId, cart.length, displayBalanceDue, isProcessing, isReadOnly]
   )
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false)
   const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false)
@@ -498,7 +530,7 @@ const BillSectionContent = ({
   }, [moreOptionsSheetRef])
 
   const isMoreButtonDisabled =
-    !activeOrderId || activeOrder?.check_status === 'Closed'
+    !activeOrderId || activeOrder?.check_status === 'Closed' || isReadOnly
 
   const displayedTable = useMemo(
     () =>
@@ -1261,10 +1293,12 @@ const BillSectionContent = ({
             </Text>
             <TouchableOpacity
               className={`h-8 px-3 rounded-lg flex-row items-center justify-center gap-1 ${
-                newItemsCount === 0 || hasDraftItems ? 'opacity-50' : ''
+                newItemsCount === 0 || hasDraftItems || isReadOnly
+                  ? 'opacity-50'
+                  : ''
               }`}
               style={{ backgroundColor: colors.teal }}
-              disabled={newItemsCount === 0 || hasDraftItems}
+              disabled={newItemsCount === 0 || hasDraftItems || isReadOnly}
               onPress={handleSendToKitchen}
             >
               <Printer size={12} color={colors.onSolid} />
@@ -1352,6 +1386,14 @@ const BillSectionContent = ({
               ? () => router.push(`/tables/${displayedTable.id}` as any)
               : undefined
           }
+        />
+      )}
+
+      {isReadOnly && (
+        <ReadOnlyBanner
+          sourceStationName={sourceStationName}
+          isClaiming={isClaiming}
+          onTakeOver={handleTakeOver}
         />
       )}
 
@@ -1966,6 +2008,13 @@ const BillSectionContent = ({
       <DiscountOverlay
         isVisible={isDiscountOverlayVisible}
         onClose={handleCloseDiscounts}
+      />
+      <ClaimOrderModal
+        visible={isClaimModalOpen}
+        sourceStationName={sourceStationName}
+        isClaiming={isClaiming}
+        onConfirm={handleConfirmClaim}
+        onCancel={handleCancelClaim}
       />
       <Dialog open={isVoidConfirmOpen} onOpenChange={setIsVoidConfirmOpen}>
         <DialogContent
