@@ -134,7 +134,7 @@ import {
 } from '@/types/conflict-resolution'
 import { DejavooSaleTransactionResponse } from '@/types/dejavoo-spin-api'
 import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
-import { isOrderReadOnly } from '@/lib/orderAccessControl'
+import { isOrderReadOnly, isOwnershipError } from '@/lib/orderAccessControl'
 import { maybeFireTakeoverToast } from '@/lib/takeoverToast'
 
 // ============================================================================
@@ -169,19 +169,11 @@ function _checkCartEditable (
   return true
 }
 
-/**
- * Detects the typed error returned by mutation RPCs when the server's
- * station-id guard rejects a write because another station owns the order.
- *
- * The Postgres functions return `{ success: false, error: 'ORDER_OWNED_BY_OTHER_STATION', ... }`
- * via PostgREST as `data`, with `error` being null. Some legacy RPCs may
- * RAISE EXCEPTION instead, in which case the message lives on `error`.
- */
-function _isOwnershipError (result: any, error: any): boolean {
-  if (result && result.success === false && result.error === 'ORDER_OWNED_BY_OTHER_STATION') return true
-  if (error && typeof error.message === 'string' && error.message.includes('ORDER_OWNED_BY_OTHER_STATION')) return true
-  return false
-}
+// `_isOwnershipError` was moved to `lib/orderAccessControl.ts` as the exported
+// `isOwnershipError`. The offline-sync service also imports it from there to
+// short-circuit ownership rejections to dead-letter (Wave 2.5). Keeping the
+// detector in one module guarantees both code paths agree on what the marker
+// looks like.
 
 // ============================================================================
 // PURE CALCULATION FUNCTIONS (Delegating to order-calculator module)
@@ -1346,7 +1338,10 @@ const addItemToBackend = async (
 
       // Lever 2: server rejected because another station owns the order.
       // Don't silent-queue — retries will keep failing. Surface and stop.
-      if (_isOwnershipError(addResult, addError)) {
+      // Wave 2.5: also drop any queued ops for this item so the offline-sync
+      // queue's retry counter doesn't keep ticking up against a foreign order.
+      if (isOwnershipError(addResult, addError)) {
+        dropQueuedOpsForItem(item.id)
         useSyncStatusStore
           .getState()
           .setSyncStatus(item.id, 'failed', 'Owned by another station')
@@ -1679,7 +1674,9 @@ const addItemToBackend = async (
         )
 
       // Lever 2: server rejected because another station owns the order.
-      if (_isOwnershipError(updateResult, updateError)) {
+      // Wave 2.5: drop queued ops so the offline-sync queue stops retrying.
+      if (isOwnershipError(updateResult, updateError)) {
+        dropQueuedOpsForItem(item.id)
         useSyncStatusStore
           .getState()
           .setSyncStatus(item.id, 'failed', 'Owned by another station')
@@ -1855,7 +1852,9 @@ const addItemToBackend = async (
       })
 
     // Lever 2: server rejected because another station owns the order.
-    if (_isOwnershipError(addResult, addError)) {
+    // Wave 2.5: drop queued ops so the offline-sync queue stops retrying.
+    if (isOwnershipError(addResult, addError)) {
+      dropQueuedOpsForItem(item.id)
       useSyncStatusStore
         .getState()
         .setSyncStatus(item.id, 'failed', 'Owned by another station')
@@ -2151,7 +2150,9 @@ const addItemToBackend = async (
     return true
   } catch (error: any) {
     // Lever 2: server rejected because another station owns the order.
-    if (_isOwnershipError(null, error)) {
+    // Wave 2.5: drop queued ops so the offline-sync queue stops retrying.
+    if (isOwnershipError(null, error)) {
+      dropQueuedOpsForItem(item.id)
       useSyncStatusStore
         .getState()
         .setSyncStatus(item.id, 'failed', 'Owned by another station')

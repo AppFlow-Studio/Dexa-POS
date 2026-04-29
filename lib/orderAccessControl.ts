@@ -22,3 +22,35 @@ export function isOrderReadOnly (
   if (!order || !currentStationId) return false
   return order.station_id != null && order.station_id !== currentStationId
 }
+
+/**
+ * Wave 2.5 — typed-error detector for `ORDER_OWNED_BY_OTHER_STATION`.
+ *
+ * Server-side station guards (Wave 1's RPCs and Wave 2.3+ extensions) reject
+ * cross-station mutations by returning `{ success: false, error:
+ * 'ORDER_OWNED_BY_OTHER_STATION', ... }` via PostgREST as `data`, with `error`
+ * being null. Some legacy RPCs RAISE EXCEPTION instead, in which case the
+ * marker lives on `error.message`.
+ *
+ * Pulled out of `useOrderStore.ts` (it lived as a private helper there) so:
+ *   - The offline-sync service can short-circuit ownership rejections to
+ *     dead-letter immediately instead of burning through MAX_RETRY_ATTEMPTS.
+ *   - Unit tests can cover the recogniser without loading the whole store.
+ */
+export function isOwnershipError (result: any, error: any): boolean {
+  if (
+    result &&
+    result.success === false &&
+    result.error === 'ORDER_OWNED_BY_OTHER_STATION'
+  ) {
+    return true
+  }
+  if (
+    error &&
+    typeof error.message === 'string' &&
+    error.message.includes('ORDER_OWNED_BY_OTHER_STATION')
+  ) {
+    return true
+  }
+  return false
+}

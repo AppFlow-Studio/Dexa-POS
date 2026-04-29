@@ -15,6 +15,7 @@ import { connectionQuality } from '@/lib/network/connectionQuality'
 import { DEADLINES } from '@/lib/network/deadlines'
 import { isBlockedAddItemEnabled } from '@/lib/network/featureFlags'
 import { isSynced, isValidUUID } from '@/lib/offlineIdRegistry'
+import { isOwnershipError } from '@/lib/orderAccessControl'
 import { getSyncJSON, setSyncJSON } from '@/lib/storage'
 import * as Sentry from '@sentry/react-native'
 import { v4 as uuidv4 } from 'uuid'
@@ -2123,6 +2124,43 @@ async function handleOperationFailure (
   operation: OfflineOperation,
   error: any
 ): Promise<void> {
+  // Wave 2.5: if the op was already removed externally (e.g., the executor
+  // detected ownership rejection inline and called `dropQueuedOpsForItem`),
+  // skip dead-lettering — `moveToDeadLetter` would otherwise re-create a
+  // stale entry that the cart row would render as "Failed N times".
+  const stillPending = pendingOperations.some(o => o.id === operation.id)
+  const stillDeadLettered = deadLetterQueue.some(o => o.id === operation.id)
+  if (!stillPending && !stillDeadLettered) {
+    console.log(
+      `[OfflineSync] handleOperationFailure: ${operation.type} (${operation.id}) already removed, skipping`
+    )
+    return
+  }
+
+  // Wave 2.5: ownership rejection is permanent and instant — no point burning
+  // through MAX_RETRY_ATTEMPTS or the slow-mode reprieve. Tag with the
+  // `OWNERSHIP_REJECTED` code so `lib/offlineSyncSubtitles.ts` renders the
+  // operator-facing subtitle "Order owned by another station" instead of
+  // "Failed N times". `isRetryable` (same module) returns false for this code,
+  // so the cart row's Retry chip auto-hides and the user only sees Remove.
+  if (isOwnershipError(null, error)) {
+    console.log(
+      `[OfflineSync] ✗ DEAD-LETTERED (ownership rejected): ${operation.type} (${operation.id})`
+    )
+    operation.lastError = {
+      code: 'OWNERSHIP_REJECTED',
+      message:
+        (error as any)?.message ?? 'Order owned by another station'
+    }
+    operation.retryCount = MAX_RETRY_ATTEMPTS
+    removeFromIndex(operation)
+    pendingOperations = pendingOperations.filter(op => op.id !== operation.id)
+    moveToDeadLetter(operation)
+    await saveQueueToStorage()
+    onOperationFailed?.(operation)
+    return
+  }
+
   const permanent = error && !isTransientError(error)
 
   // Wave 3.0f-2: slow-mode reprieve. If the diagnosis is "WiFi is bad" (not a
