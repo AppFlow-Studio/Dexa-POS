@@ -22,6 +22,8 @@ export const useLoyaltyStore = create<LoyaltyStore>()(
     {
       name: "loyalty-store",
       storage: createJSONStorage(() => mmkvStorage),
-    }
-  )
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
+    },
+  ),
 );

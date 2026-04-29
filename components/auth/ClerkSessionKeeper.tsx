@@ -1,4 +1,5 @@
 import { useAuth, useSession } from "@clerk/clerk-expo";
+import * as Sentry from "@sentry/react-native";
 import { useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 
@@ -43,6 +44,9 @@ export function ClerkSessionKeeper() {
           }
         })
         .catch((err) => {
+          Sentry.captureException(err, {
+            tags: { source: "session_keeper", op: "foreground_token_refresh" },
+          });
           console.warn("[SessionKeeper] Foreground token refresh failed:", err);
         });
     };
@@ -69,6 +73,9 @@ export function ClerkSessionKeeper() {
         console.log("[SessionKeeper] ✓ Session touched successfully");
       })
       .catch((error) => {
+        Sentry.captureException(error, {
+          tags: { source: "session_keeper", op: "touch_on_signin" },
+        });
         console.error("[SessionKeeper] ✗ Failed to touch session:", error);
       });
 
@@ -88,7 +95,7 @@ export function ClerkSessionKeeper() {
             console.error("[SessionKeeper] ✗ Failed to touch session:", error);
           });
       },
-      5 * 60 * 1000
+      5 * 60 * 1000,
     );
 
     return () => {

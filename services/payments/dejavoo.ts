@@ -3,24 +3,24 @@
 // File: services/payment/DejavooService.ts
 // ============================================================
 
-import { SupabaseClient } from '@supabase/supabase-js';
 import {
-  DejavooCredentials,
-  DejavooSaleRequest,
-  DejavooSaleResponse,
-  DejavooVoidRequest,
-  DejavooRefundRequest,
-  DejavooTipAdjustRequest,
-  DejavooStatusRequest,
-  DejavooSettleRequest,
-  DejavooResponse,
-  PaymentType,
-  DEJAVOO_ERROR_CODES,
-} from '@/types/dejavoo-spin-api';
+    DEJAVOO_ERROR_CODES,
+    DejavooCredentials,
+    DejavooRefundRequest,
+    DejavooResponse,
+    DejavooSaleRequest,
+    DejavooSaleResponse,
+    DejavooSettleRequest,
+    DejavooTipAdjustRequest,
+    DejavooVoidRequest,
+    PaymentType
+} from "@/types/dejavoo-spin-api";
+import * as Sentry from "@sentry/react-native";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 const SPIN_API_URLS = {
-  sandbox: 'https://test.spinpos.net',
-  production: 'https://api.spinpos.net',
+  sandbox: "https://test.spinpos.net",
+  production: "https://api.spinpos.net",
 };
 
 export class DejavooService {
@@ -40,12 +40,18 @@ export class DejavooService {
    */
   async loadCredentials(terminalId: string): Promise<boolean> {
     try {
-      const { data, error } = await this.supabase.rpc('get_terminal_credentials', {
-        p_terminal_id: terminalId,
-      });
+      const { data, error } = await this.supabase.rpc(
+        "get_terminal_credentials",
+        {
+          p_terminal_id: terminalId,
+        },
+      );
 
       if (error || !data?.success) {
-        console.error('[Dejavoo] Failed to load credentials:', error || data?.error);
+        console.error(
+          "[Dejavoo] Failed to load credentials:",
+          error || data?.error,
+        );
         return false;
       }
 
@@ -59,7 +65,7 @@ export class DejavooService {
 
       return true;
     } catch (err) {
-      console.error('[Dejavoo] Error loading credentials:', err);
+      console.error("[Dejavoo] Error loading credentials:", err);
       return false;
     }
   }
@@ -72,12 +78,18 @@ export class DejavooService {
   }
 
   private getBaseUrl(): string {
-    if (!this.credentials) throw new Error('Credentials not loaded');
-    return this.credentials.baseUrl || SPIN_API_URLS[this.credentials.environment];
+    if (!this.credentials) throw new Error("Credentials not loaded");
+    return (
+      this.credentials.baseUrl || SPIN_API_URLS[this.credentials.environment]
+    );
   }
 
-  private getAuthParams(): { RegisterId: string; Authkey: string; SPInProxyTimeout?: number } {
-    if (!this.credentials) throw new Error('Credentials not loaded');
+  private getAuthParams(): {
+    RegisterId: string;
+    Authkey: string;
+    SPInProxyTimeout?: number;
+  } {
+    if (!this.credentials) throw new Error("Credentials not loaded");
     return {
       RegisterId: this.credentials.registerId,
       Authkey: this.credentials.authKey,
@@ -94,11 +106,15 @@ export class DejavooService {
    */
   async checkTerminalStatus(): Promise<{
     success: boolean;
-    status: 'Online' | 'Offline' | 'NotFound';
+    status: "Online" | "Offline" | "NotFound";
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, status: 'NotFound', error: 'Credentials not loaded' };
+      return {
+        success: false,
+        status: "NotFound",
+        error: "Credentials not loaded",
+      };
     }
 
     try {
@@ -110,15 +126,15 @@ export class DejavooService {
       };
 
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
       const data = await response.json();
 
-      const isOnline = data?.GeneralResponse?.ResultCode === '0';
-      const status = isOnline ? 'Online' : 'Offline';
+      const isOnline = data?.GeneralResponse?.ResultCode === "0";
+      const status = isOnline ? "Online" : "Offline";
 
       // Update terminal status in database
       await this.updateTerminalStatus(status, isOnline);
@@ -126,14 +142,16 @@ export class DejavooService {
       return {
         success: isOnline,
         status,
-        error: isOnline ? undefined : (data?.GeneralResponse?.Message || 'Terminal unreachable'),
+        error: isOnline
+          ? undefined
+          : data?.GeneralResponse?.Message || "Terminal unreachable",
       };
     } catch (err) {
-      console.error('[Dejavoo] Terminal status check failed:', err);
+      console.error("[Dejavoo] Terminal status check failed:", err);
       return {
         success: false,
-        status: 'Offline',
-        error: err instanceof Error ? err.message : 'Network error',
+        status: "Offline",
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -155,13 +173,13 @@ export class DejavooService {
     errorCode?: number;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
       const request: DejavooSaleRequest = {
-        PaymentType: params.paymentType || 'Card',
-        TransactionType: 'Sale',
+        PaymentType: params.paymentType || "Card",
+        TransactionType: "Sale",
         Amount: params.amount,
         TipAmount: params.tipAmount,
         TaxAmount: params.taxAmount,
@@ -173,29 +191,40 @@ export class DejavooService {
 
       const url = `${this.getBaseUrl()}/v2/Payment/Sale`;
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
+      if (!response.ok) {
+        throw new Error(
+          `Dejavoo HTTP ${response.status}: ${response.statusText}`,
+        );
+      }
+
       const data: DejavooSaleResponse = await response.json();
 
-      if (data.GeneralResponse.ResultCode === 'Ok') {
+      if (data.GeneralResponse.ResultCode === "Ok") {
         return { success: true, data };
       } else {
         const errorCode = this.parseErrorCode(data.GeneralResponse.StatusCode);
         return {
           success: false,
-          error: data.GeneralResponse.Message || data.GeneralResponse.DetailedMessage,
+          error:
+            data.GeneralResponse.Message ||
+            data.GeneralResponse.DetailedMessage,
           errorCode,
           data,
         };
       }
     } catch (err) {
-      console.error('[Dejavoo] Sale failed:', err);
+      Sentry.captureException(err, {
+        tags: { terminal: "dejavoo", operation: "sale" },
+      });
+      console.error("[Dejavoo] Sale failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -212,38 +241,48 @@ export class DejavooService {
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
       const request: DejavooVoidRequest = {
-        PaymentType: params.paymentType || 'Card',
-        TransactionType: 'Void',
+        PaymentType: params.paymentType || "Card",
+        TransactionType: "Void",
         ReferenceId: params.referenceId,
         ...this.getAuthParams(),
       };
 
-      const url = `${this.getBaseUrl()}/v2/Payment/Void`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const voidUrl = `${this.getBaseUrl()}/v2/Payment/Void`;
+      const voidResponse = await fetch(voidUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
-      const data: DejavooResponse = await response.json();
+      if (!voidResponse.ok) {
+        throw new Error(
+          `Dejavoo HTTP ${voidResponse.status}: ${voidResponse.statusText}`,
+        );
+      }
+
+      const data: DejavooResponse = await voidResponse.json();
 
       return {
-        success: data.GeneralResponse.ResultCode === 'Ok',
+        success: data.GeneralResponse.ResultCode === "Ok",
         data,
-        error: data.GeneralResponse.ResultCode !== 'Ok' 
-          ? data.GeneralResponse.Message 
-          : undefined,
+        error:
+          data.GeneralResponse.ResultCode !== "Ok"
+            ? data.GeneralResponse.Message
+            : undefined,
       };
     } catch (err) {
-      console.error('[Dejavoo] Void failed:', err);
+      Sentry.captureException(err, {
+        tags: { terminal: "dejavoo", operation: "void" },
+      });
+      console.error("[Dejavoo] Void failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -262,40 +301,50 @@ export class DejavooService {
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
       const request: DejavooRefundRequest = {
-        PaymentType: params.paymentType || 'Credit',
-        TransactionType: 'Refund',
+        PaymentType: params.paymentType || "Credit",
+        TransactionType: "Refund",
         Amount: params.amount,
         ReferenceId: params.referenceId,
         OriginalReferenceId: params.originalReferenceId,
         ...this.getAuthParams(),
       };
 
-      const url = `${this.getBaseUrl()}/v2/Payment/Return`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const refundUrl = `${this.getBaseUrl()}/v2/Payment/Return`;
+      const refundResponse = await fetch(refundUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
-      const data: DejavooSaleResponse = await response.json();
+      if (!refundResponse.ok) {
+        throw new Error(
+          `Dejavoo HTTP ${refundResponse.status}: ${refundResponse.statusText}`,
+        );
+      }
+
+      const data: DejavooSaleResponse = await refundResponse.json();
 
       return {
-        success: data.GeneralResponse.ResultCode === 'Ok',
+        success: data.GeneralResponse.ResultCode === "Ok",
         data,
-        error: data.GeneralResponse.ResultCode !== 'Ok' 
-          ? data.GeneralResponse.Message 
-          : undefined,
+        error:
+          data.GeneralResponse.ResultCode !== "Ok"
+            ? data.GeneralResponse.Message
+            : undefined,
       };
     } catch (err) {
-      console.error('[Dejavoo] Refund failed:', err);
+      Sentry.captureException(err, {
+        tags: { terminal: "dejavoo", operation: "refund" },
+      });
+      console.error("[Dejavoo] Refund failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -313,12 +362,12 @@ export class DejavooService {
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
       const request: DejavooTipAdjustRequest = {
-        PaymentType: 'Credit',
+        PaymentType: "Credit",
         Amount: params.originalAmount,
         TipAmount: params.newTipAmount,
         ReferenceId: params.referenceId,
@@ -327,25 +376,26 @@ export class DejavooService {
 
       const url = `${this.getBaseUrl()}/v2/Payment/TipAdjust`;
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
       const data: DejavooResponse = await response.json();
 
       return {
-        success: data.GeneralResponse.ResultCode === 'Ok',
+        success: data.GeneralResponse.ResultCode === "Ok",
         data,
-        error: data.GeneralResponse.ResultCode !== 'Ok' 
-          ? data.GeneralResponse.Message 
-          : undefined,
+        error:
+          data.GeneralResponse.ResultCode !== "Ok"
+            ? data.GeneralResponse.Message
+            : undefined,
       };
     } catch (err) {
-      console.error('[Dejavoo] Tip adjust failed:', err);
+      console.error("[Dejavoo] Tip adjust failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -363,13 +413,13 @@ export class DejavooService {
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
       const request = {
-        PaymentType: params.paymentType || 'Credit',
-        TransactionType: 'Auth',
+        PaymentType: params.paymentType || "Credit",
+        TransactionType: "Auth",
         Amount: params.amount,
         ReferenceId: params.referenceId,
         ...this.getAuthParams(),
@@ -377,25 +427,26 @@ export class DejavooService {
 
       const url = `${this.getBaseUrl()}/v2/Payment/Auth`;
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
       const data: DejavooSaleResponse = await response.json();
 
       return {
-        success: data.GeneralResponse.ResultCode === 'Ok',
+        success: data.GeneralResponse.ResultCode === "Ok",
         data,
-        error: data.GeneralResponse.ResultCode !== 'Ok' 
-          ? data.GeneralResponse.Message 
-          : undefined,
+        error:
+          data.GeneralResponse.ResultCode !== "Ok"
+            ? data.GeneralResponse.Message
+            : undefined,
       };
     } catch (err) {
-      console.error('[Dejavoo] Pre-auth failed:', err);
+      console.error("[Dejavoo] Pre-auth failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -414,13 +465,13 @@ export class DejavooService {
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
       const request = {
-        PaymentType: params.paymentType || 'Credit',
-        TransactionType: 'Capture',
+        PaymentType: params.paymentType || "Credit",
+        TransactionType: "Capture",
         Amount: params.amount,
         TipAmount: params.tipAmount,
         ReferenceId: params.referenceId,
@@ -429,25 +480,26 @@ export class DejavooService {
 
       const url = `${this.getBaseUrl()}/v2/Payment/Capture`;
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
       const data: DejavooSaleResponse = await response.json();
 
       return {
-        success: data.GeneralResponse.ResultCode === 'Ok',
+        success: data.GeneralResponse.ResultCode === "Ok",
         data,
-        error: data.GeneralResponse.ResultCode !== 'Ok' 
-          ? data.GeneralResponse.Message 
-          : undefined,
+        error:
+          data.GeneralResponse.ResultCode !== "Ok"
+            ? data.GeneralResponse.Message
+            : undefined,
       };
     } catch (err) {
-      console.error('[Dejavoo] Capture failed:', err);
+      console.error("[Dejavoo] Capture failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -461,7 +513,7 @@ export class DejavooService {
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
@@ -472,25 +524,26 @@ export class DejavooService {
 
       const url = `${this.getBaseUrl()}/v2/Payment/Settle`;
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
       const data: DejavooResponse = await response.json();
 
       return {
-        success: data.GeneralResponse.ResultCode === 'Ok',
+        success: data.GeneralResponse.ResultCode === "Ok",
         data,
-        error: data.GeneralResponse.ResultCode !== 'Ok' 
-          ? data.GeneralResponse.Message 
-          : undefined,
+        error:
+          data.GeneralResponse.ResultCode !== "Ok"
+            ? data.GeneralResponse.Message
+            : undefined,
       };
     } catch (err) {
-      console.error('[Dejavoo] Settle failed:', err);
+      console.error("[Dejavoo] Settle failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -504,7 +557,7 @@ export class DejavooService {
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
@@ -515,25 +568,26 @@ export class DejavooService {
 
       const url = `${this.getBaseUrl()}/v2/Payment/Status`;
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
       const data: DejavooSaleResponse = await response.json();
 
       return {
-        success: data.GeneralResponse.ResultCode === 'Ok',
+        success: data.GeneralResponse.ResultCode === "Ok",
         data,
-        error: data.GeneralResponse.ResultCode !== 'Ok' 
-          ? data.GeneralResponse.Message 
-          : undefined,
+        error:
+          data.GeneralResponse.ResultCode !== "Ok"
+            ? data.GeneralResponse.Message
+            : undefined,
       };
     } catch (err) {
-      console.error('[Dejavoo] Status check failed:', err);
+      console.error("[Dejavoo] Status check failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -546,7 +600,7 @@ export class DejavooService {
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, error: 'Credentials not loaded' };
+      return { success: false, error: "Credentials not loaded" };
     }
 
     try {
@@ -557,24 +611,25 @@ export class DejavooService {
 
       const url = `${this.getBaseUrl()}/v2/Payment/AbortTransaction`;
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
       const data: DejavooResponse = await response.json();
 
       return {
-        success: data.GeneralResponse.ResultCode === 'Ok',
-        error: data.GeneralResponse.ResultCode !== 'Ok' 
-          ? data.GeneralResponse.Message 
-          : undefined,
+        success: data.GeneralResponse.ResultCode === "Ok",
+        error:
+          data.GeneralResponse.ResultCode !== "Ok"
+            ? data.GeneralResponse.Message
+            : undefined,
       };
     } catch (err) {
-      console.error('[Dejavoo] Abort failed:', err);
+      console.error("[Dejavoo] Abort failed:", err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -588,10 +643,18 @@ export class DejavooService {
     return match ? parseInt(match[0], 10) : undefined;
   }
 
-  private async updateTerminalStatus(status: string, isConnected: boolean): Promise<void> {
+  private async updateTerminalStatus(
+    status: string,
+    isConnected: boolean,
+  ): Promise<void> {
     // This would be called with the terminal ID from the caller
     // For now, just log
-    console.log('[Dejavoo] Terminal status:', status, 'Connected:', isConnected);
+    console.log(
+      "[Dejavoo] Terminal status:",
+      status,
+      "Connected:",
+      isConnected,
+    );
   }
 
   /**
@@ -604,15 +667,13 @@ export class DejavooService {
   /**
    * Generate a unique reference ID for a transaction
    */
-  static generateReferenceId(orderId: string, paymentIndex: number = 0): string {
+  static generateReferenceId(
+    orderId: string,
+    paymentIndex: number = 0,
+  ): string {
     // Format: ORD-{shortOrderId}-{paymentIndex}-{timestamp}
     const shortId = orderId.substring(0, 8);
     const timestamp = Date.now().toString(36);
     return `${shortId}-${paymentIndex}-${timestamp}`.substring(0, 50);
   }
 }
-
-
-
-
-

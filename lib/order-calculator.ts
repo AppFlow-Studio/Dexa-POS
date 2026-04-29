@@ -23,6 +23,11 @@ import {
   PaymentPreviewResult,
 } from "@/types/order-calculations";
 import Decimal from 'decimal.js';
+import { round2 as round2FromMoney } from '@/utils/money';
+
+// Re-export the correct round2 implementation (decimal.js, PostgreSQL-compatible)
+// Fixes: replaces broken Math.round + Number.EPSILON version
+export const round2 = round2FromMoney;
 
 // ============================================================================
 // CALCULATION CACHE - TTL-based memoization for performance
@@ -71,25 +76,6 @@ function pruneCache(): void {
       calculationCache.delete(key);
     }
   }
-}
-
-// ============================================================================
-// ROUNDING UTILITY - Matches PostgreSQL ROUND(x, 2)
-// ============================================================================
-
-/**
- * Round to 2 decimal places matching PostgreSQL's rounding behavior.
- * Uses Math.round with EPSILON to handle floating point edge cases.
- *
- * CRITICAL: All monetary calculations MUST use this function.
- *
- * @example
- * round2(10.005) // 10.01 (matches PostgreSQL)
- * round2(0.1 + 0.2) // 0.30 (handles floating point)
- */
-export function round2(num: number): number {
-  // console.log('[round2] num', num);
-  return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
 // ============================================================================

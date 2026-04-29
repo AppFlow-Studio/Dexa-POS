@@ -18,6 +18,7 @@ import {
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
+import { round2 } from '@/utils/money'
 import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -141,8 +142,8 @@ const ManualCardEntryView = () => {
   }, [updateTip])
 
   const handleTipPreset = (percentage: number) => {
-    const calculatedTip = (percentage / 100) * totalToPay
-    setTipInput(calculatedTip.toFixed(2))
+    const calculatedTip = round2((percentage / 100) * totalToPay)
+    setTipInput(String(calculatedTip))
     setSelectedTipPreset(percentage)
   }
 

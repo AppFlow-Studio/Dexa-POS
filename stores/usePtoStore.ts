@@ -1,7 +1,8 @@
-import { create } from "zustand";
-import { immer } from "zustand/middleware/immer";
-import { devtools, persist } from "zustand/middleware";
+import { createLazyPersistStorage } from "@/lib/storage";
 import { PTOAccrualEntry } from "@/lib/types";
+import { create } from "zustand";
+import { devtools, persist } from "zustand/middleware";
+import { immer } from "zustand/middleware/immer";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
 
 interface PtoState {
@@ -27,7 +28,9 @@ export const usePtoStore = create<PtoState>()(
          * Safe to call multiple times — recalculates from scratch each time.
          */
         initializePtoFromHistory: () => {
-          const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
+          const { useTimeclockStore } = require("./useTimeclockStore") as {
+            useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore;
+          };
           const shiftHistory = useTimeclockStore.getState().shiftHistory;
 
           if (!shiftHistory.length) {
@@ -35,7 +38,8 @@ export const usePtoStore = create<PtoState>()(
             return;
           }
 
-          const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate;
+          const ptoAccrualRate =
+            useStoreSettingsStore.getState().ptoAccrualRate;
 
           const newAccrualHistory: Record<string, PTOAccrualEntry[]> = {};
           const newBalances: Record<
@@ -93,7 +97,7 @@ export const usePtoStore = create<PtoState>()(
             // Avoid duplicates during live updates if a re-init happens
             if (
               !state.accrualHistory[entry.employeeId].some(
-                (e) => e.shiftId === entry.shiftId
+                (e) => e.shiftId === entry.shiftId,
               )
             ) {
               state.accrualHistory[entry.employeeId].push(entry);
@@ -133,12 +137,15 @@ export const usePtoStore = create<PtoState>()(
       })),
       {
         name: "pto-storage",
+        storage: createLazyPersistStorage(),
+        version: 1,
+        migrate: (persistedState) => persistedState as any,
         // We only persist the calculated history and balances.
         partialize: (state) => ({
           accrualHistory: state.accrualHistory,
           balances: state.balances,
         }),
-      }
-    )
-  )
+      },
+    ),
+  ),
 );

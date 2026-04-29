@@ -1,11 +1,11 @@
 import { createLazyPersistStorage } from "@/lib/storage";
 import {
-  PrintJob,
-  PrintJobPriority,
-  PrintJobStatus,
-  SerializedPrintJob,
-  deserializePrintJob,
-  serializePrintJob,
+    PrintJob,
+    PrintJobPriority,
+    PrintJobStatus,
+    SerializedPrintJob,
+    deserializePrintJob,
+    serializePrintJob,
 } from "@/types/printer";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -71,7 +71,8 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
           const j = jobs[i];
           if (j.status !== "queued") continue;
           if (j.attempts > 0) {
-            const delayMs = RETRY_DELAYS[Math.min(j.attempts - 1, RETRY_DELAYS.length - 1)];
+            const delayMs =
+              RETRY_DELAYS[Math.min(j.attempts - 1, RETRY_DELAYS.length - 1)];
             const elapsed = Date.now() - j.createdAt;
             if (elapsed < delayMs * j.attempts) continue; // Not ready, skip to next
           }
@@ -131,9 +132,7 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
 
         set((state) => ({
           jobs: state.jobs.map((j) =>
-            j.id === jobId
-              ? { ...j, status: "queued" as PrintJobStatus }
-              : j,
+            j.id === jobId ? { ...j, status: "queued" as PrintJobStatus } : j,
           ),
         }));
 
@@ -201,21 +200,30 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
     {
       name: "print-queue-storage",
       storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         // Persist queued, failed, AND processing jobs (processing saved as queued for crash recovery)
         jobs: state.jobs
           .filter(
-            (j) => j.status === "queued" || j.status === "failed" || j.status === "processing",
+            (j) =>
+              j.status === "queued" ||
+              j.status === "failed" ||
+              j.status === "processing",
           )
           .map((j) =>
-            j.status === "processing" ? { ...j, status: "queued" as PrintJobStatus } : j,
+            j.status === "processing"
+              ? { ...j, status: "queued" as PrintJobStatus }
+              : j,
           ),
       }),
       onRehydrateStorage: () => (state) => {
         // On hydration, reset any processing jobs back to queued (crash recovery)
         if (state?.jobs) {
           state.jobs = state.jobs.map((j) =>
-            j.status === "processing" ? { ...j, status: "queued" as PrintJobStatus } : j,
+            j.status === "processing"
+              ? { ...j, status: "queued" as PrintJobStatus }
+              : j,
           );
         }
       },

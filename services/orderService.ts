@@ -1,68 +1,70 @@
-import { getDeviceId } from '@/lib/deviceId'
-import { DEADLINES } from '@/lib/network/deadlines'
-import { rpcWithIdempotency, withIdempotency } from '@/lib/network/idempotencyKey'
-import { runWithDeadline as _runWithDeadline } from '@/lib/network/runWithDeadline'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { getDeviceId } from "@/lib/deviceId";
+import { DEADLINES } from "@/lib/network/deadlines";
 import {
-  AddOrderItemParams,
-  AddOrderItemResult,
-  CalculateOrderTaxResult,
-  CalculateSplitPaymentResult,
-  CreateOrderParams,
-  DuplicateOrderItemResult,
-  GetOrderItemResult,
-  Order,
-  OrderItemModifier,
-  OrderStatus,
-  ProcessPaymentResult,
-  ProcessPaymentV2Params,
-  ReplaceOrderItemModifiersResult,
-  UpdateOrderItemParams,
-  UpdateOrderItemQuantityResult,
-  UpdateOrderItemResult
-} from '@/types/db-order-management-types'
-import { SupabaseClient } from '@supabase/supabase-js'
-
+    rpcWithIdempotency,
+    withIdempotency,
+} from "@/lib/network/idempotencyKey";
+import { runWithDeadline as _runWithDeadline } from "@/lib/network/runWithDeadline";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import {
+    AddOrderItemParams,
+    AddOrderItemResult,
+    CalculateOrderTaxResult,
+    CalculateSplitPaymentResult,
+    CreateOrderParams,
+    DuplicateOrderItemResult,
+    GetOrderItemResult,
+    Order,
+    OrderItemModifier,
+    OrderStatus,
+    ProcessPaymentResult,
+    ProcessPaymentV2Params,
+    ReplaceOrderItemModifiersResult,
+    UpdateOrderItemParams,
+    UpdateOrderItemQuantityResult,
+    UpdateOrderItemResult,
+} from "@/types/db-order-management-types";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 export type AddOpenItemParams = {
-  p_order_id: string
-  p_item_name: string
-  p_unit_price: number
-  p_quantity?: number
-  p_special_instructions?: string | null
-  p_is_tax_exempt?: boolean | null
-  p_seat_number?: number | null
-}
+  p_order_id: string;
+  p_item_name: string;
+  p_unit_price: number;
+  p_quantity?: number;
+  p_special_instructions?: string | null;
+  p_is_tax_exempt?: boolean | null;
+  p_seat_number?: number | null;
+};
 
 export type AddOpenItemResult = {
-  success: boolean
-  order_item_id: string
-  item_name: string
-  quantity: number
-  unit_price: number
-  cash_price: number
-  subtotal: number
-  cash_subtotal: number
-  tax_rate: number
-  tax_amount: number
-  cash_tax_amount: number
-}
+  success: boolean;
+  order_item_id: string;
+  item_name: string;
+  quantity: number;
+  unit_price: number;
+  cash_price: number;
+  subtotal: number;
+  cash_subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  cash_tax_amount: number;
+};
 
 export type UpdateOpenItemParams = {
-  p_order_item_id: string
-  p_quantity?: number | null
-  p_unit_price?: number | null
-  p_special_instructions?: string | null
-  p_seat_number?: number | null
-}
+  p_order_item_id: string;
+  p_quantity?: number | null;
+  p_unit_price?: number | null;
+  p_special_instructions?: string | null;
+  p_seat_number?: number | null;
+};
 
 export type UpdateOpenItemResult = {
-  success: boolean
-  order_item_id: string
-  quantity: number
-  unit_price: number
-  subtotal: number
-}
+  success: boolean;
+  order_item_id: string;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+};
 
 export class OrderService {
   /**
@@ -73,53 +75,53 @@ export class OrderService {
    * This is a lightweight guard to prevent kicked devices from continuing
    * to perform operations if all realtime kick channels failed.
    */
-  static async ensureSessionValid (client: SupabaseClient): Promise<boolean> {
+  static async ensureSessionValid(client: SupabaseClient): Promise<boolean> {
     try {
-      const deviceId = getDeviceId()
-      const sessionId = useStoreSettingsStore.getState().stationSessionId
+      const deviceId = getDeviceId();
+      const sessionId = useStoreSettingsStore.getState().stationSessionId;
 
       if (!deviceId || !sessionId) {
         // No active session - allow operation (might be during setup)
-        return true
+        return true;
       }
 
-      const { data, error } = await client.rpc('check_device_session_status', {
+      const { data, error } = await client.rpc("check_device_session_status", {
         p_device_id: deviceId,
-        p_session_id: sessionId
-      })
+        p_session_id: sessionId,
+      });
 
       if (error) {
         // Don't block on RPC errors (network issues) - fail open
         console.warn(
-          '[OrderService] Session validation RPC error (allowing operation):',
-          error.message
-        )
-        return true
+          "[OrderService] Session validation RPC error (allowing operation):",
+          error.message,
+        );
+        return true;
       }
 
       const result = data as {
-        is_valid: boolean
-        status: string
-        kicked_by?: string
-        kick_reason?: string
-      }
+        is_valid: boolean;
+        status: string;
+        kicked_by?: string;
+        kick_reason?: string;
+      };
 
       if (!result.is_valid) {
         console.error(
           `[OrderService] SESSION INVALID - status: ${result.status}, ` +
-            `kicked_by: ${result.kicked_by}. Blocking operation.`
-        )
-        return false
+            `kicked_by: ${result.kicked_by}. Blocking operation.`,
+        );
+        return false;
       }
 
-      return true
+      return true;
     } catch (err) {
       // Fail open on unexpected errors
       console.warn(
-        '[OrderService] Session guard error (allowing operation):',
-        err
-      )
-      return true
+        "[OrderService] Session guard error (allowing operation):",
+        err,
+      );
+      return true;
     }
   }
 
@@ -130,121 +132,129 @@ export class OrderService {
    * @returns { Promise<{ data: Order | null; error: any }> }
    * @description Creates a new order in the database Calls create_order rpc
    */
-  static async createOrder (
+  static async createOrder(
     client: SupabaseClient,
-    params: CreateOrderParams
+    params: CreateOrderParams,
   ): Promise<{ data: Order | null; error: any }> {
     // Session guard: prevent kicked devices from creating orders
-    const sessionValid = await OrderService.ensureSessionValid(client)
+    const sessionValid = await OrderService.ensureSessionValid(client);
     if (!sessionValid) {
       return {
         data: null,
         error: {
-          message: 'Session has been kicked. Please log in again.',
-          code: 'SESSION_KICKED'
-        }
-      }
+          message: "Session has been kicked. Please log in again.",
+          code: "SESSION_KICKED",
+        },
+      };
     }
 
     const { data, error } = await rpcWithIdempotency<Order>(
-      client, 'create_order', 'create_order_v2', 'create_order_v3', params,
-      { deadline: DEADLINES.closeCheck }
-    )
+      client,
+      "create_order",
+      "create_order_v2",
+      "create_order_v3",
+      params,
+      { deadline: DEADLINES.closeCheck },
+    );
 
     if (error) {
-      console.error(`[OrderService:createOrder] FAILED:`, error)
+      console.error(`[OrderService:createOrder] FAILED:`, error);
     } else {
-      const orderData = Array.isArray(data) ? data[0] : data
-      if (__DEV__) console.log(`[OrderService:createOrder] SUCCESS!`)
+      const orderData = Array.isArray(data) ? data[0] : data;
+      if (__DEV__) console.log(`[OrderService:createOrder] SUCCESS!`);
       if (__DEV__)
         console.log(
           `[OrderService:createOrder] Order ID: ${
             orderData?.order_id || orderData?.id
-          }`
-        )
+          }`,
+        );
       if (__DEV__)
         console.log(
           `[OrderService:createOrder] Order Number: ${
             orderData?.order_number || orderData?.display_number
-          }`
-        )
+          }`,
+        );
     }
 
-    return { data, error }
+    return { data, error };
   }
 
   /**
    * Add an open item to an order via RPC add_open_item_v2
    */
-  static async addOpenItem (
+  static async addOpenItem(
     client: SupabaseClient,
     params: AddOpenItemParams,
-    opts?: { keyOverride?: string }
+    opts?: { keyOverride?: string },
   ): Promise<{ data: AddOpenItemResult | null; error: any }> {
     if (__DEV__)
       console.log(
         `[OrderService:addOpenItem] ====== ADDING OPEN ITEM ======`,
-        params
-      )
+        params,
+      );
     const { data, error } = await rpcWithIdempotency<AddOpenItemResult>(
-      client, 'add_open_item', 'add_open_item_v2', 'add_open_item_v3', params,
-      { deadline: DEADLINES.hotMutation, keyOverride: opts?.keyOverride }
-    )
+      client,
+      "add_open_item",
+      "add_open_item_v2",
+      "add_open_item_v3",
+      params,
+      { deadline: DEADLINES.hotMutation, keyOverride: opts?.keyOverride },
+    );
     if (error || !data) {
-      console.error(`[OrderService:addOpenItem] FAILED:`, error)
-      return { data: data as any, error }
+      console.error(`[OrderService:addOpenItem] FAILED:`, error);
+      return { data: data as any, error };
     }
     if (__DEV__)
       console.log(
-        `[OrderService:addOpenItem] SUCCESS! order_item_id: ${data.order_item_id}`
-      )
-    return { data: data as AddOpenItemResult, error }
+        `[OrderService:addOpenItem] SUCCESS! order_item_id: ${data.order_item_id}`,
+      );
+    return { data: data as AddOpenItemResult, error };
   }
 
   /**
    * Update an open item (price/qty/instructions) via RPC update_order_item_v2
    */
-  static async updateOpenItem (
+  static async updateOpenItem(
     client: SupabaseClient,
-    params: UpdateOpenItemParams
+    params: UpdateOpenItemParams,
   ): Promise<{ data: UpdateOpenItemResult | null; error: any }> {
-    const { data, error } = await client.rpc('update_order_item_v2', params)
+    const { data, error } = await client.rpc("update_order_item_v2", params);
     if (error) {
-      console.error(`[OrderService:updateOpenItem] FAILED:`, error)
+      console.error(`[OrderService:updateOpenItem] FAILED:`, error);
     }
-    return { data: data as UpdateOpenItemResult, error }
+    return { data: data as UpdateOpenItemResult, error };
   }
 
   /**
    * Add an order-level discount (order_discounts insert)
    */
-  static async addOrderDiscount (
+  static async addOrderDiscount(
     client: SupabaseClient,
     params: {
-      order_id: string
-      discount_id: string | null
-      discount_type: 'percentage' | 'fixed_amount'
-      discount_value: number
-      source: 'preset' | 'open' | 'promo_code'
-      calculated_amount: number
-      pre_discount_subtotal: number
-      applied_by_staff_profiles_id: string | null
-      approved_by_staff_profiles_id?: string | null
-      applied_at: string
-      applied_to_item_ids?: string[] | null
-    }
+      order_id: string;
+      discount_id: string | null;
+      discount_type: "percentage" | "fixed_amount";
+      discount_value: number;
+      source: "preset" | "open" | "promo_code";
+      calculated_amount: number;
+      pre_discount_subtotal: number;
+      applied_by_staff_profiles_id: string | null;
+      approved_by_staff_profiles_id?: string | null;
+      applied_at: string;
+      applied_to_item_ids?: string[] | null;
+    },
   ): Promise<{ data: any; error: any }> {
     if (__DEV__)
-      console.log(`[OrderService:addOrderDiscount] order_id:`, params.order_id)
-    if (__DEV__) console.log(client)
+      console.log(`[OrderService:addOrderDiscount] order_id:`, params.order_id);
+    if (__DEV__) console.log(client);
     if (__DEV__)
       console.log(
         `[OrderService:addOrderDiscount] ====== ADDING ORDER DISCOUNT `,
-        params
-      )
+        params,
+      );
 
     const { data, error } = await client
-      .from('order_discounts')
+      .from("order_discounts")
       .insert({
         order_id: params.order_id,
         discount_id: params.discount_id,
@@ -257,140 +267,149 @@ export class OrderService {
         approved_by_staff_profiles_id:
           params.approved_by_staff_profiles_id ?? null,
         applied_at: params.applied_at,
-        applied_to_item_ids: params.applied_to_item_ids ?? null
+        applied_to_item_ids: params.applied_to_item_ids ?? null,
       })
       .select()
-      .single()
-    return { data, error }
+      .single();
+    return { data, error };
   }
 
   /**
    * Add an item to an order
    */
-  static async addOrderItem (
+  static async addOrderItem(
     client: SupabaseClient,
     params: AddOrderItemParams,
-    opts?: { keyOverride?: string }
+    opts?: { keyOverride?: string },
   ): Promise<{ data: AddOrderItemResult | null; error: any }> {
     if (__DEV__)
-      console.log(`[OrderService:addOrderItem] ====== ADDING ITEM ======`)
+      console.log(`[OrderService:addOrderItem] ====== ADDING ITEM ======`);
     const { data, error } = await rpcWithIdempotency<AddOrderItemResult>(
-      client, 'add_order_item', 'add_order_item_v2', 'add_order_item_v3', params,
-      { deadline: DEADLINES.hotMutation, keyOverride: opts?.keyOverride }
-    )
+      client,
+      "add_order_item",
+      "add_order_item_v2",
+      "add_order_item_v3",
+      params,
+      { deadline: DEADLINES.hotMutation, keyOverride: opts?.keyOverride },
+    );
 
     if (error || !data) {
-      console.error(`[OrderService:addOrderItem] FAILED:`, error)
-      return { data, error }
+      console.error(`[OrderService:addOrderItem] FAILED:`, error);
+      return { data, error };
     }
 
     // console.log(`[OrderService:addOrderItem] SUCCESS!`);
     // console.log(`[OrderService:addOrderItem] Item ID: ${data.order_item_id}`);
 
-    return { data, error }
+    return { data, error };
   }
 
   /**
    * Update the status of an order
    */
-  static async updateOrderStatus (
+  static async updateOrderStatus(
     client: SupabaseClient,
     orderId: string,
     newStatus: OrderStatus,
-    reason?: string
+    reason?: string,
   ): Promise<{ data: Order | null; error: any }> {
     return _runWithDeadline<Order>(
-      'update_order_status',
+      "update_order_status",
       DEADLINES.sendToKitchen,
       async (signal) => {
-        const { data, error } = await client.rpc('update_order_status', {
-          p_order_id: orderId,
-          p_new_status: newStatus,
-          p_reason: reason
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("update_order_status", {
+            p_order_id: orderId,
+            p_new_status: newStatus,
+            p_reason: reason,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Calculate tax for an order
    */
-  static async calculateOrderTax (
+  static async calculateOrderTax(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{ data: CalculateOrderTaxResult | null; error: any }> {
-    const { data, error } = await client.rpc('calculate_order_tax', {
-      p_order_id: orderId
-    })
-    return { data, error }
+    const { data, error } = await client.rpc("calculate_order_tax", {
+      p_order_id: orderId,
+    });
+    return { data, error };
   }
 
   /**
    * Process a payment for an order using process_payment_v2
    * Handles: Full card, Full cash, Split, Per-item payments
    */
-  static async processPayment (
+  static async processPayment(
     client: SupabaseClient,
-    params: ProcessPaymentV2Params
+    params: ProcessPaymentV2Params,
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
     // Session guard: prevent kicked devices from processing payments
-    const sessionValid = await OrderService.ensureSessionValid(client)
+    const sessionValid = await OrderService.ensureSessionValid(client);
     if (!sessionValid) {
       return {
         data: null,
         error: {
-          message: 'Session has been kicked. Please log in again.',
-          code: 'SESSION_KICKED'
-        }
-      }
+          message: "Session has been kicked. Please log in again.",
+          code: "SESSION_KICKED",
+        },
+      };
     }
 
     if (__DEV__)
       console.log(
-        `[OrderService:processPayment] ====== CALLING process_payment_v8 ======`
-      )
+        `[OrderService:processPayment] ====== CALLING process_payment_v8 ======`,
+      );
     if (__DEV__)
-      console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`)
+      console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
     if (__DEV__)
       console.log(
-        `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`
-      )
+        `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`,
+      );
 
-    const { data, error } = await client.rpc('process_payment_v8', params)
+    const { data, error } = await client.rpc("process_payment_v8", params);
 
     if (error) {
-      console.error(`[OrderService:processPayment] FAILED:`, error)
+      console.error(`[OrderService:processPayment] FAILED:`, error);
     } else {
       if (__DEV__)
         console.log(
           `[OrderService:processPayment] SUCCESS:`,
-          JSON.stringify(data, null, 2)
-        )
+          JSON.stringify(data, null, 2),
+        );
     }
 
-    return { data, error }
+    return { data, error };
   }
 
   /**
    * Create a reversal record for a refund/void.
    */
-  static async createReversal (
+  static async createReversal(
     client: SupabaseClient,
     params: {
-      original_payment_id: string
-      original_psp_reference: string | null
-      reversal_reference_id: string | null
-      reversal_type: string
-      amount: number
-      reason_code: string
-      reason_description?: string | null
-      initiated_by: string
-      approved_by?: string | null
-    }
+      original_payment_id: string;
+      original_psp_reference: string | null;
+      reversal_reference_id: string | null;
+      reversal_type: string;
+      amount: number;
+      reason_code: string;
+      reason_description?: string | null;
+      initiated_by: string;
+      approved_by?: string | null;
+    },
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await rpcWithIdempotency(
-      client, 'create_reversal', 'create_reversal', 'create_reversal_v2',
+      client,
+      "create_reversal",
+      "create_reversal",
+      "create_reversal_v2",
       {
         p_original_payment_id: params.original_payment_id,
         p_original_psp_reference: params.original_psp_reference,
@@ -400,37 +419,37 @@ export class OrderService {
         p_reason_code: params.reason_code,
         p_reason_description: params.reason_description ?? null,
         p_initiated_by: params.initiated_by,
-        p_approved_by: params.approved_by ?? null
+        p_approved_by: params.approved_by ?? null,
       },
-      { deadline: DEADLINES.read }  // refund money path — give it more headroom than hotMutation
-    )
-    return { data, error }
+      { deadline: DEADLINES.read }, // refund money path — give it more headroom than hotMutation
+    );
+    return { data, error };
   }
 
   /**
    * Update reversal status and terminal response.
    */
-  static async updateReversalStatus (
+  static async updateReversalStatus(
     client: SupabaseClient,
     reversalId: string,
-    status: 'pending' | 'completed' | 'failed',
+    status: "pending" | "completed" | "failed",
     terminalResponse?: Record<string, unknown> | null,
     emvData?: Record<string, unknown> | null,
     resultCode?: string | null,
     responseMessage?: string | null,
-    reversalPspReference?: string | null
+    reversalPspReference?: string | null,
   ): Promise<{ data: any | null; error: any }> {
-    const { data, error } = await client.rpc('update_reversal_status', {
+    const { data, error } = await client.rpc("update_reversal_status", {
       p_reversal_id: reversalId,
       p_status: status,
       p_terminal_response: terminalResponse ?? null,
       p_emv_data: emvData ?? null,
       p_result_code: resultCode ?? null,
       p_response_message: responseMessage ?? null,
-      p_reversal_psp_reference: reversalPspReference ?? null
-    })
-    if (__DEV__) console.log('updateReversalStatus', data, error)
-    return { data, error }
+      p_reversal_psp_reference: reversalPspReference ?? null,
+    });
+    if (__DEV__) console.log("updateReversalStatus", data, error);
+    return { data, error };
   }
 
   /**
@@ -438,23 +457,26 @@ export class OrderService {
    * @param restorePaidQuantity - When true, decrements paid_quantity on order_items
    *   via order_payment_items junction (like void_payment does). Used for full payment voids.
    */
-  static async applyRefundToPayment (
+  static async applyRefundToPayment(
     client: SupabaseClient,
     paymentId: string,
     refundAmount: number,
-    reversalType: 'void' | 'refund' | 'partial_refund' | 'item_return',
+    reversalType: "void" | "refund" | "partial_refund" | "item_return",
     returnDetails?: {
-      rrn?: string
-      authCode?: string
-      referenceId?: string
-      transactionNumber?: string
-      reason?: string
-      initiatedBy?: string
+      rrn?: string;
+      authCode?: string;
+      referenceId?: string;
+      transactionNumber?: string;
+      reason?: string;
+      initiatedBy?: string;
     },
-    options?: { restorePaidQuantity?: boolean }
+    options?: { restorePaidQuantity?: boolean },
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await rpcWithIdempotency(
-      client, 'apply_refund_to_payment', 'apply_refund_to_payment', 'apply_refund_to_payment_v2',
+      client,
+      "apply_refund_to_payment",
+      "apply_refund_to_payment",
+      "apply_refund_to_payment_v2",
       {
         p_payment_id: paymentId,
         p_refund_amount: refundAmount,
@@ -465,12 +487,12 @@ export class OrderService {
         p_return_number: returnDetails?.transactionNumber ?? null,
         p_return_reason: returnDetails?.reason ?? null,
         p_initiated_by: returnDetails?.initiatedBy ?? null,
-        p_restore_paid_quantity: options?.restorePaidQuantity ?? false
+        p_restore_paid_quantity: options?.restorePaidQuantity ?? false,
       },
-      { deadline: DEADLINES.read }  // refund money path
-    )
-    if (__DEV__) console.log('applyRefundToPayment', data, error)
-    return { data, error }
+      { deadline: DEADLINES.read }, // refund money path
+    );
+    if (__DEV__) console.log("applyRefundToPayment", data, error);
+    return { data, error };
   }
 
   /**
@@ -478,142 +500,149 @@ export class OrderService {
    * @param skipQuantityUpdate - When true, skips incrementing refunded_quantity on order_items.
    *   Used for full payment voids where paid_quantity is restored instead.
    */
-  static async recordRefundItems (
+  static async recordRefundItems(
     client: SupabaseClient,
     reversalId: string,
     items: Array<Record<string, unknown>>,
-    skipQuantityUpdate: boolean = false
+    skipQuantityUpdate: boolean = false,
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await rpcWithIdempotency(
-      client, 'record_refund_items', 'record_refund_items', 'record_refund_items_v2',
+      client,
+      "record_refund_items",
+      "record_refund_items",
+      "record_refund_items_v2",
       {
         p_reversal_id: reversalId,
         p_items: items,
-        p_skip_quantity_update: skipQuantityUpdate
+        p_skip_quantity_update: skipQuantityUpdate,
       },
-      { deadline: DEADLINES.read }  // refund money path
-    )
-    return { data, error }
+      { deadline: DEADLINES.read }, // refund money path
+    );
+    return { data, error };
   }
 
   /**
    * Recalculate order payment status after refunds.
    */
-  static async updateOrderPaymentStatusAfterRefund (
+  static async updateOrderPaymentStatusAfterRefund(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await client.rpc(
-      'update_order_payment_status_after_refund',
-      { p_order_id: orderId }
-    )
-    if (__DEV__) console.log('updateOrderPaymentStatusAfterRefund', data, error)
-    return { data, error }
+      "update_order_payment_status_after_refund",
+      { p_order_id: orderId },
+    );
+    if (__DEV__)
+      console.log("updateOrderPaymentStatusAfterRefund", data, error);
+    return { data, error };
   }
 
   /**
    * Void an item in an order
    */
-  static async voidOrderItem (
+  static async voidOrderItem(
     client: SupabaseClient,
     orderItemId: string,
-    reason: string
+    reason: string,
   ): Promise<{ data: boolean | null; error: any }> {
     return _runWithDeadline<boolean>(
-      'void_order_item',
+      "void_order_item",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('void_order_item', {
-          p_order_item_id: orderItemId,
-          p_void_reason: reason
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("void_order_item", {
+            p_order_item_id: orderItemId,
+            p_void_reason: reason,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Void a payment (for split payment adjustments or cancellations)
    */
-  static async voidPayment (
+  static async voidPayment(
     client: SupabaseClient,
     paymentId: string,
-    reason: string
+    reason: string,
   ): Promise<{ data: any; error: any }> {
     return _runWithDeadline<any>(
-      'void_payment',
+      "void_payment",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('void_payment', {
-          p_payment_id: paymentId,
-          p_void_reason: reason
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("void_payment", {
+            p_payment_id: paymentId,
+            p_void_reason: reason,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Void an entire order and cancel linked seated reservation(s) atomically.
    */
-  static async voidOrder (
+  static async voidOrder(
     client: SupabaseClient,
     orderId: string,
-    voidReason?: string
+    voidReason?: string,
   ): Promise<{ data: any; error: any }> {
     // Session guard: prevent kicked devices from voiding orders
-    const sessionValid = await OrderService.ensureSessionValid(client)
+    const sessionValid = await OrderService.ensureSessionValid(client);
     if (!sessionValid) {
       return {
         data: null,
         error: {
-          message: 'Session has been kicked. Please log in again.',
-          code: 'SESSION_KICKED'
-        }
-      }
+          message: "Session has been kicked. Please log in again.",
+          code: "SESSION_KICKED",
+        },
+      };
     }
 
     return _runWithDeadline<any>(
-      'void_order',
+      "void_order",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc(
-          'void_order_and_cancel_reservation',
-          {
+        const { data, error } = await client
+          .rpc("void_order_and_cancel_reservation", {
             p_order_id: orderId,
-            p_void_reason: voidReason || 'Order cancelled'
-          }
-        ).abortSignal(signal)
-        return { data, error }
-      }
-    )
+            p_void_reason: voidReason || "Order cancelled",
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Calculate suggested split amounts for an order
    */
-  static async calculateSplitPayment (
+  static async calculateSplitPayment(
     client: SupabaseClient,
     orderId: string,
-    splitCount: number
+    splitCount: number,
   ): Promise<{ data: CalculateSplitPaymentResult | null; error: any }> {
-    const { data, error } = await client.rpc('calculate_split_payment', {
+    const { data, error } = await client.rpc("calculate_split_payment", {
       p_order_id: orderId,
-      p_split_count: splitCount
-    })
-    return { data, error }
+      p_split_count: splitCount,
+    });
+    return { data, error };
   }
 
   /**
    * Get orders for a location
    */
-  static async getOrders (
+  static async getOrders(
     client: SupabaseClient,
     locationId: string,
-    statuses?: OrderStatus[]
+    statuses?: OrderStatus[],
   ): Promise<{ data: Order[] | null; error: any }> {
     let query = client
-      .from('orders')
+      .from("orders")
       .select(
         `
         *,
@@ -621,17 +650,17 @@ export class OrderService {
           *,
           order_item_modifiers (*)
         )
-      `
+      `,
       )
-      .eq('location_id', locationId)
-      .order('created_at', { ascending: false })
+      .eq("location_id", locationId)
+      .order("created_at", { ascending: false });
 
     if (statuses && statuses.length > 0) {
-      query = query.in('status', statuses)
+      query = query.in("status", statuses);
     }
 
-    const { data, error } = await query
-    return { data: data as Order[], error }
+    const { data, error } = await query;
+    return { data: data as Order[], error };
   }
 
   /**
@@ -649,19 +678,19 @@ export class OrderService {
     startDate?: string | null,
     endDate?: string | null,
   ): Promise<{ start_ts: string; end_ts: string } | null> {
-    const { data, error } = await client.rpc('get_business_day_bounds', {
+    const { data, error } = await client.rpc("get_business_day_bounds", {
       p_location_id: locationId,
       p_start_date: startDate ?? null,
       p_end_date: endDate ?? null,
     });
     if (error || !data || data.length === 0) {
-      console.error('[OrderService] getBusinessDayBounds error:', error);
+      console.error("[OrderService] getBusinessDayBounds error:", error);
       return null;
     }
     return { start_ts: data[0].start_ts, end_ts: data[0].end_ts };
   }
 
-  static async getHistoryOrders (
+  static async getHistoryOrders(
     client: SupabaseClient,
     locationId: string,
     limit: number = 50,
@@ -670,7 +699,7 @@ export class OrderService {
     endTs?: string | null,
   ): Promise<{ data: any[] | null; error: any }> {
     let query = client
-      .from('orders')
+      .from("orders")
       .select(
         `
         *,
@@ -682,28 +711,28 @@ export class OrderService {
         order_discounts (*),
         stations (station_name),
         created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
-      `
+      `,
       )
-      .eq('location_id', locationId)
-      .order('created_at', { ascending: false })
-      .limit(limit)
+      .eq("location_id", locationId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
 
-    if (startTs) query = query.gte('created_at', startTs)
-    if (endTs) query = query.lt('created_at', endTs)
+    if (startTs) query = query.gte("created_at", startTs);
+    if (endTs) query = query.lt("created_at", endTs);
 
     if (statuses && statuses.length > 0) {
-      query = query.in('status', statuses)
+      query = query.in("status", statuses);
     }
 
-    const { data, error } = await query
-    return { data, error }
+    const { data, error } = await query;
+    return { data, error };
   }
 
   /**
    * Fetch orders with pagination (offset-based) for infinite scroll history.
    * Same query as getHistoryOrders but uses .range() instead of .limit().
    */
-  static async getHistoryOrdersPaginated (
+  static async getHistoryOrdersPaginated(
     client: SupabaseClient,
     locationId: string,
     limit: number,
@@ -713,7 +742,7 @@ export class OrderService {
     endTs?: string | null,
   ): Promise<{ data: any[] | null; error: any; hasMore: boolean }> {
     let query = client
-      .from('orders')
+      .from("orders")
       .select(
         `
         *,
@@ -725,32 +754,32 @@ export class OrderService {
         order_discounts (*),
         stations (station_name),
         created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
-      `
+      `,
       )
-      .eq('location_id', locationId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
+      .eq("location_id", locationId)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    if (startTs) query = query.gte('created_at', startTs)
-    if (endTs) query = query.lt('created_at', endTs)
+    if (startTs) query = query.gte("created_at", startTs);
+    if (endTs) query = query.lt("created_at", endTs);
 
     if (statuses && statuses.length > 0) {
-      query = query.in('status', statuses)
+      query = query.in("status", statuses);
     }
 
-    const { data, error } = await query
-    return { data, error, hasMore: (data?.length ?? 0) === limit }
+    const { data, error } = await query;
+    return { data, error, hasMore: (data?.length ?? 0) === limit };
   }
 
   /**
    * Fetch a single order by ID with all relations
    */
-  static async fetchOrderById (
+  static async fetchOrderById(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{ data: Order | null; error: any }> {
     const { data, error } = await client
-      .from('orders')
+      .from("orders")
       .select(
         `
         *,
@@ -759,12 +788,12 @@ export class OrderService {
           order_item_modifiers (*)
         ),
         order_payments (*)
-      `
+      `,
       )
-      .eq('id', orderId)
-      .single()
+      .eq("id", orderId)
+      .single();
 
-    return { data: data as Order, error }
+    return { data: data as Order, error };
   }
 
   // --- Order Item CRUD Methods ---
@@ -772,78 +801,87 @@ export class OrderService {
   /**
    * Update quantity of an order item (auto-recalculates subtotal)
    */
-  static async updateOrderItemQuantity (
+  static async updateOrderItemQuantity(
     client: SupabaseClient,
     orderItemId: string,
-    quantity: number
+    quantity: number,
   ): Promise<{ data: UpdateOrderItemQuantityResult | null; error: any }> {
     return _runWithDeadline<UpdateOrderItemQuantityResult>(
-      'update_item_quantity',
+      "update_item_quantity",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('update_order_item_quantity_v2', {
-          p_order_item_id: orderItemId,
-          p_quantity: quantity
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("update_order_item_quantity_v2", {
+            p_order_item_id: orderItemId,
+            p_quantity: quantity,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Update order item fields (instructions, station, price override, etc.)
    */
-  static async updateOrderItem (
+  static async updateOrderItem(
     client: SupabaseClient,
-    params: UpdateOrderItemParams
+    params: UpdateOrderItemParams,
   ): Promise<{ data: UpdateOrderItemResult | null; error: any }> {
     return _runWithDeadline<UpdateOrderItemResult>(
-      'update_item',
+      "update_item",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('update_order_item_v2', params).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("update_order_item_v2", params)
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Atomically replace all modifiers on an order item
    */
-  static async replaceOrderItemModifiers (
+  static async replaceOrderItemModifiers(
     client: SupabaseClient,
     orderItemId: string,
-    modifiers: OrderItemModifier[]
+    modifiers: OrderItemModifier[],
   ): Promise<{ data: ReplaceOrderItemModifiersResult | null; error: any }> {
     return _runWithDeadline<ReplaceOrderItemModifiersResult>(
-      'replace_modifiers',
+      "replace_modifiers",
       DEADLINES.hotMutation,
       async (signal) => {
         // NOTE: both v1 and v2 share the function NAME 'replace_order_item_modifiers_v2'
         // (the legacy 2-arg overload pre-existed on staging). Postgres dispatches by
         // signature: passing p_idempotency_key routes to the new 3-arg version.
         const { name, params: rpcParams } = withIdempotency(
-          'replace_order_item_modifiers',
-          'replace_order_item_modifiers_v2',
-          'replace_order_item_modifiers_v2',
-          { p_order_item_id: orderItemId, p_modifiers: modifiers }
-        )
-        const { data, error } = await client.rpc(name, rpcParams).abortSignal(signal)
-        return { data, error }
-      }
-    )
+          "replace_order_item_modifiers",
+          "replace_order_item_modifiers_v2",
+          "replace_order_item_modifiers_v2",
+          { p_order_item_id: orderItemId, p_modifiers: modifiers },
+        );
+        const { data, error } = await client
+          .rpc(name, rpcParams)
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Add a single modifier to an order item
    */
-  static async addOrderItemModifier (
+  static async addOrderItemModifier(
     client: SupabaseClient,
     orderItemId: string,
-    modifier: Omit<OrderItemModifier, 'id' | 'order_item_id' | 'total_price'>
+    modifier: Omit<OrderItemModifier, "id" | "order_item_id" | "total_price">,
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await rpcWithIdempotency(
-      client, 'add_order_item_modifier', 'add_order_item_modifier', 'add_order_item_modifier_v2',
+      client,
+      "add_order_item_modifier",
+      "add_order_item_modifier",
+      "add_order_item_modifier_v2",
       {
         p_order_item_id: orderItemId,
         p_modifier_group_id: modifier.modifier_group_id,
@@ -851,55 +889,61 @@ export class OrderService {
         p_modifier_group_name: modifier.modifier_group_name,
         p_modifier_name: modifier.modifier_name,
         p_price_modifier: modifier.price_modifier,
-        p_quantity: modifier.quantity
+        p_quantity: modifier.quantity,
       },
-      { deadline: DEADLINES.hotMutation }
-    )
-    return { data, error }
+      { deadline: DEADLINES.hotMutation },
+    );
+    return { data, error };
   }
 
   /**
    * Remove a single modifier from an order item
    */
-  static async removeOrderItemModifier (
+  static async removeOrderItemModifier(
     client: SupabaseClient,
-    modifierId: string
+    modifierId: string,
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await rpcWithIdempotency(
-      client, 'remove_order_item_modifier', 'remove_order_item_modifier', 'remove_order_item_modifier_v2',
+      client,
+      "remove_order_item_modifier",
+      "remove_order_item_modifier",
+      "remove_order_item_modifier_v2",
       { p_modifier_id: modifierId },
-      { deadline: DEADLINES.hotMutation }
-    )
-    return { data, error }
+      { deadline: DEADLINES.hotMutation },
+    );
+    return { data, error };
   }
 
   /**
    * Get order item with full details and modifiers
    */
-  static async getOrderItem (
+  static async getOrderItem(
     client: SupabaseClient,
-    orderItemId: string
+    orderItemId: string,
   ): Promise<{ data: GetOrderItemResult | null; error: any }> {
-    const { data, error } = await client.rpc('get_order_item', {
-      p_order_item_id: orderItemId
-    })
-    return { data, error }
+    const { data, error } = await client.rpc("get_order_item", {
+      p_order_item_id: orderItemId,
+    });
+    return { data, error };
   }
 
   /**
    * Duplicate an order item (copies modifiers too)
    */
-  static async duplicateOrderItem (
+  static async duplicateOrderItem(
     client: SupabaseClient,
     orderItemId: string,
-    quantity?: number
+    quantity?: number,
   ): Promise<{ data: DuplicateOrderItemResult | null; error: any }> {
     const { data, error } = await rpcWithIdempotency<DuplicateOrderItemResult>(
-      client, 'duplicate_order_item', 'duplicate_order_item', 'duplicate_order_item_v2',
+      client,
+      "duplicate_order_item",
+      "duplicate_order_item",
+      "duplicate_order_item_v2",
       { p_order_item_id: orderItemId, p_quantity: quantity },
-      { deadline: DEADLINES.hotMutation }
-    )
-    return { data, error }
+      { deadline: DEADLINES.hotMutation },
+    );
+    return { data, error };
   }
 
   // --- Remove & Void Operations ---
@@ -907,81 +951,89 @@ export class OrderService {
   /**
    * Remove an order item (hard delete - for draft/pending orders only)
    */
-  static async removeOrderItem (
+  static async removeOrderItem(
     client: SupabaseClient,
-    orderItemId: string
+    orderItemId: string,
   ): Promise<{ data: any; error: any }> {
-    if (__DEV__) console.log('we are removing it hard ')
+    if (__DEV__) console.log("we are removing it hard ");
 
     return _runWithDeadline<any>(
-      'remove_item',
+      "remove_item",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('remove_order_item', {
-          p_order_item_id: orderItemId
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("remove_order_item", {
+            p_order_item_id: orderItemId,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Remove multiple order items in batch (hard delete - for draft/pending orders only)
    */
-  static async removeOrderItemsBatch (
+  static async removeOrderItemsBatch(
     client: SupabaseClient,
-    orderItemIds: string[]
+    orderItemIds: string[],
   ): Promise<{ data: any; error: any }> {
     return _runWithDeadline<any>(
-      'remove_items_batch',
+      "remove_items_batch",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('remove_order_items_batch', {
-          p_order_item_ids: orderItemIds
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("remove_order_items_batch", {
+            p_order_item_ids: orderItemIds,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Clear all items from an order (hard delete - for draft/pending orders only)
    */
-  static async clearOrderItems (
+  static async clearOrderItems(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{ data: any; error: any }> {
     return _runWithDeadline<any>(
-      'clear_order_items',
+      "clear_order_items",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('clear_order_items', {
-          p_order_id: orderId
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("clear_order_items", {
+            p_order_id: orderId,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Cancel an order (hard delete for draft/pending, void for confirmed)
    */
-  static async cancelOrder (
+  static async cancelOrder(
     client: SupabaseClient,
     orderId: string,
-    cancelReason?: string
+    cancelReason?: string,
   ): Promise<{ data: any; error: any }> {
     return _runWithDeadline<any>(
-      'cancel_order',
+      "cancel_order",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('cancel_order', {
-          p_order_id: orderId,
-          p_cancel_reason: cancelReason || 'Customer cancelled'
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("cancel_order", {
+            p_order_id: orderId,
+            p_cancel_reason: cancelReason || "Customer cancelled",
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   // --- Kitchen Status Operations ---
@@ -990,114 +1042,159 @@ export class OrderService {
    * Bulk update order item statuses (for Send to Kitchen / Fire Course)
    * Automatically handles sent_to_kitchen_at and updated_at timestamps
    */
-  static async bulkUpdateOrderItemStatus (
+  static async bulkUpdateOrderItemStatus(
     client: SupabaseClient,
     orderItemIds: string[],
-    status: 'sent' | 'preparing' | 'ready' | 'served',
-    staffId?: string
+    status: "sent" | "preparing" | "ready" | "served",
+    staffId?: string,
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
-      return { data: null, error: null }
+      return { data: null, error: null };
     }
     return _runWithDeadline<any>(
-      'bulk_update_order_item_status',
+      "bulk_update_order_item_status",
       DEADLINES.sendToKitchen,
       async (signal) => {
-        const { data, error } = await client.rpc('bulk_update_order_item_status', {
-          p_order_item_ids: orderItemIds,
-          p_status: status,
-          p_staff_id: staffId
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("bulk_update_order_item_status", {
+            p_order_item_ids: orderItemIds,
+            p_status: status,
+            p_staff_id: staffId,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Recall KDS items — resets kitchen_status to 'sent' and clears KDS item status records.
    */
-  static async recallOrderItems (
+  static async recallOrderItems(
     client: SupabaseClient,
     orderItemIds: string[],
-    targetStatus: string = 'sent'
+    targetStatus: string = "sent",
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
-      return { data: null, error: null }
+      return { data: null, error: null };
     }
-    const { data, error } = await rpcWithIdempotency(
-      client, 'recall_kds_items', 'recall_kds_items', 'recall_kds_items_v2',
-      { p_order_item_ids: orderItemIds, p_target_status: targetStatus },
-      { deadline: DEADLINES.hotMutation }
-    )
-    return { data, error }
+
+    const params = {
+      p_order_item_ids: orderItemIds,
+      p_target_status: targetStatus,
+    };
+
+    // Prefer v2: legacy recall_kds_items can exist but be schema-drifted
+    // (e.g., references missing columns) and should not be our primary path.
+    const v2Attempt = await _runWithDeadline<any>(
+      "recall_kds_items_v2",
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("recall_kds_items_v2", params)
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+
+    if (!v2Attempt.error) {
+      return v2Attempt;
+    }
+
+    const msg = String(v2Attempt.error?.message ?? "").toLowerCase();
+    const code = String(v2Attempt.error?.code ?? "").toLowerCase();
+    const missingV2 =
+      msg.includes("recall_kds_items_v2") &&
+      (msg.includes("does not exist") || msg.includes("not found"));
+    const undefinedFunction = code === "42883";
+
+    // Fallback only when v2 is unavailable in this environment.
+    if (missingV2 || undefinedFunction) {
+      return _runWithDeadline<any>(
+        "recall_kds_items",
+        DEADLINES.hotMutation,
+        async (signal) => {
+          const { data, error } = await client
+            .rpc("recall_kds_items", params)
+            .abortSignal(signal);
+          return { data, error };
+        },
+      );
+    }
+
+    return v2Attempt;
   }
 
   /**
    * Toggle rush flag on order items.
    */
-  static async toggleRushOnItems (
+  static async toggleRushOnItems(
     client: SupabaseClient,
     orderItemIds: string[],
-    rush: boolean
+    rush: boolean,
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
-      return { data: null, error: null }
+      return { data: null, error: null };
     }
     return _runWithDeadline<any>(
-      'toggle_rush_order_items',
+      "toggle_rush_order_items",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('toggle_rush_order_items', {
-          p_order_item_ids: orderItemIds,
-          p_rush: rush
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("toggle_rush_order_items", {
+            p_order_item_ids: orderItemIds,
+            p_rush: rush,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Toggle priority flag on order items.
    */
-  static async togglePriorityOnItems (
+  static async togglePriorityOnItems(
     client: SupabaseClient,
     orderItemIds: string[],
-    isPrioritized: boolean
+    isPrioritized: boolean,
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
-      return { data: null, error: null }
+      return { data: null, error: null };
     }
     return _runWithDeadline<any>(
-      'toggle_priority_order_items',
+      "toggle_priority_order_items",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('toggle_priority_order_items', {
-          p_order_item_ids: orderItemIds,
-          p_is_prioritized: isPrioritized
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("toggle_priority_order_items", {
+            p_order_item_ids: orderItemIds,
+            p_is_prioritized: isPrioritized,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Fetch pre-grouped KDS tickets from the server (denormalized)
    */
-  static async getKDSTickets (
+  static async getKDSTickets(
     client: SupabaseClient,
     locationId: string,
     statuses?: string[],
-    kdsDisplayId?: string
+    kdsDisplayId?: string,
   ): Promise<{ data: any; error: any }> {
-    const params: Record<string, any> = { p_location_id: locationId }
+    const params: Record<string, any> = { p_location_id: locationId };
     if (statuses) {
-      params.p_statuses = statuses
+      params.p_statuses = statuses;
     }
     if (kdsDisplayId) {
-      params.p_kds_display_id = kdsDisplayId
+      params.p_kds_display_id = kdsDisplayId;
     }
-    const { data, error } = await client.rpc('get_kds_tickets_v2', params)
-    return { data, error }
+    const { data, error } = await client.rpc("get_kds_tickets_v2", params);
+    return { data, error };
   }
 
   // ============================================
@@ -1108,121 +1205,125 @@ export class OrderService {
    * Update an order with version checking (optimistic locking)
    * Returns VERSION_CONFLICT error if expected_version doesn't match current
    */
-  static async updateOrderWithVersion (
+  static async updateOrderWithVersion(
     client: SupabaseClient,
     orderId: string,
     expectedVersion: number,
     updates?: {
-      customer_name?: string
-      customer_phone?: string
-      special_instructions?: string
-      status?: string
-    }
+      customer_name?: string;
+      customer_phone?: string;
+      special_instructions?: string;
+      status?: string;
+    },
   ): Promise<{
     data: {
-      success: boolean
-      error?: string
-      message?: string
-      new_version?: number
-      current_version?: number
-      expected_version?: number
-    } | null
-    error: any
+      success: boolean;
+      error?: string;
+      message?: string;
+      new_version?: number;
+      current_version?: number;
+      expected_version?: number;
+    } | null;
+    error: any;
   }> {
-    const { data, error } = await client.rpc('update_order_with_version', {
+    const { data, error } = await client.rpc("update_order_with_version", {
       p_order_id: orderId,
       p_expected_version: expectedVersion,
-      p_updates: updates ? updates : null
-    })
-    return { data, error }
+      p_updates: updates ? updates : null,
+    });
+    return { data, error };
   }
 
   /**
    * Lock an order for payment processing
    * Prevents other stations from modifying the order during payment
    */
-  static async lockOrderForPayment (
+  static async lockOrderForPayment(
     client: SupabaseClient,
     orderId: string,
     expectedVersion: number,
     stationId: string,
-    lockDurationSeconds: number = 60
+    lockDurationSeconds: number = 60,
   ): Promise<{
     data: {
-      success: boolean
-      error?: string
-      message?: string
-      lock_expires_at?: string
-      sync_version?: number
-      current_version?: number
-      locked_by_station?: string
-    } | null
-    error: any
+      success: boolean;
+      error?: string;
+      message?: string;
+      lock_expires_at?: string;
+      sync_version?: number;
+      current_version?: number;
+      locked_by_station?: string;
+    } | null;
+    error: any;
   }> {
     return _runWithDeadline<any>(
-      'lock_order_for_payment',
+      "lock_order_for_payment",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('lock_order_for_payment', {
-          p_order_id: orderId,
-          p_expected_version: expectedVersion,
-          p_station_id: stationId,
-          p_lock_duration_seconds: lockDurationSeconds
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("lock_order_for_payment", {
+            p_order_id: orderId,
+            p_expected_version: expectedVersion,
+            p_station_id: stationId,
+            p_lock_duration_seconds: lockDurationSeconds,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Unlock an order after payment processing
    */
-  static async unlockOrderForPayment (
+  static async unlockOrderForPayment(
     client: SupabaseClient,
     orderId: string,
-    stationId: string
+    stationId: string,
   ): Promise<{
     data: {
-      success: boolean
-      error?: string
-      message?: string
-    } | null
-    error: any
+      success: boolean;
+      error?: string;
+      message?: string;
+    } | null;
+    error: any;
   }> {
     return _runWithDeadline<any>(
-      'unlock_order_for_payment',
+      "unlock_order_for_payment",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('unlock_order_for_payment', {
-          p_order_id: orderId,
-          p_station_id: stationId
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("unlock_order_for_payment", {
+            p_order_id: orderId,
+            p_station_id: stationId,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**
    * Check if an order is currently locked for payment
    */
-  static async isOrderLocked (
+  static async isOrderLocked(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{
     data: {
-      success: boolean
-      is_locked?: boolean
-      locked_by_station?: string
-      lock_expires_at?: string
-      sync_version?: number
-      error?: string
-    } | null
-    error: any
+      success: boolean;
+      is_locked?: boolean;
+      locked_by_station?: string;
+      lock_expires_at?: string;
+      sync_version?: number;
+      error?: string;
+    } | null;
+    error: any;
   }> {
-    const { data, error } = await client.rpc('is_order_locked', {
-      p_order_id: orderId
-    })
-    return { data, error }
+    const { data, error } = await client.rpc("is_order_locked", {
+      p_order_id: orderId,
+    });
+    return { data, error };
   }
 
   /**
@@ -1232,42 +1333,44 @@ export class OrderService {
    * @param staffId - Optional staff ID performing the action
    * @returns Promise<{ success: boolean; error?: string }>
    */
-  static async closeCheck (
+  static async closeCheck(
     client: SupabaseClient,
     orderId: string,
-    staffId?: string | null
+    staffId?: string | null,
   ): Promise<{ success: boolean; error?: string }> {
     if (__DEV__)
-      console.log(`[OrderService:closeCheck] ====== CLOSING CHECK ======`)
-    if (__DEV__) console.log(`[OrderService:closeCheck] Order ID: ${orderId}`)
+      console.log(`[OrderService:closeCheck] ====== CLOSING CHECK ======`);
+    if (__DEV__) console.log(`[OrderService:closeCheck] Order ID: ${orderId}`);
     if (__DEV__)
-      console.log(`[OrderService:closeCheck] Staff ID: ${staffId || 'none'}`)
+      console.log(`[OrderService:closeCheck] Staff ID: ${staffId || "none"}`);
 
     const { data, error } = await _runWithDeadline<any>(
-      'close_check',
+      "close_check",
       DEADLINES.closeCheck,
       async (signal) => {
-        const { data: d, error: e } = await client.rpc('close_check', {
-          p_order_id: orderId,
-          p_staff_id: staffId || null
-        }).abortSignal(signal)
-        return { data: d, error: e }
-      }
-    )
+        const { data: d, error: e } = await client
+          .rpc("close_check", {
+            p_order_id: orderId,
+            p_staff_id: staffId || null,
+          })
+          .abortSignal(signal);
+        return { data: d, error: e };
+      },
+    );
 
     if (error) {
-      console.error('[OrderService:closeCheck] RPC error:', error)
-      return { success: false, error: error.message }
+      console.error("[OrderService:closeCheck] RPC error:", error);
+      return { success: false, error: error.message };
     }
 
-    const result = data as { success: boolean; error?: string }
+    const result = data as { success: boolean; error?: string };
     if (!result.success) {
-      console.error('[OrderService:closeCheck] Failed:', result.error)
+      console.error("[OrderService:closeCheck] Failed:", result.error);
     } else {
-      if (__DEV__) console.log('[OrderService:closeCheck] SUCCESS!')
+      if (__DEV__) console.log("[OrderService:closeCheck] SUCCESS!");
     }
 
-    return result
+    return result;
   }
 
   /**
@@ -1278,46 +1381,48 @@ export class OrderService {
    * @param reason - Optional reason for reopening
    * @returns Promise<{ success: boolean; error?: string }>
    */
-  static async reopenCheck (
+  static async reopenCheck(
     client: SupabaseClient,
     orderId: string,
     staffId: string,
-    reason?: string
+    reason?: string,
   ): Promise<{ success: boolean; error?: string }> {
     if (__DEV__)
-      console.log(`[OrderService:reopenCheck] ====== REOPENING CHECK ======`)
-    if (__DEV__) console.log(`[OrderService:reopenCheck] Order ID: ${orderId}`)
-    if (__DEV__) console.log(`[OrderService:reopenCheck] Staff ID: ${staffId}`)
+      console.log(`[OrderService:reopenCheck] ====== REOPENING CHECK ======`);
+    if (__DEV__) console.log(`[OrderService:reopenCheck] Order ID: ${orderId}`);
+    if (__DEV__) console.log(`[OrderService:reopenCheck] Staff ID: ${staffId}`);
     if (__DEV__)
       console.log(
-        `[OrderService:reopenCheck] Reason: ${reason || 'No reason provided'}`
-      )
+        `[OrderService:reopenCheck] Reason: ${reason || "No reason provided"}`,
+      );
 
     const { data, error } = await _runWithDeadline<any>(
-      'reopen_check',
+      "reopen_check",
       DEADLINES.closeCheck,
       async (signal) => {
-        const { data: d, error: e } = await client.rpc('reopen_check', {
-          p_order_id: orderId,
-          p_staff_id: staffId,
-          p_reason: reason || null
-        }).abortSignal(signal)
-        return { data: d, error: e }
-      }
-    )
+        const { data: d, error: e } = await client
+          .rpc("reopen_check", {
+            p_order_id: orderId,
+            p_staff_id: staffId,
+            p_reason: reason || null,
+          })
+          .abortSignal(signal);
+        return { data: d, error: e };
+      },
+    );
 
     if (error) {
-      console.error('[OrderService:reopenCheck] RPC error:', error)
-      return { success: false, error: error.message }
+      console.error("[OrderService:reopenCheck] RPC error:", error);
+      return { success: false, error: error.message };
     }
 
-    const result = data as { success: boolean; error?: string }
+    const result = data as { success: boolean; error?: string };
     if (!result.success) {
-      console.error('[OrderService:reopenCheck] Failed:', result.error)
+      console.error("[OrderService:reopenCheck] Failed:", result.error);
     } else {
-      if (__DEV__) console.log('[OrderService:reopenCheck] SUCCESS!')
+      if (__DEV__) console.log("[OrderService:reopenCheck] SUCCESS!");
     }
 
-    return result
+    return result;
   }
 }

@@ -1,85 +1,88 @@
-import '@/global.css'
-import '@/lib/screenConfig' // must be first — calls enableFreeze() before any Screen mounts
-import { PortalHost } from '@rn-primitives/portal'
-import { PortalProvider } from 'react-native-teleport'
+import "@/global.css";
+import "@/lib/screenConfig"; // must be first — calls enableFreeze() before any Screen mounts
+import { PortalHost } from "@rn-primitives/portal";
+import { PortalProvider } from "react-native-teleport";
 
-import { ClerkSessionKeeper } from '@/components/auth/ClerkSessionKeeper'
-import ClockInWallModal from '@/components/auth/ClockInWallModal'
-import ManagerPinModal from '@/components/auth/ManagerPinModal'
-import CustomerSheet from '@/components/bill/CustomerSheet'
-import { ProductionErrorBoundary } from '@/components/ErrorBoundary'
-import ItemCustomizationDialog from '@/components/menu/ItemCustomizationDialog'
-import SearchBottomSheet from '@/components/menu/SearchBottomSheet'
-import { NoPrinterModal } from '@/components/printing/NoPrinterModal'
+import { ClerkSessionKeeper } from "@/components/auth/ClerkSessionKeeper";
+import ClockInWallModal from "@/components/auth/ClockInWallModal";
+import ManagerPinModal from "@/components/auth/ManagerPinModal";
+import CustomerSheet from "@/components/bill/CustomerSheet";
+import { ProductionErrorBoundary } from "@/components/ErrorBoundary";
+import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
+import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
+import { NoPrinterModal } from "@/components/printing/NoPrinterModal";
 // SyncStatusBar removed - now using NetworkStatusBadge in Header
 // import { SyncStatusBar } from "@/components/SyncStatusBar";
-import { CFDProvider } from '@/contexts/CFDProvider'
-import { LoadingProvider } from '@/contexts/LoadingContext'
-import { PosSyncProvider } from '@/contexts/PosSyncProvider'
-import { RemoteActionsProvider } from '@/contexts/RemoteActionsProvider'
-import { SessionKickListenerProvider } from '@/contexts/SessionKickListenerProvider'
-import { TanstackProvider } from '@/contexts/TanstackProvider'
-import { ToastProvider } from '@/contexts/ToastContext'
-import { NAV_THEME } from '@/lib/constants'
-import { initImmer } from '@/lib/initImmer'
-import { logger } from '@/lib/logger'
-import { initLogCollector } from '@/lib/logCollector'
-import { markNavigationEvent, setRootNavigationRef } from '@/lib/rootNavigation'
-import { POS_SCREEN_OPTIONS } from '@/lib/screenConfig'
-import { flushAllPendingWrites, secureStorage } from '@/lib/storage'
-import { colors, setThemeMode, spinnerColor } from '@/lib/theme'
-import { useColorScheme } from '@/lib/useColorScheme'
-import { PrinterService } from '@/services/printing/PrinterService'
-import { useCustomizationStore } from '@/stores/useCustomizationStore'
-import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useTimeclockStore } from '@/stores/useTimeclockStore'
-import { Toasts } from '@backpackapp-io/react-native-toast'
-import { ClerkProvider, TokenCache, useAuth } from '@clerk/clerk-expo'
-import { BottomSheetModalProvider } from '@gorhom/bottom-sheet'
+import { CFDProvider } from "@/contexts/CFDProvider";
+import { LoadingProvider } from "@/contexts/LoadingContext";
+import { PosSyncProvider } from "@/contexts/PosSyncProvider";
+import { RemoteActionsProvider } from "@/contexts/RemoteActionsProvider";
+import { SessionKickListenerProvider } from "@/contexts/SessionKickListenerProvider";
+import { TanstackProvider } from "@/contexts/TanstackProvider";
+import { ToastProvider } from "@/contexts/ToastContext";
+import { NAV_THEME } from "@/lib/constants";
+import { initImmer } from "@/lib/initImmer";
+import { initLogCollector } from "@/lib/logCollector";
+import { logger } from "@/lib/logger";
 import {
-  DarkTheme,
-  DefaultTheme,
-  Theme,
-  ThemeProvider
-} from '@react-navigation/native'
-import * as NavigationBar from 'expo-navigation-bar'
-import { Stack, useNavigationContainerRef } from 'expo-router'
-import { StatusBar } from 'expo-status-bar'
-import * as WebBrowser from 'expo-web-browser'
-import * as React from 'react'
+    markNavigationEvent,
+    setRootNavigationRef,
+} from "@/lib/rootNavigation";
+import { POS_SCREEN_OPTIONS } from "@/lib/screenConfig";
+import { flushAllPendingWrites, secureStorage } from "@/lib/storage";
+import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
+import { useColorScheme } from "@/lib/useColorScheme";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { useCustomizationStore } from "@/stores/useCustomizationStore";
+import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { Toasts } from "@backpackapp-io/react-native-toast";
+import { ClerkProvider, TokenCache, useAuth } from "@clerk/clerk-expo";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
-  ActivityIndicator,
-  AppState,
-  Platform,
-  Pressable,
-  Text,
-  View
-} from 'react-native'
-import { SystemBars } from 'react-native-edge-to-edge'
-import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import { SafeAreaProvider } from 'react-native-safe-area-context'
+    DarkTheme,
+    DefaultTheme,
+    Theme,
+    ThemeProvider,
+} from "@react-navigation/native";
+import * as NavigationBar from "expo-navigation-bar";
+import { Stack, useNavigationContainerRef } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import * as WebBrowser from "expo-web-browser";
+import * as React from "react";
+import {
+    ActivityIndicator,
+    AppState,
+    Platform,
+    Pressable,
+    Text,
+    View,
+} from "react-native";
+import { SystemBars } from "react-native-edge-to-edge";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 // app/_layout.tsx — check for update on launch
-import AppUpdateModal from '@/components/AppUpdateModal'
+import AppUpdateModal from "@/components/AppUpdateModal";
 import {
-  checkForNativeUpdate,
-  type VersionManifest
-} from '@/services/appUpdater'
-import * as Sentry from '@sentry/react-native'
-import { isRunningInExpoGo } from 'expo'
-import * as Updates from 'expo-updates'
+    checkForNativeUpdate,
+    type VersionManifest,
+} from "@/services/appUpdater";
+import * as Sentry from "@sentry/react-native";
+import { isRunningInExpoGo } from "expo";
+import * as Updates from "expo-updates";
 
 const navigationIntegration = Sentry.reactNavigationIntegration({
-  enableTimeToInitialDisplay: !isRunningInExpoGo()
-})
+  enableTimeToInitialDisplay: !isRunningInExpoGo(),
+});
 
 Sentry.init({
-  dsn: 'https://dcfdfcd20582347382d2fb94df146b1e@o4511212537380864.ingest.us.sentry.io/4511212539019264',
+  dsn: "https://dcfdfcd20582347382d2fb94df146b1e@o4511212537380864.ingest.us.sentry.io/4511212539019264",
 
   // Maps to EAS channel: "development" | "preview" | "production"
-  environment: __DEV__ ? 'development' : Updates.channel ?? 'unknown',
+  environment: __DEV__ ? "development" : (Updates.channel ?? "unknown"),
 
   sendDefaultPii: true,
   enableLogs: true,
@@ -94,11 +97,11 @@ Sentry.init({
   tracesSampleRate: __DEV__ ? 1.0 : 0.3,
 
   integrations: [navigationIntegration],
-  enableNativeFramesTracking: !isRunningInExpoGo()
+  enableNativeFramesTracking: !isRunningInExpoGo(),
 
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
   // spotlight: __DEV__,
-})
+});
 
 // Wire structured logger → Sentry breadcrumbs. logger.warn/error calls
 // land as breadcrumbs on captured events, helping debug "what was the app
@@ -106,84 +109,122 @@ Sentry.init({
 logger.onLog = (level, category, message, data) => {
   Sentry.addBreadcrumb({
     category: `app.${category}`,
-    level: level === 'error' ? 'error' : level === 'warn' ? 'warning' : 'info',
+    level: level === "error" ? "error" : level === "warn" ? "warning" : "info",
     message,
     data,
-  })
-}
+  });
+};
 
-async function checkForUpdate () {
+// Catch unhandled JS errors and Promise rejections that bypass React's error
+// boundary (e.g. fire-and-forget async calls with no .catch).
+// ErrorUtils is a RN global — not a named export. Guard for SSR/test envs.
+(global as any).ErrorUtils?.setGlobalHandler?.(
+  (error: Error, isFatal?: boolean) => {
+    Sentry.captureException(error, {
+      tags: { fatal: String(isFatal ?? false), source: "global_handler" },
+    });
+  },
+);
+
+async function checkForUpdate() {
   try {
-    const update = await Updates.checkForUpdateAsync()
+    const update = await Updates.checkForUpdateAsync();
     if (update.isAvailable) {
-      await Updates.fetchUpdateAsync()
-      await Updates.reloadAsync() // silent restart
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync(); // silent restart
     }
   } catch (e) {
     // offline — no problem, skip
   }
 }
 // IMPORTANT: Must be called once at module level for OAuth to work correctly
-WebBrowser.maybeCompleteAuthSession()
+WebBrowser.maybeCompleteAuthSession();
 
 // Register CFD secondary display component for Android built-in displays.
 // Must happen at module level before native side mounts the ReactRootView.
-if (Platform.OS === 'android') {
-  require('@/components/cfd-builtin/CFDBuiltinDisplay')
+if (Platform.OS === "android") {
+  require("@/components/cfd-builtin/CFDBuiltinDisplay");
 }
 
 // Initialize log collector to capture console output for remote log retrieval
-initLogCollector()
+initLogCollector();
 // Optimize Immer array iteration in producers
-initImmer()
+initImmer();
 
 export const tokenCache: TokenCache = {
-  async getToken (key: string) {
+  async getToken(key: string) {
     try {
-      const result = secureStorage.getString(key) ?? null
+      const result = secureStorage.getString(key) ?? null;
       if (__DEV__)
-        console.log(`[TokenCache] getToken key="${key}" hit=${!!result}`)
-      return result
+        console.log(`[TokenCache] getToken key="${key}" hit=${!!result}`);
+      return result;
     } catch (error) {
-      console.error('[TokenCache] getToken error:', error)
-      return null
+      Sentry.captureException(error, {
+        tags: { source: "token_cache", op: "getToken" },
+      });
+      console.error("[TokenCache] getToken error:", error);
+      return null;
     }
   },
-  async saveToken (key: string, value: string) {
+  async saveToken(key: string, value: string) {
     try {
-      secureStorage.set(key, value)
-      if (__DEV__) console.log(`[TokenCache] saveToken key="${key}"`)
+      secureStorage.set(key, value);
+      if (__DEV__) console.log(`[TokenCache] saveToken key="${key}"`);
     } catch (error) {
-      console.error('[TokenCache] saveToken error:', error)
+      Sentry.captureException(error, {
+        tags: { source: "token_cache", op: "saveToken" },
+      });
+      console.error("[TokenCache] saveToken error:", error);
     }
-  }
-}
+  },
+};
 
 const mmkvResourceCache = () => ({
   get: async (key: string) => secureStorage.getString(key) ?? null,
   set: async (key: string, value: string) => {
-    secureStorage.set(key, value)
-  }
-})
+    secureStorage.set(key, value);
+  },
+});
 
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 const LIGHT_THEME: Theme = {
   ...DefaultTheme,
-  colors: NAV_THEME.light
-}
+  colors: NAV_THEME.light,
+};
 const DARK_THEME: Theme = {
   ...DarkTheme,
-  colors: NAV_THEME.dark
-}
+  colors: NAV_THEME.dark,
+};
 
 export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary
-} from 'expo-router'
+    // Catch any errors thrown by the Layout component.
+    ErrorBoundary
+} from "expo-router";
 
-const CLERK_WAS_SIGNED_IN_KEY = 'clerk_was_signed_in'
-const SESSION_RECOVERY_TIMEOUT_MS = 10_000
+const CLERK_WAS_SIGNED_IN_KEY = "clerk_was_signed_in";
+const SESSION_RECOVERY_TIMEOUT_MS = 10_000;
+
+/**
+ * Syncs the authenticated Clerk user + selected station into Sentry so every
+ * captured event is tagged with who was logged in and which station sent it.
+ * Must be rendered inside <ClerkProvider> (uses useAuth).
+ */
+function SentryUserSync() {
+  const { userId } = useAuth();
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const stationId = selectedStation?.id;
+  React.useEffect(() => {
+    if (userId) {
+      Sentry.setUser({ id: userId });
+      Sentry.setTag("station_id", stationId ?? "none");
+      Sentry.setTag("station_type", selectedStation?.station_type ?? "unknown");
+    } else {
+      Sentry.setUser(null);
+    }
+  }, [userId, stationId, selectedStation?.station_type]);
+  return null;
+}
 
 /**
  * Gate that replaces the bare <ClerkLoaded>. Prevents the overnight-signout
@@ -199,58 +240,60 @@ const SESSION_RECOVERY_TIMEOUT_MS = 10_000
  * The gate uses a wasSignedIn flag in MMKV to distinguish "token is refreshing
  * after sleep" from "user was never signed in / explicitly logged out".
  */
-function ClerkGate ({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn, getToken } = useAuth()
-  const [graceExpired, setGraceExpired] = React.useState(false)
-  const graceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+function ClerkGate({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const [graceExpired, setGraceExpired] = React.useState(false);
+  const graceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Read the persisted flag once on mount
   const wasSignedIn = React.useRef(
-    secureStorage.getString(CLERK_WAS_SIGNED_IN_KEY) === 'true'
-  ).current
+    secureStorage.getString(CLERK_WAS_SIGNED_IN_KEY) === "true",
+  ).current;
 
   // Persist the flag when signed in
   React.useEffect(() => {
     if (isLoaded && isSignedIn) {
-      secureStorage.set(CLERK_WAS_SIGNED_IN_KEY, 'true')
+      secureStorage.set(CLERK_WAS_SIGNED_IN_KEY, "true");
     }
-  }, [isLoaded, isSignedIn])
+  }, [isLoaded, isSignedIn]);
 
   // Grace period: when Clerk reports signed-out but we were previously signed in,
   // give Clerk up to 10 seconds to complete its token refresh before routing to login.
-  const needsGrace = isLoaded && !isSignedIn && wasSignedIn && !graceExpired
+  const needsGrace = isLoaded && !isSignedIn && wasSignedIn && !graceExpired;
 
   React.useEffect(() => {
     if (!needsGrace) {
       // Clear any pending timer if we no longer need grace
       if (graceTimerRef.current) {
-        clearTimeout(graceTimerRef.current)
-        graceTimerRef.current = null
+        clearTimeout(graceTimerRef.current);
+        graceTimerRef.current = null;
       }
-      return
+      return;
     }
 
-    console.log('[ClerkGate] Session refresh grace period started (10s)')
+    console.log("[ClerkGate] Session refresh grace period started (10s)");
 
     // Actively trigger Clerk's internal token refresh
-    getToken().catch(() => {})
+    getToken().catch(() => {});
 
     graceTimerRef.current = setTimeout(() => {
       console.warn(
-        '[ClerkGate] Grace period expired — session could not be recovered'
-      )
-      secureStorage.remove(CLERK_WAS_SIGNED_IN_KEY)
-      setGraceExpired(true)
-      graceTimerRef.current = null
-    }, SESSION_RECOVERY_TIMEOUT_MS)
+        "[ClerkGate] Grace period expired — session could not be recovered",
+      );
+      secureStorage.remove(CLERK_WAS_SIGNED_IN_KEY);
+      setGraceExpired(true);
+      graceTimerRef.current = null;
+    }, SESSION_RECOVERY_TIMEOUT_MS);
 
     return () => {
       if (graceTimerRef.current) {
-        clearTimeout(graceTimerRef.current)
-        graceTimerRef.current = null
+        clearTimeout(graceTimerRef.current);
+        graceTimerRef.current = null;
       }
-    }
-  }, [needsGrace, getToken])
+    };
+  }, [needsGrace, getToken]);
 
   // Clerk still loading — show spinner
   if (!isLoaded) {
@@ -258,14 +301,14 @@ function ClerkGate ({ children }: { children: React.ReactNode }) {
       <View
         style={{
           flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: colors.screen
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.screen,
         }}
       >
-        <ActivityIndicator size='large' color={spinnerColor} />
+        <ActivityIndicator size="large" color={spinnerColor} />
       </View>
-    )
+    );
   }
 
   // Signed out but was previously signed in — wait for token refresh
@@ -274,17 +317,17 @@ function ClerkGate ({ children }: { children: React.ReactNode }) {
       <View
         style={{
           flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: colors.screen
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.screen,
         }}
       >
-        <ActivityIndicator size='large' color={spinnerColor} />
+        <ActivityIndicator size="large" color={spinnerColor} />
       </View>
-    )
+    );
   }
 
-  return <>{children}</>
+  return <>{children}</>;
 }
 
 /**
@@ -293,149 +336,149 @@ function ClerkGate ({ children }: { children: React.ReactNode }) {
  * (which resets the boundary) and a full app reload via expo-updates, which
  * unsticks corrupted top-level state.
  */
-function RootErrorFallback () {
+function RootErrorFallback() {
   const handleReload = React.useCallback(() => {
-    Updates.reloadAsync().catch(err => {
-      console.error('[RootErrorFallback] reloadAsync failed:', err)
-    })
-  }, [])
+    Updates.reloadAsync().catch((err) => {
+      console.error("[RootErrorFallback] reloadAsync failed:", err);
+    });
+  }, []);
   return (
-    <View className='flex-1 items-center justify-center bg-background p-6'>
-      <Text className='text-2xl font-bold text-destructive mb-2'>
+    <View className="flex-1 items-center justify-center bg-background p-6">
+      <Text className="text-2xl font-bold text-destructive mb-2">
         Something went wrong
       </Text>
-      <Text className='text-base text-muted-foreground text-center mb-6'>
+      <Text className="text-base text-muted-foreground text-center mb-6">
         The app ran into an unexpected problem. Tap below to reload.
       </Text>
       <Pressable
         onPress={handleReload}
-        className='bg-primary px-8 py-4 rounded-lg'
+        className="bg-primary px-8 py-4 rounded-lg"
       >
-        <Text className='text-primary-foreground font-semibold text-lg'>
+        <Text className="text-primary-foreground font-semibold text-lg">
           Reload App
         </Text>
       </Pressable>
     </View>
-  )
+  );
 }
 
-export default Sentry.wrap(function RootLayout () {
-  const hasMounted = React.useRef(false)
-  const { colorScheme, isDarkColorScheme } = useColorScheme()
-  const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false)
-  const isClockInWallOpen = useTimeclockStore(s => s.isClockInWallOpen)
-  const hideClockInWall = useTimeclockStore(s => s.hideClockInWall)
+export default Sentry.wrap(function RootLayout() {
+  const hasMounted = React.useRef(false);
+  const { colorScheme, isDarkColorScheme } = useColorScheme();
+  const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false);
+  const isClockInWallOpen = useTimeclockStore((s) => s.isClockInWallOpen);
+  const hideClockInWall = useTimeclockStore((s) => s.hideClockInWall);
   const isKDS = useStoreSettingsStore(
-    s => s.selectedStation?.station_type === 'kds'
-  )
-  const isCFDMode = useStoreSettingsStore(s => s.isCFDMode)
-  const isPOSMode = !isKDS && !isCFDMode
-  const isPinModalOpen = usePinOverrideStore(s => s.isPinModalOpen)
-  const isNoPrinterModalVisible = useNoPrinterModalStore(s => s.visible)
-  const isCustomizationOpen = useCustomizationStore(s => s.isOpen)
+    (s) => s.selectedStation?.station_type === "kds",
+  );
+  const isCFDMode = useStoreSettingsStore((s) => s.isCFDMode);
+  const isPOSMode = !isKDS && !isCFDMode;
+  const isPinModalOpen = usePinOverrideStore((s) => s.isPinModalOpen);
+  const isNoPrinterModalVisible = useNoPrinterModalStore((s) => s.visible);
+  const isCustomizationOpen = useCustomizationStore((s) => s.isOpen);
   const [nativeUpdateManifest, setNativeUpdateManifest] =
-    React.useState<VersionManifest | null>(null)
-  setThemeMode(colorScheme === 'light' ? 'light' : 'dark')
+    React.useState<VersionManifest | null>(null);
+  setThemeMode(colorScheme === "light" ? "light" : "dark");
 
   // Store the navigation container ref for cross-group navigation + Sentry tracing
-  const navigationRef = useNavigationContainerRef()
+  const navigationRef = useNavigationContainerRef();
   React.useEffect(() => {
-    setRootNavigationRef(navigationRef)
+    setRootNavigationRef(navigationRef);
     if (navigationRef?.current) {
-      navigationIntegration.registerNavigationContainer(navigationRef)
+      navigationIntegration.registerNavigationContainer(navigationRef);
     }
-  }, [navigationRef])
+  }, [navigationRef]);
 
   // Track navigation events so background services can skip non-critical work
   // (order pruning, toasts) during the brief window after a screen transition.
   React.useEffect(() => {
-    const unsubscribe = navigationRef.addListener('state', () => {
-      markNavigationEvent()
-    })
-    return unsubscribe
-  }, [navigationRef])
+    const unsubscribe = navigationRef.addListener("state", () => {
+      markNavigationEvent();
+    });
+    return unsubscribe;
+  }, [navigationRef]);
 
   // Hide system UI for full-screen immersive POS experience
   React.useEffect(() => {
-    async function runUpdateChecks () {
-      if (Platform.OS === 'android') {
-        NavigationBar.setVisibilityAsync('hidden').catch(() => {})
-        const manifest = await checkForNativeUpdate()
+    async function runUpdateChecks() {
+      if (Platform.OS === "android") {
+        NavigationBar.setVisibilityAsync("hidden").catch(() => {});
+        const manifest = await checkForNativeUpdate();
         if (manifest) {
-          setNativeUpdateManifest(manifest)
-          return // skip OTA — native update takes priority
+          setNativeUpdateManifest(manifest);
+          return; // skip OTA — native update takes priority
         }
       }
-      checkForUpdate()
+      checkForUpdate();
     }
-    runUpdateChecks()
-  }, [])
+    runUpdateChecks();
+  }, []);
 
   useIsomorphicLayoutEffect(() => {
     if (hasMounted.current) {
-      return
+      return;
     }
 
-    if (Platform.OS === 'web') {
+    if (Platform.OS === "web") {
       // Adds the background color to the html element to prevent white background on overscroll.
-      document.documentElement.classList.add('bg-background')
+      document.documentElement.classList.add("bg-background");
     }
-    setIsColorSchemeLoaded(true)
-    hasMounted.current = true
+    setIsColorSchemeLoaded(true);
+    hasMounted.current = true;
 
     // Skip POS-only initialization for KDS stations and CFD client mode
     if (!isKDS && !isCFDMode) {
       // NOTE: Timeclock hydration now happens in PosSyncProvider after employees sync.
       // PTO history is calculated from real shift data, not mock data.
       // Start draft order cleanup
-      useOrderStore.getState().startDraftCleanup()
+      useOrderStore.getState().startDraftCleanup();
       // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)
-      useOrderStore.getState().cleanupDraftDuplicates()
+      useOrderStore.getState().cleanupDraftDuplicates();
       // Start print queue processing
-      PrinterService.startProcessing()
+      PrinterService.startProcessing();
     }
-  }, [])
+  }, []);
 
   // Flush pending MMKV writes when app goes to background to prevent data loss
   React.useEffect(() => {
-    const sub = AppState.addEventListener('change', state => {
-      if (state === 'background' || state === 'inactive') {
-        flushAllPendingWrites()
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        flushAllPendingWrites();
       }
-    })
-    return () => sub.remove()
-  }, [])
+    });
+    return () => sub.remove();
+  }, []);
 
   // Cleanup intervals on unmount
   React.useEffect(() => {
     return () => {
       if (!isKDS && !isCFDMode) {
-        useOrderStore.getState().stopDraftCleanup()
-        PrinterService.stopProcessing()
+        useOrderStore.getState().stopDraftCleanup();
+        PrinterService.stopProcessing();
       }
-    }
-  }, [isKDS, isCFDMode])
+    };
+  }, [isKDS, isCFDMode]);
 
   if (!isColorSchemeLoaded) {
-    return null
+    return null;
   }
 
   if (!publishableKey) {
     return (
-      <View className='flex-1 items-center justify-center bg-red-100'>
-        <Text className='text-red-600 text-lg font-semibold'>
+      <View className="flex-1 items-center justify-center bg-red-100">
+        <Text className="text-red-600 text-lg font-semibold">
           Missing Clerk Publishable Key
         </Text>
-        <Text className='text-red-500 text-sm mt-2'>
+        <Text className="text-red-500 text-sm mt-2">
           Please add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to your .env file
         </Text>
       </View>
-    )
+    );
   }
 
   if (__DEV__) {
-    console.log('Clerk Key:', publishableKey?.substring(0, 20))
-    console.log('TokenCache:', typeof tokenCache)
+    console.log("Clerk Key:", publishableKey?.substring(0, 20));
+    console.log("TokenCache:", typeof tokenCache);
   }
 
   return (
@@ -448,8 +491,9 @@ export default Sentry.wrap(function RootLayout () {
         <ClerkGate>
           {/* <ClerkSessionDebugger /> */}
           <ClerkSessionKeeper />
+          <SentryUserSync />
           <ProductionErrorBoundary
-            section='RootLayout'
+            section="RootLayout"
             fallback={<RootErrorFallback />}
           >
             <TanstackProvider>
@@ -467,15 +511,15 @@ export default Sentry.wrap(function RootLayout () {
                               <RemoteActionsProvider>
                                 <CFDProvider>
                                   <StatusBar
-                                    style={'dark'}
+                                    style={"dark"}
                                     translucent
-                                    hidden={Platform.OS === 'android'}
+                                    hidden={Platform.OS === "android"}
                                   />
-                                  {Platform.OS === 'android' && (
+                                  {Platform.OS === "android" && (
                                     <SystemBars
                                       hidden={{
                                         navigationBar: true,
-                                        statusBar: true
+                                        statusBar: true,
                                       }}
                                     />
                                   )}
@@ -483,15 +527,15 @@ export default Sentry.wrap(function RootLayout () {
                                     screenOptions={{
                                       ...POS_SCREEN_OPTIONS,
                                       contentStyle: {
-                                        backgroundColor: colors.screen
-                                      }
+                                        backgroundColor: colors.screen,
+                                      },
                                     }}
                                   >
-                                    <Stack.Screen name='index' />
-                                    <Stack.Screen name='(auth)' />
-                                    <Stack.Screen name='(cfd)' />
-                                    <Stack.Screen name='(main)' />
-                                    <Stack.Screen name='(profiles-and-timeclock)' />
+                                    <Stack.Screen name="index" />
+                                    <Stack.Screen name="(auth)" />
+                                    <Stack.Screen name="(cfd)" />
+                                    <Stack.Screen name="(main)" />
+                                    <Stack.Screen name="(profiles-and-timeclock)" />
                                   </Stack>
                                   <PortalHost />
                                   {isPOSMode && <SearchBottomSheet />}
@@ -529,16 +573,16 @@ export default Sentry.wrap(function RootLayout () {
                                         backgroundColor: colors.card,
                                         borderWidth: 1,
                                         borderColor: colors.border,
-                                        flex: 1
+                                        flex: 1,
                                       },
                                       text: {
                                         color: colors.heading,
-                                        fontWeight: 'bold',
-                                        fontSize: 24
+                                        fontWeight: "bold",
+                                        fontSize: 24,
                                       },
                                       indicator: {
-                                        backgroundColor: colors.teal
-                                      }
+                                        backgroundColor: colors.teal,
+                                      },
                                     }}
                                   />
                                 </CFDProvider>
@@ -556,10 +600,10 @@ export default Sentry.wrap(function RootLayout () {
         </ClerkGate>
       </ClerkProvider>
     </PortalProvider>
-  )
-})
+  );
+});
 
 const useIsomorphicLayoutEffect =
-  Platform.OS === 'web' && typeof window === 'undefined'
+  Platform.OS === "web" && typeof window === "undefined"
     ? React.useEffect
-    : React.useLayoutEffect
+    : React.useLayoutEffect;

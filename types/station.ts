@@ -3,7 +3,7 @@
 // - 'own': Only orders created by this station
 // - 'location': All orders at this location
 // - 'online': All online/delivery orders
-export type StationViewScope = 'own' | 'location' | 'online';
+export type StationViewScope = "own" | "location" | "online";
 
 // === STATION CAPABILITIES (Phase 1 Foundation) ===
 // Defines what actions a station can perform
@@ -23,18 +23,23 @@ export interface StationPaymentTerminal {
   terminal_name: string;
   register_id: string | null;
   auth_key: string | null;
-  terminal_type: 'dejavoo' | 'clover' | 'square' | 'stripe_terminal' | 'castles';
+  terminal_type:
+    | "dejavoo"
+    | "clover"
+    | "square"
+    | "stripe_terminal"
+    | "castles";
   terminal_model: string | null;
   is_connected: boolean;
   /** Castles terminal IP address */
   ip_address?: string;
   /** Castles terminal port (default 8080) */
   port?: number;
-  last_connection_status: 'Online' | 'Offline' | 'NotFound' | null;
+  last_connection_status: "Online" | "Offline" | "NotFound" | null;
   last_connection_test_at: string | null;
   consecutive_failures?: number;
   health_check_interval?: number;
-  connection_type?: 'cloud' | 'local' | 'local_socket' | 'usb';
+  connection_type?: "cloud" | "local" | "local_socket" | "usb";
 }
 
 // Station as returned from get_location_stations_with_status RPC
@@ -104,7 +109,12 @@ export interface SelectedStation {
 export interface PosStaffLoginResponse {
   success: boolean;
   error?: string;
-  error_code?: "INVALID_PIN" | "STATION_NOT_FOUND" | "STATION_IN_USE";
+  error_code?:
+    | "INVALID_PIN"
+    | "STATION_NOT_FOUND"
+    | "STATION_IN_USE"
+    | "LOCKOUT_5MIN"
+    | "LOCKOUT_30MIN";
   staff?: {
     staff_profile_id: string;
     first_name: string;
@@ -128,15 +138,15 @@ export interface PosStaffLoginResponse {
 
 // === STATION DEVICE TYPES ===
 export type StationDeviceType =
-  | 'payment_terminal'
-  | 'receipt_printer'
-  | 'label_printer'
-  | 'kitchen_printer'
-  | 'cash_drawer'
-  | 'barcode_scanner'
-  | 'scale'
-  | 'customer_display'
-  | 'pos_device';
+  | "payment_terminal"
+  | "receipt_printer"
+  | "label_printer"
+  | "kitchen_printer"
+  | "cash_drawer"
+  | "barcode_scanner"
+  | "scale"
+  | "customer_display"
+  | "pos_device";
 
 // === DEVICE LOGIN HISTORY ===
 // Audit trail of all POS device logins/logouts
@@ -156,7 +166,7 @@ export interface DeviceLoginHistory {
   ip_address: string | null;
   logged_in_at: string;
   logged_out_at: string | null;
-  logout_reason: 'logout' | 'kicked' | 'ended' | 'expired' | null;
+  logout_reason: "logout" | "kicked" | "ended" | "expired" | null;
   created_at: string;
 }
 
