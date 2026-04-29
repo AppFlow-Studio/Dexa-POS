@@ -36,6 +36,7 @@ import {
   getFailedPayments,
   getIsOnline,
   getOfflineDurationMs,
+  getPendingOperations,
   getPendingPaymentsCount,
   hasPendingOrderCreation,
   initOfflineSyncService,
@@ -47,6 +48,17 @@ import {
   queueDependentOperation,
   queueOperation
 } from '@/services/offlineSyncService'
+import { connectionQuality } from '@/lib/network/connectionQuality'
+
+if (__DEV__) {
+  ;(globalThis as any).__queue = () => getPendingOperations()
+  ;(globalThis as any).__flushQueue = () => processQueueNow({ force: true })
+  ;(globalThis as any).__connQuality = () => ({
+    state: connectionQuality.get(),
+    isSlow: connectionQuality.isSlow(),
+    isOnline: getIsOnline()
+  })
+}
 import {
   toIdempotencyKey,
   toUpdateItemKey,

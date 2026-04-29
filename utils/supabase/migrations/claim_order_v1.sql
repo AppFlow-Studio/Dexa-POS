@@ -12,8 +12,11 @@
 -- Error codes (typed for client handling, see services/orderService.ts:claimOrder):
 --   - ORDER_NOT_FOUND            — order missing or not in caller's location
 --   - ORDER_FINALIZED            — order already void/cancelled/completed
---   - ORDER_LOCKED_FOR_PAYMENT   — other station holds an active payment lock
 --   - CONCURRENT_CLAIM           — another station claimed first (lost the race)
+--
+-- ORDER_LOCKED_FOR_PAYMENT is intentionally not emitted yet — the
+-- payment_lock_* columns it relied on don't exist on this DB. The client
+-- still understands the code, so re-enabling is a one-block edit.
 --
 -- Rollback: claim_order_v1_rollback.sql
 -- =====================================================================
@@ -57,17 +60,11 @@ BEGIN
     );
   END IF;
 
-  -- Don't yank ownership from a station mid-payment. The existing payment-lock
-  -- columns are kept compatible with phase6_sync_version.sql.
-  IF v_order.payment_lock_station_id IS NOT NULL
-     AND v_order.payment_lock_expires_at > now()
-     AND v_order.payment_lock_station_id <> p_station_id THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'error', 'ORDER_LOCKED_FOR_PAYMENT',
-      'locked_by_station_id', v_order.payment_lock_station_id
-    );
-  END IF;
+  -- Payment-lock guard intentionally omitted: orders.payment_lock_station_id /
+  -- payment_lock_expires_at are not present on the current DB
+  -- (phase6_sync_version.sql never landed here). Re-introduce when those
+  -- columns exist; the client (services/orderService.ts) already maps a
+  -- typed ORDER_LOCKED_FOR_PAYMENT response, so the wiring is ready.
 
   -- No-op shortcut: already ours.
   IF v_order.station_id IS NOT DISTINCT FROM p_station_id THEN
