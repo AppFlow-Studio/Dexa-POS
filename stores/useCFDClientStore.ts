@@ -1,72 +1,72 @@
 // stores/useCFDClientStore.ts
 // CFD client-mode Zustand store (when this device acts as a customer-facing display)
-import { flushPendingWrite, mmkvStorage } from '@/lib/storage'
+import { flushPendingWrite, mmkvStorage } from "@/lib/storage";
 import type {
-  CFDPairingData,
-  CFDPayload,
-  CFDScreenState
-} from '@/types/cfd.types'
-import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+    CFDPairingData,
+    CFDPayload,
+    CFDScreenState,
+} from "@/types/cfd.types";
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 interface CFDClientStore {
   // Connection
-  isPaired: boolean
-  connection: CFDPairingData | null
-  connectionStatus: 'disconnected' | 'connecting' | 'connected'
-  latency: number | null
+  isPaired: boolean;
+  connection: CFDPairingData | null;
+  connectionStatus: "disconnected" | "connecting" | "connected";
+  latency: number | null;
 
   // Display state (from POS)
-  screenState: CFDScreenState
-  serverName: string | null
-  customerName: string | null
-  customerPhone: string | null
-  orderNumber: string | null
-  orderType: string | null
-  tableName: string | null
-  guestCount: number | null
-  items: CFDPayload['items']
+  screenState: CFDScreenState;
+  serverName: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  orderNumber: string | null;
+  orderType: string | null;
+  tableName: string | null;
+  guestCount: number | null;
+  items: CFDPayload["items"];
 
   // Totals
-  subtotal: number
-  subtotalCash: number
-  subtotalCard: number
+  subtotal: number;
+  subtotalCash: number;
+  subtotalCard: number;
 
-  discountAmount: number
+  discountAmount: number;
 
-  taxAmount: number
-  taxCash: number
-  taxCard: number
+  taxAmount: number;
+  taxCash: number;
+  taxCard: number;
 
-  tipAmount: number
-  tipPercentage: number | null
+  tipAmount: number;
+  tipPercentage: number | null;
 
-  total: number
-  totalCash: number
-  totalCard: number
+  total: number;
+  totalCash: number;
+  totalCard: number;
 
-  savingsAmount: number
+  savingsAmount: number;
 
-  outstandingTotal: number
-  amountPaid: number
-  branding: CFDPayload['branding'] | null
-  layout: CFDPayload['layout'] | null
-  orderingPanelImages: NonNullable<CFDPayload['orderingPanelImages']>
-  tipConfig: CFDPayload['tipConfig'] | null
-  carouselImages: string[]
-  loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
-  loyaltyResult: CFDPayload['loyaltyResult'] | null
-  paymentMethod: 'cash' | 'card' | null
-  themeMode: 'light' | 'dark'
+  outstandingTotal: number;
+  amountPaid: number;
+  branding: CFDPayload["branding"] | null;
+  layout: CFDPayload["layout"] | null;
+  orderingPanelImages: NonNullable<CFDPayload["orderingPanelImages"]>;
+  tipConfig: CFDPayload["tipConfig"] | null;
+  carouselImages: string[];
+  loyaltyPrompt: CFDPayload["loyaltyPrompt"] | null;
+  loyaltyResult: CFDPayload["loyaltyResult"] | null;
+  paymentMethod: "cash" | "card" | null;
+  themeMode: "light" | "dark";
 
   // Actions
-  setPairing: (data: CFDPairingData) => void
-  clearPairing: () => void
+  setPairing: (data: CFDPairingData) => void;
+  clearPairing: () => void;
   setConnectionStatus: (
-    status: 'disconnected' | 'connecting' | 'connected'
-  ) => void
-  setLatency: (ms: number) => void
-  updateFromPayload: (payload: CFDPayload) => void
+    status: "disconnected" | "connecting" | "connected",
+  ) => void;
+  setLatency: (ms: number) => void;
+  updateFromPayload: (payload: CFDPayload) => void;
 }
 
 export const useCFDClientStore = create<CFDClientStore>()(
@@ -75,10 +75,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
       // Initial state
       isPaired: false,
       connection: null,
-      connectionStatus: 'disconnected',
+      connectionStatus: "disconnected",
       latency: null,
 
-      screenState: 'pairing',
+      screenState: "pairing",
       serverName: null,
       customerName: null,
       customerPhone: null,
@@ -117,38 +117,38 @@ export const useCFDClientStore = create<CFDClientStore>()(
       loyaltyPrompt: null,
       loyaltyResult: null,
       paymentMethod: null,
-      themeMode: 'dark',
+      themeMode: "dark",
 
       // Actions
-      setPairing: data => {
+      setPairing: (data) => {
         set({
           isPaired: true,
           connection: data,
-          screenState: 'idle'
-        })
+          screenState: "idle",
+        });
         // Flush the debounced persist write immediately so pairing is durable
         // before we navigate. Prevents losing pairing if the app is killed in
         // the 300ms window after the QR scan commits.
-        flushPendingWrite('cfd-client-store')
+        flushPendingWrite("cfd-client-store");
       },
 
       clearPairing: () => {
         set({
           isPaired: false,
           connection: null,
-          connectionStatus: 'disconnected',
-          screenState: 'pairing',
+          connectionStatus: "disconnected",
+          screenState: "pairing",
           items: [],
-          branding: null
-        })
-        flushPendingWrite('cfd-client-store')
+          branding: null,
+        });
+        flushPendingWrite("cfd-client-store");
       },
 
-      setConnectionStatus: status => set({ connectionStatus: status }),
+      setConnectionStatus: (status) => set({ connectionStatus: status }),
 
-      setLatency: ms => set({ latency: ms }),
+      setLatency: (ms) => set({ latency: ms }),
 
-      updateFromPayload: payload =>
+      updateFromPayload: (payload) =>
         set({
           screenState: payload.screenState,
           serverName: payload.serverName ?? null,
@@ -190,17 +190,19 @@ export const useCFDClientStore = create<CFDClientStore>()(
           loyaltyPrompt: payload.loyaltyPrompt ?? null,
           loyaltyResult: payload.loyaltyResult ?? null,
           paymentMethod: payload.paymentMethod ?? null,
-          themeMode: payload.themeMode ?? get().themeMode
-        })
+          themeMode: payload.themeMode ?? get().themeMode,
+        }),
     }),
     {
-      name: 'cfd-client-store',
+      name: "cfd-client-store",
       storage: createJSONStorage(() => mmkvStorage),
-      partialize: state => ({
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
+      partialize: (state) => ({
         isPaired: state.isPaired,
         connection: state.connection,
-        branding: state.branding
-      })
-    }
-  )
-)
+        branding: state.branding,
+      }),
+    },
+  ),
+);

@@ -9,33 +9,41 @@
  * NOT persisted: sessions (hydrated from backend), shift history (fetched on demand), UI state
  */
 
-import { createLazyPersistStorage } from '@/lib/storage'
-import { toastService } from '@/lib/toastService'
-import { PTOAccrualEntry, ShiftHistoryEntry } from '@/lib/types'
-import { TimeClockAction, TimeClockStatus } from '@/types/time-clock'
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
+import { createLazyPersistStorage } from "@/lib/storage";
+import { toastService } from "@/lib/toastService";
+import { PTOAccrualEntry, ShiftHistoryEntry } from "@/lib/types";
+import { TimeClockAction, TimeClockStatus } from "@/types/time-clock";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { immer } from "zustand/middleware/immer";
 
-import { useLocationConfigStore } from './useLocationConfigStore'
-import { useStoreSettingsStore } from './useStoreSettingsStore'
+import { useLocationConfigStore } from "./useLocationConfigStore";
+import { useStoreSettingsStore } from "./useStoreSettingsStore";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-export type SessionStatus = 'clockedIn' | 'onBreak'
+export type SessionStatus = "clockedIn" | "onBreak";
 
 export interface ShiftSession {
-  employeeId: string
-  status: SessionStatus
-  clockInTime: Date
-  breakStartTime: Date | null
-  breakEndTime: Date | null
+  employeeId: string;
+  status: SessionStatus;
+  clockInTime: Date;
+  breakStartTime: Date | null;
+  breakEndTime: Date | null;
+}
+
+export interface TimeclockDeadLetterEntry {
+  action: TimeClockAction;
+  reasonCode: string;
+  reasonMessage: string;
+  discardedAt: string;
+  details?: Record<string, any>;
 }
 
 /** Alias for backward compatibility (BreakEndedModal imports this) */
-export type Shift = ShiftSession
+export type Shift = ShiftSession;
 
 // ============================================================================
 // STATE INTERFACE
@@ -43,60 +51,67 @@ export type Shift = ShiftSession
 
 interface TimeclockState {
   // === Per-employee active sessions (NOT persisted — hydrated from backend) ===
-  activeEmployeeId: string | null
-  sessions: Record<string, ShiftSession>
+  activeEmployeeId: string | null;
+  sessions: Record<string, ShiftSession>;
 
   // === Device state (persisted via MMKV) ===
-  status: TimeClockStatus
-  currentShiftId: string | null
-  currentStaffId: string | null
-  employeeName: string | null
-  breakStartTime: string | null // ISO timestamp
+  status: TimeClockStatus;
+  currentShiftId: string | null;
+  currentStaffId: string | null;
+  employeeName: string | null;
+  breakStartTime: string | null; // ISO timestamp
 
   // === Offline queue (persisted via MMKV) ===
-  offlineQueue: TimeClockAction[]
-  isSyncing: boolean
+  offlineQueue: TimeClockAction[];
+  isSyncing: boolean;
+  syncingStartedAt: string | null;
+  deadLetterQueue: TimeclockDeadLetterEntry[];
 
   // === UI state (NOT persisted) ===
-  isClockInWallOpen: boolean
+  isClockInWallOpen: boolean;
 
   // === Shift history (fetched from backend, NOT persisted) ===
-  shiftHistory: ShiftHistoryEntry[]
-  historyLoading: boolean
+  shiftHistory: ShiftHistoryEntry[];
+  historyLoading: boolean;
 
   // === Session actions ===
-  setActiveEmployee: (employeeId: string | null) => void
-  clockIn: (employeeId: string) => { ok: boolean; reason?: string }
-  signIn: (employeeId: string) => { ok: boolean } | undefined
-  startBreak: () => void
-  endBreak: (employeeId: string) => void
-  clockOut: (employeeId: string) => void
-  forceClockOutAll: () => void
-  forceClockOutAllExcept: (excludeId: string) => void
-  getSession: (employeeId: string) => ShiftSession | undefined
-  checkEmployeeInShift: (employeeId: string) => boolean
+  setActiveEmployee: (employeeId: string | null) => void;
+  clockIn: (employeeId: string) => { ok: boolean; reason?: string };
+  signIn: (employeeId: string) => { ok: boolean } | undefined;
+  startBreak: () => void;
+  endBreak: (employeeId: string) => void;
+  clockOut: (employeeId: string) => void;
+  forceClockOutAll: () => void;
+  forceClockOutAllExcept: (excludeId: string) => void;
+  getSession: (employeeId: string) => ShiftSession | undefined;
+  checkEmployeeInShift: (employeeId: string) => boolean;
 
   // === Device state actions (previously in useTimeClockStore) ===
-  setStatus: (status: TimeClockStatus, shiftId?: string | null) => void
-  setEmployee: (employeeId: string | null, employeeName: string | null) => void
-  setBreakStartTime: (time: string | null) => void
-  clearState: () => void
+  setStatus: (status: TimeClockStatus, shiftId?: string | null) => void;
+  setEmployee: (employeeId: string | null, employeeName: string | null) => void;
+  setBreakStartTime: (time: string | null) => void;
+  clearState: () => void;
 
   // === Offline queue actions ===
-  queueAction: (action: TimeClockAction) => void
-  removeFromQueue: (actionId: string) => void
-  setSyncing: (isSyncing: boolean) => void
+  queueAction: (action: TimeClockAction) => void;
+  removeFromQueue: (actionId: string) => void;
+  updateQueuedAction: (
+    actionId: string,
+    updater: (action: TimeClockAction) => TimeClockAction,
+  ) => void;
+  setSyncing: (isSyncing: boolean) => void;
+  addToDeadLetterQueue: (entry: TimeclockDeadLetterEntry) => void;
 
   // === UI actions ===
-  showClockInWall: () => void
-  hideClockInWall: () => void
+  showClockInWall: () => void;
+  hideClockInWall: () => void;
 
   // === History actions ===
   /**
    * Hydrate active shifts from staff_shifts table.
    * Creates local sessions for any staff with active (non-completed) shifts.
    */
-  hydrateActiveShifts: (supabase: any, locationId: string) => Promise<void>
+  hydrateActiveShifts: (supabase: any, locationId: string) => Promise<void>;
 
   /**
    * Fetch shift history from staff_shifts table for display.
@@ -104,8 +119,8 @@ interface TimeclockState {
   fetchShiftHistory: (
     supabase: any,
     locationId: string,
-    dateRange?: { start: string; end: string }
-  ) => Promise<void>
+    dateRange?: { start: string; end: string },
+  ) => Promise<void>;
 }
 
 // ============================================================================
@@ -119,7 +134,7 @@ export const useTimeclockStore = create<TimeclockState>()(
       activeEmployeeId: null,
       sessions: {},
 
-      status: 'idle' as TimeClockStatus,
+      status: "idle" as TimeClockStatus,
       currentShiftId: null,
       currentStaffId: null,
       employeeName: null,
@@ -127,6 +142,8 @@ export const useTimeclockStore = create<TimeclockState>()(
 
       offlineQueue: [] as TimeClockAction[],
       isSyncing: false,
+      syncingStartedAt: null,
+      deadLetterQueue: [] as TimeclockDeadLetterEntry[],
 
       isClockInWallOpen: false,
 
@@ -138,164 +155,165 @@ export const useTimeclockStore = create<TimeclockState>()(
       // =====================================================================
 
       setActiveEmployee: (employeeId: string | null) => {
-        set({ activeEmployeeId: employeeId })
+        set({ activeEmployeeId: employeeId });
       },
 
       clockIn: (employeeId: string) => {
-        const { sessions } = get()
+        const { sessions } = get();
         if (sessions[employeeId]) {
-          return { ok: false, reason: 'already_in_session' }
+          return { ok: false, reason: "already_in_session" };
         }
 
         const newSession: ShiftSession = {
           employeeId,
-          status: 'clockedIn',
+          status: "clockedIn",
           clockInTime: new Date(),
           breakStartTime: null,
-          breakEndTime: null
-        }
+          breakEndTime: null,
+        };
 
-        set(state => {
-          state.sessions[employeeId] = newSession
-          state.activeEmployeeId = employeeId
-        })
+        set((state) => {
+          state.sessions[employeeId] = newSession;
+          state.activeEmployeeId = employeeId;
+        });
 
-        return { ok: true }
+        return { ok: true };
       },
 
       signIn: (employeeId: string, clockInTime?: Date) => {
-        const { sessions } = get()
+        const { sessions } = get();
         if (sessions[employeeId]) {
-          return undefined
+          return undefined;
         }
 
         const newSession: ShiftSession = {
           employeeId,
-          status: 'clockedIn',
+          status: "clockedIn",
           clockInTime: clockInTime ?? new Date(),
           breakStartTime: null,
-          breakEndTime: null
-        }
+          breakEndTime: null,
+        };
 
-        set(state => {
-          state.sessions[employeeId] = newSession
-          state.activeEmployeeId = employeeId
-        })
+        set((state) => {
+          state.sessions[employeeId] = newSession;
+          state.activeEmployeeId = employeeId;
+        });
 
-        return { ok: true }
+        return { ok: true };
       },
 
       startBreak: () => {
-        const { activeEmployeeId, sessions } = get()
+        const { activeEmployeeId, sessions } = get();
         const isBreakAndSwitchEnabled =
           useLocationConfigStore.getState().config.timeclock
-            .breakAndSwitchEnabled
+            .breakAndSwitchEnabled;
 
-        if (!activeEmployeeId || !sessions[activeEmployeeId]) return
+        if (!activeEmployeeId || !sessions[activeEmployeeId]) return;
 
-        set(state => {
+        set((state) => {
           state.sessions[activeEmployeeId] = {
             ...state.sessions[activeEmployeeId],
-            status: 'onBreak',
+            status: "onBreak",
             breakStartTime: new Date(),
-            breakEndTime: null
-          }
+            breakEndTime: null,
+          };
           if (isBreakAndSwitchEnabled) {
-            state.activeEmployeeId = null
+            state.activeEmployeeId = null;
           }
-        })
+        });
       },
 
       endBreak: (employeeId: string) => {
-        const { sessions } = get()
-        const session = sessions[employeeId]
-        if (!session || session.status !== 'onBreak') return
+        const { sessions } = get();
+        const session = sessions[employeeId];
+        if (!session || session.status !== "onBreak") return;
 
-        set(state => {
+        set((state) => {
           state.sessions[employeeId] = {
             ...state.sessions[employeeId],
-            status: 'clockedIn',
-            breakEndTime: new Date()
-          }
-          state.activeEmployeeId = employeeId
-        })
+            status: "clockedIn",
+            breakEndTime: new Date(),
+          };
+          state.activeEmployeeId = employeeId;
+        });
 
         toastService.show({
-          title: 'Break Over',
-          message: 'Welcome back! Your break has ended.',
-          type: 'success'
-        })
+          title: "Break Over",
+          message: "Welcome back! Your break has ended.",
+          type: "success",
+        });
       },
 
       clockOut: (employeeId: string) => {
-        const { sessions, activeEmployeeId } = get()
-        const sessionToClose = sessions[employeeId]
-        if (!sessionToClose) return
+        const { sessions, activeEmployeeId } = get();
+        const sessionToClose = sessions[employeeId];
+        if (!sessionToClose) return;
 
-        if (sessionToClose.status === 'onBreak') {
+        if (sessionToClose.status === "onBreak") {
           toastService.show({
-            title: 'Action Restricted',
+            title: "Action Restricted",
             message:
-              'Cannot clock out while on break. Please end your break first.',
-            type: 'error'
-          })
-          return
+              "Cannot clock out while on break. Please end your break first.",
+            type: "error",
+          });
+          return;
         }
 
-        const clockOutTime = new Date()
+        const clockOutTime = new Date();
         let totalDurationMs =
-          clockOutTime.getTime() - sessionToClose.clockInTime.getTime()
+          clockOutTime.getTime() - sessionToClose.clockInTime.getTime();
 
         // Subtract break duration if applicable
         if (sessionToClose.breakStartTime && sessionToClose.breakEndTime) {
           const breakDurationMs =
             sessionToClose.breakEndTime.getTime() -
-            sessionToClose.breakStartTime.getTime()
-          totalDurationMs -= breakDurationMs
+            sessionToClose.breakStartTime.getTime();
+          totalDurationMs -= breakDurationMs;
         }
 
-        const totalPaidDurationHours = totalDurationMs / (1000 * 60 * 60)
+        const totalPaidDurationHours = totalDurationMs / (1000 * 60 * 60);
 
         // Lazy-load to avoid circular dependency
-        const { useEmployeeStore } = require('./useEmployeeStore') as {
-          useEmployeeStore: typeof import('./useEmployeeStore').useEmployeeStore
-        }
+        const { useEmployeeStore } = require("./useEmployeeStore") as {
+          useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
+        };
 
         const employee = useEmployeeStore
           .getState()
-          .employees.find(e => e.id === employeeId)
+          .employees.find((e) => e.id === employeeId);
 
         const newHistoryEntry: ShiftHistoryEntry = {
           id: `shift_${Date.now()}`,
           employeeId,
           date: sessionToClose.clockInTime.toLocaleDateString(),
-          role: employee?.role || 'employee',
+          role: employee?.role || "employee",
           clockIn: sessionToClose.clockInTime.toISOString(),
           breakInitiated: sessionToClose.breakStartTime
             ? sessionToClose.breakStartTime.toISOString()
-            : 'N/A',
+            : "N/A",
           breakEnded: sessionToClose.breakEndTime
             ? sessionToClose.breakEndTime.toISOString()
-            : 'N/A',
+            : "N/A",
           clockOut: clockOutTime.toISOString(),
-          duration: `${totalPaidDurationHours.toFixed(2)}h`
-        }
+          duration: `${totalPaidDurationHours.toFixed(2)}h`,
+        };
 
-        set(state => {
-          delete state.sessions[employeeId]
-          state.shiftHistory = [newHistoryEntry, ...state.shiftHistory]
+        set((state) => {
+          delete state.sessions[employeeId];
+          state.shiftHistory = [newHistoryEntry, ...state.shiftHistory];
           if (state.activeEmployeeId === employeeId) {
-            state.activeEmployeeId = null
+            state.activeEmployeeId = null;
           }
-        })
+        });
 
         // --- PTO Accrual Logic ---
         try {
-          const { usePtoStore } = require('./usePtoStore') as {
-            usePtoStore: typeof import('./usePtoStore').usePtoStore
-          }
-          const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate
-          const ptoEarned = totalPaidDurationHours * ptoAccrualRate
+          const { usePtoStore } = require("./usePtoStore") as {
+            usePtoStore: typeof import("./usePtoStore").usePtoStore;
+          };
+          const ptoAccrualRate =
+            useStoreSettingsStore.getState().ptoAccrualRate;
+          const ptoEarned = totalPaidDurationHours * ptoAccrualRate;
 
           if (ptoEarned > 0) {
             const ptoEntry: PTOAccrualEntry = {
@@ -304,92 +322,92 @@ export const useTimeclockStore = create<TimeclockState>()(
               ptoEarned,
               accrualRateUsed: ptoAccrualRate,
               shiftId: newHistoryEntry.id,
-              employeeId
-            }
-            usePtoStore.getState().recordPtoAccrual(ptoEntry)
+              employeeId,
+            };
+            usePtoStore.getState().recordPtoAccrual(ptoEntry);
             console.log(
-              `PTO accrued for ${employeeId}: ${ptoEarned.toFixed(2)} hours`
-            )
+              `PTO accrued for ${employeeId}: ${ptoEarned.toFixed(2)} hours`,
+            );
           }
         } catch (error) {
-          console.error('Error during PTO accrual:', error)
+          console.error("Error during PTO accrual:", error);
           toastService.show({
-            title: 'PTO Error',
+            title: "PTO Error",
             message:
-              'An error occurred while recording PTO accrual. Please contact support.',
-            type: 'error'
-          })
+              "An error occurred while recording PTO accrual. Please contact support.",
+            type: "error",
+          });
         }
 
         // Cascade the clock-out action to the employee store (only shiftStatus update)
         const { useEmployeeStore: empStore } =
-          require('./useEmployeeStore') as {
-            useEmployeeStore: typeof import('./useEmployeeStore').useEmployeeStore
-          }
-        empStore.getState().clockOut(employeeId)
+          require("./useEmployeeStore") as {
+            useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
+          };
+        empStore.getState().clockOut(employeeId);
 
         // If the person clocking out is the active user, also sign them out of the terminal
         if (activeEmployeeId === employeeId) {
-          empStore.getState().signOut()
+          empStore.getState().signOut();
         }
 
         toastService.show({
-          title: 'Clocked Out',
-          message: 'You have been successfully clocked out.',
-          type: 'success'
-        })
+          title: "Clocked Out",
+          message: "You have been successfully clocked out.",
+          type: "success",
+        });
       },
 
       forceClockOutAll: () => {
-        const { sessions, activeEmployeeId } = get()
-        const allIds = Object.keys(sessions)
-        if (allIds.length === 0) return
+        const { sessions, activeEmployeeId } = get();
+        const allIds = Object.keys(sessions);
+        if (allIds.length === 0) return;
 
-        const clockOutTime = new Date()
-        const newHistoryEntries: ShiftHistoryEntry[] = []
+        const clockOutTime = new Date();
+        const newHistoryEntries: ShiftHistoryEntry[] = [];
 
-        const { useEmployeeStore } = require('./useEmployeeStore') as {
-          useEmployeeStore: typeof import('./useEmployeeStore').useEmployeeStore
-        }
-        const { usePtoStore } = require('./usePtoStore') as {
-          usePtoStore: typeof import('./usePtoStore').usePtoStore
-        }
-        const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate
+        const { useEmployeeStore } = require("./useEmployeeStore") as {
+          useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
+        };
+        const { usePtoStore } = require("./usePtoStore") as {
+          usePtoStore: typeof import("./usePtoStore").usePtoStore;
+        };
+        const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate;
 
         for (const employeeId of allIds) {
-          const session = sessions[employeeId]
-          if (!session) continue
+          const session = sessions[employeeId];
+          if (!session) continue;
 
           let totalDurationMs =
-            clockOutTime.getTime() - session.clockInTime.getTime()
+            clockOutTime.getTime() - session.clockInTime.getTime();
           if (session.breakStartTime && session.breakEndTime) {
             totalDurationMs -=
-              session.breakEndTime.getTime() - session.breakStartTime.getTime()
+              session.breakEndTime.getTime() - session.breakStartTime.getTime();
           }
           const totalPaidDurationHours = Math.max(
             0,
-            totalDurationMs / (1000 * 60 * 60)
-          )
+            totalDurationMs / (1000 * 60 * 60),
+          );
 
           const employee = useEmployeeStore
             .getState()
-            .employees.find(e => e.id === employeeId)
+            .employees.find((e) => e.id === employeeId);
 
           const historyEntry: ShiftHistoryEntry = {
             id: `shift_${Date.now()}_${employeeId}`,
             employeeId,
             date: session.clockInTime.toLocaleDateString(),
-            role: employee?.role || 'employee',
+            role: employee?.role || "employee",
             clockIn: session.clockInTime.toISOString(),
-            breakInitiated: session.breakStartTime?.toISOString() ?? 'N/A',
-            breakEnded: session.breakEndTime?.toISOString() ?? 'N/A',
+            breakInitiated: session.breakStartTime?.toISOString() ?? "N/A",
+            breakEnded: session.breakEndTime?.toISOString() ?? "N/A",
             clockOut: clockOutTime.toISOString(),
-            duration: `${totalPaidDurationHours.toFixed(2)}h`
-          }
-          newHistoryEntries.push(historyEntry)
+            duration: `${totalPaidDurationHours.toFixed(2)}h`,
+          };
+          newHistoryEntries.push(historyEntry);
 
           try {
-            const ptoEarned = totalPaidDurationHours * ptoAccrualRate
+            const ptoEarned = totalPaidDurationHours * ptoAccrualRate;
             if (ptoEarned > 0) {
               const ptoEntry: PTOAccrualEntry = {
                 date: historyEntry.date,
@@ -397,83 +415,83 @@ export const useTimeclockStore = create<TimeclockState>()(
                 ptoEarned,
                 accrualRateUsed: ptoAccrualRate,
                 shiftId: historyEntry.id,
-                employeeId
-              }
-              usePtoStore.getState().recordPtoAccrual(ptoEntry)
+                employeeId,
+              };
+              usePtoStore.getState().recordPtoAccrual(ptoEntry);
             }
           } catch {}
 
-          useEmployeeStore.getState().clockOut(employeeId)
+          useEmployeeStore.getState().clockOut(employeeId);
           if (activeEmployeeId === employeeId) {
-            useEmployeeStore.getState().signOut()
+            useEmployeeStore.getState().signOut();
           }
         }
 
-        set(state => {
-          state.sessions = {}
-          state.activeEmployeeId = null
-          state.shiftHistory = [...newHistoryEntries, ...state.shiftHistory]
-        })
+        set((state) => {
+          state.sessions = {};
+          state.activeEmployeeId = null;
+          state.shiftHistory = [...newHistoryEntries, ...state.shiftHistory];
+        });
 
         toastService.show({
-          title: 'All Shifts Ended',
+          title: "All Shifts Ended",
           message: `${allIds.length} staff member${
-            allIds.length > 1 ? 's' : ''
+            allIds.length > 1 ? "s" : ""
           } clocked out.`,
-          type: 'success'
-        })
+          type: "success",
+        });
       },
 
       forceClockOutAllExcept: (excludeId: string) => {
-        const { sessions, activeEmployeeId } = get()
-        const allIds = Object.keys(sessions).filter(id => id !== excludeId)
-        if (allIds.length === 0) return
+        const { sessions, activeEmployeeId } = get();
+        const allIds = Object.keys(sessions).filter((id) => id !== excludeId);
+        if (allIds.length === 0) return;
 
-        const clockOutTime = new Date()
-        const newHistoryEntries: ShiftHistoryEntry[] = []
+        const clockOutTime = new Date();
+        const newHistoryEntries: ShiftHistoryEntry[] = [];
 
-        const { useEmployeeStore } = require('./useEmployeeStore') as {
-          useEmployeeStore: typeof import('./useEmployeeStore').useEmployeeStore
-        }
-        const { usePtoStore } = require('./usePtoStore') as {
-          usePtoStore: typeof import('./usePtoStore').usePtoStore
-        }
-        const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate
+        const { useEmployeeStore } = require("./useEmployeeStore") as {
+          useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
+        };
+        const { usePtoStore } = require("./usePtoStore") as {
+          usePtoStore: typeof import("./usePtoStore").usePtoStore;
+        };
+        const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate;
 
         for (const employeeId of allIds) {
-          const session = sessions[employeeId]
-          if (!session) continue
+          const session = sessions[employeeId];
+          if (!session) continue;
 
           let totalDurationMs =
-            clockOutTime.getTime() - session.clockInTime.getTime()
+            clockOutTime.getTime() - session.clockInTime.getTime();
           if (session.breakStartTime && session.breakEndTime) {
             totalDurationMs -=
-              session.breakEndTime.getTime() - session.breakStartTime.getTime()
+              session.breakEndTime.getTime() - session.breakStartTime.getTime();
           }
           const totalPaidDurationHours = Math.max(
             0,
-            totalDurationMs / (1000 * 60 * 60)
-          )
+            totalDurationMs / (1000 * 60 * 60),
+          );
 
           const employee = useEmployeeStore
             .getState()
-            .employees.find(e => e.id === employeeId)
+            .employees.find((e) => e.id === employeeId);
 
           const historyEntry: ShiftHistoryEntry = {
             id: `shift_${Date.now()}_${employeeId}`,
             employeeId,
             date: session.clockInTime.toLocaleDateString(),
-            role: employee?.role || 'employee',
+            role: employee?.role || "employee",
             clockIn: session.clockInTime.toISOString(),
-            breakInitiated: session.breakStartTime?.toISOString() ?? 'N/A',
-            breakEnded: session.breakEndTime?.toISOString() ?? 'N/A',
+            breakInitiated: session.breakStartTime?.toISOString() ?? "N/A",
+            breakEnded: session.breakEndTime?.toISOString() ?? "N/A",
             clockOut: clockOutTime.toISOString(),
-            duration: `${totalPaidDurationHours.toFixed(2)}h`
-          }
-          newHistoryEntries.push(historyEntry)
+            duration: `${totalPaidDurationHours.toFixed(2)}h`,
+          };
+          newHistoryEntries.push(historyEntry);
 
           try {
-            const ptoEarned = totalPaidDurationHours * ptoAccrualRate
+            const ptoEarned = totalPaidDurationHours * ptoAccrualRate;
             if (ptoEarned > 0) {
               const ptoEntry: PTOAccrualEntry = {
                 date: historyEntry.date,
@@ -481,45 +499,45 @@ export const useTimeclockStore = create<TimeclockState>()(
                 ptoEarned,
                 accrualRateUsed: ptoAccrualRate,
                 shiftId: historyEntry.id,
-                employeeId
-              }
-              usePtoStore.getState().recordPtoAccrual(ptoEntry)
+                employeeId,
+              };
+              usePtoStore.getState().recordPtoAccrual(ptoEntry);
             }
           } catch {}
 
-          useEmployeeStore.getState().clockOut(employeeId)
+          useEmployeeStore.getState().clockOut(employeeId);
           if (activeEmployeeId === employeeId) {
-            useEmployeeStore.getState().signOut()
+            useEmployeeStore.getState().signOut();
           }
         }
 
-        set(state => {
+        set((state) => {
           for (const id of allIds) {
-            delete state.sessions[id]
+            delete state.sessions[id];
           }
           // Only null activeEmployeeId if the current user was clocked out
           if (activeEmployeeId !== excludeId) {
-            state.activeEmployeeId = null
+            state.activeEmployeeId = null;
           }
-          state.shiftHistory = [...newHistoryEntries, ...state.shiftHistory]
-        })
+          state.shiftHistory = [...newHistoryEntries, ...state.shiftHistory];
+        });
 
         toastService.show({
-          title: 'Shifts Ended',
+          title: "Shifts Ended",
           message: `${allIds.length} staff member${
-            allIds.length > 1 ? 's' : ''
+            allIds.length > 1 ? "s" : ""
           } clocked out.`,
-          type: 'success'
-        })
+          type: "success",
+        });
       },
 
       getSession: (employeeId: string) => {
-        return get().sessions[employeeId]
+        return get().sessions[employeeId];
       },
 
       checkEmployeeInShift: (employeeId: string) => {
-        const { sessions } = get()
-        return sessions[employeeId]?.status === 'clockedIn'
+        const { sessions } = get();
+        return sessions[employeeId]?.status === "clockedIn";
       },
 
       // =====================================================================
@@ -527,34 +545,34 @@ export const useTimeclockStore = create<TimeclockState>()(
       // =====================================================================
 
       setStatus: (status: TimeClockStatus, shiftId?: string | null) => {
-        set(state => {
-          state.status = status
+        set((state) => {
+          state.status = status;
           if (shiftId !== undefined) {
-            state.currentShiftId = shiftId
+            state.currentShiftId = shiftId;
           }
-        })
+        });
       },
 
       setEmployee: (employeeId: string | null, employeeName: string | null) => {
-        set({ currentStaffId: employeeId, employeeName })
+        set({ currentStaffId: employeeId, employeeName });
       },
 
       setBreakStartTime: (time: string | null) => {
-        set({ breakStartTime: time })
+        set({ breakStartTime: time });
       },
 
       clearState: () => {
-        set(state => {
-          state.status = 'idle'
-          state.currentShiftId = null
-          state.currentStaffId = null
-          state.employeeName = null
-          state.breakStartTime = null
+        set((state) => {
+          state.status = "idle";
+          state.currentShiftId = null;
+          state.currentStaffId = null;
+          state.employeeName = null;
+          state.breakStartTime = null;
           // Also clear sessions and active employee (cache clear scenario)
-          state.activeEmployeeId = null
-          state.sessions = {}
-          state.isClockInWallOpen = false
-        })
+          state.activeEmployeeId = null;
+          state.sessions = {};
+          state.isClockInWallOpen = false;
+        });
       },
 
       // =====================================================================
@@ -562,19 +580,44 @@ export const useTimeclockStore = create<TimeclockState>()(
       // =====================================================================
 
       queueAction: (action: TimeClockAction) => {
-        set(state => {
-          state.offlineQueue.push(action)
-        })
+        set((state) => {
+          state.offlineQueue.push({
+            ...action,
+            retryCount: action.retryCount ?? 0,
+          });
+        });
       },
 
       removeFromQueue: (actionId: string) => {
-        set(state => {
-          state.offlineQueue = state.offlineQueue.filter(a => a.id !== actionId)
-        })
+        set((state) => {
+          state.offlineQueue = state.offlineQueue.filter(
+            (a) => a.id !== actionId,
+          );
+        });
+      },
+
+      updateQueuedAction: (actionId, updater) => {
+        set((state) => {
+          state.offlineQueue = state.offlineQueue.map((action) =>
+            action.id === actionId ? updater(action) : action,
+          );
+        });
       },
 
       setSyncing: (isSyncing: boolean) => {
-        set({ isSyncing })
+        set({
+          isSyncing,
+          syncingStartedAt: isSyncing ? new Date().toISOString() : null,
+        });
+      },
+
+      addToDeadLetterQueue: (entry: TimeclockDeadLetterEntry) => {
+        set((state) => {
+          state.deadLetterQueue.push(entry);
+          if (state.deadLetterQueue.length > 100) {
+            state.deadLetterQueue = state.deadLetterQueue.slice(-100);
+          }
+        });
       },
 
       // =====================================================================
@@ -591,217 +634,220 @@ export const useTimeclockStore = create<TimeclockState>()(
       hydrateActiveShifts: async (supabase: any, locationId: string) => {
         try {
           const { data, error } = await supabase
-            .from('staff_shifts')
-            .select('id, staff_profile_id, status, clock_in_time, break_logs')
-            .eq('location_id', locationId)
-            .in('status', ['active', 'on_break'])
+            .from("staff_shifts")
+            .select("id, staff_profile_id, status, clock_in_time, break_logs")
+            .eq("location_id", locationId)
+            .in("status", ["active", "on_break"]);
 
           if (error) {
-            console.error('[Timeclock] Failed to hydrate active shifts:', error)
-            return
+            console.error(
+              "[Timeclock] Failed to hydrate active shifts:",
+              error,
+            );
+            return;
           }
 
           if (!data || data.length === 0) {
-            console.log('[Timeclock] No active shifts to hydrate')
-            return
+            console.log("[Timeclock] No active shifts to hydrate");
+            return;
           }
 
           // Check timeclock config for auto-close stale shifts setting
           const { useLocationConfigStore } =
-            require('./useLocationConfigStore') as {
-              useLocationConfigStore: typeof import('./useLocationConfigStore').useLocationConfigStore
-            }
+            require("./useLocationConfigStore") as {
+              useLocationConfigStore: typeof import("./useLocationConfigStore").useLocationConfigStore;
+            };
           const timeclockConfig =
-            useLocationConfigStore.getState().config.timeclock
-          const autoClose = timeclockConfig?.autoCloseStaleShifts ?? false
-          const maxHours = timeclockConfig?.maxShiftHours ?? 24
+            useLocationConfigStore.getState().config.timeclock;
+          const autoClose = timeclockConfig?.autoCloseStaleShifts ?? false;
+          const maxHours = timeclockConfig?.maxShiftHours ?? 24;
 
           // Auto-close stale shifts if setting is enabled
           if (autoClose) {
-            const now = Date.now()
-            const staleShiftIds: string[] = []
-            const staleDates = new Set<string>()
+            const now = Date.now();
+            const staleShiftIds: string[] = [];
+            const staleDates = new Set<string>();
 
             for (const shift of data) {
-              const clockInMs = new Date(shift.clock_in_time).getTime()
-              const hoursOpen = (now - clockInMs) / 3_600_000
+              const clockInMs = new Date(shift.clock_in_time).getTime();
+              const hoursOpen = (now - clockInMs) / 3_600_000;
               if (hoursOpen > maxHours) {
-                staleShiftIds.push(shift.id)
+                staleShiftIds.push(shift.id);
                 // Track the shift date for daily tips rebuild
-                staleDates.add(shift.clock_in_time.split('T')[0])
+                staleDates.add(shift.clock_in_time.split("T")[0]);
               }
             }
 
             if (staleShiftIds.length > 0) {
               console.warn(
-                `[Timeclock] Auto-closing ${staleShiftIds.length} stale shift(s) open >${maxHours}h`
-              )
+                `[Timeclock] Auto-closing ${staleShiftIds.length} stale shift(s) open >${maxHours}h`,
+              );
 
               // Close stale shifts — set clock_out to end of their clock-in business day
               for (const shiftId of staleShiftIds) {
-                const shift = data.find((s: any) => s.id === shiftId)
-                if (!shift) continue
+                const shift = data.find((s: any) => s.id === shiftId);
+                if (!shift) continue;
 
                 // End of the clock-in day (midnight local → UTC)
-                const clockInDate = shift.clock_in_time.split('T')[0]
-                const nextDay = new Date(clockInDate)
-                nextDay.setDate(nextDay.getDate() + 1)
-                const endOfDay = nextDay.toISOString()
+                const clockInDate = shift.clock_in_time.split("T")[0];
+                const nextDay = new Date(clockInDate);
+                nextDay.setDate(nextDay.getDate() + 1);
+                const endOfDay = nextDay.toISOString();
 
                 await supabase
-                  .from('staff_shifts')
-                  .update({ clock_out_time: endOfDay, status: 'completed' })
-                  .eq('id', shiftId)
-                  .in('status', ['active', 'on_break'])
+                  .from("staff_shifts")
+                  .update({ clock_out_time: endOfDay, status: "completed" })
+                  .eq("id", shiftId)
+                  .in("status", ["active", "on_break"]);
               }
 
               // Rebuild daily tips for affected dates
               for (const date of staleDates) {
                 try {
-                  await supabase.rpc('rebuild_employee_daily_tips', {
+                  await supabase.rpc("rebuild_employee_daily_tips", {
                     p_location_id: locationId,
-                    p_shift_date: date
-                  })
+                    p_shift_date: date,
+                  });
                 } catch (e) {
                   console.warn(
                     `[Timeclock] Failed to rebuild daily tips for ${date}:`,
-                    e
-                  )
+                    e,
+                  );
                 }
               }
 
               // Remove auto-closed shifts from the data array so they don't get hydrated
-              const staleSet = new Set(staleShiftIds)
-              const remaining = data.filter((s: any) => !staleSet.has(s.id))
-              data.length = 0
-              data.push(...remaining)
+              const staleSet = new Set(staleShiftIds);
+              const remaining = data.filter((s: any) => !staleSet.has(s.id));
+              data.length = 0;
+              data.push(...remaining);
 
               console.log(
-                `[Timeclock] Auto-closed stale shifts, ${data.length} active shifts remaining`
-              )
+                `[Timeclock] Auto-closed stale shifts, ${data.length} active shifts remaining`,
+              );
             }
           }
 
           // Map staff_profile_id to location_member id via employee store
-          const { useEmployeeStore } = require('./useEmployeeStore') as {
-            useEmployeeStore: typeof import('./useEmployeeStore').useEmployeeStore
-          }
-          const employees = useEmployeeStore.getState().employees
+          const { useEmployeeStore } = require("./useEmployeeStore") as {
+            useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
+          };
+          const employees = useEmployeeStore.getState().employees;
 
-          const newSessions: Record<string, ShiftSession> = {}
+          const newSessions: Record<string, ShiftSession> = {};
           for (const shift of data) {
             const employee = employees.find(
-              e => e.profileId === shift.staff_profile_id
-            )
-            if (!employee) continue
+              (e) => e.profileId === shift.staff_profile_id,
+            );
+            if (!employee) continue;
 
             // Parse break logs to get current break state
-            let breakStart: Date | null = null
-            let breakEnd: Date | null = null
+            let breakStart: Date | null = null;
+            let breakEnd: Date | null = null;
             if (shift.break_logs && Array.isArray(shift.break_logs)) {
               const lastBreak = shift.break_logs[
                 shift.break_logs.length - 1
-              ] as any
+              ] as any;
               if (lastBreak) {
-                breakStart = lastBreak.start ? new Date(lastBreak.start) : null
-                breakEnd = lastBreak.end ? new Date(lastBreak.end) : null
+                breakStart = lastBreak.start ? new Date(lastBreak.start) : null;
+                breakEnd = lastBreak.end ? new Date(lastBreak.end) : null;
               }
             }
 
             newSessions[employee.id] = {
               employeeId: employee.id,
-              status: shift.status === 'on_break' ? 'onBreak' : 'clockedIn',
+              status: shift.status === "on_break" ? "onBreak" : "clockedIn",
               clockInTime: new Date(shift.clock_in_time),
               breakStartTime: breakStart,
-              breakEndTime: breakEnd
-            }
+              breakEndTime: breakEnd,
+            };
           }
 
-          set(state => {
+          set((state) => {
             // Backend is authoritative here: upsert hydrated sessions so
             // local stale status (e.g. clockedIn) cannot mask onBreak.
             for (const [id, session] of Object.entries(newSessions)) {
-              state.sessions[id] = session
+              state.sessions[id] = session;
             }
-          })
+          });
 
           // Sync shiftStatus to employee store so components like
           // ServerSelectSheet see hydrated employees as "clocked_in"
-          const hydratedIds = new Set(Object.keys(newSessions))
+          const hydratedIds = new Set(Object.keys(newSessions));
           if (hydratedIds.size > 0) {
-            useEmployeeStore.setState(prev => ({
-              employees: prev.employees.map(e =>
+            useEmployeeStore.setState((prev) => ({
+              employees: prev.employees.map((e) =>
                 hydratedIds.has(e.id)
-                  ? { ...e, shiftStatus: 'clocked_in' as const }
-                  : e
-              )
-            }))
+                  ? { ...e, shiftStatus: "clocked_in" as const }
+                  : e,
+              ),
+            }));
           }
 
           console.log(
             `[Timeclock] Hydrated ${
               Object.keys(newSessions).length
-            } active shifts`
-          )
+            } active shifts`,
+          );
         } catch (error) {
-          console.error('[Timeclock] hydrateActiveShifts error:', error)
+          console.error("[Timeclock] hydrateActiveShifts error:", error);
         }
       },
 
       fetchShiftHistory: async (
         supabase: any,
         locationId: string,
-        dateRange?: { start: string; end: string }
+        dateRange?: { start: string; end: string },
       ) => {
-        set({ historyLoading: true })
+        set({ historyLoading: true });
 
         try {
           let query = supabase
-            .from('staff_shifts')
+            .from("staff_shifts")
             .select(
-              'id, staff_profile_id, status, clock_in_time, clock_out_time, break_logs, hourly_rate_snapshot'
+              "id, staff_profile_id, status, clock_in_time, clock_out_time, break_logs, hourly_rate_snapshot",
             )
-            .eq('location_id', locationId)
-            .order('clock_in_time', { ascending: false })
-            .limit(200)
+            .eq("location_id", locationId)
+            .order("clock_in_time", { ascending: false })
+            .limit(200);
 
           if (dateRange) {
             query = query
-              .gte('clock_in_time', dateRange.start)
-              .lte('clock_in_time', dateRange.end)
+              .gte("clock_in_time", dateRange.start)
+              .lte("clock_in_time", dateRange.end);
           } else {
             // Default: last 30 days
-            const thirtyDaysAgo = new Date()
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-            query = query.gte('clock_in_time', thirtyDaysAgo.toISOString())
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            query = query.gte("clock_in_time", thirtyDaysAgo.toISOString());
           }
 
-          const { data, error } = await query
+          const { data, error } = await query;
 
           if (error) {
-            console.error('[Timeclock] Failed to fetch shift history:', error)
-            set({ historyLoading: false })
-            return
+            console.error("[Timeclock] Failed to fetch shift history:", error);
+            set({ historyLoading: false });
+            return;
           }
 
           // Map staff_profile_id to employee names
-          const { useEmployeeStore } = require('./useEmployeeStore') as {
-            useEmployeeStore: typeof import('./useEmployeeStore').useEmployeeStore
-          }
-          const employees = useEmployeeStore.getState().employees
+          const { useEmployeeStore } = require("./useEmployeeStore") as {
+            useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
+          };
+          const employees = useEmployeeStore.getState().employees;
 
           const history: ShiftHistoryEntry[] = (data || []).map(
             (shift: any) => {
               const employee = employees.find(
-                e => e.profileId === shift.staff_profile_id
-              )
+                (e) => e.profileId === shift.staff_profile_id,
+              );
 
               // Calculate duration
-              const clockIn = new Date(shift.clock_in_time)
+              const clockIn = new Date(shift.clock_in_time);
               const clockOut = shift.clock_out_time
                 ? new Date(shift.clock_out_time)
-                : new Date()
-              let durationMs = clockOut.getTime() - clockIn.getTime()
+                : new Date();
+              let durationMs = clockOut.getTime() - clockIn.getTime();
 
               // Subtract break time
               if (shift.break_logs && Array.isArray(shift.break_logs)) {
@@ -809,45 +855,47 @@ export const useTimeclockStore = create<TimeclockState>()(
                   if (brk.start && brk.end) {
                     durationMs -=
                       new Date(brk.end).getTime() -
-                      new Date(brk.start).getTime()
+                      new Date(brk.start).getTime();
                   }
                 }
               }
 
-              const hours = durationMs / (1000 * 60 * 60)
+              const hours = durationMs / (1000 * 60 * 60);
 
               // Get break times from logs
-              const breakLogs = (shift.break_logs as any[]) || []
-              const lastBreak = breakLogs[breakLogs.length - 1]
+              const breakLogs = (shift.break_logs as any[]) || [];
+              const lastBreak = breakLogs[breakLogs.length - 1];
 
               return {
                 id: shift.id,
                 employeeId: employee?.id || shift.staff_profile_id,
                 date: clockIn.toLocaleDateString(),
-                role: employee?.role || 'employee',
+                role: employee?.role || "employee",
                 clockIn: shift.clock_in_time,
-                breakInitiated: lastBreak?.start || 'N/A',
-                breakEnded: lastBreak?.end || 'N/A',
-                clockOut: shift.clock_out_time || 'N/A',
-                duration: `${hours.toFixed(2)}h`
-              }
-            }
-          )
+                breakInitiated: lastBreak?.start || "N/A",
+                breakEnded: lastBreak?.end || "N/A",
+                clockOut: shift.clock_out_time || "N/A",
+                duration: `${hours.toFixed(2)}h`,
+              };
+            },
+          );
 
-          set({ shiftHistory: history, historyLoading: false })
+          set({ shiftHistory: history, historyLoading: false });
           console.log(
-            `[Timeclock] Fetched ${history.length} shift history entries`
-          )
+            `[Timeclock] Fetched ${history.length} shift history entries`,
+          );
         } catch (error) {
-          console.error('[Timeclock] fetchShiftHistory error:', error)
-          set({ historyLoading: false })
+          console.error("[Timeclock] fetchShiftHistory error:", error);
+          set({ historyLoading: false });
         }
-      }
+      },
     })),
     {
-      name: 'dexa-pos-timeclock',
+      name: "dexa-pos-timeclock",
       storage: createLazyPersistStorage(),
-      partialize: state => ({
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
+      partialize: (state) => ({
         // Only persist device state + offline queue
         status: state.status,
         currentShiftId: state.currentShiftId,
@@ -855,8 +903,10 @@ export const useTimeclockStore = create<TimeclockState>()(
         employeeName: state.employeeName,
         breakStartTime: state.breakStartTime,
         offlineQueue: state.offlineQueue,
-        isSyncing: state.isSyncing
-      })
-    }
-  )
-)
+        isSyncing: state.isSyncing,
+        syncingStartedAt: state.syncingStartedAt,
+        deadLetterQueue: state.deadLetterQueue,
+      }),
+    },
+  ),
+);

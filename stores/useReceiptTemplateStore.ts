@@ -1,11 +1,11 @@
 import { createLazyPersistStorage } from "@/lib/storage";
-import {
-  DEFAULT_RECEIPT_TEMPLATE,
-  ReceiptTemplateConfig,
-  receiptTemplateConfigToRow,
-  receiptTemplateRowToConfig,
-} from "@/types/receipt-template";
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
+import {
+    DEFAULT_RECEIPT_TEMPLATE,
+    ReceiptTemplateConfig,
+    receiptTemplateConfigToRow,
+    receiptTemplateRowToConfig,
+} from "@/types/receipt-template";
 import * as FileSystem from "expo-file-system";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -47,9 +47,7 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
       fetchTemplates: async (locationId: string) => {
         const supabase = getOrderStoreSupabaseClient();
         if (!supabase) {
-          console.warn(
-            "[ReceiptTemplateStore] No Supabase client available",
-          );
+          console.warn("[ReceiptTemplateStore] No Supabase client available");
           return;
         }
 
@@ -73,42 +71,40 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
             set({ templates: configs, lastFetchedAt: Date.now() });
           }
         } catch (e) {
-          console.error(
-            "[ReceiptTemplateStore] Error fetching templates:",
-            e,
-          );
+          console.error("[ReceiptTemplateStore] Error fetching templates:", e);
         }
       },
 
       getReceiptTemplate: (locationId: string) => {
         const match = get().templates.find(
-          (t) =>
-            t.locationId === locationId && t.templateType === "receipt",
+          (t) => t.locationId === locationId && t.templateType === "receipt",
         );
-        return match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "receipt" };
+        return (
+          match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "receipt" }
+        );
       },
 
       getKitchenTemplate: (locationId: string) => {
         const match = get().templates.find(
-          (t) =>
-            t.locationId === locationId &&
-            t.templateType === "kitchen",
+          (t) => t.locationId === locationId && t.templateType === "kitchen",
         );
-        return match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "kitchen" };
+        return (
+          match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "kitchen" }
+        );
       },
 
       getNoSaleTemplate: (locationId: string) => {
         const match = get().templates.find(
-          (t) =>
-            t.locationId === locationId && t.templateType === "no_sale",
+          (t) => t.locationId === locationId && t.templateType === "no_sale",
         );
-        return match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "no_sale" };
+        return (
+          match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "no_sale" }
+        );
       },
 
       getVoidOrderTemplate: (locationId: string) => {
         const match = get().templates.find(
-          (t) =>
-            t.locationId === locationId && t.templateType === "void_order",
+          (t) => t.locationId === locationId && t.templateType === "void_order",
         );
         return (
           match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "void_order" }
@@ -117,8 +113,7 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
 
       getTimeSheetTemplate: (locationId: string) => {
         const match = get().templates.find(
-          (t) =>
-            t.locationId === locationId && t.templateType === "time_sheet",
+          (t) => t.locationId === locationId && t.templateType === "time_sheet",
         );
         return (
           match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "time_sheet" }
@@ -229,6 +224,8 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
     {
       name: "receipt-template-store-storage",
       storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         templates: state.templates,
         lastFetchedAt: state.lastFetchedAt,

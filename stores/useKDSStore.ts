@@ -8,7 +8,7 @@ import {
     getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
 import { normalizePlatform } from "@/lib/platformAliases";
-import { createLazyPersistStorage } from "@/lib/storage";
+import { createLazyPersistStorage, getJSON, setJSON } from "@/lib/storage";
 import { OrderService } from "@/services/orderService";
 import {
     KDSDisplayConfig,
@@ -176,6 +176,107 @@ interface RetryHandle {
 }
 const _activeRetries = new Map<string, RetryHandle>();
 
+interface PersistedRetryEntry {
+  key: string;
+}
+
+interface PersistedPendingAction {
+  ticketId: string;
+  targetStatus: KDSTicket["status"] | "done";
+  itemStatuses: Array<[string, string]>;
+  timestamp: number;
+  prioritized?: boolean;
+  rushOverride?: boolean;
+}
+
+const KDS_RETRY_STATE_STORAGE_KEY = "kds-retry-state";
+
+function persistKdsRetryState(): void {
+  const pendingActions: PersistedPendingAction[] = Array.from(
+    _pendingActions.values(),
+  ).map((pending) => ({
+    ticketId: pending.ticketId,
+    targetStatus: pending.targetStatus,
+    itemStatuses: Array.from(pending.itemStatuses.entries()),
+    timestamp: pending.timestamp,
+    prioritized: pending.prioritized,
+    rushOverride: pending.rushOverride,
+  }));
+
+  const activeRetries: PersistedRetryEntry[] = Array.from(
+    _activeRetries.keys(),
+  ).map((key) => ({ key }));
+
+  setJSON(KDS_RETRY_STATE_STORAGE_KEY, {
+    pendingActions,
+    recalledTicketIds: Array.from(_recalledTicketIds.values()),
+    activeRetries,
+    savedAt: Date.now(),
+  });
+}
+
+function restoreKdsRetryState(): void {
+  const persisted = getJSON<{
+    pendingActions?: PersistedPendingAction[];
+    recalledTicketIds?: string[];
+    activeRetries?: PersistedRetryEntry[];
+  }>(KDS_RETRY_STATE_STORAGE_KEY);
+
+  if (!persisted) return;
+
+  _pendingActions.clear();
+  for (const action of persisted.pendingActions ?? []) {
+    _pendingActions.set(action.ticketId, {
+      ticketId: action.ticketId,
+      targetStatus: action.targetStatus,
+      itemStatuses: new Map(action.itemStatuses ?? []),
+      timestamp: action.timestamp,
+      prioritized: action.prioritized,
+      rushOverride: action.rushOverride,
+    });
+  }
+
+  _recalledTicketIds.clear();
+  for (const ticketId of persisted.recalledTicketIds ?? []) {
+    _recalledTicketIds.add(ticketId);
+  }
+
+  // Retry handles are not executable across app restarts because callbacks are ephemeral.
+  // Keep key presence for continuity, then drain them immediately.
+  _activeRetries.clear();
+  for (const retryEntry of persisted.activeRetries ?? []) {
+    _activeRetries.set(retryEntry.key, {
+      timeoutId: null,
+      cancelled: true,
+    });
+  }
+  _activeRetries.clear();
+
+  persistKdsRetryState();
+}
+
+function setPendingAction(ticketId: string, action: PendingAction): void {
+  _pendingActions.set(ticketId, action);
+  persistKdsRetryState();
+}
+
+function deletePendingAction(ticketId: string): void {
+  if (_pendingActions.delete(ticketId)) {
+    persistKdsRetryState();
+  }
+}
+
+function addRecalledTicketId(ticketId: string): void {
+  _recalledTicketIds.add(ticketId);
+  persistKdsRetryState();
+}
+
+function deleteRecalledTicketId(ticketId: string): void {
+  if (_recalledTicketIds.delete(ticketId)) {
+    persistKdsRetryState();
+  }
+}
+
 function scheduleRetry(
   key: string,
   performFn: () => Promise<unknown>,
@@ -186,11 +287,13 @@ function scheduleRetry(
   cancelRetry(key);
   const handle: RetryHandle = { timeoutId: null, cancelled: false };
   _activeRetries.set(key, handle);
+  persistKdsRetryState();
 
   performFn()
     .then(() => {
       if (handle.cancelled) return;
       _activeRetries.delete(key);
+      persistKdsRetryState();
       onSuccess?.();
     })
     .catch((err) => {
@@ -218,6 +321,7 @@ function scheduleRetry(
           err,
         );
         _activeRetries.delete(key);
+        persistKdsRetryState();
         onFinalFailure?.();
       }
     });
@@ -229,6 +333,7 @@ function cancelRetry(key: string) {
     handle.cancelled = true;
     if (handle.timeoutId) clearTimeout(handle.timeoutId);
     _activeRetries.delete(key);
+    persistKdsRetryState();
   }
 }
 
@@ -238,6 +343,7 @@ function cancelAllRetries() {
     if (handle.timeoutId) clearTimeout(handle.timeoutId);
   }
   _activeRetries.clear();
+  persistKdsRetryState();
 }
 
 // ─── Pending action tracking (optimistic update protection) ─────
@@ -257,6 +363,8 @@ const _recalledTicketIds = new Set<string>();
 
 /** Track new order IDs filtered out by routing rules — sound fires when server refetch adds them */
 const _pendingNewOrderSounds = new Set<string>();
+
+restoreKdsRetryState();
 
 function pendingActionSatisfied(
   ticket: KDSTicket,
@@ -297,7 +405,7 @@ function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
   // keep masking tickets after the optimistic protection window.
   for (const [ticketId, pending] of _pendingActions) {
     if (now - pending.timestamp > PENDING_ACTION_TTL) {
-      _pendingActions.delete(ticketId);
+      deletePendingAction(ticketId);
     }
   }
 
@@ -346,7 +454,7 @@ function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
       return acc;
     }
     if (pendingActionSatisfied(ticket, pending)) {
-      _pendingActions.delete(ticket.ticket_id);
+      deletePendingAction(ticket.ticket_id);
       // Pending action is satisfied — ticket already matches, reuse ref
       if (_recalledTicketIds.has(ticket.ticket_id)) {
         const needsRecalledOverlay = ticket.items.some(
@@ -1545,7 +1653,7 @@ export const useKDSStore = create<KDSState>()(
         const itemStatusMap = new Map<string, string>();
         for (const id of actionableItemIds) itemStatusMap.set(id, newStatus);
         if (actionableItemIds.length > 0 || ticketStatus !== null) {
-          _pendingActions.set(ticketId, {
+          setPendingAction(ticketId, {
             ticketId,
             targetStatus:
               ticketStatus === null
@@ -1555,7 +1663,7 @@ export const useKDSStore = create<KDSState>()(
             timestamp: Date.now(),
           });
         } else {
-          _pendingActions.delete(ticketId);
+          deletePendingAction(ticketId);
         }
 
         let updatedTickets: KDSTicket[];
@@ -1564,7 +1672,7 @@ export const useKDSStore = create<KDSState>()(
 
         if (ticketStatus === null) {
           // Served → remove from active, add to done in one set() call
-          _recalledTicketIds.delete(ticketId);
+          deleteRecalledTicketId(ticketId);
           updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
           // Avoid shallow-copying entire map — use Object.create trick with deletion
           updatedById = Object.assign({}, _ticketsById);
@@ -1695,7 +1803,7 @@ export const useKDSStore = create<KDSState>()(
               }
             },
             () => {
-              _pendingActions.delete(ticketId);
+              deletePendingAction(ticketId);
               const lastLoc = get()._lastLocationId;
               if (lastLoc) get().scheduleRefetch(lastLoc);
             },
@@ -2095,7 +2203,7 @@ export const useKDSStore = create<KDSState>()(
         // Register pending action (full ticket override — recall replaces all item statuses)
         const itemStatusMap = new Map<string, string>();
         for (const id of recallableItemIds) itemStatusMap.set(id, recallStatus);
-        _pendingActions.set(ticketId, {
+        setPendingAction(ticketId, {
           ticketId,
           targetStatus: recallTicketStatus,
           itemStatuses: itemStatusMap,
@@ -2103,7 +2211,7 @@ export const useKDSStore = create<KDSState>()(
         });
 
         // Optimistic: reset all items, ticket to recall status, mark as recalled
-        _recalledTicketIds.add(ticketId);
+        addRecalledTicketId(ticketId);
         const recallableSet = new Set(recallableItemIds);
         const updatedTickets = tickets.map((t) =>
           t.ticket_id === ticketId
@@ -2247,7 +2355,7 @@ export const useKDSStore = create<KDSState>()(
               }
             },
             () => {
-              _pendingActions.delete(ticketId);
+              deletePendingAction(ticketId);
               const lastLoc = get()._lastLocationId;
               if (lastLoc) get().scheduleRefetch(lastLoc);
             },
@@ -2269,7 +2377,7 @@ export const useKDSStore = create<KDSState>()(
         const itemStatusMap = new Map<string, string>();
         for (const item of ticket.items)
           itemStatusMap.set(item.id, item.kitchen_status);
-        _pendingActions.set(ticketId, {
+        setPendingAction(ticketId, {
           ticketId,
           targetStatus: ticket.status,
           itemStatuses: itemStatusMap,
@@ -2327,7 +2435,7 @@ export const useKDSStore = create<KDSState>()(
               if (loc) get().scheduleRefetch(loc);
             },
             () => {
-              _pendingActions.delete(ticketId);
+              deletePendingAction(ticketId);
               const loc = get()._lastLocationId;
               if (loc) get().scheduleRefetch(loc);
             },
@@ -2348,7 +2456,7 @@ export const useKDSStore = create<KDSState>()(
         const itemStatusMap = new Map<string, string>();
         for (const item of ticket.items)
           itemStatusMap.set(item.id, item.kitchen_status);
-        _pendingActions.set(ticketId, {
+        setPendingAction(ticketId, {
           ticketId,
           targetStatus: ticket.status,
           itemStatuses: itemStatusMap,
@@ -2388,7 +2496,7 @@ export const useKDSStore = create<KDSState>()(
               }
             },
             () => {
-              _pendingActions.delete(ticketId);
+              deletePendingAction(ticketId);
               const lastLoc = get()._lastLocationId;
               if (lastLoc) get().scheduleRefetch(lastLoc);
             },
@@ -2431,7 +2539,7 @@ export const useKDSStore = create<KDSState>()(
           ? new Map(existing.itemStatuses)
           : new Map<string, string>();
         itemStatusMap.set(itemId, "ready");
-        _pendingActions.set(ticketId, {
+        setPendingAction(ticketId, {
           ticketId,
           targetStatus: newTicketStatus,
           itemStatuses: itemStatusMap,
@@ -2490,7 +2598,7 @@ export const useKDSStore = create<KDSState>()(
               }
             },
             () => {
-              _pendingActions.delete(ticketId);
+              deletePendingAction(ticketId);
               const lastLoc = get()._lastLocationId;
               if (lastLoc) get().scheduleRefetch(lastLoc);
             },
@@ -2533,7 +2641,7 @@ export const useKDSStore = create<KDSState>()(
         // Register pending action to protect optimistic state from broadcast clobber
         const itemStatusMap = new Map<string, string>();
         for (const id of recallableItemIds) itemStatusMap.set(id, recallStatus);
-        _pendingActions.set(ticketId, {
+        setPendingAction(ticketId, {
           ticketId,
           targetStatus: recallTicketStatus,
           itemStatuses: itemStatusMap,
@@ -2541,7 +2649,7 @@ export const useKDSStore = create<KDSState>()(
         });
 
         // Move from done → active tickets with workflow-aware status
-        _recalledTicketIds.add(ticketId);
+        addRecalledTicketId(ticketId);
         const recallableSet = new Set(recallableItemIds);
         const restoredTicket: KDSTicket = {
           ...ticket,
@@ -2673,10 +2781,10 @@ export const useKDSStore = create<KDSState>()(
                 });
               }
 
-              _pendingActions.delete(ticketId);
+              deletePendingAction(ticketId);
             },
             () => {
-              _pendingActions.delete(ticketId);
+              deletePendingAction(ticketId);
               const lastLoc = get()._lastLocationId;
               if (lastLoc) get().scheduleRefetch(lastLoc);
             },
@@ -2814,7 +2922,7 @@ export const useKDSStore = create<KDSState>()(
           const targetItemStatus = mutation?.newStatus ?? "served";
           for (const item of ticket.items)
             itemStatusMap.set(item.id, targetItemStatus);
-          _pendingActions.set(tid, {
+          setPendingAction(tid, {
             ticketId: tid,
             targetStatus: removeIds.has(tid)
               ? "done"
@@ -2845,7 +2953,7 @@ export const useKDSStore = create<KDSState>()(
                   const effectiveStatus = removeIds.has(tid)
                     ? "served"
                     : m?.newStatus;
-                  if (effectiveStatus === status) _pendingActions.delete(tid);
+                  if (effectiveStatus === status) deletePendingAction(tid);
                 }
                 const lastLoc = get()._lastLocationId;
                 if (lastLoc) get().scheduleRefetch(lastLoc);
@@ -2881,7 +2989,7 @@ export const useKDSStore = create<KDSState>()(
           const itemStatusMap = new Map<string, string>();
           for (const id of actionableItemIds) itemStatusMap.set(id, "served");
           if (actionableItemIds.length > 0) {
-            _pendingActions.set(ticket.ticket_id, {
+            setPendingAction(ticket.ticket_id, {
               ticketId: ticket.ticket_id,
               targetStatus: "done",
               itemStatuses: itemStatusMap,
@@ -2890,7 +2998,7 @@ export const useKDSStore = create<KDSState>()(
           }
 
           removedIds.add(ticket.ticket_id);
-          _recalledTicketIds.delete(ticket.ticket_id);
+          deleteRecalledTicketId(ticket.ticket_id);
           newDoneTickets.push({
             ...ticket,
             status: "done" as KDSTicket["status"],
@@ -2917,7 +3025,7 @@ export const useKDSStore = create<KDSState>()(
                 }
               },
               () => {
-                _pendingActions.delete(ticket.ticket_id);
+                deletePendingAction(ticket.ticket_id);
                 const lastLoc = get()._lastLocationId;
                 if (lastLoc) get().scheduleRefetch(lastLoc);
               },
@@ -2971,6 +3079,8 @@ export const useKDSStore = create<KDSState>()(
     {
       name: "kds-ticket-storage",
       storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         // Only persist _ticketsById — ticketsByStatus/tickets/counts are derived on rehydrate.
         // This avoids serializing 3 copies of the same ticket data on every bump.

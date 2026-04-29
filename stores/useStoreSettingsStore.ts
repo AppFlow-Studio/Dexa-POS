@@ -1,215 +1,219 @@
-import { createLazyPersistStorage } from '@/lib/storage'
-import { toastService } from '@/lib/toastService'
-import { TaxRate, TaxRatesMap } from '@/types/menu'
-import { SelectedStation } from '@/types/station'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createLazyPersistStorage } from "@/lib/storage";
+import { toastService } from "@/lib/toastService";
+import { TaxRate, TaxRatesMap } from "@/types/menu";
+import { SelectedStation } from "@/types/station";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 // Selected location from Supabase
 export interface SelectedLocation {
-  id: string
-  merchant_id: string
-  name: string
-  code: string | null
-  phone: string | null
-  email: string | null
-  address_line1: string
-  address_line2: string | null
-  city: string
-  state: string
-  postal_code: string
-  country: string
-  timezone: string
-  business_day_start_hour?: number  // 0-23, default 0 (midnight rollover)
-  is_active: boolean
-  is_accepting_orders: boolean
-  kds_workflow_mode?: '2-step' | '3-step'
-  pricing_strategy?: string | null
-  dual_pricing_percentage?: number | null
-  use_merchant_pricing_defaults?: boolean
-  public_metadata?: Record<string, any> | null
+  id: string;
+  merchant_id: string;
+  name: string;
+  code: string | null;
+  phone: string | null;
+  email: string | null;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  timezone: string;
+  business_day_start_hour?: number; // 0-23, default 0 (midnight rollover)
+  is_active: boolean;
+  is_accepting_orders: boolean;
+  kds_workflow_mode?: "2-step" | "3-step";
+  pricing_strategy?: string | null;
+  dual_pricing_percentage?: number | null;
+  use_merchant_pricing_defaults?: boolean;
+  public_metadata?: Record<string, any> | null;
   business_hours: Record<
     string,
     { open: string; close: string; is_closed: boolean }
-  >
-  created_at: string
-  updated_at: string
+  >;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface StoreSettings {
   // Tax Settings (synced from backend)
-  storeTaxId: string
-  deviceId: string
-  taxRates: TaxRate[] // Array of tax rates from backend
-  taxRatesMap: TaxRatesMap // Quick lookup: { "standard": 8.875, "alcohol": 12.0 }
-  ptoAccrualRate: number
-  minimumPtoNoticeDays: number
-  targetLaborPercent: number
+  storeTaxId: string;
+  deviceId: string;
+  taxRates: TaxRate[]; // Array of tax rates from backend
+  taxRatesMap: TaxRatesMap; // Quick lookup: { "standard": 8.875, "alcohol": 12.0 }
+  ptoAccrualRate: number;
+  minimumPtoNoticeDays: number;
+  targetLaborPercent: number;
 
   // Scheduling
   scheduling: {
-    autoDetectConflicts: boolean
+    autoDetectConflicts: boolean;
     conflictTypes: {
-      doubleBooked: boolean
-      overtime: boolean
-      minStaffing: boolean
-      backToBack: boolean
+      doubleBooked: boolean;
+      overtime: boolean;
+      minStaffing: boolean;
+      backToBack: boolean;
       // Add other conflict types here as needed
-    }
-  }
+    };
+  };
 
   // Online Ordering Settings
-  onlineOrderingEnabled: boolean
-  onlinePauseReason: string | null
-  autoResumeTime: string | null // ISO date
+  onlineOrderingEnabled: boolean;
+  onlinePauseReason: string | null;
+  autoResumeTime: string | null; // ISO date
 
   // Order Acceptance
-  autoAcceptOrders: boolean
-  largeOrderApprovalThreshold: number
-  rejectWhenBusyThreshold: number // 0 = disabled
+  autoAcceptOrders: boolean;
+  largeOrderApprovalThreshold: number;
+  rejectWhenBusyThreshold: number; // 0 = disabled
 
   // Dynamic Prep Times
-  dynamicPrepTimeEnabled: boolean
-  basePrepTime: number // minutes
+  dynamicPrepTimeEnabled: boolean;
+  basePrepTime: number; // minutes
   prepTimeAdjustments: {
-    kitchenLoad: boolean // +10m if >25 orders
-    peakHours: boolean // +5m 5-8PM
-  }
+    kitchenLoad: boolean; // +10m if >25 orders
+    peakHours: boolean; // +5m 5-8PM
+  };
 
   // Pre-Ordering
-  preOrderingEnabled: boolean
-  preOrderMaxDays: number
-  preOrderMinAdvanceMinutes: number
-  preOrderMaxDaily: number
+  preOrderingEnabled: boolean;
+  preOrderMaxDays: number;
+  preOrderMinAdvanceMinutes: number;
+  preOrderMaxDaily: number;
 
   // Selected store from database
-  selectedStore: SelectedLocation | null
+  selectedStore: SelectedLocation | null;
 
   // Organization branding
-  organizationLogoUrl: string | null
+  organizationLogoUrl: string | null;
 
   // Auto-Print Settings
-  autoPrintKitchenTickets: boolean
-  autoPrintReceipt: boolean
+  autoPrintKitchenTickets: boolean;
+  autoPrintReceipt: boolean;
 
   // KDS Settings
-  kdsAutoFireEnabled: boolean
-  kdsAutoFireDelayMinutes: number // Minutes before auto-firing pending items
-  kdsHideDoneItems: boolean // Hide individually-done items in KDS tickets
-  kdsDisplayModifierGroupName: 'for_group_priced' | 'always' | 'never'
-  kdsItemNameLines: number // 0 = unlimited, 1, 2, 3
-  kdsDisplaySeatNumbers: boolean
-  kdsDisplayGuestCount: boolean
-  kdsAlphabeticalSort: boolean
-  kdsHighlightNotes: boolean
-  kdsDisplayExclusionsAtTop: boolean
-  kdsAggregateIdenticalItems: boolean
-  kdsAggregateToExistingTickets: boolean
-  kdsYellowThresholdMinutes: number
-  kdsOrangeThresholdMinutes: number
-  kdsRedThresholdMinutes: number
+  kdsAutoFireEnabled: boolean;
+  kdsAutoFireDelayMinutes: number; // Minutes before auto-firing pending items
+  kdsHideDoneItems: boolean; // Hide individually-done items in KDS tickets
+  kdsDisplayModifierGroupName: "for_group_priced" | "always" | "never";
+  kdsItemNameLines: number; // 0 = unlimited, 1, 2, 3
+  kdsDisplaySeatNumbers: boolean;
+  kdsDisplayGuestCount: boolean;
+  kdsAlphabeticalSort: boolean;
+  kdsHighlightNotes: boolean;
+  kdsDisplayExclusionsAtTop: boolean;
+  kdsAggregateIdenticalItems: boolean;
+  kdsAggregateToExistingTickets: boolean;
+  kdsYellowThresholdMinutes: number;
+  kdsOrangeThresholdMinutes: number;
+  kdsRedThresholdMinutes: number;
 
   // CFD Tip Presets
-  tipPresetPercentages: number[]
+  tipPresetPercentages: number[];
 
   // Waitlist Settings
-  waitlistNotificationGracePeriodMinutes: number // Auto-expire notified parties after this many minutes
+  waitlistNotificationGracePeriodMinutes: number; // Auto-expire notified parties after this many minutes
 
   // Cash Drawer Settings
   cashDrawerSettings: {
-    requireNoSaleReason: boolean
-    requireNoSaleApproval: boolean
-    noSaleAlertThreshold: number
-    blindCloseCount: boolean
-    autoPrintNoSaleReceipt: boolean
-    defaultOpeningAmount: number
-    varianceWarningThreshold: number
-    varianceAlertThreshold: number
-    requireEodBeforeClose: boolean
-  }
+    requireNoSaleReason: boolean;
+    requireNoSaleApproval: boolean;
+    noSaleAlertThreshold: number;
+    blindCloseCount: boolean;
+    autoPrintNoSaleReceipt: boolean;
+    defaultOpeningAmount: number;
+    varianceWarningThreshold: number;
+    varianceAlertThreshold: number;
+    requireEodBeforeClose: boolean;
+  };
 
   // Station session management
-  selectedStation: SelectedStation | null
-  stationSessionId: string | null
-  deviceName: string
+  selectedStation: SelectedStation | null;
+  stationSessionId: string | null;
+  deviceName: string;
 
   // CFD client mode
-  isCFDMode: boolean
-  showCFDOrderingRightPanel: boolean
-  cfdOrderingRightPanelMode: 'single' | 'stacked'
+  isCFDMode: boolean;
+  showCFDOrderingRightPanel: boolean;
+  cfdOrderingRightPanelMode: "single" | "stacked";
 
   // Pre-auth settings
   preAuthSettings: {
-    preAuthEnabled: boolean
-    defaultPreAuthAmount: number
-  }
+    preAuthEnabled: boolean;
+    defaultPreAuthAmount: number;
+  };
 
   // Tips settings
-  openDrawerOnTip: boolean
+  openDrawerOnTip: boolean;
 
   // Manager override for schedule-restricted menus/categories
-  managerOverrideTimeoutMinutes: 0 | 5 | 15 | 30 | 60
+  managerOverrideTimeoutMinutes: 0 | 5 | 15 | 30 | 60;
 
   // Order completion mode
-  orderCompletionMode: 'manual' | 'auto' | 'auto_on_payment'
+  orderCompletionMode: "manual" | "auto" | "auto_on_payment";
 }
 
 interface StoreSettingsState extends StoreSettings {
-  isDirty: boolean
-  changedFields: Set<string>
-  initialState: StoreSettings // To compare for changes
+  isDirty: boolean;
+  changedFields: Set<string>;
+  initialState: StoreSettings; // To compare for changes
   updateField: <K extends keyof StoreSettings>(
     field: K,
-    value: StoreSettings[K]
-  ) => void
-  setPtoAccrualRate: (rate: number) => void // New action
-  setTargetLaborPercent: (percent: number) => void
+    value: StoreSettings[K],
+  ) => void;
+  setPtoAccrualRate: (rate: number) => void; // New action
+  setTargetLaborPercent: (percent: number) => void;
   // Generic update for nested objects like prepTimeAdjustments
   updatePrepAdjustment: (
-    key: keyof StoreSettings['prepTimeAdjustments'],
-    value: boolean
-  ) => void
+    key: keyof StoreSettings["prepTimeAdjustments"],
+    value: boolean,
+  ) => void;
   updateSchedulingSettings: (
-    updates: Partial<StoreSettings['scheduling']>
-  ) => void
-  saveChanges: () => void
-  discardChanges: () => void
+    updates: Partial<StoreSettings["scheduling"]>,
+  ) => void;
+  saveChanges: () => void;
+  discardChanges: () => void;
 
   // Selected store actions
-  setSelectedStore: (store: SelectedLocation) => void
-  clearSelectedStore: () => void
-  refreshSelectedStore: (supabase: SupabaseClient) => Promise<void>
+  setSelectedStore: (store: SelectedLocation) => void;
+  clearSelectedStore: () => void;
+  refreshSelectedStore: (supabase: SupabaseClient) => Promise<void>;
 
   // Organization branding
-  setOrganizationLogoUrl: (url: string | null) => void
+  setOrganizationLogoUrl: (url: string | null) => void;
 
   // Tax rates actions
-  setTaxRates: (rates: TaxRate[]) => void
+  setTaxRates: (rates: TaxRate[]) => void;
 
   // Station session actions
-  setSelectedStation: (station: SelectedStation) => void
-  clearSelectedStation: () => void
-  setStationSessionId: (sessionId: string | null) => void
-  setDeviceName: (name: string) => void
-  clearStationSession: () => void
-  updateCashDrawerSettings: (partial: Partial<StoreSettings['cashDrawerSettings']>) => void
+  setSelectedStation: (station: SelectedStation) => void;
+  clearSelectedStation: () => void;
+  setStationSessionId: (sessionId: string | null) => void;
+  setDeviceName: (name: string) => void;
+  clearStationSession: () => void;
+  updateCashDrawerSettings: (
+    partial: Partial<StoreSettings["cashDrawerSettings"]>,
+  ) => void;
 
   // CFD client mode actions
-  setIsCFDMode: (value: boolean) => void
-  exitCFDMode: () => void
+  setIsCFDMode: (value: boolean) => void;
+  exitCFDMode: () => void;
 
   // Pre-auth settings actions
-  updatePreAuthSettings: (updates: Partial<StoreSettings['preAuthSettings']>) => void
+  updatePreAuthSettings: (
+    updates: Partial<StoreSettings["preAuthSettings"]>,
+  ) => void;
 
   // Tips settings actions
-  setOpenDrawerOnTip: (value: boolean) => void
+  setOpenDrawerOnTip: (value: boolean) => void;
 }
 
 const initialData: StoreSettings = {
   // Tax Settings (synced from backend)
-  storeTaxId: 'US123456789',
-  deviceId: '',
+  storeTaxId: "US123456789",
+  deviceId: "",
   taxRates: [],
   taxRatesMap: {},
   ptoAccrualRate: 0.0375,
@@ -223,8 +227,8 @@ const initialData: StoreSettings = {
       doubleBooked: true,
       overtime: true,
       minStaffing: true,
-      backToBack: true
-    }
+      backToBack: true,
+    },
   },
 
   // Online Ordering Defaults
@@ -253,7 +257,7 @@ const initialData: StoreSettings = {
   kdsAutoFireEnabled: false,
   kdsAutoFireDelayMinutes: 5,
   kdsHideDoneItems: false,
-  kdsDisplayModifierGroupName: 'for_group_priced',
+  kdsDisplayModifierGroupName: "for_group_priced",
   kdsItemNameLines: 0,
   kdsDisplaySeatNumbers: false,
   kdsDisplayGuestCount: true,
@@ -279,9 +283,9 @@ const initialData: StoreSettings = {
     noSaleAlertThreshold: 5,
     blindCloseCount: true,
     autoPrintNoSaleReceipt: false,
-    defaultOpeningAmount: 200.00,
-    varianceWarningThreshold: 5.00,
-    varianceAlertThreshold: 20.00,
+    defaultOpeningAmount: 200.0,
+    varianceWarningThreshold: 5.0,
+    varianceAlertThreshold: 20.0,
     requireEodBeforeClose: true,
   },
 
@@ -294,12 +298,12 @@ const initialData: StoreSettings = {
   // Station session defaults
   selectedStation: null,
   stationSessionId: null,
-  deviceName: '',
+  deviceName: "",
 
   // CFD client mode
   isCFDMode: false,
   showCFDOrderingRightPanel: true,
-  cfdOrderingRightPanelMode: 'single',
+  cfdOrderingRightPanelMode: "single",
 
   // Pre-auth settings
   preAuthSettings: {
@@ -314,8 +318,8 @@ const initialData: StoreSettings = {
   managerOverrideTimeoutMinutes: 0,
 
   // Order completion mode
-  orderCompletionMode: 'manual',
-}
+  orderCompletionMode: "manual",
+};
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
   persist(
@@ -326,156 +330,158 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       changedFields: new Set<string>(),
 
       updateField: (field, value) => {
-        set(state => {
-          const changedFields = new Set(state.changedFields)
+        set((state) => {
+          const changedFields = new Set(state.changedFields);
           if (
             state.initialState &&
             JSON.stringify(state.initialState[field]) === JSON.stringify(value)
           ) {
-            changedFields.delete(field as string)
+            changedFields.delete(field as string);
           } else {
-            changedFields.add(field as string)
+            changedFields.add(field as string);
           }
           return {
             ...state,
             [field]: value,
             changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
+            isDirty: changedFields.size > 0,
+          };
+        });
       },
 
       setPtoAccrualRate: (rate: number) => {
-        set(state => {
-          const changedFields = new Set(state.changedFields)
+        set((state) => {
+          const changedFields = new Set(state.changedFields);
           if (state.initialState?.ptoAccrualRate === rate) {
-            changedFields.delete('ptoAccrualRate')
+            changedFields.delete("ptoAccrualRate");
           } else {
-            changedFields.add('ptoAccrualRate')
+            changedFields.add("ptoAccrualRate");
           }
           return {
             ...state,
             ptoAccrualRate: rate,
             changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
+            isDirty: changedFields.size > 0,
+          };
+        });
       },
 
       setTargetLaborPercent: (percent: number) => {
-        set(state => {
-          const changedFields = new Set(state.changedFields)
+        set((state) => {
+          const changedFields = new Set(state.changedFields);
           if (state.initialState?.targetLaborPercent === percent) {
-            changedFields.delete('targetLaborPercent')
+            changedFields.delete("targetLaborPercent");
           } else {
-            changedFields.add('targetLaborPercent')
+            changedFields.add("targetLaborPercent");
           }
           return {
             ...state,
             targetLaborPercent: percent,
             changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
+            isDirty: changedFields.size > 0,
+          };
+        });
       },
 
       updatePrepAdjustment: (key, value) => {
-        set(state => {
-          const newAdjustments = { ...state.prepTimeAdjustments, [key]: value }
-          const changedFields = new Set(state.changedFields)
-          const fieldKey = `prepTimeAdjustments.${key}`
+        set((state) => {
+          const newAdjustments = { ...state.prepTimeAdjustments, [key]: value };
+          const changedFields = new Set(state.changedFields);
+          const fieldKey = `prepTimeAdjustments.${key}`;
           if (state.initialState?.prepTimeAdjustments[key] === value) {
-            changedFields.delete(fieldKey)
+            changedFields.delete(fieldKey);
           } else {
-            changedFields.add(fieldKey)
+            changedFields.add(fieldKey);
           }
           return {
             ...state,
             prepTimeAdjustments: newAdjustments,
             changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
+            isDirty: changedFields.size > 0,
+          };
+        });
       },
 
       updateSchedulingSettings: (
-        updates: Partial<StoreSettings['scheduling']>
+        updates: Partial<StoreSettings["scheduling"]>,
       ) => {
-        set(state => {
-          const newScheduling = { ...state.scheduling, ...updates }
+        set((state) => {
+          const newScheduling = { ...state.scheduling, ...updates };
           // Deep merge for nested conflictTypes if provided
           if (updates.conflictTypes) {
             newScheduling.conflictTypes = {
               ...state.scheduling.conflictTypes,
-              ...updates.conflictTypes
-            }
+              ...updates.conflictTypes,
+            };
           }
 
-          const changedFields = new Set(state.changedFields)
+          const changedFields = new Set(state.changedFields);
           if (
             JSON.stringify(state.initialState?.scheduling) ===
             JSON.stringify(newScheduling)
           ) {
-            changedFields.delete('scheduling')
+            changedFields.delete("scheduling");
           } else {
-            changedFields.add('scheduling')
+            changedFields.add("scheduling");
           }
 
           return {
             ...state,
             scheduling: newScheduling,
             changedFields,
-            isDirty: changedFields.size > 0
-          }
-        })
+            isDirty: changedFields.size > 0,
+          };
+        });
       },
 
       saveChanges: () => {
-        const currentState = get()
-        const updatedState = { ...currentState }
-        delete (updatedState as any).initialState
-        delete (updatedState as any).isDirty
+        const currentState = get();
+        const updatedState = { ...currentState };
+        delete (updatedState as any).initialState;
+        delete (updatedState as any).isDirty;
 
-        const newInitialState = { ...updatedState }
+        const newInitialState = { ...updatedState };
 
         set({
           initialState: newInitialState,
           isDirty: false,
-          changedFields: new Set<string>()
-        })
+          changedFields: new Set<string>(),
+        });
 
         toastService.show({
-          title: 'Settings Saved',
-          message: 'Store information has been updated successfully.',
-          type: 'success'
-        })
+          title: "Settings Saved",
+          message: "Store information has been updated successfully.",
+          type: "success",
+        });
       },
 
       discardChanges: () => {
-        const { initialState } = get()
+        const { initialState } = get();
         set({
           ...initialState,
           isDirty: false,
-          changedFields: new Set<string>()
-        })
+          changedFields: new Set<string>(),
+        });
       },
 
       // Selected store actions
       setSelectedStore: (store: SelectedLocation) => {
-        set({ selectedStore: store })
+        set({ selectedStore: store });
       },
 
       clearSelectedStore: () => {
-        set({ selectedStore: null, organizationLogoUrl: null })
+        set({ selectedStore: null, organizationLogoUrl: null });
       },
 
       refreshSelectedStore: async (supabase: SupabaseClient) => {
         const current = get().selectedStore;
         if (!current?.id) return;
         const { data } = await supabase
-          .from('locations')
-          .select('*, merchants!merchant_id(pricing_strategy, dual_pricing_percentage)')
-          .eq('id', current.id)
+          .from("locations")
+          .select(
+            "*, merchants!merchant_id(pricing_strategy, dual_pricing_percentage)",
+          )
+          .eq("id", current.id)
           .single();
         if (data) {
           const merchant = (data as any).merchants;
@@ -484,74 +490,82 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
           // Resolve effective pricing: merchant defaults unless location overrides
           if (data.use_merchant_pricing_defaults && merchant) {
             resolved.pricing_strategy = merchant.pricing_strategy;
-            resolved.dual_pricing_percentage = parseFloat(merchant.dual_pricing_percentage);
+            resolved.dual_pricing_percentage = parseFloat(
+              merchant.dual_pricing_percentage,
+            );
           }
           set({ selectedStore: resolved as SelectedLocation });
         }
       },
 
       setOrganizationLogoUrl: (url: string | null) => {
-        set({ organizationLogoUrl: url })
+        set({ organizationLogoUrl: url });
       },
 
       // Tax rates action
       setTaxRates: (rates: TaxRate[]) => {
         // Build a map for quick lookup: { "standard": 8.875, "alcohol": 12.0 }
-        const taxRatesMap: TaxRatesMap = {}
+        const taxRatesMap: TaxRatesMap = {};
         for (const rate of rates) {
-          taxRatesMap[rate.tax_category] = rate.percentage
+          taxRatesMap[rate.tax_category] = rate.percentage;
         }
-        set({ taxRates: rates, taxRatesMap })
+        set({ taxRates: rates, taxRatesMap });
       },
 
       // Station session actions
       setSelectedStation: (station: SelectedStation) => {
-        set({ selectedStation: station })
+        set({ selectedStation: station });
       },
 
       clearSelectedStation: () => {
-        set({ selectedStation: null, stationSessionId: null })
+        set({ selectedStation: null, stationSessionId: null });
       },
 
       setStationSessionId: (sessionId: string | null) => {
-        set({ stationSessionId: sessionId })
+        set({ stationSessionId: sessionId });
       },
 
       setDeviceName: (name: string) => {
-        set({ deviceName: name })
+        set({ deviceName: name });
       },
 
       clearStationSession: () => {
-        set({ selectedStation: null, stationSessionId: null })
+        set({ selectedStation: null, stationSessionId: null });
       },
 
       updateCashDrawerSettings: (partial) => {
-        set(state => ({
+        set((state) => ({
           ...state,
           cashDrawerSettings: { ...state.cashDrawerSettings, ...partial },
-        }))
+        }));
       },
 
       setIsCFDMode: (value: boolean) => {
-        set({ isCFDMode: value })
+        set({ isCFDMode: value });
       },
       updatePreAuthSettings: (updates) => {
-        const current = get().preAuthSettings
-        set({ preAuthSettings: { ...current, ...updates } })
+        const current = get().preAuthSettings;
+        set({ preAuthSettings: { ...current, ...updates } });
       },
 
       exitCFDMode: () => {
-        set({ isCFDMode: false, selectedStation: null, stationSessionId: null })
+        set({
+          isCFDMode: false,
+          selectedStation: null,
+          stationSessionId: null,
+        });
       },
 
       setOpenDrawerOnTip: (value: boolean) => {
-        set({ openDrawerOnTip: value })
+        set({ openDrawerOnTip: value });
       },
     }),
     {
-      name: 'store-settings-storage',
+      name: "store-settings-storage",
       storage: createLazyPersistStorage(),
-      partialize: state => ({
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
+      partialize: (state) => ({
         // Only persist these fields
         selectedStore: state.selectedStore,
         storeTaxId: state.storeTaxId,
@@ -615,7 +629,7 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         managerOverrideTimeoutMinutes: state.managerOverrideTimeoutMinutes,
         // Order completion mode
         orderCompletionMode: state.orderCompletionMode,
-      })
-    }
-  )
-)
+      }),
+    },
+  ),
+);

@@ -3,10 +3,9 @@
 // File: stores/usePaymentTerminalStore.ts
 // ============================================================
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { createLazyPersistStorage } from '@/lib/storage';
-import { DejavooService } from '@/services/payments/dejavoo';
+import { createLazyPersistStorage } from "@/lib/storage";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface PaymentTerminal {
   id: string;
@@ -18,12 +17,12 @@ interface PaymentTerminal {
   /** Castles terminal port */
   port?: number;
   /** Connection type: local_socket (TCP/WiFi) or usb */
-  connectionType?: 'local_socket' | 'usb';
+  connectionType?: "local_socket" | "usb";
   isActive: boolean;
   isConnected: boolean;
   stationId?: string | null;
   lastConnectionTest?: string;
-  lastConnectionStatus?: 'Online' | 'Offline' | 'NotFound';
+  lastConnectionStatus?: "Online" | "Offline" | "NotFound";
   consecutiveFailures?: number;
   lastErrorMessage?: string | null;
   firmwareVersion?: string | null;
@@ -41,7 +40,10 @@ interface PaymentTerminalState {
   // Actions
   setTerminals: (terminals: PaymentTerminal[]) => void;
   setActiveTerminal: (terminalId: string | null) => void;
-  updateTerminalStatus: (terminalId: string, status: Partial<PaymentTerminal>) => void;
+  updateTerminalStatus: (
+    terminalId: string,
+    status: Partial<PaymentTerminal>,
+  ) => void;
   setConnectionTesting: (testing: boolean) => void;
   setProcessingPayment: (processing: boolean) => void;
   setError: (error: string | null) => void;
@@ -63,29 +65,33 @@ export const usePaymentTerminalStore = create<PaymentTerminalState>()(
 
       setActiveTerminal: (terminalId) => set({ activeTerminalId: terminalId }),
 
-      updateTerminalStatus: (terminalId, status) => set((state) => ({
-        terminals: state.terminals.map((t) =>
-          t.id === terminalId ? { ...t, ...status } : t
-        ),
-      })),
+      updateTerminalStatus: (terminalId, status) =>
+        set((state) => ({
+          terminals: state.terminals.map((t) =>
+            t.id === terminalId ? { ...t, ...status } : t,
+          ),
+        })),
 
       setConnectionTesting: (testing) => set({ isTestingConnection: testing }),
 
-      setProcessingPayment: (processing) => set({ isProcessingPayment: processing }),
+      setProcessingPayment: (processing) =>
+        set({ isProcessingPayment: processing }),
 
       setError: (error) => set({ lastError: error }),
-      
+
       getActiveTerminal: () => {
         const { terminals, activeTerminalId } = get();
         return terminals.find((t) => t.id === activeTerminalId);
       },
     }),
     {
-      name: 'payment-terminal-store',
+      name: "payment-terminal-store",
       storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         activeTerminalId: state.activeTerminalId,
       }),
-    }
-  )
+    },
+  ),
 );
