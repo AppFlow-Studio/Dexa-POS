@@ -5,13 +5,14 @@
  * Coordinates between the local store and the backend.
  */
 
+import { captureRpcError } from "@/lib/supabase";
 import {
-  DenominationCount,
-  DrawerOperationType,
-  DrawerSession,
-  isDebitOperation,
-  isNoEffectOperation,
-  useCashDrawerStore,
+    DenominationCount,
+    DrawerOperationType,
+    DrawerSession,
+    isDebitOperation,
+    isNoEffectOperation,
+    useCashDrawerStore,
 } from "@/stores/useCashDrawerStore";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
@@ -38,7 +39,7 @@ export const US_DENOMINATIONS: Omit<DenominationCount, "count" | "total">[] = [
 export async function findDrawerForStation(
   supabase: SupabaseClient,
   stationId: string,
-  locationId: string
+  locationId: string,
 ): Promise<{ id: string; name: string } | null> {
   const { data, error } = await supabase
     .from("cash_drawers")
@@ -66,7 +67,7 @@ export async function openDrawerSession(
     openedBy: string; // staff_profile_id
     openingAmount: number;
     openingCountDetails?: DenominationCount[];
-  }
+  },
 ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   const businessDate = new Date().toISOString().split("T")[0];
 
@@ -129,7 +130,7 @@ export async function closeDrawerSession(
     closingAmount: number;
     closingCountDetails?: DenominationCount[];
     varianceNotes?: string;
-  }
+  },
 ): Promise<{ success: boolean; variance?: number; error?: string }> {
   const store = useCashDrawerStore.getState();
   const expectedCash = store.getRunningBalance();
@@ -162,7 +163,11 @@ export async function closeDrawerSession(
     .eq("id", params.cashDrawerId);
 
   // Update local store
-  store.closeSession(params.closingAmount, params.closingCountDetails, params.closedBy);
+  store.closeSession(
+    params.closingAmount,
+    params.closingCountDetails,
+    params.closedBy,
+  );
 
   return { success: true, variance };
 }
@@ -185,7 +190,7 @@ export async function recordDrawerOperation(
     reason?: string;
     approvedBy?: string;
     receiptPrinted?: boolean;
-  }
+  },
 ): Promise<{ success: boolean; error?: string }> {
   const store = useCashDrawerStore.getState();
   const currentBalance = store.getRunningBalance();
@@ -229,15 +234,17 @@ export async function recordDrawerOperation(
       p_payment_id: params.paymentId || null,
       p_reason: params.reason || null,
       p_approved_by: params.approvedBy || null,
-    }
+    },
   );
 
   if (rpcError || (rpcResult && !rpcResult.success)) {
     const errMsg = rpcError?.message || rpcResult?.error || "Unknown error";
     console.error("[CashDrawer] RPC failed, queuing offline:", errMsg);
+    if (rpcError) captureRpcError("record_cash_operation", rpcError);
     // Queue for offline sync
     try {
-      const { queueOperation } = require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
+      const { queueOperation } =
+        require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
       await queueOperation({
         type: "record_cash_drawer_operation",
         localOrderId: params.orderId || opId, // use opId as fallback key
@@ -257,7 +264,10 @@ export async function recordDrawerOperation(
         },
       });
     } catch (queueError) {
-      console.error("[CashDrawer] Failed to queue offline operation:", queueError);
+      console.error(
+        "[CashDrawer] Failed to queue offline operation:",
+        queueError,
+      );
     }
     return { success: false, error: errMsg };
   }
@@ -272,7 +282,7 @@ export async function recordDrawerOperation(
 export async function hydrateDrawerSession(
   supabase: SupabaseClient,
   stationId: string,
-  locationId: string
+  locationId: string,
 ): Promise<boolean> {
   const store = useCashDrawerStore.getState();
 
@@ -307,7 +317,9 @@ export async function hydrateDrawerSession(
     openedBy: session.opened_by,
     openedAt: session.opened_at,
     openingAmount: Number(session.opening_amount),
-    openingCountDetails: session.opening_count_details as DenominationCount[] | undefined,
+    openingCountDetails: session.opening_count_details as
+      | DenominationCount[]
+      | undefined,
     expectedCash: Number(session.expected_cash || session.opening_amount),
     status: "open",
   };
@@ -326,7 +338,7 @@ export async function hydrateDrawerSession(
         orderId: op.order_id,
         paymentId: op.payment_id,
         reason: op.reason,
-      }))
+      })),
     );
   }
 

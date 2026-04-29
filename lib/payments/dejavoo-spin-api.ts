@@ -5,32 +5,30 @@
 // Replaces /services/payments/dejavoo.ts with cleaner interface
 // ============================================================
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { toastService } from "@/lib/toastService";
 import {
-  DejavooCredentials,
-  DejavooSaleRequest,
-  DejavooSaleResponse,
-  DejavooReturnRequest,
-  DejavooReturnResponse,
-  DejavooTipAdjustRequest,
-  DejavooTipAdjustResponse,
-  DejavooVoidV2Request,
-  DejavooVoidV2Response,
-  DejavooBaseResponse,
-  DejavooEnvironment,
-  PaymentType,
-  PrintReceiptOption,
-  SigCaptureOption,
-  parseExtData,
-  ExtendedData,
-  isApprovedResponse,
-  isDeclinedResponse,
-  isErrorResponse,
-  generateRefId,
-  DEJAVOO_ERROR_CODES,
-  DEJAVOO_TIMEOUTS,
-} from '@/types/dejavoo-spin-api';
-import { toastService } from '@/lib/toastService';
+    DEJAVOO_ERROR_CODES,
+    DEJAVOO_TIMEOUTS,
+    DejavooBaseResponse,
+    DejavooCredentials,
+    DejavooEnvironment,
+    DejavooReturnRequest,
+    DejavooReturnResponse,
+    DejavooSaleRequest,
+    DejavooSaleResponse,
+    DejavooTipAdjustRequest,
+    DejavooTipAdjustResponse,
+    DejavooVoidV2Request,
+    DejavooVoidV2Response,
+    ExtendedData,
+    PaymentType,
+    PrintReceiptOption,
+    SigCaptureOption,
+    generateRefId,
+    isApprovedResponse,
+    parseExtData
+} from "@/types/dejavoo-spin-api";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 // ============================================================
 // RESPONSE TYPES
@@ -160,23 +158,28 @@ export class DejavooSpinAPI {
       register_id: string | null;
       auth_key: string | null;
       terminal_type?: string;
-    }
+    },
   ): Promise<boolean> {
     // Check if already loaded for this terminal
     if (this.terminalId === terminalId && this.credentials) {
-      console.log('[DejavooSpinAPI] Using cached credentials for terminal:', terminalId);
+      console.log(
+        "[DejavooSpinAPI] Using cached credentials for terminal:",
+        terminalId,
+      );
       return true;
     }
 
     try {
       // FAST PATH: Use local credentials if provided
       if (paymentTerminal?.register_id && paymentTerminal?.auth_key) {
-        console.log('[DejavooSpinAPI] Using local credentials from store (fast path)');
+        console.log(
+          "[DejavooSpinAPI] Using local credentials from store (fast path)",
+        );
 
         // Use local credentials with default environment settings
         // TODO: These defaults should ideally come from a config or the terminal object
-        const environment: DejavooEnvironment = 'sandbox'; // or 'sandbox' based on config
-        const baseUrl = 'https://test.spinpos.net';
+        const environment: DejavooEnvironment = "sandbox"; // or 'sandbox' based on config
+        const baseUrl = "https://test.spinpos.net";
         //   environment === 'production'
         //     ? 'https://spinpos.net:443'
         //     : 'https://test.spinpos.net:443';
@@ -191,29 +194,41 @@ export class DejavooSpinAPI {
 
         this.terminalId = terminalId;
 
-        console.log('[DejavooSpinAPI] Local credentials loaded successfully');
-        console.log('[DejavooSpinAPI] Register ID:', this.credentials.registerId);
-        console.log('[DejavooSpinAPI] Environment:', this.credentials.environment);
-        console.log('[DejavooSpinAPI] Base URL:', this.credentials.baseUrl);
+        console.log("[DejavooSpinAPI] Local credentials loaded successfully");
+        console.log(
+          "[DejavooSpinAPI] Register ID:",
+          this.credentials.registerId,
+        );
+        console.log(
+          "[DejavooSpinAPI] Environment:",
+          this.credentials.environment,
+        );
+        console.log("[DejavooSpinAPI] Base URL:", this.credentials.baseUrl);
 
         return true;
       }
 
       // SLOW PATH: Fetch from database via RPC
-      console.log('[DejavooSpinAPI] Loading credentials from database (slow path)');
+      console.log(
+        "[DejavooSpinAPI] Loading credentials from database (slow path)",
+      );
 
-      const { data, error } = await this.supabase.rpc('get_terminal_credentials', {
-        p_terminal_id: terminalId,
-      });
+      const { data, error } = await this.supabase.rpc(
+        "get_terminal_credentials",
+        {
+          p_terminal_id: terminalId,
+        },
+      );
 
       if (error || !data?.success) {
-        const errorMsg = error?.message || data?.error || 'Failed to load credentials';
-        console.error('[DejavooSpinAPI] Credential load failed:', errorMsg);
+        const errorMsg =
+          error?.message || data?.error || "Failed to load credentials";
+        console.error("[DejavooSpinAPI] Credential load failed:", errorMsg);
 
         toastService.show({
-          title: 'Terminal Error',
+          title: "Terminal Error",
           message: errorMsg,
-          type: 'error',
+          type: "error",
         });
 
         return false;
@@ -230,18 +245,23 @@ export class DejavooSpinAPI {
 
       this.terminalId = terminalId;
 
-      console.log('[DejavooSpinAPI] Credentials loaded successfully from database');
-      console.log('[DejavooSpinAPI] Environment:', this.credentials.environment);
-      console.log('[DejavooSpinAPI] Base URL:', this.credentials.baseUrl);
+      console.log(
+        "[DejavooSpinAPI] Credentials loaded successfully from database",
+      );
+      console.log(
+        "[DejavooSpinAPI] Environment:",
+        this.credentials.environment,
+      );
+      console.log("[DejavooSpinAPI] Base URL:", this.credentials.baseUrl);
 
       return true;
     } catch (err) {
-      console.error('[DejavooSpinAPI] Exception loading credentials:', err);
+      console.error("[DejavooSpinAPI] Exception loading credentials:", err);
 
       toastService.show({
-        title: 'Terminal Error',
-        message: err instanceof Error ? err.message : 'Failed to load terminal',
-        type: 'error',
+        title: "Terminal Error",
+        message: err instanceof Error ? err.message : "Failed to load terminal",
+        type: "error",
       });
 
       return false;
@@ -255,7 +275,7 @@ export class DejavooSpinAPI {
   clearCredentials(): void {
     this.credentials = null;
     this.terminalId = null;
-    console.log('[DejavooSpinAPI] Credentials cleared');
+    console.log("[DejavooSpinAPI] Credentials cleared");
   }
 
   // ============================================================
@@ -280,15 +300,21 @@ export class DejavooSpinAPI {
    */
   async checkStatus(): Promise<{
     success: boolean;
-    status: 'Online' | 'Offline' | 'NotFound';
+    status: "Online" | "Offline" | "NotFound";
     error?: string;
   }> {
     if (!this.credentials) {
-      return { success: false, status: 'NotFound', error: 'No terminal loaded. Call loadTerminal() first.' };
+      return {
+        success: false,
+        status: "NotFound",
+        error: "No terminal loaded. Call loadTerminal() first.",
+      };
     }
 
     try {
-      console.log('[DejavooSpinAPI] Checking terminal status via Summary Report...');
+      console.log(
+        "[DejavooSpinAPI] Checking terminal status via Summary Report...",
+      );
 
       const url = `${this.getBaseUrl()}/v2/Report/Summary`;
       const body = {
@@ -297,19 +323,19 @@ export class DejavooSpinAPI {
         SPInProxyTimeout: null,
       };
 
-      console.log('[DejavooSpinAPI] Summary report URL:', url);
+      console.log("[DejavooSpinAPI] Summary report URL:", url);
 
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
       const data = await response.json();
-      console.log('[DejavooSpinAPI] Summary report response:', data);
+      console.log("[DejavooSpinAPI] Summary report response:", data);
 
-      const isOnline = data?.GeneralResponse?.ResultCode === '0';
-      const status = isOnline ? 'Online' : 'Offline';
+      const isOnline = data?.GeneralResponse?.ResultCode === "0";
+      const status = isOnline ? "Online" : "Offline";
 
       // Update database with status
       if (this.terminalId) {
@@ -319,14 +345,16 @@ export class DejavooSpinAPI {
       return {
         success: isOnline,
         status,
-        error: isOnline ? undefined : (data?.GeneralResponse?.Message || 'Terminal unreachable'),
+        error: isOnline
+          ? undefined
+          : data?.GeneralResponse?.Message || "Terminal unreachable",
       };
     } catch (err) {
-      console.error('[DejavooSpinAPI] Status check failed:', err);
+      console.error("[DejavooSpinAPI] Status check failed:", err);
       return {
         success: false,
-        status: 'Offline',
-        error: err instanceof Error ? err.message : 'Network error',
+        status: "Offline",
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -511,33 +539,44 @@ export class DejavooSpinAPI {
    */
   async executeRequest<T extends Record<string, any>>(
     endpoint: string,
-    request: Record<string, any>
+    request: Record<string, any>,
   ): Promise<DejavooAPIResponse<T>> {
     if (!this.credentials) {
       return {
         success: false,
-        error: 'No terminal loaded. Call loadTerminal() first.',
+        error: "No terminal loaded. Call loadTerminal() first.",
       };
     }
 
     try {
       const url = `${this.getBaseUrl()}${endpoint}`;
 
-      console.log('[DejavooSpinAPI] Executing request to:', endpoint);
-      console.log('[DejavooSpinAPI] Request data:', JSON.stringify(request, null, 2));
+      console.log("[DejavooSpinAPI] Executing request to:", endpoint);
+      console.log(
+        "[DejavooSpinAPI] Request data:",
+        JSON.stringify(request, null, 2),
+      );
 
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
 
+      if (!response.ok) {
+        throw new Error(
+          `Dejavoo HTTP ${response.status}: ${response.statusText}`,
+        );
+      }
+
       const data: T = await response.json();
 
-      console.log('[DejavooSpinAPI] Response:', JSON.stringify(data, null, 2));
+      console.log("[DejavooSpinAPI] Response:", JSON.stringify(data, null, 2));
 
       // Parse ExtData if present
-      const parsedExtData = data.ExtData ? parseExtData(data.ExtData) : undefined;
+      const parsedExtData = data.ExtData
+        ? parseExtData(data.ExtData)
+        : undefined;
 
       // Determine success based on result code
       // Cast to any to support both old and new response formats
@@ -548,7 +587,7 @@ export class DejavooSpinAPI {
       let errorMessage: string | undefined;
       if (!success) {
         const match = data.Message?.match(/\d+/);
-        errorMessage = data?.DetailedMessage
+        errorMessage = data?.DetailedMessage;
         errorCode = match ? parseInt(match[0], 10) : undefined;
       }
 
@@ -556,56 +595,57 @@ export class DejavooSpinAPI {
       const helpers = {
         getTransactionType: () => {
           // New format
-          if ('TransactionType' in data) return (data as any).TransactionType;
+          if ("TransactionType" in data) return (data as any).TransactionType;
           return undefined;
         },
         // Transaction identifiers
         getReferenceId: () => {
           // New format
-          if ('ReferenceId' in data) return (data as any).ReferenceId;
+          if ("ReferenceId" in data) return (data as any).ReferenceId;
           // Old format
           return (data as any).RefId;
         },
         getTransactionNumber: () => {
           // New format
-          if ('TransactionNumber' in data) return (data as any).TransactionNumber;
+          if ("TransactionNumber" in data)
+            return (data as any).TransactionNumber;
           // Old format - check parsedExtData or TransNum
           return (data as any).TransNum;
         },
         getInvoiceNumber: () => {
           // New format
-          if ('InvoiceNumber' in data) return (data as any).InvoiceNumber;
+          if ("InvoiceNumber" in data) return (data as any).InvoiceNumber;
           return undefined;
         },
         getBatchNumber: () => {
           // New format
-          if ('BatchNumber' in data) return (data as any).BatchNumber;
+          if ("BatchNumber" in data) return (data as any).BatchNumber;
           // Old format - check parsedExtData
           return parsedExtData?.BatchNum;
         },
         getAuthCode: () => {
           // New format - nested in ExtendedDataByApplication
-          if ('AuthCode' in data) return (data as any).AuthCode;
+          if ("AuthCode" in data) return (data as any).AuthCode;
           return undefined;
         },
 
         getRRN: () => {
           // New format
-          if ('RRN' in data) return (data as any).RRN;
+          if ("RRN" in data) return (data as any).RRN;
           return undefined;
         },
         // Amounts
         getTotalAmount: () => {
           // New format
-          if ('Amounts' in data) return (data as any).Amounts?.TotalAmount;
+          if ("Amounts" in data) return (data as any).Amounts?.TotalAmount;
           // Old format
           return (data as any).TotalAmount;
         },
         getBaseAmount: () => {
           // New format - nested in ExtendedDataByApplication
-          if ('ExtendedDataByApplication' in data) {
+          if ("ExtendedDataByApplication" in data) {
             const extData = (data as any).ExtendedDataByApplication;
-            const baseAmtStr = extData?.['0']?.BaseAmount;
+            const baseAmtStr = extData?.["0"]?.BaseAmount;
             return baseAmtStr ? parseFloat(baseAmtStr) : undefined;
           }
           // Old format
@@ -613,34 +653,36 @@ export class DejavooSpinAPI {
         },
         getTipAmount: () => {
           // New format
-          if ('Amounts' in data) return (data as any).Amounts?.TipAmount;
+          if ("Amounts" in data) return (data as any).Amounts?.TipAmount;
           // Old format
-          return (data as any).Tip || parsedExtData?.Tip ? parseFloat(parsedExtData?.Tip || '0') : undefined;
+          return (data as any).Tip || parsedExtData?.Tip
+            ? parseFloat(parsedExtData?.Tip || "0")
+            : undefined;
         },
 
         // Card info
         getCardType: () => {
           // New format
-          if ('CardData' in data) return (data as any).CardData?.CardType;
+          if ("CardData" in data) return (data as any).CardData?.CardType;
           // Old format
           return parsedExtData?.CardType;
         },
         getCardLast4: () => {
           // New format
-          if ('CardData' in data) return (data as any).CardData?.Last4;
+          if ("CardData" in data) return (data as any).CardData?.Last4;
           // Old format - extract from AccountNum
           const accountNum = parsedExtData?.AccountNum;
           return accountNum ? accountNum.slice(-4) : undefined;
         },
         getEntryMode: () => {
           // New format
-          if ('CardData' in data) return (data as any).CardData?.EntryType;
+          if ("CardData" in data) return (data as any).CardData?.EntryType;
           // Old format
           return parsedExtData?.EntryMode;
         },
         getCardholderName: () => {
           // New format
-          if ('CardData' in data) return (data as any).CardData?.Name;
+          if ("CardData" in data) return (data as any).CardData?.Name;
           // Old format
           return parsedExtData?.CardHolderName;
         },
@@ -649,18 +691,21 @@ export class DejavooSpinAPI {
         isApproved: () => isApprovedResponse(data as any),
         getResultCode: () => {
           // New format
-          if ('GeneralResponse' in data) return (data as any).GeneralResponse?.ResultCode;
+          if ("GeneralResponse" in data)
+            return (data as any).GeneralResponse?.ResultCode;
           // Old format
           return data.ResultCode;
         },
         getStatusCode: () => {
           // New format
-          if ('GeneralResponse' in data) return (data as any).GeneralResponse?.StatusCode;
+          if ("GeneralResponse" in data)
+            return (data as any).GeneralResponse?.StatusCode;
           return undefined;
         },
         getMessage: () => {
           // New format
-          if ('GeneralResponse' in data) return (data as any).GeneralResponse?.Message;
+          if ("GeneralResponse" in data)
+            return (data as any).GeneralResponse?.Message;
           // Old format
           return data.Message;
         },
@@ -670,31 +715,38 @@ export class DejavooSpinAPI {
         success,
         data: success ? data : undefined,
         parsedExtData,
-        error: success ? undefined : (data.Message || helpers.getMessage() || 'Transaction failed'),
+        error: success
+          ? undefined
+          : data.Message || helpers.getMessage() || "Transaction failed",
         errorCode,
         rawResponse: data,
         helpers,
       };
 
-      console.log('[DejavooSpinAPI] Result success:', success);
+      console.log("[DejavooSpinAPI] Result success:", success);
       if (!success) {
-        console.error('[DejavooSpinAPI] Transaction failed:', result.error);
+        console.error("[DejavooSpinAPI] Transaction failed:", result.error);
         if (errorCode) {
-          console.error('[DejavooSpinAPI] Error code:', errorCode, '-', DEJAVOO_ERROR_CODES[errorCode]);
+          console.error(
+            "[DejavooSpinAPI] Error code:",
+            errorCode,
+            "-",
+            DEJAVOO_ERROR_CODES[errorCode],
+          );
         }
         return {
-            success: false,
-            error: result.error,
-          };
+          success: false,
+          error: result.error,
+        };
       }
 
       return result;
     } catch (err) {
-      console.error('[DejavooSpinAPI] Request failed:', err);
+      console.error("[DejavooSpinAPI] Request failed:", err);
 
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Network error',
+        error: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -705,9 +757,13 @@ export class DejavooSpinAPI {
    * @internal
    * @returns Auth parameters object
    */
-  getAuthParams(): { AuthKey: string; RegisterId: string; OperationalTimeout?: number } {
+  getAuthParams(): {
+    AuthKey: string;
+    RegisterId: string;
+    OperationalTimeout?: number;
+  } {
     if (!this.credentials) {
-      throw new Error('No terminal loaded. Call loadTerminal() first.');
+      throw new Error("No terminal loaded. Call loadTerminal() first.");
     }
 
     return {
@@ -725,7 +781,7 @@ export class DejavooSpinAPI {
    */
   private getBaseUrl(): string {
     if (!this.credentials) {
-      throw new Error('No terminal loaded. Call loadTerminal() first.');
+      throw new Error("No terminal loaded. Call loadTerminal() first.");
     }
     return this.credentials.baseUrl;
   }
@@ -737,17 +793,20 @@ export class DejavooSpinAPI {
    * @param status - Terminal status string
    * @param isConnected - Whether terminal is connected
    */
-  private async updateTerminalStatus(status: string, isConnected: boolean): Promise<void> {
+  private async updateTerminalStatus(
+    status: string,
+    isConnected: boolean,
+  ): Promise<void> {
     if (!this.terminalId) return;
 
     try {
-      await this.supabase.rpc('update_terminal_status', {
+      await this.supabase.rpc("update_terminal_status", {
         p_terminal_id: this.terminalId,
         p_status: status,
         p_is_connected: isConnected,
       });
     } catch (err) {
-      console.error('[DejavooSpinAPI] Failed to update terminal status:', err);
+      console.error("[DejavooSpinAPI] Failed to update terminal status:", err);
       // Don't throw - this is a non-critical operation
     }
   }
@@ -791,7 +850,7 @@ export class SaleTransactionBuilder {
   private _performedBy?: string;
 
   // Optional fields with defaults
-  private _paymentType: PaymentType = 'Credit';
+  private _paymentType: PaymentType = "Credit";
   private _refId?: string; // Auto-generated if not provided
   private _tip?: number;
   private _customFee?: number;
@@ -833,7 +892,7 @@ export class SaleTransactionBuilder {
    */
   amount(value: number): this {
     if (value <= 0) {
-      throw new Error('Amount must be greater than 0');
+      throw new Error("Amount must be greater than 0");
     }
     this._amount = value;
     return this;
@@ -853,7 +912,7 @@ export class SaleTransactionBuilder {
    */
   performedBy(value: string): this {
     if (value.length > 100) {
-      throw new Error('PerformedBy cannot exceed 100 characters');
+      throw new Error("PerformedBy cannot exceed 100 characters");
     }
     this._performedBy = value;
     return this;
@@ -877,7 +936,7 @@ export class SaleTransactionBuilder {
    */
   tip(value: number): this {
     if (value < 0) {
-      throw new Error('Tip amount cannot be negative');
+      throw new Error("Tip amount cannot be negative");
     }
     this._tip = value;
     return this;
@@ -915,7 +974,7 @@ export class SaleTransactionBuilder {
    */
   refId(value: string): this {
     if (value.length > 50) {
-      throw new Error('RefId cannot exceed 50 characters');
+      throw new Error("RefId cannot exceed 50 characters");
     }
     this._refId = value;
     return this;
@@ -988,7 +1047,7 @@ export class SaleTransactionBuilder {
    */
   withTags(...tags: string[]): this {
     if (tags.length > 3) {
-      throw new Error('Maximum 3 tags allowed');
+      throw new Error("Maximum 3 tags allowed");
     }
 
     tags.forEach((tag, i) => {
@@ -1050,7 +1109,7 @@ export class SaleTransactionBuilder {
    */
   merchantId(value: string): this {
     if (value.length > 12) {
-      throw new Error('MerchantId cannot exceed 12 characters');
+      throw new Error("MerchantId cannot exceed 12 characters");
     }
     this._merchantId = value;
     return this;
@@ -1073,7 +1132,7 @@ export class SaleTransactionBuilder {
   timeout(value: number): this {
     if (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max) {
       throw new Error(
-        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`
+        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`,
       );
     }
     this._timeout = value;
@@ -1138,8 +1197,8 @@ export class SaleTransactionBuilder {
   async execute(): Promise<DejavooAPIResponse<DejavooSaleResponse>> {
     // Validate required fields
     if (!this._amount) {
-      const error = 'Amount is required. Call .amount() before execute()';
-      console.error('[SaleTransactionBuilder]', error);
+      const error = "Amount is required. Call .amount() before execute()";
+      console.error("[SaleTransactionBuilder]", error);
       return { success: false, error };
     }
 
@@ -1151,8 +1210,11 @@ export class SaleTransactionBuilder {
 
     // Auto-generate RefId if not provided
     if (!this._refId) {
-      this._refId = generateRefId('SALE');
-      console.log('[SaleTransactionBuilder] Auto-generated RefId:', this._refId);
+      this._refId = generateRefId("SALE");
+      console.log(
+        "[SaleTransactionBuilder] Auto-generated RefId:",
+        this._refId,
+      );
     }
 
     try {
@@ -1162,7 +1224,7 @@ export class SaleTransactionBuilder {
       // Build request object
       const request: DejavooSaleRequest = {
         ...authParams,
-        TransType: 'Sale',
+        TransType: "Sale",
         PaymentType: this._paymentType,
         Amount: this._amount,
         ReferenceId: this._refId,
@@ -1186,44 +1248,44 @@ export class SaleTransactionBuilder {
 
       // Execute request through API
       const response = await this.api.executeRequest<DejavooSaleResponse>(
-        '/v2/Payment/Sale',
-        request
+        "/v2/Payment/Sale",
+        request,
       );
 
       // Show toast notification for user feedback
       if (response.success) {
         const total = this._amount + (this._tip || 0) + (this._customFee || 0);
         toastService.show({
-          title: 'Payment Approved',
+          title: "Payment Approved",
           message: `$${total.toFixed(2)} charged successfully`,
-          type: 'success',
+          type: "success",
           duration: 3000,
         });
-        // TODO: Log PerformedBy: 
+        // TODO: Log PerformedBy:
       } else {
-        const errorMsg = response.error || 'Transaction declined';
+        const errorMsg = response.error || "Transaction declined";
         const detailedMsg = response.errorCode
           ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
           : errorMsg;
 
         toastService.show({
-          title: 'Payment Failed',
+          title: "Payment Failed",
           message: detailedMsg,
-          type: 'error',
+          type: "error",
           duration: 5000,
         });
       }
 
       return response;
     } catch (err) {
-      console.error('[SaleTransactionBuilder] Execute failed:', err);
+      console.error("[SaleTransactionBuilder] Execute failed:", err);
 
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
       toastService.show({
-        title: 'Payment Error',
+        title: "Payment Error",
         message: errorMsg,
-        type: 'error',
+        type: "error",
         duration: 5000,
       });
 
@@ -1268,11 +1330,11 @@ export class ReturnTransactionBuilder {
   private _performedBy?: string; // For backend logging only, not sent to Dejavoo API
 
   // Optional fields with defaults
-  private _paymentType: PaymentType = 'Credit';
+  private _paymentType: PaymentType = "Credit";
   private _refId?: string;
   private _originalRefId?: string;
-  private _printReceipt?: 'Yes' | 'No';
-  private _getReceipt?: 'Yes' | 'No';
+  private _printReceipt?: "Yes" | "No";
+  private _getReceipt?: "Yes" | "No";
   private _invoiceNumber?: string;
   private _merchantNumber?: string | null;
   private _captureSignature?: boolean;
@@ -1307,7 +1369,7 @@ export class ReturnTransactionBuilder {
    */
   amount(value: number): this {
     if (value <= 0) {
-      throw new Error('Amount must be greater than 0');
+      throw new Error("Amount must be greater than 0");
     }
     this._amount = value;
     return this;
@@ -1330,7 +1392,7 @@ export class ReturnTransactionBuilder {
    */
   performedBy(value: string): this {
     if (value.length > 100) {
-      throw new Error('PerformedBy cannot exceed 100 characters');
+      throw new Error("PerformedBy cannot exceed 100 characters");
     }
     this._performedBy = value;
     return this;
@@ -1357,7 +1419,7 @@ export class ReturnTransactionBuilder {
    */
   originalRefId(value: string): this {
     if (value.length > 50) {
-      throw new Error('OriginalRefId cannot exceed 50 characters');
+      throw new Error("OriginalRefId cannot exceed 50 characters");
     }
     this._originalRefId = value;
     return this;
@@ -1379,7 +1441,7 @@ export class ReturnTransactionBuilder {
    */
   refId(value: string): this {
     if (value.length > 50) {
-      throw new Error('RefId cannot exceed 50 characters');
+      throw new Error("RefId cannot exceed 50 characters");
     }
     this._refId = value;
     return this;
@@ -1413,7 +1475,7 @@ export class ReturnTransactionBuilder {
    * builder.printReceipt('Yes')
    * ```
    */
-  printReceipt(value: 'Yes' | 'No'): this {
+  printReceipt(value: "Yes" | "No"): this {
     this._printReceipt = value;
     return this;
   }
@@ -1429,7 +1491,7 @@ export class ReturnTransactionBuilder {
    * builder.getReceipt('Yes')
    * ```
    */
-  getReceipt(value: 'Yes' | 'No'): this {
+  getReceipt(value: "Yes" | "No"): this {
     this._getReceipt = value;
     return this;
   }
@@ -1563,7 +1625,7 @@ export class ReturnTransactionBuilder {
   timeout(value: number): this {
     if (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max) {
       throw new Error(
-        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`
+        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`,
       );
     }
     this._timeout = value;
@@ -1587,7 +1649,7 @@ export class ReturnTransactionBuilder {
    */
   withTags(...tags: string[]): this {
     if (tags.length > 3) {
-      throw new Error('Maximum 3 tags allowed');
+      throw new Error("Maximum 3 tags allowed");
     }
 
     tags.forEach((tag, i) => {
@@ -1636,15 +1698,18 @@ export class ReturnTransactionBuilder {
   async execute(): Promise<DejavooAPIResponse<DejavooReturnResponse>> {
     // Validate required fields
     if (!this._amount) {
-      const error = 'Amount is required. Call .amount() before execute()';
-      console.error('[ReturnTransactionBuilder]', error);
+      const error = "Amount is required. Call .amount() before execute()";
+      console.error("[ReturnTransactionBuilder]", error);
       return { success: false, error };
     }
 
     // Auto-generate RefId if not provided
     if (!this._refId) {
-      this._refId = generateRefId('RETURN');
-      console.log('[ReturnTransactionBuilder] Auto-generated RefId:', this._refId);
+      this._refId = generateRefId("RETURN");
+      console.log(
+        "[ReturnTransactionBuilder] Auto-generated RefId:",
+        this._refId,
+      );
     }
 
     try {
@@ -1677,7 +1742,9 @@ export class ReturnTransactionBuilder {
         SPInProxyTimeout: this._timeout || authParams.OperationalTimeout,
 
         // Callback (only if URL provided)
-        CallbackInfo: this._callbackUrl ? { Url: this._callbackUrl } : undefined,
+        CallbackInfo: this._callbackUrl
+          ? { Url: this._callbackUrl }
+          : undefined,
 
         // Custom fields
         CustomFields: this._customFields,
@@ -1686,47 +1753,55 @@ export class ReturnTransactionBuilder {
       // Note: PerformedBy and Tag fields are NOT included in the API request
       // They are stored separately for backend logging in Supabase
 
-      console.log('[ReturnTransactionBuilder] PerformedBy (backend only):', this._performedBy);
-      console.log('[ReturnTransactionBuilder] Tags (backend only):', this._tag1, this._tag2, this._tag3);
+      console.log(
+        "[ReturnTransactionBuilder] PerformedBy (backend only):",
+        this._performedBy,
+      );
+      console.log(
+        "[ReturnTransactionBuilder] Tags (backend only):",
+        this._tag1,
+        this._tag2,
+        this._tag3,
+      );
 
       // Execute request through API
       const response = await this.api.executeRequest<DejavooReturnResponse>(
-        '/v2/Payment/Return',
-        request
+        "/v2/Payment/Return",
+        request,
       );
 
       // Show toast notification for user feedback
       if (response.success) {
         toastService.show({
-          title: 'Return Approved',
+          title: "Return Approved",
           message: `$${this._amount.toFixed(2)} refunded successfully`,
-          type: 'success',
+          type: "success",
           duration: 3000,
         });
       } else {
-        const errorMsg = response.error || 'Return transaction declined';
+        const errorMsg = response.error || "Return transaction declined";
         const detailedMsg = response.errorCode
           ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
           : errorMsg;
 
         toastService.show({
-          title: 'Return Failed',
+          title: "Return Failed",
           message: detailedMsg,
-          type: 'error',
+          type: "error",
           duration: 5000,
         });
       }
 
       return response;
     } catch (err) {
-      console.error('[ReturnTransactionBuilder] Execute failed:', err);
+      console.error("[ReturnTransactionBuilder] Execute failed:", err);
 
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
       toastService.show({
-        title: 'Return Error',
+        title: "Return Error",
         message: errorMsg,
-        type: 'error',
+        type: "error",
         duration: 5000,
       });
 
@@ -1823,7 +1898,7 @@ export class TipAdjustTransactionBuilder {
    */
   amount(value: number): this {
     if (value <= 0) {
-      throw new Error('Amount must be greater than 0');
+      throw new Error("Amount must be greater than 0");
     }
     this._amount = value;
     return this;
@@ -1843,7 +1918,7 @@ export class TipAdjustTransactionBuilder {
    */
   tipAmount(value: number): this {
     if (value < 0) {
-      throw new Error('Tip amount cannot be negative');
+      throw new Error("Tip amount cannot be negative");
     }
     this._tipAmount = value;
     return this;
@@ -1865,7 +1940,7 @@ export class TipAdjustTransactionBuilder {
    */
   referenceId(value: string): this {
     if (value.length > 50) {
-      throw new Error('ReferenceId cannot exceed 50 characters');
+      throw new Error("ReferenceId cannot exceed 50 characters");
     }
     this._referenceId = value;
     return this;
@@ -1954,9 +2029,12 @@ export class TipAdjustTransactionBuilder {
    * ```
    */
   timeout(value: number | null): this {
-    if (value !== null && (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max)) {
+    if (
+      value !== null &&
+      (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max)
+    ) {
       throw new Error(
-        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`
+        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`,
       );
     }
     this._timeout = value;
@@ -1996,7 +2074,7 @@ export class TipAdjustTransactionBuilder {
    */
   performedBy(value: string): this {
     if (value.length > 100) {
-      throw new Error('PerformedBy cannot exceed 100 characters');
+      throw new Error("PerformedBy cannot exceed 100 characters");
     }
     this._performedBy = value;
     return this;
@@ -2029,20 +2107,22 @@ export class TipAdjustTransactionBuilder {
   async execute(): Promise<DejavooAPIResponse<DejavooTipAdjustResponse>> {
     // Validate required fields
     if (this._amount === undefined) {
-      const error = 'Amount is required. Call .amount() before execute()';
-      console.error('[TipAdjustTransactionBuilder]', error);
+      const error = "Amount is required. Call .amount() before execute()";
+      console.error("[TipAdjustTransactionBuilder]", error);
       return { success: false, error };
     }
 
     if (this._tipAmount === undefined) {
-      const error = 'Tip amount is required. Call .tipAmount() before execute()';
-      console.error('[TipAdjustTransactionBuilder]', error);
+      const error =
+        "Tip amount is required. Call .tipAmount() before execute()";
+      console.error("[TipAdjustTransactionBuilder]", error);
       return { success: false, error };
     }
 
     if (!this._referenceId) {
-      const error = 'Reference ID is required. Call .referenceId() before execute()';
-      console.error('[TipAdjustTransactionBuilder]', error);
+      const error =
+        "Reference ID is required. Call .referenceId() before execute()";
+      console.error("[TipAdjustTransactionBuilder]", error);
       return { success: false, error };
     }
 
@@ -2059,63 +2139,69 @@ export class TipAdjustTransactionBuilder {
         // Required transaction fields
         Amount: this._amount,
         TipAmount: this._tipAmount,
-        PaymentType: 'Credit', // TipAdjust only supports Credit
+        PaymentType: "Credit", // TipAdjust only supports Credit
         ReferenceId: this._referenceId,
 
         // Optional fields
         MerchantNumber: this._merchantNumber,
         GetExtendedData: this._getExtendedData,
         IsReadyForIS: this._isReadyForIS,
-        SPInProxyTimeout: this._timeout ?? authParams.OperationalTimeout ?? null,
+        SPInProxyTimeout:
+          this._timeout ?? authParams.OperationalTimeout ?? null,
         CustomFields: this._customFields,
 
         // Callback (only if URL provided)
-        CallbackInfo: this._callbackUrl ? { Url: this._callbackUrl } : undefined,
+        CallbackInfo: this._callbackUrl
+          ? { Url: this._callbackUrl }
+          : undefined,
       };
 
       // Note: PerformedBy is NOT included in the API request
       // It's stored separately for backend logging
-      console.log('[TipAdjustTransactionBuilder] PerformedBy (backend only):', this._performedBy);
+      console.log(
+        "[TipAdjustTransactionBuilder] PerformedBy (backend only):",
+        this._performedBy,
+      );
 
       // Execute request through API
       const response = await this.api.executeRequest<DejavooTipAdjustResponse>(
-        '/v2/Payment/TipAdjust',
-        request
+        "/v2/Payment/TipAdjust",
+        request,
       );
 
       // Show toast notification for user feedback
       if (response.success) {
         const total = this._amount + this._tipAmount;
         toastService.show({
-          title: 'Tip Adjusted',
+          title: "Tip Adjusted",
           message: `Tip adjusted to $${this._tipAmount.toFixed(2)} (Total: $${total.toFixed(2)})`,
-          type: 'success',
+          type: "success",
           duration: 3000,
         });
       } else {
-        const errorMsg = response.error || 'Tip adjustment failed';
+        const errorMsg = response.error || "Tip adjustment failed";
         const detailedMsg = response.errorCode
           ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
           : errorMsg;
 
         toastService.show({
-          title: 'Tip Adjust Failed',
+          title: "Tip Adjust Failed",
           message: detailedMsg,
-          type: 'error',
+          type: "error",
           duration: 5000,
         });
       }
 
       return response;
     } catch (err) {
-      console.error('[TipAdjustTransactionBuilder] Execute failed:', err);
+      console.error("[TipAdjustTransactionBuilder] Execute failed:", err);
 
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
       toastService.show({
-        title: 'Tip Adjust Error',
+        title: "Tip Adjust Error",
         message: errorMsg,
-        type: 'error',
+        type: "error",
         duration: 5000,
       });
 
@@ -2171,9 +2257,9 @@ export class VoidTransactionBuilder {
   private _referenceId?: string;
 
   // Optional fields with defaults
-  private _paymentType: PaymentType = 'Credit';
-  private _printReceipt?: 'Yes' | 'No';
-  private _getReceipt?: 'Yes' | 'No';
+  private _paymentType: PaymentType = "Credit";
+  private _printReceipt?: "Yes" | "No";
+  private _getReceipt?: "Yes" | "No";
   private _merchantNumber?: string | null;
   private _captureSignature?: boolean;
   private _getExtendedData?: boolean;
@@ -2202,7 +2288,7 @@ export class VoidTransactionBuilder {
    */
   amount(value: number): this {
     if (value <= 0) {
-      throw new Error('Amount must be greater than 0');
+      throw new Error("Amount must be greater than 0");
     }
     this._amount = value;
     return this;
@@ -2219,7 +2305,7 @@ export class VoidTransactionBuilder {
    */
   referenceId(value: string): this {
     if (value.length > 50) {
-      throw new Error('ReferenceId cannot exceed 50 characters');
+      throw new Error("ReferenceId cannot exceed 50 characters");
     }
     this._referenceId = value;
     return this;
@@ -2247,7 +2333,7 @@ export class VoidTransactionBuilder {
    * @param value - Print option ('Yes' or 'No')
    * @returns this for chaining
    */
-  printReceipt(value: 'Yes' | 'No'): this {
+  printReceipt(value: "Yes" | "No"): this {
     this._printReceipt = value;
     return this;
   }
@@ -2258,7 +2344,7 @@ export class VoidTransactionBuilder {
    * @param value - Get receipt option ('Yes' or 'No')
    * @returns this for chaining
    */
-  getReceipt(value: 'Yes' | 'No'): this {
+  getReceipt(value: "Yes" | "No"): this {
     this._getReceipt = value;
     return this;
   }
@@ -2304,9 +2390,12 @@ export class VoidTransactionBuilder {
    * @throws Error if not in range 1-720
    */
   timeout(value: number | null): this {
-    if (value !== null && (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max)) {
+    if (
+      value !== null &&
+      (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max)
+    ) {
       throw new Error(
-        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`
+        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`,
       );
     }
     this._timeout = value;
@@ -2347,7 +2436,7 @@ export class VoidTransactionBuilder {
    */
   performedBy(value: string): this {
     if (value.length > 100) {
-      throw new Error('PerformedBy cannot exceed 100 characters');
+      throw new Error("PerformedBy cannot exceed 100 characters");
     }
     this._performedBy = value;
     return this;
@@ -2364,7 +2453,7 @@ export class VoidTransactionBuilder {
    */
   withTags(...tags: string[]): this {
     if (tags.length > 3) {
-      throw new Error('Maximum 3 tags allowed');
+      throw new Error("Maximum 3 tags allowed");
     }
 
     tags.forEach((tag, i) => {
@@ -2395,14 +2484,15 @@ export class VoidTransactionBuilder {
   async execute(): Promise<DejavooAPIResponse<DejavooVoidV2Response>> {
     // Validate required fields
     if (this._amount === undefined) {
-      const error = 'Amount is required. Call .amount() before execute()';
-      console.error('[VoidTransactionBuilder]', error);
+      const error = "Amount is required. Call .amount() before execute()";
+      console.error("[VoidTransactionBuilder]", error);
       return { success: false, error };
     }
 
     if (!this._referenceId) {
-      const error = 'Reference ID is required. Call .referenceId() before execute()';
-      console.error('[VoidTransactionBuilder]', error);
+      const error =
+        "Reference ID is required. Call .referenceId() before execute()";
+      console.error("[VoidTransactionBuilder]", error);
       return { success: false, error };
     }
 
@@ -2428,10 +2518,13 @@ export class VoidTransactionBuilder {
         MerchantNumber: this._merchantNumber,
         CaptureSignature: this._captureSignature,
         GetExtendedData: this._getExtendedData,
-        SPInProxyTimeout: this._timeout ?? authParams.OperationalTimeout ?? null,
+        SPInProxyTimeout:
+          this._timeout ?? authParams.OperationalTimeout ?? null,
 
         // Callback (only if URL provided)
-        CallbackInfo: this._callbackUrl ? { Url: this._callbackUrl } : undefined,
+        CallbackInfo: this._callbackUrl
+          ? { Url: this._callbackUrl }
+          : undefined,
 
         // Custom fields
         CustomFields: this._customFields,
@@ -2439,47 +2532,55 @@ export class VoidTransactionBuilder {
 
       // Note: PerformedBy and Tag fields are NOT included in the API request
       // They are stored separately for backend logging in Supabase
-      console.log('[VoidTransactionBuilder] PerformedBy (backend only):', this._performedBy);
-      console.log('[VoidTransactionBuilder] Tags (backend only):', this._tag1, this._tag2, this._tag3);
+      console.log(
+        "[VoidTransactionBuilder] PerformedBy (backend only):",
+        this._performedBy,
+      );
+      console.log(
+        "[VoidTransactionBuilder] Tags (backend only):",
+        this._tag1,
+        this._tag2,
+        this._tag3,
+      );
 
       // Execute request through API
       const response = await this.api.executeRequest<DejavooVoidV2Response>(
-        '/v2/Payment/Void',
-        request
+        "/v2/Payment/Void",
+        request,
       );
 
       // Show toast notification for user feedback
       if (response.success) {
         toastService.show({
-          title: 'Void Approved',
+          title: "Void Approved",
           message: `$${this._amount.toFixed(2)} voided successfully`,
-          type: 'success',
+          type: "success",
           duration: 3000,
         });
       } else {
-        const errorMsg = response.error || 'Void transaction failed';
+        const errorMsg = response.error || "Void transaction failed";
         const detailedMsg = response.errorCode
           ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
           : errorMsg;
 
         toastService.show({
-          title: 'Void Failed',
+          title: "Void Failed",
           message: detailedMsg,
-          type: 'error',
+          type: "error",
           duration: 5000,
         });
       }
 
       return response;
     } catch (err) {
-      console.error('[VoidTransactionBuilder] Execute failed:', err);
+      console.error("[VoidTransactionBuilder] Execute failed:", err);
 
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
       toastService.show({
-        title: 'Void Error',
+        title: "Void Error",
         message: errorMsg,
-        type: 'error',
+        type: "error",
         duration: 5000,
       });
 
@@ -2533,7 +2634,7 @@ export class VoidTransactionBuilder {
 export class PreAuthTransactionBuilder {
   private api: DejavooSpinAPI;
   private _amount?: number;
-  private _paymentType: PaymentType = 'Credit';
+  private _paymentType: PaymentType = "Credit";
   private _refId?: string;
   private _invoiceNumber?: string;
   private _timeout?: number;
@@ -2543,13 +2644,13 @@ export class PreAuthTransactionBuilder {
   }
 
   amount(value: number): this {
-    if (value <= 0) throw new Error('Amount must be greater than 0');
+    if (value <= 0) throw new Error("Amount must be greater than 0");
     this._amount = value;
     return this;
   }
 
   refId(value: string): this {
-    if (value.length > 50) throw new Error('RefId cannot exceed 50 characters');
+    if (value.length > 50) throw new Error("RefId cannot exceed 50 characters");
     this._refId = value;
     return this;
   }
@@ -2565,21 +2666,25 @@ export class PreAuthTransactionBuilder {
   }
 
   timeout(value: number): this {
-    if (value < 1 || value > 720) throw new Error('Timeout must be between 1 and 720 seconds');
+    if (value < 1 || value > 720)
+      throw new Error("Timeout must be between 1 and 720 seconds");
     this._timeout = value;
     return this;
   }
 
   async execute(): Promise<DejavooAPIResponse<DejavooSaleResponse>> {
     if (!this._amount) {
-      const error = 'Amount is required. Call .amount() before execute()';
-      console.error('[PreAuthTransactionBuilder]', error);
+      const error = "Amount is required. Call .amount() before execute()";
+      console.error("[PreAuthTransactionBuilder]", error);
       return { success: false, error };
     }
 
     if (!this._refId) {
-      this._refId = generateRefId('AUTH');
-      console.log('[PreAuthTransactionBuilder] Auto-generated RefId:', this._refId);
+      this._refId = generateRefId("AUTH");
+      console.log(
+        "[PreAuthTransactionBuilder] Auto-generated RefId:",
+        this._refId,
+      );
     }
 
     try {
@@ -2587,7 +2692,7 @@ export class PreAuthTransactionBuilder {
 
       const request: DejavooSaleRequest = {
         ...authParams,
-        TransType: 'Auth',
+        TransType: "Auth",
         PaymentType: this._paymentType,
         Amount: this._amount,
         ReferenceId: this._refId,
@@ -2596,40 +2701,40 @@ export class PreAuthTransactionBuilder {
       };
 
       const response = await this.api.executeRequest<DejavooSaleResponse>(
-        '/v2/Payment/Auth',
+        "/v2/Payment/Auth",
         request,
       );
 
       if (response.success) {
         toastService.show({
-          title: 'Pre-Auth Approved',
+          title: "Pre-Auth Approved",
           message: `$${this._amount.toFixed(2)} hold placed`,
-          type: 'success',
+          type: "success",
           duration: 3000,
         });
       } else {
-        const errorMsg = response.error || 'Pre-authorization failed';
+        const errorMsg = response.error || "Pre-authorization failed";
         const detailedMsg = response.errorCode
           ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
           : errorMsg;
 
         toastService.show({
-          title: 'Pre-Auth Failed',
+          title: "Pre-Auth Failed",
           message: detailedMsg,
-          type: 'error',
+          type: "error",
           duration: 5000,
         });
       }
 
       return response;
     } catch (err) {
-      console.error('[PreAuthTransactionBuilder] Execute failed:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      console.error("[PreAuthTransactionBuilder] Execute failed:", err);
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
       toastService.show({
-        title: 'Pre-Auth Error',
+        title: "Pre-Auth Error",
         message: errorMsg,
-        type: 'error',
+        type: "error",
         duration: 5000,
       });
 
@@ -2663,7 +2768,7 @@ export class CaptureTransactionBuilder {
   private _amount?: number;
   private _referenceId?: string;
   private _tip?: number;
-  private _paymentType: PaymentType = 'Credit';
+  private _paymentType: PaymentType = "Credit";
   private _timeout?: number;
 
   constructor(api: DejavooSpinAPI) {
@@ -2671,19 +2776,20 @@ export class CaptureTransactionBuilder {
   }
 
   amount(value: number): this {
-    if (value <= 0) throw new Error('Amount must be greater than 0');
+    if (value <= 0) throw new Error("Amount must be greater than 0");
     this._amount = value;
     return this;
   }
 
   referenceId(value: string): this {
-    if (value.length > 50) throw new Error('ReferenceId cannot exceed 50 characters');
+    if (value.length > 50)
+      throw new Error("ReferenceId cannot exceed 50 characters");
     this._referenceId = value;
     return this;
   }
 
   tip(value: number): this {
-    if (value < 0) throw new Error('Tip amount cannot be negative');
+    if (value < 0) throw new Error("Tip amount cannot be negative");
     this._tip = value;
     return this;
   }
@@ -2694,21 +2800,23 @@ export class CaptureTransactionBuilder {
   }
 
   timeout(value: number): this {
-    if (value < 1 || value > 720) throw new Error('Timeout must be between 1 and 720 seconds');
+    if (value < 1 || value > 720)
+      throw new Error("Timeout must be between 1 and 720 seconds");
     this._timeout = value;
     return this;
   }
 
   async execute(): Promise<DejavooAPIResponse<DejavooSaleResponse>> {
     if (!this._amount) {
-      const error = 'Amount is required. Call .amount() before execute()';
-      console.error('[CaptureTransactionBuilder]', error);
+      const error = "Amount is required. Call .amount() before execute()";
+      console.error("[CaptureTransactionBuilder]", error);
       return { success: false, error };
     }
 
     if (!this._referenceId) {
-      const error = 'ReferenceId is required. Call .referenceId() before execute()';
-      console.error('[CaptureTransactionBuilder]', error);
+      const error =
+        "ReferenceId is required. Call .referenceId() before execute()";
+      console.error("[CaptureTransactionBuilder]", error);
       return { success: false, error };
     }
 
@@ -2717,7 +2825,7 @@ export class CaptureTransactionBuilder {
 
       const request = {
         ...authParams,
-        TransType: 'Capture',
+        TransType: "Capture",
         PaymentType: this._paymentType,
         Amount: this._amount,
         TipAmount: this._tip,
@@ -2726,41 +2834,41 @@ export class CaptureTransactionBuilder {
       };
 
       const response = await this.api.executeRequest<DejavooSaleResponse>(
-        '/v2/Payment/Capture',
+        "/v2/Payment/Capture",
         request,
       );
 
       if (response.success) {
         const total = this._amount + (this._tip || 0);
         toastService.show({
-          title: 'Capture Approved',
+          title: "Capture Approved",
           message: `$${total.toFixed(2)} captured successfully`,
-          type: 'success',
+          type: "success",
           duration: 3000,
         });
       } else {
-        const errorMsg = response.error || 'Capture failed';
+        const errorMsg = response.error || "Capture failed";
         const detailedMsg = response.errorCode
           ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
           : errorMsg;
 
         toastService.show({
-          title: 'Capture Failed',
+          title: "Capture Failed",
           message: detailedMsg,
-          type: 'error',
+          type: "error",
           duration: 5000,
         });
       }
 
       return response;
     } catch (err) {
-      console.error('[CaptureTransactionBuilder] Execute failed:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      console.error("[CaptureTransactionBuilder] Execute failed:", err);
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
       toastService.show({
-        title: 'Capture Error',
+        title: "Capture Error",
         message: errorMsg,
-        type: 'error',
+        type: "error",
         duration: 5000,
       });
 
@@ -2813,8 +2921,9 @@ export class AbortTransactionBuilder {
    */
   async execute(): Promise<DejavooAPIResponse<Record<string, any>>> {
     if (!this._referenceId) {
-      const error = 'Reference ID is required. Call .referenceId() before execute()';
-      console.error('[AbortTransactionBuilder]', error);
+      const error =
+        "Reference ID is required. Call .referenceId() before execute()";
+      console.error("[AbortTransactionBuilder]", error);
       return { success: false, error };
     }
 
@@ -2829,36 +2938,36 @@ export class AbortTransactionBuilder {
       };
 
       const response = await this.api.executeRequest<Record<string, any>>(
-        '/v2/Payment/AbortTransaction',
-        request
+        "/v2/Payment/AbortTransaction",
+        request,
       );
 
       if (response.success) {
         toastService.show({
-          title: 'Transaction Cancelled',
-          message: 'The transaction has been aborted.',
-          type: 'success',
+          title: "Transaction Cancelled",
+          message: "The transaction has been aborted.",
+          type: "success",
           duration: 3000,
         });
       } else {
         toastService.show({
-          title: 'Abort Failed',
-          message: response.error || 'Failed to abort transaction.',
-          type: 'error',
+          title: "Abort Failed",
+          message: response.error || "Failed to abort transaction.",
+          type: "error",
           duration: 5000,
         });
       }
 
       return response;
     } catch (err) {
-      console.error('[AbortTransactionBuilder] Execute failed:', err);
+      console.error("[AbortTransactionBuilder] Execute failed:", err);
 
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
       toastService.show({
-        title: 'Abort Error',
+        title: "Abort Error",
         message: errorMsg,
-        type: 'error',
+        type: "error",
         duration: 5000,
       });
 

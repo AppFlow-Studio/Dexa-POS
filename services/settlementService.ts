@@ -3,21 +3,25 @@
 // File: services/settlementService.ts
 // ============================================================
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import { captureRpcError } from "@/lib/supabase";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
-import type { CastlesSettlementResult, CastlesSettlementHostResult } from "@/types/castles";
-import {
-  CASTLES_DEFAULT_PORT,
-  CASTLES_DIAGNOSTICS_TXN_ID,
-  CASTLES_CLIENT_ERROR_CODE,
+import type {
+    CastlesSettlementHostResult,
+    CastlesSettlementResult,
 } from "@/types/castles";
+import {
+    CASTLES_CLIENT_ERROR_CODE,
+    CASTLES_DEFAULT_PORT,
+    CASTLES_DIAGNOSTICS_TXN_ID,
+} from "@/types/castles";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 // ── Types ─────────────────────────────────────────────────────────
 
 export interface SettlementInput {
-  terminalId: string;       // payment_terminals.id (UUID)
-  merchantId: string;       // required by RPCs for tenant isolation
-  initiatedBy: string;      // Clerk userId — audit trail
+  terminalId: string; // payment_terminals.id (UUID)
+  merchantId: string; // required by RPCs for tenant isolation
+  initiatedBy: string; // Clerk userId — audit trail
   terminalHost: string;
   terminalPort?: number;
   locationId: string;
@@ -36,7 +40,11 @@ export interface SettlementOutput {
   status?: string;
   paymentsUpdated?: number;
   settledAcquirers?: string[];
-  failedAcquirers?: Array<{ acquirer: string; return_code: string; message: string }>;
+  failedAcquirers?: Array<{
+    acquirer: string;
+    return_code: string;
+    message: string;
+  }>;
   dbWriteFailed?: boolean;
   error?: string;
 }
@@ -69,14 +77,15 @@ async function verifyOrProvisionTerminal(params: {
   onStatus?.("Verifying terminal identity...");
 
   // getData and terminal row are independent — fetch in parallel
-  const [getDataResult, { data: terminalRow, error: dbError }] = await Promise.all([
-    service.getTerminalData(CASTLES_DIAGNOSTICS_TXN_ID),
-    supabase
-      .from("payment_terminals")
-      .select("serial_number, firmware_version")
-      .eq("id", terminalId)
-      .single(),
-  ]);
+  const [getDataResult, { data: terminalRow, error: dbError }] =
+    await Promise.all([
+      service.getTerminalData(CASTLES_DIAGNOSTICS_TXN_ID),
+      supabase
+        .from("payment_terminals")
+        .select("serial_number, firmware_version")
+        .eq("id", terminalId)
+        .single(),
+    ]);
 
   if (!getDataResult.success || !getDataResult.data) {
     throw new Error(
@@ -133,14 +142,18 @@ async function verifyOrProvisionTerminal(params: {
       .from("payment_terminals")
       .update({
         serial_number: infSN,
-        firmware_version: getDataResult.data.infAndroidVersion ?? terminalRow?.firmware_version,
+        firmware_version:
+          getDataResult.data.infAndroidVersion ?? terminalRow?.firmware_version,
         updated_at: now,
       })
       .eq("id", terminalId);
 
     if (updateError) {
       // Non-fatal: don't block the first settlement
-      console.warn("[SettlementService] Could not store serial number:", updateError.message);
+      console.warn(
+        "[SettlementService] Could not store serial number:",
+        updateError.message,
+      );
     }
   } else {
     if (infSN !== storedSerial) {
@@ -153,13 +166,23 @@ async function verifyOrProvisionTerminal(params: {
     }
 
     // Keep firmware_version current for diagnostics (fire-and-forget)
-    if (getDataResult.data.infAndroidVersion && getDataResult.data.infAndroidVersion !== terminalRow?.firmware_version) {
+    if (
+      getDataResult.data.infAndroidVersion &&
+      getDataResult.data.infAndroidVersion !== terminalRow?.firmware_version
+    ) {
       supabase
         .from("payment_terminals")
-        .update({ firmware_version: getDataResult.data.infAndroidVersion, updated_at: new Date().toISOString() })
+        .update({
+          firmware_version: getDataResult.data.infAndroidVersion,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", terminalId)
         .then(({ error }) => {
-          if (error) console.warn("[SettlementService] Firmware version sync failed:", error.message);
+          if (error)
+            console.warn(
+              "[SettlementService] Firmware version sync failed:",
+              error.message,
+            );
         });
     }
   }
@@ -167,7 +190,9 @@ async function verifyOrProvisionTerminal(params: {
 
 // ── Service ───────────────────────────────────────────────────────
 
-export async function runSettlement(input: SettlementInput): Promise<SettlementOutput> {
+export async function runSettlement(
+  input: SettlementInput,
+): Promise<SettlementOutput> {
   const {
     terminalId,
     merchantId,
@@ -192,7 +217,11 @@ export async function runSettlement(input: SettlementInput): Promise<SettlementO
   onStatus?.("Preparing settlement batch...");
   const { data: prepareData, error: prepareError } = await supabase.rpc(
     "prepare_castles_settlement",
-    { p_terminal_id: terminalId, p_merchant_id: merchantId, p_initiated_by: initiatedBy },
+    {
+      p_terminal_id: terminalId,
+      p_merchant_id: merchantId,
+      p_initiated_by: initiatedBy,
+    },
   );
 
   if (prepareError) {
@@ -211,7 +240,9 @@ export async function runSettlement(input: SettlementInput): Promise<SettlementO
   onStatus?.("Settling batch — this may take a few minutes...");
   let terminalResult: CastlesSettlementResult;
   try {
-    terminalResult = await service.processSettlement({ referenceId: txnPosTxnId });
+    terminalResult = await service.processSettlement({
+      referenceId: txnPosTxnId,
+    });
   } finally {
     service.setOnStatusNotification(prevCallback);
   }
@@ -226,11 +257,19 @@ export async function runSettlement(input: SettlementInput): Promise<SettlementO
 
   const { data: finalizeData, error: finalizeError } = await supabase.rpc(
     "finalize_castles_settlement",
-    { p_batch_uuid: batchUuid, p_merchant_id: merchantId, p_castles_response: castlesResponse },
+    {
+      p_batch_uuid: batchUuid,
+      p_merchant_id: merchantId,
+      p_castles_response: castlesResponse,
+    },
   );
 
   if (finalizeError) {
-    console.error("[SettlementService] finalize_castles_settlement failed:", finalizeError);
+    console.error(
+      "[SettlementService] finalize_castles_settlement failed:",
+      finalizeError,
+    );
+    captureRpcError("finalize_castles_settlement", finalizeError);
     return {
       success: terminalResult.success,
       partialSuccess: terminalResult.partialSuccess,
@@ -239,7 +278,8 @@ export async function runSettlement(input: SettlementInput): Promise<SettlementO
       hosts: terminalResult.hosts,
       batchUuid,
       dbWriteFailed: true,
-      error: "Settlement completed on terminal but failed to save results. Retry the DB sync from settings.",
+      error:
+        "Settlement completed on terminal but failed to save results. Retry the DB sync from settings.",
     };
   }
 
@@ -255,9 +295,10 @@ export async function runSettlement(input: SettlementInput): Promise<SettlementO
     paymentsUpdated: finalizeData.success ? paymentCount : undefined,
     settledAcquirers: finalizeData.settled_acquirers ?? [],
     failedAcquirers: finalizeData.failed_acquirers ?? [],
-    error: (!finalizeData.success && !finalizeData.should_retry)
-      ? `Settlement failed (${finalizeData.return_code ?? "unknown"}). Contact your payment processor.`
-      : undefined,
+    error:
+      !finalizeData.success && !finalizeData.should_retry
+        ? `Settlement failed (${finalizeData.return_code ?? "unknown"}). Contact your payment processor.`
+        : undefined,
   };
 }
 
@@ -283,24 +324,40 @@ export interface GetUnsettledStatsInput {
   terminalId: string;
 }
 
-export async function getUnsettledPaymentStats(input: GetUnsettledStatsInput): Promise<UnsettledStats> {
+export async function getUnsettledPaymentStats(
+  input: GetUnsettledStatsInput,
+): Promise<UnsettledStats> {
   const { supabase, merchantId, locationId, terminalId } = input;
 
   const empty: UnsettledStats = {
-    count: 0, totalAmount: 0, grossAmount: 0, tipAmount: 0, daySpan: 0, hasStuckBatch: false,
+    count: 0,
+    totalAmount: 0,
+    grossAmount: 0,
+    tipAmount: 0,
+    daySpan: 0,
+    hasStuckBatch: false,
   };
 
-  const { data, error } = await supabase.rpc("get_unsettled_summary_by_terminal", {
-    p_merchant_id: merchantId,
-    p_location_id: locationId,
-  });
+  const { data, error } = await supabase.rpc(
+    "get_unsettled_summary_by_terminal",
+    {
+      p_merchant_id: merchantId,
+      p_location_id: locationId,
+    },
+  );
 
   if (error) {
-    console.error("[SettlementService] get_unsettled_summary_by_terminal failed:", error);
+    console.error(
+      "[SettlementService] get_unsettled_summary_by_terminal failed:",
+      error,
+    );
+    captureRpcError("get_unsettled_summary_by_terminal", error);
     return empty;
   }
 
-  const row = (data as UnsettledSummaryRow[] | null)?.find((r) => r.terminal_uuid === terminalId);
+  const row = (data as UnsettledSummaryRow[] | null)?.find(
+    (r) => r.terminal_uuid === terminalId,
+  );
   if (!row) return empty;
 
   return {

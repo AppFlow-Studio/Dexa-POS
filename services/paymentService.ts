@@ -1,7 +1,8 @@
 // services/paymentService.ts
 
-import { round2 } from '@/utils/money';
+import { captureRpcError } from "@/lib/supabase";
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
+import { round2 } from "@/utils/money";
 
 // ============================================================================
 // PAYMENT RESULT TYPES
@@ -60,7 +61,10 @@ export async function payFullCard(
     p_terminal_id: terminalId || null,
   });
 
-  if (error) throw error;
+  if (error) {
+    captureRpcError("process_payment_v8", error);
+    throw error;
+  }
   return data as ProcessPaymentV2Result;
 }
 
@@ -84,7 +88,10 @@ export async function payFullCash(
     p_amount_tendered: amountTendered,
   });
 
-  if (error) throw error;
+  if (error) {
+    captureRpcError("process_payment_v8", error);
+    throw error;
+  }
   return data as ProcessPaymentV2Result;
 }
 
@@ -118,7 +125,10 @@ export async function paySplitPortion(
     p_terminal_id: terminalId || null,
   });
 
-  if (error) throw error;
+  if (error) {
+    captureRpcError("process_payment_v8", error);
+    throw error;
+  }
   return data as ProcessPaymentV2Result;
 }
 
@@ -154,7 +164,10 @@ export async function payForItems(
     p_terminal_id: terminalId || null,
   });
 
-  if (error) throw error;
+  if (error) {
+    captureRpcError("process_payment_v8", error);
+    throw error;
+  }
   return data as ProcessPaymentV2Result;
 }
 
@@ -239,13 +252,14 @@ export function calculateEvenSplitDualPrice(
 export function trackCashPaymentInDrawer(
   paymentResult: ProcessPaymentV2Result,
   orderId: string,
-  staffProfileId: string
+  staffProfileId: string,
 ): void {
   // Lazy import to avoid circular deps
   const { useCashDrawerStore } = require("@/stores/useCashDrawerStore") as {
     useCashDrawerStore: typeof import("@/stores/useCashDrawerStore").useCashDrawerStore;
   };
-  const { recordDrawerOperation } = require("@/services/cashDrawerService") as typeof import("@/services/cashDrawerService");
+  const { recordDrawerOperation } =
+    require("@/services/cashDrawerService") as typeof import("@/services/cashDrawerService");
 
   const store = useCashDrawerStore.getState();
   if (!store.activeSession || !store.drawerId) return;
@@ -274,12 +288,13 @@ export function trackCashRefundInDrawer(
   refundAmount: number,
   orderId: string,
   staffProfileId: string,
-  paymentId?: string
+  paymentId?: string,
 ): void {
   const { useCashDrawerStore } = require("@/stores/useCashDrawerStore") as {
     useCashDrawerStore: typeof import("@/stores/useCashDrawerStore").useCashDrawerStore;
   };
-  const { recordDrawerOperation } = require("@/services/cashDrawerService") as typeof import("@/services/cashDrawerService");
+  const { recordDrawerOperation } =
+    require("@/services/cashDrawerService") as typeof import("@/services/cashDrawerService");
 
   const store = useCashDrawerStore.getState();
   if (!store.activeSession || !store.drawerId || refundAmount <= 0) return;

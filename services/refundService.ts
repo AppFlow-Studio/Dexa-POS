@@ -1,18 +1,22 @@
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
-import { round2 } from '@/utils/money';
 import { OrderService } from "@/services/orderService";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
-import { CASTLES_DEFAULT_PORT, CASTLES_SOCKET_TIMEOUT_MS } from "@/types/castles";
+import {
+    CASTLES_DEFAULT_PORT,
+    CASTLES_SOCKET_TIMEOUT_MS,
+} from "@/types/castles";
 import type { DejavooRefundResponse } from "@/types/dejavoo-spin-api";
 import type {
-  ItemRefundAllocation,
-  PaymentRefundContext,
-  RefundItemRequest,
-  RefundRequest,
-  RefundResult,
+    ItemRefundAllocation,
+    PaymentRefundContext,
+    RefundItemRequest,
+    RefundRequest,
+    RefundResult,
 } from "@/types/refunds";
 import { StationPaymentTerminal } from "@/types/station";
+import { round2 } from "@/utils/money";
+import * as Sentry from "@sentry/react-native";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type RefundContext = {
@@ -47,17 +51,21 @@ export class RefundService {
           request.refundType.amount,
         );
       case "item_return":
-        return this.processItemReturn(request, context, request.refundType.items);
+        return this.processItemReturn(
+          request,
+          context,
+          request.refundType.items,
+        );
       default:
         return { success: false, error: "Unknown refund type." };
     }
   }
 
   private buildReversalRefId(context: RefundContext): string {
-    const locSuffix = context.locationId?.slice(-4) ?? '';
-    const staSuffix = context.stationId?.slice(-4) ?? '';
-    const locPart = locSuffix ? `_${locSuffix}` : '';
-    const staPart = staSuffix ? `_${staSuffix}` : '';
+    const locSuffix = context.locationId?.slice(-4) ?? "";
+    const staSuffix = context.stationId?.slice(-4) ?? "";
+    const locPart = locSuffix ? `_${locSuffix}` : "";
+    const staPart = staSuffix ? `_${staSuffix}` : "";
     return `REV${locPart}${staPart}_${Date.now()}`;
   }
 
@@ -102,7 +110,7 @@ export class RefundService {
       ...new Set(
         (payments ?? [])
           .map((p: any) => p.terminal_id as string | null)
-          .filter((id): id is string => !!id)
+          .filter((id): id is string => !!id),
       ),
     ];
     const terminalConfigMap = new Map<string, StationPaymentTerminal>();
@@ -111,29 +119,33 @@ export class RefundService {
         .from("payment_terminals")
         .select(
           "id, terminal_name, terminal_type, local_ip_address, local_port, auth_key, " +
-          "register_id, connection_type, is_connected, last_connection_status, " +
-          "last_connection_test_at, consecutive_failures, health_check_interval, terminal_model"
+            "register_id, connection_type, is_connected, last_connection_status, " +
+            "last_connection_test_at, consecutive_failures, health_check_interval, terminal_model",
         )
         .in("id", uniqueTerminalIds);
 
       for (const t of (terminalRows ?? []) as any[]) {
         terminalConfigMap.set(t.id, {
-          id:                      t.id,
-          terminal_name:           t.terminal_name,
+          id: t.id,
+          terminal_name: t.terminal_name,
           // terminal_type DB col is string | null; default to 'dejavoo' if unset
-          terminal_type:           (t.terminal_type ?? "dejavoo") as StationPaymentTerminal["terminal_type"],
-          auth_key:                t.auth_key ?? null,
-          register_id:             t.register_id ?? null,
-          terminal_model:          t.terminal_model ?? null,
-          is_connected:            t.is_connected ?? false,
+          terminal_type: (t.terminal_type ??
+            "dejavoo") as StationPaymentTerminal["terminal_type"],
+          auth_key: t.auth_key ?? null,
+          register_id: t.register_id ?? null,
+          terminal_model: t.terminal_model ?? null,
+          is_connected: t.is_connected ?? false,
           // local_ip_address is DB type 'unknown' (inet); guard null before stringify
-          ip_address:              t.local_ip_address != null ? String(t.local_ip_address) : undefined,
-          port:                    t.local_port ?? undefined,
-          connection_type:         (t.connection_type ?? undefined) as StationPaymentTerminal["connection_type"],
-          last_connection_status:  (t.last_connection_status ?? null) as StationPaymentTerminal["last_connection_status"],
+          ip_address:
+            t.local_ip_address != null ? String(t.local_ip_address) : undefined,
+          port: t.local_port ?? undefined,
+          connection_type: (t.connection_type ??
+            undefined) as StationPaymentTerminal["connection_type"],
+          last_connection_status: (t.last_connection_status ??
+            null) as StationPaymentTerminal["last_connection_status"],
           last_connection_test_at: t.last_connection_test_at ?? null,
-          consecutive_failures:    t.consecutive_failures ?? undefined,
-          health_check_interval:   t.health_check_interval ?? undefined,
+          consecutive_failures: t.consecutive_failures ?? undefined,
+          health_check_interval: t.health_check_interval ?? undefined,
         });
       }
     }
@@ -145,7 +157,10 @@ export class RefundService {
         const availableForRefund = Math.max(0, amount - refundedAmount);
         // Extract STAN from processor_response JSONB (stored by Castles integration)
         const castlesTxn = p.processor_response?.castles_transaction;
-        const stan = castlesTxn?.stan || p.processor_response?.raw_castles_response?.txnStan || "";
+        const stan =
+          castlesTxn?.stan ||
+          p.processor_response?.raw_castles_response?.txnStan ||
+          "";
         return {
           paymentId: p.id,
           referenceId: p.reference_number || p.transaction_id || "",
@@ -160,7 +175,9 @@ export class RefundService {
           batchNumber: p.batch_number || "",
           isVoidable: !p.is_settled && refundedAmount === 0, // Void only if unsettled AND no prior refunds
           terminalId: p.terminal_id,
-          terminalConfig: p.terminal_id ? terminalConfigMap.get(p.terminal_id) : undefined,
+          terminalConfig: p.terminal_id
+            ? terminalConfigMap.get(p.terminal_id)
+            : undefined,
         };
       })
       .filter((p) => p.availableForRefund > 0);
@@ -188,8 +205,8 @@ export class RefundService {
       return { success: false, error: "Payment not found for refund." };
     }
 
-    console.log('processItemReturn Payment', payment);
-   console.log('processItemReturn Request', request);
+    console.log("processItemReturn Payment", payment);
+    console.log("processItemReturn Request", request);
 
     const useVoid = payment.isVoidable;
     const reversalType = useVoid ? "void" : "refund";
@@ -214,12 +231,13 @@ export class RefundService {
       };
     }
 
-    console.log('processFullPaymentRefund Reversal', reversal);
+    console.log("processFullPaymentRefund Reversal", reversal);
 
     // Prefer the terminal the payment was originally captured on.
     // Falls back to the requesting station's terminal only for legacy payments
     // where terminal_id was not recorded on order_payments.
-    const effectiveTerminalId = payment.terminalId || request.payment_terminal_id;
+    const effectiveTerminalId =
+      payment.terminalId || request.payment_terminal_id;
     const effectiveTerminal =
       payment.terminalConfig ??
       (request.payment_terminal?.id === effectiveTerminalId
@@ -234,12 +252,14 @@ export class RefundService {
       effectiveTerminal,
     );
 
-    console.log('processFullPaymentRefund Terminal Result', terminalResult);
-    
+    console.log("processFullPaymentRefund Terminal Result", terminalResult);
+
     if (!terminalResult.success) {
       // Try to update reversal status to failed, but don't let DB errors block the error response
       try {
-        const failedResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+        const failedResponse = terminalResult.terminalResponse as
+          | Record<string, unknown>
+          | undefined;
         const { error: updateError } = await OrderService.updateReversalStatus(
           this.supabase,
           reversal.id,
@@ -247,12 +267,27 @@ export class RefundService {
           failedResponse ?? null,
         );
         if (updateError) {
-          console.error('[RefundService] Failed to update reversal status:', updateError);
+          console.error(
+            "[RefundService] Failed to update reversal status:",
+            updateError,
+          );
         }
       } catch (dbError) {
-        console.error('[RefundService] Exception updating reversal status:', dbError);
+        console.error(
+          "[RefundService] Exception updating reversal status:",
+          dbError,
+        );
       }
-      
+      Sentry.captureException(
+        new Error(terminalResult.error ?? "Terminal refund failed"),
+        {
+          tags: {
+            source: "refund_terminal",
+            type: "full_payment",
+            orderId: request.orderId,
+          },
+        },
+      );
       return {
         success: false,
         reversalId: reversal.id,
@@ -262,14 +297,30 @@ export class RefundService {
 
     // Extract terminal response fields for storage.
     // Dejavoo returns flat fields; Castles nests them under castles_transaction.
-    const terminalResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
-    const generalResponse = (terminalResponse?.GeneralResponse as { ResultCode?: string; Message?: string }) ?? undefined;
-    const castlesTxn = terminalResponse?.castles_transaction as Record<string, unknown> | undefined;
+    const terminalResponse = terminalResult.terminalResponse as
+      | Record<string, unknown>
+      | undefined;
+    const generalResponse =
+      (terminalResponse?.GeneralResponse as {
+        ResultCode?: string;
+        Message?: string;
+      }) ?? undefined;
+    const castlesTxn = terminalResponse?.castles_transaction as
+      | Record<string, unknown>
+      | undefined;
     const returnDetails = {
-      rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn ?? castlesTxn?.rrn) as string | undefined,
-      authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode ?? castlesTxn?.approvalCode) as string | undefined,
-      referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId ?? castlesTxn?.referenceId) as string | undefined,
-      transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber ?? castlesTxn?.stan) as string | undefined,
+      rrn: (terminalResponse?.RRN ??
+        terminalResponse?.rrn ??
+        castlesTxn?.rrn) as string | undefined,
+      authCode: (terminalResponse?.AuthCode ??
+        terminalResponse?.authCode ??
+        castlesTxn?.approvalCode) as string | undefined,
+      referenceId: (terminalResponse?.ReferenceId ??
+        terminalResponse?.referenceId ??
+        castlesTxn?.referenceId) as string | undefined,
+      transactionNumber: (terminalResponse?.TransactionNumber ??
+        terminalResponse?.transactionNumber ??
+        castlesTxn?.stan) as string | undefined,
       reason: request.reasonDetail,
       initiatedBy: request.initiatedBy,
     };
@@ -287,7 +338,10 @@ export class RefundService {
         (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
         generalResponse?.ResultCode ?? null,
         generalResponse?.Message ?? null,
-        ((terminalResponse?.RRN ?? terminalResponse?.rrn ?? castlesTxn?.rrn ?? terminalResponse?.PNReferenceId) as string) ?? null,
+        ((terminalResponse?.RRN ??
+          terminalResponse?.rrn ??
+          castlesTxn?.rrn ??
+          terminalResponse?.PNReferenceId) as string) ?? null,
       ),
       OrderService.applyRefundToPayment(
         this.supabase,
@@ -300,19 +354,48 @@ export class RefundService {
     ]);
 
     if (reversalResult.error) {
-      console.error('[RefundService] updateReversalStatus error:', reversalResult.error);
-      dbErrors.push(`Reversal status update failed: ${reversalResult.error.message || reversalResult.error}`);
+      console.error(
+        "[RefundService] updateReversalStatus error:",
+        reversalResult.error,
+      );
+      Sentry.captureException(reversalResult.error, {
+        tags: {
+          source: "refund_db",
+          op: "updateReversalStatus",
+          type: "full_payment",
+        },
+      });
+      dbErrors.push(
+        `Reversal status update failed: ${reversalResult.error.message || reversalResult.error}`,
+      );
     }
     if (paymentResult.error) {
-      console.error('[RefundService] applyRefundToPayment error:', paymentResult.error);
-      dbErrors.push(`Payment update failed: ${paymentResult.error.message || paymentResult.error}`);
+      console.error(
+        "[RefundService] applyRefundToPayment error:",
+        paymentResult.error,
+      );
+      Sentry.captureException(paymentResult.error, {
+        tags: {
+          source: "refund_db",
+          op: "applyRefundToPayment",
+          type: "full_payment",
+        },
+      });
+      dbErrors.push(
+        `Payment update failed: ${paymentResult.error.message || paymentResult.error}`,
+      );
     }
-    
+
     // Record refund items BEFORE recalculating totals — calculate_order_totals_fast
     // reads refunded_quantity from order_items, so items must be recorded first.
     // For full payment voids: skip refunded_quantity increment (paid_quantity restoration
     // handles the void, and refunded_qty should not accumulate for payment cancellations).
-    const refundItems = await this.buildFullRefundItems(request.orderId, reversal.id, request.reason, request.reasonDetail);
+    const refundItems = await this.buildFullRefundItems(
+      request.orderId,
+      reversal.id,
+      request.reason,
+      request.reasonDetail,
+    );
     if (refundItems.length > 0) {
       await OrderService.recordRefundItems(
         this.supabase,
@@ -330,8 +413,13 @@ export class RefundService {
     );
 
     if (orderResult.error) {
-      console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
-      dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
+      console.error(
+        "[RefundService] updateOrderPaymentStatus error:",
+        orderResult.error,
+      );
+      dbErrors.push(
+        `Order status update failed: ${orderResult.error.message || orderResult.error}`,
+      );
     }
 
     return {
@@ -339,7 +427,10 @@ export class RefundService {
       reversalId: reversal.id,
       terminalResponse: terminalResult.terminalResponse,
       // Include DB errors as warning - terminal refund succeeded but DB updates had issues
-      error: dbErrors.length > 0 ? `Refund processed but: ${dbErrors.join('; ')}` : undefined,
+      error:
+        dbErrors.length > 0
+          ? `Refund processed but: ${dbErrors.join("; ")}`
+          : undefined,
     };
   }
 
@@ -380,7 +471,8 @@ export class RefundService {
       };
     }
 
-    const effectiveTerminalId = payment.terminalId || request.payment_terminal_id || '';
+    const effectiveTerminalId =
+      payment.terminalId || request.payment_terminal_id || "";
     const effectiveTerminal =
       payment.terminalConfig ??
       (request.payment_terminal?.id === effectiveTerminalId
@@ -398,7 +490,9 @@ export class RefundService {
     if (!terminalResult.success) {
       // Try to update reversal status to failed
       try {
-        const failedResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+        const failedResponse = terminalResult.terminalResponse as
+          | Record<string, unknown>
+          | undefined;
         const { error: updateError } = await OrderService.updateReversalStatus(
           this.supabase,
           reversal.id,
@@ -406,12 +500,27 @@ export class RefundService {
           failedResponse ?? null,
         );
         if (updateError) {
-          console.error('[RefundService] Failed to update reversal status:', updateError);
+          console.error(
+            "[RefundService] Failed to update reversal status:",
+            updateError,
+          );
         }
       } catch (dbError) {
-        console.error('[RefundService] Exception updating reversal status:', dbError);
+        console.error(
+          "[RefundService] Exception updating reversal status:",
+          dbError,
+        );
       }
-      
+      Sentry.captureException(
+        new Error(terminalResult.error ?? "Terminal refund failed"),
+        {
+          tags: {
+            source: "refund_terminal",
+            type: "partial",
+            orderId: request.orderId,
+          },
+        },
+      );
       return {
         success: false,
         reversalId: reversal.id,
@@ -421,14 +530,30 @@ export class RefundService {
 
     // Extract terminal response fields for storage.
     // Dejavoo returns flat fields; Castles nests them under castles_transaction.
-    const terminalResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
-    const generalResponse = (terminalResponse?.GeneralResponse as { ResultCode?: string; Message?: string }) ?? undefined;
-    const castlesTxn = terminalResponse?.castles_transaction as Record<string, unknown> | undefined;
+    const terminalResponse = terminalResult.terminalResponse as
+      | Record<string, unknown>
+      | undefined;
+    const generalResponse =
+      (terminalResponse?.GeneralResponse as {
+        ResultCode?: string;
+        Message?: string;
+      }) ?? undefined;
+    const castlesTxn = terminalResponse?.castles_transaction as
+      | Record<string, unknown>
+      | undefined;
     const returnDetails = {
-      rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn ?? castlesTxn?.rrn) as string | undefined,
-      authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode ?? castlesTxn?.approvalCode) as string | undefined,
-      referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId ?? castlesTxn?.referenceId) as string | undefined,
-      transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber ?? castlesTxn?.stan) as string | undefined,
+      rrn: (terminalResponse?.RRN ??
+        terminalResponse?.rrn ??
+        castlesTxn?.rrn) as string | undefined,
+      authCode: (terminalResponse?.AuthCode ??
+        terminalResponse?.authCode ??
+        castlesTxn?.approvalCode) as string | undefined,
+      referenceId: (terminalResponse?.ReferenceId ??
+        terminalResponse?.referenceId ??
+        castlesTxn?.referenceId) as string | undefined,
+      transactionNumber: (terminalResponse?.TransactionNumber ??
+        terminalResponse?.transactionNumber ??
+        castlesTxn?.stan) as string | undefined,
       reason: request.reasonDetail,
       initiatedBy: request.initiatedBy,
     };
@@ -446,7 +571,10 @@ export class RefundService {
         (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
         generalResponse?.ResultCode ?? null,
         generalResponse?.Message ?? null,
-        ((terminalResponse?.RRN ?? terminalResponse?.rrn ?? castlesTxn?.rrn ?? terminalResponse?.PNReferenceId) as string) ?? null,
+        ((terminalResponse?.RRN ??
+          terminalResponse?.rrn ??
+          castlesTxn?.rrn ??
+          terminalResponse?.PNReferenceId) as string) ?? null,
       ),
       OrderService.applyRefundToPayment(
         this.supabase,
@@ -456,26 +584,55 @@ export class RefundService {
         returnDetails,
       ),
     ]);
-    
+
     if (reversalResult.error) {
-      console.error('[RefundService] updateReversalStatus error:', reversalResult.error);
-      dbErrors.push(`Reversal status update failed: ${reversalResult.error.message || reversalResult.error}`);
+      console.error(
+        "[RefundService] updateReversalStatus error:",
+        reversalResult.error,
+      );
+      Sentry.captureException(reversalResult.error, {
+        tags: {
+          source: "refund_db",
+          op: "updateReversalStatus",
+          type: "partial",
+        },
+      });
+      dbErrors.push(
+        `Reversal status update failed: ${reversalResult.error.message || reversalResult.error}`,
+      );
     }
     if (paymentResult.error) {
-      console.error('[RefundService] applyRefundToPayment error:', paymentResult.error);
-      dbErrors.push(`Payment update failed: ${paymentResult.error.message || paymentResult.error}`);
+      console.error(
+        "[RefundService] applyRefundToPayment error:",
+        paymentResult.error,
+      );
+      Sentry.captureException(paymentResult.error, {
+        tags: {
+          source: "refund_db",
+          op: "applyRefundToPayment",
+          type: "partial",
+        },
+      });
+      dbErrors.push(
+        `Payment update failed: ${paymentResult.error.message || paymentResult.error}`,
+      );
     }
-    
+
     // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER applyRefundToPayment completes
     // to avoid race condition where it reads stale refunded_amount data
     const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
       this.supabase,
       request.orderId,
     );
-    
+
     if (orderResult.error) {
-      console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
-      dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
+      console.error(
+        "[RefundService] updateOrderPaymentStatus error:",
+        orderResult.error,
+      );
+      dbErrors.push(
+        `Order status update failed: ${orderResult.error.message || orderResult.error}`,
+      );
     }
 
     return {
@@ -483,7 +640,10 @@ export class RefundService {
       reversalId: reversal.id,
       terminalResponse: terminalResult.terminalResponse,
       // Include DB errors as warning - terminal refund succeeded but DB updates had issues
-      error: dbErrors.length > 0 ? `Refund processed but: ${dbErrors.join('; ')}` : undefined,
+      error:
+        dbErrors.length > 0
+          ? `Refund processed but: ${dbErrors.join("; ")}`
+          : undefined,
     };
   }
 
@@ -501,7 +661,11 @@ export class RefundService {
       return { success: false, error: "No refundable amount found for items." };
     }
 
-    const reversals: Array<{ reversalId: string; paymentId: string; amount: number }> = [];
+    const reversals: Array<{
+      reversalId: string;
+      paymentId: string;
+      amount: number;
+    }> = [];
     const errors: string[] = [];
     let terminalRefundCount = 0; // Track terminal refunds for delay between operations
 
@@ -521,8 +685,10 @@ export class RefundService {
 
         // Add delay before subsequent terminal refunds to prevent "Service Busy" errors
         if (terminalRefundCount > 0) {
-          console.log('[RefundService] Waiting for terminal to be ready before next refund...');
-          await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+          console.log(
+            "[RefundService] Waiting for terminal to be ready before next refund...",
+          );
+          await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
         }
 
         const { data: reversal, error: reversalError } =
@@ -548,14 +714,16 @@ export class RefundService {
           payment,
           amount,
           false,
-          request.payment_terminal_id ?? payment.terminalId ?? '',
+          request.payment_terminal_id ?? payment.terminalId ?? "",
           request.payment_terminal ?? undefined,
         );
 
         if (!terminalResult.success) {
           // Try to update reversal status to failed
           try {
-            const failedResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+            const failedResponse = terminalResult.terminalResponse as
+              | Record<string, unknown>
+              | undefined;
             await OrderService.updateReversalStatus(
               this.supabase,
               reversal.id,
@@ -563,21 +731,45 @@ export class RefundService {
               failedResponse ?? null,
             );
           } catch (dbError) {
-            console.error('[RefundService] Exception updating reversal status:', dbError);
+            console.error(
+              "[RefundService] Exception updating reversal status:",
+              dbError,
+            );
           }
+          Sentry.captureException(
+            new Error(terminalResult.error ?? "Terminal refund failed"),
+            {
+              tags: {
+                source: "refund_terminal",
+                type: "item_return",
+                orderId: request.orderId,
+              },
+            },
+          );
           errors.push(terminalResult.error || "Terminal refund failed.");
           continue;
         }
 
         // Extract terminal response fields for storage
         // Cast to any since DejavooRefundResponse doesn't have all fields from the raw API response
-        const terminalResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
-        const generalResponse = (terminalResponse?.GeneralResponse as { ResultCode?: string; Message?: string }) ?? undefined;
+        const terminalResponse = terminalResult.terminalResponse as
+          | Record<string, unknown>
+          | undefined;
+        const generalResponse =
+          (terminalResponse?.GeneralResponse as {
+            ResultCode?: string;
+            Message?: string;
+          }) ?? undefined;
         const returnDetails = {
-          rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn) as string | undefined,
-          authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode) as string | undefined,
-          referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId) as string | undefined,
-          transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber) as string | undefined,
+          rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn) as
+            | string
+            | undefined,
+          authCode: (terminalResponse?.AuthCode ??
+            terminalResponse?.authCode) as string | undefined,
+          referenceId: (terminalResponse?.ReferenceId ??
+            terminalResponse?.referenceId) as string | undefined,
+          transactionNumber: (terminalResponse?.TransactionNumber ??
+            terminalResponse?.transactionNumber) as string | undefined,
           reason: request.reasonDetail,
           initiatedBy: request.initiatedBy,
         };
@@ -592,7 +784,8 @@ export class RefundService {
             (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
             generalResponse?.ResultCode ?? null,
             generalResponse?.Message ?? null,
-            ((terminalResponse?.RRN ?? terminalResponse?.PNReferenceId) as string) ?? null,
+            ((terminalResponse?.RRN ??
+              terminalResponse?.PNReferenceId) as string) ?? null,
           ),
           OrderService.applyRefundToPayment(
             this.supabase,
@@ -602,31 +795,43 @@ export class RefundService {
             returnDetails,
           ),
         ]);
-        
+
         if (reversalStatusResult.error) {
-          console.error('[RefundService] Item return - updateReversalStatus error:', reversalStatusResult.error);
-          errors.push(`Reversal status update failed: ${reversalStatusResult.error.message || reversalStatusResult.error}`);
+          console.error(
+            "[RefundService] Item return - updateReversalStatus error:",
+            reversalStatusResult.error,
+          );
+          errors.push(
+            `Reversal status update failed: ${reversalStatusResult.error.message || reversalStatusResult.error}`,
+          );
         }
         if (paymentRefundResult.error) {
-          console.error('[RefundService] Item return - applyRefundToPayment error:', paymentRefundResult.error);
-          errors.push(`Payment update failed: ${paymentRefundResult.error.message || paymentRefundResult.error}`);
+          console.error(
+            "[RefundService] Item return - applyRefundToPayment error:",
+            paymentRefundResult.error,
+          );
+          errors.push(
+            `Payment update failed: ${paymentRefundResult.error.message || paymentRefundResult.error}`,
+          );
         }
 
         reversals.push({ reversalId: reversal.id, paymentId, amount });
 
-        const refundItems = paymentAllocation.paymentAllocations.map((alloc) => ({
-          order_item_id: paymentAllocation.orderItemId,
-          order_payment_item_id: alloc.paymentItemId,
-          quantity_refunded: alloc.quantity,
-          unit_price_refunded: alloc.unitPrice,
-          subtotal_refunded: alloc.subtotal,
-          tax_refunded: alloc.tax,
-          total_refunded: alloc.total,
-          refund_reason: paymentAllocation.reason,
-          refund_reason_detail: paymentAllocation.reasonDetail,
-          return_to_inventory: paymentAllocation.returnToInventory,
-          inventory_updated: false,
-        }));
+        const refundItems = paymentAllocation.paymentAllocations.map(
+          (alloc) => ({
+            order_item_id: paymentAllocation.orderItemId,
+            order_payment_item_id: alloc.paymentItemId,
+            quantity_refunded: alloc.quantity,
+            unit_price_refunded: alloc.unitPrice,
+            subtotal_refunded: alloc.subtotal,
+            tax_refunded: alloc.tax,
+            total_refunded: alloc.total,
+            refund_reason: paymentAllocation.reason,
+            refund_reason_detail: paymentAllocation.reasonDetail,
+            return_to_inventory: paymentAllocation.returnToInventory,
+            inventory_updated: false,
+          }),
+        );
 
         await OrderService.recordRefundItems(
           this.supabase,
@@ -636,12 +841,16 @@ export class RefundService {
       }
     }
 
-    const orderStatusResult = await OrderService.updateOrderPaymentStatusAfterRefund(
-      this.supabase,
-      request.orderId,
-    );
+    const orderStatusResult =
+      await OrderService.updateOrderPaymentStatusAfterRefund(
+        this.supabase,
+        request.orderId,
+      );
     if (orderStatusResult.error) {
-      console.error('[RefundService] updateOrderPaymentStatus error:', orderStatusResult.error);
+      console.error(
+        "[RefundService] updateOrderPaymentStatus error:",
+        orderStatusResult.error,
+      );
     }
 
     return {
@@ -657,30 +866,49 @@ export class RefundService {
     useVoid: boolean,
     terminalId: string,
     terminal: StationPaymentTerminal | undefined,
-  ): Promise<{ success: boolean; terminalResponse?: DejavooRefundResponse | Record<string, unknown>; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    terminalResponse?: DejavooRefundResponse | Record<string, unknown>;
+    error?: string;
+  }> {
     // Cash payments don't go through the terminal — just succeed immediately
-    if (payment.paymentMethod?.toLowerCase() === 'cash') {
+    if (payment.paymentMethod?.toLowerCase() === "cash") {
       return { success: true };
     }
 
     // Check for missing required fields with specific error messages
-    console.log('processTerminalRefund Payment', payment);
+    console.log("processTerminalRefund Payment", payment);
     if (!terminalId && !payment.referenceId) {
-      return { success: false, error: "Missing both terminal ID and reference ID. Cannot process terminal refund." };
+      return {
+        success: false,
+        error:
+          "Missing both terminal ID and reference ID. Cannot process terminal refund.",
+      };
     }
     if (!terminalId) {
-      return { success: false, error: "Missing terminal ID. The payment was not processed through a terminal." };
+      return {
+        success: false,
+        error:
+          "Missing terminal ID. The payment was not processed through a terminal.",
+      };
     }
     if (!payment.referenceId) {
-      return { success: false, error: "Missing reference ID. Cannot locate original transaction." };
+      return {
+        success: false,
+        error: "Missing reference ID. Cannot locate original transaction.",
+      };
     }
 
-
     // Route to the correct terminal integration based on terminal type
-    const terminalType = terminal?.terminal_type ?? 'dejavoo';
+    const terminalType = terminal?.terminal_type ?? "dejavoo";
 
-    if (terminalType === 'castles') {
-      return this.processCastlesTerminalRefund(payment, amount, useVoid, terminal!);
+    if (terminalType === "castles") {
+      return this.processCastlesTerminalRefund(
+        payment,
+        amount,
+        useVoid,
+        terminal!,
+      );
     }
 
     // Dejavoo flow
@@ -690,10 +918,9 @@ export class RefundService {
       return { success: false, error: "Failed to load terminal credentials." };
     }
 
-    console.log('processTerminalRefund Loaded Terminal', loaded);
+    console.log("processTerminalRefund Loaded Terminal", loaded);
 
     if (useVoid) {
-
       const result = await api
         .void()
         .amount(amount)
@@ -726,7 +953,11 @@ export class RefundService {
     amount: number,
     useVoid: boolean,
     terminal: StationPaymentTerminal,
-  ): Promise<{ success: boolean; terminalResponse?: Record<string, unknown>; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    terminalResponse?: Record<string, unknown>;
+    error?: string;
+  }> {
     if (!terminal.ip_address) {
       return { success: false, error: "Castles terminal missing IP address." };
     }
@@ -750,7 +981,10 @@ export class RefundService {
         const rrn = payment.rrn || undefined;
         const stan = payment.stan || undefined;
         if (!rrn && !stan) {
-          return { success: false, error: "Cannot void: no RRN or STAN from original transaction." };
+          return {
+            success: false,
+            error: "Cannot void: no RRN or STAN from original transaction.",
+          };
         }
         const result = await castles.processVoid({ rrn, stan, referenceId });
         return {
@@ -772,6 +1006,12 @@ export class RefundService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[RefundService] Castles terminal refund error:", message);
+      Sentry.captureException(err instanceof Error ? err : new Error(message), {
+        tags: {
+          source: "castles_refund",
+          terminal_ip: terminal.ip_address ?? "unknown",
+        },
+      });
       return { success: false, error: message };
     }
   }
@@ -826,9 +1066,10 @@ export class RefundService {
         // Use subtotal_paid (post-discount) to compute effective unit price
         // subtotal_paid already accounts for discounts applied at payment time
         // Use != null (not > 0) to preserve subtotal_paid=0 for fully discounted items
-        const unitPrice = availableQty > 0 && pi.subtotal_paid != null
-          ? Number(pi.subtotal_paid) / availableQty
-          : Number(pi.unit_price_paid || 0);
+        const unitPrice =
+          availableQty > 0 && pi.subtotal_paid != null
+            ? Number(pi.subtotal_paid) / availableQty
+            : Number(pi.unit_price_paid || 0);
         const taxPerUnit =
           availableQty > 0 ? Number(pi.tax_paid || 0) / availableQty : 0;
         const subtotal = round2(qtyFromThis * unitPrice);
@@ -883,9 +1124,10 @@ export class RefundService {
         // Use discounted unit price when discount exists
         // subtotal is post-discount for the full quantity, so divide by quantity
         const itemQuantity = Number(item.quantity || 1);
-        const unitPrice = itemQuantity > 0 && Number(item.discount_amount || 0) > 0
-          ? Number(item.subtotal || 0) / itemQuantity
-          : Number(item.unit_price || 0);
+        const unitPrice =
+          itemQuantity > 0 && Number(item.discount_amount || 0) > 0
+            ? Number(item.subtotal || 0) / itemQuantity
+            : Number(item.unit_price || 0);
         // Tax is already computed on discounted amount, prorate by quantity
         const taxPerUnit =
           itemQuantity > 0 ? Number(item.tax_amount || 0) / itemQuantity : 0;
