@@ -68,6 +68,7 @@ import {
 import BillSummary from './BillSummary'
 import DiscountOverlay from './DiscountOverlay'
 import OrderDetails from './OrderDetails'
+import OrderSyncBanner from './OrderSyncBanner'
 import Totals from './Totals'
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
@@ -176,6 +177,10 @@ const BillItemsAndTotals = React.memo(
 
     return (
       <View style={{ flex: 1, position: 'relative' }}>
+        {/* Wave 3.0e-2: order-bound dead-letter banner. Renders nothing when
+            the active order has no order-bound failures. Mounted at the top
+            of the bill so failed ops are visible before the operator scrolls. */}
+        <OrderSyncBanner />
         <BillSummary
           cart={cart}
           expandedItemId={expandedItemId}

@@ -66,6 +66,11 @@ import {
   toUpdateItemKey,
   toUpdateQuantityKey
 } from '@/lib/network/idempotencyKey'
+import {
+  deriveSubtitle,
+  deriveTitle,
+  ITEM_BOUND_OPS
+} from '@/lib/offlineSyncSubtitles'
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { AddOpenItemParams, OrderService } from '@/services/orderService'
 import { useCoursingStore } from '@/stores/useCoursingStore'
@@ -377,6 +382,35 @@ export async function initializeOfflineSync (): Promise<void> {
       ) {
         console.error('[OfflineSync] Payment failed:', op, _supabaseClient)
         _onPaymentFailed?.(op)
+      }
+
+      // Wave 3.0e-1: surface item-bound dead-letters on the per-item Retry chip.
+      // BillItem.tsx subscribes via useItemSyncInfo(item.id) and renders the
+      // chip when status === 'failed'. Title + subtitle come from the
+      // offlineSyncSubtitles helpers so per-item and order-banner stay
+      // consistent.
+      if (ITEM_BOUND_OPS.has(op.type)) {
+        const itemIds: string[] = []
+        if (op.localItemId) itemIds.push(op.localItemId)
+        const paramItemIds = (op.params as any)?.localItemIds
+        if (Array.isArray(paramItemIds)) {
+          for (const id of paramItemIds) {
+            if (typeof id === 'string' && !itemIds.includes(id)) {
+              itemIds.push(id)
+            }
+          }
+        }
+        if (itemIds.length > 0) {
+          const title = deriveTitle(op)
+          const subtitle = deriveSubtitle(op)
+          const errorMessage = `${title} — ${subtitle}`
+          const updates = itemIds.map(itemId => ({
+            itemId,
+            status: 'failed' as const,
+            error: errorMessage
+          }))
+          useSyncStatusStore.getState().setSyncStatusBatch(updates)
+        }
       }
     },
     executeOperation: async (op: OfflineOperation): Promise<boolean> => {

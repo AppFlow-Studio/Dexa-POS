@@ -85,6 +85,7 @@ import {
 import { resolveBackendPrices } from '@/lib/cartItemPricing'
 import { DEADLINES } from '@/lib/network/deadlines'
 import { runWithDeadline } from '@/lib/network/runWithDeadline'
+import { ITEM_BOUND_OPS } from '@/lib/offlineSyncSubtitles'
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { paymentPreviewService } from '@/services/paymentPreviewService'
 import {
@@ -12315,24 +12316,30 @@ export const useOrderStore = create<OrderState>()(
           // first (where 'failed' chips originate), then active queue.
           // Returns a hint so the UI can pick the right toast.
           retrySingleItemSync: async (orderId, itemId) => {
+            // Wave 3.0e-1: extended beyond add_item to cover all item-bound
+            // ops that can dead-letter (update_item, update_item_quantity,
+            // replace_modifiers, void_item, remove_item, update_item_status,
+            // set_item_seat). Match by localItemId OR by localItemIds[]
+            // since update_item_status is multi-item.
+            const matchesItem = (op: any): boolean => {
+              if (!ITEM_BOUND_OPS.has(op.type)) return false
+              if (op.localOrderId !== orderId) return false
+              if (op.localItemId === itemId) return true
+              const ids = op.params?.localItemIds
+              return Array.isArray(ids) && ids.includes(itemId)
+            }
+
             // 1. Dead-letter scan — most common path for 'failed' chip.
-            const deadLettered = getDeadLetterOperations().find(
-              op =>
-                op.type === 'add_item' &&
-                op.localOrderId === orderId &&
-                op.localItemId === itemId
-            )
+            const deadLettered = getDeadLetterOperations().find(matchesItem)
             if (deadLettered) {
               await retryDeadLetterOperation(deadLettered.id)
-              // The executor uses uuidv5(localItemId) — server returns cached
-              // result if already processed, otherwise inserts once.
+              // The executor uses op-specific idempotency keys, so server
+              // returns cached result if already processed.
               return 'retried'
             }
 
             // 2. Active queue scan — if op is currently 'blocked' check parent.
-            const active = getOperationsForOrder(orderId).find(
-              op => op.type === 'add_item' && op.localItemId === itemId
-            )
+            const active = getOperationsForOrder(orderId).find(matchesItem)
             if (active) {
               if (active.status === 'blocked' && active.dependsOn) {
                 const parent = getDeadLetterOperations().find(

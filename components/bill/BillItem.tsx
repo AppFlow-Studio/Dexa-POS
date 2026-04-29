@@ -713,6 +713,26 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     ) : null}
                   </View>
 
+                  {/* Wave 3.0e-1: subtitle line for failed sync — root cause +
+                      attempt count + relative time. Pulled from the dead-letter
+                      op via the offlineSyncSubtitles helpers. */}
+                  {syncStatus === 'failed' &&
+                    !isVoided &&
+                    !orderHasPayments &&
+                    syncError && (
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '500',
+                          color: colors.muted,
+                          marginTop: 1
+                        }}
+                        numberOfLines={2}
+                      >
+                        {syncError}
+                      </Text>
+                    )}
+
                   {/* Status badges row */}
                   {(isVoided ||
                     paymentCoverage.isFullyRefunded ||

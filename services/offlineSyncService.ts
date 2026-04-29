@@ -164,6 +164,13 @@ export interface OfflineOperation {
   // processing for >STUCK_OP_TIMEOUT_MS without ever resolving — the silent-
   // queue scenarios where retryCount never advanced cleanly.
   firstAttemptedAtMs?: number
+  // Wave 3.0e: last error captured before dead-letter / final failure. Powers
+  // the operator-facing subtitle on the per-item Retry chip + order banner so
+  // they can tell "network too slow" from "server rejected" at a glance.
+  lastError?: { code?: string; message?: string }
+  // Wave 3.0e: epoch ms when the op transitioned to dead-letter. Used to
+  // render relative timestamps ("10 attempts since 4:32pm") in the subtitle.
+  deadLetteredAtMs?: number
 }
 
 export interface SyncResult {
@@ -1247,6 +1254,10 @@ export async function markOperationBlocked (
     console.warn(
       `[OfflineSync] markOperationBlocked: ${op.type} (${op.id}) exceeded MAX_BLOCK_COUNT (${MAX_BLOCK_COUNT}) — moving to dead-letter`
     )
+    op.lastError = {
+      code: 'BLOCK_COUNT_EXCEEDED',
+      message: `Blocked ${blockCount} times — dependency never resolved`
+    }
     moveToDeadLetter(op)
     pendingOperations = pendingOperations.filter(o => o.id !== op.id)
     await saveQueueToStorage()
@@ -1575,16 +1586,41 @@ export function logQueueStatus (): void {
 // DEAD LETTER QUEUE MANAGEMENT
 // ============================================================================
 
+// Wave 3.0e: subscribers fire whenever the dead-letter queue changes (op
+// moved in, retry pulled out, discarded). Used by the inline banner +
+// per-item chip surfaces so they refresh immediately on dead-letter rather
+// than waiting for the next render tick.
+const deadLetterSubscribers = new Set<() => void>()
+
+function notifyDeadLetterSubscribers (): void {
+  for (const fn of deadLetterSubscribers) {
+    try {
+      fn()
+    } catch (err) {
+      console.error('[OfflineSync] dead-letter subscriber error:', err)
+    }
+  }
+}
+
+export function subscribeToDeadLetterChanges (fn: () => void): () => void {
+  deadLetterSubscribers.add(fn)
+  return () => {
+    deadLetterSubscribers.delete(fn)
+  }
+}
+
 function moveToDeadLetter (operation: OfflineOperation): void {
   deadLetterQueue.push({
     ...operation,
-    status: 'failed' as const
+    status: 'failed' as const,
+    deadLetteredAtMs: operation.deadLetteredAtMs ?? Date.now()
   })
   // FIFO eviction: discard oldest entries when cap is exceeded
   if (deadLetterQueue.length > MAX_DEAD_LETTER_SIZE) {
     deadLetterQueue = deadLetterQueue.slice(-MAX_DEAD_LETTER_SIZE)
   }
   saveDeadLetterToStorage()
+  notifyDeadLetterSubscribers()
 }
 
 function loadDeadLetterFromStorage (): void {
@@ -1599,6 +1635,11 @@ function loadDeadLetterFromStorage (): void {
   } catch (error) {
     console.error('[OfflineSync] Failed to load dead letter queue:', error)
     deadLetterQueue = []
+  }
+  // Wave 3.0e: notify subscribers so the banner repopulates if the user
+  // reopened the app to find lingering ops from a previous session.
+  if (deadLetterQueue.length > 0) {
+    notifyDeadLetterSubscribers()
   }
 }
 
@@ -1636,6 +1677,7 @@ export async function retryDeadLetterOperation (
   const op = deadLetterQueue[idx]
   deadLetterQueue.splice(idx, 1)
   saveDeadLetterToStorage()
+  notifyDeadLetterSubscribers()
 
   op.status = 'pending'
   op.retryCount = 0
@@ -1651,8 +1693,12 @@ export async function retryDeadLetterOperation (
  * Permanently discard a dead-lettered operation.
  */
 export function discardDeadLetterOperation (operationId: string): void {
+  const before = deadLetterQueue.length
   deadLetterQueue = deadLetterQueue.filter(op => op.id !== operationId)
-  saveDeadLetterToStorage()
+  if (deadLetterQueue.length !== before) {
+    saveDeadLetterToStorage()
+    notifyDeadLetterSubscribers()
+  }
 }
 
 /**
@@ -1743,6 +1789,10 @@ export async function pruneExpiredOperations (): Promise<number> {
 
     pruned++
     if (PAYMENT_TYPES.includes(op.type)) {
+      op.lastError = {
+        code: 'OPERATION_TTL_EXCEEDED',
+        message: 'Op exceeded 24h TTL — manual review required'
+      }
       moveToDeadLetter(op)
       console.log(
         `[OfflineSync] Expired payment op moved to dead letter: ${op.id}`
@@ -1984,6 +2034,12 @@ async function updateBlockedOperations (): Promise<void> {
                 blockedDuration / 1000
               )}s): ${op.type} (${op.id})`
             )
+            op.lastError = {
+              code: 'BLOCKED_PARENT_DEAD',
+              message: parent
+                ? 'Parent op failed — child can\'t proceed'
+                : 'Parent op missing — orphaned dependency'
+            }
             moveToDeadLetter(op)
             timedOutOps.push(op)
             changed = true
@@ -2021,6 +2077,22 @@ async function handleOperationFailure (
     console.log(
       `[OfflineSync] ✗ DEAD-LETTERED (${reason}): ${operation.type} (${operation.id})`
     )
+    // Wave 3.0e: capture the last error so the operator-facing subtitle can
+    // show "network too slow" vs "server rejected" vs "max retries".
+    if (error) {
+      const code =
+        (error as any).code ??
+        (error as any).status ??
+        (permanent ? 'PERMANENT' : 'MAX_RETRIES')
+      const message =
+        (error as any).message ?? (error as any).msg ?? String(error)
+      operation.lastError = { code: String(code), message }
+    } else if (operation.retryCount >= MAX_RETRY_ATTEMPTS) {
+      operation.lastError = {
+        code: 'MAX_RETRIES',
+        message: `Failed ${MAX_RETRY_ATTEMPTS} times — gave up`
+      }
+    }
     // Remove from active queue and move to dead letter
     removeFromIndex(operation)
     pendingOperations = pendingOperations.filter(op => op.id !== operation.id)
