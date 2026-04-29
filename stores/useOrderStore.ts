@@ -40,6 +40,7 @@ import { immer } from 'zustand/middleware/immer'
 import { useCoursingStore } from './useCoursingStore'
 import { useEmployeeStore } from './useEmployeeStore'
 import { useInventoryStore } from './useInventoryStore'
+import { usePaymentDetailSheetStore } from './usePaymentDetailSheetStore'
 import { usePreviousOrdersStore } from './usePreviousOrdersStore'
 import { useTableSessionStore } from './useTableSessionStore'
 // import {
@@ -133,6 +134,7 @@ import {
 import { DejavooSaleTransactionResponse } from '@/types/dejavoo-spin-api'
 import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
+import { maybeFireTakeoverToast } from '@/lib/takeoverToast'
 
 // ============================================================================
 // CART-EDIT OWNERSHIP GUARD (Lever 2)
@@ -1486,22 +1488,55 @@ const addItemToBackend = async (
           const syncedQuantity = item.quantity
           if (localQuantity !== syncedQuantity) {
             try {
-              await OrderService.updateOrderItemQuantity(
-                supabase,
-                addResult.order_item_id,
-                localQuantity,
-                {
-                  keyOverride: toUpdateQuantityKey(
-                    addResult.order_item_id,
-                    localQuantity
-                  )
-                }
-              )
+              const reconcileResp =
+                await OrderService.updateOrderItemQuantity(
+                  supabase,
+                  addResult.order_item_id,
+                  localQuantity,
+                  {
+                    keyOverride: toUpdateQuantityKey(
+                      addResult.order_item_id,
+                      localQuantity
+                    )
+                  }
+                )
+              // Bad-WiFi: deadline-wrap returns a resolved {error}, not a throw.
+              // Without this branch, the catch never fires and the qty drift
+              // silently persists — server keeps the synced qty, local has the
+              // user's increments.
+              if (
+                reconcileResp?.error?.code === 'DEADLINE_EXCEEDED' ||
+                (reconcileResp?.error && !reconcileResp.data)
+              ) {
+                if (__DEV__) console.log('[QTY-DIAG-MOD] OPEN-ITEM-RECONCILE QUEUE', {
+                  dbItemId: addResult.order_item_id,
+                  localQuantity,
+                  errCode: (reconcileResp.error as any)?.code
+                })
+                await queueOperation({
+                  type: 'update_item_quantity',
+                  params: {
+                    orderItemId: addResult.order_item_id,
+                    quantity: localQuantity
+                  },
+                  localOrderId: resolveOrderKey(),
+                  localItemId: item.id
+                })
+              }
             } catch (err) {
               console.warn(
                 '[addItemToBackend] Open item quantity reconciliation failed:',
                 err
               )
+              await queueOperation({
+                type: 'update_item_quantity',
+                params: {
+                  orderItemId: addResult.order_item_id,
+                  quantity: localQuantity
+                },
+                localOrderId: resolveOrderKey(),
+                localItemId: item.id
+              })
             }
           }
 
@@ -1564,11 +1599,29 @@ const addItemToBackend = async (
                 return true
               }
             }
-            await OrderService.bulkUpdateOrderItemStatus(
+            const ksResp = await OrderService.bulkUpdateOrderItemStatus(
               supabase,
               allDbItemIds,
               kitchenSentStatus
             )
+            if (
+              ksResp?.error?.code === 'DEADLINE_EXCEEDED' ||
+              (ksResp?.error && !ksResp.data)
+            ) {
+              if (__DEV__)
+                console.log(
+                  '[QTY-DIAG-MOD] KITCHEN-BULK-STATUS RESPONSE-ERROR-QUEUE (open-item)',
+                  {
+                    count: allDbItemIds.length,
+                    errCode: (ksResp.error as any)?.code
+                  }
+                )
+              queueFailedOperation(
+                'send_to_kitchen',
+                { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+                resolveOrderKey()
+              )
+            }
           } catch (err) {
             console.warn(
               '[addItemToBackend] Retroactive kitchen send failed, queuing send_to_kitchen:',
@@ -1936,7 +1989,7 @@ const addItemToBackend = async (
               `[addItemToBackend] Quantity drift detected (local=${localQuantity} vs synced=${syncedQuantity}), reconciling before kitchen send`
             )
           try {
-            await OrderService.updateOrderItemQuantity(
+            const reconcileResp = await OrderService.updateOrderItemQuantity(
               supabase,
               addResult.order_item_id,
               localQuantity,
@@ -1947,11 +2000,42 @@ const addItemToBackend = async (
                 )
               }
             )
+            // Bad-WiFi: deadline-wrap returns a resolved {error}, not a throw.
+            // Without this branch, the catch never fires and the qty drift
+            // silently persists — kitchen ticket sends out with stale qty.
+            if (
+              reconcileResp?.error?.code === 'DEADLINE_EXCEEDED' ||
+              (reconcileResp?.error && !reconcileResp.data)
+            ) {
+              if (__DEV__) console.log('[QTY-DIAG-MOD] KITCHEN-RECONCILE QUEUE', {
+                dbItemId: addResult.order_item_id,
+                localQuantity,
+                errCode: (reconcileResp.error as any)?.code
+              })
+              await queueOperation({
+                type: 'update_item_quantity',
+                params: {
+                  orderItemId: addResult.order_item_id,
+                  quantity: localQuantity
+                },
+                localOrderId: resolveOrderKey(),
+                localItemId: item.id
+              })
+            }
           } catch (err) {
             console.warn(
               '[addItemToBackend] Quantity reconciliation failed:',
               err
             )
+            await queueOperation({
+              type: 'update_item_quantity',
+              params: {
+                orderItemId: addResult.order_item_id,
+                quantity: localQuantity
+              },
+              localOrderId: resolveOrderKey(),
+              localItemId: item.id
+            })
           }
         }
 
@@ -2016,11 +2100,29 @@ const addItemToBackend = async (
               return true
             }
           }
-          await OrderService.bulkUpdateOrderItemStatus(
+          const ksResp2 = await OrderService.bulkUpdateOrderItemStatus(
             supabase,
             allDbItemIds2,
             kitchenSentStatus2
           )
+          if (
+            ksResp2?.error?.code === 'DEADLINE_EXCEEDED' ||
+            (ksResp2?.error && !ksResp2.data)
+          ) {
+            if (__DEV__)
+              console.log(
+                '[QTY-DIAG-MOD] KITCHEN-BULK-STATUS RESPONSE-ERROR-QUEUE (regular)',
+                {
+                  count: allDbItemIds2.length,
+                  errCode: (ksResp2.error as any)?.code
+                }
+              )
+            queueFailedOperation(
+              'send_to_kitchen',
+              { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+              resolveOrderKey()
+            )
+          }
         } catch (err) {
           console.warn(
             '[addItemToBackend] Retroactive kitchen send failed, queuing send_to_kitchen:',
@@ -3199,6 +3301,9 @@ const PENDING_ITEMS_BLOCK_MAX_MS = 10000
 const lastLocalMutationAt: Record<string, number> = {}
 const OWN_STATION_MUTATION_WINDOW_MS = 3000
 
+// Wave 2.1: per-order toast dedup helper lives in `lib/takeoverToast.ts` so
+// the dedup contract is unit-testable without loading the full order store.
+
 function getPendingItemsBlockTimeout (pendingItemCount: number): number {
   return Math.min(
     PENDING_ITEMS_BLOCK_MAX_MS,
@@ -3961,6 +4066,23 @@ export const useOrderStore = create<OrderState>()(
                     // conflicting broadcast (needs to be accessible after set())
                     let localHasConfirmedDiscounts = false
 
+                    // Wave 2.1: detect ownership-flip-away. The broadcast merge
+                    // (below) propagates `station_id` so `isOrderReadOnly` will
+                    // start returning true on this device. We also fire a
+                    // dedup'd toast and force-close any active payment sheet
+                    // pinned to this order so the user isn't left mid-flow.
+                    const _priorStationId = localOrder?.station_id ?? null
+                    const _newStationId = backendOrder.station_id ?? null
+                    const _orderIsTerminal =
+                      localOrder?.order_status === 'void' ||
+                      localOrder?.order_status === 'completed' ||
+                      localOrder?.check_status === 'Closed'
+                    const _flippedAway =
+                      currentStationId != null &&
+                      _priorStationId === currentStationId &&
+                      _newStationId !== currentStationId &&
+                      !_orderIsTerminal
+
                     set(state => {
                       const existingOrder = state.ordersById[localOrderId]
                       if (!existingOrder) return
@@ -4323,6 +4445,13 @@ export const useOrderStore = create<OrderState>()(
                         // Update items with merged data (Phase 2.5)
                         items: mergedItems,
 
+                        // Wave 2.1: propagate station ownership from the
+                        // broadcast so `isOrderReadOnly` flips on the source
+                        // station the moment another station claims the order.
+                        // Broadcast wins by default — `claim_order_v1` is the
+                        // authority for ownership.
+                        station_id: backendOrder.station_id,
+
                         // UPDATE sync_version from broadcast to prevent false conflict detection
                         sync_version:
                           backendOrder.sync_version ??
@@ -4403,6 +4532,26 @@ export const useOrderStore = create<OrderState>()(
                         state.activeOrderTotalCash = backendOrder.cash_total
                       }
                     })
+
+                    // Wave 2.1: ownership flipped away from this station.
+                    // Fire a dedup'd toast and force-close the active payment
+                    // sheet (if it's pinned to this order) so the user isn't
+                    // left charging a foreign order. UI surfaces re-evaluate
+                    // `isOrderReadOnly` automatically because `station_id`
+                    // updated above.
+                    if (_flippedAway) {
+                      queueMicrotask(() =>
+                        maybeFireTakeoverToast(localOrderId, localOrder)
+                      )
+                      if (get().activeOrderId === localOrderId) {
+                        queueMicrotask(() => {
+                          const sheet = usePaymentDetailSheetStore.getState()
+                          if (sheet.isOpen && sheet.orderId === localOrderId) {
+                            sheet.close()
+                          }
+                        })
+                      }
+                    }
 
                     // Discount mismatch: broadcast says 0 but local has confirmed
                     // discounts. Queue authoritative sync (bypasses cooldown) to
@@ -6399,7 +6548,25 @@ export const useOrderStore = create<OrderState>()(
                     keyOverride: toUpdateQuantityKey(survivorDbId, mergedQuantity)
                   }
                 )
-                  .then(response => {
+                  .then(async response => {
+                    // Bad-WiFi guard: deadline-wrap returns a resolved promise
+                    // with DEADLINE_EXCEEDED-shape error on slow network. Without
+                    // this branch, a slow-network qty merge silently drops — the
+                    // .catch below never runs (no throw) and the success branch
+                    // fails (response.data is null), leaving the server stale.
+                    if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                      if (__DEV__) console.log('[QTY-DIAG-MOD] MERGE DEADLINE-EXCEEDED-QUEUE', { survivorDbId, mergedQuantity })
+                      await queueOperation({
+                        type: 'update_item_quantity',
+                        params: {
+                          orderItemId: survivorDbId,
+                          quantity: mergedQuantity
+                        },
+                        localOrderId: orderId,
+                        localItemId: mergeTarget!.id
+                      })
+                      return
+                    }
                     if (response.data && response.data.success) {
                       console.log('[merge] Survivor quantity sync succeeded')
                       try {
@@ -6422,6 +6589,20 @@ export const useOrderStore = create<OrderState>()(
                           err
                         )
                       }
+                    } else if (response?.error) {
+                      // Non-DEADLINE response error — queue so we don't drop.
+                      if (__DEV__) console.log('[QTY-DIAG-MOD] MERGE RESPONSE-ERROR-QUEUE', {
+                        survivorDbId, mergedQuantity, errCode: response.error?.code, errMessage: response.error?.message
+                      })
+                      await queueOperation({
+                        type: 'update_item_quantity',
+                        params: {
+                          orderItemId: survivorDbId,
+                          quantity: mergedQuantity
+                        },
+                        localOrderId: orderId,
+                        localItemId: mergeTarget!.id
+                      })
                     }
                   })
                   .catch(async err => {
@@ -6444,7 +6625,25 @@ export const useOrderStore = create<OrderState>()(
               // 2. Remove the merged-away item from backend
               if (removedDbId) {
                 OrderService.removeOrderItem(_supabaseClient, removedDbId)
-                  .then(() => {
+                  .then(async response => {
+                    // Bad-WiFi: deadline-wrap returns resolved {error}, not a throw.
+                    // .catch never fires on DEADLINE — must explicitly check.
+                    if (
+                      (response as any)?.error?.code === 'DEADLINE_EXCEEDED' ||
+                      ((response as any)?.error && !(response as any)?.data)
+                    ) {
+                      if (__DEV__) console.log('[QTY-DIAG-MOD] MERGE-REMOVE QUEUE', {
+                        removedDbId,
+                        errCode: ((response as any)?.error)?.code
+                      })
+                      await queueOperation({
+                        type: 'remove_item',
+                        params: { orderItemId: removedDbId },
+                        localOrderId: orderId,
+                        localItemId: updatedItem.id
+                      })
+                      return
+                    }
                     console.log(
                       '[merge] Removed merged-away item from backend:',
                       removedDbId
@@ -6496,7 +6695,25 @@ export const useOrderStore = create<OrderState>()(
                       )
                     }
                   )
-                    .then(response => {
+                    .then(async response => {
+                      // Bad-WiFi guard: deadline-wrap returns a resolved promise
+                      // with DEADLINE_EXCEEDED-shape error on slow network. Without
+                      // this branch, a slow-network qty edit silently drops — the
+                      // .catch below never runs (no throw) and the success branch
+                      // fails (response.data is null), leaving the server stale.
+                      if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                        if (__DEV__) console.log('[QTY-DIAG-MOD] NORMAL DEADLINE-EXCEEDED-QUEUE', { dbOrderItemId, qty: updatedItem.quantity })
+                        await queueOperation({
+                          type: 'update_item_quantity',
+                          params: {
+                            orderItemId: dbOrderItemId,
+                            quantity: updatedItem.quantity
+                          },
+                          localOrderId: orderId,
+                          localItemId: updatedItem.id
+                        })
+                        return
+                      }
                       if (response.data && response.data.success) {
                         // SUCCESS: Apply backend-calculated data immediately
                         console.log(
@@ -6530,6 +6747,20 @@ export const useOrderStore = create<OrderState>()(
                             err
                           )
                         }
+                      } else if (response?.error) {
+                        // Non-DEADLINE response error — queue so we don't drop.
+                        if (__DEV__) console.log('[QTY-DIAG-MOD] NORMAL RESPONSE-ERROR-QUEUE', {
+                          dbOrderItemId, qty: updatedItem.quantity, errCode: response.error?.code, errMessage: response.error?.message
+                        })
+                        await queueOperation({
+                          type: 'update_item_quantity',
+                          params: {
+                            orderItemId: dbOrderItemId,
+                            quantity: updatedItem.quantity
+                          },
+                          localOrderId: orderId,
+                          localItemId: updatedItem.id
+                        })
                       }
                     })
                     .catch(async err => {
@@ -7369,16 +7600,40 @@ export const useOrderStore = create<OrderState>()(
 
           incrementItemQuantity: itemId => {
             const { activeOrderId, ordersById } = get()
-            if (!activeOrderId) return
-            if (!_checkCartEditable(get())) return
+            if (!activeOrderId) {
+              if (__DEV__) console.log('[QTY-DIAG] EXIT: no activeOrderId', { itemId })
+              return
+            }
+            if (!_checkCartEditable(get())) {
+              if (__DEV__) console.log('[QTY-DIAG] EXIT: cart not editable', { itemId, activeOrderId })
+              return
+            }
             const order = ordersById[activeOrderId]
-            if (!order) return
-            if (order.check_status === 'Closed') return
+            if (!order) {
+              if (__DEV__) console.log('[QTY-DIAG] EXIT: order not found', { itemId, activeOrderId })
+              return
+            }
+            if (order.check_status === 'Closed') {
+              if (__DEV__) console.log('[QTY-DIAG] EXIT: order closed', { itemId, activeOrderId })
+              return
+            }
 
             const item = order.items.find(i => i.id === itemId)
-            if (!item || item.is_voided) return
+            if (!item || item.is_voided) {
+              if (__DEV__) console.log('[QTY-DIAG] EXIT: item missing/voided', { itemId, found: !!item, voided: item?.is_voided })
+              return
+            }
 
             const newQuantity = item.quantity + 1
+            if (__DEV__) console.log('[QTY-DIAG] ENTRY', {
+              itemId,
+              activeOrderId,
+              currentQty: item.quantity,
+              newQty: newQuantity,
+              dbItemId: item.db_order_item_id,
+              dbOrderId: order.db_order_id,
+              hasSupabase: !!_supabaseClient
+            })
 
             // 1. Update local state immediately
             const updatedItems = order.items.map(i =>
@@ -7464,6 +7719,9 @@ export const useOrderStore = create<OrderState>()(
             const supabase = _supabaseClient
 
             if (!dbItemId || !supabase) {
+              if (__DEV__) console.log('[QTY-DIAG] QUEUE-BRANCH (no dbItemId or no supabase)', {
+                itemId, dbItemId, hasSupabase: !!supabase, queuedQty: newQuantity
+              })
               // Item not synced to DB yet — queue for when it is
               queueOperation({
                 type: 'update_item_quantity',
@@ -7473,6 +7731,10 @@ export const useOrderStore = create<OrderState>()(
               })
               return
             }
+            if (__DEV__) console.log('[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)', {
+              itemId, dbItemId, expectedQty: newQuantity,
+              hasExistingPromise: pendingSyncOperations.has(itemId)
+            })
 
             // 2. Update quantity on DB — chain onto any existing in-flight promise
             //    for this item so rapid increments are serialized and the final
@@ -7489,12 +7751,24 @@ export const useOrderStore = create<OrderState>()(
                 const latestOrder = get().ordersById[activeOrderId]
                 const latestItem = latestOrder?.items.find(i => i.id === itemId)
                 const latestQuantity = latestItem?.quantity ?? newQuantity
+                if (__DEV__) console.log('[QTY-DIAG] RPC-FIRE', { itemId, dbItemId, latestQuantity, ts: Date.now() })
                 return OrderService.updateOrderItemQuantity(
                   supabase,
                   dbItemId,
                   latestQuantity,
                   { keyOverride: toUpdateQuantityKey(dbItemId, latestQuantity) }
-                ).then(response => ({ response, latestQuantity }))
+                ).then(response => {
+                  if (__DEV__) console.log('[QTY-DIAG] RPC-RESPONSE', {
+                    itemId, latestQuantity,
+                    hasError: !!response?.error,
+                    errorCode: response?.error?.code,
+                    errorMessage: response?.error?.message,
+                    success: response?.data?.success,
+                    serverQty: response?.data?.quantity,
+                    ts: Date.now()
+                  })
+                  return { response, latestQuantity }
+                })
               })
               .then(async ({ response, latestQuantity }) => {
                 // Bad-WiFi guard: deadline-wrap returns a resolved promise with
@@ -7502,6 +7776,7 @@ export const useOrderStore = create<OrderState>()(
                 // we'd fall through and lyingly mark sync_status='synced',
                 // corrupting waitForPendingSyncs.
                 if (response?.error?.code === 'DEADLINE_EXCEEDED') {
+                  if (__DEV__) console.log('[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE', { itemId, dbItemId, latestQuantity })
                   const latestQueuedQuantity =
                     get().ordersById[activeOrderId]?.items.find(
                       i => i.id === itemId
@@ -7529,9 +7804,11 @@ export const useOrderStore = create<OrderState>()(
                   const isStaleResponse = currentQuantity !== latestQuantity
 
                   if (isStaleResponse) {
+                    if (__DEV__) console.log('[QTY-DIAG] STALE-RESPONSE-IGNORED', { itemId, latestQuantity, currentQuantity })
                     return true
                   }
 
+                  if (__DEV__) console.log('[QTY-DIAG] SUCCESS-APPLIED', { itemId, latestQuantity, serverQty: response.data.quantity })
                   get().applyBackendItemData(itemId, {
                     quantity: response.data.quantity,
                     card_subtotal: response.data.card_subtotal,
@@ -7552,6 +7829,10 @@ export const useOrderStore = create<OrderState>()(
               })
               .catch(async err => {
                 console.error('[incrementItemQuantity] sync failed:', err)
+                if (__DEV__) console.log('[QTY-DIAG] CATCH-QUEUE', {
+                  itemId, dbItemId,
+                  errName: err?.name, errCode: err?.code, errMessage: err?.message
+                })
                 useSyncStatusStore.getState().setSyncStatus(itemId, 'synced') // unblock kitchen send
                 const latestQueuedQuantity =
                   get().ordersById[activeOrderId]?.items.find(
@@ -9935,16 +10216,56 @@ export const useOrderStore = create<OrderState>()(
                 .map(item => item.db_order_item_id as string)
 
               if (dbItemIds.length > 0) {
+                const queueRetry = (reason: string) => {
+                  queueOperation({
+                    type: 'update_item_status',
+                    params: {
+                      dbItemIds,
+                      status: 'ready',
+                      localOrderId: orderId
+                    },
+                    localOrderId: orderId
+                  }).catch(qErr =>
+                    console.error(
+                      '[markAllItemsAsReady] queueOperation error:',
+                      qErr
+                    )
+                  )
+                  toastService.show({
+                    title: 'Status sync queued',
+                    message: 'Mark Ready will retry when network recovers.',
+                    type: 'warning'
+                  })
+                  if (__DEV__)
+                    console.log('[update_item_status] queued (ready)', {
+                      reason,
+                      count: dbItemIds.length
+                    })
+                }
+
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
                   'ready'
-                ).catch(err => {
-                  console.error(
-                    'Failed to update backend item statuses to ready:',
-                    err
-                  )
-                })
+                )
+                  .then(response => {
+                    if ((response as any)?.error) {
+                      console.error(
+                        'Failed to update backend item statuses to ready:',
+                        (response as any).error
+                      )
+                      queueRetry(
+                        (response as any).error?.code ?? 'response_error'
+                      )
+                    }
+                  })
+                  .catch(err => {
+                    console.error(
+                      'Failed to update backend item statuses to ready:',
+                      err
+                    )
+                    queueRetry('threw')
+                  })
 
                 // Explicitly sync order status to ready
                 OrderService.updateOrderStatus(
@@ -9993,16 +10314,56 @@ export const useOrderStore = create<OrderState>()(
                 .filter((id): id is string => !!id)
 
               if (dbItemIds.length > 0) {
+                const queueRetry = (reason: string) => {
+                  queueOperation({
+                    type: 'update_item_status',
+                    params: {
+                      dbItemIds,
+                      status: 'served',
+                      localOrderId: orderId
+                    },
+                    localOrderId: orderId
+                  }).catch(qErr =>
+                    console.error(
+                      '[markAllItemsAsServed] queueOperation error:',
+                      qErr
+                    )
+                  )
+                  toastService.show({
+                    title: 'Status sync queued',
+                    message: 'Mark Served will retry when network recovers.',
+                    type: 'warning'
+                  })
+                  if (__DEV__)
+                    console.log('[update_item_status] queued (served)', {
+                      reason,
+                      count: dbItemIds.length
+                    })
+                }
+
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
                   'served'
-                ).catch(err => {
-                  console.error(
-                    'Failed to update backend item statuses to served:',
-                    err
-                  )
-                })
+                )
+                  .then(response => {
+                    if ((response as any)?.error) {
+                      console.error(
+                        'Failed to update backend item statuses to served:',
+                        (response as any).error
+                      )
+                      queueRetry(
+                        (response as any).error?.code ?? 'response_error'
+                      )
+                    }
+                  })
+                  .catch(err => {
+                    console.error(
+                      'Failed to update backend item statuses to served:',
+                      err
+                    )
+                    queueRetry('threw')
+                  })
               }
             }
           },
@@ -10040,16 +10401,56 @@ export const useOrderStore = create<OrderState>()(
                 .filter((id): id is string => !!id)
 
               if (dbItemIds.length > 0) {
+                const queueRetry = (reason: string) => {
+                  queueOperation({
+                    type: 'update_item_status',
+                    params: {
+                      dbItemIds,
+                      status: 'preparing',
+                      localOrderId: orderId
+                    },
+                    localOrderId: orderId
+                  }).catch(qErr =>
+                    console.error(
+                      '[markCourseItemsAsCooking] queueOperation error:',
+                      qErr
+                    )
+                  )
+                  toastService.show({
+                    title: 'Status sync queued',
+                    message: 'Mark Preparing will retry when network recovers.',
+                    type: 'warning'
+                  })
+                  if (__DEV__)
+                    console.log('[update_item_status] queued (preparing)', {
+                      reason,
+                      count: dbItemIds.length
+                    })
+                }
+
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
                   'preparing'
-                ).catch(err => {
-                  console.error(
-                    'Failed to update backend items to preparing:',
-                    err
-                  )
-                })
+                )
+                  .then(response => {
+                    if ((response as any)?.error) {
+                      console.error(
+                        'Failed to update backend items to preparing:',
+                        (response as any).error
+                      )
+                      queueRetry(
+                        (response as any).error?.code ?? 'response_error'
+                      )
+                    }
+                  })
+                  .catch(err => {
+                    console.error(
+                      'Failed to update backend items to preparing:',
+                      err
+                    )
+                    queueRetry('threw')
+                  })
               }
             }
           },
@@ -10086,13 +10487,53 @@ export const useOrderStore = create<OrderState>()(
                 .filter((id): id is string => !!id)
 
               if (dbItemIds.length > 0) {
+                const queueRetry = (reason: string) => {
+                  queueOperation({
+                    type: 'update_item_status',
+                    params: {
+                      dbItemIds,
+                      status: 'ready',
+                      localOrderId: orderId
+                    },
+                    localOrderId: orderId
+                  }).catch(qErr =>
+                    console.error(
+                      '[markCourseItemsAsReady] queueOperation error:',
+                      qErr
+                    )
+                  )
+                  toastService.show({
+                    title: 'Status sync queued',
+                    message: 'Course Ready will retry when network recovers.',
+                    type: 'warning'
+                  })
+                  if (__DEV__)
+                    console.log('[update_item_status] queued (course ready)', {
+                      reason,
+                      count: dbItemIds.length
+                    })
+                }
+
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
                   'ready'
-                ).catch(err => {
-                  console.error('Failed to update backend items to ready:', err)
-                })
+                )
+                  .then(response => {
+                    if ((response as any)?.error) {
+                      console.error(
+                        'Failed to update backend items to ready:',
+                        (response as any).error
+                      )
+                      queueRetry(
+                        (response as any).error?.code ?? 'response_error'
+                      )
+                    }
+                  })
+                  .catch(err => {
+                    console.error('Failed to update backend items to ready:', err)
+                    queueRetry('threw')
+                  })
               }
             }
           },
@@ -10140,16 +10581,56 @@ export const useOrderStore = create<OrderState>()(
                 .filter((id): id is string => !!id)
 
               if (dbItemIds.length > 0) {
+                const queueRetry = (reason: string) => {
+                  queueOperation({
+                    type: 'update_item_status',
+                    params: {
+                      dbItemIds,
+                      status: 'served',
+                      localOrderId: orderId
+                    },
+                    localOrderId: orderId
+                  }).catch(qErr =>
+                    console.error(
+                      '[markCourseItemsAsServed] queueOperation error:',
+                      qErr
+                    )
+                  )
+                  toastService.show({
+                    title: 'Status sync queued',
+                    message: 'Course Served will retry when network recovers.',
+                    type: 'warning'
+                  })
+                  if (__DEV__)
+                    console.log('[update_item_status] queued (course served)', {
+                      reason,
+                      count: dbItemIds.length
+                    })
+                }
+
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
                   'served'
-                ).catch(err => {
-                  console.error(
-                    'Failed to update backend items to served:',
-                    err
-                  )
-                })
+                )
+                  .then(response => {
+                    if ((response as any)?.error) {
+                      console.error(
+                        'Failed to update backend items to served:',
+                        (response as any).error
+                      )
+                      queueRetry(
+                        (response as any).error?.code ?? 'response_error'
+                      )
+                    }
+                  })
+                  .catch(err => {
+                    console.error(
+                      'Failed to update backend items to served:',
+                      err
+                    )
+                    queueRetry('threw')
+                  })
               }
 
               // If all items served, also update order status to 'ready'

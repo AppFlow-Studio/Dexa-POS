@@ -1,3 +1,5 @@
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { isValidUUID } from "@/utils/orderIdHelpers";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -312,21 +314,29 @@ export const useSeatingStore = create<SeatingState>((set, get) => ({
 
     // Online with valid IDs — try RPC, queue on failure
     if (_supabaseClient && dbOrderId) {
-      _supabaseClient
-        .rpc("set_item_seat", {
-          p_order_item_id: dbItemId,
-          p_seat_number: seatNumber,
-        })
-        .then(({ error }: { error: any }) => {
-          if (error) {
-            console.error("Failed to sync item seat, queuing:", error);
-            queueOperation({
-              type: "set_item_seat",
-              params: { dbItemId, seatNumber },
-              localOrderId: orderId,
-            });
-          }
-        });
+      const client = _supabaseClient;
+      runWithDeadline(
+        "set_item_seat",
+        DEADLINES.hotMutation,
+        async (signal) => {
+          const { data, error } = await client
+            .rpc("set_item_seat", {
+              p_order_item_id: dbItemId,
+              p_seat_number: seatNumber,
+            })
+            .abortSignal(signal);
+          return { data, error };
+        },
+      ).then(({ error }) => {
+        if (error) {
+          console.error("Failed to sync item seat, queuing:", error);
+          queueOperation({
+            type: "set_item_seat",
+            params: { dbItemId, seatNumber },
+            localOrderId: orderId,
+          });
+        }
+      });
     }
   },
 
@@ -427,15 +437,30 @@ export const useSeatingStore = create<SeatingState>((set, get) => ({
 
     // Backend sync: update reassigned items
     if (_supabaseClient && dbItemIdsToSync.length > 0) {
+      const client = _supabaseClient;
       for (const dbItemId of dbItemIdsToSync) {
-        _supabaseClient
-          .rpc("set_item_seat", {
-            p_order_item_id: dbItemId,
-            p_seat_number: null,
-          })
-          .then(({ error }) => {
-            if (error) console.error("Failed to sync item seat on remove:", error);
-          });
+        runWithDeadline(
+          "set_item_seat",
+          DEADLINES.hotMutation,
+          async (signal) => {
+            const { data, error } = await client
+              .rpc("set_item_seat", {
+                p_order_item_id: dbItemId,
+                p_seat_number: null,
+              })
+              .abortSignal(signal);
+            return { data, error };
+          },
+        ).then(({ error }) => {
+          if (error) {
+            console.error("Failed to sync item seat on remove, queuing:", error);
+            queueOperation({
+              type: "set_item_seat",
+              params: { dbItemId, seatNumber: null },
+              localOrderId: orderId,
+            });
+          }
+        });
       }
     }
 

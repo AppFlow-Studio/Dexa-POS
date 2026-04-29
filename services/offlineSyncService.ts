@@ -41,6 +41,7 @@ export type OperationType =
   | 'void_discount' // Void/remove a discount via RPC
   // Kitchen operations
   | 'send_to_kitchen' // Updates order status + item statuses
+  | 'update_item_status' // KDS bulk status (ready/served/preparing) — Wave 3.0d-3
   // Payment operations (unified + legacy)
   | 'process_payment' // Unified payment via process_payment_v2
   | 'process_cash_payment' // Legacy - routes to process_payment handler
@@ -102,6 +103,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   set_item_seat: 3,
   update_order_status: 4,
   send_to_kitchen: 4, // Kitchen send after items synced
+  update_item_status: 4, // KDS bulk status — Wave 3.0d-3
 
   // Check status operations (after items/payments)
   close_check: 4, // Close check
@@ -177,7 +179,11 @@ export interface SyncResult {
 
 const STORAGE_KEY = 'offline_operations_queue'
 const DEAD_LETTER_STORAGE_KEY = 'offline_dead_letter_queue'
-const MAX_RETRY_ATTEMPTS = 5
+// Wave 3.1: bumped 5→10 so sustained bad-WiFi (NLC + airplane flap) doesn't
+// dead-letter ops that would succeed once the network recovers. Exponential
+// backoff caps at 20s (was 60s), so 10 retries = ~150s of trying instead of
+// ~62s. OPERATION_TTL_MS (24h) is the real cutoff.
+const MAX_RETRY_ATTEMPTS = 10
 const DEBOUNCE_MS = 3000
 const MAX_QUEUE_SIZE = 500
 const MAX_DEAD_LETTER_SIZE = 50
@@ -192,9 +198,9 @@ const MAX_BLOCK_COUNT = 20
 // PR D.3: a queued op that's been alive for longer than this without succeeding
 // gets force-failed. Belt-and-suspenders for the silent-queue era and any
 // future code path that pre-marks an item 'pending' and then never increments
-// retryCount cleanly. Tuned long enough that legitimate slow networks finish
-// their MAX_RETRY_ATTEMPTS=5 backoff (~62s total) and still have headroom.
-const STUCK_OP_TIMEOUT_MS = 120_000
+// retryCount cleanly. Wave 3.1: bumped 120s → 600s to match the longer retry
+// budget (10 attempts at exponential backoff capped at 20s ≈ 150s + headroom).
+const STUCK_OP_TIMEOUT_MS = 600_000
 
 const PAYMENT_TYPES: OperationType[] = [
   'process_payment',
@@ -250,7 +256,9 @@ export function isTransientError (error: any): boolean {
 // ============================================================================
 const RETRY_CONFIG = {
   baseDelayMs: 2000, // Initial retry delay: 2 seconds
-  maxDelayMs: 60000, // Maximum delay: 1 minute
+  // Wave 3.1: capped at 20s (was 60s). Under bad WiFi we want to re-check
+  // sooner so a brief connectivity window doesn't sit idle for a minute.
+  maxDelayMs: 20000,
   multiplier: 2, // Double the delay each retry
   jitterMs: 1000 // Random jitter up to 1 second
 }

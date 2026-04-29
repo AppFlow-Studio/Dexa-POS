@@ -38,6 +38,7 @@ import {
   getOfflineDurationMs,
   getPendingOperations,
   getPendingPaymentsCount,
+  getQueueSnapshot,
   hasPendingOrderCreation,
   initOfflineSyncService,
   isServiceInitialized,
@@ -52,6 +53,7 @@ import { connectionQuality } from '@/lib/network/connectionQuality'
 
 if (__DEV__) {
   ;(globalThis as any).__queue = () => getPendingOperations()
+  ;(globalThis as any).__queueAll = () => getQueueSnapshot()
   ;(globalThis as any).__flushQueue = () => processQueueNow({ force: true })
   ;(globalThis as any).__connQuality = () => ({
     state: connectionQuality.get(),
@@ -547,27 +549,49 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
         const localOrderId = paramsLocalOrderId || op.localOrderId
         const localItemId = paramsLocalItemId || op.localItemId
 
-        // Resolve item ID if it was a local ID
-        const resolvedItemId =
+        // Resolve item ID if it was a local ID. If localItemId+localOrderId
+        // are present but the mapping returned null, fall back to the
+        // orderItemId param if it's a UUID (the queueOp may have stored the
+        // resolved DB id directly).
+        const mappedItemId =
           localItemId && localOrderId
             ? resolveItemId(localOrderId, localItemId)
-            : orderItemId
+            : null
+        const resolvedItemId =
+          mappedItemId ||
+          (orderItemId && isValidUUID(orderItemId) ? orderItemId : null)
 
         if (!resolvedItemId) {
           console.log(
-            '[OfflineSync] update_item_quantity: Item not synced yet, will retry'
+            '[OfflineSync] update_item_quantity: Item not synced yet, will retry',
+            { localOrderId, localItemId, orderItemId, mappedItemId }
           )
           return false
         }
 
         // Wave 3.0a: per-intent key. Same (item, qty) on retry → cached.
-        const { error } = await OrderService.updateOrderItemQuantity(
+        const { data, error } = await OrderService.updateOrderItemQuantity(
           _supabaseClient,
           resolvedItemId,
           quantity,
           { keyOverride: toUpdateQuantityKey(resolvedItemId, quantity) }
         )
-        return !error
+        if (error) {
+          console.warn(
+            '[OfflineSync] update_item_quantity FAILED',
+            {
+              resolvedItemId,
+              quantity,
+              errCode: (error as any)?.code,
+              errMessage: (error as any)?.message,
+              errDetails: (error as any)?.details,
+              errHint: (error as any)?.hint
+            }
+          )
+          return false
+        }
+        if (__DEV__) console.log('[OfflineSync] update_item_quantity OK', { resolvedItemId, quantity, serverQty: (data as any)?.quantity })
+        return true
       }
 
       case 'update_item': {
@@ -2691,6 +2715,97 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           return true
         } catch (err) {
           console.error('[OfflineSync] Error setting item seat:', err)
+          return false
+        }
+      }
+
+      // ================================================================
+      // UPDATE ITEM STATUS — KDS bulk status (Wave 3.0d-3)
+      // Used by Mark Ready / Mark Served / Mark Preparing flows.
+      // Distinct from send_to_kitchen which also bumps order status; this op
+      // only touches item statuses.
+      // ================================================================
+      case 'update_item_status': {
+        const {
+          dbItemIds,
+          status,
+          localOrderId,
+          localItemIds
+        } = op.params as {
+          dbItemIds?: string[]
+          status: 'sent' | 'preparing' | 'ready' | 'served'
+          localOrderId?: string
+          localItemIds?: string[]
+        }
+
+        // Resolve any local item IDs that weren't already mapped to UUIDs at
+        // queue time. Strategy mirrors send_to_kitchen: try resolveItemId
+        // first, then fall back to the live order's items.
+        let resolvedItemIds: string[] = (dbItemIds ?? []).filter(id =>
+          isValidUUID(id)
+        )
+
+        if (localItemIds?.length && localOrderId) {
+          for (const localItemId of localItemIds) {
+            const resolved = resolveItemId(localOrderId, localItemId)
+            if (resolved && !resolvedItemIds.includes(resolved)) {
+              resolvedItemIds.push(resolved)
+            }
+          }
+
+          if (resolvedItemIds.length === 0) {
+            const liveOrder = _getOrderStore().getState().ordersById[
+              localOrderId
+            ] as any
+            if (liveOrder?.items) {
+              for (const localItemId of localItemIds) {
+                const liveItem = liveOrder.items.find(
+                  (i: any) => i.id === localItemId && i.db_order_item_id
+                )
+                if (
+                  liveItem?.db_order_item_id &&
+                  !resolvedItemIds.includes(liveItem.db_order_item_id)
+                ) {
+                  resolvedItemIds.push(liveItem.db_order_item_id)
+                }
+              }
+            }
+          }
+        }
+
+        if (resolvedItemIds.length === 0) {
+          console.log(
+            '[OfflineSync:update_item_status] No items resolved yet, will retry'
+          )
+          return false
+        }
+
+        try {
+          const { error } = await OrderService.bulkUpdateOrderItemStatus(
+            _supabaseClient,
+            resolvedItemIds,
+            status
+          )
+          if (error) {
+            console.error(
+              '[OfflineSync:update_item_status] Failed:',
+              {
+                count: resolvedItemIds.length,
+                status,
+                errCode: (error as any)?.code,
+                errMessage: (error as any)?.message
+              }
+            )
+            return false
+          }
+          if (__DEV__)
+            console.log(
+              '[OfflineSync:update_item_status] OK',
+              { count: resolvedItemIds.length, status }
+            )
+          return true
+        } catch (err) {
+          console.error('[OfflineSync:update_item_status] Exception:', err)
           return false
         }
       }
