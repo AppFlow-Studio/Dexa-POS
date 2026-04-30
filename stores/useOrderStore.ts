@@ -6959,16 +6959,16 @@ export const useOrderStore = create<OrderState>()(
                             }
                           )
                         await queueOperation({
-                          type: 'update_item',
+                          type: "update_item",
                           params: {
                             orderItemId: dbOrderItemId,
                             specialInstructions:
-                              updatedItem.customizations?.notes || null
+                              updatedItem.customizations?.notes || null,
                           },
                           localOrderId: orderId,
-                          localItemId: updatedItem.id
-                        })
-                        return
+                          localItemId: updatedItem.id,
+                        });
+                        return;
                       }
                       if (response.data && response.data.success) {
                         // SUCCESS: Apply backend data (instructions don't change pricing, but include for consistency)
@@ -7083,15 +7083,15 @@ export const useOrderStore = create<OrderState>()(
                             }
                           )
                         await queueOperation({
-                          type: 'replace_modifiers',
+                          type: "replace_modifiers",
                           params: {
                             orderItemId: dbOrderItemId,
-                            modifiers: allModifiers
+                            modifiers: allModifiers,
                           },
                           localOrderId: orderId,
-                          localItemId: updatedItem.id
-                        })
-                        return
+                          localItemId: updatedItem.id,
+                        });
+                        return;
                       }
                       if (response.data && response.data.success) {
                         // SUCCESS: Apply backend-calculated data immediately
