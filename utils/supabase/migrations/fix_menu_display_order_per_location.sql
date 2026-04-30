@@ -14,10 +14,11 @@
 -- 3. Inject display_order into menu JSON using jsonb_set() with resolved value
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION get_pos_full_sync(p_location_id UUID)
+CREATE OR REPLACE FUNCTION public.get_pos_full_sync(p_location_id UUID)
 RETURNS JSON
 LANGUAGE plpgsql
 STABLE
+SET search_path TO 'public', 'pg_temp'
 AS $$
 DECLARE
     result JSON;
@@ -36,11 +37,11 @@ BEGIN
                 )::json
                 ORDER BY COALESCE(lm.display_order, m.display_order) NULLS LAST, m.name
             ), '[]'::json)
-            FROM menus m
-            LEFT JOIN location_menus lm
+            FROM public.menus m
+            LEFT JOIN public.location_menus lm
               ON lm.menu_id = m.id
               AND lm.location_id = p_location_id
-            WHERE m.merchant_id = (SELECT merchant_id FROM locations WHERE id = p_location_id)
+            WHERE m.merchant_id = (SELECT merchant_id FROM public.locations WHERE id = p_location_id)
             AND (
                 (m.location_id IS NULL)
                 OR
