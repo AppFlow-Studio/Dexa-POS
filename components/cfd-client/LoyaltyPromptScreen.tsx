@@ -288,10 +288,6 @@ export function LoyaltyPromptScreen ({
         numKey: {
           flex: 1,
           height: 42,
-          backgroundColor: colors.card,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 9,
           alignItems: 'center',
           justifyContent: 'center'
         },
@@ -308,23 +304,11 @@ export function LoyaltyPromptScreen ({
           fontWeight: '700',
           color: colors.label
         },
-        footer: {
-          flexDirection: 'row',
-          gap: 10,
-          width: '100%',
-          paddingHorizontal: 24,
-          paddingTop: 8,
-          paddingBottom: 12,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          backgroundColor: colors.screen,
-          alignItems: 'center',
-          justifyContent: 'center'
-        },
         footerInner: {
           flexDirection: 'row',
           gap: 10,
-          width: 300
+          width: 300,
+          marginTop: 12
         },
         skipBtn: {
           flex: 1,
@@ -422,11 +406,7 @@ export function LoyaltyPromptScreen ({
         </View>
 
         <Keypad onPress={handleKey} styles={styles} />
-      </View>
 
-      {/* Footer — Skip / Continue pinned to the bottom of the
-          container so they're guaranteed visible at any viewport. */}
-      <View style={styles.footer}>
         <View style={styles.footerInner}>
           <TouchableOpacity
             activeOpacity={0.7}
