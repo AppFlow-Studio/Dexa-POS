@@ -436,7 +436,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
       if (smsFailed) {
         const failureMessage =
           smsData?.message ||
-          smsData?.twilio_error ||
+          smsData?.provider_error ||
           (typeof smsResult.error?.message === 'string' &&
             smsResult.error.message) ||
           (typeof smsData?.error === 'string' && smsData.error !== 'sms_failed'

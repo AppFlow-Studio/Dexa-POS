@@ -222,13 +222,13 @@ const MainMenu: React.FC = () => {
       subtitle: 'Order History',
       route: '/previous-orders'
     },
-    {
-      id: 'online-orders',
-      icon: <ShoppingBag color={colors.teal} size={20} />,
-      title: 'Online Orders',
-      subtitle: 'Web & App Orders',
-      route: '/online-orders'
-    },
+    // {
+    //   id: 'online-orders',
+    //   icon: <ShoppingBag color={colors.teal} size={20} />,
+    //   title: 'Online Orders',
+    //   subtitle: 'Web & App Orders',
+    //   route: '/online-orders'
+    // },
     {
       id: 'kds',
       icon: <ChefHat color={colors.teal} size={20} />,
@@ -283,13 +283,13 @@ const MainMenu: React.FC = () => {
       subtitle: 'Rewards & Members',
       route: '/loyalty'
     },
-    {
-      id: 'castlestest',
-      icon: <Cpu color={colors.teal} size={20} />,
-      title: 'Castles Test',
-      subtitle: 'Castles device test',
-      route: '/castlestest'
-    }
+    // {
+    //   id: 'castlestest',
+    //   icon: <Cpu color={colors.teal} size={20} />,
+    //   title: 'Castles Test',
+    //   subtitle: 'Castles device test',
+    //   route: '/castlestest'
+    // }
   ]
 
   const regularItems = menuItems.filter(item => !item.isLocked)

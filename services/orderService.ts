@@ -34,6 +34,9 @@ export type AddOpenItemParams = {
   p_special_instructions?: string | null;
   p_is_tax_exempt?: boolean | null;
   p_seat_number?: number | null;
+  // Wave 1.2 station-ownership guard — see assert_order_station_match.sql.
+  // Pass the cashier's selectedStation.id; null/undefined = bypass.
+  p_station_id?: string | null;
 };
 
 export type AddOpenItemResult = {
@@ -343,6 +346,63 @@ export class OrderService {
   }
 
   /**
+   * Claim ownership of an order from another station (Lever 2).
+   *
+   * Atomic optimistic-concurrency UPDATE on `orders.station_id`. The server
+   * RPC `claim_order_v1` does the work; this wrapper just shapes the response.
+   *
+   * `expectedStationId` should be the order's current `station_id` as this
+   * device sees it. If a concurrent claim has moved it elsewhere, the RPC
+   * returns `CONCURRENT_CLAIM` and the caller should refresh.
+   */
+  static async claimOrder (
+    client: SupabaseClient,
+    params: {
+      orderId: string
+      stationId: string
+      expectedStationId: string | null
+    }
+  ): Promise<
+    | {
+        data: {
+          success: true
+          order_id: string
+          new_station_id: string
+          sync_version: number
+        }
+        error: null
+      }
+    | {
+        data: {
+          success: false
+          error:
+            | 'ORDER_NOT_FOUND'
+            | 'ORDER_FINALIZED'
+            | 'ORDER_LOCKED_FOR_PAYMENT'
+            | 'CONCURRENT_CLAIM'
+          [key: string]: any
+        }
+        error: null
+      }
+    | { data: null; error: any }
+  > {
+    return _runWithDeadline<any>(
+      'claim_order_v1',
+      DEADLINES.read,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc('claim_order_v1', {
+            p_order_id: params.orderId,
+            p_station_id: params.stationId,
+            p_expected_station_id: params.expectedStationId
+          })
+          .abortSignal(signal)
+        return { data, error }
+      }
+    ) as any
+  }
+
+  /**
    * Process a payment for an order using process_payment_v2
    * Handles: Full card, Full cash, Split, Per-item payments
    */
@@ -584,6 +644,59 @@ export class OrderService {
   }
 
   /**
+   * Wave 2.4: server-guarded order-details update.
+   *
+   * Replaces four raw `.from('orders').update()` sites in
+   * `useOrderStore.updateActiveOrderDetails`. The boolean flags let the
+   * caller explicitly clear a field (set null) without a sentinel —
+   * COALESCE alone would treat null as "preserve". Callers should set
+   * the flag for any block they want to mutate and pass null/undefined
+   * for fields within that block they want to clear.
+   *
+   * Pass `selectedStation.id` for cross-station ownership enforcement.
+   * Null is permissive (back-compat) and matches the helper's contract.
+   */
+  static async updateOrderDetails (
+    client: SupabaseClient,
+    orderId: string,
+    stationId: string | null,
+    updates: {
+      customer?: {
+        id: string | null
+        name: string | null
+        phone: string | null
+        email: string | null
+      }
+      orderType?: string | null
+      deliveryAddress?: string | null
+      notes?: string | null
+    }
+  ): Promise<{ data: any; error: any }> {
+    return _runWithDeadline<any>(
+      'update_order_details_v1',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client.rpc('update_order_details_v1', {
+          p_order_id: orderId,
+          p_station_id: stationId,
+          p_update_customer: updates.customer !== undefined,
+          p_customer_id: updates.customer?.id ?? null,
+          p_customer_name: updates.customer?.name ?? null,
+          p_customer_phone: updates.customer?.phone ?? null,
+          p_customer_email: updates.customer?.email ?? null,
+          p_update_order_type: updates.orderType !== undefined,
+          p_order_type: updates.orderType ?? null,
+          p_update_delivery_address: updates.deliveryAddress !== undefined,
+          p_delivery_address: updates.deliveryAddress ?? null,
+          p_update_notes: updates.notes !== undefined,
+          p_notes: updates.notes ?? null
+        }).abortSignal(signal)
+        return { data, error }
+      }
+    )
+  }
+
+  /**
    * Void an entire order and cancel linked seated reservation(s) atomically.
    */
   static async voidOrder(
@@ -799,44 +912,48 @@ export class OrderService {
   // --- Order Item CRUD Methods ---
 
   /**
-   * Update quantity of an order item (auto-recalculates subtotal)
+   * Update quantity of an order item (auto-recalculates subtotal).
+   *
+   * Wave 3.0a: requires `opts.keyOverride` (per-intent key derived via
+   * `toUpdateQuantityKey(orderItemId, quantity)`). Required (not optional)
+   * because UPDATE ops have stronger correctness needs than CREATE ops:
+   * the optimistic-online path and queue replay must derive the SAME key
+   * to dedupe; missing the key silently breaks the dedupe at that call site.
    */
   static async updateOrderItemQuantity(
     client: SupabaseClient,
     orderItemId: string,
     quantity: number,
+    opts: { keyOverride: string },
   ): Promise<{ data: UpdateOrderItemQuantityResult | null; error: any }> {
-    return _runWithDeadline<UpdateOrderItemQuantityResult>(
-      "update_item_quantity",
-      DEADLINES.hotMutation,
-      async (signal) => {
-        const { data, error } = await client
-          .rpc("update_order_item_quantity_v2", {
-            p_order_item_id: orderItemId,
-            p_quantity: quantity,
-          })
-          .abortSignal(signal);
-        return { data, error };
-      },
+    return rpcWithIdempotency<UpdateOrderItemQuantityResult>(
+      client,
+      "update_order_item_quantity",
+      "update_order_item_quantity_v2",
+      "update_order_item_quantity_v3",
+      { p_order_item_id: orderItemId, p_quantity: quantity },
+      { deadline: DEADLINES.hotMutation, keyOverride: opts.keyOverride },
     );
   }
 
   /**
-   * Update order item fields (instructions, station, price override, etc.)
+   * Update order item fields (instructions, station, price override, etc.).
+   *
+   * Wave 3.0a: requires `opts.keyOverride` (per-intent key derived via
+   * `toUpdateItemKey(params)`). See note on `updateOrderItemQuantity`.
    */
   static async updateOrderItem(
     client: SupabaseClient,
     params: UpdateOrderItemParams,
+    opts: { keyOverride: string },
   ): Promise<{ data: UpdateOrderItemResult | null; error: any }> {
-    return _runWithDeadline<UpdateOrderItemResult>(
-      "update_item",
-      DEADLINES.hotMutation,
-      async (signal) => {
-        const { data, error } = await client
-          .rpc("update_order_item_v2", params)
-          .abortSignal(signal);
-        return { data, error };
-      },
+    return rpcWithIdempotency<UpdateOrderItemResult>(
+      client,
+      "update_order_item",
+      "update_order_item_v2",
+      "update_order_item_v3",
+      params,
+      { deadline: DEADLINES.hotMutation, keyOverride: opts.keyOverride },
     );
   }
 
@@ -876,6 +993,7 @@ export class OrderService {
     client: SupabaseClient,
     orderItemId: string,
     modifier: Omit<OrderItemModifier, "id" | "order_item_id" | "total_price">,
+    opts?: { stationId?: string | null },
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await rpcWithIdempotency(
       client,
@@ -890,6 +1008,8 @@ export class OrderService {
         p_modifier_name: modifier.modifier_name,
         p_price_modifier: modifier.price_modifier,
         p_quantity: modifier.quantity,
+        // Wave 1.3 — server-side station guard.
+        p_station_id: opts?.stationId ?? null,
       },
       { deadline: DEADLINES.hotMutation },
     );
@@ -902,13 +1022,18 @@ export class OrderService {
   static async removeOrderItemModifier(
     client: SupabaseClient,
     modifierId: string,
+    opts?: { stationId?: string | null },
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await rpcWithIdempotency(
       client,
       "remove_order_item_modifier",
       "remove_order_item_modifier",
       "remove_order_item_modifier_v2",
-      { p_modifier_id: modifierId },
+      {
+        p_modifier_id: modifierId,
+        // Wave 1.4 — server-side station guard.
+        p_station_id: opts?.stationId ?? null,
+      },
       { deadline: DEADLINES.hotMutation },
     );
     return { data, error };
@@ -934,13 +1059,19 @@ export class OrderService {
     client: SupabaseClient,
     orderItemId: string,
     quantity?: number,
+    opts?: { stationId?: string | null },
   ): Promise<{ data: DuplicateOrderItemResult | null; error: any }> {
     const { data, error } = await rpcWithIdempotency<DuplicateOrderItemResult>(
       client,
       "duplicate_order_item",
       "duplicate_order_item",
       "duplicate_order_item_v2",
-      { p_order_item_id: orderItemId, p_quantity: quantity },
+      {
+        p_order_item_id: orderItemId,
+        p_quantity: quantity,
+        // Wave 1.4 — server-side station guard.
+        p_station_id: opts?.stationId ?? null,
+      },
       { deadline: DEADLINES.hotMutation },
     );
     return { data, error };
@@ -1042,28 +1173,41 @@ export class OrderService {
    * Bulk update order item statuses (for Send to Kitchen / Fire Course)
    * Automatically handles sent_to_kitchen_at and updated_at timestamps
    */
+  /**
+   * Wave 3.0d-4: per-intent idempotency. Same `(sortedItemIds, status)` retried
+   * → same key → server returns the cached `{updated_count, affected_order_ids}`
+   * jsonb and SKIPS the UPDATE entirely. Without this, retries re-stamp
+   * fire_time / updated_at / sync_version on every attempt — drift in audit
+   * timestamps and false-positive optimistic-lock conflicts elsewhere.
+   *
+   * Routing: when EXPO_PUBLIC_IDEMPOTENT_BULK_UPDATE_ORDER_ITEM_STATUS=1 (or
+   * the MMKV flag is on), routes to v2 with the key. Off → falls back to v1
+   * via withIdempotency's name swap (zero behavior change for the rollback
+   * path).
+   *
+   * Callers must derive `keyOverride` via `toBulkUpdateStatusKey(ids, status)`
+   * BEFORE the first attempt so retries reuse the same key.
+   */
   static async bulkUpdateOrderItemStatus(
     client: SupabaseClient,
     orderItemIds: string[],
     status: "sent" | "preparing" | "ready" | "served",
-    staffId?: string,
+    opts?: { staffId?: string; keyOverride?: string },
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
     }
-    return _runWithDeadline<any>(
+    return rpcWithIdempotency<any>(
+      client,
       "bulk_update_order_item_status",
-      DEADLINES.sendToKitchen,
-      async (signal) => {
-        const { data, error } = await client
-          .rpc("bulk_update_order_item_status", {
-            p_order_item_ids: orderItemIds,
-            p_status: status,
-            p_staff_id: staffId,
-          })
-          .abortSignal(signal);
-        return { data, error };
+      "bulk_update_order_item_status", // v1 name (no key)
+      "bulk_update_order_item_status_v2", // v2 name (with key)
+      {
+        p_order_item_ids: orderItemIds,
+        p_status: status,
+        p_staff_id: opts?.staffId,
       },
+      { deadline: DEADLINES.sendToKitchen, keyOverride: opts?.keyOverride },
     );
   }
 

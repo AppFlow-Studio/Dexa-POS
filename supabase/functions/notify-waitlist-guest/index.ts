@@ -55,12 +55,11 @@ serve(async (req: Request) => {
       )
     }
 
-    const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')!
-    const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')!
-    const fromNumber = Deno.env.get('TWILIO_FROM_NUMBER')!
+    const apiKey = Deno.env.get('TELNYX_API_KEY')
+    const fromNumber = Deno.env.get('TELNYX_FROM_NUMBER') ?? '+18556810275'
 
-    if (!accountSid || !authToken || !fromNumber) {
-      console.error('Missing Twilio credentials')
+    if (!apiKey) {
+      console.error('Missing Telnyx credentials')
       return new Response(
         JSON.stringify({
           success: false,
@@ -75,33 +74,35 @@ serve(async (req: Request) => {
       )
     }
 
-    // Send SMS via Twilio
-    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
-    const twilioBody = new URLSearchParams({
-      To: e164Phone,
-      From: fromNumber,
-      Body: message
-    })
-
-    const twilioResp = await fetch(twilioUrl, {
+    // Send SMS via Telnyx
+    const telnyxResp = await fetch('https://api.telnyx.com/v2/messages', {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
       },
-      body: twilioBody.toString()
+      body: JSON.stringify({
+        from: fromNumber,
+        to: e164Phone,
+        text: message
+      })
     })
 
-    let twilioJson: Record<string, any> = {}
+    let telnyxJson: Record<string, any> = {}
     try {
-      twilioJson = await twilioResp.json()
+      telnyxJson = await telnyxResp.json()
     } catch {
-      twilioJson = {}
+      telnyxJson = {}
     }
+    const data = telnyxJson?.data
+    const firstError = telnyxJson?.errors?.[0]
+    const providerStatus = data?.status as string | undefined
     const smsOk =
-      twilioResp.ok &&
-      twilioJson.status !== 'failed' &&
-      twilioJson.status !== 'undelivered'
+      telnyxResp.ok &&
+      !!data?.id &&
+      providerStatus !== 'sending_failed' &&
+      providerStatus !== 'delivery_failed'
 
     // Record result in database
     const supabase = createClient(
@@ -119,15 +120,17 @@ serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } else {
+      const providerError =
+        firstError?.detail || firstError?.title || undefined
       return new Response(
         JSON.stringify({
           success: false,
           sms: false,
           error: 'sms_failed',
           message:
-            twilioJson.message ||
+            providerError ||
             'Could not send SMS. Please notify guest verbally.',
-          twilio_error: twilioJson.message
+          provider_error: providerError
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )

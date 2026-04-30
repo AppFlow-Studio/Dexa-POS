@@ -1,6 +1,11 @@
 import { colors } from '@/lib/theme'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { FloorPlanService } from '@/services/floorPlanService'
+import {
+  getFloorPlanClient,
+  useFloorPlanStore
+} from '@/stores/useFloorPlanStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import {
   AlertCircle,
@@ -14,7 +19,7 @@ import {
   UserCircle,
   Users
 } from 'lucide-react-native'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Modal,
@@ -52,7 +57,7 @@ interface AddToWaitlistFormProps {
 }
 
 const SEATING_PREFERENCES = ['No Preference', 'Indoor', 'Outdoor', 'Bar']
-const SECTIONS = ['No Preference', 'Main Dining', 'Patio', 'Bar', 'Private']
+const NO_SECTION_PREFERENCE = 'No Preference'
 
 const labelStyle = {
   color: colors.muted,
@@ -170,7 +175,57 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   initialValues
 }) => {
   const tables = useFloorPlanStore(s => s.tables)
+  const floorPlans = useFloorPlanStore(s => s.floorPlans)
+  const isFloorPlansLoading = useFloorPlanStore(s => s.isLoading)
+  const lastFloorPlanSyncAt = useFloorPlanStore(s => s.lastSyncAt)
+  const floorPlanLocationId = useFloorPlanStore(s => s.locationId)
+  const setFloorPlans = useFloorPlanStore(s => s.setFloorPlans)
+  const selectedStoreId = useStoreSettingsStore(s => s.selectedStore?.id)
   const waitlist = useWaitlistStore(s => s.waitlist)
+
+  const [isLoadingFloorPlans, setIsLoadingFloorPlans] = useState(false)
+
+  useEffect(() => {
+    if (floorPlans.length > 0) return
+    const locationId = floorPlanLocationId || selectedStoreId
+    if (!locationId) return
+    const supabase = getFloorPlanClient()
+    if (!supabase) return
+    let cancelled = false
+    setIsLoadingFloorPlans(true)
+    FloorPlanService.getLocationFloorPlans(supabase, locationId)
+      .then(({ data }) => {
+        if (cancelled) return
+        if (data) setFloorPlans(data)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingFloorPlans(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    floorPlans.length,
+    floorPlanLocationId,
+    selectedStoreId,
+    setFloorPlans
+  ])
+
+  const sectionsLoading =
+    floorPlans.length === 0 &&
+    (isFloorPlansLoading || isLoadingFloorPlans || !lastFloorPlanSyncAt)
+
+  const sectionOptions = useMemo(() => {
+    const names = floorPlans
+      .map(fp => fp.name)
+      .filter((name): name is string => !!name && name.trim().length > 0)
+    const base = [NO_SECTION_PREFERENCE, ...Array.from(new Set(names))]
+    const initialSection = initialValues?.preferred_section
+    if (initialSection && !base.includes(initialSection)) {
+      base.push(initialSection)
+    }
+    return base
+  }, [floorPlans, initialValues?.preferred_section])
 
   const [partyName, setPartyName] = useState(initialValues?.party_name ?? '')
   const [partySize, setPartySize] = useState(initialValues?.party_size ?? 2)
@@ -603,6 +658,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             <Text style={{ ...labelStyle, marginBottom: 5 }}>Section</Text>
             <TouchableOpacity
               onPress={() => setShowSectionDropdown(true)}
+              disabled={sectionsLoading}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -615,20 +671,36 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
                     ? colors.info + '60'
                     : colors.border,
                 paddingHorizontal: 10,
-                paddingVertical: 10
+                paddingVertical: 10,
+                opacity: sectionsLoading ? 0.6 : 1
               }}
             >
-              <Text
-                style={{
-                  fontSize: 12,
-                  color:
-                    preferredSection !== 'No Preference'
-                      ? colors.info
-                      : colors.label
-                }}
-              >
-                {preferredSection}
-              </Text>
+              {sectionsLoading ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <ActivityIndicator size='small' color={colors.muted} />
+                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                    Loading…
+                  </Text>
+                </View>
+              ) : (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color:
+                      preferredSection !== 'No Preference'
+                        ? colors.info
+                        : colors.label
+                  }}
+                >
+                  {preferredSection}
+                </Text>
+              )}
               <ChevronDown size={12} color={colors.muted} />
             </TouchableOpacity>
           </View>
@@ -735,7 +807,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
         visible={showSectionDropdown}
         onClose={() => setShowSectionDropdown(false)}
         title='Preferred Section'
-        options={SECTIONS}
+        options={sectionOptions}
         selected={preferredSection}
         onSelect={setPreferredSection}
       />

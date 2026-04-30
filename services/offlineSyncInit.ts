@@ -33,10 +33,15 @@ import {
   findOrCreateCustomerByPhone
 } from '@/services/loyalty/loyaltyService'
 import {
+  _devSeedDeadLetter,
+  discardDeadLetterOperation,
+  getDeadLetterOperations,
   getFailedPayments,
   getIsOnline,
   getOfflineDurationMs,
+  getPendingOperations,
   getPendingPaymentsCount,
+  getQueueSnapshot,
   hasPendingOrderCreation,
   initOfflineSyncService,
   isServiceInitialized,
@@ -45,9 +50,79 @@ import {
   OPERATION_PRIORITY,
   processQueueNow,
   queueDependentOperation,
-  queueOperation
+  queueOperation,
+  retryDeadLetterOperation
 } from '@/services/offlineSyncService'
-import { toIdempotencyKey } from '@/lib/network/idempotencyKey'
+import { connectionQuality } from '@/lib/network/connectionQuality'
+
+if (__DEV__) {
+  ;(globalThis as any).__queue = () => getPendingOperations()
+  ;(globalThis as any).__queueAll = () => getQueueSnapshot()
+  ;(globalThis as any).__flushQueue = () => processQueueNow({ force: true })
+  ;(globalThis as any).__connQuality = () => ({
+    state: connectionQuality.get(),
+    isSlow: connectionQuality.isSlow(),
+    isOnline: getIsOnline()
+  })
+  // Wave 3.0e dev helpers — verify dead-letter UI without burning through
+  // 11 NLC retries. From Metro console:
+  //   __seedDeadLetter({ type: 'send_to_kitchen', localOrderId: 'order_xxx' })
+  //   __seedDeadLetter({ type: 'update_item_status', localOrderId: 'order_xxx',
+  //                      params: { status: 'ready', localItemIds: ['item_xxx'] } })
+  //   __deadLetters()                — list current dead-letter snapshot
+  //   __retryDeadLetter(opId)        — pull one back into pending
+  //   __clearDeadLetters()           — remove all dead-letter ops (for cleanup)
+  ;(globalThis as any).__seedDeadLetter = _devSeedDeadLetter
+  ;(globalThis as any).__deadLetters = () => getDeadLetterOperations()
+  ;(globalThis as any).__retryDeadLetter = (id: string) =>
+    retryDeadLetterOperation(id)
+  ;(globalThis as any).__clearDeadLetters = () => {
+    for (const op of getDeadLetterOperations()) {
+      discardDeadLetterOperation(op.id)
+    }
+  }
+  // Wave 3.0f-3 dev helpers — trigger cart-shape reconcile from Metro
+  // without waiting for AppState foreground or connectionQuality slow→fast.
+  // Returns a ReconcileResult / ReconcileResult[] you can read inline.
+  //   __reconcile()                       — reconcile every owned order
+  //   __reconcile(orderId)                — reconcile one order
+  //   __reconcile(orderId, { force: 1 })  — bypass 30s cooldown
+  ;(globalThis as any).__reconcile = (
+    orderId?: string,
+    opts?: { force?: boolean }
+  ) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const reconcile = require('@/services/cartShapeReconcile')
+    if (!orderId) return reconcile.reconcileAllOwnedOrders()
+    return reconcile.reconcileOrderCartShape(orderId, opts ?? {})
+  }
+  // Wave 3.0d-5 dev helpers — trigger header reconcile (server→local pull
+  // for kitchen statuses, payments, paid_status, totals, refunds, order
+  // status). No ownership gate. Returns HeaderReconcileResult[].
+  //   __reconcileHeader()                       — reconcile every active order
+  //   __reconcileHeader(orderId)                — reconcile one order
+  //   __reconcileHeader(orderId, { force: 1 })  — bypass cooldown + pending guard
+  ;(globalThis as any).__reconcileHeader = (
+    orderId?: string,
+    opts?: { force?: boolean }
+  ) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const headerReconcile = require('@/services/orderHeaderReconcile')
+    if (!orderId) return headerReconcile.reconcileAllActiveOrdersHeader()
+    return headerReconcile.reconcileOrderHeader(orderId, opts ?? {})
+  }
+}
+import {
+  toBulkUpdateStatusKey,
+  toIdempotencyKey,
+  toUpdateItemKey,
+  toUpdateQuantityKey
+} from '@/lib/network/idempotencyKey'
+import {
+  deriveSubtitle,
+  deriveTitle,
+  ITEM_BOUND_OPS
+} from '@/lib/offlineSyncSubtitles'
 import { OrderDiscountService } from '@/services/orderDiscountService'
 import { AddOpenItemParams, OrderService } from '@/services/orderService'
 import { useCoursingStore } from '@/stores/useCoursingStore'
@@ -360,6 +435,35 @@ export async function initializeOfflineSync (): Promise<void> {
         console.error('[OfflineSync] Payment failed:', op, _supabaseClient)
         _onPaymentFailed?.(op)
       }
+
+      // Wave 3.0e-1: surface item-bound dead-letters on the per-item Retry chip.
+      // BillItem.tsx subscribes via useItemSyncInfo(item.id) and renders the
+      // chip when status === 'failed'. Title + subtitle come from the
+      // offlineSyncSubtitles helpers so per-item and order-banner stay
+      // consistent.
+      if (ITEM_BOUND_OPS.has(op.type)) {
+        const itemIds: string[] = []
+        if (op.localItemId) itemIds.push(op.localItemId)
+        const paramItemIds = (op.params as any)?.localItemIds
+        if (Array.isArray(paramItemIds)) {
+          for (const id of paramItemIds) {
+            if (typeof id === 'string' && !itemIds.includes(id)) {
+              itemIds.push(id)
+            }
+          }
+        }
+        if (itemIds.length > 0) {
+          const title = deriveTitle(op)
+          const subtitle = deriveSubtitle(op)
+          const errorMessage = `${title} — ${subtitle}`
+          const updates = itemIds.map(itemId => ({
+            itemId,
+            status: 'failed' as const,
+            error: errorMessage
+          }))
+          useSyncStatusStore.getState().setSyncStatusBatch(updates)
+        }
+      }
     },
     executeOperation: async (op: OfflineOperation): Promise<boolean> => {
       return executeQueuedOperation(op)
@@ -531,30 +635,67 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
         const localOrderId = paramsLocalOrderId || op.localOrderId
         const localItemId = paramsLocalItemId || op.localItemId
 
-        // Resolve item ID if it was a local ID
-        const resolvedItemId =
+        // Resolve item ID if it was a local ID. If localItemId+localOrderId
+        // are present but the mapping returned null, fall back to the
+        // orderItemId param if it's a UUID (the queueOp may have stored the
+        // resolved DB id directly).
+        const mappedItemId =
           localItemId && localOrderId
             ? resolveItemId(localOrderId, localItemId)
-            : orderItemId
+            : null
+        const resolvedItemId =
+          mappedItemId ||
+          (orderItemId && isValidUUID(orderItemId) ? orderItemId : null)
 
         if (!resolvedItemId) {
           console.log(
-            '[OfflineSync] update_item_quantity: Item not synced yet, will retry'
+            '[OfflineSync] update_item_quantity: Item not synced yet, will retry',
+            { localOrderId, localItemId, orderItemId, mappedItemId }
           )
           return false
         }
 
-        const { error } = await OrderService.updateOrderItemQuantity(
+        // Wave 3.0a: per-intent key. Same (item, qty) on retry → cached.
+        const { data, error } = await OrderService.updateOrderItemQuantity(
           _supabaseClient,
           resolvedItemId,
-          quantity
+          quantity,
+          { keyOverride: toUpdateQuantityKey(resolvedItemId, quantity) }
         )
-        return !error
+        if (error) {
+          console.warn(
+            '[OfflineSync] update_item_quantity FAILED',
+            {
+              resolvedItemId,
+              quantity,
+              errCode: (error as any)?.code,
+              errMessage: (error as any)?.message,
+              errDetails: (error as any)?.details,
+              errHint: (error as any)?.hint
+            }
+          )
+          return false
+        }
+        if (__DEV__) console.log('[OfflineSync] update_item_quantity OK', { resolvedItemId, quantity, serverQty: (data as any)?.quantity })
+        return true
       }
 
       case 'update_item': {
-        const { orderItemId, specialInstructions, localOrderId, localItemId } =
-          op.params
+        // Wave 3.0a: forward all allowlisted params from op.params.
+        // Pre-fix this case only forwarded p_special_instructions, which
+        // silently dropped p_quantity / p_unit_price / p_seat_number when
+        // the queue collapsed an update_item_quantity into a later
+        // update_item op. Per-intent keys would then mis-cache the partial
+        // params. See plan 3.0a-4b.
+        const {
+          orderItemId,
+          quantity,
+          unitPrice,
+          specialInstructions,
+          seatNumber,
+          localOrderId,
+          localItemId
+        } = op.params
 
         const resolvedItemId =
           localItemId && localOrderId
@@ -568,10 +709,19 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           return false
         }
 
-        const { error } = await OrderService.updateOrderItem(_supabaseClient, {
+        const fullParams = {
           p_order_item_id: resolvedItemId,
-          p_special_instructions: specialInstructions
-        })
+          p_quantity: quantity,
+          p_unit_price: unitPrice,
+          p_special_instructions: specialInstructions,
+          p_seat_number: seatNumber
+        }
+
+        const { error } = await OrderService.updateOrderItem(
+          _supabaseClient,
+          fullParams,
+          { keyOverride: toUpdateItemKey(fullParams) }
+        )
         return !error
       }
 
@@ -1846,11 +1996,20 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
                 throw statusError
               }
 
+              // Wave 3.0d-4: keyOverride for retry-safety. Same item set +
+              // status → cached result on retry, no fire_time drift.
+              const kitchenSentStatus = getKitchenSentStatus()
               const { error: kitchenError } =
                 await OrderService.bulkUpdateOrderItemStatus(
                   _supabaseClient,
                   [data.order_item_id],
-                  getKitchenSentStatus()
+                  kitchenSentStatus,
+                  {
+                    keyOverride: toBulkUpdateStatusKey(
+                      [data.order_item_id],
+                      kitchenSentStatus
+                    )
+                  }
                 )
 
               if (kitchenError) {
@@ -2513,11 +2672,20 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
 
           // 3. Update resolved item statuses
           if (resolvedItemIds.length > 0) {
+            // Wave 3.0d-4: keyOverride for retry-safety. Same item set +
+            // status → cached result on retry, no fire_time drift.
+            const kitchenSentStatus = getKitchenSentStatus()
             const { error: itemError } =
               await OrderService.bulkUpdateOrderItemStatus(
                 _supabaseClient,
                 resolvedItemIds,
-                getKitchenSentStatus()
+                kitchenSentStatus,
+                {
+                  keyOverride: toBulkUpdateStatusKey(
+                    resolvedItemIds,
+                    kitchenSentStatus
+                  )
+                }
               )
 
             if (itemError) {
@@ -2651,6 +2819,101 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           return true
         } catch (err) {
           console.error('[OfflineSync] Error setting item seat:', err)
+          return false
+        }
+      }
+
+      // ================================================================
+      // UPDATE ITEM STATUS — KDS bulk status (Wave 3.0d-3)
+      // Used by Mark Ready / Mark Served / Mark Preparing flows.
+      // Distinct from send_to_kitchen which also bumps order status; this op
+      // only touches item statuses.
+      // ================================================================
+      case 'update_item_status': {
+        const {
+          dbItemIds,
+          status,
+          localOrderId,
+          localItemIds
+        } = op.params as {
+          dbItemIds?: string[]
+          status: 'sent' | 'preparing' | 'ready' | 'served'
+          localOrderId?: string
+          localItemIds?: string[]
+        }
+
+        // Resolve any local item IDs that weren't already mapped to UUIDs at
+        // queue time. Strategy mirrors send_to_kitchen: try resolveItemId
+        // first, then fall back to the live order's items.
+        let resolvedItemIds: string[] = (dbItemIds ?? []).filter(id =>
+          isValidUUID(id)
+        )
+
+        if (localItemIds?.length && localOrderId) {
+          for (const localItemId of localItemIds) {
+            const resolved = resolveItemId(localOrderId, localItemId)
+            if (resolved && !resolvedItemIds.includes(resolved)) {
+              resolvedItemIds.push(resolved)
+            }
+          }
+
+          if (resolvedItemIds.length === 0) {
+            const liveOrder = _getOrderStore().getState().ordersById[
+              localOrderId
+            ] as any
+            if (liveOrder?.items) {
+              for (const localItemId of localItemIds) {
+                const liveItem = liveOrder.items.find(
+                  (i: any) => i.id === localItemId && i.db_order_item_id
+                )
+                if (
+                  liveItem?.db_order_item_id &&
+                  !resolvedItemIds.includes(liveItem.db_order_item_id)
+                ) {
+                  resolvedItemIds.push(liveItem.db_order_item_id)
+                }
+              }
+            }
+          }
+        }
+
+        if (resolvedItemIds.length === 0) {
+          console.log(
+            '[OfflineSync:update_item_status] No items resolved yet, will retry'
+          )
+          return false
+        }
+
+        try {
+          // Wave 3.0d-4: per-intent key. If this is a retry, the server-side
+          // cache returns the prior result and skips re-stamping fire_time /
+          // updated_at / sync_version.
+          const { error } = await OrderService.bulkUpdateOrderItemStatus(
+            _supabaseClient,
+            resolvedItemIds,
+            status,
+            { keyOverride: toBulkUpdateStatusKey(resolvedItemIds, status) }
+          )
+          if (error) {
+            console.error(
+              '[OfflineSync:update_item_status] Failed:',
+              {
+                count: resolvedItemIds.length,
+                status,
+                errCode: (error as any)?.code,
+                errMessage: (error as any)?.message
+              }
+            )
+            return false
+          }
+          if (__DEV__)
+            console.log(
+              '[OfflineSync:update_item_status] OK',
+              { count: resolvedItemIds.length, status }
+            )
+          return true
+        } catch (err) {
+          console.error('[OfflineSync:update_item_status] Exception:', err)
           return false
         }
       }

@@ -377,7 +377,7 @@ The implementation includes:
 
 1. **Drag-to-Reorder** - Currently has grip handle; can integrate React Native DraggableFlatList
 2. **Bulk Actions** - Multi-select and batch operations
-3. **SMS Integration** - Direct SMS sending via Twilio
+3. **SMS Integration** - Direct SMS sending via Telnyx
 4. **Email Integration** - Direct email sending
 5. **Caller ID Integration** - Auto-populate phone lookup
 6. **Waitlist Analytics** - Charts and metrics

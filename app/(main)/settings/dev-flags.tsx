@@ -43,6 +43,8 @@ const ALL_RPCS: { key: IdempotentRpc; label: string; description: string }[] = [
   { key: 'record_refund_items', label: 'record_refund_items', description: 'Money path. Record refund line items → _v2' },
   { key: 'create_reversal', label: 'create_reversal', description: 'Money path. Create reversal record → _v2' },
   { key: 'process_payment', label: 'process_payment', description: 'NOT WIRED — process_payment_v9 deferred' },
+  { key: 'update_order_item_quantity', label: 'update_order_item_quantity', description: 'Wave 3.0a. Hot path. Cart qty update → update_order_item_quantity_v3' },
+  { key: 'update_order_item', label: 'update_order_item', description: 'Wave 3.0a. Item edit (notes, price override, seat) → update_order_item_v3' },
 ]
 
 export default function DevFlagsScreen () {

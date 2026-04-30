@@ -209,10 +209,13 @@ export async function openTab(
               .map((i) => i.db_order_item_id)
               .filter((id): id is string => !!id);
             if (dbItemIds.length > 0) {
+              // Wave 3.0d-4: per-intent idempotency key so retries dedupe.
+              const { toBulkUpdateStatusKey } = require("@/lib/network/idempotencyKey");
               OrderService.bulkUpdateOrderItemStatus(
                 supabase,
                 dbItemIds,
                 kitchenStatus,
+                { keyOverride: toBulkUpdateStatusKey(dbItemIds, kitchenStatus) },
               ).catch((err: Error) =>
                 console.error(
                   "[PreAuthService] Item status sync failed:",

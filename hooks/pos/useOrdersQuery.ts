@@ -3,7 +3,9 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { maybeFireTakeoverToast } from "@/lib/takeoverToast";
 import { OrderProfile } from "@/lib/types";
 import {
   normalizeFetchedOrder,
@@ -109,6 +111,17 @@ function hydrateWorkspace(
 ) {
   const state = useOrderStore.getState();
 
+  // Wave 2.1.1: snapshot ownership BEFORE the merge so we can detect
+  // flip-away on the polling-recovery / reconnect-refetch path. Wave 2.1's
+  // detection lives in `_handleOrderBroadcast` and won't fire when the
+  // realtime channel was down — this is the catch-up path. We skip cold
+  // starts (location switch / initial load) by gating on the location
+  // having been previously hydrated to the same id.
+  const _myStationId =
+    useStoreSettingsStore.getState().selectedStation?.id ?? null;
+  const _isSameLocationRehydrate =
+    state.currentLocationId === locationId && state.orderIds.length > 0;
+
   // Preserve unsynced + pending-item orders
   const preserved: Record<string, OrderProfile> = {};
   const preservedIds: string[] = [];
@@ -202,9 +215,38 @@ function hydrateWorkspace(
     }
   }
 
+  // Wave 2.1.1: detect ownership-flip-away across the hydrate. Two cases:
+  //   (a) prev was mine, next exists with a different station_id → flip-away
+  //   (b) prev was mine + draft, next absent → silently pruned at line 178-202
+  //       above. Also a flip-away from the user's POV.
+  const _flippedAwayOrders: Array<{ orderId: string; prior: OrderProfile }> =
+    [];
+  if (_isSameLocationRehydrate && _myStationId) {
+    for (const id of state.orderIds) {
+      const prev = state.ordersById[id];
+      if (!prev) continue;
+      const wasMine = prev.station_id === _myStationId;
+      if (!wasMine) continue;
+      const orderIsTerminal =
+        prev.order_status === "void" ||
+        prev.order_status === "completed" ||
+        prev.check_status === "Closed";
+      if (orderIsTerminal) continue;
+
+      const next = newOrdersById[id];
+      const flippedAway =
+        !next || (next.station_id != null && next.station_id !== _myStationId);
+      if (flippedAway) {
+        _flippedAwayOrders.push({ orderId: id, prior: prev });
+      }
+    }
+  }
+
   // Skip setState if nothing meaningful changed — avoids Immer draft + MMKV serialization.
   // Server orders are always new object instances (transformBroadcastToOrder creates fresh objects),
   // so we compare by order count + status + item count as a lightweight content check.
+  // Wave 2.1.1: include `station_id` in the equality check — a pure ownership
+  // change must NOT be skipped here, otherwise the read-only banner won't flip.
   if (
     state.currentLocationId === locationId &&
     state.orderIds.length === newOrderIds.length &&
@@ -214,6 +256,7 @@ function hydrateWorkspace(
       if (!prev || !next) return false;
       return (
         prev.order_status === next.order_status &&
+        prev.station_id === next.station_id &&
         prev.items.length === next.items.length &&
         prev.payments?.length === next.payments?.length
       );
@@ -227,6 +270,28 @@ function hydrateWorkspace(
     orderIds: newOrderIds,
     currentLocationId: locationId,
   });
+
+  // Wave 2.1.1: fire flip-away side effects AFTER setState so consumers see
+  // the read-only state when the toast lands. Reuses the same dedup helper
+  // as `_handleOrderBroadcast` — if a fast realtime broadcast already
+  // toasted, this hydrate path stays silent (and vice versa).
+  if (_flippedAwayOrders.length > 0) {
+    const _activeOrderId = state.activeOrderId;
+    for (const { orderId, prior } of _flippedAwayOrders) {
+      queueMicrotask(() => maybeFireTakeoverToast(orderId, prior));
+    }
+    if (
+      _activeOrderId &&
+      _flippedAwayOrders.some((f) => f.orderId === _activeOrderId)
+    ) {
+      queueMicrotask(() => {
+        const sheet = usePaymentDetailSheetStore.getState();
+        if (sheet.isOpen && sheet.orderId === _activeOrderId) {
+          sheet.close();
+        }
+      });
+    }
+  }
 }
 
 export function useInvalidateOrders() {

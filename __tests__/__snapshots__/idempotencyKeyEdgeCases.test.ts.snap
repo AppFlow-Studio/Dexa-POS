@@ -1,0 +1,5 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Golden values — PHASE2_NAMESPACE drift detection toUpdateItemKey golden: minimal params 1`] = `"7fb2e8c1-a58f-52dd-be4b-4928c5d52bb3"`;
+
+exports[`Golden values — PHASE2_NAMESPACE drift detection toUpdateQuantityKey golden: itemId=11..11, qty=3 1`] = `"27796ba1-e320-5077-a1a9-8444e070501d"`;
