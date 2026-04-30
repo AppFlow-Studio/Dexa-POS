@@ -37,6 +37,18 @@ interface ModifierSelection {
   }
 }
 
+interface CustomModifier {
+  id: string
+  name: string
+  price: number
+}
+
+const CUSTOM_MODIFIER_CATEGORY_ID = 'custom-modifiers'
+const CUSTOM_MODIFIER_CATEGORY_NAME = 'Custom'
+
+const generateCustomModifierId = () =>
+  `custom_mod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+
 const nowMs = () =>
   typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
@@ -277,6 +289,10 @@ type State = {
   isQuantityModalOpen: boolean
   quantityInput: string
   isSeatPickerOpen: boolean
+  customModifiers: CustomModifier[]
+  isCustomModifierModalOpen: boolean
+  customModifierNameInput: string
+  customModifierPriceInput: string
 }
 
 type Action =
@@ -305,6 +321,15 @@ type Action =
         category: ModifierCategory
       }
     }
+  | { type: 'OPEN_CUSTOM_MODIFIER_MODAL' }
+  | { type: 'CLOSE_CUSTOM_MODIFIER_MODAL' }
+  | { type: 'SET_CUSTOM_MODIFIER_NAME'; payload: string }
+  | { type: 'SET_CUSTOM_MODIFIER_PRICE'; payload: string }
+  | {
+      type: 'ADD_CUSTOM_MODIFIER'
+      payload: { name: string; price: number }
+    }
+  | { type: 'REMOVE_CUSTOM_MODIFIER'; payload: string }
 
 const computeSelectionCounts = (
   selections: ModifierSelection
@@ -431,7 +456,55 @@ const immerReducer = (state: State, action: Action): void => {
       }
       return
     }
+    case 'OPEN_CUSTOM_MODIFIER_MODAL':
+      state.isCustomModifierModalOpen = true
+      state.customModifierNameInput = ''
+      state.customModifierPriceInput = ''
+      return
+    case 'CLOSE_CUSTOM_MODIFIER_MODAL':
+      state.isCustomModifierModalOpen = false
+      state.customModifierNameInput = ''
+      state.customModifierPriceInput = ''
+      return
+    case 'SET_CUSTOM_MODIFIER_NAME':
+      state.customModifierNameInput = action.payload
+      return
+    case 'SET_CUSTOM_MODIFIER_PRICE':
+      state.customModifierPriceInput = action.payload
+      return
+    case 'ADD_CUSTOM_MODIFIER':
+      state.customModifiers.push({
+        id: generateCustomModifierId(),
+        name: action.payload.name,
+        price: action.payload.price
+      })
+      return
+    case 'REMOVE_CUSTOM_MODIFIER':
+      state.customModifiers = state.customModifiers.filter(
+        m => m.id !== action.payload
+      )
+      return
   }
+}
+
+const extractCustomModifiers = (
+  cartItem: CartItem | null | undefined
+): CustomModifier[] => {
+  // Match either the canonical sentinel (locally-saved item) or the fallback
+  // shape produced by orderTransformers.ts when realtime broadcasts arrive
+  // with NULL modifier_group_id / modifier_item_id — there the categoryId
+  // collapses to the group name ("Custom").
+  const group = cartItem?.customizations?.modifiers?.find(
+    m =>
+      m.categoryId === CUSTOM_MODIFIER_CATEGORY_ID ||
+      m.categoryName === CUSTOM_MODIFIER_CATEGORY_NAME
+  )
+  if (!group) return []
+  return group.options.map(opt => ({
+    id: opt.id,
+    name: opt.name,
+    price: opt.price ?? 0
+  }))
 }
 
 // ============================================================================
@@ -539,7 +612,11 @@ const ModifierScreenContent = () => {
         quantityInput: '',
         // Auto-open seat picker for dine-in (table) orders so the server can
         // tap a seat without first expanding the header pill.
-        isSeatPickerOpen: showSeatPicker
+        isSeatPickerOpen: showSeatPicker,
+        customModifiers: extractCustomModifiers(cartItem),
+        isCustomModifierModalOpen: false,
+        customModifierNameInput: '',
+        customModifierPriceInput: ''
       }
     }
   )
@@ -591,7 +668,11 @@ const ModifierScreenContent = () => {
         quantityInput: '',
         // Auto-open seat picker for dine-in (table) orders so the server can
         // tap a seat without first expanding the header pill.
-        isSeatPickerOpen: showSeatPicker
+        isSeatPickerOpen: showSeatPicker,
+        customModifiers: extractCustomModifiers(cartItem),
+        isCustomModifierModalOpen: false,
+        customModifierNameInput: '',
+        customModifierPriceInput: ''
       }
     })
 
@@ -745,11 +826,15 @@ const ModifierScreenContent = () => {
         }
       })
     })
+    for (const m of state.customModifiers) {
+      baseTotal += m.price
+    }
     return baseTotal * state.quantity
   }, [
     isOpen,
     state.quantity,
     state.modifierSelections,
+    state.customModifiers,
     currentItem,
     optionsById,
     getCurrentItemPrice
@@ -955,6 +1040,33 @@ const ModifierScreenContent = () => {
     dispatch({ type: 'SET_QUANTITY', payload: currentState.quantity + 1 })
   }, [])
 
+  const handleOpenCustomModifierModal = useCallback(() => {
+    const { isReadOnly } = latestStateRef.current
+    if (isReadOnly) return
+    dispatch({ type: 'OPEN_CUSTOM_MODIFIER_MODAL' })
+  }, [])
+
+  const handleCloseCustomModifierModal = useCallback(() => {
+    dispatch({ type: 'CLOSE_CUSTOM_MODIFIER_MODAL' })
+  }, [])
+
+  const handleConfirmCustomModifier = useCallback(() => {
+    const { state: currentState } = latestStateRef.current
+    const name = currentState.customModifierNameInput.trim()
+    if (!name) return
+    const parsed = parseFloat(currentState.customModifierPriceInput)
+    const price =
+      Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : 0
+    dispatch({ type: 'ADD_CUSTOM_MODIFIER', payload: { name, price } })
+    dispatch({ type: 'CLOSE_CUSTOM_MODIFIER_MODAL' })
+  }, [])
+
+  const handleRemoveCustomModifier = useCallback((id: string) => {
+    const { isReadOnly } = latestStateRef.current
+    if (isReadOnly) return
+    dispatch({ type: 'REMOVE_CUSTOM_MODIFIER', payload: id })
+  }, [])
+
   const handleSave = useCallback(() => {
     actionHandledRef.current = true
     const {
@@ -1122,6 +1234,19 @@ const ModifierScreenContent = () => {
             })
             .filter(mod => mod.options.length > 0)
         : []
+
+      if (currentState.customModifiers.length > 0) {
+        selectedModifiers.push({
+          categoryId: CUSTOM_MODIFIER_CATEGORY_ID,
+          categoryName: CUSTOM_MODIFIER_CATEGORY_NAME,
+          options: currentState.customModifiers.map(m => ({
+            id: m.id,
+            name: m.name,
+            price: m.price,
+            isNo: undefined
+          }))
+        })
+      }
 
       const finalCustomizations = {
         modifiers: selectedModifiers,
@@ -1537,19 +1662,19 @@ const ModifierScreenContent = () => {
         )}
 
         {/* ── Category Pill Tabs ──────────────────────────────────────────── */}
-        {hasModifiers && (
-          <View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingVertical: 10,
-                gap: 6
-              }}
-              style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
-            >
-              {menuItemForModifiers!.modifiers.map(category => {
+        <View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              gap: 6
+            }}
+            style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
+          >
+            {hasModifiers &&
+              menuItemForModifiers!.modifiers.map(category => {
                 const hasSelection =
                   (state.selectionCounts[category.id] ?? 0) > 0
                 const isActive = state.activeCategory === category.id
@@ -1563,7 +1688,26 @@ const ModifierScreenContent = () => {
                   />
                 )
               })}
-            </ScrollView>
+            {!isReadOnly && (
+              <TouchableOpacity
+                onPressIn={handleOpenCustomModifierModal}
+                className='flex-row items-center gap-x-1 px-3 py-1.5 rounded-full border'
+                style={{
+                  backgroundColor: 'transparent',
+                  borderColor: colors.teal,
+                  borderStyle: 'dashed'
+                }}
+              >
+                <Plus color={colors.teal} size={11} strokeWidth={3} />
+                <Text
+                  className='text-xs font-semibold'
+                  style={{ color: colors.teal }}
+                >
+                  Custom Modifier
+                </Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
 
             {/* ── Active Category Options ──────────────────────────────── */}
             {currentCategory && showModifierOptions && (
@@ -1644,6 +1788,49 @@ const ModifierScreenContent = () => {
                 </ScrollView>
               </View>
             )}
+          </View>
+
+        {/* ── Custom Modifiers ─────────────────────────────────────────────── */}
+        {state.customModifiers.length > 0 && (
+          <View
+            className='px-4 py-3 border-t'
+            style={{ borderColor: colors.border }}
+          >
+            <Text
+              className='text-sm font-semibold mb-2'
+              style={{ color: colors.heading }}
+            >
+              Custom Modifiers
+            </Text>
+            <View className='flex-row flex-wrap gap-2'>
+              {state.customModifiers.map(mod => (
+                <View
+                  key={mod.id}
+                  className='flex-row items-center gap-x-1.5 pl-3 pr-1.5 py-1 rounded-full border'
+                  style={{
+                    backgroundColor: colors.teal + '20',
+                    borderColor: colors.teal
+                  }}
+                >
+                  <Text
+                    className='text-xs font-semibold'
+                    style={{ color: colors.teal }}
+                  >
+                    {mod.name}
+                    {mod.price > 0 ? ` +$${mod.price.toFixed(2)}` : ''}
+                  </Text>
+                  {!isReadOnly && (
+                    <TouchableOpacity
+                      onPressIn={() => handleRemoveCustomModifier(mod.id)}
+                      className='w-5 h-5 rounded-full items-center justify-center'
+                      style={{ backgroundColor: colors.teal }}
+                    >
+                      <X color={colors.onSolid} size={10} strokeWidth={3} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
@@ -1803,6 +1990,131 @@ const ModifierScreenContent = () => {
                   style={{ color: colors.onSolid }}
                 >
                   Set
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Custom Modifier Modal ───────────────────────────────────────── */}
+      <Modal
+        visible={state.isCustomModifierModalOpen}
+        transparent
+        animationType='fade'
+        onRequestClose={handleCloseCustomModifierModal}
+      >
+        <View
+          className='flex-1 justify-center items-center px-6'
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+        >
+          <View
+            className='rounded-2xl p-5 w-96 max-w-full border'
+            style={{
+              backgroundColor: colors.panel,
+              borderColor: colors.border
+            }}
+          >
+            <View className='flex-row items-center justify-between mb-4'>
+              <Text
+                className='text-lg font-semibold'
+                style={{ color: colors.heading }}
+              >
+                Add Custom Modifier
+              </Text>
+              <TouchableOpacity
+                onPressIn={handleCloseCustomModifierModal}
+                className='w-7 h-7 rounded-full items-center justify-center'
+                style={{
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
+              >
+                <X color={colors.label} size={14} />
+              </TouchableOpacity>
+            </View>
+
+            <Text
+              className='text-xs font-semibold mb-1.5'
+              style={{ color: colors.label }}
+            >
+              Name
+            </Text>
+            <TextInput
+              value={state.customModifierNameInput}
+              onChangeText={text =>
+                dispatch({
+                  type: 'SET_CUSTOM_MODIFIER_NAME',
+                  payload: text
+                })
+              }
+              autoFocus
+              maxLength={40}
+              placeholder='e.g. Extra Avocado'
+              placeholderTextColor={colors.muted}
+              className='rounded-xl text-base text-left h-12 px-3 mb-3 border'
+              style={{
+                color: colors.heading,
+                backgroundColor: colors.inset,
+                borderColor: colors.border
+              }}
+            />
+
+            <Text
+              className='text-xs font-semibold mb-1.5'
+              style={{ color: colors.label }}
+            >
+              Price (optional)
+            </Text>
+            <TextInput
+              value={state.customModifierPriceInput}
+              onChangeText={text =>
+                dispatch({
+                  type: 'SET_CUSTOM_MODIFIER_PRICE',
+                  payload: text
+                })
+              }
+              keyboardType='decimal-pad'
+              placeholder='0.00'
+              placeholderTextColor={colors.muted}
+              className='rounded-xl text-base text-left h-12 px-3 mb-5 border'
+              style={{
+                color: colors.heading,
+                backgroundColor: colors.inset,
+                borderColor: colors.border
+              }}
+            />
+
+            <View className='flex-row gap-3'>
+              <TouchableOpacity
+                onPressIn={handleCloseCustomModifierModal}
+                className='flex-1 py-3 rounded-xl items-center border'
+                style={{ borderColor: colors.border }}
+              >
+                <Text
+                  className='text-base font-semibold'
+                  style={{ color: colors.label }}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPressIn={handleConfirmCustomModifier}
+                disabled={state.customModifierNameInput.trim().length === 0}
+                className='flex-1 py-3 rounded-xl items-center'
+                style={{
+                  backgroundColor:
+                    state.customModifierNameInput.trim().length === 0
+                      ? colors.teal + '60'
+                      : colors.teal
+                }}
+              >
+                <Text
+                  className='text-base font-semibold'
+                  style={{ color: colors.onSolid }}
+                >
+                  Add
                 </Text>
               </TouchableOpacity>
             </View>

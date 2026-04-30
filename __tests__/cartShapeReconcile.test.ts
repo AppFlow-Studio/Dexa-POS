@@ -223,6 +223,121 @@ describe('Wave 3.0f-3 — cartShapeReconcile', () => {
     expect(modOp).toBeDefined()
   })
 
+  it('nulls out group/item ids for custom modifiers in queued replace_modifiers (UUID-cast safety)', async () => {
+    // Custom modifiers carry sentinel ids ("custom-modifiers" / "custom_mod_…")
+    // that aren't UUIDs. The RPC hard-casts to uuid, so the reconcile push
+    // must pass null for those columns or every retry fails with an invalid
+    // input syntax error and the op dead-letters after MAX_RETRY_ATTEMPTS.
+    seedOrder({
+      items: [
+        {
+          id: 'local_custom_1',
+          db_order_item_id: 'srv_custom_1',
+          quantity: 1,
+          customizations: {
+            modifiers: [
+              {
+                categoryId: 'custom-modifiers',
+                categoryName: 'Custom',
+                options: [
+                  {
+                    id: 'custom_mod_1234_abcd',
+                    name: 'Extra Sugar Powder',
+                    price: 2,
+                    isNo: false
+                  }
+                ]
+              }
+            ],
+            addOns: []
+          }
+        }
+      ]
+    })
+    // Server has no modifiers — fingerprint diverges, reconcile fires.
+    seedServerItems([
+      {
+        id: 'srv_custom_1',
+        quantity: 1,
+        is_voided: false,
+        order_item_modifiers: []
+      }
+    ])
+
+    const result = await svc.reconcileOrderCartShape('order_local_1')
+
+    expect(result.outcome).toBe('reconciled')
+    const modOp = queue
+      .getQueueSnapshot()
+      .find(o => o.type === 'replace_modifiers')
+    expect(modOp).toBeDefined()
+    const queued = modOp!.params.modifiers[0]
+    expect(queued.modifier_group_id).toBeNull()
+    expect(queued.modifier_item_id).toBeNull()
+    // Name + price columns still carry the real data.
+    expect(queued.modifier_group_name).toBe('Custom')
+    expect(queued.modifier_name).toBe('Extra Sugar Powder')
+    expect(queued.price_modifier).toBe(2)
+  })
+
+  it('does not queue replace_modifiers when local custom modifier matches server (post-broadcast shape)', async () => {
+    // After add_order_item_v3 succeeds, the realtime broadcast comes back with
+    // null modifier_group_id / modifier_item_id and orderTransformers groups
+    // by name. The fingerprint must treat that server shape as identical to
+    // the local sentinel shape — otherwise we re-queue replace_modifiers on
+    // every reconcile (false-positive divergence loop).
+    seedOrder({
+      items: [
+        {
+          id: 'local_custom_2',
+          db_order_item_id: 'srv_custom_2',
+          quantity: 1,
+          customizations: {
+            modifiers: [
+              {
+                categoryId: 'custom-modifiers',
+                categoryName: 'Custom',
+                options: [
+                  {
+                    id: 'custom_mod_1234_abcd',
+                    name: 'Extra Sugar Powder',
+                    price: 2,
+                    isNo: false
+                  }
+                ]
+              }
+            ],
+            addOns: []
+          }
+        }
+      ]
+    })
+    seedServerItems([
+      {
+        id: 'srv_custom_2',
+        quantity: 1,
+        is_voided: false,
+        order_item_modifiers: [
+          {
+            modifier_group_id: null,
+            modifier_item_id: null,
+            modifier_group_name: 'Custom',
+            modifier_name: 'Extra Sugar Powder',
+            price_modifier: 2,
+            quantity: 1
+          }
+        ]
+      }
+    ])
+
+    const result = await svc.reconcileOrderCartShape('order_local_1')
+
+    expect(result.outcome).toBe('skipped_no_diff')
+    expect(
+      queue.getQueueSnapshot().find(o => o.type === 'replace_modifiers')
+    ).toBeUndefined()
+  })
+
   it('returns skipped_unowned when station_id mismatches and never queues anything', async () => {
     seedOrder({
       station_id: 'station-OTHER', // different station owns this

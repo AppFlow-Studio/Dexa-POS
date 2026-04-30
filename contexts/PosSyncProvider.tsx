@@ -22,6 +22,7 @@ import {
     stopTerminalHealthCheck,
 } from "@/services/hardware";
 import { initLocationConfigSync } from "@/services/locationConfigSync";
+import { initLandiPrinter } from "@/native/LandiPrinter";
 import {
     initializeOfflineSync,
     isServiceInitialized,
@@ -147,9 +148,23 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (supabase && selectedStation?.id && selectedStore?.id) {
       detectAndStoreCapabilities(supabase, selectedStation.id)
-        .then(async () => {
+        .then(async (capabilities) => {
           // Fetch printers into local store so PrinterService can route jobs
           await usePrinterStore.getState().fetchPrinters(selectedStore.id);
+
+          // Pre-warm Landi printer + cashBox so the first cash payment
+          // doesn't pay cold-init cost on the AIDL bus (10-15s delay).
+          if (capabilities.hasBuiltinPrinter && !isKDS) {
+            initLandiPrinter()
+              .then((ok) =>
+                console.log(
+                  `[PosSyncProvider] Landi pre-warm ${ok ? "ok" : "skipped"}`,
+                ),
+              )
+              .catch((e) =>
+                console.warn("[PosSyncProvider] Landi pre-warm failed:", e),
+              );
+          }
         })
         .catch((e) =>
           console.warn("[PosSyncProvider] Device detection failed:", e),
@@ -160,7 +175,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     return () => {
       stopHeartbeat();
     };
-  }, [supabase, selectedStation?.id, selectedStore?.id]);
+  }, [supabase, selectedStation?.id, selectedStore?.id, isKDS]);
 
   // Terminal health check lifecycle
   useEffect(() => {

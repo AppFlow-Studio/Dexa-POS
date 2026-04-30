@@ -266,6 +266,20 @@ function calculateOrderTotals(
 // HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
 // ============================================================================
 
+export const CUSTOM_MODIFIER_CATEGORY_ID = "custom-modifiers";
+const CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID = "custom-open-item-modifiers";
+
+// Custom (per-item, ad-hoc) modifiers carry sentinel categoryId / opt.id values
+// that aren't real DB UUIDs. The modifier RPCs hard-cast group_id and item_id to
+// uuid, so we must null those columns out before sending — denormalized name +
+// price columns carry the real data.
+function isCustomModifierGroup(categoryId: string | undefined | null): boolean {
+  return (
+    categoryId === CUSTOM_MODIFIER_CATEGORY_ID ||
+    categoryId === CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID
+  );
+}
+
 /**
  * Restore checkDiscount and applied_discounts from backend order_discounts data.
  * Handles type conversions between DB format and local state format.
@@ -1830,17 +1844,18 @@ const addItemToBackend = async (
       p_special_instructions: item.customizations?.notes || undefined,
 
       // Modifiers (pre-calculated prices)
-      p_modifiers: item.customizations?.modifiers?.flatMap((mod) =>
-        mod.options.map((opt) => ({
-          modifier_group_id: mod.categoryId,
-          modifier_item_id: opt.id,
+      p_modifiers: item.customizations?.modifiers?.flatMap((mod) => {
+        const isCustom = isCustomModifierGroup(mod.categoryId);
+        return mod.options.map((opt) => ({
+          modifier_group_id: isCustom ? null : mod.categoryId,
+          modifier_item_id: isCustom ? null : opt.id,
           modifier_group_name: mod.categoryName,
           modifier_name: opt.name,
           price_modifier: opt.isNo ? 0 : opt.price,
           quantity: 1,
           is_no: opt.isNo || false,
-        })),
-      ),
+        }));
+      }),
 
       // Kitchen/Coursing
       p_course_number:
@@ -7023,10 +7038,11 @@ export const useOrderStore = create<OrderState>()(
 
                   // Add standard modifiers
                   updatedItem.customizations?.modifiers?.forEach((group) => {
+                    const isCustom = isCustomModifierGroup(group.categoryId);
                     group.options.forEach((opt) => {
                       allModifiers.push({
-                        modifier_group_id: group.categoryId,
-                        modifier_item_id: opt.id,
+                        modifier_group_id: isCustom ? null : group.categoryId,
+                        modifier_item_id: isCustom ? null : opt.id,
                         modifier_group_name: group.categoryName,
                         modifier_name: opt.name,
                         price_modifier: opt.isNo ? 0 : opt.price,

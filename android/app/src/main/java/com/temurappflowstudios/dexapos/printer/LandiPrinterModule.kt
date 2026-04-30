@@ -88,6 +88,16 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun initPrinter(promise: Promise) {
         try {
+            // Idempotent: if a prior init already established the OmniDriver
+            // connection, skip the costly re-init. vectorPrinter and cashBox
+            // may legitimately be null (older SDK / no drawer hardware) — the
+            // simple-printer fallback and cashBox re-acquire paths handle that.
+            if (isInitialized && printer != null) {
+                Log.d(TAG, "initPrinter: already initialized — skipping OmniDriver.init")
+                promise.resolve(true)
+                return
+            }
+
             val driver = OmniDriver.me(reactContext)
             driver.init(object : OmniConnection {
                 override fun onConnected() {
