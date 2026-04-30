@@ -65,6 +65,10 @@ class SecondaryDisplayModule(private val reactContext: ReactApplicationContext) 
         previousUncaughtHandler = currentHandler
 
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            // Diagnostic: surfaces the actual exception class so we can tell
+            // RenderProcessGoneException apart from JavascriptException in logs.
+            Log.w(TAG, "Uncaught: cls=${throwable.javaClass.simpleName} msg=${throwable.message} presentationActive=${presentation != null}")
+
             if (presentation != null && isJavascriptException(throwable)) {
                 Log.w(TAG, "Caught JavascriptException with active Presentation — dismissing CFD silently", throwable)
                 try {

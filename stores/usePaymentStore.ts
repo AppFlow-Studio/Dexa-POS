@@ -915,6 +915,25 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         sendNewItemsToKitchenForOrder(activeOrderId)
       }
 
+      // Build itemAllocations covering all currently-unpaid units so addPaymentToOrder
+      // routes through its allocation branch instead of the gross-unit-price FIFO fallback,
+      // which can't cover discounted orders where amount < gross unit price.
+      const orderForAllocations =
+        useOrderStore.getState().ordersById[activeOrderId] ?? currentOrder
+      const itemAllocations = (orderForAllocations?.items ?? [])
+        .filter(item => !item.is_voided)
+        .map(item => {
+          const unpaidQty = item.quantity - (item.paidQuantity || 0)
+          if (unpaidQty <= 0) return null
+          return {
+            itemId: item.db_order_item_id || item.id,
+            quantity: unpaidQty
+          }
+        })
+        .filter(
+          (a): a is { itemId: string; quantity: number } => a !== null
+        )
+
       // Now add the payment — this synchronously marks items kitchen_status "sent"
       const paymentSuccess = await addPaymentToOrder({
         orderId: activeOrderId,
@@ -922,7 +941,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         method: method as any,
         tipAmount,
         transactionDetails: detailsWithCashFlag,
-        dejavooTransaction
+        dejavooTransaction,
+        itemAllocations
       })
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
