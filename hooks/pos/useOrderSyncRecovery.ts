@@ -26,8 +26,15 @@ export function useOrderSyncRecovery(locationId: string) {
 
   /** Invalidate only if not already fetching and at least 5s since last invalidation. */
   const throttledInvalidate = useCallback(() => {
-    const qState = queryClient.getQueryState(orderQueryKeys.active(locationId));
-    if (qState?.fetchStatus === "fetching") return;
+    // queryKey now includes stationId; use prefix-match isFetching instead of
+    // exact-match getQueryState so this hook stays station-agnostic.
+    if (
+      queryClient.isFetching({
+        queryKey: orderQueryKeys.active(locationId),
+      }) > 0
+    ) {
+      return;
+    }
 
     const now = Date.now();
     if (now - lastInvalidatedRef.current < MIN_INVALIDATION_GAP_MS) return;

@@ -1,4 +1,4 @@
-import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
+import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext.base";
 import React, { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import Animated, {

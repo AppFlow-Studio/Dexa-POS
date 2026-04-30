@@ -557,7 +557,7 @@ export class FloorPlanService {
       error?: string
       message?: string
       reason?: string
-      twilio_error?: string
+      provider_error?: string
     } | null
     error: any
   }> {

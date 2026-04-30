@@ -1,9 +1,10 @@
-import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import { useCFDDisplayField } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { Delete } from 'lucide-react-native'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   StyleSheet,
@@ -18,11 +19,13 @@ interface Props {
 }
 
 export function TipSelectionScreen ({ onTipSelected }: Props) {
-  const {
-    tipConfig,
-    tipAmount: externalTipAmount,
-    tipPercentage: externalTipPercentage
-  } = useCFDDisplayData()
+  // Field-level subscriptions so unrelated host pushes (e.g. cart-driven
+  // payload churn during the tip-adjusting window) don't re-render this
+  // screen and steal frames from the customer's tap.
+  const tipConfig = useCFDDisplayField('tipConfig')
+  const externalTipAmount = useCFDDisplayField('tipAmount')
+  const externalTipPercentage = useCFDDisplayField('tipPercentage')
+  const themeMode = useCFDDisplayField('themeMode')
 
   const [selectedPercentage, setSelectedPercentage] = useState<number | null>(
     null
@@ -31,6 +34,32 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const [showCustom, setShowCustom] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [hasMadeSelection, setHasMadeSelection] = useState(false)
+  // Optimistic-UI handoff state machine. The host's `service.tipAdjust()`
+  // (Castles RPC) takes 1–3s before the screen flips to "processing", so
+  // without this gate the customer sees no acknowledgement of their tap.
+  //
+  //   idle       → no overlay; presets are tappable
+  //   confirming → "Confirming your tip…" overlay; presets locked
+  //   failed     → "Tip failed, skipping…" overlay shown briefly when the
+  //                host doesn't take over the screen within 4s (network
+  //                error, terminal hang, RPC timeout). Auto-clears so the
+  //                operator can see the failure on the POS toast and the
+  //                customer isn't permanently locked.
+  type ConfirmStatus = 'idle' | 'confirming' | 'failed'
+  const [confirmStatus, setConfirmStatus] = useState<ConfirmStatus>('idle')
+  const isConfirming = confirmStatus !== 'idle'
+
+  useEffect(() => {
+    if (confirmStatus === 'confirming') {
+      const t = setTimeout(() => setConfirmStatus('failed'), 4000)
+      return () => clearTimeout(t)
+    }
+    if (confirmStatus === 'failed') {
+      const t = setTimeout(() => setConfirmStatus('idle'), 1500)
+      return () => clearTimeout(t)
+    }
+    return undefined
+  }, [confirmStatus])
 
   useEffect(() => {
     setSelectedPercentage(externalTipPercentage)
@@ -62,32 +91,40 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const isModalConfirmDisabled = !hasSelection
 
   const handlePresetSelect = (percentage: number) => {
+    if (isConfirming) return
     const tipAmount = Math.round(subtotal * (percentage / 100))
     setSelectedPercentage(percentage)
     setShowCustom(false)
     setHasMadeSelection(true)
+    setConfirmStatus('confirming')
     onTipSelected(tipAmount, percentage)
   }
 
   const handleNoTip = () => {
+    if (isConfirming) return
     setSelectedPercentage(null)
     setCustomAmount('')
     setShowCustom(false)
     setHasMadeSelection(false)
+    setConfirmStatus('confirming')
     onTipSelected(0, 0)
   }
 
   const handleConfirmTip = () => {
+    if (isConfirming) return
     if (showCustom) {
       const capped = Math.min(selectedTipAmount, maxTipCents)
+      setConfirmStatus('confirming')
       onTipSelected(capped, null)
       setShowModal(false)
       return
     }
     if (selectedPercentage !== null) {
+      setConfirmStatus('confirming')
       onTipSelected(selectedTipAmount, selectedPercentage)
       return
     }
+    setConfirmStatus('confirming')
     onTipSelected(0, 0)
   }
 
@@ -103,7 +140,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
     })
   }
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     outer: {
       flex: 1,
       backgroundColor: colors.screen
@@ -292,8 +329,45 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
       fontSize: 14,
       color: colors.label,
       fontWeight: '500'
+    },
+    confirmingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 24
+    },
+    confirmingCard: {
+      width: '100%',
+      maxWidth: 360,
+      backgroundColor: colors.panel,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 16,
+      paddingVertical: 28,
+      paddingHorizontal: 24,
+      alignItems: 'center',
+      gap: 14,
+      shadowColor: '#000',
+      shadowOpacity: 0.25,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6
+    },
+    confirmingText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.heading,
+      letterSpacing: 0.2,
+      textAlign: 'center'
+    },
+    confirmingSubtext: {
+      fontSize: 13,
+      fontWeight: '500',
+      color: colors.label,
+      textAlign: 'center'
     }
-  })
+  }), [themeMode])
 
   return (
     <View style={styles.outer}>
@@ -376,6 +450,32 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
           </Pressable>
         </Animated.View>
       </View>
+
+      {/* Optimistic-UI handoff while host runs the Castles tip-adjust RPC.
+          On hang/error (no host takeover within 4s) the overlay flips to a
+          "Tip failed, skipping…" message before clearing. */}
+      {isConfirming && (
+        <View pointerEvents='auto' style={styles.confirmingOverlay}>
+          <View style={styles.confirmingCard}>
+            {confirmStatus === 'confirming' ? (
+              <>
+                <ActivityIndicator size='large' color={colors.teal} />
+                <Text style={styles.confirmingText}>Confirming your tip…</Text>
+                <Text style={styles.confirmingSubtext}>
+                  Please don't tap your card.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.confirmingText}>Tip failed, skipping…</Text>
+                <Text style={styles.confirmingSubtext}>
+                  Continuing without a tip adjustment.
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Custom Amount Modal */}
       <Modal visible={showModal} transparent animationType='fade'>

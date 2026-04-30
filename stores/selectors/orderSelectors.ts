@@ -582,20 +582,28 @@ export function useOrderLineFilteredOrders (): OrderProfile[] {
       endOfToday.setHours(23, 59, 59, 999)
       const endTime = endOfToday.getTime()
 
+      const myStationId = state.currentStationId
+
       const result: OrderProfile[] = []
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]]
         if (!o) continue
 
         const openedAt = new Date(o.opened_at || 0).getTime()
+        if (openedAt < startTime || openedAt > endTime) continue
+        if (INACTIVE_STATUSES.has(o.order_status ?? '')) continue
+        if (!(o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0)) continue
+
+        // Drafts are station-private. station_id == null lets external/online
+        // drafts (e.g. order_source='online') through.
         if (
-          openedAt >= startTime &&
-          openedAt <= endTime &&
-          !INACTIVE_STATUSES.has(o.order_status ?? '') &&
-          (o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0)
-        ) {
-          result.push(o)
-        }
+          o.order_status === 'draft' &&
+          o.station_id != null &&
+          myStationId != null &&
+          o.station_id !== myStationId
+        ) continue
+
+        result.push(o)
       }
       result.sort(
         (a, b) =>

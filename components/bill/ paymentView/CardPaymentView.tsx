@@ -19,17 +19,16 @@ import {
 } from '@/services/terminals/castles-response-mapper'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter'
-import { adjustTips, type TipAdjustment } from '@/services/tipAdjustService'
 import {
   useActiveOrder,
   useActiveOrderTotals
 } from '@/stores/selectors/orderSelectors'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTipAdjustStore } from '@/stores/useTipAdjustStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import { generateRefId } from '@/types/dejavoo-spin-api'
 import { CheckCircle2, Clock, Wifi } from 'lucide-react-native'
@@ -128,13 +127,48 @@ const CardPaymentView = () => {
     showTipSelection,
     setBaseAmount,
     updateTip,
-    tipResponse,
     clearTipResponse,
     showProcessing,
     showApproved,
     showDeclined,
-    showIdle
+    showIdle,
+    activeScreenState
   } = useCFD()
+
+  // Owns the post-tip-adjust 3s setTimeout so we can cancel it when the
+  // loyalty flow takes over the CFD. Without this, the bare setTimeout
+  // races and calls showIdle() while the customer is typing on the
+  // loyalty number pad, dismissing the prompt mid-input.
+  const postTipAdjustIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
+  const clearPostTipAdjustIdle = () => {
+    if (postTipAdjustIdleTimerRef.current) {
+      clearTimeout(postTipAdjustIdleTimerRef.current)
+      postTipAdjustIdleTimerRef.current = null
+    }
+  }
+  const schedulePostTipAdjustIdle = (ms: number) => {
+    clearPostTipAdjustIdle()
+    postTipAdjustIdleTimerRef.current = setTimeout(() => {
+      postTipAdjustIdleTimerRef.current = null
+      showIdle()
+    }, ms)
+  }
+  useEffect(() => {
+    // The loyalty flow drives screenState directly. Once it owns the CFD,
+    // surrender our auto-idle timer so the prompt isn't dismissed
+    // before the customer presses Skip / submits a phone number.
+    if (
+      activeScreenState === 'loyalty_prompt' ||
+      activeScreenState === 'loyalty_confirmation'
+    ) {
+      clearPostTipAdjustIdle()
+    }
+  }, [activeScreenState])
+  useEffect(() => {
+    return () => clearPostTipAdjustIdle()
+  }, [])
 
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
@@ -208,155 +242,25 @@ const CardPaymentView = () => {
     updateTip(tipAmount, selectedTipPreset)
   }, [tipAmount, selectedTipPreset, updateTip])
 
-  // Post-capture: Handle CFD tip response for tip adjust
+  // Post-capture tip-adjust now lives in CFDProvider's runner (which is
+  // always mounted). We just observe useTipAdjustStore.lastCompletedAt to
+  // flip our local status to 'success' when the runner has finished — the
+  // bill UI was waiting on that transition. If this component unmounted
+  // before completion, that's fine: the runner still fires and updates
+  // the CFD/DB independently.
+  const tipAdjustLastCompletedAt = useTipAdjustStore(s => s.lastCompletedAt)
   useEffect(() => {
-    if (
-      status !== 'tip_adjusting' ||
-      !tipResponse ||
-      !capturedPaymentRef.current
-    )
-      return
-
-    const captured = capturedPaymentRef.current
-    const customerTipCents = tipResponse.tipAmount // cents from CFD
-    const customerTip = customerTipCents / 100 // dollars
-    const posTip = captured.tipAmount // dollars (what was charged)
-
-    updateTip(customerTip, tipResponse.tipPercentage)
-    showProcessing('card', customerTip)
-    clearTipResponse()
-
-    // Clear the auto-timeout
+    if (!tipAdjustLastCompletedAt) return
+    if (status !== 'tip_adjusting') return
+    // Clear the local 30s safety timer if still pending — the runner
+    // already handled the customer's pick.
     if (tipAdjustTimeoutRef.current) {
       clearTimeout(tipAdjustTimeoutRef.current)
       tipAdjustTimeoutRef.current = null
     }
-
-    const performTipAdjust = async () => {
-      // If customer selected same tip or "No Tip" with $0 already charged, skip adjust
-      if (Math.abs(customerTip - posTip) < 0.01) {
-        showApproved()
-        setTimeout(() => showIdle(), 3000)
-        setStatus('success')
-        return
-      }
-
-      try {
-        const terminal = selectedStation?.payment_terminal
-        if (!terminal) throw new Error('No terminal configured')
-
-        // Terminal tip adjust
-        if (captured.terminalType === 'castles') {
-          const service = getSharedCastlesService()
-          const host = terminal.ip_address
-          if (!host) throw new Error('Castles terminal has no IP')
-          const port = terminal.port ?? CASTLES_DEFAULT_PORT
-          await service.connect({
-            host,
-            port,
-            timeout: 120_000,
-            terminalId: terminal.id
-          })
-          await service.resetTerminalState()
-
-          const counter = getOrCreateCounter({
-            terminalId: terminal.id,
-            supabaseClient: supabase
-          })
-          if (!counter.isInitialized) await counter.initialize()
-          const adjustRefId = counter.next()
-
-          if (!captured.rrn) {
-            console.warn(
-              '[CardPayment] Cannot tip adjust — missing RRN from original sale'
-            )
-            toastService.show({
-              type: 'warning',
-              title: 'Tip Adjust Skipped',
-              message:
-                'Missing RRN from original sale — tip adjust requires manual entry on terminal.'
-            })
-          } else {
-            const result = await service.tipAdjust({
-              tipAmount: customerTip,
-              rrn: captured.rrn,
-              referenceId: adjustRefId
-            })
-            if (!result.success) {
-              console.error(
-                '[CardPayment] Castles tip adjust failed:',
-                result.error
-              )
-              toastService.show({
-                type: 'error',
-                title: 'Tip Adjust Failed',
-                message: result.error || 'Terminal rejected tip adjustment.'
-              })
-            }
-          }
-        } else {
-          // Dejavoo
-          const api = new DejavooSpinAPI(supabase)
-          await api.loadTerminal(terminal.id || '', terminal)
-          const result = await api
-            .tipAdjust()
-            .amount(captured.amount)
-            .tipAmount(customerTip)
-            .referenceId(captured.referenceId)
-            .execute()
-          if (!result.success) {
-            console.error(
-              '[CardPayment] Dejavoo tip adjust failed:',
-              result.error
-            )
-          }
-        }
-
-        // DB persistence
-        const activeOrd =
-          useOrderStore.getState().ordersById[activeOrderId ?? '']
-        const dbOrderId = activeOrd?.db_order_id
-        if (dbOrderId && captured.dbPaymentId) {
-          const { loggedInEmployee } = useEmployeeStore.getState()
-          const dbAdjustments: TipAdjustment[] = [
-            {
-              payment_id: captured.dbPaymentId,
-              new_tip_amount: customerTip
-            }
-          ]
-          await adjustTips(
-            supabase,
-            dbOrderId,
-            dbAdjustments,
-            loggedInEmployee?.profileId
-          )
-        }
-
-        console.log(`[CardPayment] Tip adjusted: $${posTip} → $${customerTip}`)
-
-        // Update success view with adjusted tip amount
-        usePaymentStore.setState(state => {
-          if (state.completedPaymentInfo) {
-            return {
-              completedPaymentInfo: {
-                ...state.completedPaymentInfo,
-                totalTips: customerTip
-              }
-            }
-          }
-          return state
-        })
-      } catch (err) {
-        console.error('[CardPayment] Post-capture tip adjust error:', err)
-      }
-
-      showApproved()
-      setTimeout(() => showIdle(), 3000)
-      setStatus('success')
-    }
-
-    performTipAdjust()
-  }, [clearTipResponse, showProcessing, status, tipResponse, updateTip])
+    schedulePostTipAdjustIdle(3000)
+    setStatus('success')
+  }, [tipAdjustLastCompletedAt, status])
 
   // Logic: Process terminal payment (Castles or Dejavoo)
   useEffect(() => {
@@ -469,7 +373,12 @@ const CardPaymentView = () => {
               amountOverride: totalToPay
             })
 
-            // Store captured payment details for potential tip adjust
+            // Store captured payment details for potential tip adjust.
+            // Writing to BOTH the local ref (UI) and the app-scope
+            // useTipAdjustStore — the latter survives this component
+            // unmounting, so the runner in CFDProvider can still pick
+            // it up when the customer picks a tip on the CFD WebView
+            // even if the bill bottom sheet has already collapsed.
             capturedPaymentRef.current = {
               referenceId,
               rrn: result.raw?.txnRrn ?? result.raw?.txnRRN,
@@ -480,6 +389,23 @@ const CardPaymentView = () => {
               tipAmount,
               terminalType: 'castles'
             }
+            useTipAdjustStore.getState().setCaptured({
+              referenceId,
+              rrn: result.raw?.txnRrn ?? result.raw?.txnRRN,
+              stan: result.raw?.txnStan,
+              dbPaymentId: (completionResult as any)?.dbPaymentId,
+              last4: castlesLast4,
+              amount: totalToPay,
+              tipAmount,
+              terminalType: 'castles',
+              localOrderId: activeOrderId ?? undefined,
+              dbOrderId:
+                (activeOrderId
+                  ? useOrderStore.getState().ordersById[activeOrderId]
+                      ?.db_order_id
+                  : undefined) ?? undefined,
+              capturedAt: Date.now()
+            })
 
             // Transition to post-capture CFD tip adjust
             showTipSelection(totalToPay, TIP_PRESETS, 'card')
@@ -488,8 +414,12 @@ const CardPaymentView = () => {
             // Auto-timeout: 30s — if customer doesn't respond, skip tip adjust
             tipAdjustTimeoutRef.current = setTimeout(() => {
               console.log('[CardPayment] CFD tip adjust timed out — skipping')
+              // Clear any captured payment from the store so the runner
+              // doesn't fire on a stale tip if the customer eventually
+              // taps. Mirrors what the lastCompletedAt observer would do.
+              useTipAdjustStore.getState().clear()
               showApproved()
-              setTimeout(() => showIdle(), 3000)
+              schedulePostTipAdjustIdle(3000)
               setStatus('success')
               tipAdjustTimeoutRef.current = null
             }, tipAdjustTimeoutMs)
@@ -681,7 +611,9 @@ const CardPaymentView = () => {
               amountOverride: totalToPay
             })
 
-            // Store captured payment details for potential tip adjust
+            // Store captured payment details for potential tip adjust.
+            // Mirrors to useTipAdjustStore so CFDProvider's runner can
+            // pick it up even if this component unmounts.
             capturedPaymentRef.current = {
               referenceId: dejavooTransaction.referenceId ?? refId,
               rrn: dejavooTransaction.rrn,
@@ -691,6 +623,22 @@ const CardPaymentView = () => {
               tipAmount,
               terminalType: 'dejavoo'
             }
+            useTipAdjustStore.getState().setCaptured({
+              referenceId: dejavooTransaction.referenceId ?? refId,
+              rrn: dejavooTransaction.rrn,
+              dbPaymentId: (completionResult as any)?.dbPaymentId,
+              last4: dejavooTransaction.cardLast4,
+              amount: totalToPay,
+              tipAmount,
+              terminalType: 'dejavoo',
+              localOrderId: activeOrderId ?? undefined,
+              dbOrderId:
+                (activeOrderId
+                  ? useOrderStore.getState().ordersById[activeOrderId]
+                      ?.db_order_id
+                  : undefined) ?? undefined,
+              capturedAt: Date.now()
+            })
 
             // Transition to post-capture CFD tip adjust
             showTipSelection(totalToPay, TIP_PRESETS, 'card')
@@ -699,8 +647,12 @@ const CardPaymentView = () => {
             // Auto-timeout: 30s — if customer doesn't respond, skip tip adjust
             tipAdjustTimeoutRef.current = setTimeout(() => {
               console.log('[CardPayment] CFD tip adjust timed out — skipping')
+              // Clear any captured payment from the store so the runner
+              // doesn't fire on a stale tip if the customer eventually
+              // taps. Mirrors what the lastCompletedAt observer would do.
+              useTipAdjustStore.getState().clear()
               showApproved()
-              setTimeout(() => showIdle(), 3000)
+              schedulePostTipAdjustIdle(3000)
               setStatus('success')
               tipAdjustTimeoutRef.current = null
             }, tipAdjustTimeoutMs)
@@ -1248,8 +1200,11 @@ const CardPaymentView = () => {
                   clearTimeout(tipAdjustTimeoutRef.current)
                   tipAdjustTimeoutRef.current = null
                 }
+                // Operator-initiated skip: clear the captured payment so
+                // the CFDProvider runner doesn't fire on a late tap.
+                useTipAdjustStore.getState().clear()
                 showApproved()
-                setTimeout(() => showIdle(), 3000)
+                schedulePostTipAdjustIdle(3000)
                 setStatus('success')
               }}
               style={{

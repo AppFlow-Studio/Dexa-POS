@@ -125,7 +125,16 @@ Jest with `jest-expo` preset. Mocks for MMKV, SecureStore, NetInfo, and Supabase
 EXPO_PUBLIC_SUPABASE_URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY
 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
+EXPO_PUBLIC_CFD_DISABLE_LOYALTY  # 1 or "true" to bypass CFD loyalty flow entirely
 ```
+
+**`EXPO_PUBLIC_CFD_DISABLE_LOYALTY`** — kill switch for the CFD loyalty path while it's being stabilized. When set:
+- Approved screen on the CFD never shows the Join Loyalty CTA (`merchantHasLoyalty` is forced to `false` in the CFD payload).
+- `showLoyaltyPrompt` and `showLoyaltyConfirmation` bail to `showIdle()` instead of transitioning the CFD into the loyalty screens.
+- The `onLoyaltyJoin` controller callback is a no-op (also returns to idle), so a stale Join tap from an external CFD client can't drag us into the loyalty flow.
+- The on-device built-in CFD WebView path is also covered — same `merchantHasLoyalty` gate is read by `ResultScreen.tsx`.
+
+Implementation: `contexts/CFDProvider.tsx`, gated by `cfdLoyaltyDisabled` near line 386.
 
 **Supabase project IDs**:
 - Staging: `dfwqakoyittmrwbqvxgw`

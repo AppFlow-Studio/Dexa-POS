@@ -30,6 +30,7 @@ export type ConflictResolution =
  * Severity levels for conflicts
  */
 export type ConflictSeverity =
+  | 'silent'           // Audit-only: remote edit on a locally-clean order; ring flashes, no toast
   | 'info'             // Minor change, auto-resolved
   | 'warning'          // Notable change, user notified via toast
   | 'critical';        // Payment-related, requires modal

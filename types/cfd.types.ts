@@ -132,6 +132,11 @@ export interface CFDPayload {
   // Payment method (when screenState is 'payment' or 'processing')
   paymentMethod?: 'cash' | 'card' | 'manual' | null
 
+  // Whether the merchant has any active loyalty program. When false, the CFD
+  // hides the "Join Loyalty" CTA on the result screen so customers don't see
+  // a button that would lead nowhere.
+  merchantHasLoyalty?: boolean
+
   // Theme
   themeMode?: 'light' | 'dark'
 

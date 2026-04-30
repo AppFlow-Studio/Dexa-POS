@@ -1,4 +1,6 @@
+import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
+import { toastService } from '@/lib/toastService'
 import { OrderProfile } from '@/lib/types'
 import { useWasOrderRecentlyUpdated } from '@/stores/useConflictStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -189,6 +191,15 @@ const PopoverContent = React.memo<PopoverContentProps>(
         order.paid_status,
         order.cash_amount_due
       ])
+
+    // Wave 2.2: cross-station read-only gate for the popover's Retrieve to Pay
+    // button. `isOrderReadOnly` returns true when this badge's order is owned
+    // by another station (claim_order_v1 has flipped station_id away from us).
+    // `currentStationId` is already a prop on this memo'd subtree (see line 128).
+    const isReadOnlyForStation = useMemo(
+      () => isOrderReadOnly(order, currentStationId),
+      [order, currentStationId]
+    )
 
     // Memoize formatted time
     const formattedTime = useMemo(() => {
@@ -602,9 +613,20 @@ const PopoverContent = React.memo<PopoverContentProps>(
             order.check_status !== 'Closed' && (
               <TouchableOpacity
                 onPress={() => {
+                  if (isReadOnlyForStation) {
+                    toastService.show({
+                      title: 'Order owned by another station',
+                      message:
+                        'Open the order and tap Take Over to pay this check.',
+                      type: 'warning',
+                      duration: 4000
+                    })
+                    return
+                  }
                   onRetrieve()
                   onClose()
                 }}
+                disabled={isReadOnlyForStation}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -616,7 +638,8 @@ const PopoverContent = React.memo<PopoverContentProps>(
                   borderRadius: 10,
                   backgroundColor: colors.teal + '15',
                   borderWidth: 1,
-                  borderColor: colors.teal + '30'
+                  borderColor: colors.teal + '30',
+                  opacity: isReadOnlyForStation ? 0.45 : 1
                 }}
               >
                 <CreditCard
@@ -624,16 +647,28 @@ const PopoverContent = React.memo<PopoverContentProps>(
                   color={colors.teal}
                   style={{ marginRight: 10 }}
                 />
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: colors.teal,
-                    flex: 1
-                  }}
-                >
-                  {isPartiallyPaid ? 'Pay Remaining' : 'Retrieve to Pay'}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      color: colors.teal
+                    }}
+                  >
+                    {isPartiallyPaid ? 'Pay Remaining' : 'Retrieve to Pay'}
+                  </Text>
+                  {isReadOnlyForStation && (
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: colors.muted,
+                        marginTop: 1
+                      }}
+                    >
+                      Owned by another station — Take Over to pay
+                    </Text>
+                  )}
+                </View>
                 <Text
                   style={{
                     fontSize: 13,
@@ -717,6 +752,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   // PERFORMANCE: Get currentStationId via selector (not getState() during render)
   const currentStationId = useOrderStore(s => s.currentStationId)
   const activeOrderId = useOrderStore(s => s.activeOrderId)
+  const setActiveOrder = useOrderStore(s => s.setActiveOrder)
 
   // Phase 6: Check if order was recently updated by another station
   const wasRecentlyUpdated = useWasOrderRecentlyUpdated(
@@ -825,7 +861,10 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   // PERFORMANCE: Memoize callbacks to prevent recreation
   const handleClose = useCallback(() => setShowTooltip(false), [])
   const handleOpen = useCallback(() => setShowTooltip(true), [])
-  const handleRetrieve = useCallback(() => onRetrieve(), [onRetrieve])
+  const handleSetActive = useCallback(
+    () => setActiveOrder(order.id),
+    [setActiveOrder, order.id]
+  )
 
   // Badge elevation: active, recently updated, or popover open
   const isActive = activeOrderId === order.id || wasRecentlyUpdated
@@ -905,7 +944,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
                 }}
               >
                 <TouchableOpacity
-                  onPress={handleRetrieve}
+                  onPress={handleSetActive}
                   className='flex-row items-center px-3 py-1.5'
                 >
                   {wasRecentlyUpdated && (

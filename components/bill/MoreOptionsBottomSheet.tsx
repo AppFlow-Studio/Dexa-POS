@@ -1,5 +1,6 @@
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import type { MerchantRole } from '@/lib/types'
 import { OrderService } from '@/services/orderService'
@@ -138,13 +139,20 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const balance = activeOrder?.amount_due ?? 0
   const isBalanceZero = hasItems && balance <= 0
 
+  // Wave 2.2: cross-station gate. Reuses the existing pre-flight that the
+  // store-level `_checkCartEditable` enforces, but surfaces the disabled
+  // state in the UI so the user doesn't tap into an action that would
+  // silently no-op.
+  const isReadOnlyForStation = useIsActiveOrderReadOnly()
+
   // Check if order has refunds - if so, discounts cannot be applied
   const hasRefunds = useMemo(() => {
     const payments = activeOrder?.payments || []
     return payments.some(p => (p.refundedAmount ?? 0) > 0)
   }, [activeOrder?.payments])
   const isCheckClosed = isBalanceZero || activeOrder?.paid_status === 'Paid'
-  const canApplyDiscount = !hasRefunds && !isCheckClosed
+  const canApplyDiscount =
+    !hasRefunds && !isCheckClosed && !isReadOnlyForStation
   const isDineInOrder =
     activeOrder?.order_type === 'dine_in' ||
     activeOrder?.order_type === 'Dine In'
@@ -418,11 +426,15 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   )
 
   // FIX: Use optional chaining to prevent errors
+  // Wave 2.2: gate void on cross-station ownership too — the server-side
+  // guard for void is tracked in Wave 2.3.2; the UI gate makes the locked
+  // state visible.
   const canVoid =
-    (activeOrder &&
+    !isReadOnlyForStation &&
+    ((activeOrder &&
       activeOrder.items?.length > 0 &&
       activeOrder.paid_status !== 'Paid') ||
-    activeOrder?.db_order_id
+      activeOrder?.db_order_id)
 
   // Animated style for shake effect
   const shakeStyle = useAnimatedStyle(() => {
@@ -704,7 +716,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 <Text
                   style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
                 >
-                  {isCheckClosed
+                  {isReadOnlyForStation
+                    ? 'Owned by another station'
+                    : isCheckClosed
                     ? 'Check is closed'
                     : 'Unavailable for refunded orders'}
                 </Text>
@@ -716,13 +730,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           {/* Add Customer row */}
           <TouchableOpacity
             onPress={handleAddCustomer}
-            disabled={isCheckClosed}
+            disabled={isCheckClosed || isReadOnlyForStation}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
               paddingHorizontal: 16,
               paddingVertical: 10,
-              opacity: isCheckClosed ? 0.45 : 1
+              opacity: isCheckClosed || isReadOnlyForStation ? 0.45 : 1
             }}
           >
             <View
@@ -738,16 +752,24 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             >
               <User size={14} color={colors.teal} />
             </View>
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: '600',
-                color: colors.heading,
-                flex: 1
-              }}
-            >
-              Add Customer
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  color: colors.heading
+                }}
+              >
+                Add Customer
+              </Text>
+              {isReadOnlyForStation && (
+                <Text
+                  style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
+                >
+                  Owned by another station
+                </Text>
+              )}
+            </View>
             <ChevronRight size={14} color={colors.muted} />
           </TouchableOpacity>
 
@@ -1163,7 +1185,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 Void Order
               </Text>
               <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
-                This action cannot be undone
+                {isReadOnlyForStation
+                  ? 'Owned by another station'
+                  : 'This action cannot be undone'}
               </Text>
             </View>
             <ChevronRight size={14} color={colors.muted} />

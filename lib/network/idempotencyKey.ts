@@ -24,6 +24,84 @@ export function toIdempotencyKey (localId: string): string {
 }
 
 /**
+ * Wave 3.0a: per-intent key for `update_order_item_quantity_v3`.
+ *
+ * Same `(orderItemId, quantity)` retried → same key → server returns
+ * cached result. Different quantity → different key → fresh execution.
+ *
+ * Critical for mutable updates: cannot use Wave 2.7's stable-per-target
+ * pattern (uuidv5(itemId)) — that works for immutable creates only;
+ * for updates, rapid changes (qty 3 → 5) would mis-cache to qty 3.
+ */
+export function toUpdateQuantityKey (orderItemId: string, quantity: number): string {
+  return uuidv5(`update_qty:${orderItemId}:${quantity}`, PHASE2_NAMESPACE)
+}
+
+/**
+ * Wave 3.0a: per-intent key for `update_order_item_v3`.
+ *
+ * Allowlists the params actually consumed by the deployed v2 signature
+ * (verified via pg_get_functiondef on staging). The TS type
+ * `UpdateOrderItemParams` advertises additional fields (p_prep_station,
+ * p_course_number, p_price_override) that the server ignores; including
+ * them in the key would produce divergent keys for identical server
+ * effects, defeating dedupe.
+ *
+ * Fails loud on nested values: Hermes JSON.stringify ordering is
+ * deterministic for plain primitive-keyed objects, but Maps/Dates/etc.
+ * would silently produce non-deterministic keys.
+ */
+const UPDATE_ITEM_ALLOWED_KEYS = [
+  'p_order_item_id',
+  'p_quantity',
+  'p_unit_price',
+  'p_special_instructions',
+  'p_seat_number'
+] as const
+type UpdateItemAllowedKey = (typeof UPDATE_ITEM_ALLOWED_KEYS)[number]
+
+export function toUpdateItemKey (params: Record<string, unknown>): string {
+  const canonical = Object.entries(params)
+    .filter(([k, v]) =>
+      (UPDATE_ITEM_ALLOWED_KEYS as readonly string[]).includes(k) &&
+      v !== null &&
+      v !== undefined
+    )
+    .map(([k, v]) => {
+      if (typeof v === 'object') {
+        throw new Error(
+          `toUpdateItemKey: nested value not supported for key '${k}'. ` +
+          `Update the allowlist + canonicalizer before adding nested params.`
+        )
+      }
+      return [k, JSON.stringify(v)] as const
+    })
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('|')
+  return uuidv5(`update_item:${canonical}`, PHASE2_NAMESPACE)
+}
+
+/**
+ * Wave 3.0d-4: per-intent key for `bulk_update_order_item_status_v2`.
+ *
+ * Same `(sortedItemIds, status)` retried → same key → server returns cached
+ * result and SKIPS the UPDATE entirely (so fire_time / sync_version are
+ * stamped exactly once, not on every retry).
+ *
+ * Sorts the ids so input order doesn't change the key — `[a, b]` and
+ * `[b, a]` are the same intent. Status is part of the key so a Mark Ready
+ * vs a Mark Served on the same items dedupe independently.
+ */
+export function toBulkUpdateStatusKey (
+  orderItemIds: string[],
+  status: string
+): string {
+  const sorted = [...orderItemIds].sort().join(',')
+  return uuidv5(`bulk_update_status:${status}:${sorted}`, PHASE2_NAMESPACE)
+}
+
+/**
  * Classify an RPC error as transient (recoverable via offline queue retry)
  * vs permanent (auth/schema/business-logic — surfaces to user).
  *
@@ -45,8 +123,14 @@ export function isTransientRpcError (err: unknown): boolean {
   const e = err as { code?: string; message?: string; name?: string }
   if (e.code === 'DEADLINE_EXCEEDED') return true
   if (e.code === 'OFFLINE_QUEUED') return true
+  // Wave 3.0a: idempotency_in_flight (SQLSTATE 40001) — peer station or
+  // same-station retry hit a still-claimed key within the 60s window.
+  // Mirrors offlineSyncService.isTransientError so the optimistic-online
+  // path classifies these the same way as the queue-replay path.
+  if (e.code === '40001') return true
   // PostgREST timeout/connect errors typically have status 0 or a network message
   const msg = (e.message || '').toLowerCase()
+  if (msg.includes('idempotency_in_flight')) return true
   if (
     msg.includes('network') ||
     msg.includes('fetch') ||
@@ -103,6 +187,25 @@ export function getOrCreateIdempotencyKey (sig: IdempotencyOpSignature): string 
  * Use the optional `keyOverride` to supply a key that must survive across
  * retries (e.g. paymentJournal.idempotencyKey, OfflineOperation.idempotencyKey).
  */
+/**
+ * Params that exist only on the station-guarded variant (Wave 1+) and would
+ * cause PostgREST to reject the call when routed to a v1/v2 function whose
+ * signature predates the guard. Stripped automatically when the idempotency
+ * flag is off for a given RPC.
+ */
+const V_NEXT_ONLY_PARAMS = ['p_station_id'] as const
+
+function _stripVNextOnly<P extends Record<string, any>> (params: P): P {
+  let copy: any = null
+  for (const k of V_NEXT_ONLY_PARAMS) {
+    if (k in params) {
+      if (!copy) copy = { ...params }
+      delete copy[k]
+    }
+  }
+  return (copy ?? params) as P
+}
+
 export function withIdempotency<P extends Record<string, any>> (
   rpc: IdempotentRpc,
   v1Name: string,
@@ -110,7 +213,10 @@ export function withIdempotency<P extends Record<string, any>> (
   params: P,
   keyOverride?: string
 ): { name: string; params: P & { p_idempotency_key?: string } } {
-  if (!isIdempotentEnabled(rpc)) return { name: v1Name, params }
+  if (!isIdempotentEnabled(rpc)) {
+    // Strip v-next-only params so v1 doesn't 400 on "function does not exist"
+    return { name: v1Name, params: _stripVNextOnly(params) }
+  }
   const p_idempotency_key =
     keyOverride ?? getOrCreateIdempotencyKey({ op: rpc })
   return {

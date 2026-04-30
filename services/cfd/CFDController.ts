@@ -98,6 +98,16 @@ export class CFDController {
     return this.serverInfo
   }
 
+  /**
+   * Route a raw JSON message into the same dispatch path used by the
+   * WebSocket transport. Lets non-WS sources (e.g. the on-device CFD
+   * WebView posting via `window.ReactNativeWebView.postMessage`) reuse the
+   * controller's action callbacks without duplicating logic.
+   */
+  public routeClientMessage (raw: string): void {
+    this.handleMessage('webview', raw)
+  }
+
   private handleMessage (clientId: string, raw: string): void {
     try {
       const message: CFDMessage = JSON.parse(raw)

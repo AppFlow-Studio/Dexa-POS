@@ -15,6 +15,7 @@
  * - Backend never stored sync_status
  */
 
+import { toastService } from '@/lib/toastService'
 import React, { useCallback } from 'react'
 import { create } from 'zustand'
 
@@ -26,6 +27,12 @@ interface SyncStatusState {
 
   // Maps item ID to error message (for failed syncs)
   itemSyncErrors: Map<string, string>
+
+  // PR E.1: timestamp (epoch ms) when an item transitioned to 'failed'.
+  // The broadcast-merge filter uses this to evict items whose failure has
+  // been visible to the user long enough that they've had a chance to hit
+  // Retry / Remove (>5s window).
+  itemFailedAt: Map<string, number>
 
   // Actions
   setSyncStatus: (itemId: string, status: SyncStatus, error?: string) => void
@@ -52,14 +59,42 @@ interface SyncStatusState {
   }
 }
 
+// PR D.4: per-item de-dup so a single item failing 5× over 30s only toasts
+// once. Module-scoped because it's UX-only (no need to drive re-renders).
+const _recentlyToastedFailures = new Set<string>()
+const TOAST_DEDUP_TTL_MS = 30_000
+
+function _maybeFireFailureToast (itemId: string): void {
+  if (_recentlyToastedFailures.has(itemId)) return
+  _recentlyToastedFailures.add(itemId)
+  setTimeout(
+    () => _recentlyToastedFailures.delete(itemId),
+    TOAST_DEDUP_TTL_MS
+  )
+  toastService.show({
+    title: "Couldn't save item",
+    message: 'Tap Retry on the cart line to try again.',
+    type: 'warning',
+    duration: 5000
+  })
+}
+
 export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
   itemSyncStatus: new Map(),
   itemSyncErrors: new Map(),
+  itemFailedAt: new Map(),
 
   setSyncStatus: (itemId, status, error) => {
+    // PR D.4: fire a debounced toast on the first transition to 'failed'
+    // for this item. Captured BEFORE the set() call so we read the prior
+    // status, not the new one.
+    const prevStatus = get().itemSyncStatus.get(itemId)
+    const transitioningToFailed = status === 'failed' && prevStatus !== 'failed'
+
     set(state => {
       const newStatusMap = new Map(state.itemSyncStatus)
       const newErrorMap = new Map(state.itemSyncErrors)
+      const newFailedAtMap = new Map(state.itemFailedAt)
 
       newStatusMap.set(itemId, status)
 
@@ -70,11 +105,26 @@ export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
         newErrorMap.delete(itemId)
       }
 
+      // PR E.1: stamp / clear failure timestamp so the broadcast merge can
+      // evict stale-failed items after the 5s grace window.
+      if (status === 'failed') {
+        if (!newFailedAtMap.has(itemId)) {
+          newFailedAtMap.set(itemId, Date.now())
+        }
+      } else {
+        newFailedAtMap.delete(itemId)
+      }
+
       return {
         itemSyncStatus: newStatusMap,
-        itemSyncErrors: newErrorMap
+        itemSyncErrors: newErrorMap,
+        itemFailedAt: newFailedAtMap
       }
     })
+
+    if (transitioningToFailed) {
+      _maybeFireFailureToast(itemId)
+    }
   },
 
   getSyncStatus: itemId => {
@@ -89,13 +139,16 @@ export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
     set(state => {
       const newStatusMap = new Map(state.itemSyncStatus)
       const newErrorMap = new Map(state.itemSyncErrors)
+      const newFailedAtMap = new Map(state.itemFailedAt)
 
       newStatusMap.delete(itemId)
       newErrorMap.delete(itemId)
+      newFailedAtMap.delete(itemId)
 
       return {
         itemSyncStatus: newStatusMap,
-        itemSyncErrors: newErrorMap
+        itemSyncErrors: newErrorMap,
+        itemFailedAt: newFailedAtMap
       }
     })
   },
@@ -106,15 +159,18 @@ export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
     set(state => {
       const newStatusMap = new Map(state.itemSyncStatus)
       const newErrorMap = new Map(state.itemSyncErrors)
+      const newFailedAtMap = new Map(state.itemFailedAt)
 
       for (const itemId of itemIds) {
         newStatusMap.delete(itemId)
         newErrorMap.delete(itemId)
+        newFailedAtMap.delete(itemId)
       }
 
       return {
         itemSyncStatus: newStatusMap,
-        itemSyncErrors: newErrorMap
+        itemSyncErrors: newErrorMap,
+        itemFailedAt: newFailedAtMap
       }
     })
   },
@@ -136,11 +192,22 @@ export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
   setSyncStatusBatch: updates => {
     if (updates.length === 0) return
 
+    // PR D.4: collect items transitioning to 'failed' so we toast after the
+    // set() call commits, not during reducer execution.
+    const transitioningToFailed: string[] = []
+    const prevStatusSnapshot = get().itemSyncStatus
+
     set(state => {
       const newStatusMap = new Map(state.itemSyncStatus)
       const newErrorMap = new Map(state.itemSyncErrors)
+      const newFailedAtMap = new Map(state.itemFailedAt)
+      const now = Date.now()
 
       for (const { itemId, status, error } of updates) {
+        const prev = prevStatusSnapshot.get(itemId)
+        if (status === 'failed' && prev !== 'failed') {
+          transitioningToFailed.push(itemId)
+        }
         newStatusMap.set(itemId, status)
 
         if (error) {
@@ -148,13 +215,24 @@ export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
         } else if (status === 'synced') {
           newErrorMap.delete(itemId)
         }
+
+        if (status === 'failed') {
+          if (!newFailedAtMap.has(itemId)) {
+            newFailedAtMap.set(itemId, now)
+          }
+        } else {
+          newFailedAtMap.delete(itemId)
+        }
       }
 
       return {
         itemSyncStatus: newStatusMap,
-        itemSyncErrors: newErrorMap
+        itemSyncErrors: newErrorMap,
+        itemFailedAt: newFailedAtMap
       }
     })
+
+    for (const id of transitioningToFailed) _maybeFireFailureToast(id)
   }
 }))
 

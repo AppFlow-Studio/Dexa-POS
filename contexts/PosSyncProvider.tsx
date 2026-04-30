@@ -10,6 +10,8 @@ import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import { getStorageSizeStats } from "@/lib/storage";
 import { MerchantRole } from "@/lib/types";
 import { FloorPlanService } from "@/services/floorPlanService";
+import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
+import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import {
     detectAndStoreCapabilities,
     startHeartbeat,
@@ -84,9 +86,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
-  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS)
+  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS).
+  // stationId is part of the queryKey so the server-side draft filter refetches
+  // when the user switches stations on the same device.
   useOrdersQuery({
     locationId: selectedStore?.id ?? null,
+    stationId: selectedStation?.id ?? null,
     enabled: !!selectedStore?.id && !isKDS,
   });
 
@@ -98,6 +103,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setFloorPlanSupabaseClient(supabase);
       setCoursingSupabaseClient(supabase);
       setSeatingSupabaseClient(supabase);
+      setCartShapeReconcileSupabaseClient(supabase);
       setOfflineSyncSupabaseClient(supabase);
       setupConnectionQuality(supabase);
       setWaitlistSupabaseClient(supabase);
@@ -129,6 +135,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     locationId: selectedStore?.id ?? null,
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
+
+  // Wave 3.0d-5: combined order reconcile on slow→fast + foreground recovery.
+  // Sequenced: cart-shape push (3.0f-3) → 500ms gap → header pull (3.0d-5).
+  // Each pass is independently flag-gated (EXPO_PUBLIC_CART_SHAPE_RECONCILE
+  // and EXPO_PUBLIC_ORDER_HEADER_RECONCILE). KDS skips both — it doesn't
+  // author or display orders in the order-processing sense.
+  useOrderReconcile({ enabled: !isKDS });
 
   // Device detection & heartbeat lifecycle
   useEffect(() => {
@@ -610,11 +623,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
           // Refresh orders when app resumes — only if data is older than staleTime.
           // useOrderSyncRecovery handles reconnection-triggered refetches separately.
+          // queryKey now includes stationId, so use a prefix-matching cache lookup
+          // (exact:false) instead of getQueryState (which is exact-match).
           if (storeSettings.selectedStore?.id) {
-            const qState = queryClient.getQueryState(
-              orderQueryKeys.active(storeSettings.selectedStore.id),
-            );
-            const dataAge = Date.now() - (qState?.dataUpdatedAt ?? 0);
+            const cached = queryClient
+              .getQueryCache()
+              .find({
+                queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+                exact: false,
+              });
+            const dataAge = Date.now() - (cached?.state.dataUpdatedAt ?? 0);
             if (dataAge > 2 * 60 * 1000) {
               queryClient.invalidateQueries({
                 queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),

@@ -1,75 +1,24 @@
 // contexts/CFDDisplayDataContext.tsx
 // Abstraction layer: both external CFD tablets and built-in secondary displays
 // read from the same interface via useCFDDisplayData().
+//
+// The context constant + types live in `./CFDDisplayDataContext.base.ts` so
+// the WebView's react-native-web bundle can reuse them without dragging in
+// the Zustand stores below (which transitively pull MMKV via lib/storage).
 import { useCFDBuiltinStore } from '@/stores/useCFDBuiltinStore'
 import { useCFDClientStore } from '@/stores/useCFDClientStore'
-import type {
-  CFDBranding,
-  CFDCartItem,
-  CFDPayload,
-  CFDScreenState
-} from '@/types/cfd.types'
-import React, { createContext, useContext, useMemo } from 'react'
+import React, { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import {
+  CFDDisplayDataContext,
+  useCFDDisplayData,
+  type CFDDisplayData
+} from './CFDDisplayDataContext.base'
 
-export interface CFDDisplayData {
-  // Connection
-  connectionStatus: 'disconnected' | 'connecting' | 'connected'
-  latency: number | null
-
-  // Display state
-  screenState: CFDScreenState
-  serverName: string | null
-  customerName: string | null
-  customerPhone: string | null
-  orderNumber: string | null
-  orderType: string | null
-  tableName: string | null
-  guestCount: number | null
-  items: CFDCartItem[]
-
-  // Totals (all cents)
-  subtotal: number
-  subtotalCash: number
-  subtotalCard: number
-  discountAmount: number
-  taxAmount: number
-  taxCash: number
-  taxCard: number
-  tipAmount: number
-  tipPercentage: number | null
-  total: number
-  totalCash: number
-  totalCard: number
-  savingsAmount: number
-  outstandingTotal: number
-  amountPaid: number
-
-  // Branding & config
-  branding: CFDBranding | null
-  layout: CFDPayload['layout'] | null
-  orderingPanelImages: NonNullable<CFDPayload['orderingPanelImages']>
-  tipConfig: CFDPayload['tipConfig'] | null
-  carouselImages: string[]
-
-  // Loyalty
-  loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
-  loyaltyResult: CFDPayload['loyaltyResult'] | null
-
-  // Payment
-  paymentMethod: 'cash' | 'card' | 'manual' | null
-}
-
-const CFDDisplayDataContext = createContext<CFDDisplayData | null>(null)
-
-export function useCFDDisplayData (): CFDDisplayData {
-  const context = useContext(CFDDisplayDataContext)
-  if (!context) {
-    throw new Error(
-      'useCFDDisplayData must be used within a CFDExternalDisplayProvider or CFDBuiltinDisplayProvider'
-    )
-  }
-  return context
+export {
+  CFDDisplayDataContext,
+  useCFDDisplayData,
+  type CFDDisplayData
 }
 
 /** For external CFD tablets — reads from useCFDClientStore (WebSocket-driven) */
@@ -112,7 +61,9 @@ export function CFDExternalDisplayProvider ({
     carouselImages: s.carouselImages,
     loyaltyPrompt: s.loyaltyPrompt,
     loyaltyResult: s.loyaltyResult,
-    paymentMethod: s.paymentMethod
+    paymentMethod: s.paymentMethod,
+    merchantHasLoyalty: s.merchantHasLoyalty,
+    themeMode: s.themeMode
   })))
 
   const data = useMemo<CFDDisplayData>(() => ({
@@ -149,7 +100,9 @@ export function CFDExternalDisplayProvider ({
     carouselImages: store.carouselImages,
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
-    paymentMethod: store.paymentMethod ?? null
+    paymentMethod: store.paymentMethod ?? null,
+    merchantHasLoyalty: store.merchantHasLoyalty,
+    themeMode: store.themeMode
   }), [store])
 
   return (
@@ -197,7 +150,9 @@ export function CFDBuiltinDisplayProvider ({
     carouselImages: s.carouselImages,
     loyaltyPrompt: s.loyaltyPrompt,
     loyaltyResult: s.loyaltyResult,
-    paymentMethod: s.paymentMethod
+    paymentMethod: s.paymentMethod,
+    merchantHasLoyalty: s.merchantHasLoyalty,
+    themeMode: s.themeMode
   })))
 
   const data = useMemo<CFDDisplayData>(() => ({
@@ -234,7 +189,9 @@ export function CFDBuiltinDisplayProvider ({
     carouselImages: store.carouselImages,
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
-    paymentMethod: store.paymentMethod ?? null
+    paymentMethod: store.paymentMethod ?? null,
+    merchantHasLoyalty: store.merchantHasLoyalty,
+    themeMode: store.themeMode
   }), [store])
 
   return (

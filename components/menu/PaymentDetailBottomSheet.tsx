@@ -1,4 +1,5 @@
 import { ToastRenderer, useToast } from '@/contexts/ToastContext'
+import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { useOrderDetailsFetch } from '@/hooks/orders/useOrderDetailsFetch'
 import {
   useRefundMutation,
@@ -4134,6 +4135,23 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         return
       }
       activeId = localId
+    }
+
+    // Wave 2.2: defense-in-depth ownership pre-flight. The OrderBadge popover
+    // gates the "Retrieve to Pay" button at render-time; this catches any
+    // deep-link / programmatic / racy caller that gets past the UI gate
+    // before any RPC dispatch.
+    {
+      const state = useOrderStore.getState()
+      const order = state.ordersById[activeId]
+      if (isOrderReadOnly(order, state.currentStationId)) {
+        show({
+          title: 'Order owned by another station',
+          message: 'Claim it via Take Over before charging.',
+          type: 'error'
+        })
+        return
+      }
     }
 
     useOrderStore.getState().setActiveOrder(activeId)

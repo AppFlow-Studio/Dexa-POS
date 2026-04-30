@@ -1,3 +1,5 @@
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import { PrinterService } from '@/services/printing/PrinterService'
@@ -7,9 +9,10 @@ import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { getItemEffectiveSubtotal, useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useItemSyncInfo } from '@/stores/useSyncStatusStore'
+import { useToastStore } from '@/stores/useToastStore'
 import { AlertCircle, Banknote, Plus, Trash2 } from 'lucide-react-native'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -141,9 +144,21 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const isModifierActive = useModifierSidebarStore(
     s => s.activeEditingItemId === item.id
   )
+  // Wave 2.2: when the active order is owned by another station, show this
+  // line as visually muted and force the modifier sheet into read-only mode
+  // so the user can still inspect modifiers but can't dead-end edit them.
+  const isReadOnlyForStation = useIsActiveOrderReadOnly()
 
   // Single subscription for both sync status and error (halves sync store subscriptions per item)
   const { status: syncStatus, error: syncError } = useItemSyncInfo(item.id)
+  // Wave 2.8c: gate the optimistic-pending dot on actual network trouble.
+  // During normal-flow optimistic latency the dot would flicker on every tap;
+  // we only want it when the merchant should know syncing isn't immediate.
+  const { rawIsOnline, quality } = useNetworkStatus()
+  const isNetworkDegraded =
+    !rawIsOnline || quality === 'slow' || quality === 'probing'
+  const retrySingleItemSync = useOrderStore(s => s.retrySingleItemSync)
+  const showToast = useToastStore(s => s.show)
 
   // If caller passes payment info, skip the per-item store subscriptions entirely.
   // Fall back to store subscriptions only when props are not provided (legacy call sites).
@@ -333,7 +348,12 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     e.stopPropagation()
     if (swipeActivatedRef.current) return
 
-    if (isEditable && !isKitchenItem) {
+    // Wave 2.2: tap still opens the modifier sheet so the user can inspect
+    // what's on the line, but in view-only mode when another station owns
+    // the order. Edit operations on the modifier sheet are also gated by
+    // `_checkCartEditable` at the store layer (Wave 1) — this is the UX
+    // signal that reaching the sheet won't let them save.
+    if (isEditable && !isKitchenItem && !isReadOnlyForStation) {
       openToEdit(item, activeOrderId)
     } else {
       openToView(item, activeOrderId)
@@ -580,7 +600,15 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       )}
 
       <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
-        <Animated.View style={animatedStyle} className={isVoided ? '' : 'z-20'}>
+        <Animated.View
+          style={[
+            animatedStyle,
+            // Wave 2.2: dim the row when the active order is owned by
+            // another station so users see the read-only state at a glance.
+            isReadOnlyForStation && !isVoided ? { opacity: 0.5 } : null
+          ]}
+          className={isVoided ? '' : 'z-20'}
+        >
           <TouchableOpacity
             onPress={isVoided ? undefined : handleNotesPress}
             activeOpacity={isVoided ? 1 : 0.85}
@@ -616,12 +644,112 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     >
                       {item.name}
                     </Text>
-                    {syncStatus === 'pending' || syncStatus === 'syncing' ? (
+                    {/* Wave 2.8c + PR D.1: failed chip — tappable retry, with
+                        a sibling Remove affordance so the cashier can give up
+                        on a permanently-failed add (e.g. cross-station ownership
+                        rejection) instead of letting the optimistic ghost ride
+                        forever. */}
+                    {syncStatus === 'failed' && !isVoided && !orderHasPayments ? (
+                      <View className='flex-row items-center gap-2'>
+                        <TouchableOpacity
+                          onPress={async () => {
+                            if (!activeOrderId) return
+                            const result = await retrySingleItemSync(
+                              activeOrderId,
+                              item.id
+                            )
+                            if (result === 'parent_dead') {
+                              showToast({
+                                title: 'Order create failed',
+                                message:
+                                  'See Settings → General → Failed Syncs to retry the order.',
+                                type: 'error',
+                                duration: 6000
+                              })
+                            } else if (result === 'not_found') {
+                              showToast({
+                                title: 'Sync entry missing',
+                                message:
+                                  "Couldn't find the queued operation. Please re-add the item.",
+                                type: 'warning'
+                              })
+                            } else {
+                              showToast({
+                                title: 'Retrying…',
+                                message: 'Re-queued for sync.',
+                                type: 'success',
+                                duration: 2000
+                              })
+                            }
+                          }}
+                          onLongPress={() => {
+                            if (__DEV__) {
+                              Alert.alert(
+                                'Sync error',
+                                syncError || '(no error text)'
+                              )
+                            }
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel='Retry sync for this item'
+                        >
+                          <View className='flex-row items-center gap-1'>
+                            <AlertCircle size={13} color={colors.danger} />
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: '700',
+                                color: colors.danger
+                              }}
+                            >
+                              Retry
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => removeItemFromActiveOrder(item.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel='Remove this failed item from the cart'
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: '700',
+                              color: colors.muted,
+                              textDecorationLine: 'underline'
+                            }}
+                          >
+                            Remove
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (syncStatus === 'pending' || syncStatus === 'syncing') &&
+                      isNetworkDegraded ? (
+                      // Pending dot only when the network is actually struggling.
+                      // Hidden during normal optimistic flow to avoid flicker.
                       <ActivityIndicator size={10} color={colors.info} />
-                    ) : syncStatus === 'failed' ? (
-                      <AlertCircle size={13} color={colors.danger} />
                     ) : null}
                   </View>
+
+                  {/* Wave 3.0e-1: subtitle line for failed sync — root cause +
+                      attempt count + relative time. Pulled from the dead-letter
+                      op via the offlineSyncSubtitles helpers. */}
+                  {syncStatus === 'failed' &&
+                    !isVoided &&
+                    !orderHasPayments &&
+                    syncError && (
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '500',
+                          color: colors.muted,
+                          marginTop: 1
+                        }}
+                        numberOfLines={2}
+                      >
+                        {syncError}
+                      </Text>
+                    )}
 
                   {/* Status badges row */}
                   {(isVoided ||

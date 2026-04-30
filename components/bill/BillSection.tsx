@@ -8,7 +8,10 @@ import {
   getAutoRetryCount,
   isAutoRetryInProgress
 } from '@/services/offlineSyncService'
-import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
+import { useActiveOrderTotals, useActiveOrder } from '@/stores/selectors/orderSelectors'
+import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
+import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
+import ClaimOrderModal from '@/components/order/ClaimOrderModal'
 import { useDineInStore } from '@/stores/useDineInStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -65,6 +68,7 @@ import {
 import BillSummary from './BillSummary'
 import DiscountOverlay from './DiscountOverlay'
 import OrderDetails from './OrderDetails'
+import OrderSyncBanner from './OrderSyncBanner'
 import Totals from './Totals'
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
@@ -173,6 +177,10 @@ const BillItemsAndTotals = React.memo(
 
     return (
       <View style={{ flex: 1, position: 'relative' }}>
+        {/* Wave 3.0e-2: order-bound dead-letter banner. Renders nothing when
+            the active order has no order-bound failures. Mounted at the top
+            of the bill so failed ops are visible before the operator scrolls. */}
+        <OrderSyncBanner />
         <BillSummary
           cart={cart}
           expandedItemId={expandedItemId}
@@ -459,14 +467,50 @@ const BillSectionContent = ({
     }
   }, [isPaymentSheetOpen])
 
+  // Lever 2: read-only when the active order belongs to another station.
+  const isReadOnly = useIsActiveOrderReadOnly()
+  const activeOrderForReadOnly = useActiveOrder()
+  // Wave 2.7: prefer `station_name` (current owner — refreshed by broadcast,
+  // hydrate, and the focus-time recheck) over `_sourceStationName` (original
+  // creator — never changes after order creation). Fallback chain so the
+  // banner still has a label on legacy orders that pre-date Wave 2.7.
+  const sourceStationName =
+    activeOrderForReadOnly?.station_name ??
+    activeOrderForReadOnly?._sourceStationName ??
+    null
+  const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
+  const [isClaimModalOpen, setClaimModalOpen] = useState(false)
+  const [isClaiming, setClaiming] = useState(false)
+
+  const handleTakeOver = useCallback(() => {
+    setClaimModalOpen(true)
+  }, [])
+
+  const handleCancelClaim = useCallback(() => {
+    if (isClaiming) return
+    setClaimModalOpen(false)
+  }, [isClaiming])
+
+  const handleConfirmClaim = useCallback(async () => {
+    if (isClaiming) return
+    setClaiming(true)
+    try {
+      await claimActiveOrder()
+    } finally {
+      setClaiming(false)
+      setClaimModalOpen(false)
+    }
+  }, [claimActiveOrder, isClaiming])
+
   // Memoize pay button disabled state - prevents clicking when balance due is 0 or no items
   const isPayButtonDisabled = useMemo(
     () =>
       !activeOrderId ||
       cart.length === 0 ||
       displayBalanceDue <= 0 ||
-      isProcessing,
-    [activeOrderId, cart.length, displayBalanceDue, isProcessing]
+      isProcessing ||
+      isReadOnly,
+    [activeOrderId, cart.length, displayBalanceDue, isProcessing, isReadOnly]
   )
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false)
   const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false)
@@ -498,7 +542,7 @@ const BillSectionContent = ({
   }, [moreOptionsSheetRef])
 
   const isMoreButtonDisabled =
-    !activeOrderId || activeOrder?.check_status === 'Closed'
+    !activeOrderId || activeOrder?.check_status === 'Closed' || isReadOnly
 
   const displayedTable = useMemo(
     () =>
@@ -1261,10 +1305,12 @@ const BillSectionContent = ({
             </Text>
             <TouchableOpacity
               className={`h-8 px-3 rounded-lg flex-row items-center justify-center gap-1 ${
-                newItemsCount === 0 || hasDraftItems ? 'opacity-50' : ''
+                newItemsCount === 0 || hasDraftItems || isReadOnly
+                  ? 'opacity-50'
+                  : ''
               }`}
               style={{ backgroundColor: colors.teal }}
-              disabled={newItemsCount === 0 || hasDraftItems}
+              disabled={newItemsCount === 0 || hasDraftItems || isReadOnly}
               onPress={handleSendToKitchen}
             >
               <Printer size={12} color={colors.onSolid} />
@@ -1352,6 +1398,14 @@ const BillSectionContent = ({
               ? () => router.push(`/tables/${displayedTable.id}` as any)
               : undefined
           }
+        />
+      )}
+
+      {isReadOnly && (
+        <ReadOnlyBanner
+          sourceStationName={sourceStationName}
+          isClaiming={isClaiming}
+          onTakeOver={handleTakeOver}
         />
       )}
 
@@ -1966,6 +2020,13 @@ const BillSectionContent = ({
       <DiscountOverlay
         isVisible={isDiscountOverlayVisible}
         onClose={handleCloseDiscounts}
+      />
+      <ClaimOrderModal
+        visible={isClaimModalOpen}
+        sourceStationName={sourceStationName}
+        isClaiming={isClaiming}
+        onConfirm={handleConfirmClaim}
+        onCancel={handleCancelClaim}
       />
       <Dialog open={isVoidConfirmOpen} onOpenChange={setIsVoidConfirmOpen}>
         <DialogContent

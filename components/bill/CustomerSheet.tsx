@@ -1,6 +1,7 @@
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { isValidUUID } from "@/lib/offlineIdRegistry";
 import {
     createCustomerOffline,
@@ -62,7 +63,12 @@ const CustomerSheet: React.FC = () => {
   const [zip, setZip] = useState("");
   const [addressDisplay, setAddressDisplay] = useState("");
   const [customers, setCustomers] = useState<CustomerWithMeta[]>([]);
-  const isAssignDisabled = !activeOrderId;
+  // Wave 2.2: defense-in-depth — block customer assignment when the active
+  // order is owned by another station. Server-side enforcement lands in
+  // Wave 2.4 via `update_order_details_v1`; this UI gate prevents the
+  // optimistic local update + post-attempt error toast.
+  const isReadOnlyForStation = useIsActiveOrderReadOnly();
+  const isAssignDisabled = !activeOrderId || isReadOnlyForStation;
 
   const storeRef = useRef({ selectedStore, supabase });
   storeRef.current = { selectedStore, supabase };
@@ -135,6 +141,17 @@ const CustomerSheet: React.FC = () => {
       show({
         title: "No Store Selected",
         message: "Please select a store before assigning a customer.",
+        type: "error",
+      });
+      return;
+    }
+
+    // Wave 2.2: defense-in-depth ownership pre-flight. Catches any caller
+    // that bypassed the disabled-button gate (deep link, programmatic).
+    if (isReadOnlyForStation) {
+      show({
+        title: "Order owned by another station",
+        message: "Claim it via Take Over before assigning a customer.",
         type: "error",
       });
       return;

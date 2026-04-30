@@ -47,17 +47,18 @@ interface CFDClientStore {
 
   savingsAmount: number;
 
-  outstandingTotal: number;
-  amountPaid: number;
-  branding: CFDPayload["branding"] | null;
-  layout: CFDPayload["layout"] | null;
-  orderingPanelImages: NonNullable<CFDPayload["orderingPanelImages"]>;
-  tipConfig: CFDPayload["tipConfig"] | null;
-  carouselImages: string[];
-  loyaltyPrompt: CFDPayload["loyaltyPrompt"] | null;
-  loyaltyResult: CFDPayload["loyaltyResult"] | null;
-  paymentMethod: "cash" | "card" | null;
-  themeMode: "light" | "dark";
+  outstandingTotal: number
+  amountPaid: number
+  branding: CFDPayload['branding'] | null
+  layout: CFDPayload['layout'] | null
+  orderingPanelImages: NonNullable<CFDPayload['orderingPanelImages']>
+  tipConfig: CFDPayload['tipConfig'] | null
+  carouselImages: string[]
+  loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
+  loyaltyResult: CFDPayload['loyaltyResult'] | null
+  paymentMethod: 'cash' | 'card' | 'manual' | null
+  themeMode: 'light' | 'dark'
+  merchantHasLoyalty: boolean
 
   // Actions
   setPairing: (data: CFDPairingData) => void;
@@ -117,7 +118,8 @@ export const useCFDClientStore = create<CFDClientStore>()(
       loyaltyPrompt: null,
       loyaltyResult: null,
       paymentMethod: null,
-      themeMode: "dark",
+      themeMode: 'dark',
+      merchantHasLoyalty: false,
 
       // Actions
       setPairing: (data) => {
@@ -191,7 +193,11 @@ export const useCFDClientStore = create<CFDClientStore>()(
           loyaltyResult: payload.loyaltyResult ?? null,
           paymentMethod: payload.paymentMethod ?? null,
           themeMode: payload.themeMode ?? get().themeMode,
-        }),
+          // Carry forward when payload omits — POS includes this on every
+          // update once cached, but defensive in case of partial payloads.
+          merchantHasLoyalty:
+            payload.merchantHasLoyalty ?? get().merchantHasLoyalty
+        })
     }),
     {
       name: "cfd-client-store",
@@ -202,7 +208,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
         isPaired: state.isPaired,
         connection: state.connection,
         branding: state.branding,
-      }),
-    },
-  ),
-);
+        // Persist so the loyalty CTA gate on the result screen renders
+        // correctly across app restarts and offline boots.
+        merchantHasLoyalty: state.merchantHasLoyalty
+      })
+    }
+  )
+)
