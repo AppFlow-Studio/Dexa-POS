@@ -225,7 +225,7 @@ const MAX_BLOCK_COUNT = 20;
 // future code path that pre-marks an item 'pending' and then never increments
 // retryCount cleanly. Wave 3.1: bumped 120s → 600s to match the longer retry
 // budget (10 attempts at exponential backoff capped at 20s ≈ 150s + headroom).
-const STUCK_OP_TIMEOUT_MS = 600_000
+const STUCK_OP_TIMEOUT_MS = 600_000;
 
 // Wave 3.0f-2: when connectionQuality.isSlow() at MAX_RETRY_ATTEMPTS, give
 // the op another full retry budget instead of dead-lettering. The diagnosis
@@ -234,7 +234,7 @@ const STUCK_OP_TIMEOUT_MS = 600_000
 // reprieves so we don't loop forever on a permanently-down server.
 // 3 reprieves × 10 retries × ~15s avg = ~450s of trying ≈ 7.5 min before
 // the op finally dead-letters with SUSTAINED_BAD_WIFI.
-const MAX_SLOW_MODE_REPRIEVES = 3
+const MAX_SLOW_MODE_REPRIEVES = 3;
 
 const PAYMENT_TYPES: OperationType[] = [
   "process_payment",
@@ -1674,6 +1674,11 @@ function loadDeadLetterFromStorage(): void {
   if (deadLetterQueue.length > 0) {
     notifyDeadLetterSubscribers()
   }
+  // Wave 3.0e: notify subscribers so the banner repopulates if the user
+  // reopened the app to find lingering ops from a previous session.
+  if (deadLetterQueue.length > 0) {
+    notifyDeadLetterSubscribers()
+  }
 }
 
 function saveDeadLetterToStorage(): void {
@@ -1729,17 +1734,18 @@ export async function retryDeadLetterOperation(
  *
  * Usage from Metro console: __seedDeadLetter({ type, localOrderId, ... })
  */
-export function _devSeedDeadLetter (
+export function _devSeedDeadLetter(
   partial: Partial<OfflineOperation> & {
-    type: OperationType
-    localOrderId: string
-  }
+    type: OperationType;
+    localOrderId: string;
+  },
 ): string {
   if (!__DEV__) {
-    throw new Error('_devSeedDeadLetter is __DEV__ only')
+    throw new Error("_devSeedDeadLetter is __DEV__ only");
   }
   const id =
-    partial.id ?? `op_seed_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+    partial.id ??
+    `op_seed_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const op: OfflineOperation = {
     id,
     type: partial.type,
@@ -1748,16 +1754,16 @@ export function _devSeedDeadLetter (
     localItemId: partial.localItemId,
     timestamp: partial.timestamp ?? new Date().toISOString(),
     retryCount: partial.retryCount ?? MAX_RETRY_ATTEMPTS,
-    status: 'failed',
+    status: "failed",
     priority: OPERATION_PRIORITY[partial.type] ?? 99,
     lastError: partial.lastError ?? {
-      code: 'DEADLINE_EXCEEDED',
-      message: 'Seeded for UI verification'
+      code: "DEADLINE_EXCEEDED",
+      message: "Seeded for UI verification",
     },
-    deadLetteredAtMs: partial.deadLetteredAtMs ?? Date.now()
-  }
-  moveToDeadLetter(op)
-  return id
+    deadLetteredAtMs: partial.deadLetteredAtMs ?? Date.now(),
+  };
+  moveToDeadLetter(op);
+  return id;
 }
 
 /**
@@ -2193,16 +2199,15 @@ async function handleOperationFailure(
     connectionQuality.isSlow() &&
     (operation.slowModeRetryCount ?? 0) < MAX_SLOW_MODE_REPRIEVES
   ) {
-    operation.slowModeRetryCount =
-      (operation.slowModeRetryCount ?? 0) + 1
-    operation.retryCount = 0
-    operation.status = 'pending'
+    operation.slowModeRetryCount = (operation.slowModeRetryCount ?? 0) + 1;
+    operation.retryCount = 0;
+    operation.status = "pending";
     console.log(
-      `[OfflineSync] ↻ SLOW-MODE REPRIEVE (${operation.slowModeRetryCount}/${MAX_SLOW_MODE_REPRIEVES}): ${operation.type} (${operation.id}) — WiFi still slow, not giving up`
-    )
-    await saveQueueToStorage()
-    scheduleAutoRetry(operation)
-    return
+      `[OfflineSync] ↻ SLOW-MODE REPRIEVE (${operation.slowModeRetryCount}/${MAX_SLOW_MODE_REPRIEVES}): ${operation.type} (${operation.id}) — WiFi still slow, not giving up`,
+    );
+    await saveQueueToStorage();
+    scheduleAutoRetry(operation);
+    return;
   }
 
   if (permanent || operation.retryCount >= MAX_RETRY_ATTEMPTS) {
@@ -2394,16 +2399,16 @@ async function processQueue(): Promise<void> {
       ) {
         console.log(
           `[OfflineSync] ✗ STUCK ${Math.round(
-            (Date.now() - operation.firstAttemptedAtMs) / 1000
-          )}s — dead-lettering: ${operation.type} (${operation.id})`
-        )
-        operation.retryCount = MAX_RETRY_ATTEMPTS
+            (Date.now() - operation.firstAttemptedAtMs) / 1000,
+          )}s — dead-lettering: ${operation.type} (${operation.id})`,
+        );
+        operation.retryCount = MAX_RETRY_ATTEMPTS;
         await handleOperationFailure(
           operation,
-          new Error(`Stuck for >${STUCK_OP_TIMEOUT_MS / 1000}s`)
-        )
-        failCount++
-        continue
+          new Error(`Stuck for >${STUCK_OP_TIMEOUT_MS / 1000}s`),
+        );
+        failCount++;
+        continue;
       }
 
       try {
