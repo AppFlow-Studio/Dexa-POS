@@ -11,6 +11,7 @@ import OrderLineItemsModal from '@/components/order/OrderLineItemsModal'
 import OrderLineMinimalCard from '@/components/order/OrderLineMinimalCard'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
+import { useActiveOrderOwnershipRecheck } from '@/hooks/orders/useActiveOrderOwnershipRecheck'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
@@ -20,7 +21,6 @@ import { PrinterService } from '@/services/printing/PrinterService'
 import { useSearchStore } from '@/stores/searchStore'
 import { useOrderLineFilteredOrders } from '@/stores/selectors/orderSelectors'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
-import { useActiveOrderOwnershipRecheck } from '@/hooks/orders/useActiveOrderOwnershipRecheck'
 import {
   getOrderStoreSupabaseClient,
   useOrderStore
@@ -122,16 +122,14 @@ const OrderProcessing = () => {
   const ordersSheetHeight = useSharedValue<number>(windowHeight)
   const dragStartHeightRef = useRef<number>(windowHeight)
 
-  // OPTIMIZED: Effect now uses getState() to avoid subscribing to all orders
+  // On mount: reuse an existing empty draft, otherwise start a fresh one
   useEffect(() => {
-    // Only run if activeOrderId is missing, or we need to validate it
-    // access state directly without subscription
     const state = useOrderStore.getState()
-    const ordersById = state.ordersById
-    const orderIds = state.orderIds
-    const allOrders = orderIds.map(id => ordersById[id]).filter(Boolean)
+    const allOrders = state.orderIds
+      .map(id => state.ordersById[id])
+      .filter(Boolean)
 
-    // Find drafts (O(N) search but only runs on mount/reset)
+    // Only reuse a draft that has no items, no table, and no customer
     const emptyDraft = [...allOrders]
       .reverse()
       .find(
@@ -144,59 +142,13 @@ const OrderProcessing = () => {
           !o.customer_id
       )
 
-    const globalDraft = [...allOrders]
-      .reverse()
-      .find(
-        o =>
-          o.service_location_id === null &&
-          o.order_status === 'draft' &&
-          o.paid_status !== 'Paid' &&
-          !o.customer_name &&
-          !o.customer_id
-      )
-
-    // Find dine-in draft (order with linked table that hasn't been paid)
-    const dineInDraft = [...allOrders]
-      .reverse()
-      .find(
-        o =>
-          o.service_location_id !== null &&
-          o.order_status === 'draft' &&
-          o.order_type === 'dine_in' &&
-          o.paid_status !== 'Paid' &&
-          !o.customer_name &&
-          !o.customer_id
-      )
-
-    if (!activeOrderId) {
-      if (emptyDraft) {
-        setActiveOrder(emptyDraft.id)
-      } else if (globalDraft) {
-        setActiveOrder(globalDraft.id)
-      } else if (dineInDraft) {
-        setActiveOrder(dineInDraft.id)
-      } else {
-        const newOrder = startNewOrder()
-        setActiveOrder(newOrder.id)
-      }
-      return
+    if (emptyDraft) {
+      setActiveOrder(emptyDraft.id)
+    } else {
+      const newOrder = startNewOrder()
+      setActiveOrder(newOrder.id)
     }
-
-    // Verify current active order exists
-    const currentActive = ordersById[activeOrderId]
-    if (!currentActive) {
-      if (emptyDraft) {
-        setActiveOrder(emptyDraft.id)
-      } else if (globalDraft) {
-        setActiveOrder(globalDraft.id)
-      } else if (dineInDraft) {
-        setActiveOrder(dineInDraft.id)
-      } else {
-        const newOrder = startNewOrder()
-        setActiveOrder(newOrder.id)
-      }
-    }
-  }, [activeOrderId, setActiveOrder, startNewOrder])
+  }, [setActiveOrder, startNewOrder])
 
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId)
@@ -605,6 +557,14 @@ const OrderProcessing = () => {
       ).length
   )
 
+  const handleSelectOrder = useCallback(
+    (orderId: string) => {
+      setActiveOrder(orderId)
+      setIsOrdersModuleOpen(false)
+    },
+    [setActiveOrder]
+  )
+
   const renderOrderCard = useCallback(
     ({ item }: { item: OrderProfile }) => (
       <Animated.View
@@ -668,7 +628,9 @@ const OrderProcessing = () => {
         .replace(/\b\w/g, c => c.toUpperCase())
 
       return (
-        <View
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => handleSelectOrder(item.id)}
           style={{
             flex: 1,
             maxWidth: 320,
@@ -950,10 +912,10 @@ const OrderProcessing = () => {
               </TouchableOpacity>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
       )
     },
-    [handleViewItems, handleMarkDone, handlePrintReceipt]
+    [handleViewItems, handleMarkDone, handlePrintReceipt, handleSelectOrder]
   )
 
   return (
