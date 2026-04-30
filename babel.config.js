@@ -8,16 +8,21 @@ module.exports = function (api) {
     easProfile === "production" ||
     easProfile === "preview";
 
-  const plugins = ["react-native-reanimated/plugin"];
+  // React Compiler must run before other plugins transform JSX.
+  // Opt out of compilation in any single file with `"use no memo";` at top.
+  const plugins = ["babel-plugin-react-compiler"];
 
   // Strip console.log/info/debug in production and preview builds.
   // Keep console.error and console.warn so crash reporting still receives them.
   if (stripConsole) {
-    plugins.unshift([
+    plugins.push([
       "transform-remove-console",
       { exclude: ["error", "warn"] },
     ]);
   }
+
+  // react-native-reanimated/plugin must be last per its plugin docs.
+  plugins.push("react-native-reanimated/plugin");
 
   return {
     presets: [
