@@ -10,6 +10,9 @@ module.exports = function (api) {
 
   // React Compiler must run before other plugins transform JSX.
   // Opt out of compilation in any single file with `"use no memo";` at top.
+  // NOTE: do not also set `experiments.reactCompiler: true` in app.json —
+  // babel-preset-expo auto-injects the compiler when that flag is on, which
+  // would apply this plugin twice.
   const plugins = ["babel-plugin-react-compiler"];
 
   // Strip console.log/info/debug in production and preview builds.

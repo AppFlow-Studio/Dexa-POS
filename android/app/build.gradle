@@ -88,6 +88,7 @@ apply from: new File(["node", "--print", "require.resolve('@sentry/react-native/
 android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
+    ndkVersion "27.1.12297006"                                                         
 
     namespace 'com.temurappflowstudios.dexapos'
     defaultConfig {
