@@ -1,3 +1,5 @@
+import { DEADLINES } from "@/lib/network/deadlines";
+import { rpcWithIdempotency } from "@/lib/network/idempotencyKey";
 import {
   AddFloorPlanObjectParams,
   AddToWaitlistParams,
@@ -14,72 +16,70 @@ import {
   TransferTableSessionParams,
   UpdateFloorPlanObjectPositionParams,
   UpdateTableSessionStatusParams,
-  WaitlistEntry
-} from '@/types/db-floor-plan-types'
+  WaitlistEntry,
+} from "@/types/db-floor-plan-types";
 import type {
   SeatGuestsParams,
-  SeatGuestsResponse
-} from '@/types/sessionRpcTypes'
-import { DEADLINES } from '@/lib/network/deadlines'
-import { rpcWithIdempotency } from '@/lib/network/idempotencyKey'
-import { SupabaseClient } from '@supabase/supabase-js'
+  SeatGuestsResponse,
+} from "@/types/sessionRpcTypes";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 export class FloorPlanService {
   // --- FLOOR PLAN OPERATIONS ---
 
-  static async getLocationFloorPlans (
+  static async getLocationFloorPlans(
     client: SupabaseClient,
-    locationId: string
+    locationId: string,
   ): Promise<{ data: FloorPlan[] | null; error: any }> {
-    const { data, error } = await client.rpc('get_location_floor_plans', {
-      p_location_id: locationId
-    })
+    const { data, error } = await client.rpc("get_location_floor_plans", {
+      p_location_id: locationId,
+    });
     // console.log("[FloorPlanService] getLocationFloorPlans", data, error);
-    return { data, error }
+    return { data, error };
   }
 
-  static async createFloorPlan (
+  static async createFloorPlan(
     client: SupabaseClient,
-    params: CreateFloorPlanParams
+    params: CreateFloorPlanParams,
   ): Promise<{ data: { floor_plan_id: string } | null; error: any }> {
-    const { data, error } = await client.rpc('create_floor_plan', params)
-    return { data, error }
+    const { data, error } = await client.rpc("create_floor_plan", params);
+    return { data, error };
   }
 
-  static async updateFloorPlan (
+  static async updateFloorPlan(
     client: SupabaseClient,
     floorPlanId: string,
-    updates: Partial<FloorPlan>
+    updates: Partial<FloorPlan>,
   ): Promise<{ error: any }> {
     const { error } = await client
-      .from('floor_plans')
+      .from("floor_plans")
       .update(updates)
-      .eq('id', floorPlanId)
-    return { error }
+      .eq("id", floorPlanId);
+    return { error };
   }
 
-  static async deleteFloorPlan (
+  static async deleteFloorPlan(
     client: SupabaseClient,
-    floorPlanId: string
+    floorPlanId: string,
   ): Promise<{ error: any }> {
     const { error } = await client
-      .from('floor_plans')
+      .from("floor_plans")
       .delete()
-      .eq('id', floorPlanId)
-    return { error }
+      .eq("id", floorPlanId);
+    return { error };
   }
 
-  static async getFloorPlanStatus (
+  static async getFloorPlanStatus(
     client: SupabaseClient,
-    floorPlanId: string
+    floorPlanId: string,
   ): Promise<{
-    data: { tables: FloorPlanObject[] } | null
-    error: any
+    data: { tables: FloorPlanObject[] } | null;
+    error: any;
   }> {
-    const { data, error } = await client.rpc('get_floor_plan_status', {
-      p_floor_plan_id: floorPlanId
-    })
-    return { data, error }
+    const { data, error } = await client.rpc("get_floor_plan_status", {
+      p_floor_plan_id: floorPlanId,
+    });
+    return { data, error };
   }
 
   /**
@@ -88,371 +88,404 @@ export class FloorPlanService {
    *
    * Strategy: Get all objects, then enrich with session data by joining the junction table.
    */
-  static async getAllFloorPlanObjects (
+  static async getAllFloorPlanObjects(
     client: SupabaseClient,
-    floorPlanId: string
+    floorPlanId: string,
   ): Promise<{
-    data: FloorPlanObject[] | null
-    error: any
+    data: FloorPlanObject[] | null;
+    error: any;
   }> {
     try {
       console.log(
-        `[getAllFloorPlanObjects] Fetching objects for floor plan: ${floorPlanId}`
-      )
+        `[getAllFloorPlanObjects] Fetching objects for floor plan: ${floorPlanId}`,
+      );
 
       // 1. Fetch ALL active floor plan objects (not filtered by category)
       const { data: allObjects, error: objectsError } = await client
-        .from('floor_plan_objects')
-        .select('*')
-        .eq('floor_plan_id', floorPlanId)
-        .eq('is_active', true)
-        .order('z_index', { ascending: true })
+        .from("floor_plan_objects")
+        .select("*")
+        .eq("floor_plan_id", floorPlanId)
+        .eq("is_active", true)
+        .order("z_index", { ascending: true });
 
       if (objectsError) {
         console.error(
-          '[getAllFloorPlanObjects] Error fetching objects:',
-          objectsError
-        )
-        return { data: null, error: objectsError }
+          "[getAllFloorPlanObjects] Error fetching objects:",
+          objectsError,
+        );
+        return { data: null, error: objectsError };
       }
 
       if (!allObjects || allObjects.length === 0) {
-        console.warn('[getAllFloorPlanObjects] No objects found for floor plan')
-        return { data: [], error: null }
+        console.warn(
+          "[getAllFloorPlanObjects] No objects found for floor plan",
+        );
+        return { data: [], error: null };
       }
 
       console.log(
-        `[getAllFloorPlanObjects] Found ${allObjects.length} total objects`
-      )
+        `[getAllFloorPlanObjects] Found ${allObjects.length} total objects`,
+      );
 
       // 2. Fetch session data for tables that have sessions
       // Scope junction query to only tables in this floor plan to avoid cross-plan pollution
-      const tableIds = allObjects.map((obj: any) => obj.id)
+      const tableIds = allObjects.map((obj: any) => obj.id);
       const { data: junctionData, error: junctionError } = await client
-        .from('table_session_tables')
+        .from("table_session_tables")
         .select(`table_id, session_id, seated_position`)
-        .eq('is_active', true)
-        .in('table_id', tableIds)
+        .eq("is_active", true)
+        .in("table_id", tableIds);
 
       // Collect unique session IDs from junctions, then fetch only those sessions
-      const sessionIdsFromJunctions = new Set<string>()
+      const sessionIdsFromJunctions = new Set<string>();
       if (junctionData) {
         junctionData.forEach((row: any) =>
-          sessionIdsFromJunctions.add(row.session_id)
-        )
+          sessionIdsFromJunctions.add(row.session_id),
+        );
       }
 
-      let sessionsData: any[] | null = null
-      let sessionsError: any = null
+      let sessionsData: any[] | null = null;
+      let sessionsError: any = null;
 
       if (sessionIdsFromJunctions.size > 0) {
         const result = await client
-          .from('table_sessions')
+          .from("table_sessions")
           .select(
-            `id, session_number, status, party_size, guest_name, order_id, reservation_id, server_staff_id, seated_at, current_course, needs_attention, is_vip, is_active`
+            `id, session_number, status, party_size, guest_name, order_id, reservation_id, server_staff_id, seated_at, current_course, needs_attention, is_vip, is_active`,
           )
-          .eq('is_active', true)
-          .in('id', Array.from(sessionIdsFromJunctions))
-        sessionsData = result.data
-        sessionsError = result.error
+          .eq("is_active", true)
+          .in("id", Array.from(sessionIdsFromJunctions));
+        sessionsData = result.data;
+        sessionsError = result.error;
       }
 
       if (junctionError) {
         console.warn(
-          '[getAllFloorPlanObjects] Warning: error fetching junctions:',
-          junctionError
-        )
+          "[getAllFloorPlanObjects] Warning: error fetching junctions:",
+          junctionError,
+        );
       }
       if (sessionsError) {
         console.warn(
-          '[getAllFloorPlanObjects] Warning: error fetching sessions:',
-          sessionsError
-        )
+          "[getAllFloorPlanObjects] Warning: error fetching sessions:",
+          sessionsError,
+        );
       }
 
       // 3. Build efficient lookups
-      const sessionMap = new Map<string, any>()
-      const tableToSessionId = new Map<string, string>()
-      const mergedTablesBySession = new Map<string, string[]>()
+      const sessionMap = new Map<string, any>();
+      const tableToSessionId = new Map<string, string>();
+      const mergedTablesBySession = new Map<string, string[]>();
 
       // Index all sessions
       if (sessionsData) {
         sessionsData.forEach((sess: any) => {
-          sessionMap.set(sess.id, sess)
-        })
+          sessionMap.set(sess.id, sess);
+        });
       }
 
       // Map tables to sessions and collect merged tables
       // Only map junctions whose session actually exists in sessionMap (is_active=true)
       if (junctionData) {
         const staleJunctionCount = junctionData.filter(
-          (row: any) => !sessionMap.has(row.session_id)
-        ).length
+          (row: any) => !sessionMap.has(row.session_id),
+        ).length;
         if (staleJunctionCount > 0) {
           console.warn(
-            `[getAllFloorPlanObjects] ${staleJunctionCount} stale junction(s) pointing to inactive sessions`
-          )
+            `[getAllFloorPlanObjects] ${staleJunctionCount} stale junction(s) pointing to inactive sessions`,
+          );
         }
 
         junctionData.forEach((row: any) => {
           // Skip junctions whose session is no longer active
-          if (!sessionMap.has(row.session_id)) return
+          if (!sessionMap.has(row.session_id)) return;
 
-          tableToSessionId.set(row.table_id, row.session_id)
+          tableToSessionId.set(row.table_id, row.session_id);
 
           if (!mergedTablesBySession.has(row.session_id)) {
-            mergedTablesBySession.set(row.session_id, [])
+            mergedTablesBySession.set(row.session_id, []);
           }
-          mergedTablesBySession.get(row.session_id)!.push(row.table_id)
-        })
+          mergedTablesBySession.get(row.session_id)!.push(row.table_id);
+        });
       }
 
       // 4. Combine all objects with their session data
       const result: FloorPlanObject[] = allObjects.map((obj: any) => {
-        const sessionId = tableToSessionId.get(obj.id)
+        const sessionId = tableToSessionId.get(obj.id);
         const session =
           sessionId && sessionMap.has(sessionId)
             ? {
                 ...sessionMap.get(sessionId),
-                merged_tables: mergedTablesBySession.get(sessionId) || []
+                merged_tables: mergedTablesBySession.get(sessionId) || [],
               }
-            : null
+            : null;
 
-        return { ...obj, session }
-      })
+        return { ...obj, session };
+      });
 
       console.log(
-        `[getAllFloorPlanObjects] Returning ${result.length} objects with session data`
-      )
-      return { data: result, error: null }
+        `[getAllFloorPlanObjects] Returning ${result.length} objects with session data`,
+      );
+      return { data: result, error: null };
     } catch (err: any) {
-      console.error('[getAllFloorPlanObjects] Fatal error:', err)
-      return { data: null, error: err }
+      console.error("[getAllFloorPlanObjects] Fatal error:", err);
+      return { data: null, error: err };
     }
   }
 
   // --- OBJECT OPERATIONS ---
 
-  static async addFloorPlanObject (
+  static async addFloorPlanObject(
     client: SupabaseClient,
-    params: AddFloorPlanObjectParams
+    params: AddFloorPlanObjectParams,
   ): Promise<{ data: { object_id: string } | null; error: any }> {
-    const { data, error } = await client.rpc('add_floor_plan_object', params)
-    return { data, error }
+    const { data, error } = await client.rpc("add_floor_plan_object", params);
+    return { data, error };
   }
 
-  static async updateFloorPlanObject (
+  static async updateFloorPlanObject(
     client: SupabaseClient,
     objectId: string,
-    updates: Partial<FloorPlanObject>
+    updates: Partial<FloorPlanObject>,
   ): Promise<{ data: FloorPlanObject | null; error: any }> {
     const { data, error } = await client
-      .from('floor_plan_objects')
+      .from("floor_plan_objects")
       .update(updates)
-      .eq('id', objectId)
+      .eq("id", objectId)
       .select()
-      .single()
+      .single();
 
-    return { data, error }
+    return { data, error };
   }
 
-  static async updateFloorPlanObjectPosition (
+  static async updateFloorPlanObjectPosition(
     client: SupabaseClient,
-    params: UpdateFloorPlanObjectPositionParams
+    params: UpdateFloorPlanObjectPositionParams,
   ): Promise<{ error: any }> {
     const { error } = await client.rpc(
-      'update_floor_plan_object_position',
-      params
-    )
-    return { error }
+      "update_floor_plan_object_position",
+      params,
+    );
+    return { error };
   }
 
-  static async updateFloorPlanObjectsBatch (
+  static async updateFloorPlanObjectsBatch(
     client: SupabaseClient,
-    params: BatchUpdateObjectParams
+    params: BatchUpdateObjectParams,
   ): Promise<{ error: any }> {
     const { error } = await client.rpc(
-      'update_floor_plan_objects_batch',
-      params
-    )
-    return { error }
+      "update_floor_plan_objects_batch",
+      params,
+    );
+    return { error };
   }
 
-  static async deleteFloorPlanObject (
+  static async deleteFloorPlanObject(
     client: SupabaseClient,
-    objectId: string
+    objectId: string,
   ): Promise<{ error: any }> {
     const { error } = await client
-      .from('floor_plan_objects')
+      .from("floor_plan_objects")
       .delete()
-      .eq('id', objectId)
-    return { error }
+      .eq("id", objectId);
+    return { error };
   }
 
   // --- SESSION OPERATIONS ---
 
-  static async getLocationTableStatus (
+  static async getLocationTableStatus(
     client: SupabaseClient,
-    locationId: string
+    locationId: string,
   ): Promise<{ data: LocationTableStatusRow[] | null; error: any }> {
-    const { data, error } = await client.rpc('get_location_table_status_v2', {
-      p_location_id: locationId
-    })
-    return { data, error }
+    const { data, error } = await client.rpc("get_location_table_status_v2", {
+      p_location_id: locationId,
+    });
+    return { data, error };
   }
 
-  static async seatGuests (
+  static async seatGuests(
     client: SupabaseClient,
-    params: SeatGuestsParams
+    params: SeatGuestsParams,
   ): Promise<{
-    data: SeatGuestsResponse | null
-    error: any
+    data: SeatGuestsResponse | null;
+    error: any;
   }> {
     // NOTE: client always calls 'seat_guests_v3'. Two functions exist on
     // staging with the same name — Postgres dispatches by signature.
     // Passing p_idempotency_key routes to the array-param + idempotency version.
-    const { data, error } = await rpcWithIdempotency<SeatGuestsResponse & { success?: boolean; error?: string }>(
-      client, 'seat_guests', 'seat_guests_v3', 'seat_guests_v3', params as Record<string, any>,
-      { deadline: DEADLINES.closeCheck }  // seating creates a session + maybe an order
-    )
+    let { data, error } = await rpcWithIdempotency<
+      SeatGuestsResponse & { success?: boolean; error?: string }
+    >(
+      client,
+      "seat_guests",
+      "seat_guests_v3",
+      "seat_guests_v3",
+      params as Record<string, any>,
+      { deadline: DEADLINES.closeCheck }, // seating creates a session + maybe an order
+    );
+
+    // Backward-compat: some environments expose seat_guests_v3 without
+    // p_idempotency_key. Retry once with the legacy signature so queued
+    // seating ops don't burn all retries on a deterministic mismatch.
+    const details = String(error?.details || "");
+    const message = String(error?.message || "");
+    const hint = String(error?.hint || "");
+    const missingIdempotencyArg =
+      error?.code === "PGRST202" &&
+      (details.includes("p_idempotency_key") ||
+        message.includes("p_idempotency_key") ||
+        hint.includes("Perhaps you meant to call"));
+
+    if (missingIdempotencyArg) {
+      const retry = await client.rpc(
+        "seat_guests_v3",
+        params as Record<string, any>,
+      );
+      data = retry.data as SeatGuestsResponse & {
+        success?: boolean;
+        error?: string;
+      };
+      error = retry.error;
+    }
+
     // Handle JSONB error: RPC returns { success: false, error: "..." }
     if (!error && data && data.success === false) {
       return {
         data: null,
-        error: { message: data.error || 'seat_guests_v3 failed' }
-      }
+        error: { message: data.error || "seat_guests_v3 failed" },
+      };
     }
-    return { data, error }
+    return { data, error };
   }
 
-  static async updateTableSessionStatus (
+  static async updateTableSessionStatus(
     client: SupabaseClient,
-    params: UpdateTableSessionStatusParams
+    params: UpdateTableSessionStatusParams,
   ): Promise<{ error: any }> {
     // Direct update to table_sessions instead of RPC (RPC doesn't exist)
     const updateData: any = {
       status: params.p_status,
-      updated_at: new Date().toISOString()
-    }
+      updated_at: new Date().toISOString(),
+    };
 
     // When cleaning or marking available, close the session (is_active = false)
-    if (params.p_status === 'cleaning' || params.p_status === 'available') {
-      const now = new Date().toISOString()
+    if (params.p_status === "cleaning" || params.p_status === "available") {
+      const now = new Date().toISOString();
 
       // First, mark all junctions as inactive so polling won't re-attach the session
       // This must happen before we mark the session inactive
       const { error: junctionError } = await client
-        .from('table_session_tables')
+        .from("table_session_tables")
         .update({ is_active: false })
-        .eq('session_id', params.p_session_id)
+        .eq("session_id", params.p_session_id);
 
       if (junctionError) {
         console.warn(
-          '[updateTableSessionStatus] Failed to deactivate junctions:',
-          junctionError
-        )
+          "[updateTableSessionStatus] Failed to deactivate junctions:",
+          junctionError,
+        );
       } else {
         console.log(
-          '[updateTableSessionStatus] Deactivated junctions for session:',
-          params.p_session_id
-        )
+          "[updateTableSessionStatus] Deactivated junctions for session:",
+          params.p_session_id,
+        );
       }
 
-      updateData.is_active = false
-      updateData.cleared_at = now
-      updateData.closed_at = now
+      updateData.is_active = false;
+      updateData.cleared_at = now;
+      updateData.closed_at = now;
       if (params.p_staff_id) {
-        updateData.closed_by = params.p_staff_id
+        updateData.closed_by = params.p_staff_id;
       }
     }
 
     // Only add notes if it exists and the column exists
     if (params.p_notes) {
-      updateData.notes = params.p_notes
+      updateData.notes = params.p_notes;
     }
 
-    console.log('[updateTableSessionStatus] Attempting update:', {
+    console.log("[updateTableSessionStatus] Attempting update:", {
       sessionId: params.p_session_id,
       status: params.p_status,
-      updateData
-    })
+      updateData,
+    });
 
     const { error } = await client
-      .from('table_sessions')
+      .from("table_sessions")
       .update(updateData)
-      .eq('id', params.p_session_id)
+      .eq("id", params.p_session_id);
 
-    console.log('[updateTableSessionStatus] Result:', {
+    console.log("[updateTableSessionStatus] Result:", {
       sessionId: params.p_session_id,
       status: params.p_status,
-      error
-    })
+      error,
+    });
 
-    return { error }
+    return { error };
   }
 
-  static async transferTableSession (
+  static async transferTableSession(
     client: SupabaseClient,
-    params: TransferTableSessionParams
+    params: TransferTableSessionParams,
   ): Promise<{ error: any }> {
-    const { error } = await client.rpc('transfer_table_session', params)
-    return { error }
+    const { error } = await client.rpc("transfer_table_session", params);
+    return { error };
   }
 
-  static async mergeTableToSession (
+  static async mergeTableToSession(
     client: SupabaseClient,
-    params: MergeTableParams
+    params: MergeTableParams,
   ): Promise<{ error: any }> {
-    const { error } = await client.rpc('merge_table_to_session', params)
-    return { error }
+    const { error } = await client.rpc("merge_table_to_session", params);
+    return { error };
   }
 
-  static async unmergeTableFromSession (
+  static async unmergeTableFromSession(
     client: SupabaseClient,
-    params: MergeTableParams
+    params: MergeTableParams,
   ): Promise<{ error: any }> {
-    const { error } = await client.rpc('unmerge_table_from_session', params)
-    return { error }
+    const { error } = await client.rpc("unmerge_table_from_session", params);
+    return { error };
   }
 
-  static async advanceCourse (
+  static async advanceCourse(
     client: SupabaseClient,
     sessionId: string,
-    staffId?: string
+    staffId?: string,
   ): Promise<{ data: { current_course: number } | null; error: any }> {
-    const { data, error } = await client.rpc('advance_course', {
+    const { data, error } = await client.rpc("advance_course", {
       p_session_id: sessionId,
-      p_staff_id: staffId
-    })
-    return { data, error }
+      p_staff_id: staffId,
+    });
+    return { data, error };
   }
 
   // --- WAITLIST OPERATIONS ---
 
-  static async getWaitlist (
+  static async getWaitlist(
     client: SupabaseClient,
-    locationId: string
+    locationId: string,
   ): Promise<{ data: { waitlist: WaitlistEntry[] } | null; error: any }> {
-    const { data, error } = await client.rpc('get_waitlist', {
-      p_location_id: locationId
-    })
-    return { data, error }
+    const { data, error } = await client.rpc("get_waitlist", {
+      p_location_id: locationId,
+    });
+    return { data, error };
   }
 
-  static async addToWaitlist (
+  static async addToWaitlist(
     client: SupabaseClient,
-    params: AddToWaitlistParams
+    params: AddToWaitlistParams,
   ): Promise<{
     data: {
-      waitlist_id: string
-      position: number
-      quoted_wait_minutes: number
-    } | null
-    error: any
+      waitlist_id: string;
+      position: number;
+      quoted_wait_minutes: number;
+    } | null;
+    error: any;
   }> {
     // Keep RPC payload backward-compatible with the current DB function signature.
     // estimated_ready_at is persisted via a follow-up table update.
-    const { data, error } = await client.rpc('add_to_waitlist', {
+    const { data, error } = await client.rpc("add_to_waitlist", {
       p_location_id: params.p_location_id,
       p_party_name: params.p_party_name,
       p_party_size: params.p_party_size,
@@ -461,178 +494,178 @@ export class FloorPlanService {
       p_notes: params.p_notes,
       p_preferred_section: params.p_preferred_section,
       p_seating_preference: params.p_seating_preference,
-      p_quoted_wait_minutes: params.p_quoted_wait_minutes
-    })
-    return { data, error }
+      p_quoted_wait_minutes: params.p_quoted_wait_minutes,
+    });
+    return { data, error };
   }
 
-  static async updateWaitlistEstimatedReadyAt (
+  static async updateWaitlistEstimatedReadyAt(
     client: SupabaseClient,
     waitlistId: string,
-    estimatedReadyAt: string
+    estimatedReadyAt: string,
   ): Promise<{ data: { success: boolean } | null; error: any }> {
     const { error } = await client
-      .from('waitlist')
+      .from("waitlist")
       .update({ estimated_ready_at: estimatedReadyAt })
-      .eq('id', waitlistId)
+      .eq("id", waitlistId);
 
-    return { data: { success: !error }, error }
+    return { data: { success: !error }, error };
   }
 
-  static async updateWaitlistEntry (
+  static async updateWaitlistEntry(
     client: SupabaseClient,
     waitlistId: string,
     updates: {
-      party_name?: string
-      party_size?: number
-      phone?: string | null
-      email?: string | null
-      seating_preference?: string | null
-      preferred_section?: string | null
-      notes?: string | null
-      quoted_wait_minutes?: number
-      estimated_ready_at?: string | null
-    }
+      party_name?: string;
+      party_size?: number;
+      phone?: string | null;
+      email?: string | null;
+      seating_preference?: string | null;
+      preferred_section?: string | null;
+      notes?: string | null;
+      quoted_wait_minutes?: number;
+      estimated_ready_at?: string | null;
+    },
   ): Promise<{ error: any }> {
     const { error } = await client
-      .from('waitlist')
+      .from("waitlist")
       .update(updates)
-      .eq('id', waitlistId)
-    return { error }
+      .eq("id", waitlistId);
+    return { error };
   }
 
-  static async notifyWaitlistParty (
+  static async notifyWaitlistParty(
     client: SupabaseClient,
-    waitlistId: string
+    waitlistId: string,
   ): Promise<{
     data: {
-      success: boolean
-      phone: string
-      party_name: string
-      message_template: string
-      notified_at: string
-      notification_count: number
-      last_notification_type: string
-      notification_failures: number
-      error?: string
-    } | null
-    error: any
+      success: boolean;
+      phone: string;
+      party_name: string;
+      message_template: string;
+      notified_at: string;
+      notification_count: number;
+      last_notification_type: string;
+      notification_failures: number;
+      error?: string;
+    } | null;
+    error: any;
   }> {
-    const { data, error } = await client.rpc('notify_waitlist_party', {
-      p_waitlist_id: waitlistId
-    })
-    return { data, error }
+    const { data, error } = await client.rpc("notify_waitlist_party", {
+      p_waitlist_id: waitlistId,
+    });
+    return { data, error };
   }
 
-  static async resendWaitlistNotification (
+  static async resendWaitlistNotification(
     client: SupabaseClient,
-    waitlistId: string
+    waitlistId: string,
   ): Promise<{
     data: {
-      success: boolean
-      phone: string
-      party_name: string
-      message_template: string
-      notified_at: string
-      notification_count: number
-      last_notification_type: string
-      notification_failures: number
-      error?: string
-    } | null
-    error: any
+      success: boolean;
+      phone: string;
+      party_name: string;
+      message_template: string;
+      notified_at: string;
+      notification_count: number;
+      last_notification_type: string;
+      notification_failures: number;
+      error?: string;
+    } | null;
+    error: any;
   }> {
-    const { data, error } = await client.rpc('resend_waitlist_notification', {
-      p_waitlist_id: waitlistId
-    })
-    return { data, error }
+    const { data, error } = await client.rpc("resend_waitlist_notification", {
+      p_waitlist_id: waitlistId,
+    });
+    return { data, error };
   }
 
-  static async sendWaitlistSms (
+  static async sendWaitlistSms(
     client: SupabaseClient,
-    params: { phone: string; message: string; waitlist_id: string }
+    params: { phone: string; message: string; waitlist_id: string },
   ): Promise<{
     data: {
-      success: boolean
-      sms?: boolean
-      error?: string
-      message?: string
-      reason?: string
-      provider_error?: string
-    } | null
-    error: any
+      success: boolean;
+      sms?: boolean;
+      error?: string;
+      message?: string;
+      reason?: string;
+      provider_error?: string;
+    } | null;
+    error: any;
   }> {
     const { data, error } = await client.functions.invoke(
-      'notify-waitlist-guest',
+      "notify-waitlist-guest",
       {
         body: {
           phone: params.phone,
           message: params.message,
-          waitlist_id: params.waitlist_id
-        }
-      }
-    )
-    return { data, error }
+          waitlist_id: params.waitlist_id,
+        },
+      },
+    );
+    return { data, error };
   }
 
-  static async updateWaitlistStatus (
+  static async updateWaitlistStatus(
     client: SupabaseClient,
     waitlistId: string,
-    status: string
+    status: string,
   ): Promise<{ error: any }> {
-    const { error } = await client.rpc('update_waitlist_status', {
+    const { error } = await client.rpc("update_waitlist_status", {
       p_waitlist_id: waitlistId,
-      p_status: status
-    })
-    return { error }
+      p_status: status,
+    });
+    return { error };
   }
 
-  static async seatFromWaitlist (
+  static async seatFromWaitlist(
     client: SupabaseClient,
     waitlistId: string,
-    tableIds: string[]
+    tableIds: string[],
   ): Promise<{
-    data: { session_id: string; order_id?: string } | null
-    error: any
+    data: { session_id: string; order_id?: string } | null;
+    error: any;
   }> {
-    const { data, error } = await client.rpc('seat_from_waitlist', {
+    const { data, error } = await client.rpc("seat_from_waitlist", {
       p_waitlist_id: waitlistId,
-      p_table_ids: tableIds
-    })
-    return { data, error }
+      p_table_ids: tableIds,
+    });
+    return { data, error };
   }
 
   // --- RESERVATION OPERATIONS ---
 
-  static async getReservations (
+  static async getReservations(
     client: SupabaseClient,
     locationId: string,
-    date?: string
+    date?: string,
   ): Promise<{ data: { reservations: Reservation[] } | null; error: any }> {
-    const { data, error } = await client.rpc('get_reservations', {
+    const { data, error } = await client.rpc("get_reservations", {
       p_location_id: locationId,
-      p_date: date
-    })
-    return { data, error }
+      p_date: date,
+    });
+    return { data, error };
   }
 
-  static async createReservation (
+  static async createReservation(
     client: SupabaseClient,
-    params: CreateReservationParams
+    params: CreateReservationParams,
   ): Promise<{
-    data: { reservation_id: string; confirmation_number: string } | null
-    error: any
+    data: { reservation_id: string; confirmation_number: string } | null;
+    error: any;
   }> {
-    const { data, error } = await client.rpc('create_reservation', params)
-    return { data, error }
+    const { data, error } = await client.rpc("create_reservation", params);
+    return { data, error };
   }
 
-  static async updateReservation (
+  static async updateReservation(
     client: SupabaseClient,
     reservationId: string,
-    params: CreateReservationParams
+    params: CreateReservationParams,
   ): Promise<{ error: any }> {
     const { error: updateError } = await client
-      .from('reservations')
+      .from("reservations")
       .update({
         party_name: params.p_party_name,
         party_size: params.p_party_size,
@@ -646,102 +679,105 @@ export class FloorPlanService {
         preferred_section: params.p_preferred_section ?? null,
         seating_preference: params.p_seating_preference ?? null,
         source: params.p_source ?? null,
-        is_vip: params.p_is_vip ?? false
+        is_vip: params.p_is_vip ?? false,
       })
-      .eq('id', reservationId)
+      .eq("id", reservationId);
 
-    if (updateError) return { error: updateError }
+    if (updateError) return { error: updateError };
 
-    const tableIds = params.p_assigned_table_ids ?? []
+    const tableIds = params.p_assigned_table_ids ?? [];
     const { error: tableError } =
       await FloorPlanService.assignReservationTables(
         client,
         reservationId,
-        tableIds
-      )
+        tableIds,
+      );
 
-    return { error: tableError }
+    return { error: tableError };
   }
 
-  static async updateReservationStatus (
+  static async updateReservationStatus(
     client: SupabaseClient,
     reservationId: string,
-    status: string
+    status: string,
   ): Promise<{ error: any }> {
-    const { error } = await client.rpc('update_reservation_status', {
+    const { error } = await client.rpc("update_reservation_status", {
       p_reservation_id: reservationId,
-      p_status: status
-    })
-    return { error }
+      p_status: status,
+    });
+    return { error };
   }
 
-  static async assignReservationTables (
+  static async assignReservationTables(
     client: SupabaseClient,
     reservationId: string,
-    tableIds: string[]
+    tableIds: string[],
   ): Promise<{ error: any }> {
-    const { error } = await client.rpc('assign_reservation_tables', {
+    const { error } = await client.rpc("assign_reservation_tables", {
       p_reservation_id: reservationId,
-      p_table_ids: tableIds
-    })
-    return { error }
+      p_table_ids: tableIds,
+    });
+    return { error };
   }
 
-  static async seatReservation (
+  static async seatReservation(
     client: SupabaseClient,
     reservationId: string,
-    tableIds?: string[]
+    tableIds?: string[],
   ): Promise<{
-    data: { session_id: string; order_id?: string } | null
-    error: any
+    data: { session_id: string; order_id?: string } | null;
+    error: any;
   }> {
-    const { data, error } = await client.rpc('seat_reservation', {
+    const { data, error } = await client.rpc("seat_reservation", {
       p_reservation_id: reservationId,
-      p_table_ids: tableIds
-    })
-    return { data, error }
+      p_table_ids: tableIds,
+    });
+    return { data, error };
   }
 
-  static async checkTableAvailability (
+  static async checkTableAvailability(
     client: SupabaseClient,
-    params: CheckAvailabilityParams
+    params: CheckAvailabilityParams,
   ): Promise<{ data: FloorPlanObject[] | null; error: any }> {
-    const { data, error } = await client.rpc('check_table_availability', params)
-    return { data, error }
+    const { data, error } = await client.rpc(
+      "check_table_availability",
+      params,
+    );
+    return { data, error };
   }
 
-  static async getServerSections (
+  static async getServerSections(
     client: SupabaseClient,
-    floorPlanId: string
+    floorPlanId: string,
   ): Promise<{ data: ServerSection[] | null; error: any }> {
     const { data, error } = await client
-      .from('server_sections')
-      .select('id, name, color, assigned_staff_id, floor_plan_id')
-      .eq('floor_plan_id', floorPlanId)
-      .eq('is_active', true)
-    return { data, error }
+      .from("server_sections")
+      .select("id, name, color, assigned_staff_id, floor_plan_id")
+      .eq("floor_plan_id", floorPlanId)
+      .eq("is_active", true);
+    return { data, error };
   }
 
   /**
    * Record actual wait time for a waitlist entry that was just seated.
    * Used for accuracy tracking and improving future estimates.
    */
-  static async recordWaitAccuracy (
+  static async recordWaitAccuracy(
     client: SupabaseClient,
     waitlistId: string,
-    actualWaitMinutes: number
+    actualWaitMinutes: number,
   ): Promise<{ data: { success: boolean } | null; error: any }> {
     // Update the waitlist entry with actual wait time
     const { data, error } = await client
-      .from('waitlist')
+      .from("waitlist")
       .update({
         actual_wait_minutes: actualWaitMinutes,
-        seated_at: new Date().toISOString()
+        seated_at: new Date().toISOString(),
       })
-      .eq('id', waitlistId)
-      .select('id')
+      .eq("id", waitlistId)
+      .select("id");
 
-    const success = !error && Array.isArray(data) && data.length > 0
-    return { data: { success }, error }
+    const success = !error && Array.isArray(data) && data.length > 0;
+    return { data: { success }, error };
   }
 }
