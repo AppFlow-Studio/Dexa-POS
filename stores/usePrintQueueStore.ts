@@ -16,6 +16,7 @@ interface PrintQueueStoreState {
   // Actions
   enqueue: (job: PrintJob) => void;
   dequeue: () => PrintJob | null;
+  dequeueForPrinter: (printerId: string) => PrintJob | null;
   updateJobStatus: (
     jobId: string,
     status: PrintJobStatus,
@@ -84,6 +85,38 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
         const job = jobs[idx];
 
         // Mark as processing
+        set((state) => ({
+          jobs: state.jobs.map((j, i) =>
+            i === idx ? { ...j, status: "processing" as PrintJobStatus } : j,
+          ),
+        }));
+
+        return deserializePrintJob(job);
+      },
+
+      dequeueForPrinter: (printerId: string) => {
+        const { jobs } = get();
+
+        // Same readiness rules as `dequeue` but filtered by printerId so each
+        // printer drains independently.
+        let idx = -1;
+        for (let i = 0; i < jobs.length; i++) {
+          const j = jobs[i];
+          if (j.printerId !== printerId) continue;
+          if (j.status !== "queued") continue;
+          if (j.attempts > 0) {
+            const delayMs =
+              RETRY_DELAYS[Math.min(j.attempts - 1, RETRY_DELAYS.length - 1)];
+            const elapsed = Date.now() - j.createdAt;
+            if (elapsed < delayMs * j.attempts) continue;
+          }
+          idx = i;
+          break;
+        }
+        if (idx === -1) return null;
+
+        const job = jobs[idx];
+
         set((state) => ({
           jobs: state.jobs.map((j, i) =>
             i === idx ? { ...j, status: "processing" as PrintJobStatus } : j,

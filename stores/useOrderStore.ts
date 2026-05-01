@@ -266,6 +266,20 @@ function calculateOrderTotals(
 // HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
 // ============================================================================
 
+export const CUSTOM_MODIFIER_CATEGORY_ID = "custom-modifiers";
+const CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID = "custom-open-item-modifiers";
+
+// Custom (per-item, ad-hoc) modifiers carry sentinel categoryId / opt.id values
+// that aren't real DB UUIDs. The modifier RPCs hard-cast group_id and item_id to
+// uuid, so we must null those columns out before sending — denormalized name +
+// price columns carry the real data.
+function isCustomModifierGroup(categoryId: string | undefined | null): boolean {
+  return (
+    categoryId === CUSTOM_MODIFIER_CATEGORY_ID ||
+    categoryId === CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID
+  );
+}
+
 /**
  * Restore checkDiscount and applied_discounts from backend order_discounts data.
  * Handles type conversions between DB format and local state format.
@@ -586,37 +600,57 @@ const queueItemAddition = async (
   orderId: string,
   addFn: () => Promise<boolean>,
 ): Promise<boolean> => {
-  // Normalize the key so that items queued under the local ID and items
-  // queued after re-key (under the db ID) share the same serial chain.
+  // Normalize the key so items queued under the local ID and items queued
+  // after re-key (under the db ID) share the same tracking entry.
   const normalizedId = resolveQueueKey(orderId);
 
-  // Chain this addition after any previous additions for this order
-  const previousChain =
-    orderAdditionChains.get(normalizedId) ?? Promise.resolve();
+  // §4 (rapid-add parallelization): skip the per-order serial chain so 10
+  // rapid taps fire 10 RPCs in parallel (HTTP/2 multiplexes on one
+  // connection) instead of waiting for each prior commit. Kill switch:
+  // EXPO_PUBLIC_DISABLE_ADD_PARALLEL=1 falls back to the chained behavior.
+  // ensureOrderCreated remains concurrent-safe via its own pendingOrderCreations
+  // singleton-promise pattern; per-item idempotency keys (Wave 3.0a v3 RPCs)
+  // make duplicate-execution races impossible. Slow-mode routing via
+  // getIsOnline() inside addItemToBackend keeps bad-WiFi on the offline queue.
+  const disableParallel =
+    process.env.EXPO_PUBLIC_DISABLE_ADD_PARALLEL === "1" ||
+    process.env.EXPO_PUBLIC_DISABLE_ADD_PARALLEL === "true";
 
-  const chainedPromise = previousChain.then(async () => {
-    try {
-      return await addFn();
-    } catch (error) {
+  let pendingPromise: Promise<boolean>;
+  if (disableParallel) {
+    const previousChain =
+      orderAdditionChains.get(normalizedId) ?? Promise.resolve();
+    pendingPromise = previousChain.then(async () => {
+      try {
+        return await addFn();
+      } catch (error) {
+        console.error("[queueItemAddition] Error adding item:", error);
+        return false;
+      }
+    });
+    orderAdditionChains.set(normalizedId, pendingPromise);
+  } else {
+    pendingPromise = addFn().catch((error) => {
       console.error("[queueItemAddition] Error adding item:", error);
       return false;
-    }
-  });
+    });
+  }
 
-  // Update the chain (so next addition waits for this one)
-  orderAdditionChains.set(normalizedId, chainedPromise);
+  // Track latest in-flight for re-key migration (waitForPendingSyncs uses
+  // pendingSyncOperations per-item, not this map).
+  pendingItemAdditions.set(normalizedId, pendingPromise);
 
-  // Track for sync barrier
-  pendingItemAdditions.set(normalizedId, chainedPromise);
-
-  const result = await chainedPromise;
+  const result = await pendingPromise;
 
   // Clean up chain if this was the last link
-  if (orderAdditionChains.get(normalizedId) === chainedPromise) {
+  if (
+    disableParallel &&
+    orderAdditionChains.get(normalizedId) === pendingPromise
+  ) {
     orderAdditionChains.delete(normalizedId);
   }
   // Clean up pending map
-  if (pendingItemAdditions.get(normalizedId) === chainedPromise) {
+  if (pendingItemAdditions.get(normalizedId) === pendingPromise) {
     pendingItemAdditions.delete(normalizedId);
   }
 
@@ -1830,17 +1864,18 @@ const addItemToBackend = async (
       p_special_instructions: item.customizations?.notes || undefined,
 
       // Modifiers (pre-calculated prices)
-      p_modifiers: item.customizations?.modifiers?.flatMap((mod) =>
-        mod.options.map((opt) => ({
-          modifier_group_id: mod.categoryId,
-          modifier_item_id: opt.id,
+      p_modifiers: item.customizations?.modifiers?.flatMap((mod) => {
+        const isCustom = isCustomModifierGroup(mod.categoryId);
+        return mod.options.map((opt) => ({
+          modifier_group_id: isCustom ? null : mod.categoryId,
+          modifier_item_id: isCustom ? null : opt.id,
           modifier_group_name: mod.categoryName,
           modifier_name: opt.name,
           price_modifier: opt.isNo ? 0 : opt.price,
           quantity: 1,
           is_no: opt.isNo || false,
-        })),
-      ),
+        }));
+      }),
 
       // Kitchen/Coursing
       p_course_number:
@@ -3025,11 +3060,24 @@ interface OrderState {
   dbOrderIdIndex: Record<string, string>; // maps db_order_id -> local orderId for O(1) reverse lookup
   tableOrderIdIndex: Record<string, string>; // maps tableId -> current active local orderId
   persistableOrderIds: Record<string, true>; // orders that need MMKV persistence (unsynced items, active, working set)
+  // Orders with deferred totals recompute pending. See `_scheduleTotalsRecompute` /
+  // `_ensureTotalsFresh` actions. Drained on flush points (kitchen-send, payment) or
+  // when the setTimeout(0) microtask fires.
+  _pendingTotalsRecalc: Record<string, true>;
 
   // === WORKING SET (Phase 5) ===
   // Orders the user is actively working on - persists across restarts, clears on logout
   workingSetOrderIds: string[]; // db_order_ids in working set
   _workingSetLookup: Record<string, true>; // O(1) membership check mirror of workingSetOrderIds
+
+  // --- DEFERRED TOTALS (perf: rapid-add coalescing) ---
+  // Schedules a totals recompute via setTimeout(0); coalesces N rapid adds into
+  // one recompute. No-op if already scheduled or pending.
+  _scheduleTotalsRecompute: (orderId: string) => void;
+  // Synchronously flushes any pending totals recompute for the order. Call
+  // before any operation that depends on fresh cached totals (kitchen-send,
+  // payment, discount apply, void, present-check).
+  _ensureTotalsFresh: (orderId: string) => void;
 
   // --- OFFLINE SYNC ACTIONS ---
   setOnlineStatus: (isOnline: boolean) => void;
@@ -3765,12 +3813,93 @@ export const useOrderStore = create<OrderState>()(
           tableOrderIdIndex: {},
           persistableOrderIds: {},
 
+          // Orders whose cached totals fields are stale because addItemToActiveOrder /
+          // incrementItemQuantity took the deferred fast-path. Drained by
+          // `_scheduleTotalsRecompute` (setTimeout 0, coalesces rapid adds into one
+          // recompute) or synchronously by `_ensureTotalsFresh` (called at commit
+          // points like kitchen-send and payment).
+          _pendingTotalsRecalc: {} as Record<string, true>,
+
           // === WORKING SET (Phase 5) ===
           workingSetOrderIds: [],
           _workingSetLookup: {},
 
           // Payment sync status for loading UI
           paymentSyncStatus: "idle",
+
+          // --- DEFERRED TOTALS (perf: rapid-add coalescing) ---
+          _scheduleTotalsRecompute: (orderId: string) => {
+            const s = get();
+            if (s._pendingTotalsRecalc[orderId]) return;
+            set((state) => {
+              state._pendingTotalsRecalc[orderId] = true as const;
+            });
+            // setTimeout(0) — not queueMicrotask — so React commits the items-only
+            // update and paints before this fires. Coalesces all adds within one
+            // event-loop turn into a single recompute.
+            setTimeout(() => {
+              if (!get()._pendingTotalsRecalc[orderId]) return; // flushed already
+              get()._ensureTotalsFresh(orderId);
+            }, 0);
+          },
+
+          _ensureTotalsFresh: (orderId: string) => {
+            const s = get();
+            if (!s._pendingTotalsRecalc[orderId]) return;
+            const order = s.ordersById[orderId];
+            if (!order) {
+              set((state) => {
+                delete state._pendingTotalsRecalc[orderId];
+              });
+              return;
+            }
+            const taxRatesMap =
+              useStoreSettingsStore.getState().taxRatesMap;
+            const totals = calculateOrderTotals(
+              order.items,
+              order.checkDiscount,
+              order.payments || [],
+              taxRatesMap,
+            );
+            // Redistribute discount across items if active. Uses the same
+            // helper as the synchronous path so item-level discount fields
+            // settle to the same values either way.
+            const itemsForState =
+              order.checkDiscount && totals.discount_amount > 0
+                ? distributeDiscountToItems(
+                    order.items,
+                    totals.discount_amount,
+                    totals.cash_discount_amount,
+                  )
+                : order.items;
+            set((state) => {
+              const o = state.ordersById[orderId];
+              if (!o) {
+                delete state._pendingTotalsRecalc[orderId];
+                return;
+              }
+              if (itemsForState !== order.items) o.items = itemsForState;
+              o.total_amount = totals.total_amount;
+              o.total_tax = totals.tax_amount;
+              o.total_discount = totals.discount_amount;
+              o.amount_due = totals.outstanding_total;
+              o.cash_amount_due = totals.cash_outstanding_total;
+              if (state.activeOrderId === orderId) {
+                state.activeOrderSubtotal = totals.subtotal;
+                state.activeOrderTax = totals.tax_amount;
+                state.activeOrderTotal = totals.total_amount;
+                state.activeOrderDiscount = totals.discount_amount;
+                state.activeOrderOutstandingSubtotal =
+                  totals.outstanding_subtotal;
+                state.activeOrderOutstandingTax = totals.outstanding_tax;
+                state.activeOrderOutstandingTotal = totals.outstanding_total;
+                state.activeOrderTotalCash = totals.cash_total_amount;
+                state.activeOrderOutstandingCash =
+                  totals.cash_outstanding_total;
+              }
+              delete state._pendingTotalsRecalc[orderId];
+            });
+          },
 
           // --- OFFLINE SYNC ACTIONS ---
           setOnlineStatus: (isOnline: boolean) => set({ isOnline }),
@@ -4696,6 +4825,13 @@ export const useOrderStore = create<OrderState>()(
                       set((state) => {
                         state.pendingBackendUpdates[localOrderId] =
                           queuedUpdate;
+                        // Invalidate bulk-fetch freshness so orderHeaderReconcile
+                        // doesn't skip this order on next foreground/recovery —
+                        // it has drifted from server until the queued update flushes.
+                        const targetOrder = state.ordersById[localOrderId];
+                        if (targetOrder?._lastBulkFetchAt) {
+                          targetOrder._lastBulkFetchAt = 0;
+                        }
                       });
 
                       if (__DEV__)
@@ -6255,53 +6391,20 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // ================================================================
-            // SINGLE BATCHED UPDATE: Items + Totals together (no double render)
-            // Performance fix: Removed queueMicrotask - now synchronous
-            // calculateOrderTotals is O(n) and takes <5ms for typical orders
+            // FAST PATH: write items immediately; defer totals recompute via
+            // setTimeout(0). Coalesces N rapid adds into one totals pass and
+            // unblocks the cart-row render frame. Commit-points (kitchen-send,
+            // payment, discount) call `_ensureTotalsFresh` to flush.
             // ================================================================
-            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
-            const totals = calculateOrderTotals(
-              updatedCart,
-              activeOrder.checkDiscount,
-              activeOrder.payments || [],
-              taxRatesMap,
-            );
-
-            // If a check discount is active, redistribute it across all items
-            // so every item (including newly added ones) has correct subtotal / discount_amount
-            const itemsForState =
-              activeOrder.checkDiscount && totals.discount_amount > 0
-                ? distributeDiscountToItems(
-                    updatedCart,
-                    totals.discount_amount,
-                    totals.cash_discount_amount,
-                  )
-                : updatedCart;
-
             set((state) => {
               const order = state.ordersById[activeOrderId];
-              order.items = itemsForState;
-              order.total_amount = totals.total_amount;
-              order.total_tax = totals.tax_amount;
-              order.total_discount = totals.discount_amount;
-              order.amount_due = totals.outstanding_total;
-              order.cash_amount_due = totals.cash_outstanding_total;
+              order.items = updatedCart;
               order.last_activity_at = new Date().toISOString();
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
-              // Mark order as persistable when it has unsynced items
               if (!newItem.isDraft) {
                 state.persistableOrderIds[activeOrderId] = true;
               }
             });
+            get()._scheduleTotalsRecompute(activeOrderId);
 
             // Track mutation for own-station broadcast guard
             const _dbId = get().ordersById[activeOrderId]?.db_order_id;
@@ -7023,10 +7126,11 @@ export const useOrderStore = create<OrderState>()(
 
                   // Add standard modifiers
                   updatedItem.customizations?.modifiers?.forEach((group) => {
+                    const isCustom = isCustomModifierGroup(group.categoryId);
                     group.options.forEach((opt) => {
                       allModifiers.push({
-                        modifier_group_id: group.categoryId,
-                        modifier_item_id: opt.id,
+                        modifier_group_id: isCustom ? null : group.categoryId,
+                        modifier_item_id: isCustom ? null : opt.id,
                         modifier_group_name: group.categoryName,
                         modifier_name: opt.name,
                         price_modifier: opt.isNo ? 0 : opt.price,
@@ -7627,11 +7731,15 @@ export const useOrderStore = create<OrderState>()(
           removeItemFromActiveOrder: (itemId, voidReason) => {
             // console.log('[removeItemFromActiveOrder] itemId', itemId);
             // console.log('[removeItemFromActiveOrder] voidReason', voidReason);
-            const { activeOrderId, ordersById } = get();
+            const activeOrderId = get().activeOrderId;
             if (!activeOrderId) return;
             if (!_checkCartEditable(get())) return;
 
-            const order = ordersById[activeOrderId]; // O(1) lookup
+            // Flush any deferred totals recompute scheduled by recent rapid adds
+            // so the cached totals path below operates on a consistent baseline.
+            get()._ensureTotalsFresh(activeOrderId);
+
+            const order = get().ordersById[activeOrderId]; // O(1) lookup
             if (!order) return;
 
             // Block removing items from closed checks
@@ -7855,75 +7963,16 @@ export const useOrderStore = create<OrderState>()(
               i.id === itemId ? { ...i, quantity: newQuantity } : i,
             );
 
-            // A check discount is active when a valid checkDiscount exists AND
-            // local order state confirms discount context (record/totals/item fields).
-            const hasValidCheckDiscountValue =
-              !!order.checkDiscount &&
-              ((order.checkDiscount.type === "percentage" &&
-                order.checkDiscount.value > 0) ||
-                (order.checkDiscount.type === "fixed" &&
-                  order.checkDiscount.value > 0));
-
-            const hasOrderLevelDiscountRecord = (
-              order.applied_discounts || []
-            ).some(
-              (d) =>
-                !d.applied_to_item_ids || d.applied_to_item_ids.length === 0,
-            );
-
-            const hasItemDiscountSignals = order.items.some(
-              (i) =>
-                (i.discount_amount ?? 0) > 0 ||
-                (i.discount_cash_amount ?? 0) > 0 ||
-                !!i.appliedDiscount,
-            );
-
-            const hasActiveCheckDiscount =
-              hasValidCheckDiscountValue &&
-              (hasOrderLevelDiscountRecord ||
-                (order.total_discount ?? 0) > 0 ||
-                hasItemDiscountSignals);
-
-            const effectiveCheckDiscount = hasActiveCheckDiscount
-              ? order.checkDiscount
-              : null;
-
-            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
-            const totals = calculateOrderTotals(
-              updatedItems,
-              effectiveCheckDiscount,
-              order.payments || [],
-              taxRatesMap,
-            );
-
-            const itemsForState =
-              hasActiveCheckDiscount && totals.discount_amount > 0
-                ? distributeDiscountToItems(
-                    updatedItems,
-                    totals.discount_amount,
-                    totals.cash_discount_amount,
-                  )
-                : distributeDiscountToItems(updatedItems, 0);
+            // FAST PATH: write items immediately; defer totals recompute. The
+            // discount-distribution + cached totals fields settle one tick later
+            // via `_scheduleTotalsRecompute`. Flushed synchronously by
+            // `_ensureTotalsFresh` at commit-points (kitchen-send, payment).
             set((state) => {
               const o = state.ordersById[activeOrderId];
               if (!o) return;
-              o.items = itemsForState;
-              o.total_amount = totals.total_amount;
-              o.total_tax = totals.tax_amount;
-              o.total_discount = totals.discount_amount;
-              o.amount_due = totals.outstanding_total;
-              o.cash_amount_due = totals.cash_outstanding_total;
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
+              o.items = updatedItems;
             });
+            get()._scheduleTotalsRecompute(activeOrderId);
 
             // Track mutation for own-station broadcast guard
             {
@@ -8527,6 +8576,9 @@ export const useOrderStore = create<OrderState>()(
           applyDiscountToCheck: (orderId, discountInput) => {
             console.log("[applyDiscountToCheck] discountInput", discountInput);
             if (!_checkCartEditable(get(), orderId)) return;
+            // Flush deferred totals so the discount applies on top of a fresh
+            // cached baseline (rapid-add fast path may have left totals stale).
+            get()._ensureTotalsFresh(orderId);
             const order = get().ordersById[orderId];
             if (!order) return;
 
@@ -8914,6 +8966,8 @@ export const useOrderStore = create<OrderState>()(
 
           removeCheckDiscount: (orderId) => {
             if (!_checkCartEditable(get(), orderId)) return;
+            // Flush deferred totals so the void operates on a fresh baseline.
+            get()._ensureTotalsFresh(orderId);
             const order = get().ordersById[orderId];
             if (!order) return;
 
@@ -9514,6 +9568,10 @@ export const useOrderStore = create<OrderState>()(
             // This allows payments to work even when offline or with slow network
 
             if (!_checkCartEditable(get(), orderId)) return false;
+
+            // Flush any deferred totals recompute before reading totals — items
+            // added via the rapid-add fast-path may not have settled yet.
+            get()._ensureTotalsFresh(orderId);
 
             const order = get().ordersById[orderId]; // O(1) lookup
             if (!order) return false;
@@ -11307,10 +11365,15 @@ export const useOrderStore = create<OrderState>()(
             if (!_checkCartEditable(get())) return
             // Kitchen display/printer uses local state directly
 
-            const { activeOrderId, ordersById } = get();
+            const activeOrderId = get().activeOrderId;
             if (!activeOrderId) return;
 
-            const currentOrder = ordersById[activeOrderId];
+            // Flush any deferred totals recompute scheduled by recent rapid adds
+            // before kitchen send so item-level discount distribution and
+            // order-level totals are committed before the RPC payload is built.
+            get()._ensureTotalsFresh(activeOrderId);
+
+            const currentOrder = get().ordersById[activeOrderId];
             if (!currentOrder) return;
 
             // Work with current local state (no blocking on syncs)

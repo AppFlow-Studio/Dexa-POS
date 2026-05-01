@@ -88,8 +88,29 @@ function isFlagEnabled (): boolean {
   )
 }
 
+// Custom (per-item, ad-hoc) modifiers carry sentinel categoryId / opt.id values
+// that aren't real DB UUIDs — the modifier RPCs hard-cast group_id and item_id
+// to uuid, so we must null those columns out before pushing. Kept in sync with
+// `isCustomModifierGroup` in stores/useOrderStore.ts (same sentinels).
+const CUSTOM_MODIFIER_CATEGORY_ID = 'custom-modifiers'
+const CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID = 'custom-open-item-modifiers'
+function isCustomModifierGroup (
+  categoryId: string | undefined | null
+): boolean {
+  return (
+    categoryId === CUSTOM_MODIFIER_CATEGORY_ID ||
+    categoryId === CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID
+  )
+}
+
 /**
  * Stable hash of a modifier set. Same shape on local vs server → same string.
+ *
+ * Custom modifiers store NULL group_id / item_id on the server, so we key them
+ * by `group_name:modifier_name` on both sides — otherwise local sentinel ids
+ * (`custom-modifiers:custom_mod_…`) would never match the server's
+ * name-based fallback and we'd queue a no-op replace_modifiers on every
+ * reconcile.
  */
 function fingerprintModifiers (mods: any): string {
   if (!mods) return ''
@@ -106,8 +127,12 @@ function fingerprintModifiers (mods: any): string {
   } else if (typeof mods === 'object') {
     // Local CartItem.customizations shape: { modifiers: [...], addOns: [...] }
     for (const group of mods.modifiers ?? []) {
+      const isCustom = isCustomModifierGroup(group?.categoryId)
       for (const opt of group.options ?? []) {
-        flat.push({ k: `${group.categoryId}:${opt.id}`, v: opt.isNo ? 0 : 1 })
+        const k = isCustom
+          ? `${group.categoryName ?? ''}:${opt.name ?? ''}`
+          : `${group.categoryId}:${opt.id}`
+        flat.push({ k, v: opt.isNo ? 0 : 1 })
       }
     }
     for (const a of mods.addOns ?? []) {
@@ -198,12 +223,16 @@ async function reconcileOneItem (
   // Modifier set drift.
   if (localItemFingerprint(local) !== server.modifierFingerprint) {
     // Build the same flat modifier list `updateItemInActiveOrder` builds.
+    // Custom (ad-hoc) modifier groups must null out group/item ids — their
+    // sentinel categoryId ("custom-modifiers") and synthetic option ids
+    // ("custom_mod_…") aren't UUIDs, and the RPC hard-casts to uuid.
     const allModifiers: any[] = []
     for (const group of local.customizations?.modifiers ?? []) {
+      const isCustom = isCustomModifierGroup((group as any).categoryId)
       for (const opt of (group as any).options ?? []) {
         allModifiers.push({
-          modifier_group_id: (group as any).categoryId,
-          modifier_item_id: opt.id,
+          modifier_group_id: isCustom ? null : (group as any).categoryId,
+          modifier_item_id: isCustom ? null : opt.id,
           modifier_group_name: (group as any).categoryName,
           modifier_name: opt.name,
           price_modifier: opt.isNo ? 0 : opt.price,

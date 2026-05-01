@@ -35,7 +35,9 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FlatList,
+  InteractionManager,
   ListRenderItemInfo,
+  Platform,
   Pressable,
   Text,
   TouchableOpacity,
@@ -395,18 +397,46 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
   const activeMenuId = activeMenu?.id
 
-  // Pre-warm modifier data for visible items so first tap is instant (deferred to avoid blocking render)
-  // Only pre-warm the first ~15 items (3 rows of 5) to avoid blocking the main thread
+  // Pre-warm modifier data for visible items so first tap is instant.
+  // Wave 2: schedule via InteractionManager so the precompute doesn't block
+  // the category-switch frame. Chunk into rAF-paced batches so a single
+  // category change can't burn one long task.
   useEffect(() => {
     if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId) return
     const visibleItems = filteredMenuItems.slice(0, 15)
-    const id = requestAnimationFrame(() => {
-      useModifierSidebarStore
-        .getState()
-        .preWarmMany(visibleItems, currentCategoryId, activeMenuId)
+    let cancelled = false
+    let pendingRaf: number | null = null
+
+    const handle = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return
+      // Image prefetch is fire-and-forget — kick it off immediately, it
+      // doesn't compete with the JS thread.
       prefetchMenuItemRemoteImages(visibleItems)
+
+      // Chunk modifier precompute 5 items per frame so a 15-item burst
+      // spreads across ~3 frames instead of one ~30–50ms task.
+      const CHUNK_SIZE = 5
+      const store = useModifierSidebarStore.getState()
+      let cursor = 0
+      const step = () => {
+        if (cancelled) return
+        const slice = visibleItems.slice(cursor, cursor + CHUNK_SIZE)
+        if (slice.length === 0) {
+          pendingRaf = null
+          return
+        }
+        store.preWarmMany(slice, currentCategoryId, activeMenuId)
+        cursor += CHUNK_SIZE
+        pendingRaf = requestAnimationFrame(step)
+      }
+      pendingRaf = requestAnimationFrame(step)
     })
-    return () => cancelAnimationFrame(id)
+
+    return () => {
+      cancelled = true
+      handle.cancel?.()
+      if (pendingRaf !== null) cancelAnimationFrame(pendingRaf)
+    }
   }, [filteredMenuItems, currentCategoryId, activeMenuId])
 
   // OPTIMIZED: Memoized keyExtractor to prevent recreation
@@ -813,11 +843,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     gap: 6,
                     marginBottom: 6
                   }}
-                  removeClippedSubviews={true}
-                  maxToRenderPerBatch={8}
-                  updateCellsBatchingPeriod={50}
-                  windowSize={4}
-                  initialNumToRender={8}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  maxToRenderPerBatch={20}
+                  updateCellsBatchingPeriod={10}
+                  windowSize={3}
+                  initialNumToRender={25}
                   ListEmptyComponent={
                     <View
                       style={{

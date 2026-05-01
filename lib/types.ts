@@ -967,6 +967,11 @@ export interface OrderProfile {
 
   // === BROADCAST METADATA (transient, not persisted to MMKV) ===
   _broadcastItemCount?: number // Non-voided item count from v2 broadcasts
+
+  // Stamped by useOrdersQuery's hydrateWorkspace; read by orderHeaderReconcile
+  // to skip per-order get_order_details fan-out when the bulk fetch already
+  // delivered fresh data. Cleared on realtime/local writes that drift the order.
+  _lastBulkFetchAt?: number
 }
 
 export type CheckStatus = 'Pending' | 'Cleared' | 'Voided'

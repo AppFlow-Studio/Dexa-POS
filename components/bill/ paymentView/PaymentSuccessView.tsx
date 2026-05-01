@@ -1,3 +1,5 @@
+"use no memo";
+
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";

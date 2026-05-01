@@ -740,10 +740,34 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
           return false
         }
 
+        // Defensive sanitization: ops queued before the custom-modifier fix
+        // can carry sentinel non-UUID strings ("custom-modifiers" /
+        // "custom_mod_…") in modifier_group_id / modifier_item_id. The RPC
+        // hard-casts to uuid, so those rows would dead-letter forever. Strip
+        // any value that isn't a valid UUID — group/item ids are nullable on
+        // the server schema, name + price columns carry the real data.
+        const UUID_RE =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        const sanitized = Array.isArray(modifiers)
+          ? modifiers.map((m: any) => ({
+              ...m,
+              modifier_group_id:
+                typeof m?.modifier_group_id === 'string' &&
+                UUID_RE.test(m.modifier_group_id)
+                  ? m.modifier_group_id
+                  : null,
+              modifier_item_id:
+                typeof m?.modifier_item_id === 'string' &&
+                UUID_RE.test(m.modifier_item_id)
+                  ? m.modifier_item_id
+                  : null
+            }))
+          : modifiers
+
         const { error } = await OrderService.replaceOrderItemModifiers(
           _supabaseClient,
           resolvedItemId,
-          modifiers
+          sanitized
         )
         return !error
       }
@@ -1828,18 +1852,25 @@ async function executeQueuedOperation (op: OfflineOperation): Promise<boolean> {
             // Update the order ID in case it changed
             ;(params as AddOrderItemParams).p_order_id = actualDbOrderId
           } else if (itemData) {
-            // Build modifiers array, but set to undefined if empty
+            // Build modifiers array, but set to undefined if empty.
+            // Custom (ad-hoc) modifier groups carry sentinel non-UUID ids, so
+            // null out group/item ids — same pattern as addItemToBackend in
+            // useOrderStore. Otherwise the RPC's uuid cast rejects the row.
             const modifiersArray = itemData.customizations?.modifiers?.flatMap(
-              (mod: any) =>
-                mod.options.map((opt: any) => ({
-                  modifier_group_id: mod.categoryId,
-                  modifier_item_id: opt.id,
+              (mod: any) => {
+                const isCustom =
+                  mod.categoryId === 'custom-modifiers' ||
+                  mod.categoryId === 'custom-open-item-modifiers'
+                return mod.options.map((opt: any) => ({
+                  modifier_group_id: isCustom ? null : mod.categoryId,
+                  modifier_item_id: isCustom ? null : opt.id,
                   modifier_group_name: mod.categoryName,
                   modifier_name: opt.name,
                   price_modifier: opt.isNo ? 0 : opt.price,
                   quantity: 1,
                   is_no: opt.isNo || false
                 }))
+              }
             )
 
             params = {

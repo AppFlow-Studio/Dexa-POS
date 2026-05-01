@@ -1,18 +1,15 @@
 import { colors } from '@/lib/theme'
-import { CartItem } from '@/lib/types'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import React, { useMemo } from 'react'
+import React, { useDeferredValue, useMemo } from 'react'
 import { Text, View } from 'react-native'
 
-interface TotalsProps {
-  cart: CartItem[]
-}
-
-const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
-  // Phase 7: Use derived selector instead of 6 individual store selectors
-  const totals = useActiveOrderTotals()
+const TotalsComponent: React.FC = () => {
+  // Phase 7: Use derived selector instead of 6 individual store selectors.
+  // useDeferredValue lets the deferred-totals-recalc microtask in addItemToActiveOrder
+  // land in a follow-up frame so the cart row appears within the tap frame.
+  const totals = useDeferredValue(useActiveOrderTotals())
   const defaultTaxRate = useStoreSettingsStore(s => s.taxRatesMap.standard ?? 0)
 
   // PERF: Single selector for active order - avoids subscribing to entire ordersById

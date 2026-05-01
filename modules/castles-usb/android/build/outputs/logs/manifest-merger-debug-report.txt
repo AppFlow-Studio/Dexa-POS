@@ -1,16 +1,16 @@
 -- Merging decision tree log ---
 manifest
-ADDED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml:2:13-83
-INJECTED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml:2:13-83
+ADDED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml:2:13-83
+INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml:2:13-83
 	package
-		INJECTED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml
+		INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml
 	xmlns:android
-		ADDED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml:2:23-81
+		ADDED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml:2:23-81
 uses-sdk
-INJECTED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml reason: use-sdk injection requested
-INJECTED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml
-INJECTED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml
+INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml reason: use-sdk injection requested
+INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml
+INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml
 	android:targetSdkVersion
-		INJECTED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml
+		INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml
 	android:minSdkVersion
-		INJECTED from C:\Users\Acer\Documents\Github\Dexa-POS\modules\castles-usb\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13817211710309050033.xml
+		INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest4959080190433708159.xml

@@ -206,14 +206,17 @@ export interface AddOrderItemParams {
   // Instructions
   p_special_instructions?: string;
 
-  // Modifiers (pre-calculated prices)
+  // Modifiers (pre-calculated prices). Group/item IDs are nullable to support
+  // ad-hoc custom modifiers (per-item names with no canonical menu UUIDs); the
+  // RPC stores them denormalized via name/price columns.
   p_modifiers?: Array<{
-    modifier_group_id: string;
-    modifier_item_id: string;
+    modifier_group_id: string | null;
+    modifier_item_id: string | null;
     modifier_group_name: string;
     modifier_name: string;
     price_modifier: number;
     quantity?: number;
+    is_no?: boolean;
   }>;
 
   // Kitchen/Coursing

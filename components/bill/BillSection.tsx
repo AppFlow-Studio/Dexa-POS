@@ -8,7 +8,7 @@ import {
   getAutoRetryCount,
   isAutoRetryInProgress
 } from '@/services/offlineSyncService'
-import { useActiveOrderTotals, useActiveOrder } from '@/stores/selectors/orderSelectors'
+import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
 import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
 import ClaimOrderModal from '@/components/order/ClaimOrderModal'
@@ -71,19 +71,25 @@ import OrderDetails from './OrderDetails'
 import OrderSyncBanner from './OrderSyncBanner'
 import Totals from './Totals'
 
-// OPTIMIZED: Memoize to prevent re-renders when parent updates
+// OPTIMIZED: Memoize to prevent re-renders when parent updates.
+// Subscribes to ONLY the active order's items array — re-renders when the
+// items reference changes (Immer mutates items on add) but not when other
+// order fields change. Parent's re-render no longer cascades here.
+const EMPTY_CART_ITEMS: CartItem[] = []
 const BillItemsAndTotals = React.memo(
   ({
-    cart,
     orderNote,
     onChangeOrderNote,
     onSaveOrderNote
   }: {
-    cart: CartItem[]
     orderNote?: string
     onChangeOrderNote: (value: string) => void
     onSaveOrderNote: () => void
   }) => {
+    const cart = useOrderStore<CartItem[]>(s => {
+      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+      return (order?.items ?? EMPTY_CART_ITEMS) as CartItem[]
+    })
     const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
     const [isOrderNoteEditorOpen, setIsOrderNoteEditorOpen] = useState(false)
     const [keyboardTop, setKeyboardTop] = useState<number | null>(null)
@@ -259,7 +265,6 @@ const BillItemsAndTotals = React.memo(
     )
   },
   (prev, next) =>
-    prev.cart === next.cart &&
     prev.orderNote === next.orderNote &&
     prev.onChangeOrderNote === next.onChangeOrderNote &&
     prev.onSaveOrderNote === next.onSaveOrderNote
@@ -277,32 +282,49 @@ const BillSectionContent = ({
   discountSheetRef?: React.RefObject<BottomSheetMethods>
 }) => {
   const router = useRouter()
-  // O(1) lookups - single shallow selector reduces subscription overhead
+  // Wave 2 §C: primitive selectors only — no shallow object, no full-order
+  // subscription. Each primitive triggers a re-render of this component
+  // ONLY when that specific field changes, decoupled from items-array churn
+  // during rapid adds and from the deferred totals microtask.
   const activeOrderId = useOrderStore(state => state.activeOrderId)
-  const {
-    activeOrderItems,
-    activeOrderPayments,
-    activeOrderPaidStatus,
-    activeOrderType,
-    activeOrderServiceLocation,
-    activeOrderDisplayNumber
-  } = useOrderStore(
-    useShallow(s => {
-      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
-      return {
-        activeOrderItems: order?.items ?? null,
-        activeOrderPayments: order?.payments ?? null,
-        activeOrderPaidStatus: order?.paid_status ?? null,
-        activeOrderType: order?.order_type ?? null,
-        activeOrderServiceLocation: order?.service_location_id ?? null,
-        activeOrderDisplayNumber:
-          order?.display_number ?? order?.order_number ?? null
-      }
-    })
+  const activeOrderPaidStatus = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.paid_status ?? null : null
   )
-
-  // Phase 7: Use derived selector instead of 3 individual store selectors
-  const orderTotals = useActiveOrderTotals()
+  const activeOrderType = useOrderStore(s =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId]?.order_type ?? null : null
+  )
+  const activeOrderServiceLocation = useOrderStore(s =>
+    s.activeOrderId
+      ? s.ordersById[s.activeOrderId]?.service_location_id ?? null
+      : null
+  )
+  const activeOrderDisplayNumber = useOrderStore(s => {
+    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    return o?.display_number ?? o?.order_number ?? null
+  })
+  const activeOrderHasPayments = useOrderStore(s => {
+    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    return !!o?.payments?.some((p: any) => !p.isVoided)
+  })
+  const activeOrderHasPendingPaymentSync = useOrderStore(s => {
+    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    return !!o?.payments?.some((p: any) => p.sync_status === 'pending')
+  })
+  // Cached totals: refreshed by the deferred setTimeout(0) microtask in
+  // _scheduleTotalsRecompute (and synchronously by _ensureTotalsFresh at
+  // commit-points). Reading these is O(1) per render and doesn't trigger
+  // calculateOrderTotals on the parent.
+  const activeOrderTotal = useOrderStore(s => s.activeOrderTotal ?? 0)
+  const activeOrderOutstandingTotal = useOrderStore(
+    s => s.activeOrderOutstandingTotal ?? 0
+  )
+  // Items-array reference: used for the cart-derived useMemos below. This
+  // selector still re-renders on every add (intentional — the component
+  // updates badges and button-disabled state). Memoized children skip via
+  // their own subscriptions.
+  const activeOrderItems = useOrderStore(
+    s => (s.activeOrderId ? s.ordersById[s.activeOrderId]?.items : null) ?? null
+  )
 
   const {
     startNewOrder,
@@ -407,26 +429,19 @@ const BillSectionContent = ({
     return () => clearInterval(interval)
   }, [hasFailedSyncs, hasPendingSyncs])
 
-  // Calculate the amount to display on the Pay button
-  // Phase 7: Now uses derived selector which already prioritizes backend values
-  const displayBalanceDue = useMemo(() => {
-    if (!orderTotals) return 0
-
-    // Derived selector's amountDue already prioritizes backend amount_due
-    // For new orders without payments, use total
-    if (!activeOrderPayments?.length) {
-      return orderTotals.total
-    }
-
-    return orderTotals.amountDue
-  }, [orderTotals, activeOrderPayments])
+  // Calculate the amount to display on the Pay button.
+  // Wave 2 §C: reads cached totals (refreshed by _scheduleTotalsRecompute /
+  // _ensureTotalsFresh) instead of running calculateOrderTotals on every
+  // parent render. For new orders without payments, the outstanding equals
+  // the total; after payments, the outstanding is what's left.
+  const displayBalanceDue = activeOrderHasPayments
+    ? activeOrderOutstandingTotal
+    : activeOrderTotal
 
   // Check if order is partially paid (has payments but not fully paid)
-  const isPartiallyPaid = useMemo(() => {
-    const hasPayments = (activeOrderPayments?.length ?? 0) > 0
-    const hasDue = (orderTotals?.amountDue ?? 0) > 0.01
-    return hasPayments && (activeOrderPaidStatus !== 'Paid' || hasDue)
-  }, [activeOrderPayments, activeOrderPaidStatus, orderTotals?.amountDue])
+  const isPartiallyPaid =
+    activeOrderHasPayments &&
+    (activeOrderPaidStatus !== 'Paid' || activeOrderOutstandingTotal > 0.01)
 
   const [isProcessing, setIsProcessing] = useState(false)
   const [orderNoteDraft, setOrderNoteDraft] = useState('')
@@ -1858,7 +1873,7 @@ const BillSectionContent = ({
           in the background instead of surfacing scary "Offline Mode" UX. */}
       {(!rawIsOnline ||
         hasFailedSyncs ||
-        activeOrderPayments?.some(p => p.sync_status === 'pending')) && (
+        activeOrderHasPendingPaymentSync) && (
         <View
           className='px-3 py-1.5 gap-y-1'
           style={{ backgroundColor: colors.background }}
@@ -1922,7 +1937,7 @@ const BillSectionContent = ({
 
           {rawIsOnline &&
             !hasFailedSyncs &&
-            activeOrderPayments?.some(p => p.sync_status === 'pending') && (
+            activeOrderHasPendingPaymentSync && (
               <View className='flex-row items-center justify-center bg-amber-600/70 px-2.5 py-1.5 rounded-md'>
                 <Clock size={12} color='#FFFFFF' />
                 <Text
@@ -1937,7 +1952,6 @@ const BillSectionContent = ({
       )}
 
       <BillItemsAndTotals
-        cart={cart}
         orderNote={orderNoteDraft}
         onChangeOrderNote={setOrderNoteDraft}
         onSaveOrderNote={handleSaveOrderNote}
@@ -1961,7 +1975,7 @@ const BillSectionContent = ({
           elevation: 2
         }}
       >
-        <Totals cart={cart} />
+        <Totals />
 
         {showPlaymentActions && (
           <View className='px-3 pt-1 pb-1'>
