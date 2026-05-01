@@ -182,6 +182,19 @@ function hydrateWorkspace(
   let newOrdersById: Record<string, OrderProfile> = { ...preserved, ...serverMap };
   let newOrderIds = [...new Set([...preservedIds, ...serverIds])];
 
+  // Stamp every server-sourced order with the current bulk-fetch time so
+  // orderHeaderReconcile can short-circuit redundant per-order get_order_details
+  // fan-out shortly after this hydrate (e.g. foreground / connection recovery
+  // 5s after cold start). Only stamp ids that came from the server map —
+  // preserved-only orders weren't refreshed by this fetch.
+  const bulkFetchAt = Date.now();
+  for (const id of serverIds) {
+    const o = newOrdersById[id];
+    if (o) {
+      newOrdersById[id] = { ...o, _lastBulkFetchAt: bulkFetchAt };
+    }
+  }
+
   // One-shot cleanup of MMKV-persisted remote drafts from before the
   // station-private-drafts change. Drafts owned by other stations have no
   // business in this device's ordersById; drop them on every hydrate. Drafts

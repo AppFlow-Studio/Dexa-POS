@@ -4711,6 +4711,13 @@ export const useOrderStore = create<OrderState>()(
                       set((state) => {
                         state.pendingBackendUpdates[localOrderId] =
                           queuedUpdate;
+                        // Invalidate bulk-fetch freshness so orderHeaderReconcile
+                        // doesn't skip this order on next foreground/recovery —
+                        // it has drifted from server until the queued update flushes.
+                        const targetOrder = state.ordersById[localOrderId];
+                        if (targetOrder?._lastBulkFetchAt) {
+                          targetOrder._lastBulkFetchAt = 0;
+                        }
                       });
 
                       if (__DEV__)

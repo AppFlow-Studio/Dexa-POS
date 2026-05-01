@@ -184,7 +184,7 @@ const Header = () => {
       pathname.startsWith('/inventory') &&
       !pathname.includes('/purchase-orders/')
     ) {
-      router.push('/home')
+      router.replace('/home')
       return
     }
 
@@ -192,7 +192,7 @@ const Header = () => {
       if (pathParts.length > 2) {
         // router.push("/settings");
       } else {
-        router.push('/home')
+        router.replace('/home')
       }
       return
     }
@@ -219,7 +219,7 @@ const Header = () => {
 
     // /tables back button -> always go to /home to avoid loop with table details
     if (pathname === '/tables') {
-      router.push('/home')
+      router.replace('/home')
       return
     }
 
