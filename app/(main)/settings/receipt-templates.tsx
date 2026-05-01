@@ -234,7 +234,7 @@ const RECEIPT_PRESETS: PresetDefinition[] = [
     label: 'Standard',
     description: 'Balanced layout suitable for most restaurants.',
     overrides: {
-      showLogo: true,
+      showLogo: false,
       showBarcode: false,
       showQrCode: false,
       showTipLine: true,
@@ -249,9 +249,9 @@ const RECEIPT_PRESETS: PresetDefinition[] = [
     label: 'Full Detail',
     description: 'Everything visible — max information for customers.',
     overrides: {
-      showLogo: true,
-      showBarcode: true,
-      showQrCode: true,
+      showLogo: false,
+      showBarcode: false,
+      showQrCode: false,
       showTipLine: true,
       showTaxBreakdown: true,
       showItemModifiers: true,
@@ -264,8 +264,8 @@ const RECEIPT_PRESETS: PresetDefinition[] = [
     label: 'Retail / Quick Service',
     description: 'No tip line, no server — fast and focused.',
     overrides: {
-      showLogo: true,
-      showBarcode: true,
+      showLogo: false,
+      showBarcode: false,
       showQrCode: false,
       showTipLine: false,
       showTaxBreakdown: true,

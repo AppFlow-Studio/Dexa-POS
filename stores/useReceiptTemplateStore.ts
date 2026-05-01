@@ -79,9 +79,17 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
         const match = get().templates.find(
           (t) => t.locationId === locationId && t.templateType === "receipt",
         );
-        return (
-          match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "receipt" }
-        );
+        const base =
+          match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "receipt" };
+        // Logo / barcode / QR toggles were removed from the receipt template
+        // settings UI; force them off so prior DB rows or presets that set
+        // them to true cannot reintroduce those elements on printed receipts.
+        return {
+          ...base,
+          showLogo: false,
+          showBarcode: false,
+          showQrCode: false,
+        };
       },
 
       getKitchenTemplate: (locationId: string) => {
