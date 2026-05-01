@@ -120,6 +120,14 @@ interface ModifierSidebarState {
     categoryId?: string,
     menuId?: string
   ) => void
+  // Wave 2: bypass the ModifierScreen entirely for items with no modifier
+  // groups. Builds a CartItem and calls addItemToActiveOrder directly. Each
+  // tap saves a full ModifierScreen mount/render/Add cycle (~50–100ms).
+  fastAddMenuItem: (
+    item: MenuItemType,
+    categoryId?: string,
+    menuId?: string
+  ) => void
   open: (config: {
     menuItem?: MenuItemType
     cartItem?: CartItem
@@ -432,6 +440,48 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           preWarmCache.set(item.id, { data: result, createdAt: now })
         }
       }
+    },
+
+    fastAddMenuItem: (item, categoryId, menuId) => {
+      // Resolve category name (cheap; used by receipts/printers downstream).
+      const categoryName = categoryId
+        ? useMenuStore.getState().getCategoryById(categoryId)?.name
+        : undefined
+
+      // useOrderStore is required dynamically to avoid the circular import
+      // that keeps `open` working in this file.
+      const { useOrderStore } = require('./useOrderStore')
+      const generateCartItemId = useOrderStore.getState().generateCartItemId
+
+      const customizations = { modifiers: [], notes: '' }
+      const cashPrice = (item.cashPrice ?? item.price) as number
+
+      const newItem = {
+        id: generateCartItemId(item.id, customizations),
+        menuItemId: item.id,
+        name: item.name,
+        quantity: 1,
+        originalPrice: cashPrice,
+        unitPrice: item.price,
+        price: item.price,
+        image: item.image,
+        cashPrice,
+        customizations,
+        availableDiscount: item.availableDiscount,
+        appliedDiscount: null,
+        paidQuantity: 0,
+        isDraft: false,
+        addedFromCategoryId: categoryId ?? null,
+        addedFromMenuId: menuId ?? null,
+        category_name: categoryName ?? undefined,
+        baseCardPrice: item.price,
+        baseCashPrice: cashPrice
+      }
+
+      useOrderStore.getState().addItemToActiveOrder(newItem)
+      // useTableSeating's effect picks up the unassigned item and applies
+      // the active seat for dine-in orders — same path as if the user had
+      // tapped Add inside ModifierScreen without changing the seat.
     },
 
     open: config => {

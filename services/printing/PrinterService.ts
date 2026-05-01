@@ -45,14 +45,35 @@ import {
 } from './templates/VoidOrderDocumentTemplate'
 import { safeTimeString } from './utils/sanitizeText'
 
-let processingInterval: ReturnType<typeof setInterval> | null = null
+let processingStarted = false
 let isProcessing = false
 let processingStartedAt = 0
 let lastFailureToastAt = 0
+let backoffWakeupTimer: ReturnType<typeof setTimeout> | null = null
 
-const PROCESS_INTERVAL_MS = 500
 const FAILURE_TOAST_DEDUP_MS = 30_000
 const PROCESSING_STUCK_MS = 30_000 // Safety: reset isProcessing if stuck longer than this
+const BACKOFF_WAKEUP_MS = 250 // Wake-up delay when only retry-backoff jobs remain
+
+// Schedule the queue drain. Coalesces multiple calls into one pending run.
+function scheduleDrain (delayMs = 0): void {
+  if (!processingStarted) return
+  if (delayMs === 0) {
+    queueMicrotask(() => {
+      processNextJob().catch(err =>
+        console.error('[PrinterService] Drain loop error:', err)
+      )
+    })
+    return
+  }
+  if (backoffWakeupTimer) return
+  backoffWakeupTimer = setTimeout(() => {
+    backoffWakeupTimer = null
+    processNextJob().catch(err =>
+      console.error('[PrinterService] Drain wake-up error:', err)
+    )
+  }, delayMs)
+}
 
 // ============================================================================
 // PUBLIC API
@@ -611,33 +632,38 @@ export const PrinterService = {
   },
 
   /**
-   * Ensure the processing loop is running. Safe to call multiple times.
+   * Kick the queue drain. Called after every enqueue.
    */
   ensureProcessing (): void {
-    if (!processingInterval) {
+    if (!processingStarted) {
       this.startProcessing()
+      return
     }
+    scheduleDrain(0)
   },
 
   /**
-   * Start the background print queue processing loop.
+   * Enable event-driven print queue draining. Idempotent.
    */
   startProcessing (): void {
-    if (processingInterval) return
-
-    console.log('[PrinterService] Starting print queue processing')
-    processingInterval = setInterval(processNextJob, PROCESS_INTERVAL_MS)
+    if (processingStarted) return
+    processingStarted = true
+    console.log('[PrinterService] Print queue processing enabled (event-driven)')
+    // Drain anything left over from a previous app session
+    scheduleDrain(0)
   },
 
   /**
-   * Stop the background print queue processing loop.
+   * Stop draining. Cancels any pending wake-up.
    */
   stopProcessing (): void {
-    if (processingInterval) {
-      clearInterval(processingInterval)
-      processingInterval = null
-      console.log('[PrinterService] Stopped print queue processing')
+    if (!processingStarted) return
+    processingStarted = false
+    if (backoffWakeupTimer) {
+      clearTimeout(backoffWakeupTimer)
+      backoffWakeupTimer = null
     }
+    console.log('[PrinterService] Stopped print queue processing')
   }
 }
 
@@ -646,6 +672,8 @@ export const PrinterService = {
 // ============================================================================
 
 async function processNextJob (): Promise<void> {
+  if (!processingStarted) return
+
   // Safety valve: if isProcessing is stuck (e.g. TCP timeout hanging), force-reset it
   if (isProcessing) {
     if (
@@ -659,13 +687,25 @@ async function processNextJob (): Promise<void> {
     }
   }
 
-  const job = usePrintQueueStore.getState().dequeue()
-  if (!job) return
+  const queueStore = usePrintQueueStore.getState()
+  const job = queueStore.dequeue()
+  if (!job) {
+    // Queue may have jobs in retry backoff; schedule a wake-up so they get
+    // picked up when their backoff window expires.
+    if (queueStore.getQueuedJobCount() > 0) {
+      scheduleDrain(BACKOFF_WAKEUP_MS)
+    }
+    return
+  }
 
   isProcessing = true
   processingStartedAt = Date.now()
 
   const printer = usePrinterStore.getState().getPrinterById(job.printerId)
+  // Set when the catch block has scheduled its own delayed retry (e.g. Star SDK
+  // 3s back-off). Suppresses the immediate drain in `finally` so we don't
+  // bypass the delay.
+  let manualRetryScheduled = false
 
   try {
     if (!printer) {
@@ -718,7 +758,12 @@ async function processNextJob (): Promise<void> {
     if (errorMsg.includes('Star SDK not ready')) {
       console.warn('[PrinterService] Star SDK not ready, will retry in 3s')
       usePrintQueueStore.getState().updateJobStatus(job.id, 'queued')
-      setTimeout(() => processNextJob(), 3000)
+      manualRetryScheduled = true
+      setTimeout(() => {
+        processNextJob().catch(err =>
+          console.error('[PrinterService] Star SDK retry error:', err)
+        )
+      }, 3000)
       isProcessing = false
       return
     }
@@ -810,6 +855,16 @@ async function processNextJob (): Promise<void> {
     }
   } finally {
     isProcessing = false
+    // Drain the next job if anything is still queued.
+    // (Skip when the catch block has already arranged its own delayed retry —
+    // dequeue would just return the same job and defeat the back-off.)
+    if (
+      !manualRetryScheduled &&
+      processingStarted &&
+      usePrintQueueStore.getState().getQueuedJobCount() > 0
+    ) {
+      scheduleDrain(0)
+    }
   }
 }
 

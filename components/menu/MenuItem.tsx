@@ -235,50 +235,57 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const isDisabled = item.availability === false || isReadOnly
 
   const handlePressIn = useCallback(() => {
-    setMenuBlockedSync(true)
-
     if (!isClockedIn) {
-      setMenuBlockedSync(false)
       showClockInWall()
       return
     }
+    if (onOrderClosedCheck?.()) return
 
-    if (onOrderClosedCheck?.()) {
-      setMenuBlockedSync(false)
-      return
-    }
+    // Wave 2 fast-add: items with no modifier groups bypass the
+    // ModifierScreen entirely — no menu-block + no preWarm needed since
+    // there's no screen to mount.
+    if (!hasModifiers) return
 
-    const { activeOrderId, ordersById } = useOrderStore.getState()
-    const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined
-
-    // if (!currentOrder?.order_type) {
-    //   setMenuBlockedSync(false);
-    //   show({
-    //     title: "Order Type Required",
-    //     message: "Please select an order type before adding items.",
-    //     type: "warning",
-    //   });
-    //   return;
-    // }
-
+    setMenuBlockedSync(true)
     useModifierSidebarStore.getState().preWarm(item, categoryId, menuId)
   }, [
     item,
     categoryId,
     menuId,
+    hasModifiers,
     isClockedIn,
     onOrderClosedCheck,
-    showClockInWall,
-    show
+    showClockInWall
   ])
 
   const handlePress = useCallback(() => {
+    if (!hasModifiers) {
+      if (!isClockedIn) {
+        showClockInWall()
+        return
+      }
+      if (onOrderClosedCheck?.()) return
+      // Direct add — no ModifierScreen mount, no Add-button round trip.
+      useModifierSidebarStore
+        .getState()
+        .fastAddMenuItem(item, categoryId, menuId)
+      return
+    }
+
     if (!isMenuBlockedSync()) return
     const { activeOrderId } = useOrderStore.getState()
     useModifierSidebarStore
       .getState()
       .openToAdd(item, activeOrderId, categoryId, menuId)
-  }, [item, categoryId, menuId])
+  }, [
+    item,
+    categoryId,
+    menuId,
+    hasModifiers,
+    isClockedIn,
+    onOrderClosedCheck,
+    showClockInWall
+  ])
 
   const resolvedImageSource =
     imageSource ?? resolveMenuItemImageSource(item.image)

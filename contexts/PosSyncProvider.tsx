@@ -23,6 +23,7 @@ import {
 } from "@/services/hardware";
 import { initLocationConfigSync } from "@/services/locationConfigSync";
 import { initLandiPrinter } from "@/native/LandiPrinter";
+import { getDriver } from "@/services/printing/DriverFactory";
 import {
     initializeOfflineSync,
     isServiceInitialized,
@@ -154,8 +155,19 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
           // Pre-warm Landi printer + cashBox so the first cash payment
           // doesn't pay cold-init cost on the AIDL bus (10-15s delay).
+          // Route through the driver instance so its `connected=true` flag is
+          // set — otherwise the next print/drawer call sees `!isConnected()`
+          // and re-runs initialize() per job.
           if (capabilities.hasBuiltinPrinter && !isKDS) {
-            initLandiPrinter()
+            const landiPrinter = usePrinterStore
+              .getState()
+              .printers.find(
+                (p) => p.printerType === "builtin_landi" && p.isActive,
+              );
+            const warmUp = landiPrinter
+              ? getDriver(landiPrinter).initialize(landiPrinter).then(() => true)
+              : initLandiPrinter();
+            warmUp
               .then((ok) =>
                 console.log(
                   `[PosSyncProvider] Landi pre-warm ${ok ? "ok" : "skipped"}`,

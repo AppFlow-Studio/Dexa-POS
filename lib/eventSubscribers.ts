@@ -117,17 +117,23 @@ export const initializeEventSubscribers = () => {
         }
       }
 
-      console.log(
-        `[EventSubscribers:Table] Refreshing floor plan after payment for session ${event.sessionId}`
-      )
-
-      // Refresh floor plan to show paid status
-      // Realtime subscriptions will pick up the change
-      await useFloorPlanStore.getState().loadFloorPlanStatus()
-
-      console.log(
-        `[EventSubscribers:Table] ✓ Floor plan refreshed for session ${event.sessionId}`
-      )
+      // Defer the floor-plan refresh out of the post-payment hot path.
+      // Realtime push already updates the table-status cell; this fetch is
+      // insurance, and synchronously awaiting it contends for the JS thread
+      // and the network in the same window the receipt printer is talking on
+      // USB. 1s buys us a clean print/cashbox window. The store's in-flight
+      // dedupe prevents duplicate fetches on rapid back-to-back payments.
+      setTimeout(() => {
+        useFloorPlanStore
+          .getState()
+          .loadFloorPlanStatus()
+          .catch(err =>
+            console.error(
+              `[EventSubscribers:Table] Floor plan refresh failed for session ${event.sessionId}:`,
+              err
+            )
+          )
+      }, 1000)
     } catch (error) {
       console.error('[EventSubscribers:Table] Failed:', error)
     }
