@@ -36,6 +36,12 @@ import type {
 
 const USE_WEBVIEW = process.env.EXPO_PUBLIC_CFD_WEBVIEW_PHASE0 === "1";
 
+// Module-level log — fires once when the bundle loads this module,
+// before any React component renders. Absence means the module never loaded.
+console.log(
+  `[CFDBuiltinDisplay] module loaded USE_WEBVIEW=${USE_WEBVIEW} env=${process.env.EXPO_PUBLIC_CFD_WEBVIEW_PHASE0}`,
+);
+
 /**
  * Error boundary for the built-in secondary display.
  *
@@ -94,8 +100,12 @@ function CFDWebViewHost() {
   const pendingReloadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    console.log(
+      "[CFDWebViewHost] mounted — USE_WEBVIEW=true, registering webViewRef",
+    );
     setWebView(webViewRef);
     return () => {
+      console.log("[CFDWebViewHost] unmounted — clearing webViewRef");
       if (pendingReloadRef.current) {
         clearTimeout(pendingReloadRef.current);
         pendingReloadRef.current = null;
@@ -107,13 +117,42 @@ function CFDWebViewHost() {
   }, []);
 
   const handleLoadEnd = useCallback(() => {
+    console.log("[CFDWebViewHost] onLoadEnd — scheduling markReady via rAF");
+    webViewRef.current?.injectJavaScript(`
+      (function(){
+        try {
+          var scripts = Array.prototype.slice.call(document.scripts || []).map(function(s){
+            return { src: s.src, readyState: s.readyState || null };
+          });
+          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'cfd_web_log',
+            level: 'info',
+            msg: '[CFDWebViewHostProbe] href=' + location.href +
+              ' readyState=' + document.readyState +
+              ' scripts=' + JSON.stringify(scripts) +
+              ' hasRecv=' + (typeof window.__cfdRecv) +
+              ' rootLength=' + ((document.getElementById('root') || {}).innerHTML || '').length,
+            ts: Date.now()
+          }));
+        } catch (e) {
+          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'cfd_web_error',
+            message: '[CFDWebViewHostProbe] ' + (e && e.message ? e.message : String(e)),
+            stack: e && e.stack ? e.stack : null,
+            ts: Date.now()
+          }));
+        }
+      })(); true;
+    `);
     // Give the bundle a tick to install window.__cfdRecv before flushing.
     requestAnimationFrame(() => {
+      console.log("[CFDWebViewHost] markReady called");
       markReady();
     });
   }, []);
 
   const handleLoadStart = useCallback(() => {
+    console.log("[CFDWebViewHost] onLoadStart — loading", CFD_BUNDLE_URI);
     markNotReady();
   }, []);
 
@@ -126,11 +165,11 @@ function CFDWebViewHost() {
 
     const now = Date.now();
     const recent = reloadTimestampsRef.current.filter(
-      (t) => now - t < RELOAD_WINDOW_MS
+      (t) => now - t < RELOAD_WINDOW_MS,
     );
     if (recent.length >= RELOAD_MAX_IN_WINDOW) {
       console.warn(
-        `[CFDWebViewHost] reload circuit breaker tripped (${recent.length} reloads in ${RELOAD_WINDOW_MS}ms) — skipping reload after ${reason}`
+        `[CFDWebViewHost] reload circuit breaker tripped (${recent.length} reloads in ${RELOAD_WINDOW_MS}ms) — skipping reload after ${reason}`,
       );
       reloadTimestampsRef.current = recent;
       return;
@@ -153,7 +192,7 @@ function CFDWebViewHost() {
     (event: WebViewRenderProcessGoneEvent) => {
       const didCrash = event.nativeEvent?.didCrash;
       console.warn(
-        `[CFDWebViewHost] WebView renderer process gone didCrash=${didCrash}`
+        `[CFDWebViewHost] WebView renderer process gone didCrash=${didCrash}`,
       );
       markNotReady();
       scheduleReload(`renderer gone (didCrash=${didCrash})`);
@@ -161,7 +200,7 @@ function CFDWebViewHost() {
       // does not re-throw RenderProcessGoneException up the native chain.
       return true;
     },
-    [scheduleReload]
+    [scheduleReload],
   );
 
   const handleContentProcessDidTerminate = useCallback(() => {
@@ -175,7 +214,7 @@ function CFDWebViewHost() {
   const handleError = useCallback((event: WebViewErrorEvent) => {
     const { code, description, url } = event.nativeEvent;
     console.warn(
-      `[CFDWebViewHost] onError code=${code} desc=${description} url=${url}`
+      `[CFDWebViewHost] onError code=${code} desc=${description} url=${url}`,
     );
     markNotReady();
   }, []);
@@ -183,7 +222,7 @@ function CFDWebViewHost() {
   const handleHttpError = useCallback((event: WebViewHttpErrorEvent) => {
     const { statusCode, description, url } = event.nativeEvent;
     console.warn(
-      `[CFDWebViewHost] onHttpError status=${statusCode} desc=${description} url=${url}`
+      `[CFDWebViewHost] onHttpError status=${statusCode} desc=${description} url=${url}`,
     );
   }, []);
 
@@ -219,6 +258,9 @@ function CFDWebViewHost() {
 }
 
 function CFDBuiltinDisplay() {
+  console.log(
+    `[CFDBuiltinDisplay] render USE_WEBVIEW=${USE_WEBVIEW} PHASE0_ENV=${process.env.EXPO_PUBLIC_CFD_WEBVIEW_PHASE0}`,
+  );
   return (
     <GestureHandlerRootView style={styles.root}>
       <CFDBuiltinErrorBoundary>

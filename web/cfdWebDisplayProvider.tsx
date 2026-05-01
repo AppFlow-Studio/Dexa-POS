@@ -69,7 +69,9 @@ const initialState: CFDDisplayData = {
 };
 
 interface CFDWebDisplayStore extends CFDDisplayData {
-  applyPayload: (payload: Partial<CFDPayload> & { screenState?: CFDScreenState }) => void;
+  applyPayload: (
+    payload: Partial<CFDPayload> & { screenState?: CFDScreenState },
+  ) => void;
   setScreenState: (state: CFDScreenState) => void;
   reset: () => void;
 }
@@ -151,6 +153,10 @@ export function CFDWebDisplayProvider({
 }: {
   children: React.ReactNode;
 }) {
+  // eslint-disable-next-line no-console
+  React.useEffect(() => {
+    console.log("[CFDWebDisplayProvider] mounted");
+  }, []);
   const store = useCFDWebDisplayStore(
     useShallow((s) => ({
       connectionStatus: s.connectionStatus,
@@ -189,7 +195,7 @@ export function CFDWebDisplayProvider({
       paymentMethod: s.paymentMethod,
       merchantHasLoyalty: s.merchantHasLoyalty,
       themeMode: s.themeMode,
-    }))
+    })),
   );
 
   const value = useMemo<CFDDisplayData>(() => store, [store]);
