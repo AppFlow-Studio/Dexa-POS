@@ -46,33 +46,50 @@ import {
 import { safeTimeString } from './utils/sanitizeText'
 
 let processingStarted = false
-let isProcessing = false
-let processingStartedAt = 0
+// Per-printer drain state. Each printer drains independently so a stuck or
+// offline kitchen printer doesn't block receipts on the receipt printer.
+const processingPrinters = new Set<string>()
+const printerJobStartedAt = new Map<string, number>()
 let lastFailureToastAt = 0
 let backoffWakeupTimer: ReturnType<typeof setTimeout> | null = null
 
 const FAILURE_TOAST_DEDUP_MS = 30_000
-const PROCESSING_STUCK_MS = 30_000 // Safety: reset isProcessing if stuck longer than this
+const PROCESSING_STUCK_MS = 30_000 // Safety: force-release a stuck printer slot
 const BACKOFF_WAKEUP_MS = 250 // Wake-up delay when only retry-backoff jobs remain
 
-// Schedule the queue drain. Coalesces multiple calls into one pending run.
+// Schedule a queue drain. Coalesces multiple calls into one pending run.
+// At drain time we kick a parallel `drainPrinter` for every printer that has a
+// ready job and isn't already draining.
 function scheduleDrain (delayMs = 0): void {
   if (!processingStarted) return
   if (delayMs === 0) {
-    queueMicrotask(() => {
-      processNextJob().catch(err =>
-        console.error('[PrinterService] Drain loop error:', err)
-      )
-    })
+    queueMicrotask(kickAllReadyPrinters)
     return
   }
   if (backoffWakeupTimer) return
   backoffWakeupTimer = setTimeout(() => {
     backoffWakeupTimer = null
-    processNextJob().catch(err =>
-      console.error('[PrinterService] Drain wake-up error:', err)
-    )
+    kickAllReadyPrinters()
   }, delayMs)
+}
+
+function kickAllReadyPrinters (): void {
+  if (!processingStarted) return
+  const jobs = usePrintQueueStore.getState().jobs
+  const candidates = new Set<string>()
+  for (const j of jobs) {
+    if (j.status !== 'queued') continue
+    if (processingPrinters.has(j.printerId)) continue
+    candidates.add(j.printerId)
+  }
+  for (const printerId of candidates) {
+    drainPrinter(printerId).catch(err =>
+      console.error(
+        `[PrinterService] Drain loop error for printer ${printerId}:`,
+        err
+      )
+    )
+  }
 }
 
 // ============================================================================
@@ -668,43 +685,82 @@ export const PrinterService = {
 }
 
 // ============================================================================
-// QUEUE PROCESSOR
+// QUEUE PROCESSOR — per-printer drain
 // ============================================================================
+//
+// Each printer drains its own queue independently. A stuck or offline kitchen
+// printer can hang indefinitely on a TCP/USB timeout without holding up the
+// receipt printer's drain loop. Single-printer setups are unaffected (only
+// one printer in `processingPrinters`).
 
-async function processNextJob (): Promise<void> {
+async function drainPrinter (printerId: string): Promise<void> {
   if (!processingStarted) return
 
-  // Safety valve: if isProcessing is stuck (e.g. TCP timeout hanging), force-reset it
-  if (isProcessing) {
-    if (
-      processingStartedAt > 0 &&
-      Date.now() - processingStartedAt > PROCESSING_STUCK_MS
-    ) {
-      console.warn('[PrinterService] Processing stuck, force-resetting')
-      isProcessing = false
+  if (processingPrinters.has(printerId)) {
+    // Safety valve: if a drain has been hanging on an awaited TCP/USB call
+    // longer than PROCESSING_STUCK_MS, force-release the slot so a fresh
+    // invocation can take over. The hung drain's `finally` will then no-op
+    // its delete (the slot was already released and may have been re-taken).
+    const startedAt = printerJobStartedAt.get(printerId) ?? 0
+    if (startedAt > 0 && Date.now() - startedAt > PROCESSING_STUCK_MS) {
+      console.warn(
+        `[PrinterService] Printer ${printerId} drain stuck, force-releasing`
+      )
+      processingPrinters.delete(printerId)
+      printerJobStartedAt.delete(printerId)
     } else {
       return
     }
   }
 
-  const queueStore = usePrintQueueStore.getState()
-  const job = queueStore.dequeue()
-  if (!job) {
-    // Queue may have jobs in retry backoff; schedule a wake-up so they get
-    // picked up when their backoff window expires.
-    if (queueStore.getQueuedJobCount() > 0) {
-      scheduleDrain(BACKOFF_WAKEUP_MS)
+  processingPrinters.add(printerId)
+
+  try {
+    while (processingStarted) {
+      const queueStore = usePrintQueueStore.getState()
+      const job = queueStore.dequeueForPrinter(printerId)
+
+      if (!job) {
+        // No ready job — but there may be jobs in retry back-off for this
+        // printer. Schedule a wake-up so they get picked up when the back-off
+        // expires. (Other printers' drains are unaffected.)
+        const hasPendingForPrinter = queueStore.jobs.some(
+          j => j.printerId === printerId && j.status === 'queued'
+        )
+        if (hasPendingForPrinter) {
+          scheduleDrain(BACKOFF_WAKEUP_MS)
+        }
+        break
+      }
+
+      printerJobStartedAt.set(printerId, Date.now())
+
+      const result = await processJob(job)
+
+      if (result.manualRetryScheduled) {
+        // The catch block arranged its own delayed retry (e.g. Star SDK
+        // 3s back-off, which calls drainPrinter again). Exit this loop —
+        // dequeueing the same job again would defeat the back-off.
+        break
+      }
     }
-    return
+  } catch (err) {
+    console.error(
+      `[PrinterService] Unexpected error in drain loop for ${printerId}:`,
+      err
+    )
+  } finally {
+    processingPrinters.delete(printerId)
+    printerJobStartedAt.delete(printerId)
   }
+}
 
-  isProcessing = true
-  processingStartedAt = Date.now()
+interface ProcessJobResult {
+  manualRetryScheduled: boolean
+}
 
+async function processJob (job: PrintJob): Promise<ProcessJobResult> {
   const printer = usePrinterStore.getState().getPrinterById(job.printerId)
-  // Set when the catch block has scheduled its own delayed retry (e.g. Star SDK
-  // 3s back-off). Suppresses the immediate drain in `finally` so we don't
-  // bypass the delay.
   let manualRetryScheduled = false
 
   try {
@@ -712,7 +768,7 @@ async function processNextJob (): Promise<void> {
       usePrintQueueStore
         .getState()
         .updateJobStatus(job.id, 'failed', 'Printer not found')
-      return
+      return { manualRetryScheduled }
     }
 
     const driver = getDriver(printer)
@@ -760,12 +816,11 @@ async function processNextJob (): Promise<void> {
       usePrintQueueStore.getState().updateJobStatus(job.id, 'queued')
       manualRetryScheduled = true
       setTimeout(() => {
-        processNextJob().catch(err =>
+        drainPrinter(job.printerId).catch(err =>
           console.error('[PrinterService] Star SDK retry error:', err)
         )
       }, 3000)
-      isProcessing = false
-      return
+      return { manualRetryScheduled }
     }
 
     // Landi built-in printer error — force driver re-init so next retry reconnects fresh
@@ -810,6 +865,9 @@ async function processNextJob (): Promise<void> {
           `[PrinterService] Falling back to ${fallback.printerName} for receipt job ${job.id}`
         )
         usePrintQueueStore.getState().reassignJob(job.id, fallback.id)
+        // Job has moved to a different printer — kick a drain for that one
+        // since this drainPrinter loop won't pick it up.
+        scheduleDrain(0)
       }
     }
 
@@ -853,19 +911,9 @@ async function processNextJob (): Promise<void> {
         errorCount: (printer.errorCount ?? 0) + 1
       })
     }
-  } finally {
-    isProcessing = false
-    // Drain the next job if anything is still queued.
-    // (Skip when the catch block has already arranged its own delayed retry —
-    // dequeue would just return the same job and defeat the back-off.)
-    if (
-      !manualRetryScheduled &&
-      processingStarted &&
-      usePrintQueueStore.getState().getQueuedJobCount() > 0
-    ) {
-      scheduleDrain(0)
-    }
   }
+
+  return { manualRetryScheduled }
 }
 
 // ============================================================================
