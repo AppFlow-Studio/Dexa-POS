@@ -1,170 +1,176 @@
-import { useLoading } from '@/contexts/LoadingContext'
-import { useToast } from '@/contexts/ToastContext'
-import { useNetworkStatus } from '@/hooks/useNetworkStatus'
-import { getDeviceId } from '@/lib/deviceId'
-import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
-import { CartItem } from '@/lib/types'
+import ClaimOrderModal from "@/components/order/ClaimOrderModal";
+import ReadOnlyBanner from "@/components/order/ReadOnlyBanner";
+import { useLoading } from "@/contexts/LoadingContext";
+import { useToast } from "@/contexts/ToastContext";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { getDeviceId } from "@/lib/deviceId";
+import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
+import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
+import { CartItem } from "@/lib/types";
 import {
-  getAutoRetryCount,
-  isAutoRetryInProgress
-} from '@/services/offlineSyncService'
-import { useActiveOrder } from '@/stores/selectors/orderSelectors'
-import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
-import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
-import ClaimOrderModal from '@/components/order/ClaimOrderModal'
-import { useDineInStore } from '@/stores/useDineInStore'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { usePaymentStore } from '@/stores/usePaymentStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useOrderSyncCounts } from '@/stores/useSyncStatusStore'
-import { useTableSessionStore } from '@/stores/useTableSessionStore'
-import { useTimeclockStore } from '@/stores/useTimeclockStore'
+    getAutoRetryCount,
+    isAutoRetryInProgress,
+} from "@/services/offlineSyncService";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import { useDineInStore } from "@/stores/useDineInStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import type {
-  FloorPlanObject,
-  ServerSection,
-  TableSession
-} from '@/types/db-floor-plan-types'
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { useRouter } from 'expo-router'
+    FloorPlanObject,
+    ServerSection,
+    TableSession,
+} from "@/types/db-floor-plan-types";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { useRouter } from "expo-router";
 import {
-  AlertTriangle,
-  Check,
-  Clock,
-  CreditCard,
-  MoreHorizontal,
-  NotebookPen,
-  Plus,
-  Printer,
-  RefreshCw,
-  Trash2,
-  WifiOff,
-  X
-} from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+    AlertTriangle,
+    Check,
+    Clock,
+    CreditCard,
+    MoreHorizontal,
+    NotebookPen,
+    Plus,
+    Printer,
+    RefreshCw,
+    Trash2,
+    WifiOff,
+    X,
+} from "lucide-react-native";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
-  ActivityIndicator,
-  Dimensions,
-  Keyboard,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native'
-import { useShallow } from 'zustand/react/shallow'
+    ActivityIndicator,
+    Dimensions,
+    Keyboard,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { useShallow } from "zustand/react/shallow";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '../ui/dialog'
-import BillSummary from './BillSummary'
-import DiscountOverlay from './DiscountOverlay'
-import OrderDetails from './OrderDetails'
-import OrderSyncBanner from './OrderSyncBanner'
-import Totals from './Totals'
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "../ui/dialog";
+import BillSummary from "./BillSummary";
+import DiscountOverlay from "./DiscountOverlay";
+import OrderDetails from "./OrderDetails";
+import OrderSyncBanner from "./OrderSyncBanner";
+import Totals from "./Totals";
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates.
 // Subscribes to ONLY the active order's items array — re-renders when the
 // items reference changes (Immer mutates items on add) but not when other
 // order fields change. Parent's re-render no longer cascades here.
-const EMPTY_CART_ITEMS: CartItem[] = []
+const EMPTY_CART_ITEMS: CartItem[] = [];
 const BillItemsAndTotals = React.memo(
   ({
     orderNote,
     onChangeOrderNote,
-    onSaveOrderNote
+    onSaveOrderNote,
   }: {
-    orderNote?: string
-    onChangeOrderNote: (value: string) => void
-    onSaveOrderNote: () => void
+    orderNote?: string;
+    onChangeOrderNote: (value: string) => void;
+    onSaveOrderNote: () => void;
   }) => {
-    const cart = useOrderStore<CartItem[]>(s => {
-      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
-      return (order?.items ?? EMPTY_CART_ITEMS) as CartItem[]
-    })
-    const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
-    const [isOrderNoteEditorOpen, setIsOrderNoteEditorOpen] = useState(false)
-    const [keyboardTop, setKeyboardTop] = useState<number | null>(null)
-    const orderNoteInputRef = useRef<TextInput>(null)
+    const cart = useOrderStore<CartItem[]>((s) => {
+      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+      return (order?.items ?? EMPTY_CART_ITEMS) as CartItem[];
+    });
+    const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+    const [isOrderNoteEditorOpen, setIsOrderNoteEditorOpen] = useState(false);
+    const [keyboardTop, setKeyboardTop] = useState<number | null>(null);
+    const orderNoteInputRef = useRef<TextInput>(null);
 
     useEffect(() => {
-      if (Platform.OS !== 'android') return
+      if (Platform.OS !== "android") return;
 
-      const showSub = Keyboard.addListener('keyboardDidShow', event => {
+      const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
         const fallbackTop =
-          Dimensions.get('window').height - (event.endCoordinates?.height ?? 0)
-        setKeyboardTop(event.endCoordinates?.screenY ?? fallbackTop)
-      })
+          Dimensions.get("window").height - (event.endCoordinates?.height ?? 0);
+        setKeyboardTop(event.endCoordinates?.screenY ?? fallbackTop);
+      });
 
-      const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-        setKeyboardTop(null)
-        setIsOrderNoteEditorOpen(false)
-      })
+      const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+        setKeyboardTop(null);
+        setIsOrderNoteEditorOpen(false);
+      });
 
       return () => {
-        showSub.remove()
-        hideSub.remove()
-      }
-    }, [])
+        showSub.remove();
+        hideSub.remove();
+      };
+    }, []);
 
     const handleToggleExpand = useCallback((itemId: string) => {
-      setExpandedItemId(prev => (prev === itemId ? null : itemId))
-    }, [])
+      setExpandedItemId((prev) => (prev === itemId ? null : itemId));
+    }, []);
 
     const closeOrderNoteEditor = useCallback(() => {
-      setIsOrderNoteEditorOpen(false)
-      setKeyboardTop(null)
-      onSaveOrderNote()
-      Keyboard.dismiss()
-    }, [onSaveOrderNote])
+      setIsOrderNoteEditorOpen(false);
+      setKeyboardTop(null);
+      onSaveOrderNote();
+      Keyboard.dismiss();
+    }, [onSaveOrderNote]);
 
     const handleOrderNoteEditorBlur = useCallback(() => {
-      setIsOrderNoteEditorOpen(false)
-      setKeyboardTop(null)
-      onSaveOrderNote()
-    }, [onSaveOrderNote])
+      setIsOrderNoteEditorOpen(false);
+      setKeyboardTop(null);
+      onSaveOrderNote();
+    }, [onSaveOrderNote]);
 
     const focusOrderNoteEditor = useCallback(() => {
       setTimeout(() => {
-        orderNoteInputRef.current?.focus()
-      }, 60)
-    }, [])
+        orderNoteInputRef.current?.focus();
+      }, 60);
+    }, []);
 
     const renderOrderNoteInput = () => (
       <View
-        className='h-9 rounded-lg flex-row items-center mb-1'
+        className="h-9 rounded-lg flex-row items-center mb-1"
         style={{
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
           paddingHorizontal: 10,
-          gap: 7
+          gap: 7,
         }}
       >
         <NotebookPen size={13} color={colors.muted} />
         <TextInput
           ref={orderNoteInputRef}
-          value={orderNote ?? ''}
+          value={orderNote ?? ""}
           onChangeText={onChangeOrderNote}
           onBlur={
-            Platform.OS === 'android'
+            Platform.OS === "android"
               ? handleOrderNoteEditorBlur
               : onSaveOrderNote
           }
           onEndEditing={onSaveOrderNote}
-          placeholder='Add order note...'
+          placeholder="Add order note..."
           placeholderTextColor={colors.muted}
           multiline={false}
           numberOfLines={1}
-          textAlignVertical='center'
+          textAlignVertical="center"
           style={{
             flex: 1,
             color: colors.heading,
@@ -175,14 +181,14 @@ const BillItemsAndTotals = React.memo(
             paddingVertical: 0,
             margin: 2,
             includeFontPadding: false,
-            fontFamily: 'System'
+            fontFamily: "System",
           }}
         />
       </View>
-    )
+    );
 
     return (
-      <View style={{ flex: 1, position: 'relative' }}>
+      <View style={{ flex: 1, position: "relative" }}>
         {/* Wave 3.0e-2: order-bound dead-letter banner. Renders nothing when
             the active order has no order-bound failures. Mounted at the top
             of the bill so failed ops are visible before the operator scrolls. */}
@@ -192,20 +198,20 @@ const BillItemsAndTotals = React.memo(
           expandedItemId={expandedItemId}
           onToggleExpand={handleToggleExpand}
         />
-        <View className='px-3 pb-1'>
-          {Platform.OS === 'android' ? (
+        <View className="px-3 pb-1">
+          {Platform.OS === "android" ? (
             <TouchableOpacity
               activeOpacity={0.9}
               onPress={() => setIsOrderNoteEditorOpen(true)}
             >
               <View
-                className='h-9 rounded-lg flex-row items-center mb-1'
+                className="h-9 rounded-lg flex-row items-center mb-1"
                 style={{
                   backgroundColor: colors.panel,
                   borderWidth: 1,
                   borderColor: colors.border,
                   paddingHorizontal: 10,
-                  gap: 7
+                  gap: 7,
                 }}
               >
                 <NotebookPen size={13} color={colors.muted} />
@@ -213,15 +219,15 @@ const BillItemsAndTotals = React.memo(
                   numberOfLines={1}
                   style={{
                     flex: 1,
-                    color: (orderNote ?? '').trim()
+                    color: (orderNote ?? "").trim()
                       ? colors.heading
                       : colors.muted,
                     fontSize: 12,
                     lineHeight: 16,
-                    fontFamily: 'System'
+                    fontFamily: "System",
                   }}
                 >
-                  {(orderNote ?? '').trim() || 'Add order note...'}
+                  {(orderNote ?? "").trim() || "Add order note..."}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -230,22 +236,22 @@ const BillItemsAndTotals = React.memo(
           )}
         </View>
 
-        {Platform.OS === 'android' && (
+        {Platform.OS === "android" && (
           <Modal
             transparent
             visible={isOrderNoteEditorOpen}
-            animationType='fade'
+            animationType="fade"
             onShow={focusOrderNoteEditor}
             onRequestClose={closeOrderNoteEditor}
           >
             <Pressable
-              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.18)' }}
+              style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.18)" }}
               onPress={closeOrderNoteEditor}
             >
               <Pressable
                 onPress={() => {}}
                 style={{
-                  position: 'absolute',
+                  position: "absolute",
                   left: 12,
                   right: 12,
                   opacity: keyboardTop != null ? 1 : 0,
@@ -253,7 +259,7 @@ const BillItemsAndTotals = React.memo(
                     keyboardTop != null
                       ? Math.max(12, keyboardTop - 44)
                       : undefined,
-                  bottom: keyboardTop == null ? 12 : undefined
+                  bottom: keyboardTop == null ? 12 : undefined,
                 }}
               >
                 {renderOrderNoteInput()}
@@ -262,69 +268,74 @@ const BillItemsAndTotals = React.memo(
           </Modal>
         )}
       </View>
-    )
+    );
   },
   (prev, next) =>
     prev.orderNote === next.orderNote &&
     prev.onChangeOrderNote === next.onChangeOrderNote &&
-    prev.onSaveOrderNote === next.onSaveOrderNote
-)
+    prev.onSaveOrderNote === next.onSaveOrderNote,
+);
 
 const BillSectionContent = ({
   showOrderDetails = true,
   showPlaymentActions = true,
   moreOptionsSheetRef,
-  discountSheetRef
+  discountSheetRef,
 }: {
-  showOrderDetails?: boolean
-  showPlaymentActions?: boolean
-  moreOptionsSheetRef?: React.RefObject<BottomSheetMethods>
-  discountSheetRef?: React.RefObject<BottomSheetMethods>
+  showOrderDetails?: boolean;
+  showPlaymentActions?: boolean;
+  moreOptionsSheetRef?: React.RefObject<BottomSheetMethods>;
+  discountSheetRef?: React.RefObject<BottomSheetMethods>;
 }) => {
-  const router = useRouter()
+  const router = useRouter();
   // Wave 2 §C: primitive selectors only — no shallow object, no full-order
   // subscription. Each primitive triggers a re-render of this component
   // ONLY when that specific field changes, decoupled from items-array churn
   // during rapid adds and from the deferred totals microtask.
-  const activeOrderId = useOrderStore(state => state.activeOrderId)
-  const activeOrderPaidStatus = useOrderStore(s =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId]?.paid_status ?? null : null
-  )
-  const activeOrderType = useOrderStore(s =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId]?.order_type ?? null : null
-  )
-  const activeOrderServiceLocation = useOrderStore(s =>
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const activeOrderPaidStatus = useOrderStore((s) =>
     s.activeOrderId
-      ? s.ordersById[s.activeOrderId]?.service_location_id ?? null
-      : null
-  )
-  const activeOrderDisplayNumber = useOrderStore(s => {
-    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
-    return o?.display_number ?? o?.order_number ?? null
-  })
-  const activeOrderHasPayments = useOrderStore(s => {
-    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
-    return !!o?.payments?.some((p: any) => !p.isVoided)
-  })
-  const activeOrderHasPendingPaymentSync = useOrderStore(s => {
-    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
-    return !!o?.payments?.some((p: any) => p.sync_status === 'pending')
-  })
+      ? (s.ordersById[s.activeOrderId]?.paid_status ?? null)
+      : null,
+  );
+  const activeOrderType = useOrderStore((s) =>
+    s.activeOrderId
+      ? (s.ordersById[s.activeOrderId]?.order_type ?? null)
+      : null,
+  );
+  const activeOrderServiceLocation = useOrderStore((s) =>
+    s.activeOrderId
+      ? (s.ordersById[s.activeOrderId]?.service_location_id ?? null)
+      : null,
+  );
+  const activeOrderDisplayNumber = useOrderStore((s) => {
+    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return o?.display_number ?? o?.order_number ?? null;
+  });
+  const activeOrderHasPayments = useOrderStore((s) => {
+    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return !!o?.payments?.some((p: any) => !p.isVoided);
+  });
+  const activeOrderHasPendingPaymentSync = useOrderStore((s) => {
+    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return !!o?.payments?.some((p: any) => p.sync_status === "pending");
+  });
   // Cached totals: refreshed by the deferred setTimeout(0) microtask in
   // _scheduleTotalsRecompute (and synchronously by _ensureTotalsFresh at
   // commit-points). Reading these is O(1) per render and doesn't trigger
   // calculateOrderTotals on the parent.
-  const activeOrderTotal = useOrderStore(s => s.activeOrderTotal ?? 0)
+  const activeOrderTotal = useOrderStore((s) => s.activeOrderTotal ?? 0);
   const activeOrderOutstandingTotal = useOrderStore(
-    s => s.activeOrderOutstandingTotal ?? 0
-  )
+    (s) => s.activeOrderOutstandingTotal ?? 0,
+  );
   // Items-array reference: used for the cart-derived useMemos below. This
   // selector still re-renders on every add (intentional — the component
   // updates badges and button-disabled state). Memoized children skip via
   // their own subscriptions.
   const activeOrderItems = useOrderStore(
-    s => (s.activeOrderId ? s.ordersById[s.activeOrderId]?.items : null) ?? null
-  )
+    (s) =>
+      (s.activeOrderId ? s.ordersById[s.activeOrderId]?.items : null) ?? null,
+  );
 
   const {
     startNewOrder,
@@ -333,101 +344,105 @@ const BillSectionContent = ({
     setActiveOrder,
     retryFailedSyncs,
     clearCart,
-    updateActiveOrderDetails
+    updateActiveOrderDetails,
   } = useOrderStore(
-    useShallow(s => ({
+    useShallow((s) => ({
       startNewOrder: s.startNewOrder,
       sendNewItemsToKitchen: s.sendNewItemsToKitchen,
       assignOrderToTable: s.assignOrderToTable,
       setActiveOrder: s.setActiveOrder,
       retryFailedSyncs: s.retryFailedSyncs,
       clearCart: s.clearCart,
-      updateActiveOrderDetails: s.updateActiveOrderDetails
-    }))
-  )
-  const activeOrder = useOrderStore(s =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : null
-  )
+      updateActiveOrderDetails: s.updateActiveOrderDetails,
+    })),
+  );
+  const activeOrder = useOrderStore((s) =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
+  );
 
   // Offline sync state — subscribe directly to offlineSyncService for reliable updates.
   // `isOnline` is the effective status (false during connection-quality slow-mode, used
   // for routing decisions). `rawIsOnline` is raw NetInfo (used for UI affordances so
   // slow-mode queues silently in the background).
-  const { isOnline, rawIsOnline, pendingSyncCount } = useNetworkStatus()
+  const { isOnline, rawIsOnline, pendingSyncCount } = useNetworkStatus();
 
-  const { selectedTable, clearSelectedTable } = useDineInStore()
-  const setSelectedTable = useDineInStore(s => s.setSelectedTable)
-  const floorPlans = useFloorPlanStore(s => s.floorPlans)
-  const tables = useFloorPlanStore(s => s.tables)
-  const sections = useFloorPlanStore(s => s.sections)
-  const activeFloorPlanId = useFloorPlanStore(s => s.activeFloorPlanId)
-  const setActiveFloorPlan = useFloorPlanStore(s => s.setActiveFloorPlan)
-  const liveSessions = useTableSessionStore(s => s.sessions)
-  const { activeEmployeeId } = useEmployeeStore()
-  const { checkEmployeeInShift, showClockInWall } = useTimeclockStore()
-  const { hideLoading, showLoading } = useLoading()
-  const { show } = useToast()
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
+  const { selectedTable, clearSelectedTable } = useDineInStore();
+  const setSelectedTable = useDineInStore((s) => s.setSelectedTable);
+  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  const tables = useFloorPlanStore((s) => s.tables);
+  const sections = useFloorPlanStore((s) => s.sections);
+  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
+  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
+  const liveSessions = useTableSessionStore((s) => s.sessions);
+  const { activeEmployeeId } = useEmployeeStore();
+  const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
+  const { hideLoading, showLoading } = useLoading();
+  const { show } = useToast();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const autoPrintKitchenTickets = useLocationConfigStore(
-    s => s.config.printing.autoPrintKitchenTickets
-  )
-  const deviceId = useMemo(() => getDeviceId(), [])
+    (s) => s.config.printing.autoPrintKitchenTickets,
+  );
+  const deviceId = useMemo(() => getDeviceId(), []);
 
   // Memoize computed values to prevent unnecessary recalculations
-  const cart = useMemo(() => activeOrderItems || [], [activeOrderItems])
-  const hasDraftItems = useMemo(() => cart.some(item => item.isDraft), [cart])
+  const cart = useMemo(() => activeOrderItems || [], [activeOrderItems]);
+  const hasDraftItems = useMemo(
+    () => cart.some((item) => item.isDraft),
+    [cart],
+  );
   const newItemsCount = useMemo(
     () =>
-      cart.filter(item => item.kitchen_status === 'new' || !item.kitchen_status)
-        .length,
-    [cart]
-  )
+      cart.filter(
+        (item) => item.kitchen_status === "new" || !item.kitchen_status,
+      ).length,
+    [cart],
+  );
 
   // Get sync counts for the active order's non-draft items.
   // useOrderSyncCounts only re-renders BillSection when the actual counts change,
   // not on every individual item sync status transition.
   const nonDraftItemIds = useMemo(
-    () => cart.filter(item => !item.isDraft).map(item => item.id),
-    [cart]
-  )
-  const syncStatus = useOrderSyncCounts(nonDraftItemIds)
-  const hasPendingSyncs = syncStatus.pending > 0
-  const hasFailedSyncs = syncStatus.failed > 0
+    () => cart.filter((item) => !item.isDraft).map((item) => item.id),
+    [cart],
+  );
+  const syncStatus = useOrderSyncCounts(nonDraftItemIds);
+  const hasPendingSyncs = syncStatus.pending > 0;
+  const hasFailedSyncs = syncStatus.failed > 0;
 
   // Track auto-retry state for UI indicator
   const [autoRetryState, setAutoRetryState] = useState({
     isRetrying: false,
-    count: 0
-  })
+    count: 0,
+  });
 
   // Poll for auto-retry status when there are failed syncs
   useEffect(() => {
     if (!hasFailedSyncs && !hasPendingSyncs) {
-      setAutoRetryState(prev =>
+      setAutoRetryState((prev) =>
         prev.isRetrying || prev.count !== 0
           ? { isRetrying: false, count: 0 }
-          : prev
-      )
-      return
+          : prev,
+      );
+      return;
     }
 
     // Check auto-retry status periodically
     const checkAutoRetry = () => {
-      const isRetrying = isAutoRetryInProgress()
-      const count = getAutoRetryCount()
-      setAutoRetryState(prev =>
+      const isRetrying = isAutoRetryInProgress();
+      const count = getAutoRetryCount();
+      setAutoRetryState((prev) =>
         prev.isRetrying === isRetrying && prev.count === count
           ? prev
-          : { isRetrying, count }
-      )
-    }
+          : { isRetrying, count },
+      );
+    };
 
-    checkAutoRetry()
-    const interval = setInterval(checkAutoRetry, 5000) // PERF: 5s - informational, not action-critical
+    checkAutoRetry();
+    const interval = setInterval(checkAutoRetry, 5000); // PERF: 5s - informational, not action-critical
 
-    return () => clearInterval(interval)
-  }, [hasFailedSyncs, hasPendingSyncs])
+    return () => clearInterval(interval);
+  }, [hasFailedSyncs, hasPendingSyncs]);
 
   // Calculate the amount to display on the Pay button.
   // Wave 2 §C: reads cached totals (refreshed by _scheduleTotalsRecompute /
@@ -436,55 +451,71 @@ const BillSectionContent = ({
   // the total; after payments, the outstanding is what's left.
   const displayBalanceDue = activeOrderHasPayments
     ? activeOrderOutstandingTotal
-    : activeOrderTotal
+    : activeOrderTotal;
 
   // Check if order is partially paid (has payments but not fully paid)
   const isPartiallyPaid =
     activeOrderHasPayments &&
-    (activeOrderPaidStatus !== 'Paid' || activeOrderOutstandingTotal > 0.01)
+    (activeOrderPaidStatus !== "Paid" || activeOrderOutstandingTotal > 0.01);
 
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [orderNoteDraft, setOrderNoteDraft] = useState('')
-  const isPaymentSheetOpen = usePaymentStore(state => state.isOpen)
+  const isCurrentOrderEmptyDraft = useMemo(() => {
+    if (!activeOrder) return false;
+    const hasNonVoidedPayments = !!activeOrder.payments?.some(
+      (p: any) => !p.isVoided,
+    );
+    return (
+      activeOrder.order_status === "draft" &&
+      cart.length === 0 &&
+      activeOrder.service_location_id === null &&
+      activeOrder.paid_status !== "Paid" &&
+      !activeOrder.customer_name &&
+      !activeOrder.customer_id &&
+      !hasNonVoidedPayments
+    );
+  }, [activeOrder, cart]);
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [orderNoteDraft, setOrderNoteDraft] = useState("");
+  const isPaymentSheetOpen = usePaymentStore((state) => state.isOpen);
 
   const currentOrderNote = useMemo(
-    () => activeOrder?.notes?.trim() ?? '',
-    [activeOrder?.notes]
-  )
+    () => activeOrder?.notes?.trim() ?? "",
+    [activeOrder?.notes],
+  );
 
   const handleSaveOrderNote = useCallback(async () => {
-    const trimmed = orderNoteDraft.trim()
+    const trimmed = orderNoteDraft.trim();
     await updateActiveOrderDetails({
-      notes: trimmed.length > 0 ? trimmed : undefined
-    })
-  }, [orderNoteDraft, updateActiveOrderDetails])
+      notes: trimmed.length > 0 ? trimmed : undefined,
+    });
+  }, [orderNoteDraft, updateActiveOrderDetails]);
 
   useEffect(() => {
-    setOrderNoteDraft(activeOrder?.notes ?? '')
-  }, [activeOrder?.id, activeOrder?.notes])
+    setOrderNoteDraft(activeOrder?.notes ?? "");
+  }, [activeOrder?.id, activeOrder?.notes]);
 
   useEffect(() => {
-    if ((orderNoteDraft ?? '').trim() === currentOrderNote) {
-      return
+    if ((orderNoteDraft ?? "").trim() === currentOrderNote) {
+      return;
     }
 
     const timeoutId = setTimeout(() => {
-      void handleSaveOrderNote()
-    }, 450)
+      void handleSaveOrderNote();
+    }, 450);
 
-    return () => clearTimeout(timeoutId)
-  }, [currentOrderNote, handleSaveOrderNote, orderNoteDraft])
+    return () => clearTimeout(timeoutId);
+  }, [currentOrderNote, handleSaveOrderNote, orderNoteDraft]);
 
   // Effect to reset processing state when payment sheet opens
   useEffect(() => {
     if (isPaymentSheetOpen) {
-      setIsProcessing(false)
+      setIsProcessing(false);
     }
-  }, [isPaymentSheetOpen])
+  }, [isPaymentSheetOpen]);
 
   // Lever 2: read-only when the active order belongs to another station.
-  const isReadOnly = useIsActiveOrderReadOnly()
-  const activeOrderForReadOnly = useActiveOrder()
+  const isReadOnly = useIsActiveOrderReadOnly();
+  const activeOrderForReadOnly = useActiveOrder();
   // Wave 2.7: prefer `station_name` (current owner — refreshed by broadcast,
   // hydrate, and the focus-time recheck) over `_sourceStationName` (original
   // creator — never changes after order creation). Fallback chain so the
@@ -492,30 +523,30 @@ const BillSectionContent = ({
   const sourceStationName =
     activeOrderForReadOnly?.station_name ??
     activeOrderForReadOnly?._sourceStationName ??
-    null
-  const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
-  const [isClaimModalOpen, setClaimModalOpen] = useState(false)
-  const [isClaiming, setClaiming] = useState(false)
+    null;
+  const claimActiveOrder = useOrderStore((s) => s.claimActiveOrder);
+  const [isClaimModalOpen, setClaimModalOpen] = useState(false);
+  const [isClaiming, setClaiming] = useState(false);
 
   const handleTakeOver = useCallback(() => {
-    setClaimModalOpen(true)
-  }, [])
+    setClaimModalOpen(true);
+  }, []);
 
   const handleCancelClaim = useCallback(() => {
-    if (isClaiming) return
-    setClaimModalOpen(false)
-  }, [isClaiming])
+    if (isClaiming) return;
+    setClaimModalOpen(false);
+  }, [isClaiming]);
 
   const handleConfirmClaim = useCallback(async () => {
-    if (isClaiming) return
-    setClaiming(true)
+    if (isClaiming) return;
+    setClaiming(true);
     try {
-      await claimActiveOrder()
+      await claimActiveOrder();
     } finally {
-      setClaiming(false)
-      setClaimModalOpen(false)
+      setClaiming(false);
+      setClaimModalOpen(false);
     }
-  }, [claimActiveOrder, isClaiming])
+  }, [claimActiveOrder, isClaiming]);
 
   // Memoize pay button disabled state - prevents clicking when balance due is 0 or no items
   const isPayButtonDisabled = useMemo(
@@ -525,79 +556,79 @@ const BillSectionContent = ({
       displayBalanceDue <= 0 ||
       isProcessing ||
       isReadOnly,
-    [activeOrderId, cart.length, displayBalanceDue, isProcessing, isReadOnly]
-  )
-  const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false)
-  const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false)
-  const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false)
-  const [selectorPartySize, setSelectorPartySize] = useState(1)
+    [activeOrderId, cart.length, displayBalanceDue, isProcessing, isReadOnly],
+  );
+  const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
+  const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false);
+  const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false);
+  const [selectorPartySize, setSelectorPartySize] = useState(1);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
-    null
-  )
+    null,
+  );
   const [pendingFloorPlanId, setPendingFloorPlanId] = useState<string | null>(
-    null
-  )
-  const billSectionRef = useRef<View>(null)
+    null,
+  );
+  const billSectionRef = useRef<View>(null);
   const [tableDrawerAnchor, setTableDrawerAnchor] = useState({
     left: 0,
     top: 0,
-    height: 0
-  })
+    height: 0,
+  });
   // OPTIMIZED: Wrap callbacks with useCallback to prevent recreation on each render
   const handleOpenDiscounts = useCallback(() => {
-    setDiscountOverlayVisible(true)
-  }, [])
+    setDiscountOverlayVisible(true);
+  }, []);
 
   const handleCloseDiscounts = useCallback(() => {
-    setDiscountOverlayVisible(false)
-  }, [])
+    setDiscountOverlayVisible(false);
+  }, []);
 
   const handleOpenMoreOptions = useCallback(() => {
-    moreOptionsSheetRef?.current?.expand()
-  }, [moreOptionsSheetRef])
+    moreOptionsSheetRef?.current?.expand();
+  }, [moreOptionsSheetRef]);
 
   const isMoreButtonDisabled =
-    !activeOrderId || activeOrder?.check_status === 'Closed' || isReadOnly
+    !activeOrderId || activeOrder?.check_status === "Closed" || isReadOnly;
 
   const displayedTable = useMemo(
     () =>
       selectedTable ??
-      tables.find(table => table.id === activeOrderServiceLocation) ??
+      tables.find((table) => table.id === activeOrderServiceLocation) ??
       null,
-    [activeOrderServiceLocation, selectedTable, tables]
-  )
+    [activeOrderServiceLocation, selectedTable, tables],
+  );
 
   const liveTableStatus = useMemo((): string | null => {
-    if (!displayedTable) return null
+    if (!displayedTable) return null;
     return (
       liveSessions[displayedTable.id]?.status ??
       displayedTable.session?.status ??
-      'available'
-    )
-  }, [displayedTable, liveSessions])
+      "available"
+    );
+  }, [displayedTable, liveSessions]);
 
   const handleOpenTableSelector = useCallback(() => {
     setSelectedSectionId(
-      selectedTable?.section_id ?? displayedTable?.section_id ?? null
-    )
+      selectedTable?.section_id ?? displayedTable?.section_id ?? null,
+    );
     setPendingFloorPlanId(
       displayedTable?.floor_plan_id ??
         selectedTable?.floor_plan_id ??
         activeFloorPlanId ??
         floorPlans[0]?.id ??
-        null
-    )
-    setSelectorPartySize(Math.max(1, activeOrder?.guest_count ?? 1))
+        null,
+    );
+    setSelectorPartySize(Math.max(1, activeOrder?.guest_count ?? 1));
 
     if (billSectionRef.current?.measureInWindow) {
       billSectionRef.current.measureInWindow((x, y, width, height) => {
-        setTableDrawerAnchor({ left: x + width, top: y, height })
-        setIsTableSelectorOpen(true)
-      })
-      return
+        setTableDrawerAnchor({ left: x + width, top: y, height });
+        setIsTableSelectorOpen(true);
+      });
+      return;
     }
 
-    setIsTableSelectorOpen(true)
+    setIsTableSelectorOpen(true);
   }, [
     activeFloorPlanId,
     activeOrder?.guest_count,
@@ -605,279 +636,284 @@ const BillSectionContent = ({
     displayedTable?.section_id,
     floorPlans,
     selectedTable?.floor_plan_id,
-    selectedTable?.section_id
-  ])
+    selectedTable?.section_id,
+  ]);
 
   const activeFloorPlan = useMemo(
-    () => floorPlans.find(plan => plan.id === activeFloorPlanId) ?? null,
-    [activeFloorPlanId, floorPlans]
-  )
+    () => floorPlans.find((plan) => plan.id === activeFloorPlanId) ?? null,
+    [activeFloorPlanId, floorPlans],
+  );
 
   const tableOptions = useMemo(
     () =>
       tables
         .filter(
-          table =>
+          (table) =>
             table.is_active !== false &&
             table.is_visible !== false &&
-            (table.category === 'table' || table.category === 'booth')
+            (table.category === "table" || table.category === "booth"),
         )
         .sort((left, right) => left.name.localeCompare(right.name)),
-    [tables]
-  )
+    [tables],
+  );
 
   const floorPlanOptions = useMemo(
     () =>
       [...floorPlans].sort((left, right) =>
-        left.name.localeCompare(right.name)
+        left.name.localeCompare(right.name),
       ),
-    [floorPlans]
-  )
+    [floorPlans],
+  );
 
   const sectionOptions = useMemo(() => {
-    const sectionsById = new Map(sections.map(section => [section.id, section]))
+    const sectionsById = new Map(
+      sections.map((section) => [section.id, section]),
+    );
     const uniqueSectionIds = Array.from(
-      new Set(tableOptions.map(table => table.section_id).filter(Boolean))
-    ) as string[]
+      new Set(tableOptions.map((table) => table.section_id).filter(Boolean)),
+    ) as string[];
 
     return uniqueSectionIds
-      .map(sectionId => {
-        const existingSection = sectionsById.get(sectionId)
+      .map((sectionId) => {
+        const existingSection = sectionsById.get(sectionId);
 
         return (
           existingSection ?? {
             id: sectionId,
-            name: 'Section',
+            name: "Section",
             color: colors.muted,
             assigned_staff_id: null,
             floor_plan_id:
-              tableOptions.find(table => table.section_id === sectionId)
-                ?.floor_plan_id || ''
+              tableOptions.find((table) => table.section_id === sectionId)
+                ?.floor_plan_id || "",
           }
-        )
+        );
       })
-      .sort((left, right) => left.name.localeCompare(right.name))
-  }, [sections, tableOptions])
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [sections, tableOptions]);
 
   const filteredTableOptions = useMemo(() => {
     if (!selectedSectionId) {
-      return tableOptions
+      return tableOptions;
     }
 
-    return tableOptions.filter(table => table.section_id === selectedSectionId)
-  }, [selectedSectionId, tableOptions])
+    return tableOptions.filter(
+      (table) => table.section_id === selectedSectionId,
+    );
+  }, [selectedSectionId, tableOptions]);
 
   const selectedSection = useMemo(
     () =>
-      sectionOptions.find(section => section.id === selectedSectionId) ?? null,
-    [sectionOptions, selectedSectionId]
-  )
+      sectionOptions.find((section) => section.id === selectedSectionId) ??
+      null,
+    [sectionOptions, selectedSectionId],
+  );
 
   const handleOpenFloorPlanSelector = useCallback(() => {
-    void handleOpenTableSelector()
-  }, [handleOpenTableSelector])
+    void handleOpenTableSelector();
+  }, [handleOpenTableSelector]);
 
   const handleOpenSectionSelector = useCallback(() => {
-    void handleOpenTableSelector()
-  }, [handleOpenTableSelector])
+    void handleOpenTableSelector();
+  }, [handleOpenTableSelector]);
 
   const handleSelectFloorPlan = useCallback(
     async (floorPlanId: string) => {
       if (floorPlanId === activeFloorPlanId) {
-        setPendingFloorPlanId(floorPlanId)
-        return
+        setPendingFloorPlanId(floorPlanId);
+        return;
       }
 
-      setPendingFloorPlanId(floorPlanId)
-      setSelectedSectionId(null)
-      await setActiveFloorPlan(floorPlanId)
+      setPendingFloorPlanId(floorPlanId);
+      setSelectedSectionId(null);
+      await setActiveFloorPlan(floorPlanId);
     },
-    [activeFloorPlanId, setActiveFloorPlan]
-  )
+    [activeFloorPlanId, setActiveFloorPlan],
+  );
 
   useEffect(() => {
     if (!selectedSectionId) {
-      return
+      return;
     }
 
     const hasSelectedSection = sectionOptions.some(
-      section => section.id === selectedSectionId
-    )
+      (section) => section.id === selectedSectionId,
+    );
 
     if (!hasSelectedSection) {
-      setSelectedSectionId(null)
+      setSelectedSectionId(null);
     }
-  }, [sectionOptions, selectedSectionId])
+  }, [sectionOptions, selectedSectionId]);
 
   const getTableStatusLabel = useCallback((table: FloorPlanObject) => {
     const liveStatus =
       useTableSessionStore.getState().sessions[table.id]?.status ??
       table.session?.status ??
-      'available'
-    const status = liveStatus
+      "available";
+    const status = liveStatus;
     const labelMap: Record<string, string> = {
-      available: 'Available',
-      reserved: 'Reserved',
-      seating: 'Seating',
-      seated: 'Seated',
-      ordering: 'Ordering',
-      ordered: 'Ordered',
-      served: 'Served',
-      check_presented: 'Check Presented',
-      paying: 'Paying',
-      paid: 'Paid',
-      closing: 'Closing',
-      cleaning: 'Cleaning',
-      blocked: 'Blocked',
-      not_in_service: 'Not in Service'
-    }
+      available: "Available",
+      reserved: "Reserved",
+      seating: "Seating",
+      seated: "Seated",
+      ordering: "Ordering",
+      ordered: "Ordered",
+      served: "Served",
+      check_presented: "Check Presented",
+      paying: "Paying",
+      paid: "Paid",
+      closing: "Closing",
+      cleaning: "Cleaning",
+      blocked: "Blocked",
+      not_in_service: "Not in Service",
+    };
 
-    return labelMap[status] || status
-  }, [])
+    return labelMap[status] || status;
+  }, []);
 
   const isSessionLinkedToOrder = useCallback(
     (session: TableSession | undefined) => {
-      if (!session?.order_id || !activeOrderId) return false
-      if (session.order_id === activeOrderId) return true
+      if (!session?.order_id || !activeOrderId) return false;
+      if (session.order_id === activeOrderId) return true;
       return (
         !!activeOrder?.db_order_id &&
         session.order_id === activeOrder.db_order_id
-      )
+      );
     },
-    [activeOrder?.db_order_id, activeOrderId]
-  )
+    [activeOrder?.db_order_id, activeOrderId],
+  );
 
   const linkedTableId = useMemo(() => {
     if (displayedTable?.id) {
-      return displayedTable.id
+      return displayedTable.id;
     }
 
     const linkedEntry = Object.entries(liveSessions).find(([, session]) =>
-      isSessionLinkedToOrder(session)
-    )
+      isSessionLinkedToOrder(session),
+    );
 
-    return linkedEntry?.[0] ?? activeOrderServiceLocation ?? null
+    return linkedEntry?.[0] ?? activeOrderServiceLocation ?? null;
   }, [
     activeOrderServiceLocation,
     displayedTable?.id,
     isSessionLinkedToOrder,
-    liveSessions
-  ])
+    liveSessions,
+  ]);
 
   const linkedTableSession = useMemo(() => {
-    if (!linkedTableId) return null
-    return liveSessions[linkedTableId] ?? null
-  }, [linkedTableId, liveSessions])
+    if (!linkedTableId) return null;
+    return liveSessions[linkedTableId] ?? null;
+  }, [linkedTableId, liveSessions]);
 
   const ensureDineInOrderTableSession = useCallback(
     async (table: FloorPlanObject): Promise<boolean> => {
-      if (activeOrderType !== 'dine_in' || !activeOrderId) {
-        return true
+      if (activeOrderType !== "dine_in" || !activeOrderId) {
+        return true;
       }
 
-      const sessionStore = useTableSessionStore.getState()
-      const destinationSession = sessionStore.sessions[table.id]
+      const sessionStore = useTableSessionStore.getState();
+      const destinationSession = sessionStore.sessions[table.id];
       const destinationStatus =
-        destinationSession?.status ?? table.session?.status ?? 'available'
+        destinationSession?.status ?? table.session?.status ?? "available";
       const linkedSessionEntries = Object.entries(sessionStore.sessions).filter(
-        ([, session]) => isSessionLinkedToOrder(session)
-      )
+        ([, session]) => isSessionLinkedToOrder(session),
+      );
       const hasLinkedSessionOnDestination = linkedSessionEntries.some(
-        ([tableId]) => tableId === table.id
-      )
+        ([tableId]) => tableId === table.id,
+      );
       const activeLinkedSourceEntries = linkedSessionEntries.filter(
         ([tableId, session]) =>
-          tableId !== table.id && session.status !== 'available'
-      )
+          tableId !== table.id && session.status !== "available",
+      );
 
-      if (destinationStatus !== 'available' && !hasLinkedSessionOnDestination) {
+      if (destinationStatus !== "available" && !hasLinkedSessionOnDestination) {
         show({
-          title: 'Table Unavailable',
+          title: "Table Unavailable",
           message: `${table.name} is currently ${getTableStatusLabel(
-            table
+            table,
           ).toLowerCase()}.`,
-          type: 'error'
-        })
-        return false
+          type: "error",
+        });
+        return false;
       }
 
       if (activeLinkedSourceEntries.length > 1) {
         show({
-          title: 'Multiple Session Conflict',
+          title: "Multiple Session Conflict",
           message:
-            'This order appears on multiple active table sessions. Please clear the extra table sessions before moving this order.',
-          type: 'error'
-        })
-        return false
+            "This order appears on multiple active table sessions. Please clear the extra table sessions before moving this order.",
+          type: "error",
+        });
+        return false;
       }
 
-      const sourceEntry = activeLinkedSourceEntries[0]
-      const sourceSession = sourceEntry?.[1]
-      const shouldTransfer = !!sourceSession
+      const sourceEntry = activeLinkedSourceEntries[0];
+      const sourceSession = sourceEntry?.[1];
+      const shouldTransfer = !!sourceSession;
 
       if (shouldTransfer && sourceSession) {
         if (
-          destinationStatus !== 'available' &&
+          destinationStatus !== "available" &&
           !hasLinkedSessionOnDestination
         ) {
           show({
-            title: 'Table Unavailable',
+            title: "Table Unavailable",
             message: `${table.name} is currently ${getTableStatusLabel(
-              table
+              table,
             ).toLowerCase()}.`,
-            type: 'error'
-          })
-          return false
+            type: "error",
+          });
+          return false;
         }
 
         if (!isOnline) {
           show({
-            title: 'Offline Transfer Blocked',
+            title: "Offline Transfer Blocked",
             message:
-              'You are offline. Reassigning an active dine-in table requires a live connection to transfer the session safely.',
-            type: 'warning'
-          })
-          return false
+              "You are offline. Reassigning an active dine-in table requires a live connection to transfer the session safely.",
+            type: "warning",
+          });
+          return false;
         }
 
         try {
-          await sessionStore.transferSession(sourceSession.id, [table.id])
+          await sessionStore.transferSession(sourceSession.id, [table.id]);
         } catch (error) {
           console.error(
-            '[BillSection] Failed to transfer table session:',
-            error
-          )
+            "[BillSection] Failed to transfer table session:",
+            error,
+          );
           show({
-            title: 'Transfer Failed',
+            title: "Transfer Failed",
             message:
-              'Could not move this order to the selected table. Please try again.',
-            type: 'error'
-          })
-          return false
+              "Could not move this order to the selected table. Please try again.",
+            type: "error",
+          });
+          return false;
         }
       }
 
-      assignOrderToTable(activeOrderId, table.id)
+      assignOrderToTable(activeOrderId, table.id);
 
       const refreshedDestinationSession =
-        useTableSessionStore.getState().sessions[table.id]
+        useTableSessionStore.getState().sessions[table.id];
       const hasActiveDestinationSession =
         !!refreshedDestinationSession &&
-        refreshedDestinationSession.status !== 'available'
+        refreshedDestinationSession.status !== "available";
 
       if (!hasActiveDestinationSession) {
         try {
-          const shouldCreateSessionOrder = !activeOrder?.db_order_id
+          const shouldCreateSessionOrder = !activeOrder?.db_order_id;
           console.log(
-            '[BillSection][TableSelect] Seating table session request',
+            "[BillSection][TableSelect] Seating table session request",
             {
               activeOrderId,
               activeDbOrderId: activeOrder?.db_order_id ?? null,
               selectedTableId: table.id,
               shouldCreateSessionOrder,
-              selectorPartySize
-            }
-          )
+              selectorPartySize,
+            },
+          );
 
           const seatingResult = await useTableSessionStore
             .getState()
@@ -887,16 +923,16 @@ const BillSectionContent = ({
               createOrder: shouldCreateSessionOrder,
               localOrderId: activeOrderId,
               selected_station: selectedStation?.id,
-              device_id: deviceId
-            })
+              device_id: deviceId,
+            });
 
-          console.log('[BillSection][TableSelect] seatGuests result', {
+          console.log("[BillSection][TableSelect] seatGuests result", {
             activeOrderId,
             activeDbOrderId: activeOrder?.db_order_id ?? null,
             sessionId: seatingResult?.sessionId,
             returnedOrderId: seatingResult?.orderId,
-            shouldCreateSessionOrder
-          })
+            shouldCreateSessionOrder,
+          });
 
           // If this order already exists in backend, seat the table session without
           // creating a second backend order, then explicitly link the existing order.
@@ -906,36 +942,36 @@ const BillSectionContent = ({
             seatingResult?.sessionId
           ) {
             console.log(
-              '[BillSection][TableSelect] Linking existing order to new session',
+              "[BillSection][TableSelect] Linking existing order to new session",
               {
                 sessionId: seatingResult.sessionId,
                 dbOrderId: activeOrder.db_order_id,
-                localOrderId: activeOrderId
-              }
-            )
+                localOrderId: activeOrderId,
+              },
+            );
             await useTableSessionStore
               .getState()
               .linkOrderToSession(
                 seatingResult.sessionId,
-                activeOrder.db_order_id
-              )
+                activeOrder.db_order_id,
+              );
           }
         } catch (error) {
           console.error(
-            '[BillSection] Failed to start table session for dine-in order:',
-            error
-          )
+            "[BillSection] Failed to start table session for dine-in order:",
+            error,
+          );
           show({
-            title: 'Session Start Failed',
+            title: "Session Start Failed",
             message:
-              'Table was selected, but we could not start the table session. Please try again.',
-            type: 'error'
-          })
-          return false
+              "Table was selected, but we could not start the table session. Please try again.",
+            type: "error",
+          });
+          return false;
         }
       }
 
-      return true
+      return true;
     },
     [
       activeOrder?.db_order_id,
@@ -949,166 +985,166 @@ const BillSectionContent = ({
       isSessionLinkedToOrder,
       selectedStation?.id,
       selectorPartySize,
-      show
-    ]
-  )
+      show,
+    ],
+  );
 
   const handleSelectTable = useCallback(
     async (table: FloorPlanObject) => {
       if (!(await ensureDineInOrderTableSession(table))) {
-        return
+        return;
       }
 
-      setSelectedTable(table)
-      setIsTableSelectorOpen(false)
+      setSelectedTable(table);
+      setIsTableSelectorOpen(false);
     },
-    [ensureDineInOrderTableSession, setSelectedTable, show]
-  )
+    [ensureDineInOrderTableSession, setSelectedTable, show],
+  );
 
   useEffect(() => {
     if (
-      activeOrderType !== 'dine_in' ||
-      activeOrderPaidStatus !== 'Paid' ||
+      activeOrderType !== "dine_in" ||
+      activeOrderPaidStatus !== "Paid" ||
       !linkedTableId ||
       !linkedTableSession ||
-      linkedTableSession.status === 'paid' ||
-      linkedTableSession.status === 'cleaning'
+      linkedTableSession.status === "paid" ||
+      linkedTableSession.status === "cleaning"
     ) {
-      return
+      return;
     }
 
     void useTableSessionStore
       .getState()
-      .dispatchAction({ type: 'FULL_PAYMENT', tableId: linkedTableId })
+      .dispatchAction({ type: "FULL_PAYMENT", tableId: linkedTableId });
   }, [
     activeOrderPaidStatus,
     activeOrderType,
     linkedTableId,
-    linkedTableSession
-  ])
+    linkedTableSession,
+  ]);
 
   const handleCloseSession = useCallback(async () => {
-    if (!activeOrderId || !activeOrder) return
+    if (!activeOrderId || !activeOrder) return;
 
     const isDineInOrder =
-      activeOrder.order_type === 'dine_in' ||
-      activeOrder.order_type === 'Dine In'
+      activeOrder.order_type === "dine_in" ||
+      activeOrder.order_type === "Dine In";
 
     if (!isDineInOrder) {
       show({
-        title: 'Session Not Available',
-        message: 'Only dine-in orders have table sessions.',
-        type: 'warning'
-      })
-      return
+        title: "Session Not Available",
+        message: "Only dine-in orders have table sessions.",
+        type: "warning",
+      });
+      return;
     }
 
-    if (activeOrder.paid_status !== 'Paid') {
+    if (activeOrder.paid_status !== "Paid") {
       show({
-        title: 'Cannot Close Session',
-        message: 'Order must be fully paid before closing the table session.',
-        type: 'error'
-      })
-      return
+        title: "Cannot Close Session",
+        message: "Order must be fully paid before closing the table session.",
+        type: "error",
+      });
+      return;
     }
 
     if (!linkedTableId) {
       show({
-        title: 'No Table Linked',
-        message: 'This order is not linked to an active table session.',
-        type: 'warning'
-      })
-      return
+        title: "No Table Linked",
+        message: "This order is not linked to an active table session.",
+        type: "warning",
+      });
+      return;
     }
 
-    showLoading('Closing session...')
+    showLoading("Closing session...");
 
     try {
-      const sessionStore = useTableSessionStore.getState()
+      const sessionStore = useTableSessionStore.getState();
 
-      if (activeOrder.check_status !== 'Closed') {
+      if (activeOrder.check_status !== "Closed") {
         if (!activeOrder.db_order_id) {
           throw new Error(
-            'Order must be synced to close check before closing session'
-          )
+            "Order must be synced to close check before closing session",
+          );
         }
 
         if (
           linkedTableSession &&
-          !['check_presented', 'paying', 'paid', 'cleaning'].includes(
-            linkedTableSession.status
+          !["check_presented", "paying", "paid", "cleaning"].includes(
+            linkedTableSession.status,
           )
         ) {
           const presentCheckResult = await sessionStore.dispatchAction({
-            type: 'PRESENT_CHECK',
-            tableId: linkedTableId
-          })
+            type: "PRESENT_CHECK",
+            tableId: linkedTableId,
+          });
 
           if (!presentCheckResult.success) {
             throw new Error(
-              presentCheckResult.error || 'Failed to present check'
-            )
+              presentCheckResult.error || "Failed to present check",
+            );
           }
         }
 
         const closeCheckResult = await sessionStore.dispatchAction({
-          type: 'CLOSE_CHECK',
+          type: "CLOSE_CHECK",
           tableId: linkedTableId,
           orderId: activeOrder.id,
-          dbOrderId: activeOrder.db_order_id
-        })
+          dbOrderId: activeOrder.db_order_id,
+        });
 
         if (!closeCheckResult.success) {
-          throw new Error(closeCheckResult.error || 'Failed to close check')
+          throw new Error(closeCheckResult.error || "Failed to close check");
         }
 
         useOrderStore
           .getState()
-          .updateActiveOrderDetails({ check_status: 'Closed' })
+          .updateActiveOrderDetails({ check_status: "Closed" });
       }
 
-      const currentSession = sessionStore.getSession(linkedTableId)
+      const currentSession = sessionStore.getSession(linkedTableId);
       if (
         currentSession &&
-        currentSession.status !== 'paid' &&
-        currentSession.status !== 'cleaning'
+        currentSession.status !== "paid" &&
+        currentSession.status !== "cleaning"
       ) {
         const paymentTransition = await sessionStore.dispatchAction({
-          type: 'FULL_PAYMENT',
-          tableId: linkedTableId
-        })
+          type: "FULL_PAYMENT",
+          tableId: linkedTableId,
+        });
 
         if (!paymentTransition.success) {
           throw new Error(
             paymentTransition.error ||
-              'Failed to finalize table session before closing'
-          )
+              "Failed to finalize table session before closing",
+          );
         }
       }
 
       const clearResult = await sessionStore.dispatchAction({
-        type: 'CLEAR_TABLE',
+        type: "CLEAR_TABLE",
         tableId: linkedTableId,
-        orderId: activeOrderId
-      })
+        orderId: activeOrderId,
+      });
 
       if (!clearResult.success) {
-        throw new Error(clearResult.error || 'Failed to close session')
+        throw new Error(clearResult.error || "Failed to close session");
       }
 
       show({
-        title: 'Session Closed',
-        message: 'Table marked for cleaning.',
-        type: 'success'
-      })
+        title: "Session Closed",
+        message: "Table marked for cleaning.",
+        type: "success",
+      });
     } catch (error: any) {
       show({
-        title: 'Failed to Close Session',
-        message: error.message || 'An unexpected error occurred.',
-        type: 'error'
-      })
+        title: "Failed to Close Session",
+        message: error.message || "An unexpected error occurred.",
+        type: "error",
+      });
     } finally {
-      hideLoading()
+      hideLoading();
     }
   }, [
     activeOrder,
@@ -1117,212 +1153,220 @@ const BillSectionContent = ({
     linkedTableId,
     linkedTableSession,
     show,
-    showLoading
-  ])
+    showLoading,
+  ]);
 
   const handleClearCart = useCallback(() => {
-    if (!activeOrderId || !activeOrder) return
-    setIsVoidConfirmOpen(true)
-  }, [activeOrder, activeOrderId])
+    if (!activeOrderId || !activeOrder) return;
+    setIsVoidConfirmOpen(true);
+  }, [activeOrder, activeOrderId]);
 
   const handleConfirmClearCart = useCallback(async () => {
-    if (!activeOrderId || !activeOrder) return
+    if (!activeOrderId || !activeOrder) return;
 
-    clearCart()
+    clearCart();
 
-    setIsVoidConfirmOpen(false)
+    setIsVoidConfirmOpen(false);
     show({
-      title: 'Cart Cleared',
-      message: 'All items have been removed from the cart.',
-      type: 'success'
-    })
-  }, [activeOrder, activeOrderId, clearCart, show])
+      title: "Cart Cleared",
+      message: "All items have been removed from the cart.",
+      type: "success",
+    });
+  }, [activeOrder, activeOrderId, clearCart, show]);
 
   const handlePayClick = () => {
     // Safety guard: Prevent payment if button should be disabled
     if (isPayButtonDisabled || isProcessing) {
-      return
+      return;
     }
 
     // Set processing state immediately to prevent double taps
-    setIsProcessing(true)
+    setIsProcessing(true);
 
     // Failsafe: Reset processing state after 2 seconds if sheet fails to open
     setTimeout(() => {
-      setIsProcessing(false)
-    }, 2000)
+      setIsProcessing(false);
+    }, 2000);
 
     if (!checkEmployeeInShift(activeEmployeeId!)) {
-      showClockInWall()
-      setIsProcessing(false)
-      return
+      showClockInWall();
+      setIsProcessing(false);
+      return;
     }
     if (hasDraftItems) {
       show({
-        title: 'Unconfirmed Items',
+        title: "Unconfirmed Items",
         message:
-          'Please confirm or remove any customized items before proceeding to payment.',
-        type: 'error'
-      })
-      setIsProcessing(false)
-      return
+          "Please confirm or remove any customized items before proceeding to payment.",
+        type: "error",
+      });
+      setIsProcessing(false);
+      return;
     }
     // Additional safety check for zero balance due
     if (displayBalanceDue <= 0) {
       show({
-        title: 'Invalid Amount',
+        title: "Invalid Amount",
         message:
-          activeOrderPaidStatus === 'Paid'
-            ? 'This order is already fully paid.'
-            : 'Cannot process payment for $0.00. Please add items to the order.',
-        type: 'error'
-      })
-      setIsProcessing(false)
-      return
+          activeOrderPaidStatus === "Paid"
+            ? "This order is already fully paid."
+            : "Cannot process payment for $0.00. Please add items to the order.",
+        type: "error",
+      });
+      setIsProcessing(false);
+      return;
     }
 
     if (
-      activeOrderType === 'dine_in' &&
+      activeOrderType === "dine_in" &&
       linkedTableId &&
       linkedTableSession &&
-      !['check_presented', 'paying', 'paid', 'cleaning'].includes(
-        linkedTableSession.status
+      !["check_presented", "paying", "paid", "cleaning"].includes(
+        linkedTableSession.status,
       )
     ) {
       void useTableSessionStore
         .getState()
-        .dispatchAction({ type: 'PRESENT_CHECK', tableId: linkedTableId })
+        .dispatchAction({ type: "PRESENT_CHECK", tableId: linkedTableId });
     }
 
     // Directly open the payment bottom sheet to the method selection
     usePaymentStore
       .getState()
       .open(
-        'Card',
+        "Card",
         linkedTableId || activeOrderServiceLocation || null,
-        'payment-method-selection'
-      )
-  }
+        "payment-method-selection",
+      );
+  };
 
   const handleSendToKitchen = async () => {
     if (!checkEmployeeInShift(activeEmployeeId!)) {
-      showClockInWall()
-      return
+      showClockInWall();
+      return;
     }
     if (hasDraftItems) {
       show({
-        title: 'Unconfirmed Items',
+        title: "Unconfirmed Items",
         message:
-          'Please confirm or remove any customized items before sending the order to the kitchen.',
-        type: 'error'
-      })
-      return
+          "Please confirm or remove any customized items before sending the order to the kitchen.",
+        type: "error",
+      });
+      return;
     }
 
-    const dineInTargetTable = selectedTable ?? displayedTable
+    const dineInTargetTable = selectedTable ?? displayedTable;
     const pendingKitchenItems = cart.filter(
-      item => !item.kitchen_status || item.kitchen_status === 'new'
-    )
+      (item) => !item.kitchen_status || item.kitchen_status === "new",
+    );
 
-    if (activeOrderType === 'dine_in' && dineInTargetTable) {
-      const sessionReady = await ensureDineInOrderTableSession(
-        dineInTargetTable
-      )
+    if (activeOrderType === "dine_in" && dineInTargetTable) {
+      const sessionReady =
+        await ensureDineInOrderTableSession(dineInTargetTable);
       if (!sessionReady) {
         show({
-          title: 'Session Required',
+          title: "Session Required",
           message:
-            'Could not confirm a valid table session for this order. Please reselect the table and try again.',
-          type: 'error'
-        })
-        return
+            "Could not confirm a valid table session for this order. Please reselect the table and try again.",
+          type: "error",
+        });
+        return;
       }
 
       if (pendingKitchenItems.length > 0) {
         useTableSessionStore.getState().dispatch(dineInTargetTable.id, {
-          type: 'PATCH',
+          type: "PATCH",
           updates: {
-            status: 'ordered',
-            order_id: activeOrder?.db_order_id ?? activeOrderId
-          }
-        })
+            status: "ordered",
+            order_id: activeOrder?.db_order_id ?? activeOrderId,
+          },
+        });
       }
 
-      clearSelectedTable()
+      clearSelectedTable();
     }
     // Auto-print is now handled centrally inside sendNewItemsToKitchen
-    await sendNewItemsToKitchen()
-  }
+    await sendNewItemsToKitchen();
+  };
 
   // OPTIMIZED: Wrap callback with useCallback
   // Explicit New Order action should always create a fresh order number.
   const handleStartNewOrder = useCallback(() => {
-    const newOrder = startNewOrder()
-    setActiveOrder(newOrder.id)
-  }, [startNewOrder, setActiveOrder])
+    if (isCurrentOrderEmptyDraft && activeOrder?.id) {
+      setActiveOrder(activeOrder.id);
+      return;
+    }
+    const newOrder = startNewOrder();
+    setActiveOrder(newOrder.id);
+  }, [
+    activeOrder?.id,
+    isCurrentOrderEmptyDraft,
+    startNewOrder,
+    setActiveOrder,
+  ]);
 
   if (!activeOrderId)
     return (
       <View
-        className='w-[38%] items-center justify-center p-6'
+        className="w-[38%] items-center justify-center p-6"
         style={{ backgroundColor: colors.screen }}
       >
         <Text
-          className='text-sm font-semibold mb-3'
+          className="text-sm font-semibold mb-3"
           style={{ color: colors.heading }}
         >
           No Active Order
         </Text>
         <TouchableOpacity
-          className='px-4 py-2 bg-teal-600 rounded-lg active:opacity-80'
+          className="px-4 py-2 bg-teal-600 rounded-lg active:opacity-80"
           onPress={() => {
-            const newOrder = startNewOrder()
-            setActiveOrder(newOrder.id)
+            const newOrder = startNewOrder();
+            setActiveOrder(newOrder.id);
           }}
         >
           <Text
-            style={{ color: colors.onSolid, fontSize: 14, fontWeight: '600' }}
+            style={{ color: colors.onSolid, fontSize: 14, fontWeight: "600" }}
           >
             Start New Order
           </Text>
         </TouchableOpacity>
       </View>
-    )
+    );
   // Handle retry failed syncs
   const handleRetryFailedSyncs = async () => {
     if (activeOrderId) {
-      await retryFailedSyncs(activeOrderId)
+      await retryFailedSyncs(activeOrderId);
     }
-  }
+  };
 
   return (
     <View
       ref={billSectionRef}
-      className='w-[38%] relative'
+      className="w-[38%] relative"
       style={{
         backgroundColor: colors.screen,
         borderRightWidth: 2,
-        borderColor: colors.border
+        borderColor: colors.border,
       }}
     >
       <View
-        className='px-3 pt-2 pb-1'
+        className="px-3 pt-2 pb-1"
         style={{ backgroundColor: colors.screen }}
       >
-        <View className='flex-row items-center justify-between mb-2'>
-          <View className='flex-row items-center gap-2'>
+        <View className="flex-row items-center justify-between mb-2">
+          <View className="flex-row items-center gap-2">
             <Text
-              style={{ color: colors.heading, fontWeight: '700', fontSize: 18 }}
+              style={{ color: colors.heading, fontWeight: "700", fontSize: 18 }}
             >
               {activeOrderDisplayNumber
                 ? `Order ${activeOrderDisplayNumber}`
-                : 'New Order'}
+                : "New Order"}
             </Text>
             <TouchableOpacity
               className={`h-8 px-3 rounded-lg flex-row items-center justify-center gap-1 ${
                 newItemsCount === 0 || hasDraftItems || isReadOnly
-                  ? 'opacity-50'
-                  : ''
+                  ? "opacity-50"
+                  : ""
               }`}
               style={{ backgroundColor: colors.teal }}
               disabled={newItemsCount === 0 || hasDraftItems || isReadOnly}
@@ -1333,35 +1377,35 @@ const BillSectionContent = ({
                 style={{
                   color: colors.onSolid,
                   fontSize: 12,
-                  fontWeight: '500'
+                  fontWeight: "500",
                 }}
               >
                 Send
               </Text>
             </TouchableOpacity>
-            {activeOrderType === 'dine_in' && linkedTableId ? (
+            {activeOrderType === "dine_in" && linkedTableId ? (
               <TouchableOpacity
                 onPress={handleCloseSession}
-                disabled={activeOrderPaidStatus !== 'Paid'}
-                className='h-8 px-3 rounded-lg flex-row items-center justify-center'
+                disabled={activeOrderPaidStatus !== "Paid"}
+                className="h-8 px-3 rounded-lg flex-row items-center justify-center"
                 style={{
                   backgroundColor:
-                    activeOrderPaidStatus === 'Paid'
+                    activeOrderPaidStatus === "Paid"
                       ? colors.warning
                       : colors.card,
-                  borderWidth: activeOrderPaidStatus === 'Paid' ? 0 : 1,
+                  borderWidth: activeOrderPaidStatus === "Paid" ? 0 : 1,
                   borderColor: colors.border,
-                  opacity: activeOrderPaidStatus === 'Paid' ? 1 : 0.5
+                  opacity: activeOrderPaidStatus === "Paid" ? 1 : 0.5,
                 }}
               >
                 <Text
                   style={{
                     color:
-                      activeOrderPaidStatus === 'Paid'
+                      activeOrderPaidStatus === "Paid"
                         ? colors.onSolid
                         : colors.label,
                     fontSize: 12,
-                    fontWeight: '500'
+                    fontWeight: "500",
                   }}
                 >
                   Close Session
@@ -1370,10 +1414,10 @@ const BillSectionContent = ({
             ) : null}
           </View>
 
-          <View className='flex-row items-center gap-1.5'>
+          <View className="flex-row items-center gap-1.5">
             <TouchableOpacity
               onPress={handleStartNewOrder}
-              className='h-8 px-3 rounded-lg flex-row items-center justify-center gap-1'
+              className="h-8 px-3 rounded-lg flex-row items-center justify-center gap-1"
               style={{ backgroundColor: colors.teal }}
             >
               <Plus color={colors.onSolid} size={12} />
@@ -1381,7 +1425,7 @@ const BillSectionContent = ({
                 style={{
                   color: colors.onSolid,
                   fontSize: 12,
-                  fontWeight: '500'
+                  fontWeight: "500",
                 }}
               >
                 New Order
@@ -1390,8 +1434,8 @@ const BillSectionContent = ({
 
             <TouchableOpacity
               onPress={handleClearCart}
-              className='h-8 w-8 rounded-lg items-center justify-center'
-              style={{ backgroundColor: '#F87171' }}
+              className="h-8 w-8 rounded-lg items-center justify-center"
+              style={{ backgroundColor: "#F87171" }}
             >
               <Trash2 color={colors.screen} size={13} />
             </TouchableOpacity>
@@ -1404,7 +1448,7 @@ const BillSectionContent = ({
           tableLabel={
             displayedTable?.name
               ? `Table ${displayedTable.name}`
-              : 'Select Table'
+              : "Select Table"
           }
           tableStatus={liveTableStatus}
           onOpenTableSelector={handleOpenTableSelector}
@@ -1426,8 +1470,8 @@ const BillSectionContent = ({
 
       <Modal
         transparent
-        visible={isTableSelectorOpen && activeOrderType === 'dine_in'}
-        animationType='fade'
+        visible={isTableSelectorOpen && activeOrderType === "dine_in"}
+        animationType="fade"
         onRequestClose={() => setIsTableSelectorOpen(false)}
       >
         <View style={{ flex: 1 }}>
@@ -1437,9 +1481,9 @@ const BillSectionContent = ({
             onPress={() => setIsTableSelectorOpen(false)}
             style={
               {
-                position: 'absolute',
+                position: "absolute",
                 inset: 0,
-                backgroundColor: 'rgba(0,0,0,0.55)'
+                backgroundColor: "rgba(0,0,0,0.55)",
               } as any
             }
           />
@@ -1447,13 +1491,13 @@ const BillSectionContent = ({
           {/* Panel */}
           <View
             style={{
-              position: 'absolute',
+              position: "absolute",
               top: tableDrawerAnchor.top > 0 ? tableDrawerAnchor.top : 0,
-              left: tableDrawerAnchor.left > 0 ? tableDrawerAnchor.left : '38%',
+              left: tableDrawerAnchor.left > 0 ? tableDrawerAnchor.left : "38%",
               height:
                 tableDrawerAnchor.height > 0
                   ? tableDrawerAnchor.height
-                  : '100%',
+                  : "100%",
               width: 380,
               backgroundColor: colors.screen,
               borderLeftWidth: 0,
@@ -1463,8 +1507,8 @@ const BillSectionContent = ({
               borderColor: colors.border,
               borderTopRightRadius: 16,
               borderBottomRightRadius: 16,
-              overflow: 'hidden',
-              flexDirection: 'column'
+              overflow: "hidden",
+              flexDirection: "column",
             }}
           >
             {/* ── Top header ── */}
@@ -1472,14 +1516,14 @@ const BillSectionContent = ({
               style={{
                 paddingHorizontal: 18,
                 paddingTop: 16,
-                paddingBottom: 12
+                paddingBottom: 12,
               }}
             >
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
                 <View style={{ flex: 1 }}>
@@ -1487,8 +1531,8 @@ const BillSectionContent = ({
                     style={{
                       color: colors.heading,
                       fontSize: 16,
-                      fontWeight: '700',
-                      letterSpacing: -0.2
+                      fontWeight: "700",
+                      letterSpacing: -0.2,
                     }}
                   >
                     Select Table
@@ -1498,12 +1542,12 @@ const BillSectionContent = ({
                   >
                     {
                       filteredTableOptions.filter(
-                        t =>
+                        (t) =>
                           (liveSessions[t.id]?.status ??
                             t.session?.status ??
-                            'available') === 'available'
+                            "available") === "available",
                       ).length
-                    }{' '}
+                    }{" "}
                     of {filteredTableOptions.length} available
                   </Text>
                 </View>
@@ -1515,8 +1559,8 @@ const BillSectionContent = ({
                     height: 28,
                     borderRadius: 14,
                     backgroundColor: colors.inset,
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
                   <X size={13} color={colors.muted} />
@@ -1527,48 +1571,48 @@ const BillSectionContent = ({
               {floorPlanOptions.length > 1 && (
                 <View
                   style={{
-                    flexDirection: 'row',
+                    flexDirection: "row",
                     backgroundColor: colors.inset,
                     borderRadius: 10,
                     padding: 3,
-                    marginTop: 12
+                    marginTop: 12,
                   }}
                 >
-                  {floorPlanOptions.map(plan => {
+                  {floorPlanOptions.map((plan) => {
                     const isActive =
-                      (pendingFloorPlanId ?? activeFloorPlanId) === plan.id
+                      (pendingFloorPlanId ?? activeFloorPlanId) === plan.id;
                     return (
                       <TouchableOpacity
                         key={plan.id}
                         onPress={() => {
-                          void handleSelectFloorPlan(plan.id)
+                          void handleSelectFloorPlan(plan.id);
                         }}
                         style={{
                           flex: 1,
                           paddingVertical: 6,
                           borderRadius: 8,
-                          alignItems: 'center',
+                          alignItems: "center",
                           backgroundColor: isActive
                             ? colors.teal
-                            : 'transparent',
-                          shadowColor: isActive ? colors.teal : 'transparent',
+                            : "transparent",
+                          shadowColor: isActive ? colors.teal : "transparent",
                           shadowOffset: { width: 0, height: 1 },
                           shadowOpacity: isActive ? 0.3 : 0,
                           shadowRadius: 3,
-                          elevation: isActive ? 2 : 0
+                          elevation: isActive ? 2 : 0,
                         }}
                       >
                         <Text
                           style={{
                             color: isActive ? colors.onSolid : colors.muted,
                             fontSize: 12,
-                            fontWeight: isActive ? '600' : '500'
+                            fontWeight: isActive ? "600" : "500",
                           }}
                         >
                           {plan.name}
                         </Text>
                       </TouchableOpacity>
-                    )
+                    );
                   })}
                 </View>
               )}
@@ -1582,20 +1626,20 @@ const BillSectionContent = ({
                   contentContainerStyle={{
                     paddingHorizontal: 18,
                     gap: 6,
-                    flexDirection: 'row'
+                    flexDirection: "row",
                   }}
                 >
                   {[
-                    { id: null, name: 'All' },
+                    { id: null, name: "All" },
                     ...sectionOptions.map((s: ServerSection) => ({
                       id: s.id,
-                      name: s.name
-                    }))
-                  ].map(item => {
-                    const isActive = selectedSectionId === item.id
+                      name: s.name,
+                    })),
+                  ].map((item) => {
+                    const isActive = selectedSectionId === item.id;
                     return (
                       <TouchableOpacity
-                        key={item.id ?? '__all__'}
+                        key={item.id ?? "__all__"}
                         onPress={() => setSelectedSectionId(item.id)}
                         style={{
                           paddingHorizontal: 12,
@@ -1603,20 +1647,20 @@ const BillSectionContent = ({
                           borderRadius: 8,
                           backgroundColor: isActive ? colors.teal : colors.card,
                           borderWidth: 1,
-                          borderColor: isActive ? colors.teal : colors.border
+                          borderColor: isActive ? colors.teal : colors.border,
                         }}
                       >
                         <Text
                           style={{
                             color: isActive ? colors.onSolid : colors.label,
                             fontSize: 11,
-                            fontWeight: '600'
+                            fontWeight: "600",
                           }}
                         >
                           {item.name}
                         </Text>
                       </TouchableOpacity>
-                    )
+                    );
                   })}
                 </ScrollView>
               )}
@@ -1624,47 +1668,47 @@ const BillSectionContent = ({
               {/* Party size stepper */}
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   marginTop: 10,
-                  paddingHorizontal: 2
+                  paddingHorizontal: 2,
                 }}
               >
                 <Text
                   style={{
                     color: colors.label,
                     fontSize: 12,
-                    fontWeight: '600'
+                    fontWeight: "600",
                   }}
                 >
                   Guests
                 </Text>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     gap: 10,
                     backgroundColor: colors.inset,
                     borderRadius: 8,
                     paddingHorizontal: 4,
-                    paddingVertical: 2
+                    paddingVertical: 2,
                   }}
                 >
                   <TouchableOpacity
                     onPress={() =>
-                      setSelectorPartySize(p => Math.max(1, p - 1))
+                      setSelectorPartySize((p) => Math.max(1, p - 1))
                     }
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{
                       width: 26,
                       height: 26,
                       borderRadius: 6,
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      alignItems: "center",
+                      justifyContent: "center",
                       backgroundColor:
-                        selectorPartySize <= 1 ? 'transparent' : colors.card,
-                      opacity: selectorPartySize <= 1 ? 0.4 : 1
+                        selectorPartySize <= 1 ? "transparent" : colors.card,
+                      opacity: selectorPartySize <= 1 ? 0.4 : 1,
                     }}
                     disabled={selectorPartySize <= 1}
                   >
@@ -1672,8 +1716,8 @@ const BillSectionContent = ({
                       style={{
                         color: colors.heading,
                         fontSize: 16,
-                        fontWeight: '600',
-                        lineHeight: 20
+                        fontWeight: "600",
+                        lineHeight: 20,
                       }}
                     >
                       −
@@ -1683,33 +1727,33 @@ const BillSectionContent = ({
                     style={{
                       color: colors.heading,
                       fontSize: 14,
-                      fontWeight: '700',
+                      fontWeight: "700",
                       minWidth: 20,
-                      textAlign: 'center'
+                      textAlign: "center",
                     }}
                   >
                     {selectorPartySize}
                   </Text>
                   <TouchableOpacity
                     onPress={() =>
-                      setSelectorPartySize(p => Math.min(99, p + 1))
+                      setSelectorPartySize((p) => Math.min(99, p + 1))
                     }
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{
                       width: 26,
                       height: 26,
                       borderRadius: 6,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: colors.card
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.card,
                     }}
                   >
                     <Text
                       style={{
                         color: colors.heading,
                         fontSize: 16,
-                        fontWeight: '600',
-                        lineHeight: 20
+                        fontWeight: "600",
+                        lineHeight: 20,
                       }}
                     >
                       +
@@ -1729,12 +1773,12 @@ const BillSectionContent = ({
               showsVerticalScrollIndicator={false}
             >
               {filteredTableOptions.length === 0 ? (
-                <View style={{ alignItems: 'center', paddingTop: 56 }}>
+                <View style={{ alignItems: "center", paddingTop: 56 }}>
                   <Text
                     style={{
                       color: colors.heading,
                       fontSize: 14,
-                      fontWeight: '600'
+                      fontWeight: "600",
                     }}
                   >
                     No tables found
@@ -1748,38 +1792,38 @@ const BillSectionContent = ({
               ) : (
                 <View
                   style={{
-                    flexDirection: 'row',
-                    flexWrap: 'wrap',
+                    flexDirection: "row",
+                    flexWrap: "wrap",
                     gap: 8,
-                    justifyContent: 'center'
+                    justifyContent: "center",
                   }}
                 >
-                  {filteredTableOptions.map(table => {
+                  {filteredTableOptions.map((table) => {
                     const liveStatusKey =
                       liveSessions[table.id]?.status ??
                       table.session?.status ??
-                      'available'
-                    const statusLabel = getTableStatusLabel(table)
+                      "available";
+                    const statusLabel = getTableStatusLabel(table);
                     const statusColor =
-                      TABLE_STATUS_COLORS[liveStatusKey] || colors.muted
+                      TABLE_STATUS_COLORS[liveStatusKey] || colors.muted;
                     const isCurrentlyAssigned =
-                      table.id === activeOrderServiceLocation
-                    const tableSession = liveSessions[table.id]
+                      table.id === activeOrderServiceLocation;
+                    const tableSession = liveSessions[table.id];
                     const isLinkedToThisOrder =
-                      isSessionLinkedToOrder(tableSession)
+                      isSessionLinkedToOrder(tableSession);
                     const isSelected =
                       selectedTable?.id === table.id ||
-                      (!selectedTable && isCurrentlyAssigned)
-                    const isAvailable = liveStatusKey === 'available'
+                      (!selectedTable && isCurrentlyAssigned);
+                    const isAvailable = liveStatusKey === "available";
                     const isSelectable =
-                      isAvailable || isCurrentlyAssigned || isLinkedToThisOrder
+                      isAvailable || isCurrentlyAssigned || isLinkedToThisOrder;
                     return (
                       <TouchableOpacity
                         key={table.id}
                         onPress={() => handleSelectTable(table)}
                         activeOpacity={isSelectable ? 0.7 : 1}
                         style={{
-                          width: '45%',
+                          width: "45%",
                           borderRadius: 12,
                           borderWidth: 1,
                           borderColor: isSelected ? colors.teal : colors.border,
@@ -1788,24 +1832,24 @@ const BillSectionContent = ({
                             : colors.card,
                           opacity: isSelectable ? 1 : 0.4,
                           paddingHorizontal: 12,
-                          paddingVertical: 12
+                          paddingVertical: 12,
                         }}
                       >
                         {/* Name + check */}
                         <View
                           style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
                           }}
                         >
                           <Text
                             style={{
                               color: colors.heading,
                               fontSize: 17,
-                              fontWeight: '700',
+                              fontWeight: "700",
                               letterSpacing: -0.3,
-                              flexShrink: 1
+                              flexShrink: 1,
                             }}
                             numberOfLines={1}
                           >
@@ -1818,9 +1862,9 @@ const BillSectionContent = ({
                                 height: 20,
                                 borderRadius: 10,
                                 backgroundColor: colors.teal,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginLeft: 6
+                                alignItems: "center",
+                                justifyContent: "center",
+                                marginLeft: 6,
                               }}
                             >
                               <Check
@@ -1837,7 +1881,7 @@ const BillSectionContent = ({
                                 borderRadius: 5,
                                 backgroundColor: statusColor,
                                 marginLeft: 6,
-                                opacity: 0.85
+                                opacity: 0.85,
                               }}
                             />
                           )}
@@ -1848,18 +1892,18 @@ const BillSectionContent = ({
                           style={{
                             color: isSelected ? colors.teal : statusColor,
                             fontSize: 10,
-                            fontWeight: '600',
+                            fontWeight: "600",
                             marginTop: 5,
-                            textTransform: 'uppercase',
-                            letterSpacing: 0.3
+                            textTransform: "uppercase",
+                            letterSpacing: 0.3,
                           }}
                         >
                           {isCurrentlyAssigned && !isSelected
-                            ? 'Current'
+                            ? "Current"
                             : statusLabel}
                         </Text>
                       </TouchableOpacity>
-                    )
+                    );
                   })}
                 </View>
               )}
@@ -1871,22 +1915,20 @@ const BillSectionContent = ({
       {/* Offline / Sync Status Banner — only for errors or issues, not routine sync.
           Uses rawIsOnline (NetInfo) so connection-quality slow-mode silently queues
           in the background instead of surfacing scary "Offline Mode" UX. */}
-      {(!rawIsOnline ||
-        hasFailedSyncs ||
-        activeOrderHasPendingPaymentSync) && (
+      {(!rawIsOnline || hasFailedSyncs || activeOrderHasPendingPaymentSync) && (
         <View
-          className='px-3 py-1.5 gap-y-1'
+          className="px-3 py-1.5 gap-y-1"
           style={{ backgroundColor: colors.background }}
         >
           {!rawIsOnline && (
-            <View className='flex-row items-center justify-center bg-amber-600 px-2.5 py-1.5 rounded-md'>
-              <WifiOff size={12} color='#FFFFFF' />
+            <View className="flex-row items-center justify-center bg-amber-600 px-2.5 py-1.5 rounded-md">
+              <WifiOff size={12} color="#FFFFFF" />
               <Text
-                className='text-white font-medium ml-1.5'
+                className="text-white font-medium ml-1.5"
                 style={{ fontSize: 11 }}
               >
                 Offline Mode
-                {pendingSyncCount > 0 ? ` • ${pendingSyncCount} pending` : ''}
+                {pendingSyncCount > 0 ? ` • ${pendingSyncCount} pending` : ""}
               </Text>
             </View>
           )}
@@ -1896,27 +1938,27 @@ const BillSectionContent = ({
               onPress={handleRetryFailedSyncs}
               disabled={autoRetryState.isRetrying}
               className={`flex-row items-center justify-between px-2.5 py-1.5 rounded-md ${
-                autoRetryState.isRetrying ? 'bg-amber-600/80' : 'bg-red-600/80'
+                autoRetryState.isRetrying ? "bg-amber-600/80" : "bg-red-600/80"
               }`}
               activeOpacity={0.7}
             >
-              <View className='flex-row items-center'>
+              <View className="flex-row items-center">
                 {autoRetryState.isRetrying ? (
                   <>
-                    <ActivityIndicator size='small' color='#FFFFFF' />
+                    <ActivityIndicator size="small" color="#FFFFFF" />
                     <Text
-                      className='text-white font-medium ml-1.5'
+                      className="text-white font-medium ml-1.5"
                       style={{ fontSize: 11 }}
                     >
                       Retrying {autoRetryState.count} op
-                      {autoRetryState.count > 1 ? 's' : ''}...
+                      {autoRetryState.count > 1 ? "s" : ""}...
                     </Text>
                   </>
                 ) : (
                   <>
-                    <AlertTriangle size={12} color='#FFFFFF' />
+                    <AlertTriangle size={12} color="#FFFFFF" />
                     <Text
-                      className='text-white font-medium ml-1.5'
+                      className="text-white font-medium ml-1.5"
                       style={{ fontSize: 11 }}
                     >
                       {syncStatus.failed} failed to sync
@@ -1925,9 +1967,9 @@ const BillSectionContent = ({
                 )}
               </View>
               {!autoRetryState.isRetrying && (
-                <View className='flex-row items-center'>
-                  <RefreshCw size={11} color='#FFFFFF' />
-                  <Text className='text-white ml-1' style={{ fontSize: 10 }}>
+                <View className="flex-row items-center">
+                  <RefreshCw size={11} color="#FFFFFF" />
+                  <Text className="text-white ml-1" style={{ fontSize: 10 }}>
                     Retry
                   </Text>
                 </View>
@@ -1938,10 +1980,10 @@ const BillSectionContent = ({
           {rawIsOnline &&
             !hasFailedSyncs &&
             activeOrderHasPendingPaymentSync && (
-              <View className='flex-row items-center justify-center bg-amber-600/70 px-2.5 py-1.5 rounded-md'>
-                <Clock size={12} color='#FFFFFF' />
+              <View className="flex-row items-center justify-center bg-amber-600/70 px-2.5 py-1.5 rounded-md">
+                <Clock size={12} color="#FFFFFF" />
                 <Text
-                  className='text-white font-medium ml-1.5'
+                  className="text-white font-medium ml-1.5"
                   style={{ fontSize: 11 }}
                 >
                   Payment syncing...
@@ -1957,7 +1999,7 @@ const BillSectionContent = ({
         onSaveOrderNote={handleSaveOrderNote}
       />
       <View
-        className='mt-auto w-full overflow-hidden'
+        className="mt-auto w-full overflow-hidden"
         style={{
           marginLeft: -3,
           marginRight: -3,
@@ -1968,35 +2010,35 @@ const BillSectionContent = ({
           borderColor: colors.border,
           borderTopLeftRadius: 28,
           borderTopRightRadius: 28,
-          shadowColor: '#000000',
+          shadowColor: "#000000",
           shadowOffset: { width: 0, height: -10 },
           shadowOpacity: 0.16,
           shadowRadius: 18,
-          elevation: 2
+          elevation: 2,
         }}
       >
         <Totals />
 
         {showPlaymentActions && (
-          <View className='px-3 pt-1 pb-1'>
-            <View className='flex-row gap-2'>
+          <View className="px-3 pt-1 pb-1">
+            <View className="flex-row gap-2">
               <TouchableOpacity
                 onPress={handleOpenMoreOptions}
                 disabled={isMoreButtonDisabled}
-                className='w-[34%] h-10 items-center justify-center rounded-xl flex-row gap-1.5 shrink-0'
+                className="w-[34%] h-10 items-center justify-center rounded-xl flex-row gap-1.5 shrink-0"
                 style={{
                   backgroundColor: colors.card,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  opacity: isMoreButtonDisabled ? 0.4 : 1
+                  opacity: isMoreButtonDisabled ? 0.4 : 1,
                 }}
               >
                 <MoreHorizontal size={14} color={colors.label} />
                 <Text
                   style={{
                     fontSize: 13,
-                    fontWeight: '700',
-                    color: colors.heading
+                    fontWeight: "700",
+                    color: colors.heading,
                   }}
                 >
                   More
@@ -2005,23 +2047,23 @@ const BillSectionContent = ({
               <TouchableOpacity
                 onPress={handlePayClick}
                 disabled={isPayButtonDisabled}
-                className='flex-1 h-10 rounded-xl flex-row items-center justify-center gap-1.5'
+                className="flex-1 h-10 rounded-xl flex-row items-center justify-center gap-1.5"
                 style={{
                   backgroundColor: isPayButtonDisabled
                     ? colors.muted
                     : colors.teal,
-                  opacity: isPayButtonDisabled ? 0.6 : 1
+                  opacity: isPayButtonDisabled ? 0.6 : 1,
                 }}
               >
                 {hasPendingSyncs || isProcessing ? (
-                  <ActivityIndicator size={12} color='#FFFFFF' />
+                  <ActivityIndicator size={12} color="#FFFFFF" />
                 ) : null}
                 <CreditCard size={14} color={colors.onSolid} />
                 <Text
                   style={{
                     fontSize: 13,
-                    fontWeight: '700',
-                    color: isPayButtonDisabled ? colors.muted : colors.onSolid
+                    fontWeight: "700",
+                    color: isPayButtonDisabled ? colors.muted : colors.onSolid,
                   }}
                 >
                   Pay
@@ -2044,23 +2086,23 @@ const BillSectionContent = ({
       />
       <Dialog open={isVoidConfirmOpen} onOpenChange={setIsVoidConfirmOpen}>
         <DialogContent
-          className='w-[420px] rounded-2xl p-0 overflow-hidden'
+          className="w-[420px] rounded-2xl p-0 overflow-hidden"
           style={{
             backgroundColor: colors.panel,
             borderWidth: 1,
-            borderColor: colors.border
+            borderColor: colors.border,
           }}
         >
           <View
-            className='px-5 pt-5 pb-4'
+            className="px-5 pt-5 pb-4"
             style={{ backgroundColor: colors.panel }}
           >
             <DialogHeader>
               <DialogTitle
                 style={{
                   fontSize: 20,
-                  fontWeight: '700',
-                  color: colors.heading
+                  fontWeight: "700",
+                  color: colors.heading,
                 }}
               >
                 Clear Cart
@@ -2071,7 +2113,7 @@ const BillSectionContent = ({
                 color: colors.label,
                 fontSize: 14,
                 marginTop: 8,
-                lineHeight: 20
+                lineHeight: 20,
               }}
             >
               Are you sure you want to clear this cart? This action cannot be
@@ -2079,21 +2121,21 @@ const BillSectionContent = ({
             </Text>
           </View>
 
-          <DialogFooter className='flex-row px-5 pb-5 pt-1 gap-3'>
+          <DialogFooter className="flex-row px-5 pb-5 pt-1 gap-3">
             <TouchableOpacity
               onPress={() => setIsVoidConfirmOpen(false)}
-              className='flex-1 h-11 rounded-xl items-center justify-center'
+              className="flex-1 h-11 rounded-xl items-center justify-center"
               style={{
                 backgroundColor: colors.card,
                 borderWidth: 1,
-                borderColor: colors.border
+                borderColor: colors.border,
               }}
             >
               <Text
                 style={{
                   color: colors.heading,
                   fontSize: 14,
-                  fontWeight: '700'
+                  fontWeight: "700",
                 }}
               >
                 Cancel
@@ -2101,14 +2143,14 @@ const BillSectionContent = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleConfirmClearCart}
-              className='flex-1 h-11 rounded-xl items-center justify-center'
+              className="flex-1 h-11 rounded-xl items-center justify-center"
               style={{ backgroundColor: colors.danger }}
             >
               <Text
                 style={{
                   color: colors.onSolid,
                   fontSize: 14,
-                  fontWeight: '700'
+                  fontWeight: "700",
                 }}
               >
                 Clear Cart
@@ -2118,8 +2160,8 @@ const BillSectionContent = ({
         </DialogContent>
       </Dialog>
     </View>
-  )
-}
+  );
+};
 
-const BillSection = React.memo(BillSectionContent)
-export default BillSection
+const BillSection = React.memo(BillSectionContent);
+export default BillSection;

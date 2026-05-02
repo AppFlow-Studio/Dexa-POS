@@ -593,45 +593,80 @@ function RotatingImagePanel ({
   style?: any
 }) {
   const currentIndexRef = React.useRef(0)
-  const [displayIndex, setDisplayIndex] = React.useState(0)
-  const [nextIndex, setNextIndex] = React.useState(0)
+  const [displayUri, setDisplayUri] = React.useState<string | null>(null)
+  const [overlayUri, setOverlayUri] = React.useState<string | null>(null)
+  const [pendingIndex, setPendingIndex] = React.useState<number | null>(null)
+  const isTransitioningRef = React.useRef(false)
   const fadeOpacity = useSharedValue(0)
 
+  // Use content-based key so the reset only fires when the actual URLs change,
+  // not when the parent re-renders with a new array reference (e.g. every WS
+  // payload update on the external CFD path).
+  const imagesKey = images.join('\0')
   useEffect(() => {
+    if (!images || images.length === 0) {
+      currentIndexRef.current = 0
+      setDisplayUri(null)
+      setOverlayUri(null)
+      setPendingIndex(null)
+      isTransitioningRef.current = false
+      cancelAnimation(fadeOpacity)
+      fadeOpacity.value = 0
+      return
+    }
     currentIndexRef.current = 0
-    setDisplayIndex(0)
-    setNextIndex(0)
+    setDisplayUri(images[0] ?? null)
+    setOverlayUri(null)
+    setPendingIndex(null)
+    isTransitioningRef.current = false
     cancelAnimation(fadeOpacity)
     fadeOpacity.value = 0
-  }, [images, fadeOpacity])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesKey, fadeOpacity])
 
-  const advanceIndex = React.useCallback(
-    (next: number) => {
-      currentIndexRef.current = next
-      setDisplayIndex(next)
+  // Promote overlay → base after fade completes
+  const completeTransition = (nextIndex: number, nextUri: string) => {
+    currentIndexRef.current = nextIndex
+    setDisplayUri(nextUri)
+    // Brief delay lets the base image commit before removing the overlay
+    setTimeout(() => {
+      setOverlayUri(null)
+      setPendingIndex(null)
       fadeOpacity.value = 0
-    },
-    [fadeOpacity]
-  )
+      isTransitioningRef.current = false
+    }, 50)
+  }
+
+  // Only start fading once the overlay image has actually loaded
+  const handleOverlayLoad = () => {
+    if (overlayUri === null || pendingIndex === null) return
+    fadeOpacity.value = withTiming(1, { duration: 700 }, finished => {
+      if (finished) {
+        runOnJS(completeTransition)(pendingIndex, overlayUri)
+      }
+    })
+  }
 
   useEffect(() => {
     if (!images || images.length <= 1) return
 
     const interval = setInterval(() => {
+      if (isTransitioningRef.current) return
       const next = (currentIndexRef.current + 1) % images.length
-      setNextIndex(next)
-      fadeOpacity.value = withTiming(1, { duration: 900 }, finished => {
-        if (finished) {
-          runOnJS(advanceIndex)(next)
-        }
-      })
+      const nextUri = images[next]
+      if (!nextUri) return
+      isTransitioningRef.current = true
+      fadeOpacity.value = 0
+      setPendingIndex(next)
+      setOverlayUri(nextUri)
     }, 8000)
 
     return () => {
       clearInterval(interval)
       cancelAnimation(fadeOpacity)
     }
-  }, [images, fadeOpacity, advanceIndex])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesKey, fadeOpacity])
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: fadeOpacity.value
@@ -645,31 +680,38 @@ function RotatingImagePanel ({
     )
   }
 
-  const currentImage = images[displayIndex] ?? images[0]
-  const nextImage = images[nextIndex] ?? images[0]
-
   return (
     <View style={[styles.mediaFrame, style]}>
-      <Image
-        source={{ uri: currentImage }}
-        style={styles.mediaImage}
-        resizeMode='cover'
-        onError={() =>
-          console.warn('[RotatingImagePanel] Image failed:', currentImage)
-        }
-      />
-      {images.length > 1 && (
+      {displayUri ? (
+        <Image
+          source={{ uri: displayUri }}
+          style={styles.mediaImage}
+          resizeMode='cover'
+          onError={() =>
+            console.warn('[RotatingImagePanel] Image failed:', displayUri)
+          }
+        />
+      ) : null}
+      {overlayUri ? (
         <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
           <Image
-            source={{ uri: nextImage }}
+            source={{ uri: overlayUri }}
             style={styles.mediaImage}
             resizeMode='cover'
-            onError={() =>
-              console.warn('[RotatingImagePanel] Next image failed:', nextImage)
-            }
+            onLoad={handleOverlayLoad}
+            onError={() => {
+              console.warn(
+                '[RotatingImagePanel] Next image failed:',
+                overlayUri
+              )
+              setOverlayUri(null)
+              setPendingIndex(null)
+              isTransitioningRef.current = false
+              fadeOpacity.value = 0
+            }}
           />
         </Animated.View>
-      )}
+      ) : null}
     </View>
   )
 }

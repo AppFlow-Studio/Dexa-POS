@@ -31,7 +31,6 @@ import {
   CFDWebDisplayProvider,
   useCFDWebDisplayStore,
 } from "@/web/cfdWebDisplayProvider";
-import React from "react";
 import { AppRegistry, StyleSheet, View } from "react-native";
 
 // ---------------------------------------------------------------------------
@@ -136,7 +135,12 @@ function installBridge() {
 function CFDWebApp() {
   // All callbacks postMessage back to the host RN side. The host routes them
   // through `CFDController` callbacks just like an off-device WebSocket CFD.
-  const handleTipSelected = (tipAmount: number, tipPercentage: number | null) => {
+  // eslint-disable-next-line no-console
+  console.log("[cfd-entry] CFDWebApp render");
+  const handleTipSelected = (
+    tipAmount: number,
+    tipPercentage: number | null,
+  ) => {
     const response: CFDTipResponse = {
       stationId: "builtin",
       tipAmount,
@@ -200,8 +204,8 @@ function CFDWebApp() {
     // eslint-disable-next-line no-console
     console.log(
       `[CFDWebView] handleLoyaltyJoin: setScreenState=${(t1 - t0).toFixed(
-        1
-      )}ms, postToHost=${(t2 - t1).toFixed(1)}ms`
+        1,
+      )}ms, postToHost=${(t2 - t1).toFixed(1)}ms`,
     );
   };
 
@@ -246,7 +250,9 @@ function removeLoader() {
 
 function boot() {
   // eslint-disable-next-line no-console
-  console.log("[cfd-entry] boot:start");
+  console.log("[cfd-entry] boot:start ua=", navigator.userAgent);
+  // eslint-disable-next-line no-console
+  console.log("[cfd-entry] boot:document.readyState=", document.readyState);
   try {
     installBridge();
     // eslint-disable-next-line no-console
@@ -267,6 +273,13 @@ function boot() {
   }
 
   const rootTag = document.getElementById("root");
+  // eslint-disable-next-line no-console
+  console.log(
+    "[cfd-entry] boot:#root element found:",
+    !!rootTag,
+    "children:",
+    rootTag?.children?.length ?? 0,
+  );
   if (!rootTag) {
     // eslint-disable-next-line no-console
     console.error("[cfd-entry] no #root element on page");
@@ -278,7 +291,14 @@ function boot() {
     // eslint-disable-next-line no-console
     console.log("[cfd-entry] boot:runApplication-returned");
     // Drop the placeholder once react-native-web has had a tick to render.
-    setTimeout(removeLoader, 16);
+    setTimeout(() => {
+      removeLoader();
+      // eslint-disable-next-line no-console
+      console.log(
+        "[cfd-entry] boot:loader-removed, #root innerHTML length:",
+        rootTag.innerHTML?.length ?? 0,
+      );
+    }, 16);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[cfd-entry] runApplication threw:", err);

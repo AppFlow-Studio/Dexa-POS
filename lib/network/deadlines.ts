@@ -1,21 +1,21 @@
 export const DEADLINES = {
-  hotMutation: 2500,
-  hotMutation_degraded: 1500,
-  sendToKitchen: 2000,
-  closeCheck: 2500,
-  read: 8000,
-  menuSync: 8000,
-  probe: 2500,
+  hotMutation: 20000,
+  hotMutation_degraded: 15000,
+  sendToKitchen: 20000,
+  closeCheck: 20000,
+  read: 20000,
+  menuSync: 60000,
+  probe: 25000,
   appForegroundResetMs: 60_000,
   slowCooldownMs: 5_000,
   probeIntervalMs: 15_000,
   probeBackoffMaxMs: 60_000,
-  notifyDebounceMs: 500,
+  notifyDebounceMs: 5000,
   timeoutWindowMs: 30_000,
   // Bad-WiFi Phase 2 — Wave 1 (recovery UI)
-  paymentRpc: 8000,
-  paymentAuthCheck: 2500,
-  paymentVerifyPollIntervalMs: 3000,
+  paymentRpc: 20000,
+  paymentAuthCheck: 10000,
+  paymentVerifyPollIntervalMs: 20000,
 } as const
 
 /**

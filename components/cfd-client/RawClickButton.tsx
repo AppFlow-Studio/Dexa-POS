@@ -20,58 +20,81 @@
 // responder + Animated opacity over a click event; on Android WebView
 // V8 each layer costs a few ms. For a 12-key keypad that adds up.
 
-import React, { memo } from "react";
-import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
+import React, { memo } from 'react'
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  type StyleProp,
+  type ViewStyle
+} from 'react-native'
 
 interface Props {
-  onPress: () => void;
-  style?: StyleProp<ViewStyle>;
-  children?: React.ReactNode;
-  accessibilityLabel?: string;
-  disabled?: boolean;
+  onPress: () => void
+  style?: StyleProp<ViewStyle>
+  children?: React.ReactNode
+  accessibilityLabel?: string
+  disabled?: boolean
 }
 
 // Reset native button styles so the React Native styles passed in via
 // `style` apply cleanly — same visual result as wrapping a `<View>`
 // but rendered as a `<button>` for native click semantics.
 const RESET = {
-  background: "none",
-  border: "none",
+  background: 'none',
+  border: 'none',
   padding: 0,
   margin: 0,
-  cursor: "pointer",
-  touchAction: "manipulation",
-  font: "inherit",
-  color: "inherit",
-  display: "flex",
-  appearance: "none",
-  WebkitTapHighlightColor: "transparent",
+  cursor: 'pointer',
+  touchAction: 'manipulation',
+  font: 'inherit',
+  color: 'inherit',
+  display: 'flex',
+  appearance: 'none',
+  WebkitTapHighlightColor: 'transparent',
   // Reset alignment so caller's flex styles take effect predictably.
-  textAlign: "inherit",
-} as const;
+  textAlign: 'inherit'
+} as const
 
-export const RawClickButton = memo(function RawClickButton({
+export const RawClickButton = memo(function RawClickButton ({
   onPress,
   style,
   children,
   accessibilityLabel,
-  disabled,
+  disabled
 }: Props) {
+  // Native RN context (external CFD tablet connecting via IP): Pressable works
+  // correctly. The <button> DOM element only exists in web/WebView context.
+  if (Platform.OS !== 'web') {
+    return (
+      <Pressable
+        onPress={disabled ? undefined : onPress}
+        style={style}
+        accessibilityLabel={accessibilityLabel}
+        disabled={disabled}
+      >
+        {children}
+      </Pressable>
+    )
+  }
+
+  // Web/WebView bundle path (react-native-web inside Android WebView):
+  // Use a real HTML <button> for native click semantics and no 300ms delay.
   // Flatten RN-style array/object into a single object. RN-web maps
   // standard properties (flex, backgroundColor, borderRadius, etc.)
   // 1:1 to web CSS, so we can spread the result directly into the
   // button's inline style.
-  const flat = StyleSheet.flatten(style) as Record<string, unknown> | undefined;
+  const flat = StyleSheet.flatten(style) as Record<string, unknown> | undefined
 
   return React.createElement(
-    "button" as unknown as React.ComponentType<any>,
+    'button' as unknown as React.ComponentType<any>,
     {
-      type: "button",
-      "aria-label": accessibilityLabel,
+      type: 'button',
+      'aria-label': accessibilityLabel,
       disabled,
       onClick: disabled ? undefined : onPress,
-      style: { ...RESET, ...(flat ?? {}) },
+      style: { ...RESET, ...(flat ?? {}) }
     },
     children
-  );
-});
+  )
+})

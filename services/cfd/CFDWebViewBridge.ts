@@ -56,18 +56,35 @@ export function setSnapshotProvider(provider: SnapshotProvider | null) {
  */
 export function markReady() {
   webViewReady = true;
+  // eslint-disable-next-line no-console
+  console.log(
+    "[CFDWebViewBridge] markReady — snapshotProvider present:",
+    !!snapshotProvider,
+  );
   if (snapshotProvider) {
     try {
       const snapshot = snapshotProvider();
+      // eslint-disable-next-line no-console
+      console.log(
+        "[CFDWebViewBridge] pushing snapshot, keys:",
+        Object.keys(snapshot).join(", "),
+      );
       pushPayload(snapshot);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[CFDWebViewBridge] snapshot push failed", err);
     }
+  } else {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[CFDWebViewBridge] markReady called but no snapshotProvider registered — WebView will start with empty state",
+    );
   }
 }
 
 export function markNotReady() {
+  // eslint-disable-next-line no-console
+  console.log("[CFDWebViewBridge] markNotReady");
   webViewReady = false;
 }
 
@@ -137,8 +154,10 @@ export function dispatchMessage(rawJson: string) {
     // eslint-disable-next-line no-console
     console.error(
       `[CFDWebView/uncaught] ${parsed.message ?? ""}` +
-        (parsed.source ? ` at ${parsed.source}:${parsed.line}:${parsed.col}` : "") +
-        (parsed.stack ? `\n${parsed.stack}` : "")
+        (parsed.source
+          ? ` at ${parsed.source}:${parsed.line}:${parsed.col}`
+          : "") +
+        (parsed.stack ? `\n${parsed.stack}` : ""),
     );
     return;
   }

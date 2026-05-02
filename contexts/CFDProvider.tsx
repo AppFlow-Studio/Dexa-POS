@@ -1,7 +1,14 @@
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { applyOptimisticPatch } from '@/hooks/orders/applyOptimisticPatch'
-import { DejavooSpinAPI } from '@/lib/payments/dejavoo-spin-api'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import {
+  setCFDLoyaltyHandlers,
+  triggerCFDLoyaltyJoin,
+  triggerCFDLoyaltySkip,
+  triggerCFDPhoneSubmit
+} from '@/lib/cfdLoyaltyTriggers'
+import { isCFDSalesPathname } from '@/lib/cfdRouting'
 import { isValidUUID } from '@/lib/offlineIdRegistry'
+import { DejavooSpinAPI } from '@/lib/payments/dejavoo-spin-api'
 import { toastService } from '@/lib/toastService'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { detectNativeHardware } from '@/native/HardwareDetection'
@@ -10,6 +17,10 @@ import {
   showSecondaryDisplay
 } from '@/native/SecondaryDisplay'
 import { CFDController } from '@/services/cfd/CFDController'
+import {
+  setActionHandler as setCFDWebViewActionHandler,
+  setSnapshotProvider as setCFDWebViewSnapshotProvider
+} from '@/services/cfd/CFDWebViewBridge'
 import { getCachedCapabilities } from '@/services/hardware/deviceDetection'
 import {
   checkMerchantHasLoyalty,
@@ -21,21 +32,7 @@ import { queueFailedOperation } from '@/services/offlineSyncInit'
 import { queueOperation } from '@/services/offlineSyncService'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter'
-import {
-  adjustTips,
-  type TipAdjustment
-} from '@/services/tipAdjustService'
-import {
-  setCFDLoyaltyHandlers,
-  triggerCFDLoyaltyJoin,
-  triggerCFDLoyaltySkip,
-  triggerCFDPhoneSubmit
-} from '@/lib/cfdLoyaltyTriggers'
-import { isCFDSalesPathname } from '@/lib/cfdRouting'
-import {
-  setActionHandler as setCFDWebViewActionHandler,
-  setSnapshotProvider as setCFDWebViewSnapshotProvider
-} from '@/services/cfd/CFDWebViewBridge'
+import { adjustTips, type TipAdjustment } from '@/services/tipAdjustService'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useCFDBuiltinStore } from '@/stores/useCFDBuiltinStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -392,17 +389,28 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const cfdLoyaltyDisabled =
     process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY === '1' ||
     process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY === 'true'
-  const rawMerchantHasLoyalty = useLoyaltyStore(s => s.merchantHasLoyalty)
   // The CFD reads merchantHasLoyalty to decide whether to show the
-  // "Join Loyalty" CTA on the Approved screen. Forcing it to false
-  // when the kill switch is on hides that CTA naturally — no extra
-  // gate needed in ResultScreen.
-  const merchantHasLoyalty = cfdLoyaltyDisabled ? false : rawMerchantHasLoyalty
+  // "Join Loyalty" CTA on the Approved screen. The kill switch is the
+  // sole control — when 0/unset, always show loyalty. The DB check
+  // (checkMerchantHasLoyalty) was silently returning false if no
+  // loyalty_programs rows exist, hiding the button even with flag=0.
+  const merchantHasLoyalty = !cfdLoyaltyDisabled
+
+  console.log('[CFDProvider] loyalty flags', {
+    EXPO_PUBLIC_CFD_DISABLE_LOYALTY:
+      process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY,
+    cfdLoyaltyDisabled,
+    merchantHasLoyalty
+  })
 
   // Mirror merchantHasLoyalty (persisted in useLoyaltyStore via MMKV) into
   // useCFDBuiltinStore so the WebView/legacy CFD pick it up on every load,
   // including offline boots before any network check fires.
   useEffect(() => {
+    console.log(
+      '[CFDProvider] updating useCFDBuiltinStore merchantHasLoyalty ->',
+      merchantHasLoyalty
+    )
     useCFDBuiltinStore.getState().update({ merchantHasLoyalty })
   }, [merchantHasLoyalty])
 
@@ -437,13 +445,19 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // Granular field selectors — used as effect deps so unrelated `activeOrder`
   // mutations (status, sync state, etc.) don't re-fire the CFD payload pipelines.
   const activeOrderCustomerName = useOrderStore(s =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId]?.customer_name ?? null : null
+    s.activeOrderId
+      ? s.ordersById[s.activeOrderId]?.customer_name ?? null
+      : null
   )
   const activeOrderCustomerPhone = useOrderStore(s =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId]?.customer_phone ?? null : null
+    s.activeOrderId
+      ? s.ordersById[s.activeOrderId]?.customer_phone ?? null
+      : null
   )
   const activeOrderDisplayNumber = useOrderStore(s =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId]?.display_number ?? null : null
+    s.activeOrderId
+      ? s.ordersById[s.activeOrderId]?.display_number ?? null
+      : null
   )
   const activeOrderOrderNumber = useOrderStore(s =>
     s.activeOrderId ? s.ordersById[s.activeOrderId]?.order_number ?? null : null
@@ -1241,6 +1255,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         activeScreenState === 'loyalty_confirmation'
           ? useCFDBuiltinStore.getState().loyaltyResult
           : null,
+      merchantHasLoyalty,
       themeMode: colorScheme
     }
 
@@ -1248,14 +1263,22 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     // cart. itemsFingerprint already covers item-level changes; the rest are
     // scalars composed into a single string for cheap equality.
     const wsFingerprint =
-      `${itemsFingerprint}|${activeScreenState ?? ''}|${activePaymentMethod ?? ''}|` +
+      `${itemsFingerprint}|${activeScreenState ?? ''}|${
+        activePaymentMethod ?? ''
+      }|` +
       `${pathname}|${colorScheme}|${displayCustomerName ?? ''}|` +
       `${activeOrder?.customer_phone ?? ''}|${displayOrderNumber ?? ''}|` +
-      `${displayOrderType ?? ''}|${displayTableName ?? ''}|${displayGuestCount ?? ''}|` +
+      `${displayOrderType ?? ''}|${displayTableName ?? ''}|${
+        displayGuestCount ?? ''
+      }|` +
       `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|${cardTotal}|${cashTotal}|` +
-      `${displayDiscountAmount}|${displayTipAmount}|${currentTip.percentage ?? ''}|` +
+      `${displayDiscountAmount}|${displayTipAmount}|${
+        currentTip.percentage ?? ''
+      }|` +
       `${displayOutstandingTotal}|${displayAmountPaid}|${savingsAmount}|` +
-      `${showCFDOrderingRightPanel ? 1 : 0}|${cfdOrderingRightPanelMode}`
+      `${showCFDOrderingRightPanel ? 1 : 0}|${cfdOrderingRightPanelMode}|${
+        merchantHasLoyalty ? 1 : 0
+      }`
 
     if (wsFingerprint === lastPayloadHashRef.current) {
       return () => {
@@ -1314,7 +1337,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
     paymentActiveSplit,
-    colorScheme
+    colorScheme,
+    merchantHasLoyalty
   ])
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
@@ -1560,11 +1584,13 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       const computedOrderNumber =
         activeOrder?.display_number ?? activeOrder?.order_number ?? null
 
-      const computedPaymentMethod = (paymentView === 'cash'
-        ? 'cash'
-        : paymentView === 'card' || paymentView === 'manual'
-        ? 'card'
-        : null) as 'cash' | 'card' | 'manual' | null
+      const computedPaymentMethod = (
+        paymentView === 'cash'
+          ? 'cash'
+          : paymentView === 'card' || paymentView === 'manual'
+          ? 'card'
+          : null
+      ) as 'cash' | 'card' | 'manual' | null
 
       // Structural fingerprint — short-circuits the dispatch when nothing the
       // built-in display reads has changed. Computed BEFORE the payload object
@@ -2069,8 +2095,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         return
       }
 
-      const terminal = useStoreSettingsStore.getState().selectedStation
-        ?.payment_terminal
+      const terminal =
+        useStoreSettingsStore.getState().selectedStation?.payment_terminal
       if (!terminal) {
         console.error('[CFD tip-adjust] no terminal configured')
         showApproved()
@@ -2196,13 +2222,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             ? orderState.ordersById[localKey]
             : undefined
           const prevOrder = targetLocalOrderId
-            ? usePreviousOrdersStore
-                .getState()
-                .getOrderById(targetLocalOrderId)
+            ? usePreviousOrdersStore.getState().getOrderById(targetLocalOrderId)
             : targetDbOrderId
-            ? usePreviousOrdersStore
-                .getState()
-                .getOrderById(targetDbOrderId)
+            ? usePreviousOrdersStore.getState().getOrderById(targetDbOrderId)
             : undefined
           const payments: any[] =
             activeOrder?.payments ?? prevOrder?.payments ?? []
@@ -2358,8 +2380,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
                 ...p,
                 tip_amount: customerTip,
                 total_collected: (p.amount ?? 0) + customerTip,
-                original_tip_amount:
-                  p.original_tip_amount ?? p.tip_amount ?? 0,
+                original_tip_amount: p.original_tip_amount ?? p.tip_amount ?? 0,
                 tip_adjusted_at: new Date().toISOString(),
                 tip_adjusted_by: loggedInEmployee?.profileId ?? undefined
               }
@@ -2376,10 +2397,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
               dbPaymentId: resolvedDbPaymentId ?? null
             })
           } catch (patchErr) {
-            console.warn(
-              '[CFD tip-adjust] optimistic patch failed:',
-              patchErr
-            )
+            console.warn('[CFD tip-adjust] optimistic patch failed:', patchErr)
             // Non-fatal — the queued retry + background sync will reconcile.
           }
         }
@@ -2705,6 +2723,39 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
     const showPhonePrompt = (reason: string) => {
       if (hasShownPhonePrompt) return
+      // Customer already has a phone number on the order — skip the prompt
+      // entirely and go straight to the confirmation screen. The customer
+      // entered their phone at order time; asking again is confusing.
+      if (candidatePhone.length >= 10) {
+        logLoyaltyTrace('show-loyalty-prompt:skipping-prompt-has-phone', {
+          requestId,
+          reason
+        })
+        void queueDeferredLoyaltyEarn({
+          order,
+          frozen,
+          fallbackCustomerName: candidateCustomerName,
+          fallbackCustomerPhone: candidatePhone,
+          fallbackCustomerId: candidateCustomerId
+        })
+        useCFDBuiltinStore.getState().update({
+          screenState: 'loyalty_confirmation',
+          loyaltyResult: {
+            customerName: candidateCustomerName,
+            programs: []
+          }
+        })
+        setActiveScreenState('loyalty_confirmation')
+        controllerRef.current?.showLoyaltyConfirmation(
+          [],
+          candidateCustomerName
+        )
+        scheduleLoyaltyReturnToIdle(
+          requestId,
+          'show-loyalty-prompt:has-phone-skip'
+        )
+        return
+      }
       hasShownPhonePrompt = true
       logLoyaltyTrace('show-loyalty-prompt:show-phone-prompt', {
         requestId,
@@ -3142,7 +3193,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const showLoyaltyConfirmation = useCallback(
     (result: LoyaltyEarnResult[], customerName?: string) => {
       if (cfdLoyaltyDisabled) {
-        console.log('[CFD] showLoyaltyConfirmation skipped — loyalty disabled flag')
+        console.log(
+          '[CFD] showLoyaltyConfirmation skipped — loyalty disabled flag'
+        )
         controllerRef.current?.showIdle()
         setActiveScreenState(null)
         return
