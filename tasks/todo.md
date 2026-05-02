@@ -2,6 +2,16 @@
 
 ## Completed
 
+- [x] Speed up MenuSection for low-end devices
+  - Hoisted `MenuItem` styles so each tile avoids a color-scheme subscription and style factory
+  - Replaced repeated temporary-menu array scans with a memoized Set lookup
+  - Reduced menu FlatList initial render and batch sizes to smooth category switches
+  - Verified edited files have no diagnostics and targeted modifier/order-processing tests pass
+- [x] Speed up order-processing screen safely
+  - Tightened order-line list stability so visible order changes update without stale cached rows
+  - Reduced render-time allocations in order-processing hot lists
+  - Preserved draft/station filtering and existing order actions
+  - Verified edited files have no diagnostics and targeted order-processing Jest guard passes
 - [x] Fix DraggableTable "Loading..." on floor plan tiles — replaced fragile `getOrder()` with resilient `effectiveOrder` memo (O(1) fast path + O(n) fallback by `service_location_id`)
 - [x] Fix merge-mode table selection tap
   - Identify gesture path blocking tap selection in merge mode
@@ -27,6 +37,8 @@
 
 ## Review
 
+- MenuSection performance: Menu tiles now do less per-item setup work, temporary unlocked menu checks are O(1), and FlatList renders 15 initial cells / 10-cell batches instead of 25 / 20. `npm test -- --runTestsByPath __tests__/wave26AddItemStaleStateCleanup.test.ts __tests__/wave27OwnershipRecheck.test.ts` passes.
+- Order-processing performance: `useStableOrderList` now fingerprints fields rendered by the order line and order badges, avoiding stale rows when totals/customer/status/display fields change. The order-line selector and grid render path also avoid several unnecessary date/array allocations. `npm test -- --runTestsByPath __tests__/wave27OwnershipRecheck.test.ts` passes. `npx tsc --noEmit` is still blocked by existing `lib/mockData.ts` fixture type errors unrelated to this change.
 - Merge mode: tap-to-select works without long-press interference; long-press actions are disabled while merge mode is active.
 
 ---
@@ -44,6 +56,7 @@ External CFDs over WebSocket are naturally fast because they're a separate devic
 Library spawns isolated React Native instances (own Hermes runtime + JS thread) within the same Android process. Component-based API (`<SandboxReactNativeView />`), `postMessage`/`onMessage` for host↔sandbox communication, TurboModule allowlisting per sandbox.
 
 **Setup matches our requirements:**
+
 - New Architecture enabled ✓ (`app.json: "newArchEnabled": true`)
 - React Native 0.79.6 ≥ 0.78 ✓
 - Hermes ✓
@@ -146,6 +159,7 @@ Goal: prove `react-native-sandbox` boots on our exact setup before committing th
 ## Verification
 
 After Phase 4:
+
 - Side-by-side perf comparison on Landi C20Pro: with built-in CFD attached vs detached. Goal: no measurable POS perf difference.
 - Compare with Landi-without-CFD baseline. Goal: parity.
 - External WebSocket CFD path: same flow exercised; no regression.
