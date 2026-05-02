@@ -1640,12 +1640,26 @@ const ModifierScreenContent = ({
           className="flex-row items-center gap-3 px-4 py-3 border-b"
           style={{ borderColor: colors.border }}
         >
-          {showSecondarySections && showMenuImages && resolvedImageSource ? (
-            <OptimizedListImage
-              source={resolvedImageSource}
-              style={{ width: 48, height: 48, borderRadius: 8 }}
-              contentFit="cover"
-            />
+          {showMenuImages ? (
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 8,
+                overflow: "hidden",
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              {showSecondarySections && resolvedImageSource ? (
+                <OptimizedListImage
+                  source={resolvedImageSource}
+                  style={{ width: 48, height: 48 }}
+                  contentFit="cover"
+                />
+              ) : null}
+            </View>
           ) : null}
           <View className="flex-1">
             <Text
