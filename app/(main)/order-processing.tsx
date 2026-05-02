@@ -13,9 +13,9 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
 import {
-    forceSetLocalSequence,
-    generateLocalOrderNumbers,
-    parseSequenceFromDisplayNumber,
+  forceSetLocalSequence,
+  generateLocalOrderNumbers,
+  parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
@@ -27,8 +27,8 @@ import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
-    getOrderStoreSupabaseClient,
-    useOrderStore,
+  getOrderStoreSupabaseClient,
+  useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -38,46 +38,82 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-    CheckCircle2,
-    ChevronLeft,
-    ChevronRight,
-    Eye,
-    Logs,
-    Plus,
-    Printer,
-    Search,
-    ShoppingBag,
-    Sofa,
-    UtensilsCrossed,
-    X,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Logs,
+  Plus,
+  Printer,
+  Search,
+  ShoppingBag,
+  Sofa,
+  UtensilsCrossed,
+  X,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    Modal,
-    PanResponder,
-    Pressable,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  Modal,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 import Animated, {
-    LinearTransition,
-    SlideInLeft,
-    useAnimatedStyle,
-    useSharedValue,
+  LinearTransition,
+  SlideInLeft,
+  useAnimatedStyle,
+  useSharedValue,
 } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
 const badgeContentStyle = { paddingHorizontal: 20, gap: 8 } as const;
-const cardContentStyle = { padding: 10, gap: 12 } as const;
+
+const formatOrderOpenedTime = (openedAt?: string | null) => {
+  if (!openedAt) return "";
+  return new Date(openedAt).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const getOrderStatusColor = (status?: string | null) => {
+  switch (status) {
+    case "ready":
+      return colors.success;
+    case "preparing":
+      return colors.orderPreparing;
+    case "sent_to_kitchen":
+      return colors.orderSentToKitchen;
+    case "completed":
+      return colors.info;
+    case "cancelled":
+    case "void":
+      return colors.danger;
+    default:
+      return colors.muted;
+  }
+};
+
+const getPaidStatusColor = (status?: string | null) => {
+  if (status === "Paid") return colors.success;
+  if (status === "Partial") return colors.warning;
+  return colors.muted;
+};
+
+const formatOrderStatusLabel = (status?: string | null) =>
+  (status || "pending")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
 const OrderProcessing = () => {
   const router = useRouter();
@@ -679,15 +715,20 @@ const OrderProcessing = () => {
   );
   const handleNoSale = useCallback(() => setNoSaleModalOpen(true), []);
 
-  const activeSessionCount = useTableSessionStore(
-    (s) =>
-      Object.values(s.sessions).filter(
-        (session) =>
-          !!session &&
-          session.status !== "available" &&
-          session.status !== "cleaning",
-      ).length,
-  );
+  const activeSessionCount = useTableSessionStore((s) => {
+    let count = 0;
+    for (const sessionId in s.sessions) {
+      const session = s.sessions[sessionId];
+      if (
+        session &&
+        session.status !== "available" &&
+        session.status !== "cleaning"
+      ) {
+        count++;
+      }
+    }
+    return count;
+  });
 
   const handleSelectOrder = useCallback(
     (orderId: string) => {
@@ -722,33 +763,9 @@ const OrderProcessing = () => {
         item.items.length > 0
           ? item.items.length
           : (item._broadcastItemCount ?? 0);
-      const openedAt = item.opened_at
-        ? new Date(item.opened_at).toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-          })
-        : "";
-
-      const orderStatusColor =
-        item.order_status === "ready"
-          ? colors.success
-          : item.order_status === "preparing"
-            ? colors.orderPreparing
-            : item.order_status === "sent_to_kitchen"
-              ? colors.orderSentToKitchen
-              : item.order_status === "completed"
-                ? colors.info
-                : item.order_status === "cancelled" ||
-                    item.order_status === "void"
-                  ? colors.danger
-                  : colors.muted;
-
-      const paidStatusColor =
-        item.paid_status === "Paid"
-          ? colors.success
-          : item.paid_status === "Partial"
-            ? colors.warning
-            : colors.muted;
+      const openedAt = formatOrderOpenedTime(item.opened_at);
+      const orderStatusColor = getOrderStatusColor(item.order_status);
+      const paidStatusColor = getPaidStatusColor(item.paid_status);
 
       const canMarkDone =
         item.order_status === "preparing" ||
@@ -756,9 +773,7 @@ const OrderProcessing = () => {
         (item.order_status === "ready" && item.paid_status === "Paid");
 
       const cashDue = item.cash_amount_due ?? item.amount_due ?? totalAmount;
-      const statusLabel = (item.order_status || "pending")
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
+      const statusLabel = formatOrderStatusLabel(item.order_status);
 
       return (
         <TouchableOpacity
@@ -1399,9 +1414,11 @@ const OrderProcessing = () => {
                               );
                             }}
                             scrollEventThrottle={16}
-                            itemLayoutAnimation={LinearTransition.springify()
-                              .damping(18)
-                              .stiffness(120)}
+                            itemLayoutAnimation={iosOnly(
+                              LinearTransition.springify()
+                                .damping(18)
+                                .stiffness(120),
+                            )}
                             initialNumToRender={10}
                             maxToRenderPerBatch={10}
                             windowSize={3}
