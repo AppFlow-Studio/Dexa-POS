@@ -119,6 +119,16 @@ const createStyles = () =>
     }
   })
 
+const menuControlStylesByScheme = new Map<string, ReturnType<typeof createStyles>>()
+
+const getStylesForScheme = (scheme: string) => {
+  const cached = menuControlStylesByScheme.get(scheme)
+  if (cached) return cached
+  const next = createStyles()
+  menuControlStylesByScheme.set(scheme, next)
+  return next
+}
+
 // ─── Unlock session badge ────────────────────────────────────────────────────
 
 const UnlockBadge = React.memo(() => {
@@ -176,12 +186,16 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   rightSlot
 }) => {
   const { colorScheme } = useColorScheme()
-  const styles = useMemo(() => createStyles(), [colorScheme])
+  const styles = useMemo(() => getStylesForScheme(colorScheme), [colorScheme])
   const menus = useMenuStore(s => s.menus)
   const isCategoryAvailableNow = useMenuStore(s => s.isCategoryAvailableNow)
   const isCategoryActiveForMenu = useMenuStore(s => s.isCategoryActiveForMenu)
   const temporaryActiveCategories = useMenuStore(
     s => s.temporaryActiveCategories
+  )
+  const temporaryActiveCategorySet = useMemo(
+    () => new Set(temporaryActiveCategories),
+    [temporaryActiveCategories]
   )
   const addTemporaryCategoryAccess = useMenuStore(
     s => s.addTemporaryCategoryAccess
@@ -270,7 +284,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                 isCategoryAvailableNow(tab) && currentMenu
                   ? isCategoryActiveForMenu(currentMenu.id, cat.id)
                   : false
-              const hasOverride = temporaryActiveCategories.includes(tab)
+              const hasOverride = temporaryActiveCategorySet.has(tab)
               const isAvailable = isNormallyAvailable || hasOverride
               const isActive = activeCategory === tab
               const showLock = isScheduled && !isAvailable

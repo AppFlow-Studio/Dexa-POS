@@ -85,21 +85,50 @@ const EMPTY_CART_ITEMS: CartItem[] = [];
 const BillItemsAndTotals = React.memo(
   ({
     orderNote,
-    onChangeOrderNote,
+    isNetworkDegraded,
     onSaveOrderNote,
   }: {
     orderNote?: string;
-    onChangeOrderNote: (value: string) => void;
-    onSaveOrderNote: () => void;
+    isNetworkDegraded: boolean;
+    onSaveOrderNote: (value: string) => void;
   }) => {
     const cart = useOrderStore<CartItem[]>((s) => {
       const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
       return (order?.items ?? EMPTY_CART_ITEMS) as CartItem[];
     });
+    const activeOrderPaymentInfo = useOrderStore(
+      useShallow((s) => {
+        const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+        const payments = order?.payments ?? null;
+        return {
+          orderHasPayments: !!payments?.some(
+            (payment: any) => !payment.isVoided,
+          ),
+          payments,
+        };
+      }),
+    );
     const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
     const [isOrderNoteEditorOpen, setIsOrderNoteEditorOpen] = useState(false);
     const [keyboardTop, setKeyboardTop] = useState<number | null>(null);
+    const [orderNoteDraft, setOrderNoteDraft] = useState(orderNote ?? "");
     const orderNoteInputRef = useRef<TextInput>(null);
+    const lastSavedNoteRef = useRef(orderNote ?? "");
+
+    useEffect(() => {
+      const nextNote = orderNote ?? "";
+      lastSavedNoteRef.current = nextNote;
+      setOrderNoteDraft(nextNote);
+    }, [orderNote]);
+
+    useEffect(() => {
+      if (orderNoteDraft.trim() === lastSavedNoteRef.current.trim()) return;
+      const timeoutId = setTimeout(() => {
+        lastSavedNoteRef.current = orderNoteDraft;
+        onSaveOrderNote(orderNoteDraft);
+      }, 450);
+      return () => clearTimeout(timeoutId);
+    }, [onSaveOrderNote, orderNoteDraft]);
 
     useEffect(() => {
       if (Platform.OS !== "android") return;
@@ -128,15 +157,17 @@ const BillItemsAndTotals = React.memo(
     const closeOrderNoteEditor = useCallback(() => {
       setIsOrderNoteEditorOpen(false);
       setKeyboardTop(null);
-      onSaveOrderNote();
+      lastSavedNoteRef.current = orderNoteDraft;
+      onSaveOrderNote(orderNoteDraft);
       Keyboard.dismiss();
-    }, [onSaveOrderNote]);
+    }, [onSaveOrderNote, orderNoteDraft]);
 
     const handleOrderNoteEditorBlur = useCallback(() => {
       setIsOrderNoteEditorOpen(false);
       setKeyboardTop(null);
-      onSaveOrderNote();
-    }, [onSaveOrderNote]);
+      lastSavedNoteRef.current = orderNoteDraft;
+      onSaveOrderNote(orderNoteDraft);
+    }, [onSaveOrderNote, orderNoteDraft]);
 
     const focusOrderNoteEditor = useCallback(() => {
       setTimeout(() => {
@@ -158,14 +189,14 @@ const BillItemsAndTotals = React.memo(
         <NotebookPen size={13} color={colors.muted} />
         <TextInput
           ref={orderNoteInputRef}
-          value={orderNote ?? ""}
-          onChangeText={onChangeOrderNote}
+          value={orderNoteDraft}
+          onChangeText={setOrderNoteDraft}
           onBlur={
             Platform.OS === "android"
               ? handleOrderNoteEditorBlur
-              : onSaveOrderNote
+              : () => onSaveOrderNote(orderNoteDraft)
           }
-          onEndEditing={onSaveOrderNote}
+          onEndEditing={() => onSaveOrderNote(orderNoteDraft)}
           placeholder="Add order note..."
           placeholderTextColor={colors.muted}
           multiline={false}
@@ -197,6 +228,9 @@ const BillItemsAndTotals = React.memo(
           cart={cart}
           expandedItemId={expandedItemId}
           onToggleExpand={handleToggleExpand}
+          orderHasPayments={activeOrderPaymentInfo.orderHasPayments}
+          payments={activeOrderPaymentInfo.payments}
+          isNetworkDegraded={isNetworkDegraded}
         />
         <View className="px-3 pb-1">
           {Platform.OS === "android" ? (
@@ -227,7 +261,7 @@ const BillItemsAndTotals = React.memo(
                     fontFamily: "System",
                   }}
                 >
-                  {(orderNote ?? "").trim() || "Add order note..."}
+                  {orderNoteDraft.trim() || "Add order note..."}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -272,7 +306,7 @@ const BillItemsAndTotals = React.memo(
   },
   (prev, next) =>
     prev.orderNote === next.orderNote &&
-    prev.onChangeOrderNote === next.onChangeOrderNote &&
+    prev.isNetworkDegraded === next.isNetworkDegraded &&
     prev.onSaveOrderNote === next.onSaveOrderNote,
 );
 
@@ -475,7 +509,6 @@ const BillSectionContent = ({
   }, [activeOrder, cart]);
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [orderNoteDraft, setOrderNoteDraft] = useState("");
   const isPaymentSheetOpen = usePaymentStore((state) => state.isOpen);
 
   const currentOrderNote = useMemo(
@@ -483,28 +516,15 @@ const BillSectionContent = ({
     [activeOrder?.notes],
   );
 
-  const handleSaveOrderNote = useCallback(async () => {
-    const trimmed = orderNoteDraft.trim();
-    await updateActiveOrderDetails({
-      notes: trimmed.length > 0 ? trimmed : undefined,
-    });
-  }, [orderNoteDraft, updateActiveOrderDetails]);
-
-  useEffect(() => {
-    setOrderNoteDraft(activeOrder?.notes ?? "");
-  }, [activeOrder?.id, activeOrder?.notes]);
-
-  useEffect(() => {
-    if ((orderNoteDraft ?? "").trim() === currentOrderNote) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      void handleSaveOrderNote();
-    }, 450);
-
-    return () => clearTimeout(timeoutId);
-  }, [currentOrderNote, handleSaveOrderNote, orderNoteDraft]);
+  const handleSaveOrderNote = useCallback(
+    async (nextNote: string) => {
+      const trimmed = nextNote.trim();
+      await updateActiveOrderDetails({
+        notes: trimmed.length > 0 ? trimmed : undefined,
+      });
+    },
+    [updateActiveOrderDetails],
+  );
 
   // Effect to reset processing state when payment sheet opens
   useEffect(() => {
@@ -1994,8 +2014,8 @@ const BillSectionContent = ({
       )}
 
       <BillItemsAndTotals
-        orderNote={orderNoteDraft}
-        onChangeOrderNote={setOrderNoteDraft}
+        orderNote={currentOrderNote}
+        isNetworkDegraded={!rawIsOnline || !isOnline}
         onSaveOrderNote={handleSaveOrderNote}
       />
       <View
