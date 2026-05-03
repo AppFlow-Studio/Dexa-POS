@@ -20,7 +20,16 @@ import {
     PaymentType,
 } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
+import {
+    completePaymentJournal,
+    failPaymentJournal,
+    getJournalById,
+    updatePaymentJournal,
+    writePaymentJournal,
+} from "@/services/paymentJournal";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
+import { v4 as uuidv4 } from "uuid";
 import type {
     AddOrderItemParams,
     CreateOrderParams,
@@ -56,7 +65,11 @@ import {
     seedLocalSequence,
 } from "@/lib/localOrderSequence";
 import { DEADLINES } from "@/lib/network/deadlines";
-import { toIdempotencyKey } from "@/lib/network/idempotencyKey";
+import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
+import {
+    rpcWithIdempotency,
+    toIdempotencyKey,
+} from "@/lib/network/idempotencyKey";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
 import {
@@ -2310,6 +2323,7 @@ const syncPaymentToBackend = async (
     paymentTimestamp?: string; // Timestamp for fallback matching
     dejavooTransaction?: DejavooSaleTransactionResponse;
     forceCardPricing?: boolean; // Force card pricing for custom amount payments
+    paymentJournal?: { id: string; idempotencyKey: string };
   },
   rollbackState?: PaymentRollbackState, // Previous state for reversion on failure
 ): Promise<boolean> => {
@@ -2444,6 +2458,7 @@ const syncPaymentToBackend = async (
         localPaymentId: paymentDetails.localPaymentId, // For matching payment on sync success
         paymentTimestamp: paymentDetails.paymentTimestamp, // Fallback for matching
         terminalResponse, // Pass terminal response for card payments
+        paymentJournal: paymentDetails.paymentJournal, // Wave Cat-B: thread journal + idempotencyKey
       },
       localOrderId: order.id,
     });
@@ -2470,9 +2485,10 @@ const syncPaymentToBackend = async (
         ...(alloc.amount !== undefined && { amount: alloc.amount }),
       })) || null;
 
-    // Call process_payment_v8 RPC directly
+    // Call process_payment RPC (Wave Cat-B: routed v8↔v9 by feature flag,
+    // wrapped with deadline + idempotency key from the payment journal)
     if (__DEV__)
-      console.log("[syncPaymentToBackend] Calling process_payment_v8:", {
+      console.log("[syncPaymentToBackend] Calling process_payment:", {
         orderId: order.db_order_id,
         method: paymentMethod,
         amount: paymentDetails.amount,
@@ -2481,6 +2497,7 @@ const syncPaymentToBackend = async (
         splitCount: paymentDetails.splitCount,
         splitPortionIndex: paymentDetails.splitPortionIndex,
         terminalResponse: terminalResponse,
+        idempotencyKey: paymentDetails.paymentJournal?.idempotencyKey,
       });
 
     // Detect full-remaining payment: no item allocations, no split, no force card pricing
@@ -2489,24 +2506,38 @@ const syncPaymentToBackend = async (
       !paymentDetails.splitCount &&
       !paymentDetails.forceCardPricing;
 
-    // rpc-discipline-allow: Category B payment — Option C accepted scope, deferred to deeper-optimizations
-    const { data, error } = await supabase.rpc("process_payment_v8", {
-      p_order_id: order.db_order_id,
-      p_payment_method: paymentMethod,
-      p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
-      p_tip_amount: paymentDetails.tipAmount || 0,
-      p_amount_tendered: isCash
-        ? paymentDetails.transactionDetails?.amountTendered ||
-          paymentDetails.amount
-        : null,
-      p_item_allocations: itemAllocationsForRpc,
-      p_terminal_response: terminalResponse,
-      p_staff_id: null, // Could get from employee store if needed
-      p_split_count: paymentDetails.splitCount || null,
-      p_split_portion_index: paymentDetails.splitPortionIndex || null,
-      p_force_card_pricing: paymentDetails.forceCardPricing || false,
-      p_terminal_id: terminalId,
-    });
+    const stationIdForRpc =
+      useStoreSettingsStore.getState().selectedStation?.id ?? null;
+
+    const { data, error } = await rpcWithIdempotency<any>(
+      supabase,
+      "process_payment",
+      "process_payment_v8",
+      "process_payment_v9",
+      {
+        p_order_id: order.db_order_id,
+        p_payment_method: paymentMethod,
+        p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
+        p_tip_amount: paymentDetails.tipAmount || 0,
+        p_amount_tendered: isCash
+          ? paymentDetails.transactionDetails?.amountTendered ||
+            paymentDetails.amount
+          : null,
+        p_item_allocations: itemAllocationsForRpc,
+        p_terminal_response: terminalResponse,
+        p_staff_id: null, // Could get from employee store if needed
+        p_split_count: paymentDetails.splitCount || null,
+        p_split_portion_index: paymentDetails.splitPortionIndex || null,
+        p_force_card_pricing: paymentDetails.forceCardPricing || false,
+        p_terminal_id: terminalId,
+        // v9-only params (stripped by withIdempotency when flag is OFF):
+        p_station_id: stationIdForRpc,
+      },
+      {
+        deadline: DEADLINES.paymentRpc,
+        keyOverride: paymentDetails.paymentJournal?.idempotencyKey,
+      },
+    );
 
     if (error) {
       console.error(
@@ -2550,12 +2581,84 @@ const syncPaymentToBackend = async (
           useOrderStore.getState().syncOrderFromBackendComplete(order.id);
         });
 
+        // Wave Cat-B: server has the payment recorded already; mark journal complete
+        if (paymentDetails.paymentJournal?.id) {
+          completePaymentJournal(
+            paymentDetails.paymentJournal.id,
+            "idempotent-no-op",
+          );
+        }
+
         toastService.show({
           title: "Already Paid",
           message: "Order has no unpaid items remaining.",
           type: "warning",
         });
 
+        return true;
+      }
+
+      // ========================================================================
+      // Wave Cat-B: verifying outcome — deadline OR idempotency_in_flight (40001)
+      // The original RPC may have committed; queueing would create a duplicate.
+      // Hand off to the recovery flow (verifying overlay polls check_recent_payment).
+      // Local optimistic state stays. Journal stays in 'terminal_approved'.
+      // ========================================================================
+      const isVerifyingOutcome =
+        (error as any)?.code === "DEADLINE_EXCEEDED" ||
+        (error as any)?.code === "40001" ||
+        errMessage.includes("idempotency_in_flight");
+
+      if (
+        isVerifyingOutcome &&
+        isPaymentRecoveryUIEnabled() &&
+        paymentDetails.paymentJournal?.id
+      ) {
+        const journal = getJournalById(paymentDetails.paymentJournal.id);
+        if (journal) {
+          usePaymentRecoveryStore.getState().add(journal);
+          // Lazy require: usePaymentStore imports from useOrderStore (circular).
+          // Reading at call time avoids the init-order trap.
+          try {
+            const { usePaymentStore } =
+              require("@/stores/usePaymentStore") as typeof import("@/stores/usePaymentStore");
+            const reason: "deadline_exceeded" | "idempotency_in_flight" =
+              (error as any)?.code === "DEADLINE_EXCEEDED"
+                ? "deadline_exceeded"
+                : "idempotency_in_flight";
+            usePaymentStore.getState().setVerification({
+              journalId: journal.id,
+              idempotencyKey: journal.idempotencyKey,
+              orderDbId: journal.dbOrderId ?? null,
+              amountCents: Math.round(journal.amount * 100),
+              startedAt: Date.now(),
+              reason,
+            });
+            usePaymentStore.getState().setView("verifying");
+          } catch (uiErr) {
+            console.error(
+              "[syncPaymentToBackend] Failed to enter verifying view:",
+              uiErr,
+            );
+          }
+        }
+        if (__DEV__) {
+          console.warn(
+            "[syncPaymentToBackend] Verifying outcome — handing off to recovery flow",
+            {
+              code: (error as any)?.code,
+              msg: (error as any)?.message,
+              journalId: paymentDetails.paymentJournal.id,
+            },
+          );
+        }
+        toastService.show({
+          title: "Verifying Payment",
+          message: "Network slow — checking with server. Please wait.",
+          type: "warning",
+        });
+        // Local state stays. Journal stays terminal_approved.
+        // Recovery overlay (Wave 7) drives Mark Complete / gated Try Again.
         return true;
       }
 
@@ -2634,6 +2737,7 @@ const syncPaymentToBackend = async (
           localPaymentId: paymentDetails.localPaymentId, // For matching payment on sync success
           paymentTimestamp: paymentDetails.paymentTimestamp, // Fallback for matching
           terminalResponse: terminalResponseRetry,
+          paymentJournal: paymentDetails.paymentJournal, // Wave Cat-B: thread journal + idempotencyKey
         },
         localOrderId: order.id,
       });
@@ -2775,6 +2879,14 @@ const syncPaymentToBackend = async (
             data.order_amount_due;
         }
       });
+
+      // Wave Cat-B: backend confirmed; close out the journal entry
+      if (paymentDetails.paymentJournal?.id && data.payment_id) {
+        completePaymentJournal(
+          paymentDetails.paymentJournal.id,
+          data.payment_id,
+        );
+      }
 
       // Sync payment status to previous orders store so both stores stay consistent
       if (order.db_order_id) {
@@ -2932,6 +3044,13 @@ const syncPaymentToBackend = async (
     return true;
   } catch (error) {
     console.error("Backend payment sync error:", error);
+
+    // Wave Cat-B: terminal failure — local state will be reverted; mark journal failed
+    if (paymentDetails.paymentJournal?.id) {
+      const errMsg =
+        (error as any)?.message || (error ? String(error) : "unknown_error");
+      failPaymentJournal(paymentDetails.paymentJournal.id, errMsg);
+    }
 
     // REVERT OPTIMISTIC STATE ON FAILURE
     if (rollbackState) {
@@ -9792,6 +9911,39 @@ export const useOrderStore = create<OrderState>()(
               return false;
             }
 
+            // ================================================================
+            // Wave Cat-B: write payment journal BEFORE optimistic state mutation,
+            // so a crash between here and backend ack leaves a recoverable trace.
+            // ================================================================
+            const paymentJournalKey = uuidv4();
+            const paymentJournalId = writePaymentJournal({
+              orderId,
+              dbOrderId: order.db_order_id,
+              amount,
+              tipAmount,
+              paymentMethod: method,
+              idempotencyKey: paymentJournalKey,
+              splitGroupId:
+                splitCount && splitPortionIndex
+                  ? `${orderId}-split-${splitCount}-${paymentTimestamp}`
+                  : undefined,
+            });
+
+            // The terminal has already returned by the time we reach addPaymentToOrder
+            // (transactionDetails carries its response). Promote the journal immediately
+            // to terminal_approved so crash recovery treats it as "card was charged".
+            const journalTerminalTxnId =
+              transactionDetails?.transactionId ??
+              transactionDetails?.dejavooTransaction?.referenceId ??
+              undefined;
+            updatePaymentJournal(paymentJournalId, {
+              status: "terminal_approved",
+              ...(journalTerminalTxnId && {
+                terminalTxnId: journalTerminalTxnId,
+              }),
+              ...(order.db_order_id && { dbOrderId: order.db_order_id }),
+            });
+
             const newPayment: OrderProfilePayment = {
               id: localPaymentId, // Use local ID as temporary main ID
               localId: localPaymentId, // Unique local identifier for sync matching
@@ -9978,10 +10130,20 @@ export const useOrderStore = create<OrderState>()(
                 paymentTimestamp, // Timestamp for fallback matching
                 dejavooTransaction,
                 forceCardPricing, // Force card pricing for custom amount payments
+                paymentJournal: {
+                  id: paymentJournalId,
+                  idempotencyKey: paymentJournalKey,
+                },
               },
               rollbackState, // Previous state for rollback on failure
             ).catch((err) => {
               console.error("[addPaymentToOrder] Background sync failed:", err);
+              // Wave Cat-B: outermost catch — sync threw before reaching its own
+              // try/catch. Mark journal failed so it isn't left as a phantom.
+              failPaymentJournal(
+                paymentJournalId,
+                (err as any)?.message || String(err),
+              );
             });
 
             return true;

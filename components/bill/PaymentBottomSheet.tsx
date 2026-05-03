@@ -18,6 +18,7 @@ import ManualCardEntryView from './paymentView/ManualCardEntryView'
 import PayForItemsView from './paymentView/PayForItemsView'
 import PaymentMethodSelectionView from './paymentView/PaymentMethodSelectionView'
 import PaymentProgressHeader from './paymentView/PaymentProgressHeader'
+import PaymentVerifyingOverlay from './paymentView/PaymentVerifyingOverlay'
 import PreAuthPaymentView from './paymentView/PreAuthPaymentView'
 import SplitByItemView from './paymentView/SplitByItemView'
 import SplitEvenlyView from './paymentView/SplitEvenlyView'
@@ -85,6 +86,8 @@ const PaymentBottomSheet: React.FC = () => {
         return <PayForItemsView />
       case 'pre-auth':
         return <PreAuthPaymentView />
+      case 'verifying':
+        return <PaymentVerifyingOverlay />
       case 'success':
         return <PaymentSuccessView />
       default:

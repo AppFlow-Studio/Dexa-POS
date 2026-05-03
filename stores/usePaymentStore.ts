@@ -40,6 +40,7 @@ export type PaymentView =
   | 'split-payment-success'
   | 'pay-for-items'
   | 'pre-auth' // Pre-authorization (open/increase/close tab)
+  | 'verifying' // Wave Cat-B: deadline/40001 outcome — recovery flow active
 
 export interface Split {
   id: string
@@ -73,12 +74,29 @@ const paymentViewToStepMap: Record<PaymentView, number> = {
   'split-custom-amount': 2,
   'pay-for-items': 2, // NEW: Split review step
   'pre-auth': 2, // Pre-auth step
+  verifying: 2, // Wave Cat-B: same step rank as card/manual — keeps progress bar stable
   'split-payment-success': 3,
   review: 3,
   success: 4
 }
 
 const totalSteps = 4
+
+/**
+ * Wave Cat-B: payment verification slot. Populated when an in-flight payment
+ * RPC times out (DEADLINE_EXCEEDED) or hits 40001 idempotency_in_flight, OR
+ * when the relaunch hook detects a journal stuck in 'terminal_approved'.
+ * The verifying overlay (Wave 7) drives Mark Complete / gated Try Again.
+ */
+export interface PaymentVerificationState {
+  journalId: string
+  idempotencyKey: string
+  orderDbId: string | null
+  amountCents: number
+  splitPortionIndex?: number
+  startedAt: number
+  reason: 'deadline_exceeded' | 'idempotency_in_flight' | 'crash_recovery'
+}
 
 interface PaymentState {
   paymentMethod: PaymentMethod | null
@@ -90,6 +108,10 @@ interface PaymentState {
   activeSplitId: string | null
   splitSourceView: PaymentView | null // FIXED: Added this missing property
   completedPaymentInfo: CompletedPaymentInfo | null // Snapshot of payment info for success view
+  // Wave Cat-B: payment-recovery slot
+  verification: PaymentVerificationState | null
+  setVerification: (v: PaymentVerificationState | null) => void
+  clearVerification: () => void
   progress: {
     currentStep: number
     totalSteps: number
@@ -220,6 +242,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   activeSplitId: null,
   splitSourceView: null, // Initialized here
   completedPaymentInfo: null, // Initialized here
+  verification: null, // Wave Cat-B: payment-recovery slot
+  setVerification: v => set({ verification: v }),
+  clearVerification: () => set({ verification: null }),
   progress: { currentStep: 1, totalSteps: totalSteps },
   // Offline payment state
   pendingPaymentsCount: 0,

@@ -92,10 +92,12 @@ const PaymentProgressHeader: React.FC = () => {
       const moneyRatio = paidAmount / total
 
       let activityBonus = 0
-      // If we haven't paid yet but are on input screen, give visual progress
+      // If we haven't paid yet but are on input screen, give visual progress.
+      // Wave Cat-B: 'verifying' kept here so the bar holds steady when the
+      // view flips to verifying after a deadline rather than dropping back.
       if (
         moneyRatio < 0.01 &&
-        ['card', 'cash', 'manual', 'cardOptions'].includes(view)
+        ['card', 'cash', 'manual', 'cardOptions', 'verifying'].includes(view)
       ) {
         activityBonus = 0.1
       }
@@ -153,6 +155,8 @@ const PaymentProgressHeader: React.FC = () => {
         return 'Custom Amounts'
       case 'review':
         return 'Review Order'
+      case 'verifying':
+        return 'Verifying Payment'
       default:
         return 'Processing'
     }

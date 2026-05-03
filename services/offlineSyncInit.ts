@@ -67,6 +67,10 @@ import {
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
+import {
+    completePaymentJournal,
+    failPaymentJournal,
+} from "@/services/paymentJournal";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -1096,6 +1100,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           paymentTimestamp,
           cardData,
           terminalResponse,
+          paymentJournal: queuedJournal,
         } = op.params;
 
         // ============================================================
@@ -1328,20 +1333,29 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           }
         }
 
+        // Wave Cat-B: prefer the journal's idempotencyKey (survives across queue
+        // replays AND ties back to the same paymentJournal entry). Fall back to
+        // the op-level key for legacy ops queued before paymentJournal wiring.
+        const replayIdempotencyKey =
+          (queuedJournal as { id: string; idempotencyKey: string } | undefined)
+            ?.idempotencyKey ?? op.idempotencyKey;
+
         console.log(
-          "[OfflineSync:payment] Calling process_payment_v8 with:",
+          "[OfflineSync:payment] Calling process_payment with:",
           JSON.stringify({
             orderId: finalParams.p_order_id,
             method: finalParams.p_payment_method,
             amount: finalParams.p_amount,
             tip: finalParams.p_tip_amount || 0,
             hasTerminalResponse: !!finalParams.p_terminal_response,
+            idempotencyKey: replayIdempotencyKey,
           }),
         );
 
         const { data, error } = await OrderService.processPayment(
           _supabaseClient,
           finalParams,
+          { keyOverride: replayIdempotencyKey },
         );
 
         if (error) {
@@ -1359,6 +1373,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               `[OfflineSync:payment] Order already paid — discarding operation as complete:`,
               errMsg,
             );
+            // Wave Cat-B: server already has this payment; close the journal.
+            if (queuedJournal?.id) {
+              completePaymentJournal(queuedJournal.id, "idempotent-no-op");
+            }
             return true;
           }
 
@@ -1370,7 +1388,27 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             console.warn(
               `[OfflineSync:payment] No unpaid items remaining — payment already processed (idempotent). Discarding operation as complete.`,
             );
+            if (queuedJournal?.id) {
+              completePaymentJournal(queuedJournal.id, "idempotent-no-op");
+            }
             return true;
+          }
+
+          // Wave Cat-B: 23505 unique violation on the idempotency_key index is
+          // terminal — means the cache row was missing AND the body re-executed,
+          // which the partial unique index then blocked. Should be near-zero.
+          if ((error as any)?.code === "23505") {
+            console.error(
+              `[OfflineSync:payment] DUPLICATE-KEY VIOLATION (23505) — idempotency cache may be malfunctioning:`,
+              error,
+            );
+            if (queuedJournal?.id) {
+              failPaymentJournal(
+                queuedJournal.id,
+                `unique_violation: ${errMsg}`,
+              );
+            }
+            return true; // discard — would loop forever otherwise
           }
 
           console.error(`[OfflineSync:payment] FAILED - Error:`, error);
@@ -1382,6 +1420,14 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           `[OfflineSync:payment] Response:`,
           JSON.stringify(data, null, 2),
         );
+
+        // Wave Cat-B: backend confirmed; close out the journal.
+        if (queuedJournal?.id && (data as any)?.payment_id) {
+          completePaymentJournal(
+            queuedJournal.id,
+            (data as any).payment_id,
+          );
+        }
 
         // Sync order state from backend response if available
         if (localOrderId && data) {

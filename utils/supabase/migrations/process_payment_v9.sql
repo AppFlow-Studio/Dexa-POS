@@ -1,0 +1,1136 @@
+-- =====================================================================
+-- Migration: process_payment_v9 — adds idempotency-key support
+-- =====================================================================
+-- Forks process_payment_v8 to add p_idempotency_key + p_station_id tail
+-- params (both default NULL) and wraps execution with the
+-- _idempotency_claim/_idempotency_complete helpers from
+-- 00_idempotency_layer.sql.
+--
+-- Three deltas inside the BEGIN_VERBATIM block (exception list for
+-- scripts/verify_verbatim_diff.sh):
+--   1. trailing RETURN jsonb_build_object(...) → v_result := jsonb_build_object(...)
+--      so the post-VERBATIM completion block runs.
+--   2. SELECT * FROM public.orders gains FOR UPDATE — protects side
+--      effects (orders.amount_paid UPDATE, order_payments INSERT) from
+--      concurrent stale-claim takeovers (60s window in _idempotency_claim).
+--   3. INSERT INTO public.order_payments adds the existing idempotency_key
+--      column (TEXT, added by NMI migration 20260502212621) — cast from
+--      our UUID param. Backed by the partial unique index from
+--      order_payments_add_idempotency_key.sql for the no-payment_device_id
+--      subspace (Cat-B writes to that subspace exclusively).
+--
+-- v8 stays alive; v9 is selected by the client when
+-- isIdempotentEnabled('process_payment'). Result-size hazard: if
+-- v_result exceeds the 32 KB cache cap because items_covered is large
+-- (>100 items), the body trims those fields from the cached jsonb
+-- before _idempotency_complete. Callers on retry get the trimmed shape
+-- (UI replay path doesn't read items_covered).
+--
+-- Rollback: process_payment_v9_rollback.sql
+-- Apply AFTER: 00_idempotency_layer.sql, order_payments_add_idempotency_key.sql
+-- =====================================================================
+
+CREATE OR REPLACE FUNCTION public.process_payment_v9(
+    p_order_id uuid,
+    p_payment_method text,
+    p_amount numeric DEFAULT NULL,
+    p_tip_amount numeric DEFAULT 0,
+    p_amount_tendered numeric DEFAULT NULL,
+    p_item_allocations jsonb DEFAULT NULL,
+    p_staff_id uuid DEFAULT NULL,
+    p_terminal_response jsonb DEFAULT NULL,
+    p_split_count integer DEFAULT NULL,
+    p_split_portion_index integer DEFAULT NULL,
+    p_force_card_pricing boolean DEFAULT false,
+    p_terminal_id uuid DEFAULT NULL,
+    -- v9 additions:
+    p_idempotency_key uuid DEFAULT NULL,
+    p_station_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+    v_cached jsonb;
+    v_result jsonb;
+    v_cached_result jsonb;
+    v_order record;
+    v_payment_id uuid;
+    v_is_cash boolean;
+    v_is_item_payment boolean;
+    v_is_split_payment boolean;
+    v_payment_total numeric;
+    v_new_sync_version integer;
+    v_subtotal_portion numeric := 0;
+    v_tax_portion numeric := 0;
+    v_change_given numeric := 0;
+    v_new_amount_paid numeric;
+    v_new_amount_due numeric;         -- ALWAYS card price
+    v_new_cash_amount_due numeric;    -- For reference
+    v_current_pricing_mode text;
+    v_new_pricing_mode text;
+    v_items_subtotal numeric := 0;
+    v_items_tax numeric := 0;
+    v_covered_items uuid[] := '{}';
+    v_covered_items_json jsonb := '[]'::jsonb;
+
+    -- Unpaid tracking (ALWAYS both prices)
+    v_unpaid_items_count integer := 0;
+    v_unpaid_card_total numeric := 0;
+    v_unpaid_cash_total numeric := 0;
+
+    -- Pre-payment unpaid totals (for full remaining detection)
+    v_pre_unpaid_card_total numeric := 0;
+    v_pre_unpaid_cash_total numeric := 0;
+
+    -- Refund balance tracking (for custom refunds not tied to items)
+    v_effective_paid numeric := 0;
+    v_payment_based_due numeric := 0;
+    v_custom_refund_balance numeric := 0;
+
+    -- Payment totals by type
+    v_total_cash_paid numeric := 0;
+    v_total_card_paid numeric := 0;
+
+    -- Fully paid detection
+    v_order_fully_paid boolean := false;
+
+    -- Split evenly tracking
+    v_split_card_portion numeric;
+    v_split_cash_portion numeric;
+    v_portions_paid integer := 0;
+    v_portions_remaining integer := 0;
+    v_paid_portion_indexes integer[];
+    v_is_last_portion boolean := false;
+
+    -- Full remaining payment detection
+    v_is_full_remaining boolean := false;
+    v_target_unpaid numeric := 0;
+
+    -- Dejavoo Transaction Tracking
+    v_dejavoo_reference_id text;
+    v_dejavoo_transaction_number text;
+    v_dejavoo_auth_code text;
+    v_dejavoo_batch_number text;
+    v_dejavoo_invoice_number text;
+    v_dejavoo_rrn text;
+    v_dejavoo_entry_mode text;
+    v_dejavoo_result_code text;
+    v_dejavoo_status_code text;
+    v_has_dejavoo_transaction boolean := false;
+    v_dejavoo_last_four text;
+    v_use_cash_pricing boolean;
+
+    v_terminal_id uuid;
+BEGIN
+    -- Idempotency claim: replay returns cached result; concurrent same-key
+    -- raises serialization_failure (40001), already classified transient
+    -- by lib/network/idempotencyKey.ts:isTransientRpcError.
+    IF p_idempotency_key IS NOT NULL THEN
+        v_cached := public._idempotency_claim(p_idempotency_key, 'process_payment_v9');
+        IF v_cached IS NOT NULL THEN
+            RETURN v_cached;
+        END IF;
+    END IF;
+
+    -- BEGIN_VERBATIM
+    v_is_cash := p_payment_method = 'cash';
+    v_use_cash_pricing := v_is_cash AND NOT COALESCE(p_force_card_pricing, false);
+    v_is_item_payment := p_item_allocations IS NOT NULL AND jsonb_array_length(p_item_allocations) > 0;
+    v_is_split_payment := p_split_count IS NOT NULL AND p_split_count > 1;
+
+    -- ============================================
+    -- 1. Get Order with Validation
+    -- ============================================
+    -- v9 delta: FOR UPDATE serializes concurrent stale-claim takeovers
+    -- (60s window in _idempotency_claim) so amount_paid UPDATE + INSERT
+    -- side effects can't race.
+    SELECT * INTO v_order
+    FROM public.orders
+    WHERE id = p_order_id
+      AND merchant_id = user_merchant_id()
+      AND location_id = ANY(user_location_ids())
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Order not found or access denied';
+    END IF;
+
+    -- Allow payment if order has been refunded (amount_due > 0) even if payment_status is 'paid'
+    IF v_order.payment_status = 'paid' AND COALESCE(v_order.amount_due, 0) <= 0 THEN
+        RAISE EXCEPTION 'Order is already fully paid';
+    END IF;
+
+    v_current_pricing_mode := v_order.payment_pricing_mode::text;
+
+     -- ============================================
+    -- 2. Calculate CURRENT Unpaid Totals from Items
+    --    (BEFORE this payment - source of truth)
+    --    Includes prorated discounts for remaining quantities
+    --    NOTE: Accounts for refunded_quantity - refunded items need to be paid again
+    -- ============================================
+    SELECT
+        COUNT(*),
+        -- Card total: (remaining_qty * unit_price) - prorated_discount + tax_on_discounted
+        -- remaining_qty = quantity - paid_quantity + refunded_quantity
+        COALESCE(SUM(
+            ((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.unit_price)
+            - ROUND(
+                COALESCE(oi.discount_amount, 0) *
+                (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0)
+            , 2)
+            + ROUND(
+                (
+                    ((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.unit_price)
+                    - ROUND(
+                        COALESCE(oi.discount_amount, 0) *
+                        (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0)
+                    , 2)
+                ) * COALESCE(oi.tax_rate, 0) / 100
+            , 2)
+        ), 0),
+        -- Cash total: same formula with cash_price but using cash-scaled discount
+        -- discount_cash = discount_amount * (cash_price / unit_price), matching calculate_item_totals
+        COALESCE(SUM(
+            ((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.cash_price)
+            - ROUND(
+                COALESCE(ROUND(COALESCE(oi.discount_amount, 0) * COALESCE(oi.cash_price, oi.unit_price) / NULLIF(oi.unit_price, 0), 2), 0) *
+                (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0)
+            , 2)
+            + ROUND(
+                (
+                    ((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.cash_price)
+                    - ROUND(
+                        COALESCE(ROUND(COALESCE(oi.discount_amount, 0) * COALESCE(oi.cash_price, oi.unit_price) / NULLIF(oi.unit_price, 0), 2), 0) *
+                        (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0)
+                    , 2)
+                ) * COALESCE(oi.tax_rate, 0) / 100
+            , 2)
+        ), 0)
+    INTO v_unpaid_items_count, v_pre_unpaid_card_total, v_pre_unpaid_cash_total
+    FROM public.order_items oi
+    WHERE oi.order_id = p_order_id
+      AND oi.is_voided = false
+      AND (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) > 0;
+
+    -- Account for custom refund balance (refunds not tied to specific items)
+    -- Same logic as calculate_order_totals_fast
+    -- Use original_amount (card-equivalent) to avoid phantom balance when cash payments
+    -- are made at lower prices: original_amount stores the card-equivalent value,
+    -- and refunded_amount is scaled proportionally to card-equivalent denomination
+    SELECT COALESCE(SUM(
+        COALESCE(original_amount, amount)
+        - COALESCE(refunded_amount, 0) * COALESCE(original_amount, amount) / NULLIF(amount, 0)
+    ), 0)
+    INTO v_effective_paid
+    FROM public.order_payments
+    WHERE order_id = p_order_id
+      AND status IN ('captured', 'partially_refunded', 'refunded')
+      AND is_voided = false;
+
+    v_payment_based_due := GREATEST(v_order.card_total - v_effective_paid, 0);
+    v_custom_refund_balance := GREATEST(v_payment_based_due - v_pre_unpaid_card_total, 0);
+    v_pre_unpaid_card_total := v_pre_unpaid_card_total + v_custom_refund_balance;
+    v_pre_unpaid_cash_total := v_pre_unpaid_cash_total + v_custom_refund_balance;
+
+    -- Fix: Clamp item-based unpaid totals to payment-based due when partial payments exist.
+    -- Partial payments don't mark items as paid, so item-based totals stay at full amount.
+    -- payment_based_due tracks actual remaining after prior payments.
+    IF v_payment_based_due < v_pre_unpaid_card_total THEN
+        IF v_pre_unpaid_card_total > 0 THEN
+            v_pre_unpaid_cash_total := ROUND(
+                v_pre_unpaid_cash_total * v_payment_based_due / v_pre_unpaid_card_total, 2
+            );
+        END IF;
+        v_pre_unpaid_card_total := v_payment_based_due;
+    END IF;
+
+    -- If nothing to pay, return early
+    -- Allow payment when custom refund balance exists (payment-level refund debt)
+    IF v_unpaid_items_count = 0 AND v_custom_refund_balance <= 0 AND v_payment_based_due <= 0 THEN
+        RAISE EXCEPTION 'No unpaid items remaining on this order';
+    END IF;
+
+    -- ============================================
+    -- 3. Get Existing Payment Totals by Type
+    -- ============================================
+    SELECT
+        COALESCE(SUM(CASE WHEN is_cash_priced THEN total_amount ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN NOT is_cash_priced THEN total_amount ELSE 0 END), 0)
+    INTO v_total_cash_paid, v_total_card_paid
+    FROM public.order_payments
+    WHERE order_id = p_order_id
+      AND status = 'captured';
+
+
+    -- ============================================
+    -- 4. Split Payment Validation
+    -- ============================================
+    IF v_is_split_payment THEN
+        IF p_split_portion_index IS NULL THEN
+            RAISE EXCEPTION 'Split portion index is required for split payments';
+        END IF;
+
+        IF p_split_portion_index < 1 OR p_split_portion_index > p_split_count THEN
+            RAISE EXCEPTION 'Invalid split portion index: % (must be 1-%)', p_split_portion_index, p_split_count;
+        END IF;
+
+        IF EXISTS (
+            SELECT 1 FROM public.order_payments
+            WHERE order_id = p_order_id
+              AND split_portion_index = p_split_portion_index
+              AND status = 'captured'
+        ) THEN
+            RAISE EXCEPTION 'Split portion % has already been paid', p_split_portion_index;
+        END IF;
+
+        SELECT
+            COUNT(*),
+            COALESCE(array_agg(split_portion_index ORDER BY split_portion_index), ARRAY[]::integer[])
+        INTO v_portions_paid, v_paid_portion_indexes
+        FROM public.order_payments
+        WHERE order_id = p_order_id
+          AND split_portion_index IS NOT NULL
+          AND status = 'captured';
+
+        v_portions_remaining := p_split_count - v_portions_paid - 1;
+        v_is_last_portion := (v_portions_remaining = 0);
+    END IF;
+
+    -- ============================================
+    -- 5. Determine Pricing Mode (for tracking only)
+    -- ============================================
+    IF v_current_pricing_mode IS NULL THEN
+        v_new_pricing_mode := CASE WHEN v_use_cash_pricing THEN 'cash' ELSE 'card' END;
+    ELSIF v_current_pricing_mode = 'card' AND v_use_cash_pricing THEN
+        v_new_pricing_mode := 'mixed';
+    ELSIF v_current_pricing_mode = 'cash' AND NOT v_use_cash_pricing THEN
+        v_new_pricing_mode := 'mixed';
+    ELSE
+        v_new_pricing_mode := v_current_pricing_mode;
+    END IF;
+
+    -- ============================================
+    -- 6. Calculate Payment Amount Based on Scenario
+    -- ============================================
+    IF v_is_item_payment THEN
+        -- ========================================
+        -- PER-ITEM PAYMENT (with per-item quantities)
+        -- NOTE: Accounts for refunded_quantity - refunded items can be paid again
+        -- effective_unpaid = quantity - paid_quantity + refunded_quantity
+        -- ========================================
+        WITH payment_calc AS (
+            SELECT
+                oi.id,
+                oi.item_name,
+                oi.quantity AS original_qty,
+                oi.unit_price,
+                oi.cash_price,
+                oi.tax_rate,
+                oi.discount_amount,
+                COALESCE(oi.paid_quantity, 0) AS already_paid_qty,
+                COALESCE(oi.refunded_quantity, 0) AS refunded_qty,
+                -- Effective unpaid = quantity - paid + refunded
+                (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) AS effective_unpaid,
+
+                -- Quantity being paid (capped at effective unpaid)
+                LEAST(
+                    COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                    oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
+                ) AS qty_paying,
+
+                -- Prorated card discount: total_discount * (qty_paying / original_qty)
+                ROUND(
+                    COALESCE(oi.discount_amount, 0) *
+                    LEAST(
+                        COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                        oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
+                    )::numeric / NULLIF(oi.quantity, 0)
+                , 2) AS prorated_discount,
+
+                -- Prorated cash discount: cash-scaled discount * (qty_paying / original_qty)
+                ROUND(
+                    COALESCE(ROUND(COALESCE(oi.discount_amount, 0) * COALESCE(oi.cash_price, oi.unit_price) / NULLIF(oi.unit_price, 0), 2), 0) *
+                    LEAST(
+                        COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                        oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
+                    )::numeric / NULLIF(oi.quantity, 0)
+                , 2) AS prorated_cash_discount
+
+            FROM jsonb_array_elements(p_item_allocations) AS alloc
+            JOIN public.order_items oi ON oi.id = (alloc.value->>'order_item_id')::uuid
+            WHERE oi.order_id = p_order_id
+              AND oi.is_voided = false
+              AND (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) > 0
+        )
+        SELECT
+            -- Subtotal: (qty * price) - prorated_discount
+            COALESCE(SUM(
+                CASE WHEN v_is_cash
+                    THEN (pc.qty_paying * pc.cash_price) - pc.prorated_cash_discount
+                    ELSE (pc.qty_paying * pc.unit_price) - pc.prorated_discount
+                END
+            ), 0),
+
+            -- Tax: on discounted amount
+            COALESCE(SUM(
+                ROUND(
+                    (
+                        CASE WHEN v_is_cash
+                            THEN (pc.qty_paying * pc.cash_price) - pc.prorated_cash_discount
+                            ELSE (pc.qty_paying * pc.unit_price) - pc.prorated_discount
+                        END
+                    ) * COALESCE(pc.tax_rate, 0) / 100
+                , 2)
+            ), 0),
+
+            array_agg(pc.id)
+        INTO v_items_subtotal, v_items_tax, v_covered_items
+        FROM payment_calc pc;
+
+        v_payment_total := v_items_subtotal + v_items_tax;
+        v_subtotal_portion := v_items_subtotal;
+        v_tax_portion := v_items_tax;
+
+        -- Build detailed items JSON with allocated quantities
+        -- NOTE: This runs BEFORE the UPDATE below so quantities are pre-update (correct)
+        WITH payment_calc AS (
+            SELECT
+                oi.id,
+                oi.item_name,
+                oi.quantity AS original_qty,
+                oi.unit_price,
+                oi.cash_price,
+                oi.tax_rate,
+                LEAST(
+                    COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                    oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
+                ) AS qty_paying,
+                ROUND(
+                    COALESCE(oi.discount_amount, 0) *
+                    LEAST(
+                        COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                        oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
+                    )::numeric / NULLIF(oi.quantity, 0)
+                , 2) AS prorated_discount,
+                ROUND(
+                    COALESCE(ROUND(COALESCE(oi.discount_amount, 0) * COALESCE(oi.cash_price, oi.unit_price) / NULLIF(oi.unit_price, 0), 2), 0) *
+                    LEAST(
+                        COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                        oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
+                    )::numeric / NULLIF(oi.quantity, 0)
+                , 2) AS prorated_cash_discount
+            FROM jsonb_array_elements(p_item_allocations) AS alloc
+            JOIN public.order_items oi ON oi.id = (alloc.value->>'order_item_id')::uuid
+            WHERE oi.order_id = p_order_id
+              AND oi.is_voided = false
+              AND (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) > 0
+        )
+        SELECT COALESCE(jsonb_agg(jsonb_build_object(
+            'order_item_id', pc.id,
+            'item_name', pc.item_name,
+            'quantity_paid', pc.qty_paying,
+            'original_quantity', pc.original_qty,
+            'unit_price', CASE WHEN v_is_cash THEN pc.cash_price ELSE pc.unit_price END,
+            'tax_rate', COALESCE(pc.tax_rate, 0),
+            'prorated_discount', CASE WHEN v_is_cash THEN pc.prorated_cash_discount ELSE pc.prorated_discount END,
+            'subtotal', CASE WHEN v_is_cash
+                THEN (pc.qty_paying * pc.cash_price) - pc.prorated_cash_discount
+                ELSE (pc.qty_paying * pc.unit_price) - pc.prorated_discount
+            END
+        )), '[]'::jsonb)
+        INTO v_covered_items_json
+        FROM payment_calc pc;
+
+        -- Update items with allocated quantities (INCREMENT paid_quantity)
+        -- Cap paid_quantity at quantity, clear refunded_quantity proportionally
+        UPDATE public.order_items oi
+        SET
+            paid_quantity = LEAST(oi.quantity,
+                COALESCE(oi.paid_quantity, 0) + LEAST(
+                    COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                    oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
+                )),
+            -- Clear refunded_quantity proportionally to what's being re-paid
+            refunded_quantity = GREATEST(
+                COALESCE(oi.refunded_quantity, 0) - LEAST(
+                    COALESCE((alloc.value->>'quantity')::integer, COALESCE(oi.refunded_quantity, 0)),
+                    COALESCE(oi.refunded_quantity, 0)
+                ), 0),
+            price_paid = CASE WHEN v_is_cash THEN oi.cash_price ELSE oi.unit_price END,
+            updated_at = now()
+        FROM jsonb_array_elements(p_item_allocations) AS alloc
+        WHERE oi.id = (alloc.value->>'order_item_id')::uuid
+          AND oi.order_id = p_order_id
+          AND oi.is_voided = false;
+
+    ELSIF v_is_split_payment THEN
+        -- ========================================
+        -- SPLIT EVENLY PAYMENT
+        -- ========================================
+        v_split_card_portion := ROUND(v_order.card_total / p_split_count, 2);
+        v_split_cash_portion := ROUND(v_order.cash_total / p_split_count, 2);
+
+        IF v_is_last_portion THEN
+            -- Last portion: pay remainder to handle rounding
+            -- Use portion-based calculation instead of tracking paid amounts,
+            -- because v_total_cash/card_paid only counts payments of that type,
+            -- which breaks when splits use mixed payment methods (e.g. Cash + Card).
+            IF v_is_cash THEN
+                v_payment_total := v_order.cash_total - (v_split_cash_portion * (p_split_count - 1));
+            ELSE
+                v_payment_total := v_order.card_total - (v_split_card_portion * (p_split_count - 1));
+            END IF;
+            -- Ensure non-negative
+            v_payment_total := GREATEST(v_payment_total, 0);
+        ELSE
+            IF v_is_cash THEN
+                v_payment_total := v_split_cash_portion;
+            ELSE
+                v_payment_total := v_split_card_portion;
+            END IF;
+        END IF;
+
+        -- Pro-rate subtotal/tax
+        IF v_is_cash AND v_order.cash_total > 0 THEN
+            v_subtotal_portion := ROUND(v_payment_total * (v_order.cash_subtotal / v_order.cash_total), 2);
+        ELSIF v_order.card_total > 0 THEN
+            v_subtotal_portion := ROUND(v_payment_total * (v_order.card_subtotal / v_order.card_total), 2);
+        END IF;
+        v_tax_portion := v_payment_total - v_subtotal_portion;
+
+    ELSE
+        -- ========================================
+        -- FULL/REMAINING or PARTIAL PAYMENT
+        -- Supports hybrid: pay items first, then pay remaining
+        -- ========================================
+
+        -- Determine target unpaid amount (from items, source of truth)
+        v_target_unpaid := CASE WHEN v_use_cash_pricing
+            THEN v_pre_unpaid_cash_total
+            ELSE v_pre_unpaid_card_total
+        END;
+
+        -- ============================================
+        -- FIX V6: Added 0.05 tolerance for rounding differences
+        -- between frontend and backend calculations
+        -- ============================================
+        v_is_full_remaining := (p_amount IS NULL) OR (p_amount >= (v_target_unpaid - 0.05));
+
+        IF v_is_full_remaining THEN
+            -- ========================================
+            -- FULL REMAINING: Pay all unpaid items
+            -- NOTE: Accounts for refunded_quantity - refunded items need to be paid again
+            -- effective_unpaid = quantity - paid_quantity + refunded_quantity
+            -- ========================================
+            v_payment_total := v_target_unpaid;
+
+            -- Pro-rate subtotal/tax based on order ratios
+            IF v_use_cash_pricing AND v_order.cash_total > 0 THEN
+                v_subtotal_portion := ROUND(v_payment_total * (v_order.cash_subtotal / v_order.cash_total), 2);
+            ELSIF v_order.card_total > 0 THEN
+                v_subtotal_portion := ROUND(v_payment_total * (v_order.card_subtotal / v_order.card_total), 2);
+            END IF;
+            v_tax_portion := v_payment_total - v_subtotal_portion;
+
+            -- ============================================
+            -- FIX V6: Get items BEFORE update for reliable tracking
+            -- Include items with effective unpaid > 0 (accounts for refunds)
+            -- ============================================
+            SELECT array_agg(id)
+            INTO v_covered_items
+            FROM public.order_items
+            WHERE order_id = p_order_id
+              AND is_voided = false
+              AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
+
+            -- Build items JSON for response BEFORE the update (captures correct remaining qty)
+            SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                'order_item_id', oi.id,
+                'item_name', oi.item_name,
+                'quantity_paid', (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                'original_quantity', oi.quantity,
+                'unit_price', CASE WHEN v_use_cash_pricing THEN oi.cash_price ELSE oi.unit_price END,
+                'discount_amount', COALESCE(oi.discount_amount, 0),
+                'tax_rate', COALESCE(oi.tax_rate, 0),
+                'subtotal', (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))
+                            * CASE WHEN v_use_cash_pricing THEN oi.cash_price ELSE oi.unit_price END
+            )), '[]'::jsonb)
+            INTO v_covered_items_json
+            FROM public.order_items oi
+            WHERE oi.id = ANY(v_covered_items);
+
+            -- CRITICAL: Mark ALL remaining items as paid and clear stale refund state.
+            -- Set paid_quantity = quantity (clean), refunded_quantity = 0 (clear stale refunds).
+            -- This ensures void→re-pay cycle produces clean state (paid=qty, refunded=0).
+            UPDATE public.order_items
+            SET
+                paid_quantity = quantity,
+                refunded_quantity = 0,
+                refunded_amount = 0,
+                price_paid = CASE WHEN v_use_cash_pricing THEN cash_price ELSE unit_price END,
+                updated_at = now()
+            WHERE order_id = p_order_id
+              AND is_voided = false
+              AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
+
+        ELSE
+            -- ========================================
+            -- PARTIAL: Pay specific amount (no item marking)
+            -- ========================================
+            -- This is a partial amount payment - items remain unpaid
+            -- Used for scenarios like "I'll pay $50 toward the bill"
+            v_payment_total := LEAST(p_amount, v_target_unpaid);
+            v_payment_total := GREATEST(v_payment_total, 0);
+
+            -- Pro-rate subtotal/tax
+            IF v_use_cash_pricing AND v_order.cash_total > 0 THEN
+                v_subtotal_portion := ROUND(v_payment_total * (v_order.cash_subtotal / v_order.cash_total), 2);
+            ELSIF v_order.card_total > 0 THEN
+                v_subtotal_portion := ROUND(v_payment_total * (v_order.card_subtotal / v_order.card_total), 2);
+            END IF;
+            v_tax_portion := v_payment_total - v_subtotal_portion;
+
+            -- No items marked as paid - this is a partial amount against the order
+            -- Items will be marked when a subsequent "pay remaining" call is made
+        END IF;
+    END IF;
+
+    -- ============================================
+    -- 6.5 Calculate Change (Cash Only)
+    -- ============================================
+    IF v_is_cash THEN
+        v_change_given := GREATEST(
+            COALESCE(p_amount_tendered, v_payment_total) - (v_payment_total + COALESCE(p_tip_amount, 0)),
+            0
+        );
+    END IF;
+
+
+    -- ============================================
+    -- 6.6 Dejavoo Terminal Response
+    -- ============================================
+     IF p_terminal_response ? 'dejavoo_transaction' THEN
+        v_has_dejavoo_transaction := true;
+        v_dejavoo_reference_id := p_terminal_response->'dejavoo_transaction'->>'referenceId';
+        v_dejavoo_transaction_number := p_terminal_response ->'dejavoo_transaction'->>'transactionNumber';
+        v_dejavoo_auth_code := p_terminal_response->'dejavoo_transaction'->>'authCode';
+        v_dejavoo_batch_number := p_terminal_response->'dejavoo_transaction'->>'batchNumber';
+        v_dejavoo_invoice_number := p_terminal_response->'dejavoo_transaction'->>'invoiceNumber';
+        v_dejavoo_rrn := p_terminal_response->'dejavoo_transaction'->>'rrn';
+        v_dejavoo_entry_mode := p_terminal_response->'dejavoo_transaction'->>'entryMode';
+        v_dejavoo_result_code := p_terminal_response->'dejavoo_transaction'->>'resultCode';
+        v_dejavoo_status_code := p_terminal_response->'dejavoo_transaction'->>'statusCode';
+        v_dejavoo_last_four := p_terminal_response->'dejavoo_transaction'->>'cardLast4';
+    END IF;
+
+    -- ============================================
+    -- 6.7 Castles Terminal Response
+    -- Reuses v_dejavoo_* variables so the INSERT path below works unchanged.
+    -- ============================================
+    IF p_terminal_response ? 'castles_transaction' THEN
+        v_has_dejavoo_transaction := true;
+        v_dejavoo_reference_id := p_terminal_response->'castles_transaction'->>'referenceId';
+        v_dejavoo_transaction_number := p_terminal_response->'castles_transaction'->>'referenceId';
+        v_dejavoo_auth_code := p_terminal_response->'castles_transaction'->>'approvalCode';
+        v_dejavoo_batch_number := p_terminal_response->'castles_transaction'->>'batchNumber';
+        v_dejavoo_rrn := p_terminal_response->'castles_transaction'->>'rrn';
+        v_dejavoo_entry_mode := p_terminal_response->'castles_transaction'->>'entryMode';
+        v_dejavoo_result_code := p_terminal_response->'castles_transaction'->>'resultCode';
+        v_dejavoo_status_code := p_terminal_response->'castles_transaction'->>'resultCode';
+        v_dejavoo_last_four := p_terminal_response->'castles_transaction'->>'cardLast4';
+    END IF;
+
+    -- ============================================
+    -- 6.8 Resolve Terminal ID
+    -- ============================================
+    v_terminal_id := COALESCE(
+        p_terminal_id,
+        (p_terminal_response->'castles_transaction'->>'terminalId')::uuid,
+        (p_terminal_response->'dejavoo_transaction'->>'terminalId')::uuid,
+        (p_terminal_response->>'terminal_id')::uuid
+    );
+
+    -- ============================================
+    -- 7. Create Payment Record
+    -- ============================================
+    INSERT INTO public.order_payments (
+        order_id,
+        payment_method,
+        amount,
+        tip_amount,
+        total_amount,
+        subtotal_portion,
+        tax_portion,
+        amount_tendered,
+        change_given,
+        is_cash_priced,
+        cash_discount_applied,
+        original_amount,
+        covers_items,
+        split_portion_index,
+        split_count,
+        status,
+        terminal_type,
+        processed_by_staff_id,
+        processor_response,
+        reference_number,
+        transaction_id,
+        authorization_code,
+        dejavoo_response_code,
+        dejavoo_batch_number,
+        dejavoo_invoice_number,
+        card_type,
+        card_last_four,
+        captured_at,
+        initiated_at,
+        merchant_id,
+        location_id,
+        rrn,
+        result_code,
+        result_message,
+        terminal_id,
+        idempotency_key
+    ) VALUES (
+        p_order_id,
+        p_payment_method::payment_method,
+        v_payment_total,
+        COALESCE(p_tip_amount, 0),
+        v_payment_total + COALESCE(p_tip_amount, 0),
+        v_subtotal_portion,
+        v_tax_portion,
+        CASE WHEN v_is_cash THEN COALESCE(p_amount_tendered, v_payment_total) END,
+        v_change_given,
+        v_use_cash_pricing,
+        v_use_cash_pricing,
+        CASE WHEN v_use_cash_pricing
+            THEN ROUND(v_payment_total * v_order.card_total / NULLIF(v_order.cash_total, 0), 2)
+            ELSE v_payment_total
+        END,
+        CASE WHEN array_length(v_covered_items, 1) > 0 THEN v_covered_items ELSE NULL END,
+        p_split_portion_index,
+        p_split_count,
+        'captured',
+        CASE
+            WHEN v_is_cash THEN 'cash_drawer'
+            WHEN p_terminal_response ? 'castles_transaction' THEN 'castles'
+            ELSE 'dejavoo'
+        END::terminal_type,
+        p_staff_id,
+        p_terminal_response,
+        COALESCE(v_dejavoo_reference_id, p_terminal_response->>'transaction_id'),
+        COALESCE(v_dejavoo_transaction_number, p_terminal_response->>'transaction_id'),
+        COALESCE(v_dejavoo_auth_code, p_terminal_response->>'authorization_code'),
+        v_dejavoo_status_code,
+        v_dejavoo_batch_number,
+        v_dejavoo_invoice_number,
+        COALESCE(
+            p_terminal_response->'dejavoo_transaction'->>'cardType',
+            p_terminal_response->'castles_transaction'->>'cardType',
+            p_terminal_response->>'card_type'
+        ),
+        v_dejavoo_last_four,
+        now(),
+        now(),
+        v_order.merchant_id,
+        v_order.location_id,
+        v_dejavoo_rrn,
+        v_dejavoo_result_code,
+        COALESCE(
+            p_terminal_response->'dejavoo_transaction'->>'resultMessage',
+            p_terminal_response->'castles_transaction'->>'statusMessage'
+        ),
+        v_terminal_id,
+        p_idempotency_key::text
+    )
+    RETURNING id INTO v_payment_id;
+
+ PERFORM log_payment_event(
+        p_payment_id := v_payment_id,
+        p_order_id := p_order_id,
+        p_location_id := v_order.location_id,
+        p_event_type := 'captured',
+        p_amount := v_payment_total,
+        p_tip_amount := COALESCE(p_tip_amount, 0),
+        p_previous_status := NULL,
+        p_new_status := 'captured',
+        p_psp_reference := COALESCE(
+            v_dejavoo_reference_id,
+            v_dejavoo_transaction_number,
+            p_terminal_response->>'transaction_id'
+        ),
+        p_auth_code := v_dejavoo_auth_code,
+        p_staff_id := p_staff_id,
+        p_terminal_id := COALESCE(
+            p_terminal_response->'castles_transaction'->>'terminalId',
+            p_terminal_response->'dejavoo_transaction'->>'terminalId',
+            p_terminal_response->>'terminal_id'
+        ),
+        p_result_code := COALESCE(v_dejavoo_result_code, '00'),
+        p_response_message := CASE
+            WHEN v_is_cash THEN 'Cash payment captured'
+            ELSE COALESCE(
+                p_terminal_response->'dejavoo_transaction'->>'resultMessage',
+                p_terminal_response->'castles_transaction'->>'statusMessage',
+                'Card payment captured successfully'
+            )
+        END,
+        p_raw_response := p_terminal_response,
+        p_reason := NULL
+    );
+
+    -- ============================================
+    -- 8. Per-Item: Create order_payment_items
+    --    NOTE: Accounts for refunded_quantity in effective unpaid calculation
+    -- ============================================
+    -- Derive order_payment_items from v_covered_items_json (built BEFORE paid_quantity UPDATE)
+    IF v_is_item_payment AND array_length(v_covered_items, 1) > 0 THEN
+        INSERT INTO public.order_payment_items (
+            order_payment_id,
+            order_item_id,
+            quantity_paid,
+            unit_price_paid,
+            subtotal_paid,
+            tax_paid
+        )
+        SELECT
+            v_payment_id,
+            (ci->>'order_item_id')::uuid,
+            (ci->>'quantity_paid')::integer,
+            (ci->>'unit_price')::numeric,
+            (ci->>'subtotal')::numeric,
+            ROUND((ci->>'subtotal')::numeric * COALESCE((ci->>'tax_rate')::numeric, 0) / 100, 2)
+        FROM jsonb_array_elements(v_covered_items_json) AS ci;
+
+    ELSIF v_is_full_remaining AND array_length(v_covered_items, 1) > 0 THEN
+        INSERT INTO public.order_payment_items (
+            order_payment_id,
+            order_item_id,
+            quantity_paid,
+            unit_price_paid,
+            subtotal_paid,
+            tax_paid
+        )
+        SELECT
+            v_payment_id,
+            (ci->>'order_item_id')::uuid,
+            (ci->>'quantity_paid')::integer,
+            (ci->>'unit_price')::numeric,
+            (ci->>'quantity_paid')::integer * (ci->>'unit_price')::numeric
+                - ROUND(COALESCE((ci->>'discount_amount')::numeric, 0)
+                        * (ci->>'quantity_paid')::integer
+                        / NULLIF((ci->>'original_quantity')::integer, 0)
+                  , 2),
+            ROUND(
+                ((ci->>'quantity_paid')::integer * (ci->>'unit_price')::numeric
+                  - ROUND(COALESCE((ci->>'discount_amount')::numeric, 0)
+                          * (ci->>'quantity_paid')::integer
+                          / NULLIF((ci->>'original_quantity')::integer, 0)
+                    , 2))
+                * COALESCE((ci->>'tax_rate')::numeric, 0) / 100
+            , 2)
+        FROM jsonb_array_elements(v_covered_items_json) AS ci;
+        -- NOTE: Split-even and partial-amount payments intentionally have no
+        -- order_payment_items records. They cover a proportional share of the
+        -- whole order, not specific items.
+    END IF;
+
+    -- ============================================
+    -- 9. Update Payment Totals (include this payment)
+    -- ============================================
+    IF v_use_cash_pricing THEN
+        v_total_cash_paid := v_total_cash_paid + v_payment_total + COALESCE(p_tip_amount, 0);
+    ELSE
+        v_total_card_paid := v_total_card_paid + v_payment_total + COALESCE(p_tip_amount, 0);
+    END IF;
+
+    v_new_amount_paid := v_total_cash_paid + v_total_card_paid;
+
+    -- ============================================
+    -- 10. Calculate NEW Unpaid Totals from Items
+    --     NOTE: Accounts for refunded_quantity
+    --     effective_unpaid = quantity - paid_quantity + refunded_quantity
+    -- ============================================
+    SELECT
+        COUNT(*),
+        COALESCE(SUM(
+            ((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.unit_price)
+            - ROUND(COALESCE(oi.discount_amount, 0) * (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0), 2)
+            + ROUND((((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.unit_price) - ROUND(COALESCE(oi.discount_amount, 0) * (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0), 2)) * COALESCE(oi.tax_rate, 0) / 100, 2)
+        ), 0),
+        -- Cash total uses cash-scaled discount: discount_amount * (cash_price / unit_price)
+        COALESCE(SUM(
+            ((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.cash_price)
+            - ROUND(COALESCE(ROUND(COALESCE(oi.discount_amount, 0) * COALESCE(oi.cash_price, oi.unit_price) / NULLIF(oi.unit_price, 0), 2), 0) * (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0), 2)
+            + ROUND((((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.cash_price) - ROUND(COALESCE(ROUND(COALESCE(oi.discount_amount, 0) * COALESCE(oi.cash_price, oi.unit_price) / NULLIF(oi.unit_price, 0), 2), 0) * (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0), 2)) * COALESCE(oi.tax_rate, 0) / 100, 2)
+        ), 0)
+    INTO v_unpaid_items_count, v_unpaid_card_total, v_unpaid_cash_total
+    FROM public.order_items oi
+    WHERE oi.order_id = p_order_id
+      AND oi.is_voided = false
+      AND (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) > 0;
+
+    -- Re-apply custom refund balance for post-payment state
+    -- Use original_amount (card-equivalent) to avoid phantom balance from cash payments
+    SELECT COALESCE(SUM(
+        COALESCE(original_amount, amount)
+        - COALESCE(refunded_amount, 0) * COALESCE(original_amount, amount) / NULLIF(amount, 0)
+    ), 0)
+    INTO v_effective_paid
+    FROM public.order_payments
+    WHERE order_id = p_order_id
+      AND status IN ('captured', 'partially_refunded', 'refunded')
+      AND is_voided = false;
+
+    v_payment_based_due := GREATEST(v_order.card_total - v_effective_paid, 0);
+    v_custom_refund_balance := GREATEST(v_payment_based_due - v_unpaid_card_total, 0);
+    v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
+    v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
+
+    -- Fix: Same clamping for post-payment unpaid totals.
+    -- After a partial payment, items are still "unpaid" but payment_based_due reflects actual remaining.
+    IF v_payment_based_due < v_unpaid_card_total THEN
+        IF v_unpaid_card_total > 0 THEN
+            v_unpaid_cash_total := ROUND(
+                v_unpaid_cash_total * v_payment_based_due / v_unpaid_card_total, 2
+            );
+        END IF;
+        v_unpaid_card_total := v_payment_based_due;
+    END IF;
+
+    -- ============================================
+    -- 11. Determine if Order is Fully Paid
+    -- ============================================
+    IF v_is_item_payment THEN
+        v_order_fully_paid := (v_unpaid_items_count = 0);
+
+    ELSIF v_is_split_payment THEN
+        SELECT COUNT(*) INTO v_portions_paid
+        FROM public.order_payments
+        WHERE order_id = p_order_id
+          AND split_portion_index IS NOT NULL
+          AND split_count = p_split_count
+          AND status = 'captured';
+
+        v_portions_remaining := p_split_count - v_portions_paid;
+        v_order_fully_paid := (v_portions_remaining = 0);
+
+    ELSE
+        v_order_fully_paid := (
+            (v_total_cash_paid >= v_order.cash_total AND v_total_card_paid = 0) OR
+            (v_total_card_paid >= v_order.card_total AND v_total_cash_paid = 0) OR
+            (v_unpaid_card_total <= 0.01 AND v_unpaid_cash_total <= 0.01) OR
+            (v_new_amount_paid >= v_order.card_total)
+        );
+    END IF;
+
+    -- ============================================
+    -- 12. Handle Split Complete
+    --     NOTE: Accounts for refunded_quantity when marking items as paid
+    -- ============================================
+        -- ============================================
+    -- 12. Handle Split Complete
+    --     NOTE: Accounts for refunded_quantity when marking items as paid
+    -- ============================================
+    IF v_is_split_payment THEN
+        SELECT COUNT(*) INTO v_portions_paid
+        FROM public.order_payments
+        WHERE order_id = p_order_id
+          AND split_portion_index IS NOT NULL
+          AND split_count = p_split_count
+          AND status = 'captured';
+
+        v_portions_remaining := p_split_count - v_portions_paid;
+        v_order_fully_paid := (v_portions_remaining = 0);
+
+        IF v_order_fully_paid AND v_unpaid_items_count > 0 THEN
+            -- Mark all items as paid, clear stale refund state
+            UPDATE public.order_items
+            SET
+                paid_quantity = quantity,
+                refunded_quantity = 0,
+                refunded_amount = 0,
+                price_paid = COALESCE(price_paid, unit_price),
+                updated_at = now()
+            WHERE order_id = p_order_id
+              AND is_voided = false
+              AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
+
+            v_unpaid_items_count := 0;
+            v_unpaid_card_total := 0;
+            v_unpaid_cash_total := 0;
+        END IF;
+    ELSE
+        -- Preserve section 11's amount-based result if it already determined fully paid.
+        -- Only fall back to item-count check if amounts don't confirm paid.
+        IF NOT v_order_fully_paid THEN
+            v_order_fully_paid := (v_unpaid_items_count = 0);
+        END IF;
+
+        -- If fully paid by amounts but items weren't marked (custom amount that
+        -- covered the full order, or rounding caused v_is_full_remaining=false),
+        -- mark all remaining items as paid for data consistency.
+        -- This mirrors the split-completion pattern at lines 846-859.
+        IF v_order_fully_paid AND v_unpaid_items_count > 0 THEN
+            -- Mark all items as paid, clear stale refund state
+            UPDATE public.order_items
+            SET
+                paid_quantity = quantity,
+                refunded_quantity = 0,
+                refunded_amount = 0,
+                price_paid = COALESCE(price_paid, CASE WHEN v_use_cash_pricing THEN cash_price ELSE unit_price END),
+                updated_at = now()
+            WHERE order_id = p_order_id
+              AND is_voided = false
+              AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
+
+            v_unpaid_items_count := 0;
+            v_unpaid_card_total := 0;
+            v_unpaid_cash_total := 0;
+        END IF;
+    END IF;
+
+    -- ============================================
+    -- 13. Set Final amount_due
+    --     FIX: When order is fully paid, force amount_due to 0.
+    --     This prevents the custom_refund_balance logic from inflating
+    --     amount_due when a cash payment (at cash price) is compared
+    --     against card_total, producing a false residual.
+    -- ============================================
+    IF v_order_fully_paid THEN
+        v_new_amount_due := 0;
+        v_new_cash_amount_due := 0;
+        v_unpaid_card_total := 0;
+        v_unpaid_cash_total := 0;
+    ELSE
+        v_new_amount_due := v_unpaid_card_total;
+        v_new_cash_amount_due := v_unpaid_cash_total;
+    END IF;
+
+    -- ============================================
+    -- 14. Update Order
+    -- ============================================
+    UPDATE public.orders SET
+        amount_paid = v_new_amount_paid,
+        amount_due = v_new_amount_due,
+        cash_amount_due = v_new_cash_amount_due,
+        tip_amount = COALESCE(tip_amount, 0) + COALESCE(p_tip_amount, 0),
+        payment_pricing_mode = v_new_pricing_mode::pricing_mode,
+        cash_discount_applied = COALESCE(cash_discount_applied, false) OR v_use_cash_pricing,
+        payment_status = CASE
+            WHEN v_order_fully_paid THEN 'paid'::payment_status
+            WHEN v_new_amount_paid > 0 THEN 'partial'::payment_status
+            ELSE 'pending'::payment_status
+        END,
+        updated_at = now()
+    WHERE id = p_order_id;
+
+    v_new_sync_version := increment_order_sync_version(p_order_id);
+
+    -- ============================================
+    -- 15. Return Result
+    -- ============================================
+    -- v9 delta: assign to v_result so the post-VERBATIM completion block
+    -- (idempotency cache + size trim) runs before RETURN.
+    v_result := jsonb_build_object(
+        'success', true,
+        'payment_id', v_payment_id,
+        'payment_method', p_payment_method,
+        'amount_charged', v_payment_total,
+        'tip_amount', COALESCE(p_tip_amount, 0),
+        'total_collected', v_payment_total + COALESCE(p_tip_amount, 0),
+        'change_given', v_change_given,
+        'is_cash_priced', v_use_cash_pricing,
+        'pricing_mode', v_new_pricing_mode,
+
+        'is_item_payment', v_is_item_payment,
+        'is_split_payment', v_is_split_payment,
+        'is_full_remaining', v_is_full_remaining,
+
+        'split_count', p_split_count,
+        'split_portion_index', p_split_portion_index,
+        'portions_paid', v_portions_paid,
+        'portions_remaining', v_portions_remaining,
+        'split_card_portion', v_split_card_portion,
+        'split_cash_portion', v_split_cash_portion,
+
+        'items_paid', v_covered_items_json,
+        'items_covered', v_covered_items,
+
+        'total_cash_paid', v_total_cash_paid,
+        'total_card_paid', v_total_card_paid,
+
+        'order_amount_paid', v_new_amount_paid,
+        'order_amount_due', v_new_amount_due,
+        'order_cash_amount_due', v_new_cash_amount_due,
+        'order_fully_paid', v_order_fully_paid,
+
+        'unpaid_items_count', v_unpaid_items_count,
+        'unpaid_card_total', v_unpaid_card_total,
+        'unpaid_cash_total', v_unpaid_cash_total,
+
+        'sync_version', v_new_sync_version
+    );
+    -- END_VERBATIM
+
+    -- Complete the idempotency claim. Trim items_covered/items_paid
+    -- when their array length exceeds 100 so we stay under the 32 KB
+    -- cache cap; the verifying-state replay path doesn't read these
+    -- fields, and a size-overflow would otherwise force re-execution
+    -- and a 23505 unique_violation on order_payments_idempotency_key_uniq.
+    IF p_idempotency_key IS NOT NULL THEN
+        v_cached_result := v_result;
+        IF jsonb_typeof(v_result->'items_covered') = 'array'
+           AND jsonb_array_length(v_result->'items_covered') > 100 THEN
+            v_cached_result := v_cached_result - 'items_covered' - 'items_paid';
+        END IF;
+        PERFORM public._idempotency_complete(p_idempotency_key, 'process_payment_v9', v_cached_result);
+    END IF;
+
+    RETURN v_result;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.process_payment_v9(
+  uuid, text, numeric, numeric, numeric, jsonb, uuid, jsonb,
+  integer, integer, boolean, uuid, uuid, uuid
+) TO authenticated;
+
+COMMENT ON FUNCTION public.process_payment_v9 IS
+  'Idempotent payment-processing RPC (Wave Cat-B). Forks v8 with p_idempotency_key + p_station_id tail params. Replay returns cached result; concurrent same-key raises serialization_failure (40001). Body delta vs v8: SELECT FOR UPDATE on orders, idempotency_key column on order_payments INSERT, RETURN→v_result reassignment. items_covered/items_paid trimmed from cache when array length >100 to stay under 32 KB cap.';
+
+-- =====================================================================
+-- Verification (run on staging after apply):
+--
+-- 1. NULL key path → v8-equivalent behavior (no cache row created):
+--      SELECT public.process_payment_v9(<order_id>, 'cash', 1.00) FROM ...;
+--      SELECT count(*) FROM public.idempotency_keys WHERE op = 'process_payment_v9';
+--      -- Expect: 0 (NULL key bypasses claim/complete)
+--
+-- 2. First call with key → executes, caches result:
+--      SELECT public.process_payment_v9(<order_id>, 'card', 5.00, 0, NULL, NULL, NULL,
+--        '{"transaction_id":"test"}'::jsonb, NULL, NULL, false, NULL,
+--        '11111111-1111-1111-1111-111111111111'::uuid);
+--      SELECT status, completed_at IS NOT NULL FROM public.idempotency_keys
+--        WHERE key = '11111111-1111-1111-1111-111111111111'::uuid AND op = 'process_payment_v9';
+--      -- Expect: completed | t
+--
+-- 3. Replay same key → cached result, no second order_payments row:
+--      <repeat the v9 call above with the same key>
+--      SELECT count(*) FROM public.order_payments WHERE idempotency_key = '11111111-...';
+--      -- Expect: 1 (cache returned previous result; INSERT did not fire)
+--
+-- 4. Concurrent same-key (in two psql sessions, <60s apart):
+--      Session A: BEGIN; SELECT public.process_payment_v9(... key=B ...);
+--      Session B: SELECT public.process_payment_v9(... key=B ...);
+--      -- Expect Session B: ERROR  idempotency_in_flight: key ... (SQLSTATE 40001)
+--      Session A: COMMIT;
+--
+-- 5. Defense-in-depth — cache row deleted (oversize) but v8 retry would
+--    have hit the partial unique index. Manual: DELETE the cache row for
+--    a completed key, re-call with same key — INSERT into order_payments
+--    raises 23505 on order_payments_idempotency_key_uniq. Confirms the
+--    second wall is in place.
+-- =====================================================================

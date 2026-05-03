@@ -8,6 +8,7 @@ import PaymentSuccessView from "./ paymentView/PaymentSuccessView";
 import SplitPaymentView from "./ paymentView/SplitPaymentView";
 import CardPaymentOptions from "./paymentView/CardPaymentOptions";
 import ManualCardEntryView from "./paymentView/ManualCardEntryView";
+import PaymentVerifyingOverlay from "./paymentView/PaymentVerifyingOverlay";
 
 const PaymentModal: React.FC = () => {
   const isOpen = usePaymentStore((s) => s.isOpen);
@@ -28,6 +29,8 @@ const PaymentModal: React.FC = () => {
         return <CashPaymentView />;
       case "split":
         return <SplitPaymentView />;
+      case "verifying":
+        return <PaymentVerifyingOverlay />;
       case "success":
         return <PaymentSuccessView />;
       default:

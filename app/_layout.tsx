@@ -32,10 +32,15 @@ import { POS_SCREEN_OPTIONS } from "@/lib/screenConfig";
 import { flushAllPendingWrites, secureStorage } from "@/lib/storage";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
+import {
+    getIncompleteJournals,
+    pruneOldJournals,
+} from "@/services/paymentJournal";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -436,6 +441,32 @@ export default Sentry.wrap(function RootLayout() {
       useOrderStore.getState().cleanupDraftDuplicates();
       // Start print queue processing
       PrinterService.startProcessing();
+
+      // Wave Cat-B: surface payments that crashed mid-flow (terminal_approved
+      // entries from a prior app session). The verifying overlay (Wave 7)
+      // subscribes to usePaymentRecoveryStore and drives the recovery flow.
+      try {
+        pruneOldJournals();
+        const incomplete = getIncompleteJournals();
+        if (incomplete.length > 0) {
+          console.warn(
+            `[paymentJournal] ${incomplete.length} incomplete payment journal(s) detected on startup`,
+            incomplete.map((j) => ({
+              id: j.id,
+              status: j.status,
+              orderId: j.orderId,
+              amount: j.amount,
+              createdAt: j.createdAt,
+            })),
+          );
+          usePaymentRecoveryStore.getState().hydrate(incomplete);
+        }
+      } catch (err) {
+        console.error(
+          "[paymentJournal] Recovery hydration failed:",
+          err,
+        );
+      }
     }
   }, []);
 

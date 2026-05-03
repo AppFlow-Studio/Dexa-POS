@@ -403,12 +403,17 @@ export class OrderService {
   }
 
   /**
-   * Process a payment for an order using process_payment_v2
-   * Handles: Full card, Full cash, Split, Per-item payments
+   * Process a payment for an order.
+   * Wave Cat-B: routed v8↔v9 by `process_payment` feature flag, deadline-wrapped
+   * (DEADLINES.paymentRpc). Pass `opts.keyOverride` to reuse an existing
+   * idempotency key (paymentJournal.idempotencyKey or queue op key).
+   *
+   * Handles: Full card, Full cash, Split, Per-item payments.
    */
   static async processPayment(
     client: SupabaseClient,
     params: ProcessPaymentV2Params,
+    opts?: { keyOverride?: string },
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
     // Session guard: prevent kicked devices from processing payments
     const sessionValid = await OrderService.ensureSessionValid(client);
@@ -422,18 +427,27 @@ export class OrderService {
       };
     }
 
-    if (__DEV__)
+    if (__DEV__) {
       console.log(
-        `[OrderService:processPayment] ====== CALLING process_payment_v8 ======`,
+        `[OrderService:processPayment] ====== CALLING process_payment ======`,
       );
-    if (__DEV__)
       console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
-    if (__DEV__)
       console.log(
         `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`,
       );
+    }
 
-    const { data, error } = await client.rpc("process_payment_v8", params);
+    const { data, error } = await rpcWithIdempotency<ProcessPaymentResult>(
+      client,
+      "process_payment",
+      "process_payment_v8",
+      "process_payment_v9",
+      params,
+      {
+        deadline: DEADLINES.paymentRpc,
+        keyOverride: opts?.keyOverride,
+      },
+    );
 
     if (error) {
       console.error(`[OrderService:processPayment] FAILED:`, error);
