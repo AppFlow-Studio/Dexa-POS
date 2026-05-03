@@ -18,6 +18,8 @@ import com.sdksuite.omnidriver.api.Printer
 import com.sdksuite.omnidriver.api.VectorPrinter
 import org.json.JSONObject
 import android.os.Bundle
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -61,12 +63,31 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     override fun getName(): String = NAME
 
-    private var isInitialized = false
+    // ── BACKGROUND EXECUTORS ──────────────────────────────────────────────
+    // The default React NativeModulesQueue is shared across @ReactMethod
+    // calls on this module, so a long synchronous print setup (the
+    // addText/addTextColumns AIDL loop in printWithVector) blocks every
+    // other call — including openCashDrawer — for seconds. We split into
+    // two single-threaded executors so prints and drawer kicks run on
+    // independent worker threads.
+    //   - printExecutor: serializes print jobs (FIFO, can't reorder receipts)
+    //   - drawerExecutor: serializes drawer + status calls (FIFO, brief work)
+    // Promise resolution from a background thread is RN-safe.
+    // ──────────────────────────────────────────────────────────────────────
+    private val printExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor { r -> Thread(r, "Landi-Print").apply { isDaemon = true } }
+    private val drawerExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor { r -> Thread(r, "Landi-Drawer").apply { isDaemon = true } }
+
+    // Peripheral handles are read from both executors (drawerExecutor reads
+    // `cashBox`/`printer`; printExecutor writes them via warmCashBox/init).
+    // @Volatile makes cross-thread writes visible without locking.
+    @Volatile private var isInitialized = false
     // Simple Printer — kept for getStatus() and cash drawer.
-    private var printer: Printer? = null
+    @Volatile private var printer: Printer? = null
     // VectorPrinter — primary rendering engine with native bold support.
-    private var vectorPrinter: VectorPrinter? = null
-    private var cashBox: CashBox? = null
+    @Volatile private var vectorPrinter: VectorPrinter? = null
+    @Volatile private var cashBox: CashBox? = null
 
     // Last-applied TextFormat — suppress redundant setFormat() calls.
     private var lastBold: Boolean? = null
@@ -157,22 +178,24 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun getPrinterStatus(promise: Promise) {
-        try {
-            val p = requirePrinter(promise) ?: return
-            val status = p.getStatus()
-            val result = Arguments.createMap().apply {
-                putBoolean("isOnline", status == STATUS_OK)
-                putBoolean("hasPaper", status != 1)
-                putBoolean("coverOpen", false)
-                putString("statusCode", status.toString())
-                if (status != STATUS_OK) {
-                    putString("errorMessage", "Printer error (status: $status)")
+        drawerExecutor.execute {
+            try {
+                val p = requirePrinter(promise) ?: return@execute
+                val status = p.getStatus()
+                val result = Arguments.createMap().apply {
+                    putBoolean("isOnline", status == STATUS_OK)
+                    putBoolean("hasPaper", status != 1)
+                    putBoolean("coverOpen", false)
+                    putString("statusCode", status.toString())
+                    if (status != STATUS_OK) {
+                        putString("errorMessage", "Printer error (status: $status)")
+                    }
                 }
+                promise.resolve(result)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get printer status: ${e.message}")
+                promise.reject("STATUS_FAILED", "Failed to get printer status: ${e.message}", e)
             }
-            promise.resolve(result)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get printer status: ${e.message}")
-            promise.reject("STATUS_FAILED", "Failed to get printer status: ${e.message}", e)
         }
     }
 
@@ -180,20 +203,22 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun printDocument(documentJson: String, promise: Promise) {
-        try {
-            val p = requirePrinter(promise) ?: return
-            val doc = JSONObject(documentJson)
-            val nodes = doc.getJSONArray("nodes")
+        printExecutor.execute {
+            try {
+                val p = requirePrinter(promise) ?: return@execute
+                val doc = JSONObject(documentJson)
+                val nodes = doc.getJSONArray("nodes")
 
-            val vp = vectorPrinter
-            if (vp != null) {
-                printWithVector(vp, p, nodes, promise)
-            } else {
-                printWithSimple(p, nodes, promise)
+                val vp = vectorPrinter
+                if (vp != null) {
+                    printWithVector(vp, p, nodes, promise)
+                } else {
+                    printWithSimple(p, nodes, promise)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "printDocument failed (${e.javaClass.simpleName}): ${e.message}")
+                promise.reject("PRINT_FAILED", "Failed to print document: ${e.message}", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "printDocument failed (${e.javaClass.simpleName}): ${e.message}")
-            promise.reject("PRINT_FAILED", "Failed to print document: ${e.message}", e)
         }
     }
 
@@ -576,18 +601,20 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun setPrintDensity(level: Int, promise: Promise) {
-        try {
-            val clamped = level.coerceIn(MIN_DENSITY, MAX_DENSITY)
-            printDensity = clamped
-            val p = printer
-            if (p != null) {
-                applyDensity(p)
+        drawerExecutor.execute {
+            try {
+                val clamped = level.coerceIn(MIN_DENSITY, MAX_DENSITY)
+                printDensity = clamped
+                val p = printer
+                if (p != null) {
+                    applyDensity(p)
+                }
+                Log.d(TAG, "Print density set to $clamped (requested=$level)")
+                promise.resolve(clamped)
+            } catch (e: Exception) {
+                Log.e(TAG, "setPrintDensity failed: ${e.message}")
+                promise.reject("DENSITY_FAILED", "Failed to set print density: ${e.message}", e)
             }
-            Log.d(TAG, "Print density set to $clamped (requested=$level)")
-            promise.resolve(clamped)
-        } catch (e: Exception) {
-            Log.e(TAG, "setPrintDensity failed: ${e.message}")
-            promise.reject("DENSITY_FAILED", "Failed to set print density: ${e.message}", e)
         }
     }
 
@@ -603,61 +630,65 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun openCashDrawer(promise: Promise) {
-        try {
-            if (!isInitialized) {
-                Log.w(TAG, "openCashDrawer called but not initialized — attempting init first")
-                promise.reject("DRAWER_FAILED", "Printer not initialized. Call initPrinter() first.")
-                return
-            }
+        drawerExecutor.execute {
+            try {
+                if (!isInitialized) {
+                    Log.w(TAG, "openCashDrawer called but not initialized — attempting init first")
+                    promise.reject("DRAWER_FAILED", "Printer not initialized. Call initPrinter() first.")
+                    return@execute
+                }
 
-            if (cashBox != null) {
+                val cb = cashBox
+                if (cb != null) {
+                    try {
+                        cb.openBox()
+                        Log.d(TAG, "Cash drawer opened via CashBox")
+                        promise.resolve(true)
+                        return@execute
+                    } catch (e: Exception) {
+                        Log.w(TAG, "CashBox.openBox() failed (stale reference?): ${e.javaClass.simpleName}: ${e.message}")
+                        cashBox = null
+                    }
+                }
+
+                Log.d(TAG, "Re-acquiring CashBox from OmniDriver...")
                 try {
-                    cashBox!!.openBox()
-                    Log.d(TAG, "Cash drawer opened via CashBox")
-                    promise.resolve(true)
-                    return
+                    val driver = OmniDriver.me(reactContext)
+                    val freshBox = driver.getCashBox(Bundle())
+                    cashBox = freshBox
+                    if (freshBox != null) {
+                        freshBox.openBox()
+                        Log.d(TAG, "Cash drawer opened via re-acquired CashBox")
+                        promise.resolve(true)
+                        return@execute
+                    } else {
+                        Log.w(TAG, "getCashBox() returned null on re-acquire")
+                    }
                 } catch (e: Exception) {
-                    Log.w(TAG, "CashBox.openBox() failed (stale reference?): ${e.javaClass.simpleName}: ${e.message}")
+                    Log.w(TAG, "CashBox re-acquire/openBox failed: ${e.javaClass.simpleName}: ${e.message}")
                     cashBox = null
                 }
-            }
 
-            Log.d(TAG, "Re-acquiring CashBox from OmniDriver...")
-            try {
-                val driver = OmniDriver.me(reactContext)
-                cashBox = driver.getCashBox(Bundle())
-                if (cashBox != null) {
-                    cashBox!!.openBox()
-                    Log.d(TAG, "Cash drawer opened via re-acquired CashBox")
-                    promise.resolve(true)
-                    return
-                } else {
-                    Log.w(TAG, "getCashBox() returned null on re-acquire")
+                val p = printer
+                if (p != null) {
+                    try {
+                        val method = p.javaClass.getMethod("openCashDrawer")
+                        method.invoke(p)
+                        Log.d(TAG, "Cash drawer opened via Printer.openCashDrawer() reflection")
+                        promise.resolve(true)
+                        return@execute
+                    } catch (e: NoSuchMethodException) {
+                        Log.w(TAG, "Printer.openCashDrawer() not available in this SDK build")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Printer.openCashDrawer() reflection failed: ${e.message}")
+                    }
                 }
+
+                promise.reject("DRAWER_FAILED", "All cash drawer paths failed (cashBox re-acquired=false, printer=${printer != null})")
             } catch (e: Exception) {
-                Log.w(TAG, "CashBox re-acquire/openBox failed: ${e.javaClass.simpleName}: ${e.message}")
-                cashBox = null
+                Log.e(TAG, "Cash drawer unexpected error: ${e.javaClass.simpleName}: ${e.message}")
+                promise.reject("DRAWER_FAILED", "Failed to open cash drawer: ${e.message}", e)
             }
-
-            val p = printer
-            if (p != null) {
-                try {
-                    val method = p.javaClass.getMethod("openCashDrawer")
-                    method.invoke(p)
-                    Log.d(TAG, "Cash drawer opened via Printer.openCashDrawer() reflection")
-                    promise.resolve(true)
-                    return
-                } catch (e: NoSuchMethodException) {
-                    Log.w(TAG, "Printer.openCashDrawer() not available in this SDK build")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Printer.openCashDrawer() reflection failed: ${e.message}")
-                }
-            }
-
-            promise.reject("DRAWER_FAILED", "All cash drawer paths failed (cashBox re-acquired=false, printer=${printer != null})")
-        } catch (e: Exception) {
-            Log.e(TAG, "Cash drawer unexpected error: ${e.javaClass.simpleName}: ${e.message}")
-            promise.reject("DRAWER_FAILED", "Failed to open cash drawer: ${e.message}", e)
         }
     }
 
@@ -733,21 +764,23 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun closePrinter(promise: Promise) {
-        try {
-            printer?.closeDevice()
-            try { vectorPrinter?.closeDevice() } catch (_: Exception) {}
-            isInitialized = false
-            printer = null
-            vectorPrinter = null
-            lastAppliedSize = -1
-            lastAppliedScale = -1
-            resetVectorFormatCache()
-            supportsCutter = true
-            Log.d(TAG, "Printer closed and state reset")
-            promise.resolve(true)
-        } catch (e: Exception) {
-            Log.w(TAG, "closePrinter failed: ${e.message}")
-            promise.resolve(false)
+        drawerExecutor.execute {
+            try {
+                printer?.closeDevice()
+                try { vectorPrinter?.closeDevice() } catch (_: Exception) {}
+                isInitialized = false
+                printer = null
+                vectorPrinter = null
+                lastAppliedSize = -1
+                lastAppliedScale = -1
+                resetVectorFormatCache()
+                supportsCutter = true
+                Log.d(TAG, "Printer closed and state reset")
+                promise.resolve(true)
+            } catch (e: Exception) {
+                Log.w(TAG, "closePrinter failed: ${e.message}")
+                promise.resolve(false)
+            }
         }
     }
 
