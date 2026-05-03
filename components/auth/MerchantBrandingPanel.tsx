@@ -1,18 +1,12 @@
 import DeactivateTerminalModal from "@/components/auth/DeactivateTerminalModal";
+import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { useLiveClock } from "@/hooks/useLiveClock";
 import { useWeather } from "@/hooks/useWeather";
-import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { images } from "@/lib/image";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import {
-  Cloud,
-  MapPin,
-  Monitor,
-  Power,
-  RefreshCw,
-} from "lucide-react-native";
+import { Cloud, MapPin, Monitor, Power, RefreshCw } from "lucide-react-native";
 import { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
@@ -24,7 +18,7 @@ const MerchantBrandingPanel = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const organizationLogoUrl = useStoreSettingsStore(
-    (s) => s.organizationLogoUrl
+    (s) => s.organizationLogoUrl,
   );
 
   const { time, date } = useLiveClock(selectedStore?.timezone);
@@ -130,18 +124,16 @@ const MerchantBrandingPanel = () => {
           <View
             style={{
               flexDirection: "row",
-              alignItems: "flex-start",
-              gap: 6,
+              alignItems: "center",
+              gap: 2,
               paddingHorizontal: 8,
             }}
           >
-            <MapPin size={13} color={colors.muted} style={{ marginTop: 1 }} />
+            <MapPin size={13} color={colors.muted} />
             <Text
               style={{
                 fontSize: 11,
                 color: colors.muted,
-                textAlign: "center",
-                flex: 1,
                 lineHeight: 16,
               }}
             >
