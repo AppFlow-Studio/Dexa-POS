@@ -2,14 +2,12 @@ import SessionLogoutModal from "@/components/auth/SessionLogoutModal";
 import { useSessionKick } from "@/contexts/SessionKickListenerProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
-import { secureStorage } from "@/lib/storage";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { toastService } from "@/lib/toastService";
+import { clearStationData, resetClientSession } from "@/services/cacheService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { clearLocationData, clearStationData } from "@/services/cacheService";
 import { PosStaffLogoutResponse } from "@/types/station";
 import { useClerk } from "@clerk/clerk-expo";
-import { replaceRoute } from "@/lib/rootNavigation";
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, TouchableOpacity, ViewStyle } from "react-native";
 
@@ -19,21 +17,17 @@ interface SessionLogoutButtonProps {
 
 export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
   const { signOut } = useClerk();
-  const router = useRouter();
   const supabase = useSupabaseClient();
 
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const selectedStation = useStoreSettingsStore(
-    (state) => state.selectedStation
+    (state) => state.selectedStation,
   );
   const stationSessionId = useStoreSettingsStore(
-    (state) => state.stationSessionId
-  );
-  const clearSelectedStore = useStoreSettingsStore(
-    (state) => state.clearSelectedStore
+    (state) => state.stationSessionId,
   );
   const clearStationSession = useStoreSettingsStore(
-    (state) => state.clearStationSession
+    (state) => state.clearStationSession,
   );
   const { markVoluntaryLogout } = useSessionKick();
   const [showModal, setShowModal] = useState(false);
@@ -42,7 +36,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
   // Helper to call pos_staff_logout RPC
   const endStationSessionOnServer = async (
     clockOut: boolean = false,
-    pinCode?: string
+    pinCode?: string,
   ) => {
     if (!stationSessionId || !selectedStore) return;
 
@@ -89,7 +83,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       setShowModal(false);
 
       // Navigate to station select
-      replaceRoute('(auth)', 'station-select');
+      replaceRoute("(auth)", "station-select");
     } catch (error) {
       console.error("Error ending station session:", error);
       toastService.show({
@@ -109,19 +103,13 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       // End session on server (don't clock out - they can clock out separately)
       await endStationSessionOnServer(false);
 
-      // Clear all local state including location-specific data
-      clearStationSession();
-      clearSelectedStore();
-      clearLocationData();
-
-      // Sign out of Clerk
-      secureStorage.remove('clerk_was_signed_in');
+      await resetClientSession();
       await signOut();
 
       setShowModal(false);
 
       // Navigate to login
-      replaceRoute('(auth)', 'login');
+      replaceRoute("(auth)", "login");
     } catch (error) {
       console.error("Error during full logout:", error);
       toastService.show({

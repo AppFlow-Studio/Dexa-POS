@@ -1,15 +1,13 @@
-import { secureStorage } from "@/lib/storage";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useClerk } from "@clerk/clerk-expo";
 import { replaceRoute } from "@/lib/rootNavigation";
-import { useRouter } from "expo-router";
+import { resetClientSession } from "@/services/cacheService";
+import { useClerk } from "@clerk/clerk-expo";
 import React from "react";
 import {
-  ActivityIndicator,
-  Text,
-  TouchableOpacity,
-  View,
-  ViewStyle,
+    ActivityIndicator,
+    Text,
+    TouchableOpacity,
+    View,
+    ViewStyle,
 } from "react-native";
 
 interface SignOutButtonProps {
@@ -22,21 +20,15 @@ export const SignOutButton = ({
   showText = true,
 }: SignOutButtonProps) => {
   const { signOut } = useClerk();
-  const router = useRouter();
-  const clearSelectedStore = useStoreSettingsStore(
-    (state) => state.clearSelectedStore
-  );
   const [isLoading, setIsLoading] = React.useState(false);
 
   const handleSignOut = async () => {
     try {
       setIsLoading(true);
-      // Clear the selected store from persistent storage
-      clearSelectedStore();
-      secureStorage.remove('clerk_was_signed_in');
+      await resetClientSession();
       await signOut();
       // Redirect to login page after sign out
-      replaceRoute('(auth)', 'login');
+      replaceRoute("(auth)", "login");
     } catch (err) {
       console.error("Error signing out:", JSON.stringify(err, null, 2));
     } finally {

@@ -7,11 +7,33 @@
  */
 
 import { queryClient } from "@/contexts/TanstackProvider";
-import { clearCacheData } from "@/lib/storage";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import {
+  clearCacheData,
+  flushAllPendingWrites,
+  secureStorage,
+  storage,
+  syncStorage,
+} from "@/lib/storage";
 import { todayOrdersCache } from "@/stores/todayOrdersCache";
+import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
+import { useCFDClientStore } from "@/stores/useCFDClientStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useKDSStore } from "@/stores/useKDSStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { useLoyaltyStore } from "@/stores/useLoyaltyStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
+import { usePrinterStore } from "@/stores/usePrinterStore";
+import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
+import { usePtoStore } from "@/stores/usePtoStore";
+import { useRefundFraudGuardStore } from "@/stores/useRefundFraudGuardStore";
+import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { useTipDistributionStore } from "@/stores/useTipDistributionStore";
 
 export interface CacheClearResult {
   success: boolean;
@@ -23,6 +45,68 @@ export interface CacheStats {
   orderCount: number;
   pendingSyncCount: number;
   hasCachedData: boolean;
+}
+
+const APP_SECURE_SESSION_KEYS = [
+  "clerk_was_signed_in",
+  "dexa-employee-storage",
+] as const;
+
+const SESSION_STORES = [
+  useCashDrawerStore,
+  useCFDClientStore,
+  useEmployeeStore,
+  useFloorPlanStore,
+  useKDSStore,
+  useLocationConfigStore,
+  useLoyaltyStore,
+  useOrderStore,
+  usePaymentTerminalStore,
+  usePrintQueueStore,
+  usePrinterStore,
+  usePtoStore,
+  useRefundFraudGuardStore,
+  useScheduleTemplateStore,
+  useSettingsStore,
+  useStoreSettingsStore,
+  useTableSessionStore,
+  useTimeclockStore,
+  useTipDistributionStore,
+] as const;
+
+function resetStore(store: {
+  setState?: Function;
+  getInitialState?: Function;
+}): void {
+  try {
+    if (!store?.setState || !store?.getInitialState) return;
+    store.setState(store.getInitialState(), true);
+  } catch (error) {
+    console.error("[resetClientSession] Failed to reset store:", error);
+  }
+}
+
+/**
+ * Hard-reset all app-owned client state while preserving Clerk's secure keys
+ * and device identity. This is the canonical reset path for identity changes.
+ */
+export async function resetClientSession(): Promise<void> {
+  await queryClient.cancelQueries();
+  queryClient.clear();
+
+  // Flush pending debounced writes so old state cannot land after the wipe.
+  flushAllPendingWrites();
+
+  storage.clearAll();
+  syncStorage.clearAll();
+
+  for (const key of APP_SECURE_SESSION_KEYS) {
+    secureStorage.remove(key);
+  }
+
+  for (const store of SESSION_STORES) {
+    resetStore(store);
+  }
 }
 
 /**
@@ -50,7 +134,6 @@ export function clearCache(): CacheClearResult {
       ordersById: {},
       orderIds: [],
       activeOrderId: null,
-      orders: [],
       isOnline: true,
       pendingSyncCount: 0,
       workingSetOrderIds: [],
@@ -111,7 +194,9 @@ export function clearStationData(): void {
 
   queryClient.clear();
 
-  console.log("[clearStationData] Cleared orders, active session, and query cache (kept employees, preserved unsynced)");
+  console.log(
+    "[clearStationData] Cleared orders, active session, and query cache (kept employees, preserved unsynced)",
+  );
 }
 
 /**
@@ -155,7 +240,9 @@ export function clearLocationData(): void {
     todayOrdersCache.clearLocation(locationId);
   }
 
-  console.log("[clearLocationData] Cleared orders, employees, query cache, and order cache (preserved unsynced)");
+  console.log(
+    "[clearLocationData] Cleared orders, employees, query cache, and order cache (preserved unsynced)",
+  );
 }
 
 /**
