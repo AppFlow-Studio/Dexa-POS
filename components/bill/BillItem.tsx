@@ -287,18 +287,24 @@ const BillItemComponent: React.FC<BillItemProps> = ({
           const next = Math.max(MAX_LEFT, Math.min(rightLimit, e.translationX));
           translateX.value = next;
           if (Math.abs(next) > 5) runOnJS(markSwipeActiveRef.current)();
-          if (!swipeActionTriggered.value && next > MAX_RIGHT / 2) {
+        })
+        .onEnd((e) => {
+          const rightLimit = isKitchenItemSV.value ? 0 : MAX_RIGHT;
+          const finalX = Math.max(
+            MAX_LEFT,
+            Math.min(rightLimit, e.translationX),
+          );
+          if (finalX > MAX_RIGHT / 2) {
             swipeActionTriggered.value = true;
             translateX.value = withTiming(0, { duration: 120 });
             runOnJS(callHandleIncrement.current)();
-          } else if (!swipeActionTriggered.value && next < MAX_LEFT / 2) {
+          } else if (finalX < MAX_LEFT / 2) {
             swipeActionTriggered.value = true;
             translateX.value = withTiming(0, { duration: 120 });
             runOnJS(callHandleDelete.current)();
+          } else {
+            translateX.value = withTiming(0);
           }
-        })
-        .onEnd(() => {
-          translateX.value = withTiming(0);
           runOnJS(resetSwipeActiveRef.current)();
         })
         .activeOffsetX([-20, 20])
