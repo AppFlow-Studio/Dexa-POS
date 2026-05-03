@@ -314,6 +314,12 @@ export function usePaymentVerification() {
       null;
 
     const consumedId = verification.journalId;
+    // process_payment_v9 sniffs for `castles_transaction` key to set
+    // order_payments.terminal_type='castles' (line 716-720 of the SQL).
+    // Without it the row defaults to 'dejavoo'. We populate every Castles
+    // field we can salvage from the journal — card details / RRN / STAN /
+    // approval code are gone with the lost TCP response.
+    const recoveredAt = new Date().toISOString();
     const params: any = {
       p_order_id: verification.orderDbId,
       p_payment_method: (verification.paymentMethod ?? "card").toLowerCase(),
@@ -322,10 +328,23 @@ export function usePaymentVerification() {
       p_terminal_id: terminalId,
       p_station_id: stationId,
       p_terminal_response: {
-        terminal_type: "castles",
+        // Top-level marker — picked up by reconciliation tooling
         manual_reconciliation: true,
-        transaction_id: verification.terminalTxnId ?? null,
-        recovered_at: new Date().toISOString(),
+        recovered_at: recoveredAt,
+        terminal_vendor: "castles",
+        // Server keys off this nested field to set terminal_type='castles'
+        castles_transaction: {
+          referenceId: verification.terminalTxnId ?? null,
+          amountBase: (verification.amountCents / 100).toFixed(2),
+          amountTip: ((verification.tipCents ?? 0) / 100).toFixed(2),
+          amountTotal: (
+            (verification.amountCents + (verification.tipCents ?? 0)) /
+            100
+          ).toFixed(2),
+          transactionType: "sale",
+          manual_reconciliation: true,
+          recovered_at: recoveredAt,
+        },
       },
     };
 
@@ -362,14 +381,30 @@ export function usePaymentVerification() {
       completePaymentJournal(consumedId, paymentId);
       usePaymentRecoveryStore.getState().consume(consumedId);
 
-      // Reconcile local state from canonical server.
-      const localOrderId =
-        useOrderStore.getState().dbOrderIdIndex?.[verification.orderDbId];
-      if (localOrderId) {
-        queueMicrotask(() => {
-          useOrderStore.getState().syncOrderFromBackendComplete(localOrderId);
-        });
-      }
+      // Reconcile local state from canonical server. syncOrderFromBackendComplete
+      // accepts either a local key or a db_order_id (resolves via dbOrderIdIndex
+      // internally). It no-ops silently if the order isn't loaded into
+      // ordersById yet — common right after a fresh app launch where the
+      // bootstrap may not have reached this order. The next general
+      // foreground/realtime refresh will catch up regardless.
+      queueMicrotask(() => {
+        useOrderStore
+          .getState()
+          .syncOrderFromBackendComplete(verification.orderDbId!);
+      });
+
+      // Seed completedPaymentInfo so the success view has meaningful context
+      // (otherwise it falls back to whatever stale value was last set).
+      const principalDollars = verification.amountCents / 100;
+      const tipDollars = (verification.tipCents ?? 0) / 100;
+      usePaymentStore.setState({
+        completedPaymentInfo: {
+          totalPaid: principalDollars,
+          totalTips: tipDollars,
+          paymentMethod: verification.paymentMethod ?? "Card",
+          transactionId: verification.orderDbId!,
+        },
+      });
 
       const fallback = _promoteNextOrFallback(consumedId);
       if (fallback) {

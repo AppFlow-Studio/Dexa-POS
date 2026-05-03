@@ -436,7 +436,16 @@ describe("usePaymentVerification — TCP-in-flight crash recovery", () => {
     expect(params.p_amount).toBeCloseTo(12.34);
     expect(params.p_tip_amount).toBeCloseTo(2.5);
     expect(params.p_terminal_response.manual_reconciliation).toBe(true);
-    expect(params.p_terminal_response.transaction_id).toBe("000099");
+    expect(params.p_terminal_response.terminal_vendor).toBe("castles");
+    // The server (process_payment_v9 SQL line 716-720) sniffs for
+    // `castles_transaction` key to set order_payments.terminal_type='castles'.
+    expect(params.p_terminal_response.castles_transaction).toBeDefined();
+    expect(params.p_terminal_response.castles_transaction.referenceId).toBe(
+      "000099",
+    );
+    expect(params.p_terminal_response.castles_transaction.amountBase).toBe(
+      "12.34",
+    );
     expect(params.p_terminal_id).toBe("terminal-1");
     expect(params.p_station_id).toBe("station-1");
     expect(opts).toEqual({ keyOverride: KEY });
@@ -447,6 +456,11 @@ describe("usePaymentVerification — TCP-in-flight crash recovery", () => {
     );
     expect(usePaymentStore.getState().view).toBe("success");
     expect(usePaymentStore.getState().verification).toBeNull();
+    // completedPaymentInfo seeded so the success view has context
+    const info = usePaymentStore.getState().completedPaymentInfo;
+    expect(info?.totalPaid).toBeCloseTo(12.34);
+    expect(info?.totalTips).toBeCloseTo(2.5);
+    expect(info?.transactionId).toBe("db-order-1");
   });
 
   it("markAsCharged maps DEADLINE_EXCEEDED to adoptionError and leaves journal alone", async () => {

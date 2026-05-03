@@ -55,8 +55,11 @@ export default function PaymentVerifyingOverlay() {
   if (verification?.reason === "tcp_inflight_crash") {
     return (
       <View
+        // minHeight (not flex:1) — this overlay renders inside a ScrollView,
+        // and ScrollView children with flex:1 collapse to zero height because
+        // there's no constrained parent dimension to fill.
         style={{
-          flex: 1,
+          minHeight: 500,
           backgroundColor: colors.panel,
         }}
       >
@@ -77,7 +80,7 @@ export default function PaymentVerifyingOverlay() {
   return (
     <View
       style={{
-        flex: 1,
+        minHeight: 500,
         padding: 24,
         backgroundColor: colors.panel,
         alignItems: "center",
