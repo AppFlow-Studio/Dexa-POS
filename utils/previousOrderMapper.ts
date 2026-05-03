@@ -1,4 +1,31 @@
+import { derivePaidStatus } from "@/lib/paymentStatus";
 import { OrderProfile, PreviousOrder } from "@/lib/types";
+
+// Refund states are authoritative from the cached label (a separate refund
+// badge below the pill carries refund detail). For non-refund states, derive
+// from live financial fields so cash-paid orders aren't stuck on stale "Partial".
+function derivePreviousOrderPaidStatus(
+  order: PreviousOrder,
+): OrderProfile["paid_status"] {
+  if (order.paymentStatus === "Refunded") return "Refunded";
+  if (order.paymentStatus === "Partially Refunded") return "Partial";
+
+  const derived = derivePaidStatus({
+    paid_status:
+      order.paymentStatus === "Paid"
+        ? "Paid"
+        : order.paymentStatus === "Unpaid"
+          ? "Unpaid"
+          : "Partial",
+    amount_due: order.amount_due,
+    cash_amount_due: order.cash_amount_due,
+    amount_paid: order.amount_paid,
+    payments: order.payments,
+    total_amount: order.total,
+  });
+
+  return derived ?? "Partial";
+}
 
 /**
  * Maps a PreviousOrder to OrderProfile shape so existing components
@@ -21,12 +48,7 @@ export function previousOrderToOrderProfile(
           : "pending",
     check_status: order.checkStatus || "Opened",
     order_type: order.type,
-    paid_status:
-      order.paymentStatus === "Paid"
-        ? "Paid"
-        : order.paymentStatus === "Unpaid"
-          ? "Unpaid"
-          : "Partial",
+    paid_status: derivePreviousOrderPaidStatus(order),
     items: order.items,
     opened_at: order.opened_at || null,
     closed_at: order.closed_at || undefined,

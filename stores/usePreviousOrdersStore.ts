@@ -1,3 +1,4 @@
+import { derivePaidStatus } from "@/lib/paymentStatus";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
@@ -51,9 +52,11 @@ function buildOrderLookupMap(orders: PreviousOrder[]): Record<string, PreviousOr
 }
 
 function _derivePaymentStatus(profile: OrderProfile): PreviousOrder["paymentStatus"] {
-  if (profile.paid_status === "Paid") return "Paid";
-  if (profile.paid_status === "Partial") return "In Progress";
-  if (profile.paid_status === "Refunded") return "Refunded";
+  const derived = derivePaidStatus(profile);
+  if (derived === "Paid") return "Paid";
+  if (derived === "Refunded") return "Refunded";
+  if (derived === "Partial") return "In Progress";
+  if (profile.paid_status === "Unpaid") return "Unpaid";
   return "Unpaid";
 }
 
