@@ -92,7 +92,7 @@ function DialogContent({
       <DialogOverlay align={align}>
         <DialogPrimitive.Content
           className={cn(
-            "max-w-2xl w-full gap-4 web:cursor-default p-6 shadow-lg web:duration-200",
+            "max-w-2xl w-full gap-4 web:cursor-default p-6 web:duration-200",
             align === "end" ? "rounded-t-lg rounded-b-none" : "rounded-lg",
             open
               ? "web:animate-in web:fade-in-0 web:zoom-in-95"
@@ -101,9 +101,8 @@ function DialogContent({
           )}
           style={[
             {
-              backgroundColor: colors.panel,
               borderColor: colors.border,
-              borderWidth: 1,
+              borderWidth: 0,
             },
             style,
           ]}
@@ -180,15 +179,15 @@ function DialogDescription({
 }
 
 export {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogOverlay,
-  DialogPortal,
-  DialogTitle,
-  DialogTrigger
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogOverlay,
+    DialogPortal,
+    DialogTitle,
+    DialogTrigger
 };
 

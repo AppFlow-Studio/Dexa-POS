@@ -931,6 +931,11 @@ const PinLoginScreen = () => {
                   : dialog.variant === "warning"
                     ? colors.warning + "60"
                     : colors.danger + "60",
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.15,
+              shadowRadius: 8,
+              elevation: 4,
             }}
           >
             <Text
