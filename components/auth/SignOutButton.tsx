@@ -21,18 +21,26 @@ export const SignOutButton = ({
 }: SignOutButtonProps) => {
   const { signOut } = useClerk();
   const [isLoading, setIsLoading] = React.useState(false);
+  const signOutInFlightRef = React.useRef(false);
 
   const handleSignOut = async () => {
+    if (signOutInFlightRef.current) return;
     try {
+      signOutInFlightRef.current = true;
       setIsLoading(true);
       await resetClientSession();
-      await signOut();
+      try {
+        await signOut();
+      } catch (err) {
+        console.warn("Sign out network call failed after local reset:", err);
+      }
       // Redirect to login page after sign out
       replaceRoute("(auth)", "login");
     } catch (err) {
       console.error("Error signing out:", JSON.stringify(err, null, 2));
     } finally {
       setIsLoading(false);
+      signOutInFlightRef.current = false;
     }
   };
 

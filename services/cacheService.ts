@@ -52,6 +52,8 @@ const APP_SECURE_SESSION_KEYS = [
   "dexa-employee-storage",
 ] as const;
 
+const CLERK_SECURE_KEY_PREFIXES = ["__clerk", "clerk.", "clerk_"] as const;
+
 const SESSION_STORES = [
   useCashDrawerStore,
   useCFDClientStore,
@@ -86,9 +88,19 @@ function resetStore(store: {
   }
 }
 
+function clearClerkSessionCache(): void {
+  const secureKeys = secureStorage.getAllKeys();
+
+  for (const key of secureKeys) {
+    if (CLERK_SECURE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      secureStorage.remove(key);
+    }
+  }
+}
+
 /**
- * Hard-reset all app-owned client state while preserving Clerk's secure keys
- * and device identity. This is the canonical reset path for identity changes.
+ * Hard-reset all client state for a logout or identity switch while preserving
+ * only device identity and other non-session secure values.
  */
 export async function resetClientSession(): Promise<void> {
   await queryClient.cancelQueries();
@@ -103,6 +115,8 @@ export async function resetClientSession(): Promise<void> {
   for (const key of APP_SECURE_SESSION_KEYS) {
     secureStorage.remove(key);
   }
+
+  clearClerkSessionCache();
 
   for (const store of SESSION_STORES) {
     resetStore(store);

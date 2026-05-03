@@ -12,6 +12,11 @@ import {
 } from "@/hooks/usePinSignIn";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTimeClock } from "@/hooks/useTimeclock";
+import {
+    getPinAuthFailure,
+    getPinPromptLabel,
+    resolvePostLoginRoute,
+} from "@/lib/authFlow";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDeviceName } from "@/lib/deviceName";
 import { replaceRoute } from "@/lib/rootNavigation";
@@ -106,7 +111,7 @@ const PinLoginScreen = () => {
     sessions,
     activeEmployeeId,
   } = useTimeclockStore();
-  const { isOnline } = useNetworkStatus();
+  const { isOnline, rawIsOnline } = useNetworkStatus();
 
   const timeClock = useTimeClock();
   const { performOptimisticSignIn } = usePinSignIn();
@@ -386,12 +391,9 @@ const PinLoginScreen = () => {
     // ── CACHE MISS: employees not loaded (first startup / empty cache) ────────
     if (result.outcome === "cache_miss") {
       if (!isOnline) {
+        const authFailure = getPinAuthFailure({ offline: true });
         triggerShakeAnimation();
-        showDialog(
-          "Sign In Failed",
-          "Incorrect PIN. Please try again.",
-          "error",
-        );
+        showDialog(authFailure.title, authFailure.message, "error");
         setPin("");
         return;
       }
@@ -447,12 +449,12 @@ const PinLoginScreen = () => {
           return;
         }
 
+        const authFailure = getPinAuthFailure({
+          error: response.error,
+          errorCode: response.error_code,
+        });
         triggerShakeAnimation();
-        showDialog(
-          "Sign In Failed",
-          response.error || "Unable to sign in.",
-          "error",
-        );
+        showDialog(authFailure.title, authFailure.message, "error");
         setPin("");
         return;
       }
@@ -532,8 +534,10 @@ const PinLoginScreen = () => {
 
       hideLoading();
       setPin("");
-      const isKDS = selectedStation?.station_type === "kds";
-      replaceRoute("(main)", isKDS ? "kds" : "home");
+      replaceRoute(
+        "(main)",
+        resolvePostLoginRoute(selectedStation?.station_type),
+      );
     } catch (error: any) {
       console.error("Login error details:", {
         message: error?.message,
@@ -544,11 +548,11 @@ const PinLoginScreen = () => {
       });
       hideLoading();
       triggerShakeAnimation();
-      const errorMessage =
-        error?.message?.includes("PIN") || error?.message?.includes("pin")
-          ? "The PIN you entered is incorrect."
-          : error?.message || "Unable to sign in. Please try again.";
-      showDialog("Sign In Failed", errorMessage, "error");
+      const authFailure = getPinAuthFailure({
+        error: error?.message,
+        errorCode: error?.code,
+      });
+      showDialog(authFailure.title, authFailure.message, "error");
       setPin("");
     }
   };
@@ -799,7 +803,7 @@ const PinLoginScreen = () => {
             marginBottom: 4,
           }}
         >
-          Enter Your PIN
+          {getPinPromptLabel(MAX_PIN_LENGTH)}
         </Text>
 
         {/* Station / store subtitle */}
@@ -816,6 +820,32 @@ const PinLoginScreen = () => {
           </Text>
         ) : (
           <View style={{ marginBottom: 16 }} />
+        )}
+
+        {!rawIsOnline && (
+          <View
+            style={{
+              alignSelf: "center",
+              marginBottom: 12,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: colors.warning + "18",
+              borderWidth: 1,
+              borderColor: colors.warning + "35",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "600",
+                color: colors.warning,
+                textAlign: "center",
+              }}
+            >
+              Offline mode: sign-in will sync when connection returns.
+            </Text>
+          </View>
         )}
 
         <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />

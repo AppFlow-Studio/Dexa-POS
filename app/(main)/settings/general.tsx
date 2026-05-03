@@ -518,12 +518,20 @@ const GeneralSettingsScreen = () => {
   };
 
   const handleFullLogout = async () => {
+    if (isLoggingOut) return;
     setIsLoggingOut(true);
     markVoluntaryLogout();
     try {
       await endStationSessionOnServer();
       await resetClientSession();
-      await signOut();
+      try {
+        await signOut();
+      } catch (error) {
+        console.warn(
+          "Settings logout network call failed after local reset:",
+          error,
+        );
+      }
       setShowLogoutModal(false);
       replaceRoute("(auth)", "login");
     } catch {

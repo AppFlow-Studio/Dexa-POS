@@ -8,7 +8,7 @@ import { clearStationData, resetClientSession } from "@/services/cacheService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { PosStaffLogoutResponse } from "@/types/station";
 import { useClerk } from "@clerk/clerk-expo";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Text, TouchableOpacity, ViewStyle } from "react-native";
 
 interface SessionLogoutButtonProps {
@@ -32,6 +32,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
   const { markVoluntaryLogout } = useSessionKick();
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const logoutInFlightRef = useRef(false);
 
   // Helper to call pos_staff_logout RPC
   const endStationSessionOnServer = async (
@@ -64,6 +65,8 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
   };
 
   const handleEndStationSession = async () => {
+    if (logoutInFlightRef.current) return;
+    logoutInFlightRef.current = true;
     setIsLoading(true);
     markVoluntaryLogout();
     try {
@@ -93,10 +96,13 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       });
     } finally {
       setIsLoading(false);
+      logoutInFlightRef.current = false;
     }
   };
 
   const handleFullLogout = async () => {
+    if (logoutInFlightRef.current) return;
+    logoutInFlightRef.current = true;
     setIsLoading(true);
     markVoluntaryLogout();
     try {
@@ -104,7 +110,14 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       await endStationSessionOnServer(false);
 
       await resetClientSession();
-      await signOut();
+      try {
+        await signOut();
+      } catch (error) {
+        console.warn(
+          "Full logout network call failed after local reset:",
+          error,
+        );
+      }
 
       setShowModal(false);
 
@@ -119,13 +132,18 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       });
     } finally {
       setIsLoading(false);
+      logoutInFlightRef.current = false;
     }
   };
 
   return (
     <>
       <TouchableOpacity
-        onPress={() => setShowModal(true)}
+        onPress={() => {
+          if (isLoading) return;
+          setShowModal(true);
+        }}
+        disabled={isLoading}
         style={style}
         className="px-4 py-2 bg-red-500 rounded-lg items-center justify-center"
       >
