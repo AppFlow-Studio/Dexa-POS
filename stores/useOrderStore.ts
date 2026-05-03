@@ -2508,7 +2508,8 @@ const syncPaymentToBackend = async (
 
     const stationIdForRpc =
       useStoreSettingsStore.getState().selectedStation?.id ?? null;
-
+    // TEST DELETE AFTER
+    await new Promise((r) => setTimeout(r, 25_000));
     const { data, error } = await rpcWithIdempotency<any>(
       supabase,
       "process_payment",
@@ -9912,37 +9913,63 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // ================================================================
-            // Wave Cat-B: write payment journal BEFORE optimistic state mutation,
-            // so a crash between here and backend ack leaves a recoverable trace.
+            // Wave Cat-B: payment journal lifecycle.
+            //
+            // Two paths:
+            // (a) Terminal-swipe paths (CardPaymentView, ManualCardEntryView)
+            //     pre-write the journal BEFORE the TCP send and pass the
+            //     handle here via transactionDetails.paymentJournalHandle.
+            //     We reuse it (it's already in 'terminal_approved') so
+            //     there's no double-write and the same idempotencyKey
+            //     flows from pre-swipe through to v9.
+            // (b) Cash and other non-terminal paths arrive with no handle.
+            //     Write a fresh journal and immediately mark terminal_approved
+            //     (the cash equivalent of "swipe done").
             // ================================================================
-            const paymentJournalKey = uuidv4();
-            const paymentJournalId = writePaymentJournal({
-              orderId,
-              dbOrderId: order.db_order_id,
-              amount,
-              tipAmount,
-              paymentMethod: method,
-              idempotencyKey: paymentJournalKey,
-              splitGroupId:
-                splitCount && splitPortionIndex
-                  ? `${orderId}-split-${splitCount}-${paymentTimestamp}`
-                  : undefined,
-            });
+            const passedJournalHandle = (transactionDetails as any)
+              ?.paymentJournalHandle as
+              | { id: string; idempotencyKey: string }
+              | undefined;
 
-            // The terminal has already returned by the time we reach addPaymentToOrder
-            // (transactionDetails carries its response). Promote the journal immediately
-            // to terminal_approved so crash recovery treats it as "card was charged".
-            const journalTerminalTxnId =
-              transactionDetails?.transactionId ??
-              transactionDetails?.dejavooTransaction?.referenceId ??
-              undefined;
-            updatePaymentJournal(paymentJournalId, {
-              status: "terminal_approved",
-              ...(journalTerminalTxnId && {
-                terminalTxnId: journalTerminalTxnId,
-              }),
-              ...(order.db_order_id && { dbOrderId: order.db_order_id }),
-            });
+            let paymentJournalId: string;
+            let paymentJournalKey: string;
+
+            if (passedJournalHandle) {
+              paymentJournalId = passedJournalHandle.id;
+              paymentJournalKey = passedJournalHandle.idempotencyKey;
+              // Sanity: make sure dbOrderId is on the journal if we have it now.
+              if (order.db_order_id) {
+                updatePaymentJournal(paymentJournalId, {
+                  dbOrderId: order.db_order_id,
+                });
+              }
+            } else {
+              paymentJournalKey = uuidv4();
+              paymentJournalId = writePaymentJournal({
+                orderId,
+                dbOrderId: order.db_order_id,
+                amount,
+                tipAmount,
+                paymentMethod: method,
+                idempotencyKey: paymentJournalKey,
+                splitGroupId:
+                  splitCount && splitPortionIndex
+                    ? `${orderId}-split-${splitCount}-${paymentTimestamp}`
+                    : undefined,
+              });
+
+              const journalTerminalTxnId =
+                transactionDetails?.transactionId ??
+                transactionDetails?.dejavooTransaction?.referenceId ??
+                undefined;
+              updatePaymentJournal(paymentJournalId, {
+                status: "terminal_approved",
+                ...(journalTerminalTxnId && {
+                  terminalTxnId: journalTerminalTxnId,
+                }),
+                ...(order.db_order_id && { dbOrderId: order.db_order_id }),
+              });
+            }
 
             const newPayment: OrderProfilePayment = {
               id: localPaymentId, // Use local ID as temporary main ID

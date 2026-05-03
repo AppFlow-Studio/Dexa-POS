@@ -162,6 +162,64 @@ describe("paymentJournal — adoption path does NOT trigger process_payment", ()
   });
 });
 
+describe("paymentJournal — TCP-in-flight crash ('initiated' status)", () => {
+  it("a fresh journal sits in 'initiated' until processSale returns and we update it", () => {
+    const id = writePaymentJournal({
+      orderId: "o-tcp",
+      dbOrderId: "db-tcp",
+      amount: 25.0,
+      tipAmount: 3,
+      paymentMethod: "Card",
+      idempotencyKey: "key-tcp",
+    });
+    const journal = getJournalById(id);
+    expect(journal?.status).toBe("initiated");
+    expect(journal?.amount).toBe(25.0);
+    expect(journal?.tipAmount).toBe(3);
+    expect(journal?.paymentMethod).toBe("Card");
+  });
+
+  it("'initiated' entries surface via getIncompleteJournals (relaunch hook)", () => {
+    writePaymentJournal({
+      orderId: "o-tcp",
+      amount: 25.0,
+      paymentMethod: "Card",
+      idempotencyKey: "key-tcp",
+    });
+    // No status update — simulates the TCP crash window.
+    const incomplete = getIncompleteJournals();
+    expect(incomplete).toHaveLength(1);
+    expect(incomplete[0].status).toBe("initiated");
+  });
+
+  it("operator-discard via failPaymentJournal removes from incomplete with the discard reason", () => {
+    const id = writePaymentJournal({
+      orderId: "o-tcp",
+      amount: 25.0,
+      paymentMethod: "Card",
+      idempotencyKey: "key-tcp",
+    });
+    expect(getIncompleteJournals()).toHaveLength(1);
+    failPaymentJournal(id, "manual_discard_no_charge");
+    expect(getIncompleteJournals()).toHaveLength(0);
+    expect(getJournalById(id)?.status).toBe("failed");
+    expect(getJournalById(id)?.error).toBe("manual_discard_no_charge");
+  });
+
+  it("operator-record via completePaymentJournal moves 'initiated' to 'completed'", () => {
+    const id = writePaymentJournal({
+      orderId: "o-tcp",
+      amount: 25.0,
+      paymentMethod: "Card",
+      idempotencyKey: "key-tcp",
+    });
+    completePaymentJournal(id, "pay-recovered-1");
+    expect(getJournalById(id)?.status).toBe("completed");
+    expect(getJournalById(id)?.backendPaymentId).toBe("pay-recovered-1");
+    expect(getIncompleteJournals()).toHaveLength(0);
+  });
+});
+
 describe("paymentJournal — pruneOldJournals", () => {
   it("keeps incomplete entries regardless of age", () => {
     const id = writePaymentJournal({

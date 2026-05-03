@@ -92,8 +92,12 @@ export interface PaymentJournalEntryLike {
   orderId: string
   dbOrderId?: string
   amount: number
+  tipAmount?: number
+  paymentMethod?: string
   idempotencyKey: string
+  terminalTxnId?: string
   splitGroupId?: string
+  status?: 'initiated' | 'terminal_approved' | 'completed' | 'failed' | 'resolved_manually'
 }
 
 /**
@@ -107,9 +111,27 @@ export interface PaymentVerificationState {
   idempotencyKey: string
   orderDbId: string | null
   amountCents: number
+  tipCents?: number
+  paymentMethod?: string
+  terminalTxnId?: string
+  createdAt?: string
   splitPortionIndex?: number
   startedAt: number
-  reason: 'deadline_exceeded' | 'idempotency_in_flight' | 'crash_recovery'
+  /**
+   * Discriminator for the recovery flow:
+   * - `deadline_exceeded` / `idempotency_in_flight`: Wave 2 in-session verifying;
+   *   server may have committed → poll check_recent_payment.
+   * - `crash_recovery`: Gap 1 relaunch from `terminal_approved` journal;
+   *   terminal returned, RPC interrupted → same poll flow as above.
+   * - `tcp_inflight_crash`: this gap. Relaunch from `initiated` journal;
+   *   TCP call interrupted, terminal may or may not have committed →
+   *   manual operator reconciliation (no server poll helps).
+   */
+  reason:
+    | 'deadline_exceeded'
+    | 'idempotency_in_flight'
+    | 'crash_recovery'
+    | 'tcp_inflight_crash'
 }
 
 interface PaymentState {
@@ -288,6 +310,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   openForVerification: journal => {
     // Bypass closed-check guard: the matched server payment may have already
     // closed the order, in which case verification recovery still needs to run.
+    //
+    // Reason mapping derives from journal status:
+    //   - 'initiated'        → 'tcp_inflight_crash' (TCP call interrupted; no server poll helps)
+    //   - 'terminal_approved' → 'crash_recovery'   (terminal returned; server may have committed)
+    //   - any other (defensive) → 'crash_recovery'
+    const reason: PaymentVerificationState['reason'] =
+      journal.status === 'initiated' ? 'tcp_inflight_crash' : 'crash_recovery'
+
     set({
       isOpen: true,
       paymentMethod: null,
@@ -306,8 +336,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         idempotencyKey: journal.idempotencyKey,
         orderDbId: journal.dbOrderId ?? null,
         amountCents: Math.round(journal.amount * 100),
+        tipCents:
+          journal.tipAmount != null
+            ? Math.round(journal.tipAmount * 100)
+            : undefined,
+        paymentMethod: journal.paymentMethod,
+        terminalTxnId: journal.terminalTxnId,
         startedAt: Date.now(),
-        reason: 'crash_recovery'
+        reason
       }
     })
   },

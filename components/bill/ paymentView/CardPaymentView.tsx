@@ -14,6 +14,11 @@ import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { toastService } from '@/lib/toastService'
 import {
+  failPaymentJournal,
+  updatePaymentJournal,
+  writePaymentJournal
+} from '@/services/paymentJournal'
+import {
   extractLast4,
   parseCastlesReturnCode
 } from '@/services/terminals/castles-response-mapper'
@@ -33,6 +38,7 @@ import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import { generateRefId } from '@/types/dejavoo-spin-api'
 import { CheckCircle2, Clock, Wifi } from 'lucide-react-native'
 import { useEffect, useRef, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import {
   ActivityIndicator,
   ScrollView,
@@ -307,17 +313,56 @@ const CardPaymentView = () => {
             const referenceId = counter.next()
             currentRefIdRef.current = referenceId
 
+            // Wave Cat-B (TCP-in-flight crash recovery): write journal as
+            // 'initiated' BEFORE the TCP send. If the app dies during the
+            // socket exchange, the relaunch hook surfaces this entry and
+            // the operator can manually reconcile against the terminal display.
+            // MUST complete synchronously before processSale awaits.
+            const activeOrderForJournal = useOrderStore.getState().activeOrderId
+            const orderForJournal = activeOrderForJournal
+              ? useOrderStore.getState().ordersById[activeOrderForJournal]
+              : undefined
+            const paymentJournalKey = uuidv4()
+            const paymentJournalId = writePaymentJournal({
+              orderId: activeOrderForJournal ?? 'unknown',
+              dbOrderId: orderForJournal?.db_order_id,
+              amount: totalToPay,
+              tipAmount,
+              paymentMethod: 'Card',
+              idempotencyKey: paymentJournalKey
+            })
+
             console.log('[CardPayment] Castles processSale:', {
               amount: totalToPay,
               tipAmount,
-              referenceId
+              referenceId,
+              journalId: paymentJournalId
             })
 
             // 3. Execute sale — amount is base (without tip); terminal adds tip separately
-            const result = await service.processSale({
-              amount: totalToPay,
-              tipAmount,
-              referenceId
+            let result
+            try {
+              result = await service.processSale({
+                amount: totalToPay,
+                tipAmount,
+                referenceId
+              })
+            } catch (err) {
+              // Terminal call threw before returning — leave journal in
+              // 'initiated' so the relaunch reconciliation surface picks it up.
+              throw err
+            }
+
+            // 3a. Promote journal to 'terminal_approved' the instant the
+            // terminal returns — even before we decide success/failure.
+            // From here on, a crash is recoverable via the existing
+            // crash_recovery flow (Wave 2/Gap 1).
+            updatePaymentJournal(paymentJournalId, {
+              status: 'terminal_approved',
+              terminalTxnId: referenceId,
+              ...(orderForJournal?.db_order_id && {
+                dbOrderId: orderForJournal.db_order_id
+              })
             })
 
             console.log('[CardPayment] Castles sale result:', {
@@ -331,9 +376,15 @@ const CardPaymentView = () => {
 
             // 4. Handle failure
             if (!result.success) {
+              // Terminal returned a clean decline — no charge happened.
+              // Mark journal failed so it's not surfaced for recovery.
               const errorInfo = result.raw?.txnReturnCode
                 ? parseCastlesReturnCode(result.raw.txnReturnCode)
                 : { message: result.error || 'Transaction failed' }
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_declined: ${errorInfo.message}`
+              )
               showDeclined()
               setErrorModal({
                 visible: true,
@@ -368,7 +419,14 @@ const CardPaymentView = () => {
                 transactionId: referenceId,
                 rrn: castlesTx?.rrn,
                 cardAID: castlesTx?.cardAID,
-                castlesTransaction: result.terminalResponse
+                castlesTransaction: result.terminalResponse,
+                // Wave Cat-B (TCP-in-flight crash recovery): hand the
+                // pre-swipe journal entry to addPaymentToOrder so it skips
+                // the create-and-write branch and uses ours instead.
+                paymentJournalHandle: {
+                  id: paymentJournalId,
+                  idempotencyKey: paymentJournalKey
+                }
               },
               amountOverride: totalToPay
             })

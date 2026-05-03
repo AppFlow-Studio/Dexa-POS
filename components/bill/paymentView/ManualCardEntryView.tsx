@@ -9,6 +9,11 @@ import {
   extractLast4,
   parseCastlesReturnCode
 } from '@/services/terminals/castles-response-mapper'
+import {
+  failPaymentJournal,
+  updatePaymentJournal,
+  writePaymentJournal
+} from '@/services/paymentJournal'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter'
 import {
@@ -24,6 +29,7 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import { CheckCircle2, Keyboard, Wifi } from 'lucide-react-native'
 import { useEffect, useRef, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import {
   ActivityIndicator,
   ScrollView,
@@ -210,10 +216,28 @@ const ManualCardEntryView = () => {
         const referenceId = counter.next()
         currentRefIdRef.current = referenceId
 
+        // Wave Cat-B (TCP-in-flight crash recovery): write journal as
+        // 'initiated' BEFORE the TCP send so a mid-call crash leaves a
+        // recoverable trace for the relaunch reconciliation flow.
+        const activeOrderForJournal = useOrderStore.getState().activeOrderId
+        const orderForJournal = activeOrderForJournal
+          ? useOrderStore.getState().ordersById[activeOrderForJournal]
+          : undefined
+        const paymentJournalKey = uuidv4()
+        const paymentJournalId = writePaymentJournal({
+          orderId: activeOrderForJournal ?? 'unknown',
+          dbOrderId: orderForJournal?.db_order_id,
+          amount: totalToPay,
+          tipAmount: tip,
+          paymentMethod: 'Card',
+          idempotencyKey: paymentJournalKey
+        })
+
         console.log('[ManualKeyIn] Castles processSale:', {
           amount: totalToPay,
           tipAmount: tip,
-          referenceId
+          referenceId,
+          journalId: paymentJournalId
         })
 
         // 3. Execute sale — terminal handles card entry via manual key-in
@@ -221,6 +245,16 @@ const ManualCardEntryView = () => {
           amount: totalToPay,
           tipAmount: tip,
           referenceId
+        })
+
+        // 3a. Promote journal to 'terminal_approved' the moment the
+        // terminal returns; from here on, recovery is via crash_recovery flow.
+        updatePaymentJournal(paymentJournalId, {
+          status: 'terminal_approved',
+          terminalTxnId: referenceId,
+          ...(orderForJournal?.db_order_id && {
+            dbOrderId: orderForJournal.db_order_id
+          })
         })
 
         console.log('[ManualKeyIn] Castles sale result:', {
@@ -234,6 +268,11 @@ const ManualCardEntryView = () => {
           const errorInfo = result.raw?.txnReturnCode
             ? parseCastlesReturnCode(result.raw.txnReturnCode)
             : { message: result.error || 'Transaction failed' }
+          // Terminal returned a clean decline — no charge happened.
+          failPaymentJournal(
+            paymentJournalId,
+            `terminal_declined: ${errorInfo.message}`
+          )
           showDeclined()
           setErrorModal({
             visible: true,
@@ -265,7 +304,13 @@ const ManualCardEntryView = () => {
             cardType: castlesTx?.cardType,
             last4: castlesLast4,
             transactionId: referenceId,
-            castlesTransaction: result.terminalResponse
+            castlesTransaction: result.terminalResponse,
+            // Wave Cat-B (TCP-in-flight crash recovery): hand the
+            // pre-swipe journal entry to addPaymentToOrder.
+            paymentJournalHandle: {
+              id: paymentJournalId,
+              idempotencyKey: paymentJournalKey
+            }
           },
           amountOverride: totalToPay
         })

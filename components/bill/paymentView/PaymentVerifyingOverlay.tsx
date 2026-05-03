@@ -10,6 +10,7 @@ import {
     View,
 } from "react-native";
 import { PaymentAlreadyRecordedModal } from "./PaymentAlreadyRecordedModal";
+import { PaymentTerminalReconciliationModal } from "./PaymentTerminalReconciliationModal";
 
 /**
  * Wave Cat-B (C4): renders the verifying-state UI when the payment store has
@@ -28,6 +29,10 @@ export default function PaymentVerifyingOverlay() {
     manualCheckNow,
     markComplete,
     retryWithNewCharge,
+    markAsCharged,
+    markAsNotCharged,
+    isAdopting,
+    adoptionError,
     quality,
     verification,
   } = usePaymentVerification();
@@ -42,6 +47,30 @@ export default function PaymentVerifyingOverlay() {
   );
 
   if (!isVerifying) return null;
+
+  // Wave Cat-B (TCP-in-flight crash recovery): branch on reason. The polling
+  // overlay assumes the server may have a row to find — that's NOT true for
+  // 'tcp_inflight_crash' (RPC was never called). Render the manual
+  // reconciliation modal instead and skip the polling UI entirely.
+  if (verification?.reason === "tcp_inflight_crash") {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.panel,
+        }}
+      >
+        <PaymentTerminalReconciliationModal
+          visible={true}
+          verification={verification}
+          isAdopting={isAdopting}
+          adoptionError={adoptionError}
+          onConfirmCharged={markAsCharged}
+          onConfirmNotCharged={markAsNotCharged}
+        />
+      </View>
+    );
+  }
 
   const matched = matchedPayment?.matched === true;
 

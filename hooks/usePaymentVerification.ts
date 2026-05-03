@@ -1,6 +1,7 @@
 import { connectionQuality, type Quality } from "@/lib/network/connectionQuality";
 import { DEADLINES, PAYMENT_VERIFY_TIMER_MS } from "@/lib/network/deadlines";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
+import { OrderService } from "@/services/orderService";
 import {
     completePaymentJournal,
     failPaymentJournal,
@@ -11,6 +12,7 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { PaymentJournalEntry } from "@/services/paymentJournal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -269,6 +271,137 @@ export function usePaymentVerification() {
     }
   }, [verification, clearVerification, setView]);
 
+  // ──────────────────────────────────────────────────────────────────────
+  // TCP-in-flight crash recovery (manual operator reconciliation)
+  // Used when verification.reason === 'tcp_inflight_crash' (journal stuck
+  // in 'initiated'). The polling flow doesn't help here — server has no
+  // record. Operator confirms against the terminal display.
+  // ──────────────────────────────────────────────────────────────────────
+  const [isAdopting, setIsAdopting] = useState(false);
+  const [adoptionError, setAdoptionError] = useState<string | null>(null);
+
+  /**
+   * Yes — record this payment. The operator confirmed by checking the
+   * terminal display that the charge actually went through. Fire
+   * process_payment_v9 with the journal's idempotencyKey so the server
+   * records canonical state. If the original v9 had partially run before
+   * the crash (rare), the cached idempotency result returns and we don't
+   * double-charge.
+   *
+   * TODO(gap-pin): manager-PIN gate for amounts > $X — see Cat-B Gap 3.
+   */
+  const markAsCharged = useCallback(async () => {
+    if (!verification) return;
+    if (!verification.orderDbId) {
+      setAdoptionError(
+        "Cannot record this payment — original order is not synced to the backend.",
+      );
+      return;
+    }
+    const supabase = getOrderStoreSupabaseClient();
+    if (!supabase) {
+      setAdoptionError("No backend connection.");
+      return;
+    }
+
+    setIsAdopting(true);
+    setAdoptionError(null);
+
+    const stationId =
+      useStoreSettingsStore.getState().selectedStation?.id ?? null;
+    const terminalId =
+      useStoreSettingsStore.getState().selectedStation?.payment_terminal?.id ??
+      null;
+
+    const consumedId = verification.journalId;
+    const params: any = {
+      p_order_id: verification.orderDbId,
+      p_payment_method: (verification.paymentMethod ?? "card").toLowerCase(),
+      p_amount: verification.amountCents / 100,
+      p_tip_amount: (verification.tipCents ?? 0) / 100,
+      p_terminal_id: terminalId,
+      p_station_id: stationId,
+      p_terminal_response: {
+        terminal_type: "castles",
+        manual_reconciliation: true,
+        transaction_id: verification.terminalTxnId ?? null,
+        recovered_at: new Date().toISOString(),
+      },
+    };
+
+    try {
+      const { data, error } = await OrderService.processPayment(
+        supabase,
+        params,
+        { keyOverride: verification.idempotencyKey },
+      );
+      setIsAdopting(false);
+
+      if (error) {
+        const code = (error as any)?.code;
+        const msg = ((error as any)?.message ?? "").toLowerCase();
+        // Verifying-style outcomes: leave journal alone, surface toast,
+        // operator can try again.
+        if (
+          code === "DEADLINE_EXCEEDED" ||
+          code === "40001" ||
+          msg.includes("idempotency_in_flight")
+        ) {
+          setAdoptionError(
+            "Network slow — couldn't confirm with the server. Try again in a moment.",
+          );
+          return;
+        }
+        setAdoptionError(
+          `Recording failed: ${(error as any)?.message ?? "unknown error"}`,
+        );
+        return;
+      }
+
+      const paymentId = (data as any)?.payment_id ?? "manual_adoption";
+      completePaymentJournal(consumedId, paymentId);
+      usePaymentRecoveryStore.getState().consume(consumedId);
+
+      // Reconcile local state from canonical server.
+      const localOrderId =
+        useOrderStore.getState().dbOrderIdIndex?.[verification.orderDbId];
+      if (localOrderId) {
+        queueMicrotask(() => {
+          useOrderStore.getState().syncOrderFromBackendComplete(localOrderId);
+        });
+      }
+
+      const fallback = _promoteNextOrFallback(consumedId);
+      if (fallback) {
+        clearVerification();
+        setView("success");
+      }
+    } catch (err) {
+      setIsAdopting(false);
+      setAdoptionError(
+        `Recording failed: ${(err as any)?.message ?? String(err)}`,
+      );
+    }
+  }, [verification, clearVerification, setView]);
+
+  /**
+   * No — discard this entry. Operator confirmed the terminal did NOT charge.
+   * Fail the journal and consume from the recovery queue.
+   */
+  const markAsNotCharged = useCallback(() => {
+    if (!verification) return;
+    const consumedId = verification.journalId;
+    failPaymentJournal(consumedId, "manual_discard_no_charge");
+    usePaymentRecoveryStore.getState().consume(consumedId);
+
+    const fallback = _promoteNextOrFallback(consumedId);
+    if (fallback) {
+      clearVerification();
+      // Drop back to the entry view so the operator can start fresh if needed.
+      setView("payment-method-selection");
+    }
+  }, [verification, clearVerification, setView]);
+
   return {
     isVerifying,
     elapsedMs,
@@ -278,6 +411,11 @@ export function usePaymentVerification() {
     manualCheckNow,
     markComplete,
     retryWithNewCharge,
+    // TCP-in-flight crash recovery
+    markAsCharged,
+    markAsNotCharged,
+    isAdopting,
+    adoptionError,
     quality,
     pollCounts: pollCountsRef.current,
     verification,

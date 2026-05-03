@@ -63,6 +63,23 @@ jest.mock("@/services/paymentJournal", () => ({
   failPaymentJournal: (...args: unknown[]) => mockJournalCalls.fail(...args),
 }));
 
+const mockProcessPayment = jest.fn();
+jest.mock("@/services/orderService", () => ({
+  OrderService: {
+    processPayment: (...args: unknown[]) => mockProcessPayment(...args),
+  },
+}));
+
+const mockStationState = {
+  selectedStation: {
+    id: "station-1",
+    payment_terminal: { id: "terminal-1" },
+  },
+};
+jest.mock("@/stores/useStoreSettingsStore", () => ({
+  useStoreSettingsStore: { getState: () => mockStationState },
+}));
+
 import { renderHook, act } from "@testing-library/react-native";
 import { usePaymentVerification } from "@/hooks/usePaymentVerification";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
@@ -93,6 +110,7 @@ beforeEach(() => {
   mockRunWithDeadline.mockReset();
   mockJournalCalls.complete.mockReset();
   mockJournalCalls.fail.mockReset();
+  mockProcessPayment.mockReset();
   mockOrderState.syncOrderFromBackendComplete.mockReset();
   mockOrderState.dbOrderIdIndex = {};
   mockSubscribers.length = 0;
@@ -258,6 +276,29 @@ describe("usePaymentVerification — queue auto-promotion (Gap 1)", () => {
     expect(state.verification?.reason).toBe("crash_recovery");
   });
 
+  it("openForVerification on an 'initiated' journal sets reason='tcp_inflight_crash'", () => {
+    const journal = {
+      id: "j-tcp",
+      orderId: "local-order-x",
+      dbOrderId: "db-order-x",
+      amount: 33.0,
+      tipAmount: 5,
+      paymentMethod: "card",
+      status: "initiated" as const,
+      idempotencyKey: "key-tcp",
+      terminalTxnId: "000042",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    usePaymentStore.getState().openForVerification(journal);
+
+    const state = usePaymentStore.getState();
+    expect(state.verification?.reason).toBe("tcp_inflight_crash");
+    expect(state.verification?.tipCents).toBe(500);
+    expect(state.verification?.terminalTxnId).toBe("000042");
+    expect(state.verification?.paymentMethod).toBe("card");
+  });
+
   it("after markComplete on the head, the next pending journal is auto-promoted", async () => {
     mockRunWithDeadline.mockResolvedValue({
       data: { matched: true, payment_id: "pay-99" },
@@ -365,5 +406,170 @@ describe("usePaymentVerification — queue auto-promotion (Gap 1)", () => {
     expect(usePaymentStore.getState().verification).not.toBeNull();
     usePaymentStore.getState().resetPaymentState();
     expect(usePaymentStore.getState().verification).toBeNull();
+  });
+});
+
+describe("usePaymentVerification — TCP-in-flight crash recovery", () => {
+  it("markAsCharged fires process_payment with journal idempotencyKey + manual_reconciliation flag", async () => {
+    mockProcessPayment.mockResolvedValueOnce({
+      data: { payment_id: "pay-tcp-1" },
+      error: null,
+    });
+    mockOrderState.dbOrderIdIndex = { "db-order-1": "local-order-1" };
+
+    setVerification(
+      makeVerification({
+        reason: "tcp_inflight_crash",
+        terminalTxnId: "000099",
+        tipCents: 250,
+      }),
+    );
+
+    const { result } = renderHook(() => usePaymentVerification());
+    await act(async () => {
+      await result.current.markAsCharged();
+    });
+
+    expect(mockProcessPayment).toHaveBeenCalledTimes(1);
+    const [, params, opts] = mockProcessPayment.mock.calls[0];
+    expect(params.p_order_id).toBe("db-order-1");
+    expect(params.p_amount).toBeCloseTo(12.34);
+    expect(params.p_tip_amount).toBeCloseTo(2.5);
+    expect(params.p_terminal_response.manual_reconciliation).toBe(true);
+    expect(params.p_terminal_response.transaction_id).toBe("000099");
+    expect(params.p_terminal_id).toBe("terminal-1");
+    expect(params.p_station_id).toBe("station-1");
+    expect(opts).toEqual({ keyOverride: KEY });
+
+    expect(mockJournalCalls.complete).toHaveBeenCalledWith(
+      JOURNAL_ID,
+      "pay-tcp-1",
+    );
+    expect(usePaymentStore.getState().view).toBe("success");
+    expect(usePaymentStore.getState().verification).toBeNull();
+  });
+
+  it("markAsCharged maps DEADLINE_EXCEEDED to adoptionError and leaves journal alone", async () => {
+    mockProcessPayment.mockResolvedValueOnce({
+      data: null,
+      error: { code: "DEADLINE_EXCEEDED", message: "timed out" },
+    });
+    mockOrderState.dbOrderIdIndex = { "db-order-1": "local-order-1" };
+
+    setVerification(
+      makeVerification({ reason: "tcp_inflight_crash" }),
+    );
+
+    const { result } = renderHook(() => usePaymentVerification());
+    await act(async () => {
+      await result.current.markAsCharged();
+    });
+
+    expect(result.current.adoptionError).toMatch(/network slow/i);
+    expect(mockJournalCalls.complete).not.toHaveBeenCalled();
+    expect(mockJournalCalls.fail).not.toHaveBeenCalled();
+    expect(usePaymentStore.getState().verification).not.toBeNull();
+  });
+
+  it("markAsCharged surfaces other errors but leaves journal in 'initiated'", async () => {
+    mockProcessPayment.mockResolvedValueOnce({
+      data: null,
+      error: { code: "P0001", message: "Order not found" },
+    });
+    setVerification(
+      makeVerification({ reason: "tcp_inflight_crash" }),
+    );
+
+    const { result } = renderHook(() => usePaymentVerification());
+    await act(async () => {
+      await result.current.markAsCharged();
+    });
+
+    expect(result.current.adoptionError).toMatch(/Order not found/);
+    expect(mockJournalCalls.complete).not.toHaveBeenCalled();
+    expect(mockJournalCalls.fail).not.toHaveBeenCalled();
+  });
+
+  it("markAsNotCharged fails journal + consumes + drops to method-selection", () => {
+    setVerification(
+      makeVerification({ reason: "tcp_inflight_crash" }),
+    );
+    usePaymentRecoveryStore.getState().add({
+      id: JOURNAL_ID,
+      orderId: "local-order-1",
+      amount: 12.34,
+      paymentMethod: "card",
+      status: "initiated",
+      idempotencyKey: KEY,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { result } = renderHook(() => usePaymentVerification());
+    act(() => {
+      result.current.markAsNotCharged();
+    });
+
+    expect(mockJournalCalls.fail).toHaveBeenCalledWith(
+      JOURNAL_ID,
+      "manual_discard_no_charge",
+    );
+    expect(usePaymentRecoveryStore.getState().pendingJournals).toHaveLength(0);
+    expect(usePaymentStore.getState().view).toBe("payment-method-selection");
+    expect(usePaymentStore.getState().verification).toBeNull();
+  });
+
+  it("markAsCharged auto-promotes the next pending journal (multi-recovery walk-through)", async () => {
+    mockProcessPayment.mockResolvedValueOnce({
+      data: { payment_id: "pay-tcp-1" },
+      error: null,
+    });
+    mockOrderState.dbOrderIdIndex = { "db-order-1": "local-order-1" };
+
+    const j1 = {
+      id: "j-tcp-1",
+      orderId: "local-order-1",
+      dbOrderId: "db-order-1",
+      amount: 12.34,
+      paymentMethod: "card",
+      status: "initiated" as const,
+      idempotencyKey: "key-tcp-1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const j2 = {
+      id: "j-tcp-2",
+      orderId: "local-order-2",
+      dbOrderId: "db-order-2",
+      amount: 50.0,
+      paymentMethod: "card",
+      status: "initiated" as const,
+      idempotencyKey: "key-tcp-2",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    usePaymentRecoveryStore.getState().add(j1);
+    usePaymentRecoveryStore.getState().add(j2);
+    setVerification({
+      journalId: j1.id,
+      idempotencyKey: j1.idempotencyKey,
+      orderDbId: j1.dbOrderId,
+      amountCents: 1234,
+      startedAt: Date.now(),
+      reason: "tcp_inflight_crash",
+    });
+
+    const { result } = renderHook(() => usePaymentVerification());
+    await act(async () => {
+      await result.current.markAsCharged();
+    });
+
+    // j1 consumed, j2 promoted
+    expect(usePaymentRecoveryStore.getState().pendingJournals).toEqual([j2]);
+    expect(usePaymentStore.getState().view).toBe("verifying");
+    expect(usePaymentStore.getState().verification?.journalId).toBe("j-tcp-2");
+    expect(usePaymentStore.getState().verification?.reason).toBe(
+      "tcp_inflight_crash",
+    );
   });
 });
