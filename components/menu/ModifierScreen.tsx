@@ -50,6 +50,8 @@ const CUSTOM_MODIFIER_CATEGORY_NAME = "Custom";
 const generateCustomModifierId = () =>
   `custom_mod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+const MODIFIER_PRICE_DELTA_COLOR = "#15803D";
+
 const nowMs = () =>
   typeof performance !== "undefined" && typeof performance.now === "function"
     ? performance.now()
@@ -205,8 +207,8 @@ const ModifierOption = memo(
       </Text>
       {!isNo && option.price > 0 && (
         <Text
-          className="text-[10px] text-center mt-0.5"
-          style={{ color: colors.warning }}
+          className="text-base text-center mt-0.5"
+          style={{ color: MODIFIER_PRICE_DELTA_COLOR }}
         >
           +${option.price.toFixed(2)}
         </Text>
@@ -1920,13 +1922,22 @@ const ModifierScreenContent = ({
                     borderColor: colors.teal,
                   }}
                 >
-                  <Text
-                    className="text-xs font-semibold"
-                    style={{ color: colors.teal }}
-                  >
-                    {mod.name}
-                    {mod.price > 0 ? ` +$${mod.price.toFixed(2)}` : ""}
-                  </Text>
+                  <View className="flex-row items-center gap-x-1.5">
+                    <Text
+                      className="text-xs font-semibold"
+                      style={{ color: colors.teal }}
+                    >
+                      {mod.name}
+                    </Text>
+                    {mod.price > 0 ? (
+                      <Text
+                        className="text-base font-semibold"
+                        style={{ color: MODIFIER_PRICE_DELTA_COLOR }}
+                      >
+                        +${mod.price.toFixed(2)}
+                      </Text>
+                    ) : null}
+                  </View>
                   {!isReadOnly && (
                     <TouchableOpacity
                       onPressIn={() => handleRemoveCustomModifier(mod.id)}
