@@ -11,7 +11,24 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import type { PaymentJournalEntry } from "@/services/paymentJournal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * After consuming the head journal, walk to the next pending entry if any —
+ * keeps the operator triaging back-to-back recoveries. Returns true if the
+ * caller should set its own follow-up view (no next journal); false if we
+ * already promoted the next one.
+ */
+function _promoteNextOrFallback(consumedJournalId: string): boolean {
+  const next = usePaymentRecoveryStore
+    .getState()
+    .pendingJournals.find((j) => j.id !== consumedJournalId);
+  if (!next) return true; // caller falls through to its own setView
+  // promote next: re-open verification on the new head
+  usePaymentStore.getState().openForVerification(next as PaymentJournalEntry);
+  return false;
+}
 
 /**
  * Server response shape from `check_recent_payment_v1`.
@@ -199,14 +216,15 @@ export function usePaymentVerification() {
    */
   const markComplete = useCallback(() => {
     if (!verification) return;
+    const consumedId = verification.journalId;
     if (matchedPayment?.payment_id) {
-      completePaymentJournal(verification.journalId, matchedPayment.payment_id);
+      completePaymentJournal(consumedId, matchedPayment.payment_id);
     } else {
       // Manual operator override (matched but no payment_id surfaced) —
       // record an adoption marker so the journal isn't perpetually incomplete.
-      completePaymentJournal(verification.journalId, "manual_adoption");
+      completePaymentJournal(consumedId, "manual_adoption");
     }
-    usePaymentRecoveryStore.getState().consume(verification.journalId);
+    usePaymentRecoveryStore.getState().consume(consumedId);
 
     // Reconcile local order state against the backend (canonical truth).
     const orderDbId = verification.orderDbId;
@@ -220,8 +238,12 @@ export function usePaymentVerification() {
       }
     }
 
-    clearVerification();
-    setView("success");
+    // Auto-promote next pending journal if any; otherwise show success.
+    const fallback = _promoteNextOrFallback(consumedId);
+    if (fallback) {
+      clearVerification();
+      setView("success");
+    }
   }, [verification, matchedPayment, clearVerification, setView]);
 
   /**
@@ -234,10 +256,17 @@ export function usePaymentVerification() {
    */
   const retryWithNewCharge = useCallback(() => {
     if (!verification) return;
-    failPaymentJournal(verification.journalId, "manual_retry_after_verify");
-    usePaymentRecoveryStore.getState().consume(verification.journalId);
-    clearVerification();
-    setView("card");
+    const consumedId = verification.journalId;
+    failPaymentJournal(consumedId, "manual_retry_after_verify");
+    usePaymentRecoveryStore.getState().consume(consumedId);
+
+    // Auto-promote next pending journal if any; otherwise drop back to card
+    // entry so the operator can re-swipe.
+    const fallback = _promoteNextOrFallback(consumedId);
+    if (fallback) {
+      clearVerification();
+      setView("card");
+    }
   }, [verification, clearVerification, setView]);
 
   return {

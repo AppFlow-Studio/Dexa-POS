@@ -42,7 +42,7 @@ const ALL_RPCS: { key: IdempotentRpc; label: string; description: string }[] = [
   { key: 'apply_refund_to_payment', label: 'apply_refund_to_payment', description: 'Money path. Apply refund to a payment → _v2' },
   { key: 'record_refund_items', label: 'record_refund_items', description: 'Money path. Record refund line items → _v2' },
   { key: 'create_reversal', label: 'create_reversal', description: 'Money path. Create reversal record → _v2' },
-  { key: 'process_payment', label: 'process_payment', description: 'NOT WIRED — process_payment_v9 deferred' },
+  { key: 'process_payment', label: 'process_payment', description: 'Wave Cat-B. Money path. Card/cash payment → process_payment_v9 (with verifying recovery UI)' },
   { key: 'update_order_item_quantity', label: 'update_order_item_quantity', description: 'Wave 3.0a. Hot path. Cart qty update → update_order_item_quantity_v3' },
   { key: 'update_order_item', label: 'update_order_item', description: 'Wave 3.0a. Item edit (notes, price override, seat) → update_order_item_v3' },
 ]
@@ -167,7 +167,7 @@ export default function DevFlagsScreen () {
       <SettingsCard title='Wave 2: Per-RPC Idempotency'>
         {ALL_RPCS.map((rpc, idx) => {
           const enabled = isIdempotentEnabled(rpc.key)
-          const notWired = rpc.key === 'process_payment'
+          const notWired = false
           return (
             <View
               key={rpc.key}

@@ -41,6 +41,7 @@ import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -443,8 +444,10 @@ export default Sentry.wrap(function RootLayout() {
       PrinterService.startProcessing();
 
       // Wave Cat-B: surface payments that crashed mid-flow (terminal_approved
-      // entries from a prior app session). The verifying overlay (Wave 7)
-      // subscribes to usePaymentRecoveryStore and drives the recovery flow.
+      // entries from a prior app session). Hydrate the recovery store and
+      // auto-open the verifying sheet on the head journal — operator walks
+      // through the queue one entry at a time (next entry promotes after
+      // markComplete/retryWithNewCharge in usePaymentVerification).
       try {
         pruneOldJournals();
         const incomplete = getIncompleteJournals();
@@ -460,6 +463,11 @@ export default Sentry.wrap(function RootLayout() {
             })),
           );
           usePaymentRecoveryStore.getState().hydrate(incomplete);
+          // Defer the sheet open by a microtask so providers above us have
+          // mounted before the bottom-sheet tries to render.
+          queueMicrotask(() => {
+            usePaymentStore.getState().openForVerification(incomplete[0]);
+          });
         }
       } catch (err) {
         console.error(

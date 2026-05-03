@@ -83,6 +83,20 @@ const paymentViewToStepMap: Record<PaymentView, number> = {
 const totalSteps = 4
 
 /**
+ * Structural slice of a PaymentJournalEntry sufficient for openForVerification.
+ * Defined locally rather than imported to avoid pulling paymentJournal's
+ * uuid / storage deps into a leaner store consumer.
+ */
+export interface PaymentJournalEntryLike {
+  id: string
+  orderId: string
+  dbOrderId?: string
+  amount: number
+  idempotencyKey: string
+  splitGroupId?: string
+}
+
+/**
  * Wave Cat-B: payment verification slot. Populated when an in-flight payment
  * RPC times out (DEADLINE_EXCEEDED) or hits 40001 idempotency_in_flight, OR
  * when the relaunch hook detects a journal stuck in 'terminal_approved'.
@@ -125,6 +139,13 @@ interface PaymentState {
     tableId?: string | null,
     initialView?: PaymentView
   ) => void
+  /**
+   * Wave Cat-B (Gap 1): surface the verifying-recovery flow without going
+   * through the fresh-payment open() path. Bypasses the closed-check guard
+   * (the matched payment may have already closed the order) and skips
+   * paymentMethod/splits init since this isn't a new payment.
+   */
+  openForVerification: (journal: PaymentJournalEntryLike) => void
   close: () => void
   setView: (view: PaymentView) => void
   setActiveTableId: (tableId: string | null) => void
@@ -264,6 +285,33 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   lockExpiresAt: null,
   isLocking: false,
 
+  openForVerification: journal => {
+    // Bypass closed-check guard: the matched server payment may have already
+    // closed the order, in which case verification recovery still needs to run.
+    set({
+      isOpen: true,
+      paymentMethod: null,
+      view: 'verifying',
+      activeTableId: null,
+      isDirty: false,
+      splits: [],
+      activeSplitId: null,
+      splitSourceView: null,
+      progress: {
+        currentStep: paymentViewToStepMap.verifying,
+        totalSteps
+      },
+      verification: {
+        journalId: journal.id,
+        idempotencyKey: journal.idempotencyKey,
+        orderDbId: journal.dbOrderId ?? null,
+        amountCents: Math.round(journal.amount * 100),
+        startedAt: Date.now(),
+        reason: 'crash_recovery'
+      }
+    })
+  },
+
   open: (method, tableId, initialView) => {
     // Block payments for closed orders
     const orderState = useOrderStore.getState()
@@ -333,7 +381,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       completedPaymentInfo: null, // Clear payment info on reset
       progress: { currentStep: 1, totalSteps: totalSteps },
       isPaymentQueued: false,
-      isTransactionProcessing: false
+      isTransactionProcessing: false,
+      // Wave Cat-B: drop any active verification slot so reopening the sheet
+      // doesn't leave the operator stranded in verifying view. The journal
+      // entry stays in MMKV, so the next app launch will re-surface it.
+      verification: null
     })
   },
 

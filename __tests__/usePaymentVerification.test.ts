@@ -233,3 +233,137 @@ describe("usePaymentVerification — connection-quality-aware totalMs", () => {
     expect(result.current.totalMs).toBe(30_000);
   });
 });
+
+describe("usePaymentVerification — queue auto-promotion (Gap 1)", () => {
+  it("openForVerification sets verification + view from a journal entry", () => {
+    const journal = {
+      id: "j-2",
+      orderId: "local-order-2",
+      dbOrderId: "db-order-2",
+      amount: 50.0,
+      paymentMethod: "card",
+      status: "terminal_approved" as const,
+      idempotencyKey: "key-2",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    usePaymentStore.getState().openForVerification(journal);
+
+    const state = usePaymentStore.getState();
+    expect(state.isOpen).toBe(true);
+    expect(state.view).toBe("verifying");
+    expect(state.verification?.journalId).toBe("j-2");
+    expect(state.verification?.idempotencyKey).toBe("key-2");
+    expect(state.verification?.amountCents).toBe(5000);
+    expect(state.verification?.reason).toBe("crash_recovery");
+  });
+
+  it("after markComplete on the head, the next pending journal is auto-promoted", async () => {
+    mockRunWithDeadline.mockResolvedValue({
+      data: { matched: true, payment_id: "pay-99" },
+      error: null,
+    });
+    mockOrderState.dbOrderIdIndex = { "db-order-1": "local-order-1" };
+
+    // Two pending journals; verifying the first
+    const j1 = {
+      id: "j-1",
+      orderId: "local-order-1",
+      dbOrderId: "db-order-1",
+      amount: 12.34,
+      paymentMethod: "card",
+      status: "terminal_approved" as const,
+      idempotencyKey: "key-1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const j2 = {
+      id: "j-2",
+      orderId: "local-order-2",
+      dbOrderId: "db-order-2",
+      amount: 25.0,
+      paymentMethod: "card",
+      status: "terminal_approved" as const,
+      idempotencyKey: "key-2",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    usePaymentRecoveryStore.getState().add(j1);
+    usePaymentRecoveryStore.getState().add(j2);
+    setVerification({
+      journalId: j1.id,
+      idempotencyKey: j1.idempotencyKey,
+      orderDbId: j1.dbOrderId,
+      amountCents: 1234,
+      startedAt: Date.now(),
+      reason: "crash_recovery",
+    });
+
+    const { result } = renderHook(() => usePaymentVerification());
+    await act(async () => {
+      await result.current.manualCheckNow();
+    });
+    act(() => {
+      result.current.markComplete();
+    });
+
+    // j1 consumed, j2 promoted into the verification slot
+    expect(mockJournalCalls.complete).toHaveBeenCalledWith("j-1", "pay-99");
+    expect(usePaymentRecoveryStore.getState().pendingJournals).toEqual([j2]);
+    expect(usePaymentStore.getState().view).toBe("verifying");
+    expect(usePaymentStore.getState().verification?.journalId).toBe("j-2");
+  });
+
+  it("after retryWithNewCharge on the head, the next pending journal is auto-promoted", () => {
+    const j1 = {
+      id: "j-1",
+      orderId: "local-order-1",
+      amount: 12.34,
+      paymentMethod: "card",
+      status: "terminal_approved" as const,
+      idempotencyKey: "key-1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const j2 = {
+      id: "j-2",
+      orderId: "local-order-2",
+      amount: 25.0,
+      paymentMethod: "card",
+      status: "terminal_approved" as const,
+      idempotencyKey: "key-2",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    usePaymentRecoveryStore.getState().add(j1);
+    usePaymentRecoveryStore.getState().add(j2);
+    setVerification({
+      journalId: j1.id,
+      idempotencyKey: j1.idempotencyKey,
+      orderDbId: null,
+      amountCents: 1234,
+      startedAt: Date.now(),
+      reason: "deadline_exceeded",
+    });
+
+    const { result } = renderHook(() => usePaymentVerification());
+    act(() => {
+      result.current.retryWithNewCharge();
+    });
+
+    expect(mockJournalCalls.fail).toHaveBeenCalledWith(
+      "j-1",
+      "manual_retry_after_verify",
+    );
+    expect(usePaymentRecoveryStore.getState().pendingJournals).toEqual([j2]);
+    expect(usePaymentStore.getState().view).toBe("verifying");
+    expect(usePaymentStore.getState().verification?.journalId).toBe("j-2");
+  });
+
+  it("close (resetPaymentState) clears the verification slot so reopen is clean", () => {
+    setVerification(makeVerification());
+    expect(usePaymentStore.getState().verification).not.toBeNull();
+    usePaymentStore.getState().resetPaymentState();
+    expect(usePaymentStore.getState().verification).toBeNull();
+  });
+});
