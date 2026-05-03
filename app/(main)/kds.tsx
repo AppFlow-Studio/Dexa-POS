@@ -12,7 +12,7 @@ import {
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
 import { replaceRoute } from "@/lib/rootNavigation";
-import { colors } from "@/lib/theme";
+import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { clearStationData } from "@/services/cacheService";
 import KDSSoundService, {
     DEFAULT_SOUND_CONFIG,
@@ -311,11 +311,11 @@ interface KDSTicketDisplaySettings {
 // ─── Ticket Timer (isolated re-render boundary) ─────────────────
 interface KDSTicketTimerProps {
   startTimeEpoch: number;
-  urgencyThresholds: UrgencyThresholds;
+  textColor: string;
 }
 
 const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
-  ({ startTimeEpoch, urgencyThresholds }) => {
+  ({ startTimeEpoch, textColor }) => {
     // Single shared timestamp from store — 1 subscription per timer, no per-component Date.now()
     const nowEpochMs = useKDSStore((s) => s.nowEpochMs);
     const timeElapsed = getBucketedElapsed(
@@ -323,15 +323,10 @@ const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
       undefined,
       nowEpochMs,
     );
-    const urgencyLevel = getUrgencyLevel(
-      startTimeEpoch,
-      urgencyThresholds,
-      nowEpochMs,
-    );
     return (
       <Text
         style={{
-          color: urgencyLevel > 0 ? colors.danger : colors.label,
+          color: textColor,
           fontSize: 18,
           fontWeight: "800",
         }}
@@ -391,6 +386,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds, nowEpochMs),
       [ticket.start_time_epoch, urgencyThresholds, nowEpochMs],
     );
+    const hasUrgencyColor = urgencyLevel > 0;
 
     // Double-tap detection
     const lastTapRef = useRef(0);
@@ -458,6 +454,16 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const hasRush = ticketItems.some((item) => item.rush);
     const hasRefire = ticketItems.some((item) => item.recalled);
     const orderNote = ticket.order_notes?.trim() ?? "";
+    const headerUrgencyColor = hasUrgencyColor
+      ? URGENCY_COLORS[urgencyLevel]
+      : undefined;
+    const headerBackgroundColor = headerUrgencyColor ?? "#F3F4F6";
+    const headerBorderColor = headerUrgencyColor ?? "#E5E7EB";
+    const headerPrimaryTextColor = hasUrgencyColor ? "#FFFFFF" : "#111827";
+    const headerSecondaryTextColor = hasUrgencyColor ? "#FFFFFF" : "#374151";
+    const headerDotColor = hasUrgencyColor
+      ? "rgba(255,255,255,0.9)"
+      : undefined;
 
     const shouldHideDoneItems = hideDoneItems && !onItemPress;
 
@@ -693,11 +699,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           {/* Card Header: Order Number + Order Type + Timer (darker background) */}
           <View
             style={{
-              backgroundColor: "#F3F4F6",
+              backgroundColor: headerBackgroundColor,
               paddingHorizontal: 12,
               paddingVertical: 10,
               borderBottomWidth: 1,
-              borderBottomColor: "#E5E7EB",
+              borderBottomColor: headerBorderColor,
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "flex-start",
@@ -711,7 +717,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               >
                 <Text
                   style={{
-                    color: "#111827",
+                    color: headerPrimaryTextColor,
                     fontSize: 16,
                     fontWeight: "700",
                   }}
@@ -745,7 +751,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       width: 6,
                       height: 6,
                       borderRadius: 3,
-                      backgroundColor: "#EF4444",
+                      backgroundColor: headerDotColor ?? "#EF4444",
                     }}
                   />
                 ) : ticket.order_type?.toLowerCase() === "takeout" ||
@@ -755,7 +761,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       width: 6,
                       height: 6,
                       borderRadius: 3,
-                      backgroundColor: "#3B82F6",
+                      backgroundColor: headerDotColor ?? "#3B82F6",
                     }}
                   />
                 ) : (
@@ -764,13 +770,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       width: 6,
                       height: 6,
                       borderRadius: 3,
-                      backgroundColor: "#22C55E",
+                      backgroundColor: headerDotColor ?? "#22C55E",
                     }}
                   />
                 )}
                 <Text
                   style={{
-                    color: "#374151",
+                    color: headerSecondaryTextColor,
                     fontSize: 11,
                     fontWeight: "600",
                   }}
@@ -783,7 +789,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             {/* Timer (isolated re-render — only this component updates per second) */}
             <KDSTicketTimer
               startTimeEpoch={ticket.start_time_epoch}
-              urgencyThresholds={urgencyThresholds}
+              textColor={headerPrimaryTextColor}
             />
           </View>
 
