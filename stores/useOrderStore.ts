@@ -27,6 +27,7 @@ import {
     updatePaymentJournal,
     writePaymentJournal,
 } from "@/services/paymentJournal";
+import * as Sentry from "@sentry/react-native";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import { v4 as uuidv4 } from "uuid";
@@ -2617,23 +2618,48 @@ const syncPaymentToBackend = async (
       ) {
         const journal = getJournalById(paymentDetails.paymentJournal.id);
         if (journal) {
+          // Sentry: log verifying-state entry. The reason tag drives V3 soak
+          // metrics — we want to see deadline vs idempotency_in_flight rates
+          // separately during rollout.
+          const verifyingReason: "deadline_exceeded" | "idempotency_in_flight" =
+            (error as any)?.code === "DEADLINE_EXCEEDED"
+              ? "deadline_exceeded"
+              : "idempotency_in_flight";
+          try {
+            Sentry.addBreadcrumb({
+              category: "payment_recovery",
+              level: "warning",
+              message: `Verifying entered: ${verifyingReason}`,
+              data: {
+                reason: verifyingReason,
+                journal_id: journal.id,
+                idempotency_key: journal.idempotencyKey,
+                amount: journal.amount,
+                order_db_id: journal.dbOrderId ?? null,
+                error_code: (error as any)?.code,
+                error_message: (error as any)?.message,
+              },
+            });
+            Sentry.setContext("payment_recovery", {
+              journal_id: journal.id,
+              reason: verifyingReason,
+              amount: journal.amount,
+              entered_at: new Date().toISOString(),
+            });
+          } catch {}
           usePaymentRecoveryStore.getState().add(journal);
           // Lazy require: usePaymentStore imports from useOrderStore (circular).
           // Reading at call time avoids the init-order trap.
           try {
             const { usePaymentStore } =
               require("@/stores/usePaymentStore") as typeof import("@/stores/usePaymentStore");
-            const reason: "deadline_exceeded" | "idempotency_in_flight" =
-              (error as any)?.code === "DEADLINE_EXCEEDED"
-                ? "deadline_exceeded"
-                : "idempotency_in_flight";
             usePaymentStore.getState().setVerification({
               journalId: journal.id,
               idempotencyKey: journal.idempotencyKey,
               orderDbId: journal.dbOrderId ?? null,
               amountCents: Math.round(journal.amount * 100),
               startedAt: Date.now(),
-              reason,
+              reason: verifyingReason,
             });
             usePaymentStore.getState().setView("verifying");
           } catch (uiErr) {

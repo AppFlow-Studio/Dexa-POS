@@ -1,7 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import { Text, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -19,7 +19,12 @@ const PaymentProgressHeader: React.FC = () => {
 
   const progressWidth = useSharedValue(0)
 
-  const targetProgress = useMemo(() => {
+  // Wave Cat-B (§C3): freeze the bar at the last value when the view flips
+  // to 'verifying' so it doesn't visually regress (the verifying view isn't
+  // in isExecutionPhase, so the natural calc would drop to 10%).
+  const lastNonVerifyingProgress = useRef<number | null>(null)
+
+  const computedProgress = useMemo(() => {
     // --- 1. DEFINITIVE END STATE ---
     if (view === 'success') return 100
 
@@ -114,6 +119,19 @@ const PaymentProgressHeader: React.FC = () => {
     activeSplitId,
     splits
   ])
+
+  // Track the last non-verifying value so the bar holds steady when view
+  // flips to 'verifying' (would otherwise drop to setup-phase fallback).
+  useEffect(() => {
+    if (view !== 'verifying') {
+      lastNonVerifyingProgress.current = computedProgress
+    }
+  }, [view, computedProgress])
+
+  const targetProgress =
+    view === 'verifying' && lastNonVerifyingProgress.current != null
+      ? lastNonVerifyingProgress.current
+      : computedProgress
 
   // --- LABEL LOGIC ---
   const progressLabel = useMemo(() => {

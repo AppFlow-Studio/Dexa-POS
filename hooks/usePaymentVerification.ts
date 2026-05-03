@@ -14,7 +14,38 @@ import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { PaymentJournalEntry } from "@/services/paymentJournal";
+import * as Sentry from "@sentry/react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * Sentry helper for payment-recovery events. Wrapped in try/catch — Sentry
+ * failures must never break payment recovery itself.
+ */
+function _sentryRecoveryEvent(opts: {
+  message: string;
+  level: "info" | "warning" | "error";
+  data: Record<string, unknown>;
+  alsoCapture?: boolean;
+  tags?: Record<string, string>;
+}): void {
+  try {
+    Sentry.addBreadcrumb({
+      category: "payment_recovery",
+      level: opts.level,
+      message: opts.message,
+      data: opts.data,
+    });
+    if (opts.alsoCapture) {
+      Sentry.captureMessage(opts.message, {
+        level: opts.level,
+        tags: { event: "payment_recovery", ...(opts.tags ?? {}) },
+        extra: opts.data,
+      });
+    }
+  } catch {
+    /* no-op: Sentry must never break recovery */
+  }
+}
 
 /**
  * After consuming the head journal, walk to the next pending entry if any —
@@ -219,6 +250,22 @@ export function usePaymentVerification() {
   const markComplete = useCallback(() => {
     if (!verification) return;
     const consumedId = verification.journalId;
+    const hadKeyMismatch = !!(
+      matchedPayment?.idempotency_key &&
+      verification.idempotencyKey &&
+      matchedPayment.idempotency_key !== verification.idempotencyKey
+    );
+    _sentryRecoveryEvent({
+      message: "payment_recovery.mark_complete",
+      level: "info",
+      data: {
+        journal_id: consumedId,
+        server_payment_id: matchedPayment?.payment_id ?? null,
+        had_key_mismatch: hadKeyMismatch,
+        amount_cents: verification.amountCents,
+        reason: verification.reason,
+      },
+    });
     if (matchedPayment?.payment_id) {
       completePaymentJournal(consumedId, matchedPayment.payment_id);
     } else {
@@ -259,6 +306,21 @@ export function usePaymentVerification() {
   const retryWithNewCharge = useCallback(() => {
     if (!verification) return;
     const consumedId = verification.journalId;
+    // HIGH-SIGNAL event: V3 alert is "Try Again tap rate > 0.5% of payments".
+    // Capture as message (not just breadcrumb) so it's queryable.
+    _sentryRecoveryEvent({
+      message: "payment_recovery.retry_with_new_charge",
+      level: "warning",
+      tags: { event_kind: "try_again" },
+      alsoCapture: true,
+      data: {
+        journal_id: consumedId,
+        idempotency_key: verification.idempotencyKey,
+        amount_cents: verification.amountCents,
+        elapsed_ms: elapsedMs,
+        reason: verification.reason,
+      },
+    });
     failPaymentJournal(consumedId, "manual_retry_after_verify");
     usePaymentRecoveryStore.getState().consume(consumedId);
 
@@ -269,7 +331,7 @@ export function usePaymentVerification() {
       clearVerification();
       setView("card");
     }
-  }, [verification, clearVerification, setView]);
+  }, [verification, elapsedMs, clearVerification, setView]);
 
   // ──────────────────────────────────────────────────────────────────────
   // TCP-in-flight crash recovery (manual operator reconciliation)
@@ -378,6 +440,16 @@ export function usePaymentVerification() {
       }
 
       const paymentId = (data as any)?.payment_id ?? "manual_adoption";
+      _sentryRecoveryEvent({
+        message: "payment_recovery.mark_as_charged",
+        level: "info",
+        data: {
+          journal_id: consumedId,
+          server_payment_id: paymentId,
+          amount_cents: verification.amountCents,
+          tip_cents: verification.tipCents ?? 0,
+        },
+      });
       completePaymentJournal(consumedId, paymentId);
       usePaymentRecoveryStore.getState().consume(consumedId);
 
@@ -426,6 +498,19 @@ export function usePaymentVerification() {
   const markAsNotCharged = useCallback(() => {
     if (!verification) return;
     const consumedId = verification.journalId;
+    // HIGH-SIGNAL event: silent under-recording risk if operator is wrong.
+    _sentryRecoveryEvent({
+      message: "payment_recovery.mark_as_not_charged",
+      level: "warning",
+      tags: { event_kind: "tcp_inflight_discard" },
+      alsoCapture: true,
+      data: {
+        journal_id: consumedId,
+        idempotency_key: verification.idempotencyKey,
+        amount_cents: verification.amountCents,
+        terminal_txn_id: verification.terminalTxnId ?? null,
+      },
+    });
     failPaymentJournal(consumedId, "manual_discard_no_charge");
     usePaymentRecoveryStore.getState().consume(consumedId);
 

@@ -462,6 +462,36 @@ export default Sentry.wrap(function RootLayout() {
               createdAt: j.createdAt,
             })),
           );
+          // Sentry: track relaunch-recovery rate so we know whether crash
+          // recovery is firing in the wild.
+          try {
+            Sentry.addBreadcrumb({
+              category: "payment_recovery",
+              level: "warning",
+              message: `Relaunch: ${incomplete.length} incomplete journal(s) detected`,
+              data: {
+                count: incomplete.length,
+                statuses: incomplete.map((j) => j.status),
+                ages_minutes: incomplete.map((j) =>
+                  Math.round(
+                    (Date.now() - new Date(j.createdAt).getTime()) /
+                      60_000,
+                  ),
+                ),
+              },
+            });
+            Sentry.captureMessage(
+              "payment_recovery.relaunch_detected_incomplete",
+              {
+                level: "warning",
+                tags: { event: "relaunch_recovery" },
+                extra: {
+                  count: incomplete.length,
+                  head_status: incomplete[0]?.status,
+                },
+              },
+            );
+          } catch {}
           usePaymentRecoveryStore.getState().hydrate(incomplete);
           // Defer the sheet open by a microtask so providers above us have
           // mounted before the bottom-sheet tries to render.
