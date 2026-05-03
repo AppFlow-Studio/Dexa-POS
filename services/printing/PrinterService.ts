@@ -1,4 +1,8 @@
-import { calculateOrderTotals } from '@/lib/order-calculator'
+import {
+  calculateItemEffectiveCardPrice,
+  calculateItemEffectiveCashPrice,
+  calculateOrderTotals
+} from '@/lib/order-calculator'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -1053,12 +1057,28 @@ function buildReceiptTemplateData (
       modifiers.push({ name: addon.name, price: addon.price ?? 0 })
     })
 
+    // item.subtotal is authoritative when present (carries distributed
+    // discounts), but can be 0/undefined after a partial backend sync —
+    // which prints as $0.00 even though modifiers below render fine. Fall
+    // back to helper × qty so the item line stays consistent.
+    const fallbackCardLine =
+      calculateItemEffectiveCardPrice(item) * (item.quantity || 1)
+    const fallbackCashLine =
+      calculateItemEffectiveCashPrice(item) * (item.quantity || 1)
+    const cardLineTotal =
+      Number.isFinite(item.subtotal) && item.subtotal > 0
+        ? item.subtotal
+        : fallbackCardLine
+    const cashLineTotal =
+      Number.isFinite(item.cashSubtotal) && item.cashSubtotal > 0
+        ? item.cashSubtotal
+        : fallbackCashLine
+
     return {
       name: item.is_open_item ? item.open_item_name || item.name : item.name,
       quantity: item.quantity,
-      price: item.subtotal,
-      cashPrice:
-        item.cashSubtotal !== item.subtotal ? item.cashSubtotal : undefined,
+      price: cardLineTotal,
+      cashPrice: cashLineTotal !== cardLineTotal ? cashLineTotal : undefined,
       isVoided: item.is_voided ?? false,
       modifiers,
       notes: item.customizations?.notes,
