@@ -7,27 +7,33 @@ import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import {
-    getItemEffectiveSubtotal,
-    useOrderStore,
+  getItemEffectiveSubtotal,
+  useOrderStore,
 } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useItemSyncInfo } from "@/stores/useSyncStatusStore";
 import { useToastStore } from "@/stores/useToastStore";
-import { AlertCircle, Banknote, Plus, Trash2 } from "lucide-react-native";
+import {
+  AlertCircle,
+  Banknote,
+  Minus,
+  Plus,
+  Trash2,
+} from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-    runOnJS,
-    useAnimatedStyle,
-    useSharedValue,
-    withTiming,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 import VoidItemDialog from "./VoidItemDialog";
 
@@ -149,7 +155,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const removeItemFromActiveOrder = useOrderStore(
     (s) => s.removeItemFromActiveOrder,
   );
-  const incrementItemQuantity = useOrderStore((s) => s.incrementItemQuantity);
+  const setItemQuantity = useOrderStore((s) => s.setItemQuantity);
   const openToView = useModifierSidebarStore((s) => s.openToView);
   const openToEdit = useModifierSidebarStore((s) => s.openToEdit);
   const isModifierActive = useModifierSidebarStore(
@@ -193,13 +199,21 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     paymentsProp !== undefined ? paymentsProp : paymentsFromStore;
 
   const translateX = useSharedValue(0);
+  const swipeActionTriggered = useSharedValue(false);
   const [showVoidDialog, setShowVoidDialog] = useState(false);
+  const [displayQuantity, setDisplayQuantity] = useState(item.quantity);
+  const displayQuantityRef = useRef(item.quantity);
+  const handleDeleteRef = useRef<() => void>(() => {});
   const handleIncrementRef = useRef<() => void>(() => {});
+  const decrementThrottleRef = useRef(0);
   const incrementThrottleRef = useRef(0);
   const swipeActivatedRef = useRef(false);
   // Stable wrapper refs — the functions never change so Reanimated can safely
   // capture them in worklets without triggering the "tried to modify shareable" warning.
   // handleIncrementRef itself is NOT passed to worklets — only this stable wrapper is.
+  const callHandleDelete = useRef(() => {
+    handleDeleteRef.current();
+  });
   const callHandleIncrement = useRef(() => {
     handleIncrementRef.current();
   });
@@ -219,6 +233,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       translateX.value = withTiming(0);
     }
   }, [item.is_voided]);
+
+  useEffect(() => {
+    displayQuantityRef.current = item.quantity;
+    setDisplayQuantity(item.quantity);
+  }, [item.id, item.quantity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -260,43 +279,55 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const pan = useMemo(
     () =>
       Gesture.Pan()
+        .onBegin(() => {
+          swipeActionTriggered.value = false;
+        })
         .onUpdate((e) => {
           const rightLimit = isKitchenItemSV.value ? 0 : MAX_RIGHT;
           const next = Math.max(MAX_LEFT, Math.min(rightLimit, e.translationX));
           translateX.value = next;
           if (Math.abs(next) > 5) runOnJS(markSwipeActiveRef.current)();
+          if (!swipeActionTriggered.value && next > MAX_RIGHT / 2) {
+            swipeActionTriggered.value = true;
+            translateX.value = withTiming(0, { duration: 120 });
+            runOnJS(callHandleIncrement.current)();
+          } else if (!swipeActionTriggered.value && next < MAX_LEFT / 2) {
+            swipeActionTriggered.value = true;
+            translateX.value = withTiming(0, { duration: 120 });
+            runOnJS(callHandleDelete.current)();
+          }
         })
         .onEnd(() => {
-          if (translateX.value > MAX_RIGHT / 2) {
-            translateX.value = withTiming(0, { duration: 150 });
-            runOnJS(callHandleIncrement.current)();
-          } else if (translateX.value < MAX_LEFT / 2) {
-            translateX.value = withTiming(MAX_LEFT);
-          } else {
-            translateX.value = withTiming(0);
-          }
+          translateX.value = withTiming(0);
           runOnJS(resetSwipeActiveRef.current)();
         })
         .activeOffsetX([-20, 20])
         .failOffsetY([-20, 20]),
-    [translateX, isKitchenItemSV],
+    [translateX, swipeActionTriggered, isKitchenItemSV],
   );
 
   const handleDelete = () => {
-    if (!activeOrderId) return;
+    if (!activeOrderId || !isEditable || item.is_voided) return;
 
     if (item.isDraft || !isKitchenItem) {
-      // Draft or new item - animate back then remove
-      translateX.value = withTiming(0);
-      // Delay removal to allow animation to complete
-      setTimeout(() => {
+      const now = Date.now();
+      if (now - decrementThrottleRef.current < 400) return;
+      decrementThrottleRef.current = now;
+
+      const nextQuantity = displayQuantityRef.current - 1;
+      if (displayQuantityRef.current > 1) {
+        displayQuantityRef.current = nextQuantity;
+        setDisplayQuantity(nextQuantity);
+        setItemQuantity(item.id, nextQuantity);
+      } else {
         removeItemFromActiveOrder(item.id);
-      }, 50);
+      }
     } else {
       // Kitchen item - show void reason dialog
       setShowVoidDialog(true);
     }
   };
+  handleDeleteRef.current = handleDelete;
 
   const handleConfirmVoid = (reason: string) => {
     // Reset animation first, before any state changes
@@ -338,7 +369,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     const now = Date.now();
     if (now - incrementThrottleRef.current < 400) return;
     incrementThrottleRef.current = now;
-    incrementItemQuantity(item.id);
+    const nextQuantity = displayQuantityRef.current + 1;
+    displayQuantityRef.current = nextQuantity;
+    setDisplayQuantity(nextQuantity);
+    setItemQuantity(item.id, nextQuantity);
   };
   handleIncrementRef.current = handleIncrement;
 
@@ -591,13 +625,17 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       {isEditable && !isVoided && (
         <Animated.View
           style={deleteButtonStyle}
-          className="absolute top-0 right-1 h-full justify-center items-end self-center z-10"
+          className="absolute right-1 top-0 bottom-0 justify-center items-end z-10"
         >
           <TouchableOpacity
             onPress={handleDelete}
             className="w-12 h-12 bg-red-500 items-center rounded-xl justify-center"
           >
-            <Trash2 color="white" size={18} />
+            {displayQuantity > 1 && !isKitchenItem ? (
+              <Minus color="white" size={18} />
+            ) : (
+              <Trash2 color="white" size={18} />
+            )}
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -605,7 +643,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       {isEditable && !isVoided && !isKitchenItem && (
         <Animated.View
           style={incrementButtonStyle}
-          className="absolute top-0 left-2 h-full justify-center items-center z-10"
+          className="absolute left-2 top-0 bottom-0 justify-center items-center z-10"
         >
           <TouchableOpacity
             onPress={handleIncrement}
@@ -643,7 +681,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     textAlign: "left",
                   }}
                 >
-                  {item.quantity}
+                  {displayQuantity}
                 </Text>
 
                 {/* Name + badges */}
