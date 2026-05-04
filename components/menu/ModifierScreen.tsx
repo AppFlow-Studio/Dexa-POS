@@ -645,7 +645,6 @@ const ModifierScreenContent = ({
   const draftItemIdRef = useRef<string | null>(null);
   const [visibleOptionCount, setVisibleOptionCount] = useState(8);
   const [showSecondarySections, setShowSecondarySections] = useState(false);
-  const [showModifierOptions, setShowModifierOptions] = useState(false);
   const [hasInteractedSinceOpen, setHasInteractedSinceOpen] = useState(false);
   const deferSecondarySectionsAggressively = Platform.OS === "android";
 
@@ -697,20 +696,13 @@ const ModifierScreenContent = ({
       },
     });
 
-    // Render the first batch immediately.
+    // Render the first batch immediately. React 19 auto-batches these
+    // sync setStates with the dispatch above into a single render.
+    // showModifierOptions stays `true` across session changes so the new
+    // item's options paint on the first frame instead of after a defer.
     setVisibleOptionCount(8);
     setHasInteractedSinceOpen(false);
     setShowSecondarySections(false);
-    setShowModifierOptions(false);
-    let cancelled = false;
-    const revealHandle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
-      setShowModifierOptions(true);
-    });
-    return () => {
-      cancelled = true;
-      revealHandle.cancel();
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
@@ -731,7 +723,10 @@ const ModifierScreenContent = ({
     if (!deferSecondarySectionsAggressively || hasInteractedSinceOpen) {
       scheduleReveal();
     } else {
-      timeoutId = setTimeout(scheduleReveal, 900);
+      // Brief Android-only defer so image/allergens don't compete with the
+      // open animation. Was 900ms; lowered now that preWarm + faster slide
+      // cover the cost. Keep the "show on first interaction" path above.
+      timeoutId = setTimeout(scheduleReveal, 80);
     }
 
     return () => {
@@ -1813,7 +1808,7 @@ const ModifierScreenContent = ({
           </ScrollView>
 
           {/* ── Active Category Options ──────────────────────────────── */}
-          {currentCategory && showModifierOptions && (
+          {currentCategory && (
             <View className="px-4 pt-3 pb-2">
               {/* Sub-header row */}
               <View className="flex-row items-center justify-between mb-3">

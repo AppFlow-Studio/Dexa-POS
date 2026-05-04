@@ -96,6 +96,9 @@ export type Database = {
           created_at: string
           error_message: string | null
           id: string
+          impersonation_session_id: string | null
+          impersonator_user_id: string | null
+          is_impersonation: boolean
           location_id: string | null
           merchant_id: string | null
           metadata: Json | null
@@ -123,6 +126,9 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           id?: string
+          impersonation_session_id?: string | null
+          impersonator_user_id?: string | null
+          is_impersonation?: boolean
           location_id?: string | null
           merchant_id?: string | null
           metadata?: Json | null
@@ -150,6 +156,9 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           id?: string
+          impersonation_session_id?: string | null
+          impersonator_user_id?: string | null
+          is_impersonation?: boolean
           location_id?: string | null
           merchant_id?: string | null
           metadata?: Json | null
@@ -177,6 +186,13 @@ export type Database = {
             columns: ["carrier_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_impersonation_session_id_fkey"
+            columns: ["impersonation_session_id"]
+            isOneToOne: false
+            referencedRelation: "impersonation_sessions"
             referencedColumns: ["id"]
           },
           {
@@ -2836,6 +2852,7 @@ export type Database = {
           cash_payment_tips: number
           cash_tips_declared: number | null
           charged_tips: number | null
+          charged_tips_processor_fee: number
           cover_count: number | null
           created_at: string
           gross_sales: number | null
@@ -2859,6 +2876,7 @@ export type Database = {
           cash_payment_tips?: number
           cash_tips_declared?: number | null
           charged_tips?: number | null
+          charged_tips_processor_fee?: number
           cover_count?: number | null
           created_at?: string
           gross_sales?: number | null
@@ -2882,6 +2900,7 @@ export type Database = {
           cash_payment_tips?: number
           cash_tips_declared?: number | null
           charged_tips?: number | null
+          charged_tips_processor_fee?: number
           cover_count?: number | null
           created_at?: string
           gross_sales?: number | null
@@ -3206,6 +3225,60 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      impersonation_sessions: {
+        Row: {
+          end_reason: string | null
+          ended_at: string | null
+          hq_user_id: string
+          id: string
+          ip_address: unknown
+          last_validated_at: string
+          reason: string | null
+          started_at: string
+          target_merchant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          end_reason?: string | null
+          ended_at?: string | null
+          hq_user_id: string
+          id?: string
+          ip_address?: unknown
+          last_validated_at?: string
+          reason?: string | null
+          started_at?: string
+          target_merchant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          end_reason?: string | null
+          ended_at?: string | null
+          hq_user_id?: string
+          id?: string
+          ip_address?: unknown
+          last_validated_at?: string
+          reason?: string | null
+          started_at?: string
+          target_merchant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impersonation_sessions_target_merchant_id_fkey"
+            columns: ["target_merchant_id"]
+            isOneToOne: false
+            referencedRelation: "admin_merchant_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_sessions_target_merchant_id_fkey"
+            columns: ["target_merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inventory_count_items: {
         Row: {
@@ -5838,6 +5911,7 @@ export type Database = {
           pos_config: Json
           postal_code: string
           pricing_strategy: string
+          processor_fee_percentage: number
           public_metadata: Json | null
           sales_tax_rate: number | null
           state: string
@@ -5878,6 +5952,7 @@ export type Database = {
           pos_config?: Json
           postal_code?: string
           pricing_strategy?: string
+          processor_fee_percentage?: number
           public_metadata?: Json | null
           sales_tax_rate?: number | null
           state?: string
@@ -5918,6 +5993,7 @@ export type Database = {
           pos_config?: Json
           postal_code?: string
           pricing_strategy?: string
+          processor_fee_percentage?: number
           public_metadata?: Json | null
           sales_tax_rate?: number | null
           state?: string
@@ -7167,6 +7243,7 @@ export type Database = {
           created_at: string
           delivery_price: number | null
           description: string | null
+          dietary_flags: string[]
           id: string
           image: string | null
           is_tax_exempt: boolean | null
@@ -7179,6 +7256,7 @@ export type Database = {
           tax_category: string
           updated_at: string
           use_delivery_price: boolean | null
+          version: number
         }
         Insert: {
           allergens?: string[] | null
@@ -7189,6 +7267,7 @@ export type Database = {
           created_at?: string
           delivery_price?: number | null
           description?: string | null
+          dietary_flags?: string[]
           id?: string
           image?: string | null
           is_tax_exempt?: boolean | null
@@ -7201,6 +7280,7 @@ export type Database = {
           tax_category?: string
           updated_at?: string
           use_delivery_price?: boolean | null
+          version?: number
         }
         Update: {
           allergens?: string[] | null
@@ -7211,6 +7291,7 @@ export type Database = {
           created_at?: string
           delivery_price?: number | null
           description?: string | null
+          dietary_flags?: string[]
           id?: string
           image?: string | null
           is_tax_exempt?: boolean | null
@@ -7223,6 +7304,7 @@ export type Database = {
           tax_category?: string
           updated_at?: string
           use_delivery_price?: boolean | null
+          version?: number
         }
         Relationships: [
           {
@@ -8289,6 +8371,7 @@ export type Database = {
           og_image_url: string | null
           operating_hours: Json
           phone: string | null
+          pricing_disclosure_text: string | null
           primary_color: string
           published_at: string | null
           secondary_color: string | null
@@ -8350,6 +8433,7 @@ export type Database = {
           og_image_url?: string | null
           operating_hours?: Json
           phone?: string | null
+          pricing_disclosure_text?: string | null
           primary_color?: string
           published_at?: string | null
           secondary_color?: string | null
@@ -8411,6 +8495,7 @@ export type Database = {
           og_image_url?: string | null
           operating_hours?: Json
           phone?: string | null
+          pricing_disclosure_text?: string | null
           primary_color?: string
           published_at?: string | null
           secondary_color?: string | null
@@ -9286,6 +9371,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           processed_by_staff_id: string | null
           processed_by_user_id: string | null
+          processor_fee_percentage_snapshot: number
           processor_name: string | null
           processor_response: Json | null
           processor_response_code: string | null
@@ -9389,6 +9475,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           processed_by_staff_id?: string | null
           processed_by_user_id?: string | null
+          processor_fee_percentage_snapshot?: number
           processor_name?: string | null
           processor_response?: Json | null
           processor_response_code?: string | null
@@ -9492,6 +9579,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           processed_by_staff_id?: string | null
           processed_by_user_id?: string | null
+          processor_fee_percentage_snapshot?: number
           processor_name?: string | null
           processor_response?: Json | null
           processor_response_code?: string | null
@@ -12667,6 +12755,7 @@ export type Database = {
           emv_data: Json | null
           failed_at: string | null
           id: string
+          idempotency_key: string | null
           initiated_by: string | null
           location_id: string
           merchant_id: string
@@ -12692,6 +12781,7 @@ export type Database = {
           emv_data?: Json | null
           failed_at?: string | null
           id?: string
+          idempotency_key?: string | null
           initiated_by?: string | null
           location_id: string
           merchant_id: string
@@ -12717,6 +12807,7 @@ export type Database = {
           emv_data?: Json | null
           failed_at?: string | null
           id?: string
+          idempotency_key?: string | null
           initiated_by?: string | null
           location_id?: string
           merchant_id?: string
@@ -16132,6 +16223,39 @@ export type Database = {
           },
         ]
       }
+      waitlist_sms_rate_limit: {
+        Row: {
+          id: number
+          merchant_id: string
+          sent_at: string
+        }
+        Insert: {
+          id?: number
+          merchant_id: string
+          sent_at?: string
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waitlist_sms_rate_limit_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "admin_merchant_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waitlist_sms_rate_limit_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       waste_logs: {
         Row: {
           created_at: string
@@ -17694,6 +17818,7 @@ export type Database = {
         Args: { p_approved_by: string; p_session_id: string }
         Returns: Json
       }
+      archive_location: { Args: { p_location_id: string }; Returns: Json }
       assert_pci_safe_exports: { Args: never; Returns: undefined }
       assign_device: {
         Args: {
@@ -17729,6 +17854,7 @@ export type Database = {
       }
       bulk_update_order_item_status_v2: {
         Args: {
+          p_expected_sync_version?: number
           p_idempotency_key?: string
           p_order_item_ids: string[]
           p_staff_id?: string
@@ -17819,6 +17945,15 @@ export type Database = {
         }
         Returns: Json
       }
+      check_recent_refund: {
+        Args: {
+          p_amount_cents?: number
+          p_idempotency_key?: string
+          p_lookback_seconds?: number
+          p_order_id: string
+        }
+        Returns: Json
+      }
       check_table_availability: {
         Args: {
           p_date: string
@@ -17861,6 +17996,10 @@ export type Database = {
             }
             Returns: Json
           }
+      claim_waitlist_sms_slot: {
+        Args: { p_max_per_hour?: number; p_merchant_id: string }
+        Returns: Json
+      }
       cleanup_old_order_sequences: {
         Args: { p_keep_days?: number }
         Returns: number
@@ -18027,6 +18166,7 @@ export type Database = {
           emv_data: Json | null
           failed_at: string | null
           id: string
+          idempotency_key: string | null
           initiated_by: string | null
           location_id: string
           merchant_id: string
@@ -18072,6 +18212,7 @@ export type Database = {
           emv_data: Json | null
           failed_at: string | null
           id: string
+          idempotency_key: string | null
           initiated_by: string | null
           location_id: string
           merchant_id: string
@@ -18187,6 +18328,10 @@ export type Database = {
           p_station_id?: string
         }
         Returns: Json
+      }
+      end_impersonation_session: {
+        Args: { p_reason?: string; p_session_id: string }
+        Returns: undefined
       }
       end_station_session: { Args: { p_session_id: string }; Returns: Json }
       ensure_course_exists: {
@@ -19275,6 +19420,10 @@ export type Database = {
         }
         Returns: Json
       }
+      hq_can_impersonate_merchant: {
+        Args: { p_merchant_id: string }
+        Returns: boolean
+      }
       hq_has_permission: {
         Args: { p_permission_code: string }
         Returns: boolean
@@ -19366,6 +19515,8 @@ export type Database = {
           p_actor_role: string
           p_actor_user_id: string
           p_changes?: Json
+          p_impersonation_session_id?: string
+          p_impersonator_user_id?: string
           p_location_id: string
           p_merchant_id: string
           p_metadata?: Json
@@ -20040,6 +20191,7 @@ export type Database = {
         }
         Returns: string
       }
+      restore_location: { Args: { p_location_id: string }; Returns: Json }
       safe_jsonb_int: {
         Args: { p_default?: number; p_value: Json }
         Returns: number
@@ -20159,6 +20311,15 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      start_impersonation_session: {
+        Args: {
+          p_ip_address?: unknown
+          p_merchant_id: string
+          p_reason?: string
+          p_user_agent?: string
+        }
+        Returns: string
+      }
       station_heartbeat: {
         Args: { p_ip_address?: unknown; p_station_id: string }
         Returns: Json
@@ -20184,6 +20345,10 @@ export type Database = {
       touch_dlq_replay_failure: {
         Args: { p_error_message: string; p_id: string }
         Returns: undefined
+      }
+      touch_impersonation_session: {
+        Args: { p_session_id: string }
+        Returns: boolean
       }
       transfer_table_session: {
         Args: {
@@ -20293,6 +20458,10 @@ export type Database = {
         Args: { p_order_id: string }
         Returns: undefined
       }
+      update_order_payment_status_after_refund_v3: {
+        Args: { p_idempotency_key?: string; p_order_id: string }
+        Returns: undefined
+      }
       update_order_status: {
         Args: { p_new_status: string; p_order_id: string; p_reason?: string }
         Returns: Json
@@ -20344,6 +20513,19 @@ export type Database = {
             }
             Returns: undefined
           }
+      update_reversal_status_v2: {
+        Args: {
+          p_emv_data?: Json
+          p_idempotency_key?: string
+          p_response_message?: string
+          p_result_code?: string
+          p_reversal_id: string
+          p_reversal_psp_reference?: string
+          p_status: Database["public"]["Enums"]["reversal_status_type"]
+          p_terminal_response?: Json
+        }
+        Returns: undefined
+      }
       update_session_staff: {
         Args: {
           p_session_id: string

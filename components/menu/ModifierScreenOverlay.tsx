@@ -10,7 +10,6 @@ import Animated, {
     Easing,
     useAnimatedStyle,
     useSharedValue,
-    withSpring,
     withTiming,
 } from "react-native-reanimated";
 import ModifierScreen from "./ModifierScreen";
@@ -58,17 +57,16 @@ const ModifierScreenOverlay: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    cancelAnimation(translateY);
     if (isFullscreen) {
-      cancelAnimation(translateY);
-      translateY.value = withSpring(0, {
-        damping: 24,
-        stiffness: 260,
-        mass: 0.75,
+      translateY.value = withTiming(0, {
+        duration: 60,
+        easing: Easing.out(Easing.quad),
       });
     } else {
       translateY.value = withTiming(SCREEN_HEIGHT, {
-        duration: 120,
-        easing: Easing.in(Easing.cubic),
+        duration: 60,
+        easing: Easing.out(Easing.quad),
       });
     }
   }, [isFullscreen, translateY]);

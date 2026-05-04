@@ -1,8 +1,30 @@
 import { CartItem, MenuItemType, ModifierCategory } from '@/lib/types'
+import { Image } from 'expo-image'
 import { create } from 'zustand'
 import { useLocationConfigStore } from './useLocationConfigStore'
 import { useMenuStore } from './useMenuStore'
 import { useSeatingStore } from './useSeatingStore'
+
+/**
+ * Fire-and-forget prefetch for a single menu item's remote image. Used by
+ * preWarm so a tap on an item that wasn't in MenuSection's bulk prefetch
+ * window still warms the disk/memory cache before the modifier screen
+ * renders the image. No-op for non-http(s) sources.
+ */
+function prefetchMenuItemImage (image: string | undefined): void {
+  if (!image || typeof image !== 'string') return
+  const trimmed = image.trim()
+  if (!trimmed) return
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return
+    void Image.prefetch([trimmed], { cachePolicy: 'memory-disk' }).catch(
+      () => {},
+    )
+  } catch {
+    // not a URL — ignore
+  }
+}
 
 // ============================================================================
 // SYNCHRONOUS TOUCH BLOCKING - For same-frame menu blocking
@@ -403,6 +425,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
     draftCreatedId: null,
 
     preWarm: (item, categoryId, menuId) => {
+      // Warm the image cache regardless of modifier-cache hit so a recently
+      // re-tapped item with an evicted image still has bytes ready.
+      prefetchMenuItemImage(item.image)
       const existing = getOrEvictCache(item.id)
       if (existing) return
       // Compute WITHOUT setFn — no deferred price update yet; open() will handle it
