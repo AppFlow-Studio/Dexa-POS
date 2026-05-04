@@ -1269,139 +1269,145 @@ const ModifierScreenContent = ({
 
     const resolvedCashPrice =
       safeCashPrice ?? getCurrentItemCashPrice(baseItem);
-    closeModal();
 
-    queueMicrotask(() => {
-      const selectedModifiers = modifiersItem?.modifiers
-        ? Object.entries(currentState.modifierSelections)
-            .map(([cId, selections]) => {
-              const category = categoriesMap.get(cId);
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, val]) => val === true || val === "no")
-                .map(([optionId, val]) => {
-                  const optionData = optsMap.get(optionId);
-                  return {
-                    id: optionId,
-                    name: optionData?.option.name || "",
-                    price: val === "no" ? 0 : optionData?.option.price || 0,
-                    isNo: val === "no" ? true : undefined,
-                  };
-                });
-              return {
-                categoryId: cId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            })
-            .filter((mod) => mod.options.length > 0)
-        : [];
+    // Build the cart item synchronously and apply it BEFORE closing. Doing
+    // the cart mutation first lets React commit the items update on the
+    // still-mounted modifier screen, so the close slide animation runs on a
+    // settled JS thread instead of competing with the addItem re-render.
+    const selectedModifiers = modifiersItem?.modifiers
+      ? Object.entries(currentState.modifierSelections)
+          .map(([cId, selections]) => {
+            const category = categoriesMap.get(cId);
+            const selectedOptions = Object.entries(selections)
+              .filter(([_, val]) => val === true || val === "no")
+              .map(([optionId, val]) => {
+                const optionData = optsMap.get(optionId);
+                return {
+                  id: optionId,
+                  name: optionData?.option.name || "",
+                  price: val === "no" ? 0 : optionData?.option.price || 0,
+                  isNo: val === "no" ? true : undefined,
+                };
+              });
+            return {
+              categoryId: cId,
+              categoryName: category?.name || "",
+              options: selectedOptions,
+            };
+          })
+          .filter((mod) => mod.options.length > 0)
+      : [];
 
-      if (currentState.customModifiers.length > 0) {
-        selectedModifiers.push({
-          categoryId: CUSTOM_MODIFIER_CATEGORY_ID,
-          categoryName: CUSTOM_MODIFIER_CATEGORY_NAME,
-          options: currentState.customModifiers.map((m) => ({
-            id: m.id,
-            name: m.name,
-            price: m.price,
-            isNo: undefined,
-          })),
-        });
+    if (currentState.customModifiers.length > 0) {
+      selectedModifiers.push({
+        categoryId: CUSTOM_MODIFIER_CATEGORY_ID,
+        categoryName: CUSTOM_MODIFIER_CATEGORY_NAME,
+        options: currentState.customModifiers.map((m) => ({
+          id: m.id,
+          name: m.name,
+          price: m.price,
+          isNo: undefined,
+        })),
+      });
+    }
+
+    const finalCustomizations = {
+      modifiers: selectedModifiers,
+      notes: currentState.notes,
+    };
+
+    if (
+      currentMode === "edit" ||
+      (currentMode === "fullscreen" && currentCartItem)
+    ) {
+      if (!currentCartItem) {
+        closeModal();
+        return;
       }
-
-      const finalCustomizations = {
-        modifiers: selectedModifiers,
-        notes: currentState.notes,
+      const updatedItem = {
+        ...currentCartItem,
+        quantity: currentState.quantity,
+        price: currentTotal / Math.max(1, currentState.quantity),
+        customizations: finalCustomizations,
+        isDraft: false,
+        seatNumber:
+          shouldApplySeat && seatVal !== undefined
+            ? seatVal
+            : currentCartItem.seatNumber,
+        subtotal: undefined,
+        cashSubtotal: undefined,
+        taxAmount: undefined,
+        cashTaxAmount: undefined,
       };
+      updateItemInActiveOrder(updatedItem);
 
-      if (
-        currentMode === "edit" ||
-        (currentMode === "fullscreen" && currentCartItem)
-      ) {
-        if (!currentCartItem) return;
-        const updatedItem = {
-          ...currentCartItem,
-          quantity: currentState.quantity,
-          price: currentTotal / Math.max(1, currentState.quantity),
-          customizations: finalCustomizations,
-          isDraft: false,
-          seatNumber:
-            shouldApplySeat && seatVal !== undefined
-              ? seatVal
-              : currentCartItem.seatNumber,
-          subtotal: undefined,
-          cashSubtotal: undefined,
-          taxAmount: undefined,
-          cashTaxAmount: undefined,
-        };
-        updateItemInActiveOrder(updatedItem);
+      // Ensure manual sync matches the updated seat
+      if (shouldApplySeat) {
+        const ordId = useOrderStore.getState().activeOrderId;
+        if (ordId) {
+          useSeatingStore
+            .getState()
+            .setItemSeat(
+              ordId,
+              currentCartItem.id,
+              seatVal,
+              currentCartItem.db_order_item_id,
+              true,
+            );
 
-        // Ensure manual sync matches the updated seat
-        if (shouldApplySeat) {
-          const ordId = useOrderStore.getState().activeOrderId;
-          if (ordId) {
-            useSeatingStore
-              .getState()
-              .setItemSeat(
-                ordId,
-                currentCartItem.id,
-                seatVal,
-                currentCartItem.db_order_item_id,
-                true,
-              );
-
-            // Sync back to global active seat so subsequent items pick it up
-            useSeatingStore.getState().setActiveSeat(ordId, seatVal);
-          }
-        }
-        showToast({
-          title: "Item Updated",
-          message: `Your changes to ${item?.name} have been saved.`,
-          type: "success",
-        });
-      } else {
-        const itemCashPrice = resolvedCashPrice;
-        const categoryName = catId
-          ? useMenuStore.getState().getCategoryById(catId)?.name
-          : undefined;
-        const newItem = {
-          id: generateCartItemId(baseItem.id, finalCustomizations),
-          menuItemId: baseItem.id,
-          name: baseItem.name,
-          quantity: currentState.quantity,
-          originalPrice: itemCashPrice,
-          unitPrice: baseItem.price,
-          price: currentTotal / Math.max(1, currentState.quantity),
-          image: baseItem.image,
-          cashPrice: itemCashPrice,
-          customizations: finalCustomizations,
-          availableDiscount: baseItem.availableDiscount,
-          appliedDiscount: null,
-          paidQuantity: 0,
-          isDraft: false,
-          seatNumber:
-            shouldApplySeat && seatVal !== undefined ? seatVal : undefined,
-          addedFromCategoryId: catId || null,
-          addedFromMenuId: mId || null,
-          category_name: categoryName || undefined,
-          baseCardPrice: baseItem.price,
-          baseCashPrice: baseItem.cashPrice ?? baseItem.price,
-        };
-        addItemToActiveOrder(newItem);
-        // Apply seat override synchronously so useTableSeating's effect skips this item
-        if (shouldApplySeat) {
-          const ordId = useOrderStore.getState().activeOrderId;
-          if (ordId) {
-            useSeatingStore
-              .getState()
-              .setItemSeat(ordId, newItem.id, seatVal, undefined, true);
-
-            // Sync back to global active seat so subsequent items pick it up
-            useSeatingStore.getState().setActiveSeat(ordId, seatVal);
-          }
+          // Sync back to global active seat so subsequent items pick it up
+          useSeatingStore.getState().setActiveSeat(ordId, seatVal);
         }
       }
-    });
+      showToast({
+        title: "Item Updated",
+        message: `Your changes to ${item?.name} have been saved.`,
+        type: "success",
+      });
+    } else {
+      const itemCashPrice = resolvedCashPrice;
+      const categoryName = catId
+        ? useMenuStore.getState().getCategoryById(catId)?.name
+        : undefined;
+      const newItem = {
+        id: generateCartItemId(baseItem.id, finalCustomizations),
+        menuItemId: baseItem.id,
+        name: baseItem.name,
+        quantity: currentState.quantity,
+        originalPrice: itemCashPrice,
+        unitPrice: baseItem.price,
+        price: currentTotal / Math.max(1, currentState.quantity),
+        image: baseItem.image,
+        cashPrice: itemCashPrice,
+        customizations: finalCustomizations,
+        availableDiscount: baseItem.availableDiscount,
+        appliedDiscount: null,
+        paidQuantity: 0,
+        isDraft: false,
+        seatNumber:
+          shouldApplySeat && seatVal !== undefined ? seatVal : undefined,
+        addedFromCategoryId: catId || null,
+        addedFromMenuId: mId || null,
+        category_name: categoryName || undefined,
+        baseCardPrice: baseItem.price,
+        baseCashPrice: baseItem.cashPrice ?? baseItem.price,
+      };
+      addItemToActiveOrder(newItem);
+      // Apply seat override synchronously so useTableSeating's effect skips this item
+      if (shouldApplySeat) {
+        const ordId = useOrderStore.getState().activeOrderId;
+        if (ordId) {
+          useSeatingStore
+            .getState()
+            .setItemSeat(ordId, newItem.id, seatVal, undefined, true);
+
+          // Sync back to global active seat so subsequent items pick it up
+          useSeatingStore.getState().setActiveSeat(ordId, seatVal);
+        }
+      }
+    }
+
+    closeModal();
   }, []);
 
   const handleCancel = useCallback(() => {

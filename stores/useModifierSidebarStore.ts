@@ -711,30 +711,29 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         activeEditingItemId: null // Clear active item highlight
       })
 
-      // Phase 2: clear heavier payload after close animation settles.
+      // Phase 2: release the heavy precomputed maps after the close slide
+      // settles. open() calls clearDeferredModifierResetTimer() before any
+      // state writes, so a rapid re-open cancels this timer cleanly. The
+      // double guard below covers the off-by-a-tick case where the timer
+      // task was already dispatched when the next open() ran.
+      //
+      // Lightweight scalars (mode, seatCount, etc.) are NOT cleared here —
+      // they get overwritten by the next open() and clearing them now just
+      // adds re-render fan-out on the keep-mounted ModifierScreen.
       clearDeferredModifierResetTimer()
+      const closedAt = nowMs()
       deferredModifierResetTimer = setTimeout(() => {
         deferredModifierResetTimer = null
         const state = get()
         if (state.isOpen) return
+        // A new open() landed but its timer-clear hasn't been reflected yet.
+        if (lastModifierOpenStartedAt > closedAt) return
         set({
-          mode: 'add',
-          menuItem: null,
-          cartItem: null,
-          categoryId: null,
-          menuId: null,
           precomputedModifiers: null,
           precomputedCategoriesById: null,
           precomputedOptionsById: null,
           initialSelections: null,
-          itemPrice: 0,
-          itemCashPrice: 0,
-          activeModifierCategory: null,
-          precomputedForItemId: null,
-          draftCreatedId: null,
-          seatOverride: null,
-          seatCount: 0,
-          showSeatPicker: false
+          precomputedForItemId: null
         })
       }, 90)
     },
