@@ -1,30 +1,31 @@
-import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
-import { colors } from '@/lib/theme'
-import { OrderProfile } from '@/lib/types'
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { derivePaymentRefundState } from "@/lib/paymentStatus";
+import { colors } from "@/lib/theme";
+import { OrderProfile } from "@/lib/types";
 import {
-  CheckCircle,
-  CreditCard,
-  FileText,
-  Printer,
-  RefreshCcw,
-  RotateCcw,
-  XCircle
-} from 'lucide-react-native'
-import React, { useMemo, useState } from 'react'
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+    CheckCircle,
+    CreditCard,
+    FileText,
+    Printer,
+    RefreshCcw,
+    RotateCcw,
+    XCircle,
+} from "lucide-react-native";
+import React, { useMemo, useState } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 interface ActionsPanelProps {
-  order: OrderProfile
-  onRefund: () => void
-  onTipAdjust: () => void
-  onPrint: () => void
-  onReopen: () => void
-  onCloseCheck: () => void
-  onVoidOrder: () => void
-  onNotes: () => void
-  isClosingCheck?: boolean
-  isReopeningCheck?: boolean
-  isVoiding?: boolean
+  order: OrderProfile;
+  onRefund: () => void;
+  onTipAdjust: () => void;
+  onPrint: () => void;
+  onReopen: () => void;
+  onCloseCheck: () => void;
+  onVoidOrder: () => void;
+  onNotes: () => void;
+  isClosingCheck?: boolean;
+  isReopeningCheck?: boolean;
+  isVoiding?: boolean;
 }
 
 const ActionsPanel: React.FC<ActionsPanelProps> = ({
@@ -38,42 +39,37 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   onNotes,
   isClosingCheck = false,
   isReopeningCheck = false,
-  isVoiding = false
+  isVoiding = false,
 }) => {
-  const [confirmAction, setConfirmAction] = useState<'void' | 'close' | null>(
-    null
-  )
+  const [confirmAction, setConfirmAction] = useState<"void" | "close" | null>(
+    null,
+  );
 
   const canRefund = useMemo(() => {
-    if (order.order_status === 'refunded') return false
-    const totalRefunded = (order.payments || []).reduce(
-      (sum, p) => sum + (p.refundedAmount ?? 0),
-      0
-    )
-    if (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0))
-      return false
-    return order.paid_status === 'Paid' || order.paid_status === 'Partial'
-  }, [order])
+    if (order.order_status === "refunded") return false;
+    if (derivePaymentRefundState(order.payments).isFullyRefunded) return false;
+    return order.paid_status === "Paid" || order.paid_status === "Partial";
+  }, [order]);
 
   const hasCardPayments = useMemo(() => {
-    if (!order.payments) return false
-    return order.payments.some(p => p.method !== 'Cash' && !p.isVoided)
-  }, [order.payments])
+    if (!order.payments) return false;
+    return order.payments.some((p) => p.method !== "Cash" && !p.isVoided);
+  }, [order.payments]);
 
-  const isClosed = order.check_status === 'Closed'
+  const isClosed = order.check_status === "Closed";
   const canCloseCheck =
-    order.paid_status === 'Paid' && order.check_status !== 'Closed'
-  const isVoided = order.order_status === 'void'
-  const anyLoading = isClosingCheck || isReopeningCheck || isVoiding
+    order.paid_status === "Paid" && order.check_status !== "Closed";
+  const isVoided = order.order_status === "void";
+  const anyLoading = isClosingCheck || isReopeningCheck || isVoiding;
 
   return (
     <View style={{ marginTop: 16, gap: 10 }}>
       {/* Print Receipt - always visible */}
       <ActionButton
         icon={<Printer color={colors.onSolid} size={18} />}
-        label='Print Receipt'
+        label="Print Receipt"
         onPress={onPrint}
-        variant='primary'
+        variant="primary"
         disabled={anyLoading}
       />
 
@@ -81,9 +77,9 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       {canRefund && (
         <ActionButton
           icon={<RotateCcw color={colors.danger} size={18} />}
-          label='Refund'
+          label="Refund"
           onPress={onRefund}
-          variant='danger'
+          variant="danger"
           disabled={anyLoading}
         />
       )}
@@ -92,9 +88,9 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       {hasCardPayments && (
         <ActionButton
           icon={<CreditCard color={colors.teal} size={18} />}
-          label='Tip Adjust'
+          label="Tip Adjust"
           onPress={onTipAdjust}
-          variant='teal'
+          variant="teal"
           disabled={anyLoading}
         />
       )}
@@ -104,14 +100,14 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         <ActionButton
           icon={
             isClosingCheck ? (
-              <ActivityIndicator size='small' color={colors.teal} />
+              <ActivityIndicator size="small" color={colors.teal} />
             ) : (
               <CheckCircle color={colors.teal} size={18} />
             )
           }
-          label={isClosingCheck ? 'Closing...' : 'Close Check'}
-          onPress={() => setConfirmAction('close')}
-          variant='teal'
+          label={isClosingCheck ? "Closing..." : "Close Check"}
+          onPress={() => setConfirmAction("close")}
+          variant="teal"
           disabled={anyLoading}
         />
       )}
@@ -121,14 +117,14 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         <ActionButton
           icon={
             isReopeningCheck ? (
-              <ActivityIndicator size='small' color={colors.teal} />
+              <ActivityIndicator size="small" color={colors.teal} />
             ) : (
               <RefreshCcw color={colors.teal} size={18} />
             )
           }
-          label={isReopeningCheck ? 'Reopening...' : 'Re-open Order'}
+          label={isReopeningCheck ? "Reopening..." : "Re-open Order"}
           onPress={onReopen}
-          variant='teal'
+          variant="teal"
           disabled={anyLoading}
         />
       )}
@@ -137,9 +133,9 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       {order.notes && (
         <ActionButton
           icon={<FileText color={colors.teal} size={18} />}
-          label='Order Notes'
+          label="Order Notes"
           onPress={onNotes}
-          variant='teal'
+          variant="teal"
           disabled={anyLoading}
         />
       )}
@@ -149,49 +145,49 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         <ActionButton
           icon={
             isVoiding ? (
-              <ActivityIndicator size='small' color={colors.danger} />
+              <ActivityIndicator size="small" color={colors.danger} />
             ) : (
               <XCircle color={colors.danger} size={18} />
             )
           }
-          label={isVoiding ? 'Voiding...' : 'Void Order'}
-          onPress={() => setConfirmAction('void')}
-          variant='danger'
+          label={isVoiding ? "Voiding..." : "Void Order"}
+          onPress={() => setConfirmAction("void")}
+          variant="danger"
           disabled={anyLoading}
         />
       )}
 
       {/* Confirmation Modals */}
       <ConfirmationModal
-        isOpen={confirmAction === 'void'}
+        isOpen={confirmAction === "void"}
         onClose={() => setConfirmAction(null)}
         onConfirm={() => {
-          setConfirmAction(null)
-          onVoidOrder()
+          setConfirmAction(null);
+          onVoidOrder();
         }}
-        title='Void Order'
-        description='This will void the entire order including all items and payments. This action cannot be undone.'
-        confirmText='Void Order'
-        variant='destructive'
+        title="Void Order"
+        description="This will void the entire order including all items and payments. This action cannot be undone."
+        confirmText="Void Order"
+        variant="destructive"
       />
 
       <ConfirmationModal
-        isOpen={confirmAction === 'close'}
+        isOpen={confirmAction === "close"}
         onClose={() => setConfirmAction(null)}
         onConfirm={() => {
-          setConfirmAction(null)
-          onCloseCheck()
+          setConfirmAction(null);
+          onCloseCheck();
         }}
-        title='Close Check'
-        description='This will close the check for this order. The order will be marked as finalized.'
-        confirmText='Close Check'
-        variant='destructive'
+        title="Close Check"
+        description="This will close the check for this order. The order will be marked as finalized."
+        confirmText="Close Check"
+        variant="destructive"
       />
     </View>
-  )
-}
+  );
+};
 
-type ButtonVariant = 'primary' | 'danger' | 'teal'
+type ButtonVariant = "primary" | "danger" | "teal";
 
 const variantStyleMap: Record<
   ButtonVariant,
@@ -199,31 +195,31 @@ const variantStyleMap: Record<
 > = {
   primary: { backgroundColor: colors.teal, borderColor: colors.teal },
   danger: {
-    backgroundColor: colors.danger + '15',
-    borderColor: colors.danger + '40'
+    backgroundColor: colors.danger + "15",
+    borderColor: colors.danger + "40",
   },
   teal: {
-    backgroundColor: colors.teal + '15',
-    borderColor: colors.teal + '40'
-  }
-}
+    backgroundColor: colors.teal + "15",
+    borderColor: colors.teal + "40",
+  },
+};
 
 const ActionButton = ({
   icon,
   label,
   onPress,
   variant,
-  disabled
+  disabled,
 }: {
-  icon: React.ReactNode
-  label: string
-  onPress: () => void
-  variant: ButtonVariant
-  disabled?: boolean
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  variant: ButtonVariant;
+  disabled?: boolean;
 }) => {
-  const variantStyle = variantStyleMap[variant]
-  const isPrimary = variant === 'primary'
-  const isDanger = variant === 'danger'
+  const variantStyle = variantStyleMap[variant];
+  const isPrimary = variant === "primary";
+  const isDanger = variant === "danger";
 
   return (
     <TouchableOpacity
@@ -232,36 +228,36 @@ const ActionButton = ({
       disabled={disabled}
       style={[
         {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'flex-start',
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-start",
           gap: 8,
           paddingHorizontal: 12,
           paddingVertical: 10,
           borderRadius: 10,
           borderWidth: 1,
           backgroundColor: variantStyle.backgroundColor,
-          borderColor: variantStyle.borderColor
+          borderColor: variantStyle.borderColor,
         },
-        disabled ? { opacity: 0.5 } : undefined
+        disabled ? { opacity: 0.5 } : undefined,
       ]}
     >
       {icon}
       <Text
         style={{
           fontSize: 13,
-          fontWeight: '600',
+          fontWeight: "600",
           color: isPrimary
             ? colors.onSolid
             : isDanger
-            ? colors.danger
-            : colors.teal
+              ? colors.danger
+              : colors.teal,
         }}
       >
         {label}
       </Text>
     </TouchableOpacity>
-  )
-}
+  );
+};
 
-export default React.memo(ActionsPanel)
+export default React.memo(ActionsPanel);

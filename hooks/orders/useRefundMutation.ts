@@ -1,6 +1,7 @@
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { derivePaymentRefundState } from "@/lib/paymentStatus";
 import type {
     CartItem,
     OrderProfile,
@@ -214,8 +215,8 @@ function buildAndApplyRefundPatch(input: RefundMutationInput): void {
 
   // PreviousOrder patch
   const totalRefunded = (prevOrder?.refundedAmount || 0) + input.totalAmount;
-  const orderTotal = prevOrder?.total || activeOrder?.total_amount || 0;
-  const isFullyRefunded = totalRefunded >= orderTotal - 0.001;
+  const isFullyRefunded =
+    derivePaymentRefundState(patchedPayments).isFullyRefunded;
 
   const previousOrderPatch: Partial<PreviousOrder> = {
     payments: patchedPayments,

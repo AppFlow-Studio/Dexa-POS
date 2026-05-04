@@ -3,7 +3,10 @@ import {
     getCurrentBusinessDay,
     type BusinessDayConfig,
 } from "@/lib/businessDay";
-import { derivePaidStatus } from "@/lib/paymentStatus";
+import {
+    derivePaidStatus,
+    derivePaymentRefundState,
+} from "@/lib/paymentStatus";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
@@ -993,6 +996,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         }
       }
 
+      const paymentRefundableTotal = (order.payments ?? []).reduce(
+        (sum, payment) => sum + (payment.amount ?? 0),
+        0,
+      );
+      const fullRefundAmount = paymentRefundableTotal || order.total;
+
       const refundRecord: RefundRecord = {
         id: `refund_${Date.now()}`,
         orderId,
@@ -1004,7 +1013,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           refundedAt: new Date().toISOString(),
           refundedBy: initiatedByName,
         })),
-        totalRefunded: order.total,
+        totalRefunded: fullRefundAmount,
         reason,
         refundedAt: new Date().toISOString(),
         refundedBy: initiatedByName,
@@ -1020,7 +1029,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             updatedOrder = {
               ...o,
               refunded: true,
-              refundedAmount: o.total,
+              refundedAmount: fullRefundAmount,
               paymentStatus: "Refunded" as const,
             };
             return updatedOrder;
@@ -1200,7 +1209,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
             const newTotalRefundedAmount =
               (o.refundedAmount || 0) + totalRefundedInThisTx;
-            const isFullyRefunded = newTotalRefundedAmount >= o.total - 0.001; // Epsilon for float safety
+            const paymentRefundState = derivePaymentRefundState(o.payments);
+            const paymentRefundableTotal = (o.payments ?? []).reduce(
+              (sum, payment) => sum + (payment.amount ?? 0),
+              0,
+            );
+            const refundComparisonTotal = paymentRefundableTotal || o.total;
+            const isFullyRefunded =
+              paymentRefundState.isFullyRefunded ||
+              newTotalRefundedAmount >= refundComparisonTotal - 0.001;
 
             updatedRefundOrder = {
               ...o,
