@@ -1,4 +1,5 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { getPinAuthFailure, resolvePostLoginRoute } from "@/lib/authFlow";
 import { getDeviceName } from "@/lib/deviceName";
 import { replaceRoute } from "@/lib/rootNavigation";
 import {
@@ -95,11 +96,12 @@ async function handleBackgroundResult(
       replaceRoute("(auth)", "pin-login");
       return;
     }
-    // INVALID_PIN, STATION_NOT_FOUND, or unknown
+    const authFailure = getPinAuthFailure({
+      error: response?.error,
+      errorCode: response?.error_code,
+    });
     store.rollbackSignIn();
-    store.setPendingAuthError(
-      response?.error || "Your PIN was not recognized. Please try again.",
-    );
+    store.setPendingAuthError(authFailure.message);
     replaceRoute("(auth)", "pin-login");
     return;
   }
@@ -160,8 +162,10 @@ export function usePinSignIn() {
       store.beginOptimisticSignIn(employee, !!existingSession);
 
       // 3. Navigate immediately (before background RPC)
-      const isKDS = selectedStation.station_type === "kds";
-      replaceRoute("(main)", isKDS ? "kds" : "home");
+      replaceRoute(
+        "(main)",
+        resolvePostLoginRoute(selectedStation.station_type),
+      );
 
       // 4. Fire background RPC (fire-and-forget, does NOT block navigation)
       const info = cachedDeviceInfo ?? (await getDeviceInfo());
