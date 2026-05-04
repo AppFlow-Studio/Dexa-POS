@@ -193,7 +193,12 @@ export function getOrCreateIdempotencyKey (sig: IdempotencyOpSignature): string 
  * signature predates the guard. Stripped automatically when the idempotency
  * flag is off for a given RPC.
  */
-const V_NEXT_ONLY_PARAMS = ['p_station_id'] as const
+// Params introduced in a v(n+1) function whose v(n) signature would
+// reject them with PostgREST 400. Stripped when the per-RPC idempotency
+// flag is off so the v(n) fallback continues to work.
+//   - p_station_id:        Wave 2.x station-ownership guard
+//   - p_tip_refund_amount: apply_refund_to_payment_v3 platform-fee delta
+const V_NEXT_ONLY_PARAMS = ['p_station_id', 'p_tip_refund_amount'] as const
 
 function _stripVNextOnly<P extends Record<string, any>> (params: P): P {
   let copy: any = null

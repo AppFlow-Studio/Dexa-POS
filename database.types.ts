@@ -102,6 +102,7 @@ export type Database = {
           organization_id: string | null
           organization_name: string | null
           organization_type: string | null
+          pii_access_type: string | null
           resource_id: string | null
           resource_name: string | null
           resource_type: string | null
@@ -128,6 +129,7 @@ export type Database = {
           organization_id?: string | null
           organization_name?: string | null
           organization_type?: string | null
+          pii_access_type?: string | null
           resource_id?: string | null
           resource_name?: string | null
           resource_type?: string | null
@@ -154,6 +156,7 @@ export type Database = {
           organization_id?: string | null
           organization_name?: string | null
           organization_type?: string | null
+          pii_access_type?: string | null
           resource_id?: string | null
           resource_name?: string | null
           resource_type?: string | null
@@ -338,6 +341,13 @@ export type Database = {
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "order_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_drawer_operations_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "pci_safe_order_payments"
             referencedColumns: ["id"]
           },
           {
@@ -1133,6 +1143,13 @@ export type Database = {
             foreignKeyName: "chargebacks_original_payment_id_fkey"
             columns: ["original_payment_id"]
             isOneToOne: false
+            referencedRelation: "pci_safe_order_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chargebacks_original_payment_id_fkey"
+            columns: ["original_payment_id"]
+            isOneToOne: false
             referencedRelation: "vw_platform_transactions"
             referencedColumns: ["id"]
           },
@@ -1440,6 +1457,112 @@ export type Database = {
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_payment_methods: {
+        Row: {
+          billing_address_line1: string | null
+          billing_postal_code: string | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last_four: string | null
+          cardholder_name: string | null
+          created_at: string
+          customer_id: string
+          customer_vault_id: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          last_used_at: string | null
+          merchant_id: string
+          payment_device_id: string
+          payment_method_token: string | null
+          updated_at: string
+        }
+        Insert: {
+          billing_address_line1?: string | null
+          billing_postal_code?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last_four?: string | null
+          cardholder_name?: string | null
+          created_at?: string
+          customer_id: string
+          customer_vault_id: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          last_used_at?: string | null
+          merchant_id: string
+          payment_device_id: string
+          payment_method_token?: string | null
+          updated_at?: string
+        }
+        Update: {
+          billing_address_line1?: string | null
+          billing_postal_code?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last_four?: string | null
+          cardholder_name?: string | null
+          created_at?: string
+          customer_id?: string
+          customer_vault_id?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          last_used_at?: string | null
+          merchant_id?: string
+          payment_device_id?: string
+          payment_method_token?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_payment_methods_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "active_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_payment_methods_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_profile_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_payment_methods_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_payment_methods_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "admin_merchant_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_payment_methods_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_payment_methods_payment_device_id_fkey"
+            columns: ["payment_device_id"]
+            isOneToOne: false
+            referencedRelation: "location_payment_devices"
             referencedColumns: ["id"]
           },
         ]
@@ -2710,6 +2833,7 @@ export type Database = {
       }
       employee_daily_tips: {
         Row: {
+          cash_payment_tips: number
           cash_tips_declared: number | null
           charged_tips: number | null
           cover_count: number | null
@@ -2732,6 +2856,7 @@ export type Database = {
           verified_by: string | null
         }
         Insert: {
+          cash_payment_tips?: number
           cash_tips_declared?: number | null
           charged_tips?: number | null
           cover_count?: number | null
@@ -2754,6 +2879,7 @@ export type Database = {
           verified_by?: string | null
         }
         Update: {
+          cash_payment_tips?: number
           cash_tips_declared?: number | null
           charged_tips?: number | null
           cover_count?: number | null
@@ -3053,6 +3179,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      idempotency_keys: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          key: string
+          op: string
+          result_json: Json | null
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          key: string
+          op: string
+          result_json?: Json | null
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          key?: string
+          op?: string
+          result_json?: Json | null
+          status?: string
+        }
+        Relationships: []
       }
       inventory_count_items: {
         Row: {
@@ -5320,53 +5473,98 @@ export type Database = {
       }
       location_payment_devices: {
         Row: {
+          activated_at: string | null
           carrier_id: string
           created_at: string
           device_label: string | null
-          ftd_ecom_key_secret_id: string
+          environment: string
           id: string
           is_active: boolean
+          last_health_check_at: string | null
+          last_health_check_status: string | null
           last_synced_from_crm_at: string | null
           location_id: string
           merchant_id: string
+          metadata: Json
           provider: string
-          tpn: string
+          provider_gateway_id: string | null
+          provider_merchant_id: string | null
+          provider_public_key: string | null
+          provider_secret_id: string | null
+          status: string
+          supports_apple_pay: boolean
+          supports_customer_vault: boolean
+          supports_google_pay: boolean
+          suspended_at: string | null
+          suspended_reason: string | null
+          tpn: string | null
           updated_at: string
           use_for_online_ordering: boolean
+          webhook_secret_id: string | null
           whitelist_origins: string[]
           whitelist_synced_at: string | null
         }
         Insert: {
+          activated_at?: string | null
           carrier_id: string
           created_at?: string
           device_label?: string | null
-          ftd_ecom_key_secret_id: string
+          environment?: string
           id?: string
           is_active?: boolean
+          last_health_check_at?: string | null
+          last_health_check_status?: string | null
           last_synced_from_crm_at?: string | null
           location_id: string
           merchant_id: string
+          metadata?: Json
           provider?: string
-          tpn: string
+          provider_gateway_id?: string | null
+          provider_merchant_id?: string | null
+          provider_public_key?: string | null
+          provider_secret_id?: string | null
+          status?: string
+          supports_apple_pay?: boolean
+          supports_customer_vault?: boolean
+          supports_google_pay?: boolean
+          suspended_at?: string | null
+          suspended_reason?: string | null
+          tpn?: string | null
           updated_at?: string
           use_for_online_ordering?: boolean
+          webhook_secret_id?: string | null
           whitelist_origins?: string[]
           whitelist_synced_at?: string | null
         }
         Update: {
+          activated_at?: string | null
           carrier_id?: string
           created_at?: string
           device_label?: string | null
-          ftd_ecom_key_secret_id?: string
+          environment?: string
           id?: string
           is_active?: boolean
+          last_health_check_at?: string | null
+          last_health_check_status?: string | null
           last_synced_from_crm_at?: string | null
           location_id?: string
           merchant_id?: string
+          metadata?: Json
           provider?: string
-          tpn?: string
+          provider_gateway_id?: string | null
+          provider_merchant_id?: string | null
+          provider_public_key?: string | null
+          provider_secret_id?: string | null
+          status?: string
+          supports_apple_pay?: boolean
+          supports_customer_vault?: boolean
+          supports_google_pay?: boolean
+          suspended_at?: string | null
+          suspended_reason?: string | null
+          tpn?: string | null
           updated_at?: string
           use_for_online_ordering?: boolean
+          webhook_secret_id?: string | null
           whitelist_origins?: string[]
           whitelist_synced_at?: string | null
         }
@@ -5614,6 +5812,7 @@ export type Database = {
         Row: {
           address_line1: string | null
           address_line2: string | null
+          business_day_end_hour: number
           business_day_start_hour: number | null
           business_hours: Json | null
           city: string
@@ -5645,6 +5844,7 @@ export type Database = {
           tax_id: string | null
           tax_registration_status: string | null
           timezone: string
+          tip_surcharge_percentage: number
           updated_at: string
           use_merchant_pricing_defaults: boolean
           uses_global_menu: boolean
@@ -5652,6 +5852,7 @@ export type Database = {
         Insert: {
           address_line1?: string | null
           address_line2?: string | null
+          business_day_end_hour?: number
           business_day_start_hour?: number | null
           business_hours?: Json | null
           city?: string
@@ -5683,6 +5884,7 @@ export type Database = {
           tax_id?: string | null
           tax_registration_status?: string | null
           timezone?: string
+          tip_surcharge_percentage?: number
           updated_at?: string
           use_merchant_pricing_defaults?: boolean
           uses_global_menu?: boolean
@@ -5690,6 +5892,7 @@ export type Database = {
         Update: {
           address_line1?: string | null
           address_line2?: string | null
+          business_day_end_hour?: number
           business_day_start_hour?: number | null
           business_hours?: Json | null
           city?: string
@@ -5721,6 +5924,7 @@ export type Database = {
           tax_id?: string | null
           tax_registration_status?: string | null
           timezone?: string
+          tip_surcharge_percentage?: number
           updated_at?: string
           use_merchant_pricing_defaults?: boolean
           uses_global_menu?: boolean
@@ -7376,6 +7580,7 @@ export type Database = {
           dba_name: string | null
           dual_pricing_percentage: number
           ein_last_four: string | null
+          external_merchant_id: string | null
           id: string
           name: string
           onboarding_completed_at: string | null
@@ -7386,6 +7591,9 @@ export type Database = {
           owner_phone: string | null
           pricing_strategy: string
           public_metadata: Json | null
+          suspended_at: string | null
+          suspension_initiated_at: string | null
+          suspension_reason: string | null
           type: string | null
           updated_at: string | null
         }
@@ -7405,6 +7613,7 @@ export type Database = {
           dba_name?: string | null
           dual_pricing_percentage?: number
           ein_last_four?: string | null
+          external_merchant_id?: string | null
           id?: string
           name: string
           onboarding_completed_at?: string | null
@@ -7415,6 +7624,9 @@ export type Database = {
           owner_phone?: string | null
           pricing_strategy?: string
           public_metadata?: Json | null
+          suspended_at?: string | null
+          suspension_initiated_at?: string | null
+          suspension_reason?: string | null
           type?: string | null
           updated_at?: string | null
         }
@@ -7434,6 +7646,7 @@ export type Database = {
           dba_name?: string | null
           dual_pricing_percentage?: number
           ein_last_four?: string | null
+          external_merchant_id?: string | null
           id?: string
           name?: string
           onboarding_completed_at?: string | null
@@ -7444,6 +7657,9 @@ export type Database = {
           owner_phone?: string | null
           pricing_strategy?: string
           public_metadata?: Json | null
+          suspended_at?: string | null
+          suspension_initiated_at?: string | null
+          suspension_reason?: string | null
           type?: string | null
           updated_at?: string | null
         }
@@ -8915,6 +9131,42 @@ export type Database = {
           },
         ]
       }
+      order_number_day_sequences: {
+        Row: {
+          created_at: string
+          date_str: string
+          merchant_id: string
+          sequence_name: string
+        }
+        Insert: {
+          created_at?: string
+          date_str: string
+          merchant_id: string
+          sequence_name: string
+        }
+        Update: {
+          created_at?: string
+          date_str?: string
+          merchant_id?: string
+          sequence_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_number_day_sequences_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "admin_merchant_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_number_day_sequences_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_payment_items: {
         Row: {
           created_at: string
@@ -8965,6 +9217,13 @@ export type Database = {
             foreignKeyName: "order_payment_items_order_payment_id_fkey"
             columns: ["order_payment_id"]
             isOneToOne: false
+            referencedRelation: "pci_safe_order_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payment_items_order_payment_id_fkey"
+            columns: ["order_payment_id"]
+            isOneToOne: false
             referencedRelation: "vw_platform_transactions"
             referencedColumns: ["id"]
           },
@@ -8978,6 +9237,7 @@ export type Database = {
           auth_code: string | null
           authorization_code: string | null
           authorized_at: string | null
+          avs_response_code: string | null
           batch_number: string | null
           captured_at: string | null
           card_exp_month: number | null
@@ -8988,6 +9248,8 @@ export type Database = {
           cash_discount_applied: boolean | null
           change_given: number | null
           covers_items: string[] | null
+          customer_vault_id: string | null
+          cvv_response_code: string | null
           dejavoo_batch_number: string | null
           dejavoo_invoice_number: string | null
           dejavoo_response_code: string | null
@@ -8995,6 +9257,8 @@ export type Database = {
           dejavoo_transaction_type: string | null
           device_id: string | null
           discount_portion: number | null
+          dual_pricing_fee: number
+          dual_pricing_percentage_snapshot: number
           dvpaylite_application_type: string | null
           dvpaylite_request_id: string | null
           emv_data: Json | null
@@ -9003,6 +9267,7 @@ export type Database = {
           failed_at: string | null
           gateway_fee: number | null
           id: string
+          idempotency_key: string | null
           initiated_at: string
           initiated_by: string | null
           is_cash_priced: boolean | null
@@ -9015,17 +9280,23 @@ export type Database = {
           order_id: string
           original_amount: number | null
           original_tip_amount: number | null
+          original_tip_fee: number | null
           parent_payment_id: string | null
+          payment_device_id: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
           processed_by_staff_id: string | null
           processed_by_user_id: string | null
           processor_name: string | null
           processor_response: Json | null
+          processor_response_code: string | null
+          processor_response_text: string | null
           reference_number: string | null
           refund_reason: string | null
           refunded_amount: number | null
           refunded_at: string | null
           refunded_by: string | null
+          refunded_dual_pricing_fee: number
+          refunded_tip_fee: number
           result_code: string | null
           result_message: string | null
           retry_count: number | null
@@ -9054,6 +9325,8 @@ export type Database = {
           tip_adjusted_at: string | null
           tip_adjusted_by: string | null
           tip_amount: number
+          tip_fee: number
+          tip_surcharge_percentage_snapshot: number
           total_amount: number
           transaction_id: string | null
           void_reason: string | null
@@ -9067,6 +9340,7 @@ export type Database = {
           auth_code?: string | null
           authorization_code?: string | null
           authorized_at?: string | null
+          avs_response_code?: string | null
           batch_number?: string | null
           captured_at?: string | null
           card_exp_month?: number | null
@@ -9077,6 +9351,8 @@ export type Database = {
           cash_discount_applied?: boolean | null
           change_given?: number | null
           covers_items?: string[] | null
+          customer_vault_id?: string | null
+          cvv_response_code?: string | null
           dejavoo_batch_number?: string | null
           dejavoo_invoice_number?: string | null
           dejavoo_response_code?: string | null
@@ -9084,6 +9360,8 @@ export type Database = {
           dejavoo_transaction_type?: string | null
           device_id?: string | null
           discount_portion?: number | null
+          dual_pricing_fee?: number
+          dual_pricing_percentage_snapshot?: number
           dvpaylite_application_type?: string | null
           dvpaylite_request_id?: string | null
           emv_data?: Json | null
@@ -9092,6 +9370,7 @@ export type Database = {
           failed_at?: string | null
           gateway_fee?: number | null
           id?: string
+          idempotency_key?: string | null
           initiated_at?: string
           initiated_by?: string | null
           is_cash_priced?: boolean | null
@@ -9104,17 +9383,23 @@ export type Database = {
           order_id: string
           original_amount?: number | null
           original_tip_amount?: number | null
+          original_tip_fee?: number | null
           parent_payment_id?: string | null
+          payment_device_id?: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
           processed_by_staff_id?: string | null
           processed_by_user_id?: string | null
           processor_name?: string | null
           processor_response?: Json | null
+          processor_response_code?: string | null
+          processor_response_text?: string | null
           reference_number?: string | null
           refund_reason?: string | null
           refunded_amount?: number | null
           refunded_at?: string | null
           refunded_by?: string | null
+          refunded_dual_pricing_fee?: number
+          refunded_tip_fee?: number
           result_code?: string | null
           result_message?: string | null
           retry_count?: number | null
@@ -9143,6 +9428,8 @@ export type Database = {
           tip_adjusted_at?: string | null
           tip_adjusted_by?: string | null
           tip_amount?: number
+          tip_fee?: number
+          tip_surcharge_percentage_snapshot?: number
           total_amount: number
           transaction_id?: string | null
           void_reason?: string | null
@@ -9156,6 +9443,7 @@ export type Database = {
           auth_code?: string | null
           authorization_code?: string | null
           authorized_at?: string | null
+          avs_response_code?: string | null
           batch_number?: string | null
           captured_at?: string | null
           card_exp_month?: number | null
@@ -9166,6 +9454,8 @@ export type Database = {
           cash_discount_applied?: boolean | null
           change_given?: number | null
           covers_items?: string[] | null
+          customer_vault_id?: string | null
+          cvv_response_code?: string | null
           dejavoo_batch_number?: string | null
           dejavoo_invoice_number?: string | null
           dejavoo_response_code?: string | null
@@ -9173,6 +9463,8 @@ export type Database = {
           dejavoo_transaction_type?: string | null
           device_id?: string | null
           discount_portion?: number | null
+          dual_pricing_fee?: number
+          dual_pricing_percentage_snapshot?: number
           dvpaylite_application_type?: string | null
           dvpaylite_request_id?: string | null
           emv_data?: Json | null
@@ -9181,6 +9473,7 @@ export type Database = {
           failed_at?: string | null
           gateway_fee?: number | null
           id?: string
+          idempotency_key?: string | null
           initiated_at?: string
           initiated_by?: string | null
           is_cash_priced?: boolean | null
@@ -9193,17 +9486,23 @@ export type Database = {
           order_id?: string
           original_amount?: number | null
           original_tip_amount?: number | null
+          original_tip_fee?: number | null
           parent_payment_id?: string | null
+          payment_device_id?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
           processed_by_staff_id?: string | null
           processed_by_user_id?: string | null
           processor_name?: string | null
           processor_response?: Json | null
+          processor_response_code?: string | null
+          processor_response_text?: string | null
           reference_number?: string | null
           refund_reason?: string | null
           refunded_amount?: number | null
           refunded_at?: string | null
           refunded_by?: string | null
+          refunded_dual_pricing_fee?: number
+          refunded_tip_fee?: number
           result_code?: string | null
           result_message?: string | null
           retry_count?: number | null
@@ -9232,6 +9531,8 @@ export type Database = {
           tip_adjusted_at?: string | null
           tip_adjusted_by?: string | null
           tip_amount?: number
+          tip_fee?: number
+          tip_surcharge_percentage_snapshot?: number
           total_amount?: number
           transaction_id?: string | null
           void_reason?: string | null
@@ -9299,7 +9600,21 @@ export type Database = {
             foreignKeyName: "order_payments_parent_payment_id_fkey"
             columns: ["parent_payment_id"]
             isOneToOne: false
+            referencedRelation: "pci_safe_order_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_parent_payment_id_fkey"
+            columns: ["parent_payment_id"]
+            isOneToOne: false
             referencedRelation: "vw_platform_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_payment_device_id_fkey"
+            columns: ["payment_device_id"]
+            isOneToOne: false
+            referencedRelation: "location_payment_devices"
             referencedColumns: ["id"]
           },
           {
@@ -10535,6 +10850,13 @@ export type Database = {
             foreignKeyName: "payment_events_payment_id_fkey"
             columns: ["payment_id"]
             isOneToOne: false
+            referencedRelation: "pci_safe_order_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_events_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
             referencedRelation: "vw_platform_transactions"
             referencedColumns: ["id"]
           },
@@ -10553,6 +10875,7 @@ export type Database = {
           api_environment: string | null
           auth_key: string | null
           auth_key_encrypted: string | null
+          auth_key_secret_id: string | null
           auto_settle: boolean | null
           battery_level: number | null
           castles_batch_number: string | null
@@ -10606,6 +10929,7 @@ export type Database = {
           api_environment?: string | null
           auth_key?: string | null
           auth_key_encrypted?: string | null
+          auth_key_secret_id?: string | null
           auto_settle?: boolean | null
           battery_level?: number | null
           castles_batch_number?: string | null
@@ -10659,6 +10983,7 @@ export type Database = {
           api_environment?: string | null
           auth_key?: string | null
           auth_key_encrypted?: string | null
+          auth_key_secret_id?: string | null
           auto_settle?: boolean | null
           battery_level?: number | null
           castles_batch_number?: string | null
@@ -10751,6 +11076,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pci_export_function_registry: {
+        Row: {
+          function_name: string
+          notes: string | null
+          registered_at: string
+        }
+        Insert: {
+          function_name: string
+          notes?: string | null
+          registered_at?: string
+        }
+        Update: {
+          function_name?: string
+          notes?: string | null
+          registered_at?: string
+        }
+        Relationships: []
       }
       pending_org_admin_invites: {
         Row: {
@@ -10858,35 +11201,38 @@ export type Database = {
       phone_verifications: {
         Row: {
           attempts: number
-          code: string
+          code_hash: string
           created_at: string
           expires_at: string
           id: string
           max_attempts: number
           merchant_id: string
           phone: string
+          request_ip: unknown
           verified_at: string | null
         }
         Insert: {
           attempts?: number
-          code: string
+          code_hash: string
           created_at?: string
           expires_at?: string
           id?: string
           max_attempts?: number
           merchant_id: string
           phone: string
+          request_ip?: unknown
           verified_at?: string | null
         }
         Update: {
           attempts?: number
-          code?: string
+          code_hash?: string
           created_at?: string
           expires_at?: string
           id?: string
           max_attempts?: number
           merchant_id?: string
           phone?: string
+          request_ip?: unknown
           verified_at?: string | null
         }
         Relationships: [
@@ -10903,6 +11249,58 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "merchants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      pin_login_attempts: {
+        Row: {
+          attempted_at: string
+          device_id: string
+          id: string
+          ip_address: unknown
+          location_id: string
+          staff_profile_id: string | null
+          succeeded: boolean
+        }
+        Insert: {
+          attempted_at?: string
+          device_id: string
+          id?: string
+          ip_address?: unknown
+          location_id: string
+          staff_profile_id?: string | null
+          succeeded: boolean
+        }
+        Update: {
+          attempted_at?: string
+          device_id?: string
+          id?: string
+          ip_address?: unknown
+          location_id?: string
+          staff_profile_id?: string | null
+          succeeded?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pin_login_attempts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "location_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pin_login_attempts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pin_login_attempts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "v_location_menu_items"
+            referencedColumns: ["location_id"]
           },
         ]
       }
@@ -12398,6 +12796,13 @@ export type Database = {
             foreignKeyName: "reversals_original_payment_id_fkey"
             columns: ["original_payment_id"]
             isOneToOne: false
+            referencedRelation: "pci_safe_order_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reversals_original_payment_id_fkey"
+            columns: ["original_payment_id"]
+            isOneToOne: false
             referencedRelation: "vw_platform_transactions"
             referencedColumns: ["id"]
           },
@@ -12607,6 +13012,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      security_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          alert_type: string
+          created_at: string
+          details: Json | null
+          device_id: string | null
+          id: string
+          ip_address: unknown
+          location_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          alert_type: string
+          created_at?: string
+          details?: Json | null
+          device_id?: string | null
+          id?: string
+          ip_address?: unknown
+          location_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          alert_type?: string
+          created_at?: string
+          details?: Json | null
+          device_id?: string | null
+          id?: string
+          ip_address?: unknown
+          location_id?: string | null
+        }
+        Relationships: []
       }
       server_sections: {
         Row: {
@@ -13086,6 +13524,7 @@ export type Database = {
           logo_url: string | null
           merchant_id: string
           online_ordering_config: Json | null
+          payment_device_id: string | null
           subdomain: string | null
           theme_config: Json | null
           title: string | null
@@ -13102,6 +13541,7 @@ export type Database = {
           logo_url?: string | null
           merchant_id: string
           online_ordering_config?: Json | null
+          payment_device_id?: string | null
           subdomain?: string | null
           theme_config?: Json | null
           title?: string | null
@@ -13118,6 +13558,7 @@ export type Database = {
           logo_url?: string | null
           merchant_id?: string
           online_ordering_config?: Json | null
+          payment_device_id?: string | null
           subdomain?: string | null
           theme_config?: Json | null
           title?: string | null
@@ -13157,6 +13598,13 @@ export type Database = {
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sites_payment_device_id_fkey"
+            columns: ["payment_device_id"]
+            isOneToOne: false
+            referencedRelation: "location_payment_devices"
             referencedColumns: ["id"]
           },
         ]
@@ -14181,6 +14629,63 @@ export type Database = {
           },
         ]
       }
+      suspension_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          forced: boolean
+          id: string
+          initiated_by_user_id: string | null
+          merchant_id: string
+          open_drawer_sessions: Json
+          open_drawer_sessions_count: number
+          open_orders: Json
+          open_orders_count: number
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          forced?: boolean
+          id?: string
+          initiated_by_user_id?: string | null
+          merchant_id: string
+          open_drawer_sessions?: Json
+          open_drawer_sessions_count?: number
+          open_orders?: Json
+          open_orders_count?: number
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          forced?: boolean
+          id?: string
+          initiated_by_user_id?: string | null
+          merchant_id?: string
+          open_drawer_sessions?: Json
+          open_drawer_sessions_count?: number
+          open_orders?: Json
+          open_orders_count?: number
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suspension_events_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "admin_merchant_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "suspension_events_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_metrics: {
         Row: {
           avg_check: number | null
@@ -14771,10 +15276,14 @@ export type Database = {
           calculated_by: string | null
           config_snapshot: Json | null
           created_at: string | null
+          data_cutoff_at: string | null
+          data_start_after: string | null
           id: string
           location_id: string
           merchant_id: string
+          reconciliation_acknowledged_at: string | null
           rounding_adjustment: number | null
+          sequence_number: number
           session_date: string
           shift_period: string | null
           status: string | null
@@ -14795,10 +15304,14 @@ export type Database = {
           calculated_by?: string | null
           config_snapshot?: Json | null
           created_at?: string | null
+          data_cutoff_at?: string | null
+          data_start_after?: string | null
           id?: string
           location_id: string
           merchant_id: string
+          reconciliation_acknowledged_at?: string | null
           rounding_adjustment?: number | null
+          sequence_number?: number
           session_date: string
           shift_period?: string | null
           status?: string | null
@@ -14819,10 +15332,14 @@ export type Database = {
           calculated_by?: string | null
           config_snapshot?: Json | null
           created_at?: string | null
+          data_cutoff_at?: string | null
+          data_start_after?: string | null
           id?: string
           location_id?: string
           merchant_id?: string
+          reconciliation_acknowledged_at?: string | null
           rounding_adjustment?: number | null
+          sequence_number?: number
           session_date?: string
           shift_period?: string | null
           status?: string | null
@@ -16102,6 +16619,349 @@ export type Database = {
           },
         ]
       }
+      pci_safe_order_payments: {
+        Row: {
+          amount: number | null
+          amount_tendered: number | null
+          approved_at: string | null
+          auth_code: string | null
+          authorization_code: string | null
+          authorized_at: string | null
+          batch_number: string | null
+          captured_at: string | null
+          card_last_four: string | null
+          card_type: string | null
+          cash_discount_applied: boolean | null
+          change_given: number | null
+          covers_items: string[] | null
+          dejavoo_batch_number: string | null
+          dejavoo_response_code: string | null
+          dejavoo_response_message: string | null
+          dejavoo_transaction_type: string | null
+          device_id: string | null
+          discount_portion: number | null
+          dvpaylite_application_type: string | null
+          entry_mode: string | null
+          error_code: string | null
+          error_message: string | null
+          failed_at: string | null
+          gateway_fee: number | null
+          id: string | null
+          initiated_at: string | null
+          is_cash_priced: boolean | null
+          is_returned: boolean | null
+          is_settled: boolean | null
+          is_voided: boolean | null
+          location_id: string | null
+          merchant_id: string | null
+          order_id: string | null
+          original_amount: number | null
+          original_tip_amount: number | null
+          parent_payment_id: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"] | null
+          processed_by_staff_id: string | null
+          processed_by_user_id: string | null
+          processor_name: string | null
+          reference_number: string | null
+          refund_reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          refunded_by: string | null
+          result_code: string | null
+          result_message: string | null
+          retry_count: number | null
+          return_amount: number | null
+          return_auth_code: string | null
+          return_number: string | null
+          return_reason: string | null
+          return_reference_id: string | null
+          return_rrn: string | null
+          returned_at: string | null
+          returned_by: string | null
+          rrn: string | null
+          settled_at: string | null
+          split_count: number | null
+          split_index: number | null
+          split_portion_index: number | null
+          split_total: number | null
+          status: Database["public"]["Enums"]["payment_status"] | null
+          subtotal_portion: number | null
+          tax_portion: number | null
+          terminal_id: string | null
+          terminal_type: Database["public"]["Enums"]["terminal_type"] | null
+          tip_adjusted_at: string | null
+          tip_adjusted_by: string | null
+          tip_amount: number | null
+          total_amount: number | null
+          transaction_id: string | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount?: number | null
+          amount_tendered?: number | null
+          approved_at?: string | null
+          auth_code?: string | null
+          authorization_code?: string | null
+          authorized_at?: string | null
+          batch_number?: string | null
+          captured_at?: string | null
+          card_last_four?: string | null
+          card_type?: string | null
+          cash_discount_applied?: boolean | null
+          change_given?: number | null
+          covers_items?: string[] | null
+          dejavoo_batch_number?: string | null
+          dejavoo_response_code?: string | null
+          dejavoo_response_message?: string | null
+          dejavoo_transaction_type?: string | null
+          device_id?: string | null
+          discount_portion?: number | null
+          dvpaylite_application_type?: string | null
+          entry_mode?: never
+          error_code?: string | null
+          error_message?: string | null
+          failed_at?: string | null
+          gateway_fee?: number | null
+          id?: string | null
+          initiated_at?: string | null
+          is_cash_priced?: boolean | null
+          is_returned?: boolean | null
+          is_settled?: boolean | null
+          is_voided?: boolean | null
+          location_id?: string | null
+          merchant_id?: string | null
+          order_id?: string | null
+          original_amount?: number | null
+          original_tip_amount?: number | null
+          parent_payment_id?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"] | null
+          processed_by_staff_id?: string | null
+          processed_by_user_id?: string | null
+          processor_name?: string | null
+          reference_number?: string | null
+          refund_reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          refunded_by?: string | null
+          result_code?: string | null
+          result_message?: string | null
+          retry_count?: number | null
+          return_amount?: number | null
+          return_auth_code?: string | null
+          return_number?: string | null
+          return_reason?: string | null
+          return_reference_id?: string | null
+          return_rrn?: string | null
+          returned_at?: string | null
+          returned_by?: string | null
+          rrn?: string | null
+          settled_at?: string | null
+          split_count?: number | null
+          split_index?: number | null
+          split_portion_index?: number | null
+          split_total?: number | null
+          status?: Database["public"]["Enums"]["payment_status"] | null
+          subtotal_portion?: number | null
+          tax_portion?: number | null
+          terminal_id?: string | null
+          terminal_type?: Database["public"]["Enums"]["terminal_type"] | null
+          tip_adjusted_at?: string | null
+          tip_adjusted_by?: string | null
+          tip_amount?: number | null
+          total_amount?: number | null
+          transaction_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount?: number | null
+          amount_tendered?: number | null
+          approved_at?: string | null
+          auth_code?: string | null
+          authorization_code?: string | null
+          authorized_at?: string | null
+          batch_number?: string | null
+          captured_at?: string | null
+          card_last_four?: string | null
+          card_type?: string | null
+          cash_discount_applied?: boolean | null
+          change_given?: number | null
+          covers_items?: string[] | null
+          dejavoo_batch_number?: string | null
+          dejavoo_response_code?: string | null
+          dejavoo_response_message?: string | null
+          dejavoo_transaction_type?: string | null
+          device_id?: string | null
+          discount_portion?: number | null
+          dvpaylite_application_type?: string | null
+          entry_mode?: never
+          error_code?: string | null
+          error_message?: string | null
+          failed_at?: string | null
+          gateway_fee?: number | null
+          id?: string | null
+          initiated_at?: string | null
+          is_cash_priced?: boolean | null
+          is_returned?: boolean | null
+          is_settled?: boolean | null
+          is_voided?: boolean | null
+          location_id?: string | null
+          merchant_id?: string | null
+          order_id?: string | null
+          original_amount?: number | null
+          original_tip_amount?: number | null
+          parent_payment_id?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"] | null
+          processed_by_staff_id?: string | null
+          processed_by_user_id?: string | null
+          processor_name?: string | null
+          reference_number?: string | null
+          refund_reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          refunded_by?: string | null
+          result_code?: string | null
+          result_message?: string | null
+          retry_count?: number | null
+          return_amount?: number | null
+          return_auth_code?: string | null
+          return_number?: string | null
+          return_reason?: string | null
+          return_reference_id?: string | null
+          return_rrn?: string | null
+          returned_at?: string | null
+          returned_by?: string | null
+          rrn?: string | null
+          settled_at?: string | null
+          split_count?: number | null
+          split_index?: number | null
+          split_portion_index?: number | null
+          split_total?: number | null
+          status?: Database["public"]["Enums"]["payment_status"] | null
+          subtotal_portion?: number | null
+          tax_portion?: number | null
+          terminal_id?: string | null
+          terminal_type?: Database["public"]["Enums"]["terminal_type"] | null
+          tip_adjusted_at?: string | null
+          tip_adjusted_by?: string | null
+          tip_amount?: number | null
+          total_amount?: number | null
+          transaction_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_payments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "location_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "v_location_menu_items"
+            referencedColumns: ["location_id"]
+          },
+          {
+            foreignKeyName: "order_payments_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "admin_merchant_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_parent_payment_id_fkey"
+            columns: ["parent_payment_id"]
+            isOneToOne: false
+            referencedRelation: "order_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_parent_payment_id_fkey"
+            columns: ["parent_payment_id"]
+            isOneToOne: false
+            referencedRelation: "pci_safe_order_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_parent_payment_id_fkey"
+            columns: ["parent_payment_id"]
+            isOneToOne: false
+            referencedRelation: "vw_platform_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_processed_by_staff_id_fkey"
+            columns: ["processed_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_processed_by_user_id_fkey"
+            columns: ["processed_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_refunded_by_fkey"
+            columns: ["refunded_by"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_returned_by_fkey"
+            columns: ["returned_by"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_tip_adjusted_by_fkey"
+            columns: ["tip_adjusted_by"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_voided_by_fkey"
+            columns: ["voided_by"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_cash_drawer_summary: {
         Row: {
           business_date: string | null
@@ -16319,7 +17179,53 @@ export type Database = {
       }
     }
     Functions: {
+      _assert_order_station_match: {
+        Args: { p_order_id: string; p_station_id: string }
+        Returns: undefined
+      }
+      _check_session_not_locked: {
+        Args: { p_session_id: string }
+        Returns: undefined
+      }
+      _distribute_weighted_with_remainder: {
+        Args: {
+          p_filter_sql: string
+          p_session_id: string
+          p_target_column: string
+          p_total: number
+          p_weight_expr: string
+        }
+        Returns: undefined
+      }
+      _distribute_with_remainder: {
+        Args: {
+          p_filter_sql: string
+          p_session_id: string
+          p_target_column: string
+          p_total: number
+        }
+        Returns: undefined
+      }
+      _idempotency_claim: {
+        Args: { p_key: string; p_op: string }
+        Returns: Json
+      }
+      _idempotency_complete: {
+        Args: { p_key: string; p_op: string; p_result: Json }
+        Returns: undefined
+      }
       accept_online_order: { Args: { p_order_id: string }; Returns: Json }
+      activate_nmi_payment_device: {
+        Args: {
+          p_device_id: string
+          p_provider_gateway_id: string
+          p_provider_merchant_id: string
+          p_public_key: string
+          p_security_key: string
+          p_webhook_secret?: string
+        }
+        Returns: string
+      }
       add_category_to_menu: {
         Args: {
           p_category_id: string
@@ -16377,6 +17283,20 @@ export type Database = {
         }
         Returns: Json
       }
+      add_open_item_v3: {
+        Args: {
+          p_idempotency_key?: string
+          p_is_tax_exempt?: boolean
+          p_item_name: string
+          p_order_id: string
+          p_quantity?: number
+          p_seat_number?: number
+          p_special_instructions?: string
+          p_station_id?: string
+          p_unit_price: number
+        }
+        Returns: Json
+      }
       add_order_item: {
         Args: {
           p_cash_price?: number
@@ -16408,6 +17328,20 @@ export type Database = {
           p_order_item_id: string
           p_price_modifier: number
           p_quantity?: number
+        }
+        Returns: Json
+      }
+      add_order_item_modifier_v2: {
+        Args: {
+          p_idempotency_key?: string
+          p_modifier_group_id: string
+          p_modifier_group_name: string
+          p_modifier_item_id: string
+          p_modifier_name: string
+          p_order_item_id: string
+          p_price_modifier: number
+          p_quantity?: number
+          p_station_id?: string
         }
         Returns: Json
       }
@@ -16453,25 +17387,51 @@ export type Database = {
         }
         Returns: Json
       }
-      add_order_item_v3: {
-        Args: {
-          p_cash_unit_price?: number
-          p_category_name: string
-          p_course_number?: number
-          p_item_name: string
-          p_location_exclusive_item_id: string
-          p_menu_item_id: string
-          p_modifiers?: Json
-          p_order_id: string
-          p_quantity: number
-          p_selected_size_id?: string
-          p_selected_size_name?: string
-          p_size_price_modifier?: number
-          p_special_instructions?: string
-          p_unit_price: number
-        }
-        Returns: Json
-      }
+      add_order_item_v3:
+        | {
+            Args: {
+              p_cash_unit_price?: number
+              p_category_id?: string
+              p_category_name?: string
+              p_course_number?: number
+              p_idempotency_key?: string
+              p_item_name?: string
+              p_location_exclusive_item_id?: string
+              p_menu_id?: string
+              p_menu_item_id?: string
+              p_menu_name?: string
+              p_modifiers?: Json
+              p_order_id: string
+              p_quantity?: number
+              p_seat_number?: number
+              p_selected_size_id?: string
+              p_selected_size_name?: string
+              p_size_price_modifier?: number
+              p_special_instructions?: string
+              p_station_id?: string
+              p_unit_price?: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_cash_unit_price?: number
+              p_category_name: string
+              p_course_number?: number
+              p_item_name: string
+              p_location_exclusive_item_id: string
+              p_menu_item_id: string
+              p_modifiers?: Json
+              p_order_id: string
+              p_quantity: number
+              p_selected_size_id?: string
+              p_selected_size_name?: string
+              p_size_price_modifier?: number
+              p_special_instructions?: string
+              p_unit_price: number
+            }
+            Returns: Json
+          }
       add_order_item_with_course: {
         Args: {
           p_cash_price?: number
@@ -16536,6 +17496,10 @@ export type Database = {
         Returns: Json
       }
       adjust_tips: {
+        Args: { p_adjustments: Json; p_order_id: string; p_staff_id?: string }
+        Returns: Json
+      }
+      adjust_tips_v2: {
         Args: { p_adjustments: Json; p_order_id: string; p_staff_id?: string }
         Returns: Json
       }
@@ -16657,17 +17621,68 @@ export type Database = {
         Args: { p_order_id: string; p_order_item_id: string }
         Returns: undefined
       }
-      apply_refund_to_payment: {
+      apply_refund_to_payment:
+        | {
+            Args: {
+              p_initiated_by?: string
+              p_payment_id: string
+              p_refund_amount: number
+              p_return_auth_code?: string
+              p_return_number?: string
+              p_return_reason?: string
+              p_return_reference_id?: string
+              p_return_rrn?: string
+              p_reversal_type: Database["public"]["Enums"]["reversal_type"]
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_initiated_by?: string
+              p_payment_id: string
+              p_refund_amount: number
+              p_restore_paid_quantity?: boolean
+              p_return_auth_code?: string
+              p_return_number?: string
+              p_return_reason?: string
+              p_return_reference_id?: string
+              p_return_rrn?: string
+              p_reversal_type: Database["public"]["Enums"]["reversal_type"]
+            }
+            Returns: undefined
+          }
+      apply_refund_to_payment_v2: {
         Args: {
+          p_idempotency_key?: string
           p_initiated_by?: string
           p_payment_id: string
           p_refund_amount: number
+          p_restore_paid_quantity?: boolean
           p_return_auth_code?: string
           p_return_number?: string
           p_return_reason?: string
           p_return_reference_id?: string
           p_return_rrn?: string
           p_reversal_type: Database["public"]["Enums"]["reversal_type"]
+          p_station_id?: string
+        }
+        Returns: undefined
+      }
+      apply_refund_to_payment_v3: {
+        Args: {
+          p_idempotency_key?: string
+          p_initiated_by?: string
+          p_payment_id: string
+          p_refund_amount: number
+          p_restore_paid_quantity?: boolean
+          p_return_auth_code?: string
+          p_return_number?: string
+          p_return_reason?: string
+          p_return_reference_id?: string
+          p_return_rrn?: string
+          p_reversal_type: Database["public"]["Enums"]["reversal_type"]
+          p_station_id?: string
+          p_tip_refund_amount?: number
         }
         Returns: undefined
       }
@@ -16679,6 +17694,7 @@ export type Database = {
         Args: { p_approved_by: string; p_session_id: string }
         Returns: Json
       }
+      assert_pci_safe_exports: { Args: never; Returns: undefined }
       assign_device: {
         Args: {
           p_device_id: string
@@ -16705,6 +17721,15 @@ export type Database = {
       }
       bulk_update_order_item_status: {
         Args: {
+          p_order_item_ids: string[]
+          p_staff_id?: string
+          p_status: string
+        }
+        Returns: Json
+      }
+      bulk_update_order_item_status_v2: {
+        Args: {
+          p_idempotency_key?: string
           p_order_item_ids: string[]
           p_staff_id?: string
           p_status: string
@@ -16751,6 +17776,10 @@ export type Database = {
         Returns: Json
       }
       can_modify_item: { Args: { p_order_item_id: string }; Returns: boolean }
+      cancel_merchant_suspension: {
+        Args: { p_initiated_by?: string; p_merchant_id: string }
+        Returns: Json
+      }
       cancel_online_order_by_customer: {
         Args: { p_order_id: string; p_reason?: string; p_session_token: string }
         Returns: Json
@@ -16781,6 +17810,15 @@ export type Database = {
         Args: { required_permission?: string; target_merchant_id: string }
         Returns: boolean
       }
+      check_recent_payment: {
+        Args: {
+          p_amount_cents?: number
+          p_lookback_seconds?: number
+          p_order_id: string
+          p_split_portion_index?: number
+        }
+        Returns: Json
+      }
       check_table_availability: {
         Args: {
           p_date: string
@@ -16788,6 +17826,14 @@ export type Database = {
           p_location_id: string
           p_party_size: number
           p_time: string
+        }
+        Returns: Json
+      }
+      claim_order_v1: {
+        Args: {
+          p_expected_station_id?: string
+          p_order_id: string
+          p_station_id: string
         }
         Returns: Json
       }
@@ -16815,6 +17861,11 @@ export type Database = {
             }
             Returns: Json
           }
+      cleanup_old_order_sequences: {
+        Args: { p_keep_days?: number }
+        Returns: number
+      }
+      cleanup_phone_verifications: { Args: never; Returns: number }
       clear_order_item_instructions: {
         Args: { p_order_item_id: string }
         Returns: Json
@@ -16883,6 +17934,15 @@ export type Database = {
         Returns: Json
       }
       create_next_course: { Args: { p_order_id: string }; Returns: Json }
+      create_nmi_payment_device: {
+        Args: {
+          p_device_label?: string
+          p_environment?: string
+          p_location_id: string
+          p_use_for_online_ordering?: boolean
+        }
+        Returns: string
+      }
       create_order: {
         Args: {
           p_created_by_staff_id?: string
@@ -16903,6 +17963,22 @@ export type Database = {
           p_customer_name: string
           p_customer_phone: string
           p_device_id: string
+          p_location_id: string
+          p_merchant_id: string
+          p_order_type: Database["public"]["Enums"]["order_type"]
+          p_special_instructions: string
+          p_station_id?: string
+          p_table_number: string
+        }
+        Returns: Json
+      }
+      create_order_v3: {
+        Args: {
+          p_created_by_staff_id: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_device_id: string
+          p_idempotency_key?: string
           p_location_id: string
           p_merchant_id: string
           p_order_type: Database["public"]["Enums"]["order_type"]
@@ -16976,6 +18052,51 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_reversal_v2: {
+        Args: {
+          p_amount: number
+          p_approved_by: string
+          p_idempotency_key?: string
+          p_initiated_by: string
+          p_original_payment_id: string
+          p_original_psp_reference: string
+          p_reason_code: Database["public"]["Enums"]["refund_reason_type"]
+          p_reason_description: string
+          p_reversal_reference_id: string
+          p_reversal_type: Database["public"]["Enums"]["reversal_type"]
+        }
+        Returns: {
+          amount: number
+          approved_by: string | null
+          completed_at: string | null
+          emv_data: Json | null
+          failed_at: string | null
+          id: string
+          initiated_by: string | null
+          location_id: string
+          merchant_id: string
+          original_payment_id: string
+          original_psp_reference: string | null
+          processed_at: string | null
+          raw_response: Json | null
+          reason_code: string | null
+          reason_description: string | null
+          requested_at: string
+          response_message: string | null
+          result_code: string | null
+          reversal_psp_reference: string | null
+          reversal_reference_id: string
+          reversal_type: string
+          status: string
+          terminal_response: Json | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reversals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_support_ticket:
         | {
             Args: {
@@ -17009,6 +18130,7 @@ export type Database = {
             Returns: Json
           }
       current_user_id: { Args: never; Returns: string }
+      current_user_org_ids: { Args: never; Returns: string[] }
       debug_pin_test: {
         Args: { p_location_id: string; p_pin_code: string }
         Returns: {
@@ -17055,6 +18177,15 @@ export type Database = {
       }
       duplicate_order_item: {
         Args: { p_order_item_id: string; p_quantity?: number }
+        Returns: Json
+      }
+      duplicate_order_item_v2: {
+        Args: {
+          p_idempotency_key?: string
+          p_order_item_id: string
+          p_quantity?: number
+          p_station_id?: string
+        }
         Returns: Json
       }
       end_station_session: { Args: { p_session_id: string }; Returns: Json }
@@ -17614,6 +18745,15 @@ export type Database = {
         }
         Returns: number
       }
+      get_effective_price: {
+        Args: {
+          p_category_id?: string
+          p_item_id: string
+          p_location_id?: string
+          p_menu_id?: string
+        }
+        Returns: Json
+      }
       get_effective_pricing: {
         Args: { p_location_id: string }
         Returns: {
@@ -17808,6 +18948,10 @@ export type Database = {
           period: string
         }[]
       }
+      get_merchant_drain_status: {
+        Args: { p_merchant_id: string }
+        Returns: Json
+      }
       get_merchant_retention: {
         Args: { p_from: string; p_to: string }
         Returns: {
@@ -17826,6 +18970,19 @@ export type Database = {
           level: number
           role_code: string
           role_name: string
+        }[]
+      }
+      get_nmi_device_credentials: {
+        Args: { p_device_id: string }
+        Returns: {
+          decrypted_security_key: string
+          device_id: string
+          environment: string
+          location_id: string
+          merchant_id: string
+          provider_gateway_id: string
+          provider_merchant_id: string
+          provider_public_key: string
         }[]
       }
       get_onboarding_funnel: {
@@ -17878,6 +19035,10 @@ export type Database = {
           total_transactions: number
         }[]
       }
+      get_payment_terminal_credentials: {
+        Args: { p_terminal_id: string }
+        Returns: string
+      }
       get_peak_hours_heatmap: {
         Args: { p_from: string; p_to: string }
         Returns: {
@@ -17885,6 +19046,15 @@ export type Database = {
           hour: number
           order_count: number
         }[]
+      }
+      get_platform_fees_summary: {
+        Args: {
+          p_location_id?: string
+          p_merchant_id: string
+          p_period_end: string
+          p_period_start: string
+        }
+        Returns: Json
       }
       get_platform_gmv_by_day: {
         Args: { p_from: string; p_to: string }
@@ -17945,6 +19115,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_session_variance_analysis: {
+        Args: { p_session_id: string }
+        Returns: Json
+      }
       get_staff_performance_stats: {
         Args: {
           p_end_date?: string
@@ -17955,6 +19129,18 @@ export type Database = {
         Returns: Json
       }
       get_station_status: { Args: { p_station_id: string }; Returns: Json }
+      get_storefront_payment_config: {
+        Args: { p_location_id: string }
+        Returns: {
+          device_id: string
+          environment: string
+          provider: string
+          provider_public_key: string
+          supports_apple_pay: boolean
+          supports_customer_vault: boolean
+          supports_google_pay: boolean
+        }[]
+      }
       get_support_dashboard_stats: { Args: never; Returns: Json }
       get_table_performance_stats: {
         Args: {
@@ -18117,6 +19303,16 @@ export type Database = {
       is_location_member: { Args: { p_location_id: string }; Returns: boolean }
       is_merchant_admin: { Args: { p_merchant_id: string }; Returns: boolean }
       is_merchant_owner: { Args: { p_merchant_id: string }; Returns: boolean }
+      issue_phone_verification_otp: {
+        Args: {
+          p_code: string
+          p_expires_at?: string
+          p_merchant_id: string
+          p_phone: string
+          p_request_ip?: unknown
+        }
+        Returns: Json
+      }
       link_order_to_session: {
         Args: { p_order_id: string; p_session_id: string; p_staff_id?: string }
         Returns: Json
@@ -18126,13 +19322,19 @@ export type Database = {
         Returns: {
           created_at: string
           device_label: string
-          ftd_key_configured: boolean
+          environment: string
+          has_provider_secret: boolean
+          has_webhook_secret: boolean
           id: string
           is_active: boolean
           last_synced_from_crm_at: string
           location_id: string
           merchant_id: string
           provider: string
+          provider_gateway_id: string
+          provider_merchant_id: string
+          provider_public_key: string
+          status: string
           tpn: string
           updated_at: string
           use_for_online_ordering: boolean
@@ -18167,6 +19369,7 @@ export type Database = {
           p_location_id: string
           p_merchant_id: string
           p_metadata?: Json
+          p_pii_access_type?: string
           p_resource_id?: string
           p_resource_name?: string
           p_resource_type?: string
@@ -18301,6 +19504,26 @@ export type Database = {
         }
         Returns: Json
       }
+      manage_order_discount_v2: {
+        Args: {
+          p_action: string
+          p_applied_to_item_ids?: string[]
+          p_approved_by_staff_id?: string
+          p_discount_id?: string
+          p_discount_name?: string
+          p_discount_type?: string
+          p_discount_value?: number
+          p_idempotency_key?: string
+          p_order_discount_id?: string
+          p_order_id: string
+          p_reason?: string
+          p_source?: string
+          p_staff_id: string
+          p_station_id?: string
+          p_void_reason?: string
+        }
+        Returns: Json
+      }
       mark_course_served: {
         Args: {
           p_course_number: number
@@ -18311,6 +19534,25 @@ export type Database = {
       }
       mark_dlq_replay_success: { Args: { p_id: string }; Returns: undefined }
       mark_stale_stations_offline: { Args: never; Returns: number }
+      merchant_open_drawer_sessions: {
+        Args: { p_merchant_id: string }
+        Returns: {
+          cash_drawer_id: string
+          id: string
+          location_id: string
+          opened_at: string
+        }[]
+      }
+      merchant_open_orders: {
+        Args: { p_merchant_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          location_id: string
+          order_number: string
+          status: string
+        }[]
+      }
       merge_customers: {
         Args: { p_duplicate_ids: string[]; p_primary_id: string }
         Returns: Json
@@ -18347,6 +19589,7 @@ export type Database = {
         }
         Returns: Json
       }
+      ping: { Args: never; Returns: number }
       pos_staff_login:
         | {
             Args: { p_location_id: string; p_pin_code: string }
@@ -18416,6 +19659,15 @@ export type Database = {
         }
         Returns: Json
       }
+      preview_tip_distribution: {
+        Args: {
+          p_location_id: string
+          p_merchant_id: string
+          p_session_date: string
+          p_shift_period?: string
+        }
+        Returns: Json
+      }
       process_cash_payment_full_order: {
         Args: {
           p_amount_tendered: number
@@ -18475,6 +19727,25 @@ export type Database = {
         }
         Returns: Json
       }
+      process_payment_v10: {
+        Args: {
+          p_amount?: number
+          p_amount_tendered?: number
+          p_force_card_pricing?: boolean
+          p_idempotency_key?: string
+          p_item_allocations?: Json
+          p_order_id: string
+          p_payment_method: string
+          p_split_count?: number
+          p_split_portion_index?: number
+          p_staff_id?: string
+          p_station_id?: string
+          p_terminal_id?: string
+          p_terminal_response?: Json
+          p_tip_amount?: number
+        }
+        Returns: Json
+      }
       process_payment_v6: {
         Args: {
           p_amount?: number
@@ -18524,6 +19795,25 @@ export type Database = {
         }
         Returns: Json
       }
+      process_payment_v9: {
+        Args: {
+          p_amount?: number
+          p_amount_tendered?: number
+          p_force_card_pricing?: boolean
+          p_idempotency_key?: string
+          p_item_allocations?: Json
+          p_order_id: string
+          p_payment_method: string
+          p_split_count?: number
+          p_split_portion_index?: number
+          p_staff_id?: string
+          p_station_id?: string
+          p_terminal_id?: string
+          p_terminal_response?: Json
+          p_tip_amount?: number
+        }
+        Returns: Json
+      }
       process_preauth_v1: {
         Args: {
           p_amount: number
@@ -18565,6 +19855,25 @@ export type Database = {
         Args: { p_order_item_ids: string[] }
         Returns: undefined
       }
+      recall_kds_items_v2: {
+        Args: {
+          p_idempotency_key?: string
+          p_order_item_ids: string[]
+          p_target_status?: string
+        }
+        Returns: undefined
+      }
+      reconcile_orders_summary: {
+        Args: { p_order_ids: string[] }
+        Returns: {
+          check_status: string
+          id: string
+          payment_status: string
+          status: string
+          sync_version: number
+          updated_at: string
+        }[]
+      }
       record_cash_operation: {
         Args: {
           p_amount: number
@@ -18579,8 +19888,23 @@ export type Database = {
         }
         Returns: Json
       }
-      record_refund_items: {
-        Args: { p_items: Json; p_reversal_id: string }
+      record_refund_items:
+        | { Args: { p_items: Json; p_reversal_id: string }; Returns: undefined }
+        | {
+            Args: {
+              p_items: Json
+              p_reversal_id: string
+              p_skip_quantity_update?: boolean
+            }
+            Returns: undefined
+          }
+      record_refund_items_v2: {
+        Args: {
+          p_idempotency_key?: string
+          p_items: Json
+          p_reversal_id: string
+          p_skip_quantity_update?: boolean
+        }
         Returns: undefined
       }
       record_session_event: {
@@ -18623,6 +19947,14 @@ export type Database = {
         Args: { p_modifier_id: string }
         Returns: Json
       }
+      remove_order_item_modifier_v2: {
+        Args: {
+          p_idempotency_key?: string
+          p_modifier_id: string
+          p_station_id?: string
+        }
+        Returns: Json
+      }
       remove_order_items_batch: {
         Args: { p_order_item_ids: string[] }
         Returns: Json
@@ -18651,8 +19983,26 @@ export type Database = {
         Args: { p_modifiers: Json; p_order_item_id: string }
         Returns: Json
       }
-      replace_order_item_modifiers_v2: {
-        Args: { p_modifiers: Json; p_order_item_id: string }
+      replace_order_item_modifiers_v2:
+        | {
+            Args: { p_modifiers: Json; p_order_item_id: string }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_idempotency_key?: string
+              p_modifiers: Json
+              p_order_item_id: string
+            }
+            Returns: Json
+          }
+      request_merchant_suspension: {
+        Args: {
+          p_force?: boolean
+          p_initiated_by?: string
+          p_merchant_id: string
+          p_reason?: string
+        }
         Returns: Json
       }
       resend_waitlist_notification: {
@@ -18728,23 +20078,41 @@ export type Database = {
         }
         Returns: Json
       }
-      seat_guests_v3: {
-        Args: {
-          p_create_order?: boolean
-          p_device_id?: string
-          p_guest_name?: string
-          p_guest_phone?: string
-          p_merchant_id: string
-          p_party_size?: number
-          p_reservation_id?: string
-          p_server_staff_id?: string
-          p_staff_id?: string
-          p_station_id?: string
-          p_table_id: string
-          p_waitlist_id?: string
-        }
-        Returns: Json
-      }
+      seat_guests_v3:
+        | {
+            Args: {
+              p_create_order?: boolean
+              p_device_id?: string
+              p_guest_name?: string
+              p_guest_phone?: string
+              p_merchant_id: string
+              p_party_size?: number
+              p_reservation_id?: string
+              p_server_staff_id?: string
+              p_staff_id?: string
+              p_station_id?: string
+              p_table_id: string
+              p_waitlist_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_create_order?: boolean
+              p_device_id?: string
+              p_guest_name?: string
+              p_guest_notes?: string
+              p_guest_phone?: string
+              p_idempotency_key?: string
+              p_party_size: number
+              p_reservation_id?: string
+              p_staff_id?: string
+              p_station_id?: string
+              p_table_ids: string[]
+              p_waitlist_id?: string
+            }
+            Returns: Json
+          }
       seat_reservation: {
         Args: { p_reservation_id: string; p_table_ids?: string[] }
         Returns: Json
@@ -18763,6 +20131,10 @@ export type Database = {
           p_location_id: string
           p_quantity: number
         }
+        Returns: undefined
+      }
+      set_nmi_merchant_provisioned: {
+        Args: { p_device_id: string; p_provider_merchant_id: string }
         Returns: undefined
       }
       set_working_course: {
@@ -18842,6 +20214,24 @@ export type Database = {
         Args: { p_config: Json; p_location_id: string; p_namespace: string }
         Returns: Json
       }
+      update_order_details_v1: {
+        Args: {
+          p_customer_email?: string
+          p_customer_id?: string
+          p_customer_name?: string
+          p_customer_phone?: string
+          p_delivery_address?: string
+          p_notes?: string
+          p_order_id: string
+          p_order_type?: string
+          p_station_id?: string
+          p_update_customer?: boolean
+          p_update_delivery_address?: boolean
+          p_update_notes?: boolean
+          p_update_order_type?: boolean
+        }
+        Returns: Json
+      }
       update_order_item: {
         Args: {
           p_course_number?: number
@@ -18861,6 +20251,14 @@ export type Database = {
         Args: { p_order_item_id: string; p_quantity: number }
         Returns: Json
       }
+      update_order_item_quantity_v3: {
+        Args: {
+          p_idempotency_key?: string
+          p_order_item_id: string
+          p_quantity: number
+        }
+        Returns: Json
+      }
       update_order_item_v2: {
         Args: {
           p_order_item_id: string
@@ -18875,6 +20273,17 @@ export type Database = {
         Args: {
           p_order_item_id: string
           p_quantity?: number
+          p_special_instructions?: string
+          p_unit_price?: number
+        }
+        Returns: Json
+      }
+      update_order_item_v3: {
+        Args: {
+          p_idempotency_key?: string
+          p_order_item_id: string
+          p_quantity?: number
+          p_seat_number?: number
           p_special_instructions?: string
           p_unit_price?: number
         }
@@ -19080,6 +20489,14 @@ export type Database = {
         }
         Returns: Json
       }
+      upsert_terminal_vault_secret: {
+        Args: { p_auth_key: string; p_terminal_id: string }
+        Returns: string
+      }
+      user_belongs_to_merchant: {
+        Args: { p_merchant_id: string }
+        Returns: boolean
+      }
       user_has_location_permission: {
         Args: { p_location_id: string; p_permission_code: string }
         Returns: boolean
@@ -19099,6 +20516,10 @@ export type Database = {
       validate_tip_pool_config: { Args: { p_config_id: string }; Returns: Json }
       verify_employee_daily_tips: {
         Args: { p_id: string; p_verified_by: string }
+        Returns: Json
+      }
+      verify_phone_verification_otp: {
+        Args: { p_code: string; p_merchant_id: string; p_phone: string }
         Returns: Json
       }
       void_order: {
@@ -19180,6 +20601,7 @@ export type Database = {
         | "house_account"
         | "external"
         | "card"
+        | "card_online"
       payment_status:
         | "pending"
         | "processing"
@@ -19453,6 +20875,7 @@ export const Constants = {
         "house_account",
         "external",
         "card",
+        "card_online",
       ],
       payment_status: [
         "pending",
@@ -19554,4 +20977,3 @@ export const Constants = {
     },
   },
 } as const
-

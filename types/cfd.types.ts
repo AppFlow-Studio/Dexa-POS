@@ -106,6 +106,12 @@ export interface CFDPayload {
     presetPercentages: number[] // e.g., [15, 18, 20, 25]
     allowCustom: boolean
     maxTipPercentage?: number // Cap on custom tip as % of subtotal (default 100)
+    // Optional platform tip surcharge baked into displayed amounts (P1).
+    // When > 0, preset chips and custom-tip math show
+    // `subtotal × pct × (1 + tipSurchargePercentage / 100)` — customer
+    // sees only the final marked-up number. Backend extracts the
+    // surcharge silently into order_payments.tip_fee.
+    tipSurchargePercentage?: number
   }
 
   carouselImages?: string[]

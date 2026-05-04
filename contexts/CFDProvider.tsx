@@ -1771,11 +1771,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       setActiveScreenState('tip_selection')
       setActivePaymentMethod(paymentMethod ?? null)
 
+      const tipSurchargePct =
+        useStoreSettingsStore.getState().selectedStore?.tip_surcharge_percentage ?? 0
       const config = {
         subtotalForTip: Math.round(currentBase * 100), // CONVERT TO CENTS
         presetPercentages: presetPercentages || tipPresetPercentages,
         allowCustom: tipsConfig.allowCustom ?? true,
-        maxTipPercentage: tipsConfig.maxTipPercentage ?? 100
+        maxTipPercentage: tipsConfig.maxTipPercentage ?? 100,
+        tipSurchargePercentage: tipSurchargePct,
       }
       tipConfigRef.current = config
       controllerRef.current?.showTipSelection(

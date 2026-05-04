@@ -1,6 +1,9 @@
 import { Switch } from "@/components/ui/switch";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { toastService } from "@/lib/toastService";
 import { colors } from "@/lib/theme";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   Check,
   ChevronDown,
@@ -9,7 +12,7 @@ import {
   MessageSquare,
   Send,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ScrollView,
   Text,
@@ -24,8 +27,44 @@ const PaymentSystemsScreen = () => {
   const textToPayEnabled = useLocationConfigStore(s => s.config.payment.textToPayEnabled);
   const updateConfig = useLocationConfigStore(s => s.updateConfig);
 
+  const selectedStore = useStoreSettingsStore(s => s.selectedStore);
+  const setSelectedStore = useStoreSettingsStore(s => s.setSelectedStore);
+  const supabase = useSupabaseClient();
+
   // Local state for the discount text input (allows partial edits like "4.")
   const [discountText, setDiscountText] = useState(dualPricingCashDiscountPercent.toString());
+  const [tipSurchargeText, setTipSurchargeText] = useState(
+    (selectedStore?.tip_surcharge_percentage ?? 0).toString(),
+  );
+
+  useEffect(() => {
+    setTipSurchargeText((selectedStore?.tip_surcharge_percentage ?? 0).toString());
+  }, [selectedStore?.id, selectedStore?.tip_surcharge_percentage]);
+
+  const persistTipSurcharge = async (value: number) => {
+    if (!selectedStore?.id) return;
+    if (value < 0 || value > 50 || isNaN(value)) {
+      toastService.show({
+        title: "Invalid percentage",
+        message: "Tip surcharge must be between 0 and 50.",
+        type: "error",
+      });
+      return;
+    }
+    const { error } = await supabase
+      .from("locations")
+      .update({ tip_surcharge_percentage: value })
+      .eq("id", selectedStore.id);
+    if (error) {
+      toastService.show({
+        title: "Save failed",
+        message: error.message,
+        type: "error",
+      });
+      return;
+    }
+    setSelectedStore({ ...selectedStore, tip_surcharge_percentage: value });
+  };
 
   // Local UI state
   const [textToPayTestSent, setTextToPayTestSent] = useState(false);
@@ -141,6 +180,28 @@ const PaymentSystemsScreen = () => {
                         }}
                         keyboardType="decimal-pad"
                         placeholder="4.0"
+                        placeholderTextColor={colors.muted}
+                        style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 16, fontWeight: "bold", width: 80, textAlign: "center" }}
+                      />
+                      <Text style={{ color: colors.heading, fontSize: 16 }}>%</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Tip Surcharge % (Card)</Text>
+                    <Text style={{ color: colors.muted, fontSize: 10, marginBottom: 8 }}>
+                      Added on top of card tips. Customer-invisible — the marked-up tip is the only number shown.
+                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <TextInput
+                        value={tipSurchargeText}
+                        onChangeText={setTipSurchargeText}
+                        onEndEditing={() => {
+                          const parsed = parseFloat(tipSurchargeText);
+                          if (!isNaN(parsed)) persistTipSurcharge(parsed);
+                        }}
+                        keyboardType="decimal-pad"
+                        placeholder="0.0"
                         placeholderTextColor={colors.muted}
                         style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 16, fontWeight: "bold", width: 80, textAlign: "center" }}
                       />

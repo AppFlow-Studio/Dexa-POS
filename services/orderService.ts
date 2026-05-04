@@ -440,8 +440,10 @@ export class OrderService {
     const { data, error } = await rpcWithIdempotency<ProcessPaymentResult>(
       client,
       "process_payment",
-      "process_payment_v8",
+      // Fallback (flag off): v9 — Cat-B idempotency without platform fees.
+      // Primary  (flag on): v10 — adds dual_pricing_fee / tip_fee tracking.
       "process_payment_v9",
+      "process_payment_v10",
       params,
       {
         deadline: DEADLINES.paymentRpc,
@@ -544,17 +546,25 @@ export class OrderService {
       reason?: string;
       initiatedBy?: string;
     },
-    options?: { restorePaidQuantity?: boolean },
+    options?: {
+      restorePaidQuantity?: boolean;
+      /** Subtotal portion of refund (defaults to refundAmount). Pass when
+       *  splitting tip vs subtotal so v3 can decompose tip_fee correctly. */
+      tipRefundAmount?: number;
+    },
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await rpcWithIdempotency(
       client,
       "apply_refund_to_payment",
-      "apply_refund_to_payment",
+      // Fallback: v2 (no platform-fee fields).
+      // Primary:  v3 (proportional refunded_dual_pricing_fee / refunded_tip_fee).
       "apply_refund_to_payment_v2",
+      "apply_refund_to_payment_v3",
       {
         p_payment_id: paymentId,
         p_refund_amount: refundAmount,
         p_reversal_type: reversalType,
+        p_tip_refund_amount: options?.tipRefundAmount ?? 0,
         p_return_rrn: returnDetails?.rrn ?? null,
         p_return_auth_code: returnDetails?.authCode ?? null,
         p_return_reference_id: returnDetails?.referenceId ?? null,

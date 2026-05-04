@@ -1,6 +1,7 @@
 import { ToastRenderer, useToast } from '@/contexts/ToastContext'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { useOrderDetailsFetch } from '@/hooks/orders/useOrderDetailsFetch'
+import { OrderDetailMerchantBreakdown } from '@/components/orders/OrderDetailMerchantBreakdown'
 import {
   useRefundMutation,
   type PerPaymentRefundDetail
@@ -107,6 +108,14 @@ interface PaymentRowData {
   changeGiven?: number
   isPreAuth?: boolean
   status?: string
+  // Platform-fee tracking (manager-only breakdown — never customer-facing).
+  dual_pricing_fee?: number
+  tip_fee?: number
+  refunded_dual_pricing_fee?: number
+  refunded_tip_fee?: number
+  original_tip_fee?: number | null
+  dual_pricing_percentage_snapshot?: number
+  tip_surcharge_percentage_snapshot?: number
 }
 
 type RightPaneView = 'summary' | 'refund' | 'tipAdjust'
@@ -1066,6 +1075,16 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                             </View>
                           )
                         })()}
+
+                      {/* Manager-only platform-fee breakdown — never shown to
+                          customer. Component returns null for non-managers AND
+                          for payments with zero fees (cash, no surcharge). */}
+                      <OrderDetailMerchantBreakdown
+                        amount={payment.orderAmount}
+                        tipAmount={payment.tipAmount}
+                        dualPricingFee={payment.dual_pricing_fee}
+                        tipFee={payment.tip_fee}
+                      />
                     </View>
                   )}
 
@@ -3911,7 +3930,14 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           amountTendered: payment.transactionDetails?.amountTendered,
           changeGiven: payment.transactionDetails?.changeGiven,
           isPreAuth: payment.isPreAuth,
-          status: payment.status
+          status: payment.status,
+          dual_pricing_fee: payment.dual_pricing_fee,
+          tip_fee: payment.tip_fee,
+          refunded_dual_pricing_fee: payment.refunded_dual_pricing_fee,
+          refunded_tip_fee: payment.refunded_tip_fee,
+          original_tip_fee: payment.original_tip_fee,
+          dual_pricing_percentage_snapshot: payment.dual_pricing_percentage_snapshot,
+          tip_surcharge_percentage_snapshot: payment.tip_surcharge_percentage_snapshot,
         })
       })
     }

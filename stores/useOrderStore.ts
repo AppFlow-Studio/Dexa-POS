@@ -2509,13 +2509,13 @@ const syncPaymentToBackend = async (
 
     const stationIdForRpc =
       useStoreSettingsStore.getState().selectedStation?.id ?? null;
-    // TEST DELETE AFTER
-    await new Promise((r) => setTimeout(r, 25_000));
     const { data, error } = await rpcWithIdempotency<any>(
       supabase,
       "process_payment",
-      "process_payment_v8",
+      // Fallback (flag off): v9 — Cat-B idempotency, no platform fees.
+      // Primary  (flag on): v10 — adds dual_pricing_fee / tip_fee tracking.
       "process_payment_v9",
+      "process_payment_v10",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -13635,6 +13635,16 @@ export const useOrderStore = create<OrderState>()(
                     cashSavings,
                     subtotal_portion: p.subtotal_portion ?? undefined,
                     tax_portion: p.tax_portion ?? undefined,
+                    dual_pricing_fee: (p as any).dual_pricing_fee ?? undefined,
+                    tip_fee: (p as any).tip_fee ?? undefined,
+                    refunded_dual_pricing_fee:
+                      (p as any).refunded_dual_pricing_fee ?? undefined,
+                    refunded_tip_fee: (p as any).refunded_tip_fee ?? undefined,
+                    original_tip_fee: (p as any).original_tip_fee ?? undefined,
+                    dual_pricing_percentage_snapshot:
+                      (p as any).dual_pricing_percentage_snapshot ?? undefined,
+                    tip_surcharge_percentage_snapshot:
+                      (p as any).tip_surcharge_percentage_snapshot ?? undefined,
                     splitInfo,
                     itemsCovered,
                     status: p.is_voided
