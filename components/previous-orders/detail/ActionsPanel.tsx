@@ -5,6 +5,7 @@ import {
   CheckCircle,
   CreditCard,
   FileText,
+  LogIn,
   Printer,
   RefreshCcw,
   RotateCcw,
@@ -22,9 +23,13 @@ interface ActionsPanelProps {
   onCloseCheck: () => void
   onVoidOrder: () => void
   onNotes: () => void
+  onClaim: () => void
   isClosingCheck?: boolean
   isReopeningCheck?: boolean
   isVoiding?: boolean
+  isClaiming?: boolean
+  isForeign?: boolean
+  ownerLabel?: string
 }
 
 const ActionsPanel: React.FC<ActionsPanelProps> = ({
@@ -36,13 +41,17 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   onCloseCheck,
   onVoidOrder,
   onNotes,
+  onClaim,
   isClosingCheck = false,
   isReopeningCheck = false,
-  isVoiding = false
+  isVoiding = false,
+  isClaiming = false,
+  isForeign = false,
+  ownerLabel
 }) => {
-  const [confirmAction, setConfirmAction] = useState<'void' | 'close' | null>(
-    null
-  )
+  const [confirmAction, setConfirmAction] = useState<
+    'void' | 'close' | 'claim' | null
+  >(null)
 
   const canRefund = useMemo(() => {
     if (order.order_status === 'refunded') return false
@@ -64,10 +73,28 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   const canCloseCheck =
     order.paid_status === 'Paid' && order.check_status !== 'Closed'
   const isVoided = order.order_status === 'void'
-  const anyLoading = isClosingCheck || isReopeningCheck || isVoiding
+  const anyLoading =
+    isClosingCheck || isReopeningCheck || isVoiding || isClaiming
 
   return (
     <View style={{ marginTop: 16, gap: 10 }}>
+      {/* Take Over Order — only when foreign-owned */}
+      {isForeign && (
+        <ActionButton
+          icon={
+            isClaiming ? (
+              <ActivityIndicator size='small' color={colors.teal} />
+            ) : (
+              <LogIn color={colors.teal} size={18} />
+            )
+          }
+          label={isClaiming ? 'Taking over…' : 'Take Over Order'}
+          onPress={() => setConfirmAction('claim')}
+          variant='teal'
+          disabled={anyLoading}
+        />
+      )}
+
       {/* Print Receipt - always visible */}
       <ActionButton
         icon={<Printer color={colors.onSolid} size={18} />}
@@ -185,6 +212,21 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         title='Close Check'
         description='This will close the check for this order. The order will be marked as finalized.'
         confirmText='Close Check'
+        variant='destructive'
+      />
+
+      <ConfirmationModal
+        isOpen={confirmAction === 'claim'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => {
+          setConfirmAction(null)
+          onClaim()
+        }}
+        title='Take Over Order'
+        description={`This will transfer ownership to your station${
+          ownerLabel ? ` (currently ${ownerLabel})` : ''
+        }. The other station will switch to read-only.`}
+        confirmText='Take Over'
         variant='destructive'
       />
     </View>
