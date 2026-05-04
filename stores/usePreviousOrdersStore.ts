@@ -72,7 +72,25 @@ function _isFinalState(profile: OrderProfile): boolean {
 }
 
 const HISTORY_REFRESH_COALESCE_MS = 4000;
+const SET_DATE_WINDOW_DEBOUNCE_MS = 200;
 let refreshPreviousOrdersInFlight: Promise<void> | null = null;
+let _setDateWindowDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Trailing-edge debounce wrapper around `refreshPreviousOrders`. Used by
+ * `setDateWindow` so rapid pill taps don't fire multiple RPC + fetch passes.
+ * Module-level (not store-level) so the timer survives `set()` calls and a
+ * single in-flight timer is shared across all callers.
+ */
+const _scheduleDebouncedRefresh = () => {
+  if (_setDateWindowDebounceTimer) clearTimeout(_setDateWindowDebounceTimer);
+  _setDateWindowDebounceTimer = setTimeout(() => {
+    _setDateWindowDebounceTimer = null;
+    void usePreviousOrdersStore
+      .getState()
+      .refreshPreviousOrders({ force: true });
+  }, SET_DATE_WINDOW_DEBOUNCE_MS);
+};
 
 // Global client reference
 let _supabaseClient: SupabaseClient | null = null;
@@ -298,7 +316,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         _isLoadingMore: false,
         newOrdersCount: 0,
       });
-      void get().refreshPreviousOrders({ force: true });
+      // Trailing-edge debounce: rapid pill taps (Today → Yesterday → Last 7
+      // → Yesterday) only fire one refetch for the final selection. UI
+      // updates immediately above; the network call is what we collapse.
+      _scheduleDebouncedRefresh();
     },
 
     addOrderToHistory: (order: OrderProfile) => {
@@ -554,27 +575,17 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           }
         }
 
-        // Strategy 3: Plain JS Date (absolute last resort — no dependencies)
+        // No Strategy 3 fallback. The plain-JS `toLocaleString` round-trip
+        // produces *device-local* midnight when the device timezone differs
+        // from the location timezone (the parsed string loses TZ info), which
+        // silently buckets orders into the wrong day. Luxon is bundled, so
+        // Strategy 2 is reliable; if both fail, surface the failure rather
+        // than render the wrong data.
         if (!startTs || !endTs) {
-          const store = useStoreSettingsStore.getState().selectedStore;
-          const tz = store?.timezone || 'America/New_York';
-          const rollover = store?.business_day_start_hour ?? 0;
-          // Get current time in merchant timezone using Intl
-          const nowStr = new Date().toLocaleString('en-US', { timeZone: tz });
-          const localNow = new Date(nowStr);
-          const localHour = localNow.getHours();
-          // Compute business day start in local time
-          const dayStart = new Date(localNow);
-          dayStart.setHours(rollover, 0, 0, 0);
-          if (localHour < rollover) {
-            dayStart.setDate(dayStart.getDate() - 1);
-          }
-          const dayEnd = new Date(dayStart);
-          dayEnd.setDate(dayEnd.getDate() + 1);
-          // Convert back to UTC ISO strings (approximate — Intl round-trip)
-          startTs = dayStart.toISOString();
-          endTs = dayEnd.toISOString();
-          console.log(`[PreviousOrders] 🔧 Using JS Date fallback bounds: ${startTs} → ${endTs}`);
+          console.error(
+            '[PreviousOrders] Both RPC and Luxon bounds resolution failed — aborting fetch.',
+          );
+          return;
         }
 
         // Cache resolved bounds for broadcast guard + loadMore
@@ -1161,6 +1172,31 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           checkStatus: profile.check_status || existing.checkStatus,
         });
       } else if (_isFinalState(profile)) {
+        // Bounds gate: only add to history if the order falls within the
+        // currently-rendered date window. Without this, an order that becomes
+        // final right now (today's business day) would land in the user's
+        // Yesterday/Last-7-days view and quietly inflate counts. Skipping the
+        // write also avoids re-running the buildOrderLookupMap pass on busy
+        // stations broadcasting throughout the day.
+        const dateWindow = get().dateWindow;
+        const startTs = dateWindow?._resolvedStartTs;
+        const endTs = dateWindow?._resolvedEndTs;
+        // Prefer `created_at` directly off the raw broadcast — it's the
+        // canonical timestamp. Fall back to `opened_at` from the transformed
+        // profile (sometimes equal to created_at, sometimes set later for
+        // dine-in flows).
+        const broadcastCreatedAt =
+          (broadcastOrder as { created_at?: string }).created_at ?? null;
+        const createdAt = broadcastCreatedAt ?? profile.opened_at;
+        if (startTs && endTs && createdAt) {
+          if (createdAt < startTs || createdAt >= endTs) {
+            if (__DEV__)
+              console.log(
+                `[PreviousOrders] broadcast outside window — skipping ${dbOrderId} (${createdAt} ∉ [${startTs}, ${endTs}))`,
+              );
+            return;
+          }
+        }
         get().addOrderToHistory(profile);
       }
     },
