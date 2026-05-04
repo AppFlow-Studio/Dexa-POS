@@ -1,20 +1,29 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
-import { RefundService } from "@/services/refundService";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import type {
+    CartItem,
+    OrderProfile,
+    OrderProfilePayment,
+    PreviousOrder,
+} from "@/lib/types";
 import { getIsOnline } from "@/services/offlineSyncService";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { RefundService } from "@/services/refundService";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { PrinterService } from "@/services/printing/PrinterService";
-import { orderHistoryKeys } from "./useOrderHistory";
-import { applyOptimisticPatch } from "./applyOptimisticPatch";
-import type { RefundReasonType, RefundRequest, ReversalRecord, OrderRefundItemRecord } from "@/types/refunds";
-import type { OrderProfile, OrderProfilePayment, PreviousOrder, CartItem } from "@/lib/types";
+import type {
+    OrderRefundItemRecord,
+    RefundReasonType,
+    RefundRequest,
+    ReversalRecord,
+} from "@/types/refunds";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import { applyOptimisticPatch } from "./applyOptimisticPatch";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -37,7 +46,11 @@ export type RefundMutationInput =
       totalAmount: number;
       reason: string;
       perPaymentDetails: PerPaymentRefundDetail[];
-      selectedItems: { itemId: string; quantity: number; paymentIndex?: number }[];
+      selectedItems: {
+        itemId: string;
+        quantity: number;
+        paymentIndex?: number;
+      }[];
       orderId: string; // local store key
       dbOrderId: string;
       paymentTerminalId: string;
@@ -87,14 +100,18 @@ function buildAndApplyRefundPatch(input: RefundMutationInput): void {
   const orderState = useOrderStore.getState();
   const localKey = orderState.dbOrderIdIndex[input.dbOrderId] ?? input.orderId;
   const activeOrder = orderState.ordersById[localKey];
-  const prevOrder = usePreviousOrdersStore.getState().getOrderById(input.orderId)
-    ?? usePreviousOrdersStore.getState().getOrderById(input.dbOrderId);
-  const currentPayments: OrderProfilePayment[] = activeOrder?.payments || prevOrder?.payments || [];
+  const prevOrder =
+    usePreviousOrdersStore.getState().getOrderById(input.orderId) ??
+    usePreviousOrdersStore.getState().getOrderById(input.dbOrderId);
+  const currentPayments: OrderProfilePayment[] =
+    activeOrder?.payments || prevOrder?.payments || [];
 
   // Build patched payments with updated refundedAmount
   const patchedPayments = currentPayments.map((p) => {
     const detail = input.perPaymentDetails.find(
-      (d) => d.dbPaymentId === p.db_payment_id || d.paymentIndex === currentPayments.indexOf(p)
+      (d) =>
+        d.dbPaymentId === p.db_payment_id ||
+        d.paymentIndex === currentPayments.indexOf(p),
     );
     if (!detail) return p;
     const newRefundedAmount = (p.refundedAmount || 0) + detail.totalRefund;
@@ -102,66 +119,86 @@ function buildAndApplyRefundPatch(input: RefundMutationInput): void {
     // Mark voided for full refunds so selector uses frontend calculator
     // instead of stale optimistic amount_due
     if (input.type === "full" && isFullyRefunded) {
-      return { ...p, refundedAmount: newRefundedAmount, refundedAt: now, isVoided: true, status: p.status };
+      return {
+        ...p,
+        refundedAmount: newRefundedAmount,
+        refundedAt: now,
+        isVoided: true,
+        status: p.status,
+      };
     }
     return { ...p, refundedAmount: newRefundedAmount, refundedAt: now };
   });
 
   // Build new reversal records
-  const newReversals: ReversalRecord[] = input.perPaymentDetails.map((detail) => ({
-    id: `temp_${Date.now()}_${detail.paymentIndex}`,
-    original_payment_id: detail.dbPaymentId || "",
-    original_psp_reference: null,
-    reversal_reference_id: detail.referenceId || null,
-    merchant_id: "",
-    location_id: "",
-    reversal_type: input.type === "full" ? "refund" as const : "partial_refund" as const,
-    amount: detail.totalRefund,
-    reason_code: toRefundReasonType(input.reason),
-    reason_description: input.reason,
-    status: "completed" as const,
-    initiated_by: staffId,
-    approved_by: null,
-    requested_at: now,
-    completed_at: now,
-    failed_at: null,
-  }));
+  const newReversals: ReversalRecord[] = input.perPaymentDetails.map(
+    (detail) => ({
+      id: `temp_${Date.now()}_${detail.paymentIndex}`,
+      original_payment_id: detail.dbPaymentId || "",
+      original_psp_reference: null,
+      reversal_reference_id: detail.referenceId || null,
+      merchant_id: "",
+      location_id: "",
+      reversal_type:
+        input.type === "full"
+          ? ("refund" as const)
+          : ("partial_refund" as const),
+      amount: detail.totalRefund,
+      reason_code: toRefundReasonType(input.reason),
+      reason_description: input.reason,
+      status: "completed" as const,
+      initiated_by: staffId,
+      approved_by: null,
+      requested_at: now,
+      completed_at: now,
+      failed_at: null,
+    }),
+  );
 
   // Build order_refund_items for item refunds
-  const newRefundItems: OrderRefundItemRecord[] = input.type === "items"
-    ? input.selectedItems.map((item) => ({
-        id: `temp_${Date.now()}_${item.itemId}`,
-        reversal_id: newReversals[0]?.id || "",
-        order_item_id: item.itemId,
-        quantity_refunded: item.quantity,
-        unit_price_refunded: 0,
-        subtotal_refunded: 0,
-        tax_refunded: 0,
-        total_refunded: 0,
-        refund_reason: toRefundReasonType(input.reason),
-        created_at: now,
-      }))
-    : [];
+  const newRefundItems: OrderRefundItemRecord[] =
+    input.type === "items"
+      ? input.selectedItems.map((item) => ({
+          id: `temp_${Date.now()}_${item.itemId}`,
+          reversal_id: newReversals[0]?.id || "",
+          order_item_id: item.itemId,
+          quantity_refunded: item.quantity,
+          unit_price_refunded: 0,
+          subtotal_refunded: 0,
+          tax_refunded: 0,
+          total_refunded: 0,
+          refund_reason: toRefundReasonType(input.reason),
+          created_at: now,
+        }))
+      : [];
 
   // Build patched items (increment refundedQuantity for item refunds)
   const currentItems = activeOrder?.items || prevOrder?.items || [];
-  const patchedItems = input.type === "items"
-    ? currentItems.map((item) => {
-        const refundInfo = input.selectedItems.find((si) => si.itemId === item.id);
-        if (!refundInfo) return item;
-        return {
-          ...item,
-          refundedQuantity: (item.refundedQuantity || 0) + refundInfo.quantity,
-        };
-      })
-    : currentItems;
+  const patchedItems =
+    input.type === "items"
+      ? currentItems.map((item) => {
+          const refundInfo = input.selectedItems.find(
+            (si) => si.itemId === item.id,
+          );
+          if (!refundInfo) return item;
+          return {
+            ...item,
+            refundedQuantity:
+              (item.refundedQuantity || 0) + refundInfo.quantity,
+          };
+        })
+      : currentItems;
 
-  const existingReversals = activeOrder?.reversals || prevOrder?.reversals || [];
-  const existingRefundItems = activeOrder?.order_refund_items || prevOrder?.order_refund_items || [];
+  const existingReversals =
+    activeOrder?.reversals || prevOrder?.reversals || [];
+  const existingRefundItems =
+    activeOrder?.order_refund_items || prevOrder?.order_refund_items || [];
 
   // Calculate new amounts
-  const currentAmountPaid = activeOrder?.amount_paid ?? prevOrder?.amount_paid ?? 0;
-  const currentAmountDue = activeOrder?.amount_due ?? prevOrder?.amount_due ?? 0;
+  const currentAmountPaid =
+    activeOrder?.amount_paid ?? prevOrder?.amount_paid ?? 0;
+  const currentAmountDue =
+    activeOrder?.amount_due ?? prevOrder?.amount_due ?? 0;
   const newAmountPaid = currentAmountPaid - input.totalAmount;
   const newAmountDue = currentAmountDue + input.totalAmount;
 
@@ -192,7 +229,12 @@ function buildAndApplyRefundPatch(input: RefundMutationInput): void {
     paymentStatus: isFullyRefunded ? "Refunded" : "Partially Refunded",
   };
 
-  applyOptimisticPatch(input.orderId, input.dbOrderId, orderPatch, previousOrderPatch);
+  applyOptimisticPatch(
+    input.orderId,
+    input.dbOrderId,
+    orderPatch,
+    previousOrderPatch,
+  );
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────────
@@ -208,7 +250,7 @@ export function useRefundMutation() {
       // Check offline status — cash-only refunds can proceed offline
       if (!getIsOnline()) {
         const hasNonCashPayment = input.perPaymentDetails.some(
-          (d) => d.method?.toLowerCase() !== "cash"
+          (d) => d.method?.toLowerCase() !== "cash",
         );
         if (hasNonCashPayment) {
           throw new Error(
@@ -227,9 +269,12 @@ export function useRefundMutation() {
             totalAmount: input.totalAmount,
             reason: input.reason,
             perPaymentDetails: input.perPaymentDetails,
-            selectedItems: input.type === "items" ? input.selectedItems : undefined,
+            selectedItems:
+              input.type === "items" ? input.selectedItems : undefined,
             refundType: input.type,
-            initiatedBy: useEmployeeStore.getState().loggedInEmployee?.profileId || "unknown",
+            initiatedBy:
+              useEmployeeStore.getState().loggedInEmployee?.profileId ||
+              "unknown",
           },
           input.orderId,
         );
@@ -250,7 +295,7 @@ export function useRefundMutation() {
 
       // Mark order as locally mutated to suppress stale own-station broadcasts
       // during the 3-second mutation window (same pattern as addItem/removeItem)
-      useOrderStore.getState().markLocalMutation(input.orderId)
+      useOrderStore.getState().markLocalMutation(input.orderId);
 
       const refundService = new RefundService(supabase);
       const reasonType = toRefundReasonType(input.reason);
@@ -281,37 +326,59 @@ export function useRefundMutation() {
         };
 
         const result = await refundService.processRefund(refundRequest);
-        if (!result.success) {
-          throw new Error(result.error || "Refund failed.");
+        if (result.kind !== "success") {
+          throw new Error(
+            (result.kind === "error" ? result.error : undefined) ||
+              "Refund failed.",
+          );
         }
 
         // Apply optimistic patch immediately
         buildAndApplyRefundPatch(input);
 
         // Print refund ticket to kitchen for items that reached kitchen
-        const printingConfig = useLocationConfigStore.getState().config?.printing;
+        const printingConfig =
+          useLocationConfigStore.getState().config?.printing;
         const selectedStore = useStoreSettingsStore.getState().selectedStore;
         if (printingConfig?.printRefundTickets && selectedStore) {
           const orderState = useOrderStore.getState();
-          const localKey = orderState.dbOrderIdIndex[input.dbOrderId] ?? input.orderId;
+          const localKey =
+            orderState.dbOrderIdIndex[input.dbOrderId] ?? input.orderId;
           const order = orderState.ordersById[localKey];
           if (order) {
             const kitchenItems = input.selectedItems
-              .map(si => order.items.find(i => i.id === si.itemId || i.db_order_item_id === si.itemId))
-              .filter((item): item is CartItem =>
-                item != null && ['sent', 'preparing', 'ready', 'served'].includes(item.kitchen_status ?? '')
+              .map((si) =>
+                order.items.find(
+                  (i) => i.id === si.itemId || i.db_order_item_id === si.itemId,
+                ),
+              )
+              .filter(
+                (item): item is CartItem =>
+                  item != null &&
+                  ["sent", "preparing", "ready", "served"].includes(
+                    item.kitchen_status ?? "",
+                  ),
               );
             if (kitchenItems.length > 0) {
-              PrinterService.printRefundTicket(order, kitchenItems, selectedStore)
-                .catch(err => console.warn('[Refund] Kitchen print failed:', err));
+              PrinterService.printRefundTicket(
+                order,
+                kitchenItems,
+                selectedStore,
+              ).catch((err) =>
+                console.warn("[Refund] Kitchen print failed:", err),
+              );
             }
           }
         }
 
         // Fire-and-forget background sync
         if (input.orderId) {
-          useOrderStore.getState().syncOrderFromBackendComplete(input.orderId)
-            .catch(err => console.warn("[Refund] Background sync failed:", err));
+          useOrderStore
+            .getState()
+            .syncOrderFromBackendComplete(input.orderId)
+            .catch((err) =>
+              console.warn("[Refund] Background sync failed:", err),
+            );
         }
 
         return {
@@ -334,7 +401,9 @@ export function useRefundMutation() {
 
         // Add delay before subsequent refunds to allow terminal to reset
         if (i > 0) {
-          console.log("[Refund] Waiting for terminal to be ready before next refund...");
+          console.log(
+            "[Refund] Waiting for terminal to be ready before next refund...",
+          );
           await new Promise((resolve) => setTimeout(resolve, 3000));
         }
 
@@ -362,10 +431,13 @@ export function useRefundMutation() {
         };
 
         const result = await refundService.processRefund(refundRequest);
-        if (!result.success) {
-          errors.push(result.error || "Refund failed.");
-        } else if (result.error) {
-          warnings.push(result.error);
+        if (result.kind !== "success") {
+          errors.push(
+            (result.kind === "error" ? result.error : undefined) ||
+              "Refund failed.",
+          );
+        } else if (result.data?.error) {
+          warnings.push(result.data.error);
         }
       }
 
@@ -386,19 +458,27 @@ export function useRefundMutation() {
         if (order) {
           const kitchenItems = order.items.filter(
             (item): item is CartItem =>
-              !item.is_voided && ['sent', 'preparing', 'ready', 'served'].includes(item.kitchen_status ?? '')
+              !item.is_voided &&
+              ["sent", "preparing", "ready", "served"].includes(
+                item.kitchen_status ?? "",
+              ),
           );
           if (kitchenItems.length > 0) {
-            PrinterService.printRefundTicket(order, kitchenItems, store)
-              .catch(err => console.warn('[Refund] Kitchen print failed:', err));
+            PrinterService.printRefundTicket(order, kitchenItems, store).catch(
+              (err) => console.warn("[Refund] Kitchen print failed:", err),
+            );
           }
         }
       }
 
       // Fire-and-forget background sync
       if (input.orderId) {
-        useOrderStore.getState().syncOrderFromBackendComplete(input.orderId)
-          .catch(err => console.warn("[Refund] Background sync failed:", err));
+        useOrderStore
+          .getState()
+          .syncOrderFromBackendComplete(input.orderId)
+          .catch((err) =>
+            console.warn("[Refund] Background sync failed:", err),
+          );
       }
 
       return {
@@ -439,7 +519,9 @@ export function useRefundMutation() {
       // PaymentDetailBottomSheet to lose the order reference (shows "Loading order...").
       // The optimistic patch + syncOrderFromBackendComplete already handle the update.
       queryClient.invalidateQueries({ queryKey: ["orderHistory", "list"] });
-      queryClient.invalidateQueries({ queryKey: ["orderHistory", "filterCounts"] });
+      queryClient.invalidateQueries({
+        queryKey: ["orderHistory", "filterCounts"],
+      });
     },
 
     onError: (error: Error) => {

@@ -1,20 +1,28 @@
+import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
+import {
+    getCurrentBusinessDay,
+    type BusinessDayConfig,
+} from "@/lib/businessDay";
 import { derivePaidStatus } from "@/lib/paymentStatus";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
-import type { RefundReasonType, RefundRequest } from "@/types/refunds";
+import { projectToSummary, todayOrdersCache } from "@/stores/todayOrdersCache";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import type {
+    RefundReasonType,
+    RefundRequest,
+    RefundResult,
+    RefundRpcOutcome,
+} from "@/types/refunds";
 import {
-  FetchedOrderData,
-  normalizeFetchedOrder,
-  transformBroadcastToOrder,
+    FetchedOrderData,
+    normalizeFetchedOrder,
+    transformBroadcastToOrder,
 } from "@/utils/orderTransformers";
-import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
-import { getCurrentBusinessDay, type BusinessDayConfig } from "@/lib/businessDay";
-import { todayOrdersCache, projectToSummary } from "@/stores/todayOrdersCache";
 
 /** Metadata passed from fraud guard to tag refund records and audit logs. */
 export interface RefundFraudMetadata {
@@ -42,7 +50,9 @@ function resolveBusinessDayConfig(): BusinessDayConfig | null {
 }
 
 /** DB row id and local order id may both appear in URLs / lookups */
-function buildOrderLookupMap(orders: PreviousOrder[]): Record<string, PreviousOrder> {
+function buildOrderLookupMap(
+  orders: PreviousOrder[],
+): Record<string, PreviousOrder> {
   const lookup: Record<string, PreviousOrder> = {};
   for (const o of orders) {
     if (o.db_order_id) lookup[o.db_order_id] = o;
@@ -51,7 +61,9 @@ function buildOrderLookupMap(orders: PreviousOrder[]): Record<string, PreviousOr
   return lookup;
 }
 
-function _derivePaymentStatus(profile: OrderProfile): PreviousOrder["paymentStatus"] {
+function _derivePaymentStatus(
+  profile: OrderProfile,
+): PreviousOrder["paymentStatus"] {
   const derived = derivePaidStatus(profile);
   if (derived === "Paid") return "Paid";
   if (derived === "Refunded") return "Refunded";
@@ -120,7 +132,6 @@ const toRefundReasonType = (reason: string): RefundReasonType => {
   }
 };
 
-
 const MAX_IN_MEMORY_PREVIOUS_ORDERS = 200;
 const INITIAL_FETCH_SIZE = 30;
 const LOAD_MORE_PAGE_SIZE = 30;
@@ -129,11 +140,11 @@ const LOAD_MORE_COOLDOWN_MS = 2000;
 // Cooldown tracking for onEndReached cascade prevention
 let _lastLoadMoreCompletedAt = 0;
 
-export type DateWindowLabel = 'today' | 'yesterday' | 'last_7_days' | 'custom';
+export type DateWindowLabel = "today" | "yesterday" | "last_7_days" | "custom";
 
 export interface DateWindow {
-  startDate: string | null;  // ISO date string, null = today (server computes)
-  endDate: string | null;    // ISO date string
+  startDate: string | null; // ISO date string, null = today (server computes)
+  endDate: string | null; // ISO date string
   label: DateWindowLabel;
   // Resolved bounds from RPC (cached for broadcast guard + loadMore)
   _resolvedStartTs: string | null;
@@ -143,7 +154,7 @@ export interface DateWindow {
 const DEFAULT_DATE_WINDOW: DateWindow = {
   startDate: null,
   endDate: null,
-  label: 'today',
+  label: "today",
   _resolvedStartTs: null,
   _resolvedEndTs: null,
 };
@@ -171,7 +182,11 @@ interface PreviousOrdersState {
   getOrderById: (orderId: string) => PreviousOrder | undefined;
   searchOrders: (query: string) => PreviousOrder[];
   getOrdersByDate: (date: Date) => PreviousOrder[];
-  setDateWindow: (window: { startDate: string | null; endDate: string | null; label: DateWindowLabel }) => void;
+  setDateWindow: (window: {
+    startDate: string | null;
+    endDate: string | null;
+    label: DateWindowLabel;
+  }) => void;
   refreshPreviousOrders: (opts?: { force?: boolean }) => Promise<void>; // Full refresh from backend
   loadMoreOrders: () => Promise<void>; // Paginated load-more
   checkForNewOrders: () => Promise<number>; // Check for new orders (lightweight)
@@ -185,7 +200,7 @@ interface PreviousOrdersState {
     initiatedByName: string,
     paymentMethod: PaymentType,
     metadata?: RefundFraudMetadata,
-  ) => Promise<void>;
+  ) => Promise<RefundRpcOutcome<RefundResult> | undefined>;
   refundItems: (
     orderId: string,
     items: Array<{ itemId: string; quantity: number; reason: string }>,
@@ -193,7 +208,7 @@ interface PreviousOrdersState {
     initiatedByName: string,
     paymentMethod: PaymentType,
     metadata?: RefundFraudMetadata,
-  ) => Promise<void>;
+  ) => Promise<RefundRpcOutcome<RefundResult> | undefined>;
   getRefundsForOrder: (orderId: string) => RefundRecord[];
   patchPreviousOrder: (orderId: string, patch: Partial<PreviousOrder>) => void;
   _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
@@ -250,10 +265,12 @@ function _transformFetchedOrder(
     refunded:
       profile.paid_status === "Refunded" ||
       (profile.order_status === "refunded" && profile.paid_status !== "Paid") ||
-      (
-        (profile.payments || []).some((p) => p.isVoided === true || p.status === "voided") &&
-        !(profile.payments || []).some((p) => !p.isVoided && p.status === "captured")
-      ),
+      ((profile.payments || []).some(
+        (p) => p.isVoided === true || p.status === "voided",
+      ) &&
+        !(profile.payments || []).some(
+          (p) => !p.isVoided && p.status === "captured",
+        )),
     refundedAmount: 0,
     originalTotal: profile.total_amount || 0,
     payments: profile.payments,
@@ -294,7 +311,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         previousOrders: [],
         _orderLookup: {},
         _currentOffset: 0,
-        _hasMore: false,  // Block loadMore until refresh resolves bounds + sets _hasMore
+        _hasMore: false, // Block loadMore until refresh resolves bounds + sets _hasMore
         _isLoadingMore: false,
         newOrdersCount: 0,
       });
@@ -331,12 +348,16 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       }
 
       // Date window guard: only add if order falls within the current viewed window
-      const { _resolvedStartTs, _resolvedEndTs } = get().dateWindow ?? DEFAULT_DATE_WINDOW;
+      const { _resolvedStartTs, _resolvedEndTs } =
+        get().dateWindow ?? DEFAULT_DATE_WINDOW;
       if (_resolvedStartTs && _resolvedEndTs) {
         const orderCreatedAt = order.opened_at;
         if (orderCreatedAt) {
           const orderTime = new Date(orderCreatedAt).getTime();
-          if (orderTime < new Date(_resolvedStartTs).getTime() || orderTime >= new Date(_resolvedEndTs).getTime()) {
+          if (
+            orderTime < new Date(_resolvedStartTs).getTime() ||
+            orderTime >= new Date(_resolvedEndTs).getTime()
+          ) {
             return; // Order outside current date window
           }
         }
@@ -414,11 +435,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       set((state) => {
         let previousOrders = [...state.previousOrders, previousOrder];
         // Sort newest first and enforce memory cap
-        previousOrders.sort((a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        previousOrders.sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
         if (previousOrders.length > MAX_IN_MEMORY_PREVIOUS_ORDERS) {
-          previousOrders = previousOrders.slice(0, MAX_IN_MEMORY_PREVIOUS_ORDERS);
+          previousOrders = previousOrders.slice(
+            0,
+            MAX_IN_MEMORY_PREVIOUS_ORDERS,
+          );
         }
         return {
           previousOrders,
@@ -430,7 +455,11 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       const locationId = resolveHistoryLocationId();
       const config = resolveBusinessDayConfig();
       if (locationId && config) {
-        todayOrdersCache.upsert(locationId, config, projectToSummary(previousOrder));
+        todayOrdersCache.upsert(
+          locationId,
+          config,
+          projectToSummary(previousOrder),
+        );
       }
     },
 
@@ -503,186 +532,212 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       }
 
       refreshPreviousOrdersInFlight = (async () => {
-      if (__DEV__) console.log("Refreshing previous orders data from backend...");
+        if (__DEV__)
+          console.log("Refreshing previous orders data from backend...");
 
-      try {
-        // Step 1: Resolve business day bounds
-        // Defensive fallback for hot reload (dateWindow may not exist in old store state)
-        const dateWindow = get().dateWindow ?? DEFAULT_DATE_WINDOW;
-        let startTs: string | null = null;
-        let endTs: string | null = null;
-
-        // Strategy 1: Server RPC (authoritative)
         try {
-          const bounds = await OrderService.getBusinessDayBounds(
-            client,
-            locationId,
-            dateWindow.startDate,
-            dateWindow.endDate,
-          );
-          if (bounds) {
-            startTs = bounds.start_ts;
-            endTs = bounds.end_ts;
-            console.log(`[PreviousOrders] ✅ Business day bounds (server): ${startTs} → ${endTs}`);
-          }
-        } catch (rpcErr) {
-          console.warn('[PreviousOrders] RPC get_business_day_bounds failed:', rpcErr);
-        }
+          // Step 1: Resolve business day bounds
+          // Defensive fallback for hot reload (dateWindow may not exist in old store state)
+          const dateWindow = get().dateWindow ?? DEFAULT_DATE_WINDOW;
+          let startTs: string | null = null;
+          let endTs: string | null = null;
 
-        // Strategy 2: Client-side Luxon (if RPC failed)
-        if (!startTs || !endTs) {
+          // Strategy 1: Server RPC (authoritative)
           try {
-            const config = resolveBusinessDayConfig();
-            if (config) {
-              const { getBusinessDayBounds: getLocalBounds, getCurrentBusinessDay: getLocalDay } = require('@/lib/businessDay');
-              if (dateWindow.label === 'today' || !dateWindow.startDate) {
-                const localDay = getLocalDay(config);
-                const localBounds = getLocalBounds(localDay, config);
-                startTs = localBounds.startUtc;
-                endTs = localBounds.endUtc;
-              } else {
-                const localBounds = getLocalBounds(dateWindow.startDate, config);
-                startTs = localBounds.startUtc;
-                endTs = dateWindow.endDate
-                  ? getLocalBounds(dateWindow.endDate, config).endUtc
-                  : localBounds.endUtc;
-              }
-              console.log(`[PreviousOrders] ⚠️ Using Luxon fallback bounds: ${startTs} → ${endTs}`);
+            const bounds = await OrderService.getBusinessDayBounds(
+              client,
+              locationId,
+              dateWindow.startDate,
+              dateWindow.endDate,
+            );
+            if (bounds) {
+              startTs = bounds.start_ts;
+              endTs = bounds.end_ts;
+              console.log(
+                `[PreviousOrders] ✅ Business day bounds (server): ${startTs} → ${endTs}`,
+              );
             }
-          } catch (luxonErr) {
-            console.warn('[PreviousOrders] Luxon fallback failed:', luxonErr);
+          } catch (rpcErr) {
+            console.warn(
+              "[PreviousOrders] RPC get_business_day_bounds failed:",
+              rpcErr,
+            );
           }
-        }
 
-        // Strategy 3: Plain JS Date (absolute last resort — no dependencies)
-        if (!startTs || !endTs) {
-          const store = useStoreSettingsStore.getState().selectedStore;
-          const tz = store?.timezone || 'America/New_York';
-          const rollover = store?.business_day_start_hour ?? 0;
-          // Get current time in merchant timezone using Intl
-          const nowStr = new Date().toLocaleString('en-US', { timeZone: tz });
-          const localNow = new Date(nowStr);
-          const localHour = localNow.getHours();
-          // Compute business day start in local time
-          const dayStart = new Date(localNow);
-          dayStart.setHours(rollover, 0, 0, 0);
-          if (localHour < rollover) {
-            dayStart.setDate(dayStart.getDate() - 1);
+          // Strategy 2: Client-side Luxon (if RPC failed)
+          if (!startTs || !endTs) {
+            try {
+              const config = resolveBusinessDayConfig();
+              if (config) {
+                const {
+                  getBusinessDayBounds: getLocalBounds,
+                  getCurrentBusinessDay: getLocalDay,
+                } = require("@/lib/businessDay");
+                if (dateWindow.label === "today" || !dateWindow.startDate) {
+                  const localDay = getLocalDay(config);
+                  const localBounds = getLocalBounds(localDay, config);
+                  startTs = localBounds.startUtc;
+                  endTs = localBounds.endUtc;
+                } else {
+                  const localBounds = getLocalBounds(
+                    dateWindow.startDate,
+                    config,
+                  );
+                  startTs = localBounds.startUtc;
+                  endTs = dateWindow.endDate
+                    ? getLocalBounds(dateWindow.endDate, config).endUtc
+                    : localBounds.endUtc;
+                }
+                console.log(
+                  `[PreviousOrders] ⚠️ Using Luxon fallback bounds: ${startTs} → ${endTs}`,
+                );
+              }
+            } catch (luxonErr) {
+              console.warn("[PreviousOrders] Luxon fallback failed:", luxonErr);
+            }
           }
-          const dayEnd = new Date(dayStart);
-          dayEnd.setDate(dayEnd.getDate() + 1);
-          // Convert back to UTC ISO strings (approximate — Intl round-trip)
-          startTs = dayStart.toISOString();
-          endTs = dayEnd.toISOString();
-          console.log(`[PreviousOrders] 🔧 Using JS Date fallback bounds: ${startTs} → ${endTs}`);
-        }
 
-        // Cache resolved bounds for broadcast guard + loadMore
-        set({
-          dateWindow: {
-            ...dateWindow,
-            _resolvedStartTs: startTs,
-            _resolvedEndTs: endTs,
-          },
-        });
+          // Strategy 3: Plain JS Date (absolute last resort — no dependencies)
+          if (!startTs || !endTs) {
+            const store = useStoreSettingsStore.getState().selectedStore;
+            const tz = store?.timezone || "America/New_York";
+            const rollover = store?.business_day_start_hour ?? 0;
+            // Get current time in merchant timezone using Intl
+            const nowStr = new Date().toLocaleString("en-US", { timeZone: tz });
+            const localNow = new Date(nowStr);
+            const localHour = localNow.getHours();
+            // Compute business day start in local time
+            const dayStart = new Date(localNow);
+            dayStart.setHours(rollover, 0, 0, 0);
+            if (localHour < rollover) {
+              dayStart.setDate(dayStart.getDate() - 1);
+            }
+            const dayEnd = new Date(dayStart);
+            dayEnd.setDate(dayEnd.getDate() + 1);
+            // Convert back to UTC ISO strings (approximate — Intl round-trip)
+            startTs = dayStart.toISOString();
+            endTs = dayEnd.toISOString();
+            console.log(
+              `[PreviousOrders] 🔧 Using JS Date fallback bounds: ${startTs} → ${endTs}`,
+            );
+          }
 
-        // Step 2: Fetch orders within the business day window
-        const { data: fetchedOrders, error } =
-          await OrderService.getHistoryOrders(
-            client,
-            locationId,
-            INITIAL_FETCH_SIZE,
-            null,
-            startTs,
-            endTs,
+          // Cache resolved bounds for broadcast guard + loadMore
+          set({
+            dateWindow: {
+              ...dateWindow,
+              _resolvedStartTs: startTs,
+              _resolvedEndTs: endTs,
+            },
+          });
+
+          // Step 2: Fetch orders within the business day window
+          const { data: fetchedOrders, error } =
+            await OrderService.getHistoryOrders(
+              client,
+              locationId,
+              INITIAL_FETCH_SIZE,
+              null,
+              startTs,
+              endTs,
+            );
+
+          if (error) {
+            console.error("Failed to fetch previous orders:", error);
+            return;
+          }
+
+          if (!fetchedOrders) return;
+
+          // Transform fetched data into PreviousOrder objects using extracted helper
+          const newPreviousOrders: PreviousOrder[] = fetchedOrders.map(
+            (fo, index) =>
+              _transformFetchedOrder(
+                fo as FetchedOrderData,
+                index,
+                fetchedOrders.length,
+              ),
           );
 
-        if (error) {
-          console.error("Failed to fetch previous orders:", error);
-          return;
-        }
+          // Skip pre-sort: the merged result is sorted below, and the Map merge
+          // loses ordering anyway.
 
-        if (!fetchedOrders) return;
+          const existingPreviousOrders = get().previousOrders;
 
-        // Transform fetched data into PreviousOrder objects using extracted helper
-        const newPreviousOrders: PreviousOrder[] = fetchedOrders.map(
-          (fo, index) => _transformFetchedOrder(fo as FetchedOrderData, index, fetchedOrders.length),
-        );
-
-        // Skip pre-sort: the merged result is sorted below, and the Map merge
-        // loses ordering anyway.
-
-        const existingPreviousOrders = get().previousOrders;
-
-        // Build merge map — filtered when date-bounded, full when not
-        const ordersMap = new Map<string, PreviousOrder>();
-        if (startTs && endTs) {
-          // Filtered merge: only keep existing orders within the current date window.
-          // This drops stale orders from other days while preserving broadcast-added
-          // orders from today (avoids race condition where broadcast arrives mid-refresh).
-          const startTime = new Date(startTs).getTime();
-          const endTime = new Date(endTs).getTime();
-          existingPreviousOrders.forEach((order) => {
-            const key = order.db_order_id || order.orderId;
-            const orderTime = new Date(order.timestamp).getTime();
-            if (orderTime >= startTime && orderTime < endTime) {
+          // Build merge map — filtered when date-bounded, full when not
+          const ordersMap = new Map<string, PreviousOrder>();
+          if (startTs && endTs) {
+            // Filtered merge: only keep existing orders within the current date window.
+            // This drops stale orders from other days while preserving broadcast-added
+            // orders from today (avoids race condition where broadcast arrives mid-refresh).
+            const startTime = new Date(startTs).getTime();
+            const endTime = new Date(endTs).getTime();
+            existingPreviousOrders.forEach((order) => {
+              const key = order.db_order_id || order.orderId;
+              const orderTime = new Date(order.timestamp).getTime();
+              if (orderTime >= startTime && orderTime < endTime) {
+                ordersMap.set(key, order);
+              }
+            });
+          } else {
+            // No date bounds (fallback): full merge to preserve all existing orders
+            existingPreviousOrders.forEach((order) => {
+              const key = order.db_order_id || order.orderId;
               ordersMap.set(key, order);
-            }
-          });
-        } else {
-          // No date bounds (fallback): full merge to preserve all existing orders
-          existingPreviousOrders.forEach((order) => {
+            });
+          }
+
+          // Overlay fetched data — server wins on duplicates
+          newPreviousOrders.forEach((order) => {
             const key = order.db_order_id || order.orderId;
             ordersMap.set(key, order);
           });
-        }
 
-        // Overlay fetched data — server wins on duplicates
-        newPreviousOrders.forEach((order) => {
-          const key = order.db_order_id || order.orderId;
-          ordersMap.set(key, order);
-        });
+          // Convert map values back to an array
+          let mergedPreviousOrders = Array.from(ordersMap.values());
 
-        // Convert map values back to an array
-        let mergedPreviousOrders = Array.from(ordersMap.values());
+          // Sort by timestamp descending (newest first)
+          mergedPreviousOrders.sort(
+            (a, b) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+          );
 
-        // Sort by timestamp descending (newest first)
-        mergedPreviousOrders.sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-        );
+          const newLookup = buildOrderLookupMap(mergedPreviousOrders);
+          const now = Date.now();
+          set({
+            previousOrders: mergedPreviousOrders,
+            newOrdersCount: 0,
+            _orderLookup: newLookup,
+            lastHistoryRefreshAt: now,
+            _lastRefreshLocationId: locationId,
+            // Reset pagination state on refresh
+            _currentOffset: mergedPreviousOrders.length,
+            _hasMore: fetchedOrders.length === INITIAL_FETCH_SIZE,
+            _isLoadingMore: false,
+          });
+          if (__DEV__)
+            console.log(
+              `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded (window: ${dateWindow.label}).`,
+            );
 
-        const newLookup = buildOrderLookupMap(mergedPreviousOrders);
-        const now = Date.now();
-        set({
-          previousOrders: mergedPreviousOrders,
-          newOrdersCount: 0,
-          _orderLookup: newLookup,
-          lastHistoryRefreshAt: now,
-          _lastRefreshLocationId: locationId,
-          // Reset pagination state on refresh
-          _currentOffset: mergedPreviousOrders.length,
-          _hasMore: fetchedOrders.length === INITIAL_FETCH_SIZE,
-          _isLoadingMore: false,
-        });
-        if (__DEV__) console.log(
-          `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded (window: ${dateWindow.label}).`,
-        );
-
-        // Bulk-write to MMKV cache for instant boot rendering (today only)
-        if (dateWindow.label === 'today') {
-          const config = resolveBusinessDayConfig();
-          if (config) {
-            const businessDay = getCurrentBusinessDay(config);
-            todayOrdersCache.writeFromRefresh(locationId, businessDay, mergedPreviousOrders);
-            todayOrdersCache.evictStale(locationId, businessDay);
+          // Bulk-write to MMKV cache for instant boot rendering (today only)
+          if (dateWindow.label === "today") {
+            const config = resolveBusinessDayConfig();
+            if (config) {
+              const businessDay = getCurrentBusinessDay(config);
+              todayOrdersCache.writeFromRefresh(
+                locationId,
+                businessDay,
+                mergedPreviousOrders,
+              );
+              todayOrdersCache.evictStale(locationId, businessDay);
+            }
           }
+        } catch (err) {
+          console.error("Error in refreshPreviousOrders:", err);
+        } finally {
+          refreshPreviousOrdersInFlight = null;
         }
-      } catch (err) {
-        console.error("Error in refreshPreviousOrders:", err);
-      } finally {
-        refreshPreviousOrdersInFlight = null;
-      }
       })();
 
       await refreshPreviousOrdersInFlight;
@@ -702,9 +757,17 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       try {
         // Fetch only the latest 10 orders within current date window (lightweight check)
-        const { _resolvedStartTs, _resolvedEndTs } = get().dateWindow ?? DEFAULT_DATE_WINDOW;
+        const { _resolvedStartTs, _resolvedEndTs } =
+          get().dateWindow ?? DEFAULT_DATE_WINDOW;
         const { data: latestOrders, error } =
-          await OrderService.getHistoryOrders(client, locationId, 10, null, _resolvedStartTs, _resolvedEndTs);
+          await OrderService.getHistoryOrders(
+            client,
+            locationId,
+            10,
+            null,
+            _resolvedStartTs,
+            _resolvedEndTs,
+          );
 
         if (error || !latestOrders) {
           return 0;
@@ -764,9 +827,13 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       if (Date.now() - _lastLoadMoreCompletedAt < LOAD_MORE_COOLDOWN_MS) return;
 
       // Block pagination until date bounds are resolved (refresh must complete first)
-      const { _resolvedStartTs, _resolvedEndTs } = get().dateWindow ?? DEFAULT_DATE_WINDOW;
+      const { _resolvedStartTs, _resolvedEndTs } =
+        get().dateWindow ?? DEFAULT_DATE_WINDOW;
       if (!_resolvedStartTs || !_resolvedEndTs) {
-        if (__DEV__) console.log('[loadMoreOrders] Skipped — waiting for date bounds to resolve');
+        if (__DEV__)
+          console.log(
+            "[loadMoreOrders] Skipped — waiting for date bounds to resolve",
+          );
         return;
       }
 
@@ -779,7 +846,6 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       set({ _isLoadingMore: true });
 
       try {
-
         const { data, error, hasMore } =
           await OrderService.getHistoryOrdersPaginated(
             client,
@@ -796,8 +862,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           return;
         }
 
-        const newOrders = data.map(
-          (fo, index) => _transformFetchedOrder(fo as FetchedOrderData, index, data.length),
+        const newOrders = data.map((fo, index) =>
+          _transformFetchedOrder(fo as FetchedOrderData, index, data.length),
         );
 
         // Deduplicate against existing previousOrders
@@ -813,7 +879,11 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         });
 
         if (uniqueNewOrders.length === 0) {
-          set({ _hasMore: hasMore, _currentOffset: _currentOffset + data.length, _isLoadingMore: false });
+          set({
+            _hasMore: hasMore,
+            _currentOffset: _currentOffset + data.length,
+            _isLoadingMore: false,
+          });
           return;
         }
 
@@ -873,37 +943,53 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           payment_terminal: station?.payment_terminal || undefined,
           stationId: station?.id,
           metadata: metadata?.fraudFlags
-            ? { fraud_flags: metadata.fraudFlags, velocity_count: metadata.velocityCount }
+            ? {
+                fraud_flags: metadata.fraudFlags,
+                velocity_count: metadata.velocityCount,
+              }
             : undefined,
         };
         const result = await refundService.processRefund(refundRequest);
-        if (!result.success) {
+        if (result.kind === "error") {
           console.error("Refund failed:", result.error);
-          return;
+          return result;
+        }
+        if (result.kind === "verifying") {
+          return result;
         }
 
         // Audit log for fraud-flagged refunds
-        if (metadata?.fraudFlags?.includes('same_cashier_refund')) {
-          _supabaseClient.from('audit_logs').insert({
-            action: 'same_cashier_refund',
-            action_category: 'fraud_detection',
-            actor_name: initiatedByName,
-            staff_profile_id: initiatedByStaffId,
-            resource_type: 'order',
-            resource_id: orderId,
-            severity: metadata.fraudFlags.includes('velocity_blocked') ? 'high' : 'medium',
-            metadata: {
-              fraud_flags: metadata.fraudFlags,
-              refund_amount: order.total,
-              velocity_count: metadata.velocityCount,
-              approved_by: metadata.approvedByManagerId,
-              approved_by_name: metadata.approvedByManagerName,
-            },
-            location_id: useStoreSettingsStore.getState().selectedStore?.id,
-            merchant_id: useStoreSettingsStore.getState().selectedStore?.merchant_id,
-          }).then(({ error: auditErr }) => {
-            if (auditErr) console.warn('[FraudGuard] audit_logs insert failed:', auditErr);
-          });
+        if (metadata?.fraudFlags?.includes("same_cashier_refund")) {
+          _supabaseClient
+            .from("audit_logs")
+            .insert({
+              action: "same_cashier_refund",
+              action_category: "fraud_detection",
+              actor_name: initiatedByName,
+              staff_profile_id: initiatedByStaffId,
+              resource_type: "order",
+              resource_id: orderId,
+              severity: metadata.fraudFlags.includes("velocity_blocked")
+                ? "high"
+                : "medium",
+              metadata: {
+                fraud_flags: metadata.fraudFlags,
+                refund_amount: order.total,
+                velocity_count: metadata.velocityCount,
+                approved_by: metadata.approvedByManagerId,
+                approved_by_name: metadata.approvedByManagerName,
+              },
+              location_id: useStoreSettingsStore.getState().selectedStore?.id,
+              merchant_id:
+                useStoreSettingsStore.getState().selectedStore?.merchant_id,
+            })
+            .then(({ error: auditErr }) => {
+              if (auditErr)
+                console.warn(
+                  "[FraudGuard] audit_logs insert failed:",
+                  auditErr,
+                );
+            });
         }
       }
 
@@ -943,7 +1029,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         });
         const newLookup = { ...state._orderLookup };
         if (updatedOrder) {
-          newLookup[updatedOrder.db_order_id || updatedOrder.orderId] = updatedOrder;
+          newLookup[updatedOrder.db_order_id || updatedOrder.orderId] =
+            updatedOrder;
         }
         return {
           refunds: [...state.refunds, refundRecord],
@@ -1024,37 +1111,53 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           payment_terminal: station?.payment_terminal || undefined,
           stationId: station?.id,
           metadata: metadata?.fraudFlags
-            ? { fraud_flags: metadata.fraudFlags, velocity_count: metadata.velocityCount }
+            ? {
+                fraud_flags: metadata.fraudFlags,
+                velocity_count: metadata.velocityCount,
+              }
             : undefined,
         };
         const result = await refundService.processRefund(refundRequest);
-        if (!result.success) {
+        if (result.kind === "error") {
           console.error("Refund failed:", result.error);
-          return;
+          return result;
+        }
+        if (result.kind === "verifying") {
+          return result;
         }
 
         // Audit log for fraud-flagged refunds
-        if (metadata?.fraudFlags?.includes('same_cashier_refund')) {
-          _supabaseClient.from('audit_logs').insert({
-            action: 'same_cashier_refund',
-            action_category: 'fraud_detection',
-            actor_name: initiatedByName,
-            staff_profile_id: initiatedByStaffId,
-            resource_type: 'order',
-            resource_id: orderId,
-            severity: metadata.fraudFlags.includes('velocity_blocked') ? 'high' : 'medium',
-            metadata: {
-              fraud_flags: metadata.fraudFlags,
-              refund_amount: totalRefundedInThisTx,
-              velocity_count: metadata.velocityCount,
-              approved_by: metadata.approvedByManagerId,
-              approved_by_name: metadata.approvedByManagerName,
-            },
-            location_id: useStoreSettingsStore.getState().selectedStore?.id,
-            merchant_id: useStoreSettingsStore.getState().selectedStore?.merchant_id,
-          }).then(({ error: auditErr }) => {
-            if (auditErr) console.warn('[FraudGuard] audit_logs insert failed:', auditErr);
-          });
+        if (metadata?.fraudFlags?.includes("same_cashier_refund")) {
+          _supabaseClient
+            .from("audit_logs")
+            .insert({
+              action: "same_cashier_refund",
+              action_category: "fraud_detection",
+              actor_name: initiatedByName,
+              staff_profile_id: initiatedByStaffId,
+              resource_type: "order",
+              resource_id: orderId,
+              severity: metadata.fraudFlags.includes("velocity_blocked")
+                ? "high"
+                : "medium",
+              metadata: {
+                fraud_flags: metadata.fraudFlags,
+                refund_amount: totalRefundedInThisTx,
+                velocity_count: metadata.velocityCount,
+                approved_by: metadata.approvedByManagerId,
+                approved_by_name: metadata.approvedByManagerName,
+              },
+              location_id: useStoreSettingsStore.getState().selectedStore?.id,
+              merchant_id:
+                useStoreSettingsStore.getState().selectedStore?.merchant_id,
+            })
+            .then(({ error: auditErr }) => {
+              if (auditErr)
+                console.warn(
+                  "[FraudGuard] audit_logs insert failed:",
+                  auditErr,
+                );
+            });
         }
       }
 
@@ -1141,7 +1244,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         return;
       }
 
-      const normalized = normalizeFetchedOrder(broadcastOrder as unknown as FetchedOrderData);
+      const normalized = normalizeFetchedOrder(
+        broadcastOrder as unknown as FetchedOrderData,
+      );
       const profile = transformBroadcastToOrder(normalized, undefined);
 
       if (existing) {
@@ -1149,15 +1254,21 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           paymentStatus: _derivePaymentStatus(profile),
           refunded:
             profile.paid_status === "Refunded" ||
-            (profile.order_status === "refunded" && profile.paid_status !== "Paid") ||
-            (
-              (profile.payments || []).some((p) => p.isVoided === true || p.status === "voided") &&
-              !(profile.payments || []).some((p) => !p.isVoided && p.status === "captured")
-            ),
+            (profile.order_status === "refunded" &&
+              profile.paid_status !== "Paid") ||
+            ((profile.payments || []).some(
+              (p) => p.isVoided === true || p.status === "voided",
+            ) &&
+              !(profile.payments || []).some(
+                (p) => !p.isVoided && p.status === "captured",
+              )),
           amount_paid: profile.amount_paid ?? existing.amount_paid,
           amount_due: profile.amount_due ?? existing.amount_due,
           cash_amount_due: profile.cash_amount_due ?? existing.cash_amount_due,
-          payments: (profile.payments?.length ?? 0) > 0 ? profile.payments : existing.payments,
+          payments:
+            (profile.payments?.length ?? 0) > 0
+              ? profile.payments
+              : existing.payments,
           checkStatus: profile.check_status || existing.checkStatus,
         });
       } else if (_isFinalState(profile)) {
@@ -1173,10 +1284,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           lookupKey = orderId;
         } else {
           for (const [key, order] of Object.entries(state._orderLookup)) {
-            if (
-              order.orderId === orderId ||
-              order.db_order_id === orderId
-            ) {
+            if (order.orderId === orderId || order.db_order_id === orderId) {
               lookupKey = key;
               break;
             }

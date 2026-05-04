@@ -1,5 +1,14 @@
+import { isTransientRpcError } from "@/lib/network/idempotencyKey";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { OrderService } from "@/services/orderService";
+import {
+    completeRefundJournal,
+    failRefundJournal,
+    toRefundStepKey,
+    updateRefundJournal,
+    writeRefundJournal,
+    type RefundPipelineStep
+} from "@/services/refundJournal";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import {
@@ -13,11 +22,13 @@ import type {
     RefundItemRequest,
     RefundRequest,
     RefundResult,
+    RefundRpcOutcome,
 } from "@/types/refunds";
 import { StationPaymentTerminal } from "@/types/station";
 import { round2 } from "@/utils/money";
 import * as Sentry from "@sentry/react-native";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { v4 as uuidv4 } from "uuid";
 
 type RefundContext = {
   orderId: string;
@@ -35,29 +46,70 @@ export class RefundService {
     this.supabase = supabase;
   }
 
-  async processRefund(request: RefundRequest): Promise<RefundResult> {
+  /**
+   * Wave R-1: mints (or recovers) a refund journal entry, derives per-step
+   * idempotency keys via uuidv5(journalKey, stepName), runs the appropriate
+   * sub-pipeline, and returns a RefundRpcOutcome discriminated union.
+   *
+   *   'success'   — all 5 RPCs + terminal completed.
+   *   'verifying' — terminal succeeded but a backend RPC returned a transient
+   *                 error (DEADLINE_EXCEEDED / 40001). Show verifying view.
+   *   'error'     — terminal declined, or permanent DB error.
+   */
+  async processRefund(
+    request: RefundRequest,
+  ): Promise<RefundRpcOutcome<RefundResult>> {
     const context = await this.gatherRefundContext(request);
     if (!context.payment && request.refundType.type !== "item_return") {
-      return { success: false, error: "No refundable payment found." };
+      return { kind: "error", error: "No refundable payment found." };
     }
+
+    // Determine primary payment for journal metadata.
+    const primaryPayment = context.payment ?? context.payments[0];
+    const paymentMethod =
+      primaryPayment?.paymentMethod?.toString() ?? "unknown";
+    const originalPaymentId = primaryPayment?.paymentId ?? "";
+
+    // Mint a master idempotency key for this refund pipeline run.
+    const idempotencyKey = uuidv4();
+    const journalId = writeRefundJournal({
+      orderId: request.orderId,
+      refundType: request.refundType.type,
+      amount:
+        request.refundType.type === "partial_amount"
+          ? request.refundType.amount
+          : (primaryPayment?.availableForRefund ?? 0),
+      paymentMethod,
+      originalPaymentId,
+      idempotencyKey,
+    });
 
     switch (request.refundType.type) {
       case "full_payment":
-        return this.processFullPaymentRefund(request, context);
+        return this.processFullPaymentRefund(
+          request,
+          context,
+          journalId,
+          idempotencyKey,
+        );
       case "partial_amount":
         return this.processPartialRefund(
           request,
           context,
           request.refundType.amount,
+          journalId,
+          idempotencyKey,
         );
       case "item_return":
         return this.processItemReturn(
           request,
           context,
           request.refundType.items,
+          idempotencyKey,
         );
       default:
-        return { success: false, error: "Unknown refund type." };
+        failRefundJournal(journalId, "create_reversal", "Unknown refund type");
+        return { kind: "error", error: "Unknown refund type." };
     }
   }
 
@@ -199,43 +251,58 @@ export class RefundService {
   private async processFullPaymentRefund(
     request: RefundRequest,
     context: RefundContext,
-  ): Promise<RefundResult> {
+    journalId: string,
+    idempotencyKey: string,
+  ): Promise<RefundRpcOutcome<RefundResult>> {
     const payment = context.payment;
     if (!payment) {
-      return { success: false, error: "Payment not found for refund." };
+      failRefundJournal(
+        journalId,
+        "create_reversal",
+        "Payment not found for refund",
+      );
+      return { kind: "error", error: "Payment not found for refund." };
     }
-
-    console.log("processItemReturn Payment", payment);
-    console.log("processItemReturn Request", request);
 
     const useVoid = payment.isVoidable;
     const reversalType = useVoid ? "void" : "refund";
 
+    // Step 1 — create_reversal (key: step 'create_reversal')
     const { data: reversal, error: reversalError } =
-      await OrderService.createReversal(this.supabase, {
-        original_payment_id: payment.paymentId,
-        original_psp_reference: payment.rrn,
-        reversal_reference_id: this.buildReversalRefId(context),
-        reversal_type: reversalType,
-        amount: payment.availableForRefund,
-        reason_code: request.reason,
-        reason_description: request.reasonDetail ?? null,
-        initiated_by: request.initiatedBy,
-        approved_by: request.approvedBy ?? null,
-      });
+      await OrderService.createReversal(
+        this.supabase,
+        {
+          original_payment_id: payment.paymentId,
+          original_psp_reference: payment.rrn,
+          reversal_reference_id: this.buildReversalRefId(context),
+          reversal_type: reversalType,
+          amount: payment.availableForRefund,
+          reason_code: request.reason,
+          reason_description: request.reasonDetail ?? null,
+          initiated_by: request.initiatedBy,
+          approved_by: request.approvedBy ?? null,
+        },
+        { keyOverride: toRefundStepKey(idempotencyKey, "create_reversal") },
+      );
 
     if (reversalError || !reversal) {
-      return {
-        success: false,
-        error: reversalError?.message || "Failed to create reversal.",
-      };
+      const err = reversalError?.message || "Failed to create reversal.";
+      if (isTransientRpcError(reversalError)) {
+        failRefundJournal(journalId, "create_reversal", err);
+        return {
+          kind: "verifying",
+          journalId,
+          failedStep: "create_reversal",
+          reason: err,
+        };
+      }
+      failRefundJournal(journalId, "create_reversal", err);
+      return { kind: "error", error: err };
     }
 
-    console.log("processFullPaymentRefund Reversal", reversal);
+    // Persist reversalId so TCP-in-flight reconciliation can use it.
+    updateRefundJournal(journalId, { reversalId: reversal.id });
 
-    // Prefer the terminal the payment was originally captured on.
-    // Falls back to the requesting station's terminal only for legacy payments
-    // where terminal_id was not recorded on order_payments.
     const effectiveTerminalId =
       payment.terminalId || request.payment_terminal_id;
     const effectiveTerminal =
@@ -244,40 +311,38 @@ export class RefundService {
         ? request.payment_terminal
         : undefined);
 
+    // Step 2 — terminal_refund (journal updated inside processTerminalRefund for Castles)
     const terminalResult = await this.processTerminalRefund(
       payment,
       payment.availableForRefund,
       useVoid,
       effectiveTerminalId,
       effectiveTerminal,
+      journalId,
     );
 
-    console.log("processFullPaymentRefund Terminal Result", terminalResult);
-
     if (!terminalResult.success) {
-      // Try to update reversal status to failed, but don't let DB errors block the error response
       try {
         const failedResponse = terminalResult.terminalResponse as
           | Record<string, unknown>
           | undefined;
-        const { error: updateError } = await OrderService.updateReversalStatus(
+        await OrderService.updateReversalStatus(
           this.supabase,
           reversal.id,
           "failed",
           failedResponse ?? null,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            keyOverride: toRefundStepKey(
+              idempotencyKey,
+              "update_reversal_status",
+            ),
+          },
         );
-        if (updateError) {
-          console.error(
-            "[RefundService] Failed to update reversal status:",
-            updateError,
-          );
-        }
-      } catch (dbError) {
-        console.error(
-          "[RefundService] Exception updating reversal status:",
-          dbError,
-        );
-      }
+      } catch {}
       Sentry.captureException(
         new Error(terminalResult.error ?? "Terminal refund failed"),
         {
@@ -288,15 +353,20 @@ export class RefundService {
           },
         },
       );
+      failRefundJournal(
+        journalId,
+        "terminal_refund",
+        terminalResult.error ?? "Terminal declined",
+      );
       return {
-        success: false,
-        reversalId: reversal.id,
-        error: terminalResult.error,
+        kind: "error",
+        error: terminalResult.error ?? "Terminal refund failed.",
       };
     }
 
-    // Extract terminal response fields for storage.
-    // Dejavoo returns flat fields; Castles nests them under castles_transaction.
+    // Terminal approved — advance journal status.
+    updateRefundJournal(journalId, { status: "terminal_approved" });
+
     const terminalResponse = terminalResult.terminalResponse as
       | Record<string, unknown>
       | undefined;
@@ -325,10 +395,7 @@ export class RefundService {
       initiatedBy: request.initiatedBy,
     };
 
-    // Update all records - collect errors but don't fail the whole operation
-    const dbErrors: string[] = [];
-
-    // First, update reversal and payment in parallel
+    // Step 3 + 4 — update_reversal_status and apply_refund_to_payment (parallel)
     const [reversalResult, paymentResult] = await Promise.all([
       OrderService.updateReversalStatus(
         this.supabase,
@@ -342,6 +409,12 @@ export class RefundService {
           terminalResponse?.rrn ??
           castlesTxn?.rrn ??
           terminalResponse?.PNReferenceId) as string) ?? null,
+        {
+          keyOverride: toRefundStepKey(
+            idempotencyKey,
+            "update_reversal_status",
+          ),
+        },
       ),
       OrderService.applyRefundToPayment(
         this.supabase,
@@ -349,22 +422,45 @@ export class RefundService {
         payment.availableForRefund,
         reversalType,
         returnDetails,
-        { restorePaidQuantity: true }, // Full payment void: restore paid_quantity on items
+        { restorePaidQuantity: true },
+        {
+          keyOverride: toRefundStepKey(
+            idempotencyKey,
+            "apply_refund_to_payment",
+          ),
+        },
       ),
     ]);
 
+    // Detect transient error on either backend step — enter verifying mode.
+    const transientErr = isTransientRpcError(reversalResult.error)
+      ? {
+          step: "update_reversal_status" as RefundPipelineStep,
+          err: reversalResult.error,
+        }
+      : isTransientRpcError(paymentResult.error)
+        ? {
+            step: "apply_refund_to_payment" as RefundPipelineStep,
+            err: paymentResult.error,
+          }
+        : null;
+
+    if (transientErr) {
+      const msg = (transientErr.err as any)?.message ?? "Transient RPC error";
+      return {
+        kind: "verifying",
+        journalId,
+        failedStep: transientErr.step,
+        reason: msg,
+      };
+    }
+
+    const dbErrors: string[] = [];
     if (reversalResult.error) {
       console.error(
         "[RefundService] updateReversalStatus error:",
         reversalResult.error,
       );
-      Sentry.captureException(reversalResult.error, {
-        tags: {
-          source: "refund_db",
-          op: "updateReversalStatus",
-          type: "full_payment",
-        },
-      });
       dbErrors.push(
         `Reversal status update failed: ${reversalResult.error.message || reversalResult.error}`,
       );
@@ -374,22 +470,12 @@ export class RefundService {
         "[RefundService] applyRefundToPayment error:",
         paymentResult.error,
       );
-      Sentry.captureException(paymentResult.error, {
-        tags: {
-          source: "refund_db",
-          op: "applyRefundToPayment",
-          type: "full_payment",
-        },
-      });
       dbErrors.push(
         `Payment update failed: ${paymentResult.error.message || paymentResult.error}`,
       );
     }
 
-    // Record refund items BEFORE recalculating totals — calculate_order_totals_fast
-    // reads refunded_quantity from order_items, so items must be recorded first.
-    // For full payment voids: skip refunded_quantity increment (paid_quantity restoration
-    // handles the void, and refunded_qty should not accumulate for payment cancellations).
+    // Step 5 — record_refund_items
     const refundItems = await this.buildFullRefundItems(
       request.orderId,
       reversal.id,
@@ -397,21 +483,44 @@ export class RefundService {
       request.reasonDetail,
     );
     if (refundItems.length > 0) {
-      await OrderService.recordRefundItems(
+      const { error: itemsErr } = await OrderService.recordRefundItems(
         this.supabase,
         reversal.id,
         refundItems,
-        true, // skipQuantityUpdate: full payment void — don't increment refunded_qty
+        true,
+        { keyOverride: toRefundStepKey(idempotencyKey, "record_refund_items") },
       );
+      if (isTransientRpcError(itemsErr)) {
+        const msg = (itemsErr as any)?.message ?? "Transient RPC error";
+        return {
+          kind: "verifying",
+          journalId,
+          failedStep: "record_refund_items",
+          reason: msg,
+        };
+      }
     }
 
-    // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER both applyRefundToPayment
-    // and recordRefundItems complete to avoid stale refunded_amount/refunded_quantity data
+    // Step 6 — update_order_payment_status
     const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
       this.supabase,
       request.orderId,
+      {
+        keyOverride: toRefundStepKey(
+          idempotencyKey,
+          "update_order_payment_status",
+        ),
+      },
     );
-
+    if (isTransientRpcError(orderResult.error)) {
+      const msg = (orderResult.error as any)?.message ?? "Transient RPC error";
+      return {
+        kind: "verifying",
+        journalId,
+        failedStep: "update_order_payment_status",
+        reason: msg,
+      };
+    }
     if (orderResult.error) {
       console.error(
         "[RefundService] updateOrderPaymentStatus error:",
@@ -422,15 +531,18 @@ export class RefundService {
       );
     }
 
+    completeRefundJournal(journalId, reversal.id);
     return {
-      success: true,
-      reversalId: reversal.id,
-      terminalResponse: terminalResult.terminalResponse,
-      // Include DB errors as warning - terminal refund succeeded but DB updates had issues
-      error:
-        dbErrors.length > 0
-          ? `Refund processed but: ${dbErrors.join("; ")}`
-          : undefined,
+      kind: "success",
+      data: {
+        success: true,
+        reversalId: reversal.id,
+        terminalResponse: terminalResult.terminalResponse,
+        error:
+          dbErrors.length > 0
+            ? `Refund processed but: ${dbErrors.join("; ")}`
+            : undefined,
+      },
     };
   }
 
@@ -438,38 +550,61 @@ export class RefundService {
     request: RefundRequest,
     context: RefundContext,
     amount: number,
-  ): Promise<RefundResult> {
+    journalId: string,
+    idempotencyKey: string,
+  ): Promise<RefundRpcOutcome<RefundResult>> {
     const payment = context.payment;
     if (!payment) {
-      return { success: false, error: "Payment not found for refund." };
+      failRefundJournal(
+        journalId,
+        "create_reversal",
+        "Payment not found for refund",
+      );
+      return { kind: "error", error: "Payment not found for refund." };
     }
 
     if (amount <= 0 || amount > payment.availableForRefund) {
-      return { success: false, error: "Invalid refund amount." };
+      failRefundJournal(journalId, "create_reversal", "Invalid refund amount");
+      return { kind: "error", error: "Invalid refund amount." };
     }
 
     const useVoid = payment.isVoidable && amount >= payment.availableForRefund;
     const reversalType = useVoid ? "void" : "partial_refund";
 
+    // Step 1 — create_reversal
     const { data: reversal, error: reversalError } =
-      await OrderService.createReversal(this.supabase, {
-        original_payment_id: payment.paymentId,
-        original_psp_reference: payment.rrn,
-        reversal_reference_id: this.buildReversalRefId(context),
-        reversal_type: reversalType,
-        amount,
-        reason_code: request.reason,
-        reason_description: request.reasonDetail ?? null,
-        initiated_by: request.initiatedBy,
-        approved_by: request.approvedBy ?? null,
-      });
+      await OrderService.createReversal(
+        this.supabase,
+        {
+          original_payment_id: payment.paymentId,
+          original_psp_reference: payment.rrn,
+          reversal_reference_id: this.buildReversalRefId(context),
+          reversal_type: reversalType,
+          amount,
+          reason_code: request.reason,
+          reason_description: request.reasonDetail ?? null,
+          initiated_by: request.initiatedBy,
+          approved_by: request.approvedBy ?? null,
+        },
+        { keyOverride: toRefundStepKey(idempotencyKey, "create_reversal") },
+      );
 
     if (reversalError || !reversal) {
-      return {
-        success: false,
-        error: reversalError?.message || "Failed to create reversal.",
-      };
+      const err = reversalError?.message || "Failed to create reversal.";
+      if (isTransientRpcError(reversalError)) {
+        failRefundJournal(journalId, "create_reversal", err);
+        return {
+          kind: "verifying",
+          journalId,
+          failedStep: "create_reversal",
+          reason: err,
+        };
+      }
+      failRefundJournal(journalId, "create_reversal", err);
+      return { kind: "error", error: err };
     }
+
+    updateRefundJournal(journalId, { reversalId: reversal.id });
 
     const effectiveTerminalId =
       payment.terminalId || request.payment_terminal_id || "";
@@ -479,38 +614,38 @@ export class RefundService {
         ? request.payment_terminal
         : undefined);
 
+    // Step 2 — terminal_refund
     const terminalResult = await this.processTerminalRefund(
       payment,
       amount,
       useVoid,
       effectiveTerminalId,
       effectiveTerminal,
+      journalId,
     );
 
     if (!terminalResult.success) {
-      // Try to update reversal status to failed
       try {
         const failedResponse = terminalResult.terminalResponse as
           | Record<string, unknown>
           | undefined;
-        const { error: updateError } = await OrderService.updateReversalStatus(
+        await OrderService.updateReversalStatus(
           this.supabase,
           reversal.id,
           "failed",
           failedResponse ?? null,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            keyOverride: toRefundStepKey(
+              idempotencyKey,
+              "update_reversal_status",
+            ),
+          },
         );
-        if (updateError) {
-          console.error(
-            "[RefundService] Failed to update reversal status:",
-            updateError,
-          );
-        }
-      } catch (dbError) {
-        console.error(
-          "[RefundService] Exception updating reversal status:",
-          dbError,
-        );
-      }
+      } catch {}
       Sentry.captureException(
         new Error(terminalResult.error ?? "Terminal refund failed"),
         {
@@ -521,15 +656,19 @@ export class RefundService {
           },
         },
       );
+      failRefundJournal(
+        journalId,
+        "terminal_refund",
+        terminalResult.error ?? "Terminal declined",
+      );
       return {
-        success: false,
-        reversalId: reversal.id,
-        error: terminalResult.error,
+        kind: "error",
+        error: terminalResult.error ?? "Terminal refund failed.",
       };
     }
 
-    // Extract terminal response fields for storage.
-    // Dejavoo returns flat fields; Castles nests them under castles_transaction.
+    updateRefundJournal(journalId, { status: "terminal_approved" });
+
     const terminalResponse = terminalResult.terminalResponse as
       | Record<string, unknown>
       | undefined;
@@ -558,10 +697,9 @@ export class RefundService {
       initiatedBy: request.initiatedBy,
     };
 
-    // Update all records - collect errors but don't fail the whole operation
     const dbErrors: string[] = [];
 
-    // First, update reversal and payment in parallel
+    // Steps 3 + 4 — update_reversal_status and apply_refund_to_payment (parallel)
     const [reversalResult, paymentResult] = await Promise.all([
       OrderService.updateReversalStatus(
         this.supabase,
@@ -575,6 +713,12 @@ export class RefundService {
           terminalResponse?.rrn ??
           castlesTxn?.rrn ??
           terminalResponse?.PNReferenceId) as string) ?? null,
+        {
+          keyOverride: toRefundStepKey(
+            idempotencyKey,
+            "update_reversal_status",
+          ),
+        },
       ),
       OrderService.applyRefundToPayment(
         this.supabase,
@@ -582,21 +726,42 @@ export class RefundService {
         amount,
         reversalType,
         returnDetails,
+        undefined,
+        {
+          keyOverride: toRefundStepKey(
+            idempotencyKey,
+            "apply_refund_to_payment",
+          ),
+        },
       ),
     ]);
+
+    const transientErr = isTransientRpcError(reversalResult.error)
+      ? {
+          step: "update_reversal_status" as RefundPipelineStep,
+          err: reversalResult.error,
+        }
+      : isTransientRpcError(paymentResult.error)
+        ? {
+            step: "apply_refund_to_payment" as RefundPipelineStep,
+            err: paymentResult.error,
+          }
+        : null;
+    if (transientErr) {
+      const msg = (transientErr.err as any)?.message ?? "Transient RPC error";
+      return {
+        kind: "verifying",
+        journalId,
+        failedStep: transientErr.step,
+        reason: msg,
+      };
+    }
 
     if (reversalResult.error) {
       console.error(
         "[RefundService] updateReversalStatus error:",
         reversalResult.error,
       );
-      Sentry.captureException(reversalResult.error, {
-        tags: {
-          source: "refund_db",
-          op: "updateReversalStatus",
-          type: "partial",
-        },
-      });
       dbErrors.push(
         `Reversal status update failed: ${reversalResult.error.message || reversalResult.error}`,
       );
@@ -606,25 +771,31 @@ export class RefundService {
         "[RefundService] applyRefundToPayment error:",
         paymentResult.error,
       );
-      Sentry.captureException(paymentResult.error, {
-        tags: {
-          source: "refund_db",
-          op: "applyRefundToPayment",
-          type: "partial",
-        },
-      });
       dbErrors.push(
         `Payment update failed: ${paymentResult.error.message || paymentResult.error}`,
       );
     }
 
-    // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER applyRefundToPayment completes
-    // to avoid race condition where it reads stale refunded_amount data
+    // Step 6 — update_order_payment_status
     const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
       this.supabase,
       request.orderId,
+      {
+        keyOverride: toRefundStepKey(
+          idempotencyKey,
+          "update_order_payment_status",
+        ),
+      },
     );
-
+    if (isTransientRpcError(orderResult.error)) {
+      const msg = (orderResult.error as any)?.message ?? "Transient RPC error";
+      return {
+        kind: "verifying",
+        journalId,
+        failedStep: "update_order_payment_status",
+        reason: msg,
+      };
+    }
     if (orderResult.error) {
       console.error(
         "[RefundService] updateOrderPaymentStatus error:",
@@ -635,15 +806,18 @@ export class RefundService {
       );
     }
 
+    completeRefundJournal(journalId, reversal.id);
     return {
-      success: true,
-      reversalId: reversal.id,
-      terminalResponse: terminalResult.terminalResponse,
-      // Include DB errors as warning - terminal refund succeeded but DB updates had issues
-      error:
-        dbErrors.length > 0
-          ? `Refund processed but: ${dbErrors.join("; ")}`
-          : undefined,
+      kind: "success",
+      data: {
+        success: true,
+        reversalId: reversal.id,
+        terminalResponse: terminalResult.terminalResponse,
+        error:
+          dbErrors.length > 0
+            ? `Refund processed but: ${dbErrors.join("; ")}`
+            : undefined,
+      },
     };
   }
 
@@ -651,14 +825,15 @@ export class RefundService {
     request: RefundRequest,
     context: RefundContext,
     items: RefundItemRequest[],
-  ): Promise<RefundResult> {
+    parentBatchKey: string,
+  ): Promise<RefundRpcOutcome<RefundResult>> {
     const allocation = await this.buildItemRefundAllocation(
       request.orderId,
       items,
     );
 
     if (allocation.totalRefund <= 0) {
-      return { success: false, error: "No refundable amount found for items." };
+      return { kind: "error", error: "No refundable amount found for items." };
     }
 
     const reversals: Array<{
@@ -667,7 +842,8 @@ export class RefundService {
       amount: number;
     }> = [];
     const errors: string[] = [];
-    let terminalRefundCount = 0; // Track terminal refunds for delay between operations
+    let terminalRefundCount = 0;
+    let batchIndex = 0;
 
     for (const paymentAllocation of allocation.items) {
       const paymentTotals: Record<string, number> = {};
@@ -683,43 +859,68 @@ export class RefundService {
           continue;
         }
 
-        // Add delay before subsequent terminal refunds to prevent "Service Busy" errors
+        // Each payment gets a deterministic sub-key from the parent batch key + index.
+        const subKey = toRefundStepKey(
+          parentBatchKey,
+          `create_reversal_${batchIndex}` as any,
+        );
+        const subJournalId = writeRefundJournal({
+          orderId: request.orderId,
+          refundType: "item_return",
+          amount,
+          paymentMethod: payment.paymentMethod?.toString() ?? "unknown",
+          originalPaymentId: paymentId,
+          idempotencyKey: subKey,
+          parentBatchId: parentBatchKey,
+        });
+        batchIndex++;
+
         if (terminalRefundCount > 0) {
-          console.log(
-            "[RefundService] Waiting for terminal to be ready before next refund...",
-          );
-          await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         }
 
         const { data: reversal, error: reversalError } =
-          await OrderService.createReversal(this.supabase, {
-            original_payment_id: payment.paymentId,
-            original_psp_reference: payment.rrn,
-            reversal_reference_id: this.buildReversalRefId(context),
-            reversal_type: "item_return",
-            amount,
-            reason_code: request.reason,
-            reason_description: request.reasonDetail ?? null,
-            initiated_by: request.initiatedBy,
-            approved_by: request.approvedBy ?? null,
-          });
+          await OrderService.createReversal(
+            this.supabase,
+            {
+              original_payment_id: payment.paymentId,
+              original_psp_reference: payment.rrn,
+              reversal_reference_id: this.buildReversalRefId(context),
+              reversal_type: "item_return",
+              amount,
+              reason_code: request.reason,
+              reason_description: request.reasonDetail ?? null,
+              initiated_by: request.initiatedBy,
+              approved_by: request.approvedBy ?? null,
+            },
+            { keyOverride: toRefundStepKey(subKey, "create_reversal") },
+          );
 
         if (reversalError || !reversal) {
-          errors.push(reversalError?.message || "Failed to create reversal.");
+          const err = reversalError?.message || "Failed to create reversal.";
+          if (isTransientRpcError(reversalError)) {
+            failRefundJournal(subJournalId, "create_reversal", err);
+            errors.push(err);
+            continue;
+          }
+          failRefundJournal(subJournalId, "create_reversal", err);
+          errors.push(err);
           continue;
         }
 
-        terminalRefundCount++; // Increment before terminal call
+        updateRefundJournal(subJournalId, { reversalId: reversal.id });
+
+        terminalRefundCount++;
         const terminalResult = await this.processTerminalRefund(
           payment,
           amount,
           false,
           request.payment_terminal_id ?? payment.terminalId ?? "",
           request.payment_terminal ?? undefined,
+          subJournalId,
         );
 
         if (!terminalResult.success) {
-          // Try to update reversal status to failed
           try {
             const failedResponse = terminalResult.terminalResponse as
               | Record<string, unknown>
@@ -729,13 +930,15 @@ export class RefundService {
               reversal.id,
               "failed",
               failedResponse ?? null,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              {
+                keyOverride: toRefundStepKey(subKey, "update_reversal_status"),
+              },
             );
-          } catch (dbError) {
-            console.error(
-              "[RefundService] Exception updating reversal status:",
-              dbError,
-            );
-          }
+          } catch {}
           Sentry.captureException(
             new Error(terminalResult.error ?? "Terminal refund failed"),
             {
@@ -746,12 +949,17 @@ export class RefundService {
               },
             },
           );
+          failRefundJournal(
+            subJournalId,
+            "terminal_refund",
+            terminalResult.error ?? "Terminal declined",
+          );
           errors.push(terminalResult.error || "Terminal refund failed.");
           continue;
         }
 
-        // Extract terminal response fields for storage
-        // Cast to any since DejavooRefundResponse doesn't have all fields from the raw API response
+        updateRefundJournal(subJournalId, { status: "terminal_approved" });
+
         const terminalResponse = terminalResult.terminalResponse as
           | Record<string, unknown>
           | undefined;
@@ -774,7 +982,6 @@ export class RefundService {
           initiatedBy: request.initiatedBy,
         };
 
-        // Update records - log errors but continue
         const [reversalStatusResult, paymentRefundResult] = await Promise.all([
           OrderService.updateReversalStatus(
             this.supabase,
@@ -786,6 +993,7 @@ export class RefundService {
             generalResponse?.Message ?? null,
             ((terminalResponse?.RRN ??
               terminalResponse?.PNReferenceId) as string) ?? null,
+            { keyOverride: toRefundStepKey(subKey, "update_reversal_status") },
           ),
           OrderService.applyRefundToPayment(
             this.supabase,
@@ -793,8 +1001,24 @@ export class RefundService {
             amount,
             "item_return",
             returnDetails,
+            undefined,
+            { keyOverride: toRefundStepKey(subKey, "apply_refund_to_payment") },
           ),
         ]);
+
+        if (
+          isTransientRpcError(reversalStatusResult.error) ||
+          isTransientRpcError(paymentRefundResult.error)
+        ) {
+          const failedStep = isTransientRpcError(reversalStatusResult.error)
+            ? ("update_reversal_status" as RefundPipelineStep)
+            : ("apply_refund_to_payment" as RefundPipelineStep);
+          const err = isTransientRpcError(reversalStatusResult.error)
+            ? (reversalStatusResult.error as any)?.message
+            : (paymentRefundResult.error as any)?.message;
+          errors.push(`Transient error on ${failedStep}: ${err ?? "unknown"}`);
+          continue;
+        }
 
         if (reversalStatusResult.error) {
           console.error(
@@ -814,8 +1038,6 @@ export class RefundService {
             `Payment update failed: ${paymentRefundResult.error.message || paymentRefundResult.error}`,
           );
         }
-
-        reversals.push({ reversalId: reversal.id, paymentId, amount });
 
         const refundItems = paymentAllocation.paymentAllocations.map(
           (alloc) => ({
@@ -837,7 +1059,12 @@ export class RefundService {
           this.supabase,
           reversal.id,
           refundItems,
+          false,
+          { keyOverride: toRefundStepKey(subKey, "record_refund_items") },
         );
+
+        completeRefundJournal(subJournalId, reversal.id);
+        reversals.push({ reversalId: reversal.id, paymentId, amount });
       }
     }
 
@@ -845,6 +1072,12 @@ export class RefundService {
       await OrderService.updateOrderPaymentStatusAfterRefund(
         this.supabase,
         request.orderId,
+        {
+          keyOverride: toRefundStepKey(
+            parentBatchKey,
+            "update_order_payment_status",
+          ),
+        },
       );
     if (orderStatusResult.error) {
       console.error(
@@ -854,9 +1087,12 @@ export class RefundService {
     }
 
     return {
-      success: reversals.length > 0,
-      reversals,
-      error: errors.length > 0 ? errors.join("; ") : undefined,
+      kind: "success",
+      data: {
+        success: reversals.length > 0,
+        reversals,
+        error: errors.length > 0 ? errors.join("; ") : undefined,
+      },
     };
   }
 
@@ -866,6 +1102,7 @@ export class RefundService {
     useVoid: boolean,
     terminalId: string,
     terminal: StationPaymentTerminal | undefined,
+    journalId?: string,
   ): Promise<{
     success: boolean;
     terminalResponse?: DejavooRefundResponse | Record<string, unknown>;
@@ -908,6 +1145,7 @@ export class RefundService {
         amount,
         useVoid,
         terminal!,
+        journalId,
       );
     }
 
@@ -953,6 +1191,7 @@ export class RefundService {
     amount: number,
     useVoid: boolean,
     terminal: StationPaymentTerminal,
+    journalId?: string,
   ): Promise<{
     success: boolean;
     terminalResponse?: Record<string, unknown>;
@@ -986,7 +1225,12 @@ export class RefundService {
             error: "Cannot void: no RRN or STAN from original transaction.",
           };
         }
-        const result = await castles.processVoid({ rrn, stan, referenceId });
+        const result = await castles.processVoid({
+          rrn,
+          stan,
+          referenceId,
+          journalId,
+        });
         return {
           success: result.success,
           terminalResponse: result.terminalResponse,
@@ -997,6 +1241,7 @@ export class RefundService {
       const result = await castles.processRefund({
         amount,
         referenceId,
+        journalId,
       });
       return {
         success: result.success,

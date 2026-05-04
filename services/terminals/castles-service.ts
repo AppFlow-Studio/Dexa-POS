@@ -10,6 +10,7 @@
 // never raw sockets. See castles-transport.types.ts.
 // ============================================================
 
+import { updateRefundJournal } from "@/services/refundJournal";
 import type {
     CastlesAuthCompleteRequest,
     CastlesAuthCompleteResult,
@@ -641,6 +642,7 @@ export class CastlesService {
     rrn?: string;
     stan?: string;
     referenceId: string;
+    journalId?: string;
   }): Promise<CastlesVoidResult> {
     if (!params.rrn && !params.stan) {
       return {
@@ -661,6 +663,14 @@ export class CastlesService {
             ...(params.stan ? { txnStan: params.stan } : {}),
           };
 
+          // Wave R-3: write-ahead before TCP send (TCP-in-flight durability)
+          if (params.journalId) {
+            updateRefundJournal(params.journalId, {
+              status: "initiated",
+              terminalTxnId: params.rrn ?? params.stan,
+            });
+          }
+
           const timeout = this.config?.timeout ?? CASTLES_SOCKET_TIMEOUT_MS;
           const raw = await this._sendAndReceive<CastlesRawResponse>(
             request as unknown as Record<string, unknown>,
@@ -680,6 +690,15 @@ export class CastlesService {
             ? undefined
             : raw.txnStatusMessage ||
               parseCastlesReturnCode(raw.txnReturnCode).message;
+
+          // Wave R-3: advance journal to terminal_approved on success
+          if (params.journalId && isApproved) {
+            updateRefundJournal(params.journalId, {
+              status: "terminal_approved",
+              terminalTxnId:
+                raw.txnRrn ?? raw.txnRRN ?? params.rrn ?? params.stan,
+            });
+          }
 
           await this._tryReturn2Idle();
           return {
@@ -708,6 +727,7 @@ export class CastlesService {
   async processRefund(params: {
     amount: number;
     referenceId: string;
+    journalId?: string;
   }): Promise<CastlesRefundResult> {
     return this._withRetry(async () => {
       return this._mutex.runExclusive(async () => {
@@ -720,6 +740,14 @@ export class CastlesService {
             txnAmtTrans: params.amount.toFixed(2),
           };
 
+          // Wave R-3: write-ahead before TCP send
+          if (params.journalId) {
+            updateRefundJournal(params.journalId, {
+              status: "initiated",
+              terminalTxnId: params.referenceId,
+            });
+          }
+
           const timeout = this.config?.timeout ?? CASTLES_SOCKET_TIMEOUT_MS;
           const raw = await this._sendAndReceive<CastlesRawResponse>(
             request as unknown as Record<string, unknown>,
@@ -731,6 +759,14 @@ export class CastlesService {
             ? undefined
             : raw.txnStatusMessage ||
               parseCastlesReturnCode(raw.txnReturnCode).message;
+
+          // Wave R-3: advance journal to terminal_approved on success
+          if (params.journalId && isApproved) {
+            updateRefundJournal(params.journalId, {
+              status: "terminal_approved",
+              terminalTxnId: raw.txnRrn ?? raw.txnRRN ?? params.referenceId,
+            });
+          }
 
           await this._tryReturn2Idle();
           return {
