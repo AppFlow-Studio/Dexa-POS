@@ -204,6 +204,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const [displayQuantity, setDisplayQuantity] = useState(item.quantity);
   const displayQuantityRef = useRef(item.quantity);
   const handleDeleteRef = useRef<() => void>(() => {});
+  const handleLeftSwipeRef = useRef<() => void>(() => {});
   const handleIncrementRef = useRef<() => void>(() => {});
   const decrementThrottleRef = useRef(0);
   const incrementThrottleRef = useRef(0);
@@ -213,6 +214,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   // handleIncrementRef itself is NOT passed to worklets — only this stable wrapper is.
   const callHandleDelete = useRef(() => {
     handleDeleteRef.current();
+  });
+  const callHandleLeftSwipe = useRef(() => {
+    handleLeftSwipeRef.current();
   });
   const callHandleIncrement = useRef(() => {
     handleIncrementRef.current();
@@ -300,8 +304,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
             runOnJS(callHandleIncrement.current)();
           } else if (finalX < MAX_LEFT / 2) {
             swipeActionTriggered.value = true;
-            translateX.value = withTiming(0, { duration: 120 });
-            runOnJS(callHandleDelete.current)();
+            runOnJS(callHandleLeftSwipe.current)();
           } else {
             translateX.value = withTiming(0);
           }
@@ -334,6 +337,26 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     }
   };
   handleDeleteRef.current = handleDelete;
+
+  const handleLeftSwipe = () => {
+    if (!activeOrderId || !isEditable || item.is_voided) return;
+
+    if ((item.isDraft || !isKitchenItem) && displayQuantityRef.current <= 1) {
+      const now = Date.now();
+      if (now - decrementThrottleRef.current < 400) {
+        translateX.value = withTiming(0, { duration: 120 });
+        return;
+      }
+
+      decrementThrottleRef.current = now;
+      translateX.value = withTiming(MAX_LEFT, { duration: 120 });
+      return;
+    }
+
+    translateX.value = withTiming(0, { duration: 120 });
+    handleDelete();
+  };
+  handleLeftSwipeRef.current = handleLeftSwipe;
 
   const handleConfirmVoid = (reason: string) => {
     // Reset animation first, before any state changes
