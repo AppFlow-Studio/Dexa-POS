@@ -3,11 +3,9 @@ package com.temurappflowstudios.dexapos.secondarydisplay
 import android.app.Presentation
 import android.content.Context
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.Display
-import com.facebook.react.ReactRootView
+import com.facebook.react.interfaces.fabric.ReactSurface
 import com.temurappflowstudios.dexapos.MainApplication
 
 class SecondaryDisplayPresentation(context: Context, display: Display) :
@@ -18,9 +16,8 @@ class SecondaryDisplayPresentation(context: Context, display: Display) :
         const val RN_COMPONENT_NAME = "CFDSecondaryDisplay"
     }
 
-    private var reactRootView: ReactRootView? = null
+    private var reactSurface: ReactSurface? = null
     private var isDismissed = false
-    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,20 +41,18 @@ class SecondaryDisplayPresentation(context: Context, display: Display) :
         }
 
         try {
-            val rootView = ReactRootView(this.context)
-            rootView.setBackgroundColor(android.graphics.Color.parseColor("#0a0a0a"))
-            reactRootView = rootView
+            val surface = app.reactHost.createSurface(context, RN_COMPONENT_NAME, null)
+            reactSurface = surface
 
-            setContentView(rootView)
-            Log.d(TAG, "ReactRootView attached on display ${display.displayId}")
-
-            rootView.startReactApplication(
-                app.reactNativeHost.reactInstanceManager,
-                RN_COMPONENT_NAME,
-                Bundle()
-            )
-            Log.d(TAG, "startReactApplication($RN_COMPONENT_NAME) called on display ${display.displayId}")
-
+            val surfaceView = surface.view
+            if (surfaceView != null) {
+                surfaceView.setBackgroundColor(android.graphics.Color.parseColor("#0a0a0a"))
+                setContentView(surfaceView)
+                surface.start()
+                Log.d(TAG, "ReactSurface created on display ${display.displayId}")
+            } else {
+                Log.e(TAG, "ReactSurface.view is null")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create ReactSurface: ${e.message}", e)
             // Silently dismiss instead of leaving a dead Presentation window
@@ -69,10 +64,11 @@ class SecondaryDisplayPresentation(context: Context, display: Display) :
         if (isDismissed) return
         isDismissed = true
         try {
-            reactRootView?.unmountReactApplication()
-            reactRootView = null
+            reactSurface?.stop()
+            reactSurface?.clear()
+            reactSurface = null
         } catch (e: Exception) {
-            Log.e(TAG, "Error unmounting ReactRootView: ${e.message}", e)
+            Log.e(TAG, "Error stopping ReactSurface: ${e.message}", e)
         }
         try {
             super.dismiss()
