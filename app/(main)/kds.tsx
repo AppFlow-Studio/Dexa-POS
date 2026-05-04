@@ -4,18 +4,18 @@ import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import {
-    getBucketedElapsed,
-    getUrgencyLevel,
-    useKDSTimer,
-    type UrgencyThresholds,
+  getBucketedElapsed,
+  getUrgencyLevel,
+  useKDSTimer,
+  type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
 import { replaceRoute } from "@/lib/rootNavigation";
-import { colors } from "@/lib/theme";
+import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { clearStationData } from "@/services/cacheService";
 import KDSSoundService, {
-    DEFAULT_SOUND_CONFIG,
+  DEFAULT_SOUND_CONFIG,
 } from "@/services/kds/kdsSoundService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
@@ -24,32 +24,32 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import { useRouter } from "expo-router";
 import {
-    ArrowUpToLine,
-    CheckSquare,
-    Flame,
-    RotateCcw,
-    ShoppingBag,
-    Square,
-    Star,
-    Truck,
-    UtensilsCrossed,
+  ArrowUpToLine,
+  CheckSquare,
+  Flame,
+  RotateCcw,
+  ShoppingBag,
+  Square,
+  Star,
+  Truck,
+  UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    Dimensions,
-    GestureResponderEvent,
-    Pressable,
-    Animated as RNAnimated,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  GestureResponderEvent,
+  Pressable,
+  Animated as RNAnimated,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ─── Status Tab Config ────────────────────────────────────────────
@@ -71,6 +71,18 @@ const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
 ];
 
 const MODIFIER_ADD_COLOR = "#0B5E56";
+
+function dedupeTicketsForRender(tickets: KDSTicket[]): KDSTicket[] {
+  if (tickets.length <= 1) return tickets;
+  const seen = new Set<string>();
+  const unique: KDSTicket[] = [];
+  for (const ticket of tickets) {
+    if (seen.has(ticket.ticket_id)) continue;
+    seen.add(ticket.ticket_id);
+    unique.push(ticket);
+  }
+  return unique;
+}
 
 // ─── Manager roles for bulk operations ──────────────────────────
 const MANAGER_ROLES = ["merchant.manager", "merchant.admin", "merchant.owner"];
@@ -311,11 +323,11 @@ interface KDSTicketDisplaySettings {
 // ─── Ticket Timer (isolated re-render boundary) ─────────────────
 interface KDSTicketTimerProps {
   startTimeEpoch: number;
-  urgencyThresholds: UrgencyThresholds;
+  textColor: string;
 }
 
 const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
-  ({ startTimeEpoch, urgencyThresholds }) => {
+  ({ startTimeEpoch, textColor }) => {
     // Single shared timestamp from store — 1 subscription per timer, no per-component Date.now()
     const nowEpochMs = useKDSStore((s) => s.nowEpochMs);
     const timeElapsed = getBucketedElapsed(
@@ -323,15 +335,10 @@ const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
       undefined,
       nowEpochMs,
     );
-    const urgencyLevel = getUrgencyLevel(
-      startTimeEpoch,
-      urgencyThresholds,
-      nowEpochMs,
-    );
     return (
       <Text
         style={{
-          color: urgencyLevel > 0 ? colors.danger : colors.label,
+          color: textColor,
           fontSize: 18,
           fontWeight: "800",
         }}
@@ -391,6 +398,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds, nowEpochMs),
       [ticket.start_time_epoch, urgencyThresholds, nowEpochMs],
     );
+    const hasUrgencyColor = urgencyLevel > 0;
 
     // Double-tap detection
     const lastTapRef = useRef(0);
@@ -417,7 +425,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
       const itemIds = getTicketItems(ticket).map((i) => i.id);
       let newStatus: "preparing" | "ready" | "served" | undefined;
-      if (capturedStatus === "pending") newStatus = "preparing";
+      if (hasRefire) newStatus = "served";
+      else if (capturedStatus === "pending") newStatus = "preparing";
       else if (capturedStatus === "cooking") newStatus = "ready";
       else if (capturedStatus === "ready") newStatus = "served";
 
@@ -458,6 +467,16 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const hasRush = ticketItems.some((item) => item.rush);
     const hasRefire = ticketItems.some((item) => item.recalled);
     const orderNote = ticket.order_notes?.trim() ?? "";
+    const headerUrgencyColor = hasUrgencyColor
+      ? URGENCY_COLORS[urgencyLevel]
+      : undefined;
+    const headerBackgroundColor = headerUrgencyColor ?? "#F3F4F6";
+    const headerBorderColor = headerUrgencyColor ?? "#E5E7EB";
+    const headerPrimaryTextColor = hasUrgencyColor ? "#FFFFFF" : "#111827";
+    const headerSecondaryTextColor = hasUrgencyColor ? "#FFFFFF" : "#374151";
+    const headerDotColor = hasUrgencyColor
+      ? "rgba(255,255,255,0.9)"
+      : undefined;
 
     const shouldHideDoneItems = hideDoneItems && !onItemPress;
 
@@ -690,14 +709,42 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
 
+          {hasRefire && (
+            <View
+              style={{
+                position: "absolute",
+                top: hasRush ? 66 : 34,
+                right: 12,
+                zIndex: 10,
+                backgroundColor: "#FEF3C7",
+                borderWidth: 1,
+                borderColor: "#F59E0B66",
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 12,
+              }}
+            >
+              <Text
+                style={{
+                  color: "#92400E",
+                  fontSize: 10,
+                  fontWeight: "800",
+                  letterSpacing: 0.5,
+                }}
+              >
+                RECALLED
+              </Text>
+            </View>
+          )}
+
           {/* Card Header: Order Number + Order Type + Timer (darker background) */}
           <View
             style={{
-              backgroundColor: "#F3F4F6",
+              backgroundColor: headerBackgroundColor,
               paddingHorizontal: 12,
               paddingVertical: 10,
               borderBottomWidth: 1,
-              borderBottomColor: "#E5E7EB",
+              borderBottomColor: headerBorderColor,
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "flex-start",
@@ -711,7 +758,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               >
                 <Text
                   style={{
-                    color: "#111827",
+                    color: headerPrimaryTextColor,
                     fontSize: 16,
                     fontWeight: "700",
                   }}
@@ -745,7 +792,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       width: 6,
                       height: 6,
                       borderRadius: 3,
-                      backgroundColor: "#EF4444",
+                      backgroundColor: headerDotColor ?? "#EF4444",
                     }}
                   />
                 ) : ticket.order_type?.toLowerCase() === "takeout" ||
@@ -755,7 +802,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       width: 6,
                       height: 6,
                       borderRadius: 3,
-                      backgroundColor: "#3B82F6",
+                      backgroundColor: headerDotColor ?? "#3B82F6",
                     }}
                   />
                 ) : (
@@ -764,13 +811,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       width: 6,
                       height: 6,
                       borderRadius: 3,
-                      backgroundColor: "#22C55E",
+                      backgroundColor: headerDotColor ?? "#22C55E",
                     }}
                   />
                 )}
                 <Text
                   style={{
-                    color: "#374151",
+                    color: headerSecondaryTextColor,
                     fontSize: 11,
                     fontWeight: "600",
                   }}
@@ -783,7 +830,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             {/* Timer (isolated re-render — only this component updates per second) */}
             <KDSTicketTimer
               startTimeEpoch={ticket.start_time_epoch}
-              urgencyThresholds={urgencyThresholds}
+              textColor={headerPrimaryTextColor}
             />
           </View>
 
@@ -886,7 +933,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   <Pressable
                     key={rowKey}
                     onPress={() => {
-                      if (!isInactive && !isItemDone && onItemPress) {
+                      if (
+                        !hasRefire &&
+                        !isInactive &&
+                        !isItemDone &&
+                        onItemPress
+                      ) {
                         const idsToMark =
                           representedItemIds.length > 0
                             ? representedItemIds
@@ -2200,7 +2252,7 @@ const KitchenDisplayScreen = () => {
   const isDoneTab = activeStatus === "done";
   const ticketsForLayout = useMemo(
     () =>
-      [...activeTabTickets].sort((a, b) => {
+      [...dedupeTicketsForRender(activeTabTickets)].sort((a, b) => {
         const aTs =
           activeStatus === "done"
             ? (a.done_time_epoch ?? a.start_time_epoch ?? 0)
@@ -3087,12 +3139,17 @@ const KitchenDisplayScreen = () => {
                     const ticket = actionMenu.ticket;
                     if (ticket) {
                       const itemIds = getTicketItems(ticket).map((i) => i.id);
+                      const isRecalledTicket = getTicketItems(ticket).some(
+                        (i) => i.recalled,
+                      );
                       let newStatus:
                         | "preparing"
                         | "ready"
                         | "served"
                         | undefined;
-                      if (ticket.status === "pending") newStatus = "preparing";
+                      if (isRecalledTicket) newStatus = "served";
+                      else if (ticket.status === "pending")
+                        newStatus = "preparing";
                       else if (ticket.status === "cooking") newStatus = "ready";
                       else if (ticket.status === "ready") newStatus = "served";
                       if (newStatus) {
@@ -3132,7 +3189,9 @@ const KitchenDisplayScreen = () => {
                         fontWeight: "700",
                       }}
                     >
-                      Bump Order
+                      {getTicketItems(actionMenu.ticket).some((i) => i.recalled)
+                        ? "Mark Done"
+                        : "Bump Order"}
                     </Text>
                   </View>
                 </Pressable>

@@ -19,7 +19,7 @@ import {
     Pause,
     User,
 } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
@@ -100,8 +100,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const [isPinModalOpen, setPinModalOpen] = useState(false);
   const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
   const [isBreakPinModalOpen, setBreakPinModalOpen] = useState(false);
+  const [isLogoutPinModalOpen, setLogoutPinModalOpen] = useState(false);
   const [deviceId, setDeviceId] = useState<string>("unknown");
   const [showCashDeclaration, setShowCashDeclaration] = useState(false);
+  const pendingClockOutPinRef = useRef<string | null>(null);
 
   // Backend hook for time clock actions
   const timeClock = useTimeClock();
@@ -161,14 +163,29 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   };
 
   const handleLogout = () => {
+    pendingClockOutPinRef.current = null;
+    setLogoutPinModalOpen(true);
+  };
+
+  const handleLogoutPinConfirm = (pin: string) => {
+    pendingClockOutPinRef.current = pin;
+    setLogoutPinModalOpen(false);
     setShowCashDeclaration(true);
+  };
+
+  const handleLogoutPinCancel = () => {
+    pendingClockOutPinRef.current = null;
+    setLogoutPinModalOpen(false);
   };
 
   const handleDeclarationComplete = useCallback(
     async (declaredAmount: number) => {
       setShowCashDeclaration(false);
       const locationId = selectedStore?.id;
-      if (!locationId) return;
+      const pin = pendingClockOutPinRef.current;
+      pendingClockOutPinRef.current = null;
+
+      if (!locationId || !pin) return;
 
       // Declare cash tips (non-blocking — queued if offline)
       const shiftId = timeClock.shiftId;
@@ -189,24 +206,41 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         }
       }
 
-      // Clock out via RPC (same flow as UserProfileCard)
+      // Clock out via RPC and only apply local session changes after acceptance.
       try {
-        // Need PIN for RPC — but SessionDock doesn't have it.
-        // Fall back to local-only clock-out (matches original handleLogout behavior)
+        await timeClock.clockOut(pin, locationId, deviceId);
         if (employeeId) {
           useTimeclockStore.getState().clockOut(employeeId);
         }
+        replaceRoute("(auth)", "pin-login");
       } catch (e) {
-        console.warn("[SessionDock] clockOut failed:", e);
-      }
+        const errorMessage =
+          e instanceof Error ? e.message : typeof e === "string" ? e : "";
 
-      replaceRoute("(auth)", "pin-login");
+        if (
+          errorMessage.includes("END_BREAK_FIRST") ||
+          errorMessage.includes("ALREADY_ON_BREAK")
+        ) {
+          startBreak();
+          return;
+        }
+
+        console.warn("[SessionDock] clockOut RPC failed:", e);
+      }
     },
-    [selectedStore?.id, timeClock, deviceId, employeeId, employeeProfileId],
+    [
+      selectedStore?.id,
+      timeClock,
+      deviceId,
+      employeeId,
+      employeeProfileId,
+      startBreak,
+    ],
   );
 
   const handleDeclarationCancel = useCallback(() => {
     setShowCashDeclaration(false);
+    pendingClockOutPinRef.current = null;
   }, []);
 
   if (!session || !employee) return null;
@@ -568,6 +602,13 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           subtitle="Enter your PIN to confirm"
           onConfirm={handleBreakPinConfirm}
           onCancel={() => setBreakPinModalOpen(false)}
+        />
+        <PinInputModal
+          isOpen={isLogoutPinModalOpen}
+          title="Sign Out"
+          subtitle="Enter your PIN to clock out"
+          onConfirm={handleLogoutPinConfirm}
+          onCancel={handleLogoutPinCancel}
         />
         <CashTipDeclarationModal
           isOpen={showCashDeclaration}

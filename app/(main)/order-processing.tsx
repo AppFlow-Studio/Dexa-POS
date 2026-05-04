@@ -13,9 +13,9 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
 import {
-  forceSetLocalSequence,
-  generateLocalOrderNumbers,
-  parseSequenceFromDisplayNumber,
+    forceSetLocalSequence,
+    generateLocalOrderNumbers,
+    parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
@@ -27,8 +27,8 @@ import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
-  getOrderStoreSupabaseClient,
-  useOrderStore,
+    getOrderStoreSupabaseClient,
+    useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -38,41 +38,41 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  Logs,
-  Plus,
-  Printer,
-  Search,
-  ShoppingBag,
-  Sofa,
-  UtensilsCrossed,
-  X,
+    CheckCircle2,
+    ChevronLeft,
+    ChevronRight,
+    Eye,
+    Logs,
+    Plus,
+    Printer,
+    Search,
+    ShoppingBag,
+    Sofa,
+    UtensilsCrossed,
+    X,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  Modal,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    Modal,
+    PanResponder,
+    Pressable,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from "react-native";
 import Animated, {
-  LinearTransition,
-  SlideInLeft,
-  useAnimatedStyle,
-  useSharedValue,
+    LinearTransition,
+    SlideInLeft,
+    useAnimatedStyle,
+    useSharedValue,
 } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
@@ -166,6 +166,7 @@ const OrderProcessing = () => {
   const orderBadgeScrollXRef = useRef(0);
   const orderBadgeViewportWidthRef = useRef(0);
   const orderBadgeContentWidthRef = useRef(0);
+  const didInitializeOrderRef = useRef(false);
   const [canScrollBadgesLeft, setCanScrollBadgesLeft] = useState(false);
   const [canScrollBadgesRight, setCanScrollBadgesRight] = useState(false);
   const ordersSheetHeight = useSharedValue<number>(windowHeight);
@@ -181,7 +182,26 @@ const OrderProcessing = () => {
   // On mount: reuse the most recent empty draft if one exists; otherwise
   // create a brand-new empty order.
   useEffect(() => {
+    if (didInitializeOrderRef.current) return;
+    didInitializeOrderRef.current = true;
+
     const state = useOrderStore.getState();
+    const isReusableEmptyDraft = (o?: OrderProfile | null) =>
+      !!o &&
+      o.order_status === "draft" &&
+      o.items.length === 0 &&
+      o.service_location_id === null &&
+      o.paid_status !== "Paid" &&
+      !o.customer_name &&
+      !o.customer_id;
+
+    const currentActiveOrder = state.activeOrderId
+      ? state.ordersById[state.activeOrderId]
+      : null;
+    if (currentActiveOrder && isReusableEmptyDraft(currentActiveOrder)) {
+      setActiveOrder(currentActiveOrder.id);
+      return;
+    }
 
     const allOrders = state.orderIds
       .map((id) => state.ordersById[id])
@@ -194,6 +214,7 @@ const OrderProcessing = () => {
     const stationNumberFromOrderStore =
       state.currentStation?.station_number ?? null;
     let reliableHighestSeq = 0;
+    let highestSeenTodaySeq = 0;
     if (selectedStore) {
       const stationNumber = stationNumberFromOrderStore;
       const stationPrefix = stationNumber != null ? `S${stationNumber}` : null;
@@ -209,8 +230,6 @@ const OrderProcessing = () => {
         o.paid_status === "Paid";
 
       for (const o of allOrders) {
-        if (!isMeaningfulOrder(o)) continue;
-
         const dn = o.display_number;
         if (!dn) continue;
 
@@ -229,60 +248,51 @@ const OrderProcessing = () => {
         } else {
           if (dn.match(/^#S\d+-/)) continue;
         }
+
         const seq = parseSequenceFromDisplayNumber(dn);
+        if (seq > highestSeenTodaySeq) highestSeenTodaySeq = seq;
+
+        if (!isMeaningfulOrder(o)) continue;
         if (seq > reliableHighestSeq) reliableHighestSeq = seq;
       }
 
-      // Force-set to the reliable baseline so a stale local MMKV counter
-      // can self-correct downward as well as upward.
+      // Never rewind below a sequence that is already visible locally today.
+      // Empty drafts still count here so we don't issue 4, 5, then 4 again.
+      const healedSequenceFloor = Math.max(
+        reliableHighestSeq,
+        highestSeenTodaySeq,
+      );
       forceSetLocalSequence(
         selectedStore.id,
         stationNumber,
-        reliableHighestSeq,
+        healedSequenceFloor,
       );
     }
 
     const emptyDraft = [...allOrders]
       .reverse()
-      .find(
-        (o) =>
-          o.order_status === "draft" &&
-          o.items.length === 0 &&
-          o.service_location_id === null &&
-          o.paid_status !== "Paid" &&
-          !o.customer_name &&
-          !o.customer_id,
-      );
+      .find((o) => isReusableEmptyDraft(o));
 
     if (emptyDraft) {
-      // Keep reusing the empty draft, and ensure its local number is the
-      // expected next sequence from the healed counter.
+      // Keep reusing the empty draft. Only refresh its local number when the
+      // existing number is missing, from another day, or collides with another
+      // visible order. Mounting alone should not consume a new sequence.
       if (selectedStore) {
         const stationNumber = stationNumberFromOrderStore;
         const todayDateKey = getDateKey(new Date());
         const todayOrderPrefix = `ORD-${todayDateKey}-`;
-        const expectedNextSeq = reliableHighestSeq + 1;
         const takenDisplayNumbers = new Set(
           allOrders
-            .filter(
-              (o) =>
-                o.id !== emptyDraft.id &&
-                (o.items.length > 0 || o.order_status !== "draft"),
-            )
+            .filter((o) => o.id !== emptyDraft.id)
             .map((o) => o.display_number)
             .filter(Boolean),
-        );
-
-        const currentDraftSeq = parseSequenceFromDisplayNumber(
-          emptyDraft.display_number,
         );
 
         const shouldRefreshLocalNumber =
           !emptyDraft.order_number ||
           !emptyDraft.order_number.startsWith(todayOrderPrefix) ||
           (!!emptyDraft.display_number &&
-            takenDisplayNumbers.has(emptyDraft.display_number)) ||
-          currentDraftSeq !== expectedNextSeq;
+            takenDisplayNumbers.has(emptyDraft.display_number));
 
         if (shouldRefreshLocalNumber) {
           const localNumbers = generateLocalOrderNumbers(

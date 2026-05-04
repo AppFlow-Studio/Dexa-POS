@@ -253,10 +253,10 @@ function ClerkGate({ children }: { children: React.ReactNode }) {
     null,
   );
 
-  // Read the persisted flag once on mount
-  const wasSignedIn = React.useRef(
-    secureStorage.getString(CLERK_WAS_SIGNED_IN_KEY) === "true",
-  ).current;
+  // Read the persisted flag on each render so explicit sign-out can disable
+  // the recovery grace path immediately instead of showing the global loader.
+  const wasSignedIn =
+    secureStorage.getString(CLERK_WAS_SIGNED_IN_KEY) === "true";
 
   // Persist the flag when signed in
   React.useEffect(() => {
