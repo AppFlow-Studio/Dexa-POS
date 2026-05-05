@@ -7,6 +7,8 @@ import {
   CreditCard,
   FileText,
   LogIn,
+  Mail,
+  MessageSquare,
   Printer,
   RefreshCcw,
   RotateCcw,
@@ -16,21 +18,23 @@ import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 interface ActionsPanelProps {
-  order: OrderProfile;
-  onRefund: () => void;
-  onTipAdjust: () => void;
-  onPrint: () => void;
-  onReopen: () => void;
-  onCloseCheck: () => void;
-  onVoidOrder: () => void;
-  onNotes: () => void;
-  onClaim: () => void;
-  isClosingCheck?: boolean;
-  isReopeningCheck?: boolean;
-  isVoiding?: boolean;
-  isClaiming?: boolean;
-  isForeign?: boolean;
-  ownerLabel?: string;
+  order: OrderProfile
+  onRefund: () => void
+  onTipAdjust: () => void
+  onPrint: () => void
+  onEmailReceipt?: () => void
+  onTextReceipt?: () => void
+  onReopen: () => void
+  onCloseCheck: () => void
+  onVoidOrder: () => void
+  onNotes: () => void
+  onClaim: () => void
+  isClosingCheck?: boolean
+  isReopeningCheck?: boolean
+  isVoiding?: boolean
+  isClaiming?: boolean
+  isForeign?: boolean
+  ownerLabel?: string
 }
 
 const ActionsPanel: React.FC<ActionsPanelProps> = ({
@@ -38,6 +42,8 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   onRefund,
   onTipAdjust,
   onPrint,
+  onEmailReceipt,
+  onTextReceipt,
   onReopen,
   onCloseCheck,
   onVoidOrder,
@@ -99,6 +105,28 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         variant="primary"
         disabled={anyLoading}
       />
+
+      {/* Email Receipt */}
+      {onEmailReceipt && (
+        <ActionButton
+          icon={<Mail color={colors.teal} size={18} />}
+          label='Email Receipt'
+          onPress={onEmailReceipt}
+          variant='teal'
+          disabled={anyLoading || !order.db_order_id}
+        />
+      )}
+
+      {/* Text Receipt */}
+      {onTextReceipt && (
+        <ActionButton
+          icon={<MessageSquare color={colors.teal} size={18} />}
+          label='Text Receipt'
+          onPress={onTextReceipt}
+          variant='teal'
+          disabled={anyLoading || !order.db_order_id}
+        />
+      )}
 
       {/* Refund */}
       {canRefund && (

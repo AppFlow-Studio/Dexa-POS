@@ -22,6 +22,8 @@ import type {
 } from '@/lib/types'
 import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
+import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
+import type { SendReceiptDeliveryMethod } from '@/services/messaging/sendReceiptService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -50,6 +52,7 @@ import {
   RefreshCcw,
   Lock,
   RotateCcw,
+  Send,
   X
 } from 'lucide-react-native'
 import React, {
@@ -712,6 +715,7 @@ interface RightPaneSummaryProps {
   onCloseOrder: () => void
   onContinueCharging: () => void
   onIssueReceipt: () => void
+  onSendReceipt?: () => void
   onPrintKitchenTicket: () => void
   onTipAdjust: () => void
   onRefund: () => void
@@ -731,6 +735,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onCloseOrder,
   onContinueCharging,
   onIssueReceipt,
+  onSendReceipt,
   onPrintKitchenTicket,
   onTipAdjust,
   onRefund,
@@ -1197,6 +1202,14 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               icon={<Printer size={16} />}
               label='Print Receipt'
               onPress={onIssueReceipt}
+              variant='primary'
+            />
+          )}
+          {paymentSummary.collected > 0 && onSendReceipt && (
+            <ActionButton
+              icon={<Send size={16} />}
+              label='Send Receipt'
+              onPress={onSendReceipt}
               variant='primary'
             />
           )}
@@ -3718,6 +3731,10 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   const updateOrderCheckStatus = useOrderStore(s => s.updateOrderCheckStatus)
 
   const [rightPaneView, setRightPaneView] = useState<RightPaneView>('summary')
+  const [receiptSheet, setReceiptSheet] = useState<{
+    open: boolean
+    method: SendReceiptDeliveryMethod
+  }>({ open: false, method: 'email' })
 
   // Get order data - first try active orders, then previous orders
   const activeOrder = useOrderStore(state => {
@@ -4590,6 +4607,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onCloseOrder={handleCloseOrder}
                     onContinueCharging={handleContinueCharging}
                     onIssueReceipt={handleIssueReceipt}
+                    onSendReceipt={() =>
+                      setReceiptSheet({ open: true, method: 'email' })
+                    }
                     onPrintKitchenTicket={handlePrintKitchenTicket}
                     onTipAdjust={handleTipAdjust}
                     onRefund={handleRefund}
@@ -4638,6 +4658,15 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           setRefundApprovalVisible(false)
           pendingRefundRef.current = null
         }}
+      />
+
+      <SendReceiptSheet
+        isOpen={receiptSheet.open}
+        onClose={() => setReceiptSheet((s) => ({ ...s, open: false }))}
+        dbOrderId={(order as any)?.db_order_id ?? null}
+        defaultMethod={receiptSheet.method}
+        defaultEmail={(order as any)?.customer_email}
+        defaultPhone={(order as any)?.customer_phone}
       />
     </Modal>
   )

@@ -10,11 +10,13 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Check, Mail, Printer } from "lucide-react-native";
+import { Check, Mail, MessageSquare, Printer } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import { iosOnly } from "@/lib/safeAnimations";
+import SendReceiptSheet from "@/components/receipts/SendReceiptSheet";
+import type { SendReceiptDeliveryMethod } from "@/services/messaging/sendReceiptService";
 
 const PaymentSuccessView = () => {
   const close = usePaymentStore((s) => s.close);
@@ -30,6 +32,10 @@ const PaymentSuccessView = () => {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
 
   const [isPrinting, setIsPrinting] = useState(false);
+  const [receiptSheet, setReceiptSheet] = useState<{
+    open: boolean;
+    method: SendReceiptDeliveryMethod;
+  }>({ open: false, method: "email" });
   // const { addSaleEvent, forceRefresh } = useAnalyticsStore();
   // NOTE: Payment was already processed by handlePaymentCompletion
   // before navigating to this view. No need to call addPaymentToOrder again.
@@ -143,12 +149,16 @@ const PaymentSuccessView = () => {
     }
   };
 
-  const handleEmail = () => {
-    show({
-      title: "Email Sent",
-      message: "Receipt emailed to customer.",
-      type: "success",
-    });
+  const openSendReceipt = (method: SendReceiptDeliveryMethod) => {
+    if (!activeOrder?.db_order_id) {
+      show({
+        title: "Not synced yet",
+        message: "Order is still syncing. Try again in a moment.",
+        type: "error",
+      });
+      return;
+    }
+    setReceiptSheet({ open: true, method });
   };
 
   return (
@@ -287,11 +297,19 @@ const PaymentSuccessView = () => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={handleEmail}
+              onPress={() => openSendReceipt("email")}
               style={{ flex: 1, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 }}
             >
               <Mail size={13} color={colors.label} />
               <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 11 }}>Email</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => openSendReceipt("sms")}
+              style={{ flex: 1, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 }}
+            >
+              <MessageSquare size={13} color={colors.label} />
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 11 }}>Text</Text>
             </TouchableOpacity>
           </View>
 
@@ -308,6 +326,15 @@ const PaymentSuccessView = () => {
           </TouchableOpacity>
         </View>
       </View>
+
+      <SendReceiptSheet
+        isOpen={receiptSheet.open}
+        onClose={() => setReceiptSheet((s) => ({ ...s, open: false }))}
+        dbOrderId={activeOrder?.db_order_id ?? null}
+        defaultMethod={receiptSheet.method}
+        defaultEmail={activeOrder?.customer_email}
+        defaultPhone={activeOrder?.customer_phone}
+      />
     </View>
   );
 };

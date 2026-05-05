@@ -74,9 +74,19 @@ export interface TipDistributionRulesOverview {
 // ============================================================================
 
 export interface TodayTipSummary {
+  /** Gross card tips for the period (what customers wrote on the slip). */
   cardTips: number
+  /** Card tips NET of the bank/processor fee (what the merchant actually
+   * receives and has to pay out). */
+  cardTipsNet: number
+  /** Bank/processor fee on card tips for the period (informational). */
+  cardTipsProcessorFee: number
   cashTips: number
+  /** Total tips after netting the bank fee out of card tips. Distribution
+   * pools work off this amount. */
   totalTips: number
+  /** Total tips before netting (gross card + cash). Display-only. */
+  totalTipsGross: number
   periodStart: string | null // "YYYY-MM-DD" — first day included in totals
   lastCutoffAt: string | null // timestamp of last approved session's data_cutoff_at
   /** Prior-day sessions (since last approved) that are not approved/exported/voided */
@@ -235,7 +245,7 @@ export async function fetchUnsettledTipSummary (
   const [paymentsRes, priorSessionsRes] = await Promise.all([
     supabase
       .from('order_payments')
-      .select('payment_method, tip_amount, is_voided, is_returned, initiated_at')
+      .select('payment_method, tip_amount, tip_fee, is_voided, is_returned, initiated_at')
       .eq('location_id', locationId)
       .not('status', 'in', '("void","failed","declined","pending","processing")')
       .or(`initiated_at.gte.${startOfPeriod},initiated_at.is.null`),
@@ -258,9 +268,19 @@ export async function fetchUnsettledTipSummary (
   const payments = (paymentsRes.data || []).filter(
     (p: any) => !p.is_voided && !p.is_returned
   )
-  const cardTips = payments
-    .filter((p: any) => p.payment_method !== 'cash')
-    .reduce((sum: number, p: any) => sum + Number(p.tip_amount || 0), 0)
+  const cardPayments = payments.filter((p: any) => p.payment_method !== 'cash')
+  const cardTips = cardPayments.reduce(
+    (sum: number, p: any) => sum + Number(p.tip_amount || 0),
+    0
+  )
+  // Bank/processor fee on card tips. The bank deducts this from the
+  // merchant payout (see project_platform_fee_tracking). Cash payments
+  // have tip_fee=0 by construction.
+  const cardTipsProcessorFee = cardPayments.reduce(
+    (sum: number, p: any) => sum + Number(p.tip_fee || 0),
+    0
+  )
+  const cardTipsNet = Math.max(0, cardTips - cardTipsProcessorFee)
   const cashTips = payments
     .filter((p: any) => p.payment_method === 'cash')
     .reduce((sum: number, p: any) => sum + Number(p.tip_amount || 0), 0)
@@ -268,8 +288,11 @@ export async function fetchUnsettledTipSummary (
 
   return {
     cardTips,
+    cardTipsNet,
+    cardTipsProcessorFee,
     cashTips,
-    totalTips: cardTips + cashTips,
+    totalTips: cardTipsNet + cashTips,
+    totalTipsGross: cardTips + cashTips,
     periodStart,
     lastCutoffAt,
     pendingPriorDaySessions: (priorSessionsRes.data || []).map((s: any) => ({

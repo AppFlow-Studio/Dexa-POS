@@ -4,7 +4,7 @@ import { PrinterService } from "@/services/printing/PrinterService";
 import { SelectedLocation, useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { colors } from "@/lib/theme";
-import { Barcode, Printer, QrCode, X } from "lucide-react-native";
+import { Barcode, Mail, MessageSquare, Printer, QrCode, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
@@ -18,6 +18,8 @@ import {
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import SendReceiptSheet from "@/components/receipts/SendReceiptSheet";
+import type { SendReceiptDeliveryMethod } from "@/services/messaging/sendReceiptService";
 
 // ==========================================
 // TYPES
@@ -293,6 +295,10 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const dragY = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
+  const [receiptSheet, setReceiptSheet] = useState<{
+    open: boolean;
+    method: SendReceiptDeliveryMethod;
+  }>({ open: false, method: "email" });
 
   // Pan responder for drag gesture
   const panResponder = useRef(
@@ -688,15 +694,39 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <Text style={{ fontSize: 13, fontWeight: '600', color: colors.label }}>Close</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={{ flex: 2, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 9, backgroundColor: colors.teal, borderRadius: 8 }}
+              style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.teal + '40', backgroundColor: colors.teal + '15' }}
+              onPress={() => setReceiptSheet({ open: true, method: 'email' })}
+              disabled={!order?.db_order_id}
+            >
+              <Mail color={colors.teal} size={14} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>Email</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.teal + '40', backgroundColor: colors.teal + '15' }}
+              onPress={() => setReceiptSheet({ open: true, method: 'sms' })}
+              disabled={!order?.db_order_id}
+            >
+              <MessageSquare color={colors.teal} size={14} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>Text</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1.5, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 9, backgroundColor: colors.teal, borderRadius: 8 }}
               onPress={handlePrint}
             >
               <Printer color={colors.onSolid} size={14} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}>Print Receipt</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}>Print</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
       </View>
+      <SendReceiptSheet
+        isOpen={receiptSheet.open}
+        onClose={() => setReceiptSheet((s) => ({ ...s, open: false }))}
+        dbOrderId={order?.db_order_id ?? null}
+        defaultMethod={receiptSheet.method}
+        defaultEmail={order?.customer_email}
+        defaultPhone={order?.customer_phone}
+      />
     </Modal>
   );
 };
