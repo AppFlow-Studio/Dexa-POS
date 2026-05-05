@@ -105,8 +105,12 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
   const [focusedDetailId, setFocusedDetailId] = useState<string | null>(null)
   const [clockedInStaffProfileIds, setClockedInStaffProfileIds] = useState<Set<string>>(new Set())
   const [isLoadingClockedInStaff, setIsLoadingClockedInStaff] = useState(false)
-  // Tips pulled from payments, keyed by staff profile id
+  // Tips pulled from payments, keyed by staff profile id (gross — what the
+  // customer wrote on the slip; the bank deducts processor fee from this).
   const [cardTipsByStaff, setCardTipsByStaff] = useState<Record<string, number>>({})
+  // Processor fee on each staff's card tips (informational; the merchant
+  // never received this portion — the bank kept it).
+  const [cardTipsFeeByStaff, setCardTipsFeeByStaff] = useState<Record<string, number>>({})
   // Tracks which staff already declared cash tips at clock-out (from employee_daily_tips)
   const [preDeclaredStaff, setPreDeclaredStaff] = useState<Set<string>>(new Set())
 
@@ -124,6 +128,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
 
     setClockedInStaffProfileIds(new Set())
     setCardTipsByStaff({})
+    setCardTipsFeeByStaff({})
     setPreDeclaredStaff(new Set())
 
     const tz = selectedStore?.timezone || 'UTC'
@@ -170,7 +175,7 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
             .eq('shift_date', date),
           supabase
             .from('order_payments')
-            .select('tip_amount, order_id, payment_method, status, is_voided, is_returned')
+            .select('tip_amount, tip_fee, order_id, payment_method, status, is_voided, is_returned')
             .eq('location_id', selectedStore.id)
             .neq('payment_method', 'cash')
             .gte('initiated_at', windowStart)
@@ -214,9 +219,11 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
 
         if (orderIds.length > 0 && !isCancelled) {
           const orderTipMap = new Map<string, number>()
+          const orderFeeMap = new Map<string, number>()
           validPayments.forEach((p: any) => {
             if (!p.order_id) return
             orderTipMap.set(p.order_id, (orderTipMap.get(p.order_id) || 0) + Number(p.tip_amount || 0))
+            orderFeeMap.set(p.order_id, (orderFeeMap.get(p.order_id) || 0) + Number(p.tip_fee || 0))
           })
 
           const { data: ordersRaw } = await supabase
@@ -226,12 +233,15 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
 
           if (!isCancelled) {
             const cardMap: Record<string, number> = {}
+            const feeMap: Record<string, number> = {}
             ;(ordersRaw || []).forEach((o: any) => {
               const sid = o.assigned_server_id || o.created_by_staff_id
               if (!sid) return
               if (orderTipMap.has(o.id)) cardMap[sid] = (cardMap[sid] || 0) + orderTipMap.get(o.id)!
+              if (orderFeeMap.has(o.id)) feeMap[sid] = (feeMap[sid] || 0) + orderFeeMap.get(o.id)!
             })
             setCardTipsByStaff(cardMap)
+            setCardTipsFeeByStaff(feeMap)
           }
         }
       } finally {
@@ -606,6 +616,8 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
               const isSelected = focusedEmployeeId === emp.profileId
               const cashAmount = cashTipDeclarations[emp.profileId] ?? 0
               const cardAmount = cardTipsByStaff[emp.profileId] ?? 0
+              const cardFee = cardTipsFeeByStaff[emp.profileId] ?? 0
+              const cardAmountNet = Math.max(0, cardAmount - cardFee)
               return (
                 <TouchableOpacity
                   key={emp.id}
@@ -647,9 +659,9 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={{ fontSize: 15, fontWeight: '700', color: colors.teal }}>
-                        ${(cardAmount + cashAmount).toFixed(2)}
+                        ${(cardAmountNet + cashAmount).toFixed(2)}
                       </Text>
-                      <Text style={{ fontSize: 9, color: colors.muted, marginTop: 1 }}>total tips</Text>
+                      <Text style={{ fontSize: 9, color: colors.muted, marginTop: 1 }}>net tips</Text>
                     </View>
                   </View>
 
@@ -664,10 +676,22 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
                       paddingVertical: 6,
                       paddingHorizontal: 10,
                     }}>
-                      <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>Card Tips</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: cardAmount > 0 ? colors.heading : colors.muted }}>
-                        ${cardAmount.toFixed(2)}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                        <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Card Tips</Text>
+                        {cardFee > 0 && (
+                          <Text style={{ fontSize: 8, color: colors.muted }}>
+                            net of ${cardFee.toFixed(2)} fee
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: cardAmountNet > 0 ? colors.heading : colors.muted }}>
+                        ${cardAmountNet.toFixed(2)}
                       </Text>
+                      {cardFee > 0 && (
+                        <Text style={{ fontSize: 9, color: colors.muted, marginTop: 1 }}>
+                          gross ${cardAmount.toFixed(2)}
+                        </Text>
+                      )}
                     </View>
                     <View style={{
                       flex: 1,
@@ -767,6 +791,15 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
     const fmtPoolCell = (v: number, positive: boolean) =>
       v === 0 ? '-' : `${positive ? '+' : '-'}${formatCurrency(v)}`
 
+    // Sum the processor (bank) fee taken on card tips for this session.
+    // Source: cardTipsFeeByStaff (built from order_payments.tip_fee in the
+    // declare-step fetch). Reflects what the bank kept before paying the
+    // merchant — already netted out of the distribution numbers.
+    const totalProcessorFee = Object.values(cardTipsFeeByStaff).reduce(
+      (sum, v) => sum + (v || 0),
+      0,
+    )
+
     const COL = { name: 2.2, role: 1.2, hrs: 0.7, tips: 0.9, poolIn: 0.9, poolOut: 0.9, net: 1 }
 
     return (
@@ -793,11 +826,21 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
         {/* Summary tiles */}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {[
-            { label: 'Tips Collected', value: currentSession.totalTipsCollected },
+            {
+              label: 'Tips Collected',
+              value: currentSession.totalTipsCollected,
+              subtitle: totalProcessorFee > 0
+                ? `net of $${totalProcessorFee.toFixed(2)} bank fee`
+                : undefined,
+            },
             { label: 'Pooled', value: currentSession.totalTipsPooled },
             { label: 'Tip-Outs', value: currentSession.totalTipOuts },
-            { label: 'Total Distributed', value: currentSession.totalDistributed, highlight: true },
-          ].map(({ label, value, highlight }) => (
+            {
+              label: 'Total Distributed',
+              value: currentSession.totalDistributed,
+              highlight: true,
+            },
+          ].map(({ label, value, highlight, subtitle }) => (
             <View
               key={label}
               style={{
@@ -815,9 +858,43 @@ const TipDistributionWizard: React.FC<TipDistributionWizardProps> = ({
               <Text style={{ fontSize: 15, fontWeight: '800', color: highlight ? colors.teal : colors.heading, marginTop: 3 }}>
                 {formatCurrency(value)}
               </Text>
+              {subtitle && (
+                <Text style={{ fontSize: 8, color: colors.muted, marginTop: 2 }} numberOfLines={1}>
+                  {subtitle}
+                </Text>
+              )}
             </View>
           ))}
         </View>
+
+        {/* Bank fee transparency banner — shows what the processor ate
+            on card tips for this session. Pure reporting; the distribution
+            already nets this out via employee_daily_tips.charged_tips. */}
+        {totalProcessorFee > 0 && (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              borderRadius: 8,
+              backgroundColor: colors.warning + '10',
+              borderWidth: 1,
+              borderColor: colors.warning + '30',
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+            }}
+          >
+            <DollarSign size={14} color={colors.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.warning }}>
+                Bank processor fee on card tips: ${totalProcessorFee.toFixed(2)}
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.label, marginTop: 1 }}>
+                The bank deducts this from the merchant payout before tips are distributed. Already netted out of the numbers above.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Table */}
         <View

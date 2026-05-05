@@ -1,0 +1,3 @@
+BEGIN;
+DROP TABLE IF EXISTS public.receipt_sends CASCADE;
+COMMIT;

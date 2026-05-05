@@ -223,58 +223,91 @@ export default function EodStepTips({
         {summaryLoading ? (
           <ActivityIndicator size="small" color={colors.teal} />
         ) : (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <View
-              style={{
-                flexGrow: 1,
-                flexBasis: 120,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.card,
-                padding: 10,
-              }}
-            >
-              <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>Card Tips</Text>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginTop: 3 }}>
-                {fmt(tipSummary?.cardTips ?? 0)}
-              </Text>
+          <>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              <View
+                style={{
+                  flexGrow: 1,
+                  flexBasis: 140,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>Card Tips (net)</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginTop: 3 }}>
+                  {fmt(tipSummary?.cardTipsNet ?? 0)}
+                </Text>
+                {(tipSummary?.cardTipsProcessorFee ?? 0) > 0 && (
+                  <Text style={{ fontSize: 9, color: colors.muted, marginTop: 2 }}>
+                    gross {fmt(tipSummary?.cardTips ?? 0)} − bank fee {fmt(tipSummary?.cardTipsProcessorFee ?? 0)}
+                  </Text>
+                )}
+              </View>
+              <View
+                style={{
+                  flexGrow: 1,
+                  flexBasis: 120,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>Cash Tips</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginTop: 3 }}>
+                  {fmt(tipSummary?.cashTips ?? 0)}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flexGrow: 1,
+                  flexBasis: 160,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.teal + "45",
+                  backgroundColor: colors.teal + "12",
+                  padding: 10,
+                }}
+              >
+                <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>
+                  Total to Distribute
+                </Text>
+                <Text style={{ fontSize: 15, fontWeight: "800", color: colors.teal, marginTop: 3 }}>
+                  {fmt(tipSummary?.totalTips ?? 0)}
+                </Text>
+              </View>
             </View>
-            <View
-              style={{
-                flexGrow: 1,
-                flexBasis: 120,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.card,
-                padding: 10,
-              }}
-            >
-              <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>Cash Tips</Text>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginTop: 3 }}>
-                {fmt(tipSummary?.cashTips ?? 0)}
-              </Text>
-            </View>
-            <View
-              style={{
-                flexGrow: 1,
-                flexBasis: 160,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.teal + "45",
-                backgroundColor: colors.teal + "12",
-                padding: 10,
-              }}
-            >
-              <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>
-                Total to Distribute
-              </Text>
-              <Text style={{ fontSize: 15, fontWeight: "800", color: colors.teal, marginTop: 3 }}>
-                {fmt(tipSummary?.totalTips ?? 0)}
-              </Text>
-            </View>
-          </View>
+
+            {(tipSummary?.cardTipsProcessorFee ?? 0) > 0 && (
+              <View
+                style={{
+                  marginTop: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.warning + "30",
+                  backgroundColor: colors.warning + "10",
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: colors.warning }}>
+                    Bank fee on card tips: {fmt(tipSummary?.cardTipsProcessorFee ?? 0)}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: colors.label, marginTop: 1 }}>
+                    The bank takes a cut of every card capture before paying the merchant. The "Total to Distribute" already nets this out.
+                  </Text>
+                </View>
+              </View>
+            )}
+          </>
         )}
       </View>
 
