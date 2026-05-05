@@ -918,7 +918,35 @@ const ModifierScreenContent = ({
       const hasSent = i.kitchen_status === "sent";
       return !hasModifiers && !hasNotes && !hasSent;
     });
-    if (!existingItem) {
+    if (existingItem) return;
+
+    // Defer the draft cart-write past the rapid-DONE window. If the user
+    // confirms or cancels within ~220ms, the timer is cleared and we never
+    // pay for a placeholder cart write that would just trigger re-renders.
+    // Mirrors the store-side deferral in useModifierSidebarStore.open().
+    const expectedItemId = currentItem.id;
+    const timer = setTimeout(() => {
+      const store = useModifierSidebarStore.getState();
+      if (
+        !store.isOpen ||
+        store.cartItem ||
+        store.menuItem?.id !== expectedItemId
+      ) {
+        return;
+      }
+      // Re-fetch latest active-order snapshot — another flow may have added
+      // an identical unsent item while we were waiting.
+      const latest = useOrderStore.getState();
+      const latestOrder = latest.activeOrderId
+        ? latest.ordersById[latest.activeOrderId]
+        : null;
+      const dupe = latestOrder?.items.find(
+        (i) => i.id === stableDraftId || i.menuItemId === expectedItemId,
+      );
+      if (dupe) {
+        if (dupe.isDraft) draftItemIdRef.current = dupe.id;
+        return;
+      }
       const itemPrice = getCurrentItemPrice(currentItem);
       const cashPrice = getCurrentItemCashPrice(currentItem);
       const draftItem = {
@@ -943,7 +971,9 @@ const ModifierScreenContent = ({
       addItemToActiveOrder(draftItem);
       draftItemIdRef.current = draftItem.id;
       lastDraftMenuItemIdRef.current = currentItem.id;
-    }
+    }, 220);
+
+    return () => clearTimeout(timer);
   }, [isOpen, currentItem?.id, mode, cartItem, seatOverride]);
 
   const sessionKeyRef = useRef<string>("closed");

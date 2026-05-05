@@ -48,11 +48,25 @@ const nowMs = () =>
 
 let lastModifierOpenStartedAt = 0
 let deferredModifierResetTimer: ReturnType<typeof setTimeout> | null = null
+let deferredDraftTimer: ReturnType<typeof setTimeout> | null = null
+
+// Drafts only become visible to the user after the modifier screen closes,
+// so a press-DONE-fast flow never benefits from the draft having been
+// written to the cart. This delay skips the draft cart-write entirely
+// on the rapid path while still showing a placeholder for users who dwell.
+const DRAFT_CREATION_DELAY_MS = 220
 
 const clearDeferredModifierResetTimer = () => {
   if (deferredModifierResetTimer) {
     clearTimeout(deferredModifierResetTimer)
     deferredModifierResetTimer = null
+  }
+}
+
+const clearDeferredDraftTimer = () => {
+  if (deferredDraftTimer) {
+    clearTimeout(deferredDraftTimer)
+    deferredDraftTimer = null
   }
 }
 
@@ -461,6 +475,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
 
     open: config => {
       clearDeferredModifierResetTimer()
+      clearDeferredDraftTimer()
 
       const {
         menuItem: menuItemParam,
@@ -611,9 +626,23 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           showSeatPicker
         })
 
-        // Draft creation is intentionally deferred so the modifier UI opens first.
+        // Draft creation is deferred past the rapid-DONE window. If the
+        // user closes within DRAFT_CREATION_DELAY_MS, the draft is never
+        // written to the cart — handleSave's real addItem covers the full
+        // mutation in one step. clearDeferredDraftTimer fires from close()
+        // and from the start of the next open().
         if (menuItemParam && !cartItemParam) {
-          queueMicrotask(() => {
+          const expectedItemId = precomputed.forItemId
+          deferredDraftTimer = setTimeout(() => {
+            deferredDraftTimer = null
+            const state = get()
+            if (
+              !state.isOpen ||
+              state.cartItem ||
+              state.precomputedForItemId !== expectedItemId
+            ) {
+              return
+            }
             const draftCreatedId = _createDraftInOpen(
               sourceItem,
               precomputed.itemPrice,
@@ -621,16 +650,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
               resolvedCatId,
               resolvedMenuId
             )
-
-            const state = get()
+            const after = get()
             if (
-              state.isOpen &&
-              !state.cartItem &&
-              state.precomputedForItemId === precomputed.forItemId
+              after.isOpen &&
+              !after.cartItem &&
+              after.precomputedForItemId === expectedItemId
             ) {
               set({ draftCreatedId })
             }
-          })
+          }, DRAFT_CREATION_DELAY_MS)
         }
       } else if (cartItemParam) {
         // Fallback: no menu item found, use cart item data directly
@@ -693,6 +721,11 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
     close: () => {
       // Cache persisted for re-tap speed; TTL evicts stale entries
 
+      // Cancel any deferred draft creation — if it hasn't fired yet, the
+      // user pressed DONE/Cancel before the dwell threshold and we skip
+      // the cart write entirely.
+      clearDeferredDraftTimer()
+
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
       if (__DEV__ && lastModifierOpenStartedAt > 0) {
@@ -740,6 +773,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
 
     cancelAndRemoveDraft: () => {
       // Cache persisted for re-tap speed; TTL evicts stale entries
+
+      // Cancel any pending deferred draft creation before tearing down.
+      clearDeferredDraftTimer()
 
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
