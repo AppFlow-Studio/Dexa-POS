@@ -6,10 +6,12 @@ import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { getTerminalMatchInfo } from '@/utils/terminalMatchGuard'
+import * as Haptics from 'expo-haptics'
 import {
   ChefHat,
   DollarSign,
   Eye,
+  LogIn,
   Plus,
   Printer,
   ReceiptText,
@@ -42,6 +44,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   position
 }) => {
   const activeOrderId = useOrderStore(s => s.activeOrderId)
+  const currentStationId = useOrderStore(s => s.currentStationId)
   const addItemToActiveOrder = useOrderStore(s => s.addItemToActiveOrder)
   const generateCartItemId = useOrderStore(s => s.generateCartItemId)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
@@ -221,9 +224,22 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     })
   }
 
+  // Handle take over (foreign-station claim) — no confirm modal, the menu
+  // tap itself is the deliberate action. Light haptic for feedback.
+  const handleTakeOver = () => {
+    onClose()
+    if (!orderId) return
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
+    void useOrderStore.getState().claimOrderById(orderId)
+  }
+
   if (!order) return null
 
   const hasOutstanding = order.paid_status !== 'Paid'
+  const isForeign =
+    !!order.station_id &&
+    !!currentStationId &&
+    order.station_id !== currentStationId
   const overlayBackground = 'rgba(0,0,0,0.5)'
   const menuBorder = colors.border
   const rowDivider = colors.border
@@ -240,6 +256,15 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
         onViewDetails()
       }
     },
+    ...(isForeign
+      ? [
+          {
+            icon: <LogIn size={18} color={colors.warning} />,
+            label: 'Take Over Order',
+            onPress: handleTakeOver
+          }
+        ]
+      : []),
     {
       icon: <Plus size={18} color={colors.muted} />,
       label: 'Add to Bill',

@@ -1,7 +1,14 @@
 import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import { colors } from '@/lib/theme'
 import { PreviousOrder } from '@/lib/types'
-import { ArrowLeft, ShoppingBag, Truck, Utensils } from 'lucide-react-native'
+import { useOrderStore } from '@/stores/useOrderStore'
+import {
+  ArrowLeft,
+  MonitorSmartphone,
+  ShoppingBag,
+  Truck,
+  Utensils
+} from 'lucide-react-native'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
@@ -51,11 +58,21 @@ const OrderDetailHeader: React.FC<OrderDetailHeaderProps> = ({
   order,
   onBack
 }) => {
+  const currentStationId = useOrderStore(s => s.currentStationId)
   const paymentStyle = statusConfig[order.paymentStatus] || statusConfig.Unpaid
   const checkStyle =
     checkStatusConfig[order.checkStatus || 'Opened'] || checkStatusConfig.Opened
   const typeStyle = orderTypeConfig[order.type] || orderTypeConfig['Dine In']
   const TypeIcon = typeStyle.icon
+
+  // Foreign-station ownership: render a warning-toned pill so the user can see
+  // the order is owned elsewhere before taking any action. `station_id == null`
+  // means unowned (external/online order) — not foreign.
+  const isForeign =
+    !!order.station_id &&
+    !!currentStationId &&
+    order.station_id !== currentStationId
+  const ownerLabel = order.station_name?.trim() || 'Another Station'
 
   return (
     <View
@@ -112,6 +129,35 @@ const OrderDetailHeader: React.FC<OrderDetailHeaderProps> = ({
 
         {/* Badges */}
         <View style={{ flexDirection: 'row', gap: 5 }}>
+          {/* Foreign-station ownership */}
+          {isForeign && (
+            <View
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+                borderRadius: 20,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                backgroundColor: colors.warning + '20',
+                borderWidth: 1,
+                borderColor: colors.warning + '50'
+              }}
+            >
+              <MonitorSmartphone color={colors.warning} size={11} />
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: colors.warning
+                }}
+                numberOfLines={1}
+              >
+                {ownerLabel}
+              </Text>
+            </View>
+          )}
+
           {/* Payment status */}
           <View
             style={{

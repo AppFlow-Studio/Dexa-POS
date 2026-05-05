@@ -3267,6 +3267,29 @@ interface OrderState {
       }
   >;
 
+  /**
+   * Claim ownership of an arbitrary order (by local store key) from another
+   * station. Same semantics as `claimActiveOrder` but doesn't require setting
+   * the active order first — used by the previous-orders detail screen, the
+   * row-level OrderActionsMenu, and the PaymentDetailBottomSheet read-only
+   * banner.
+   */
+  claimOrderById: (
+    localOrderId: string,
+  ) => Promise<
+    | { success: true }
+    | {
+        success: false;
+        error:
+          | "NO_STATION"
+          | "ORDER_NOT_FOUND"
+          | "ORDER_FINALIZED"
+          | "ORDER_LOCKED_FOR_PAYMENT"
+          | "CONCURRENT_CLAIM"
+          | "NETWORK";
+      }
+  >;
+
   startNewOrder: (details?: {
     tableId?: string;
     guestCount?: number;
@@ -6212,13 +6235,21 @@ export const useOrderStore = create<OrderState>()(
           },
 
           claimActiveOrder: async () => {
-            const { activeOrderId, ordersById, currentStationId } = get();
+            const { activeOrderId, ordersById } = get();
             if (!activeOrderId) {
               return { success: false, error: "NO_ACTIVE_ORDER" as const };
             }
-            const order = ordersById[activeOrderId];
-            if (!order) {
+            if (!ordersById[activeOrderId]) {
               return { success: false, error: "NO_ACTIVE_ORDER" as const };
+            }
+            return get().claimOrderById(activeOrderId);
+          },
+
+          claimOrderById: async (localOrderId: string) => {
+            const { ordersById, currentStationId } = get();
+            const order = ordersById[localOrderId];
+            if (!order) {
+              return { success: false, error: "ORDER_NOT_FOUND" as const };
             }
             if (!currentStationId) {
               return { success: false, error: "NO_STATION" as const };
@@ -6251,7 +6282,7 @@ export const useOrderStore = create<OrderState>()(
             // Network / transport error
             if (result.error) {
               if (__DEV__)
-                console.warn("[claimActiveOrder] RPC error:", result.error);
+                console.warn("[claimOrder] RPC error:", result.error);
               toastService.show({
                 title: "Couldn't take over",
                 message: "Network error — please try again.",
@@ -6261,6 +6292,39 @@ export const useOrderStore = create<OrderState>()(
             }
 
             const data = result.data as any;
+            const ourStationName =
+              useStoreSettingsStore.getState().selectedStation
+                ?.station_name ?? undefined;
+
+            // Helper: apply the same local-store mutation that a successful
+            // claim does. Used by both the success path and the idempotent
+            // CONCURRENT_CLAIM-where-current-owner-is-us path (Bad-WiFi retry
+            // recovery — the prior request actually succeeded server-side).
+            const applyLocalSuccess = (syncVersion?: number) => {
+              set((state) => {
+                const o = state.ordersById[localOrderId];
+                if (!o) return;
+                o.station_id = currentStationId;
+                o._sourceStationId = undefined;
+                o._sourceStationName = undefined;
+                if (typeof syncVersion === "number") {
+                  (o as any).sync_version = syncVersion;
+                } else {
+                  (o as any).sync_version =
+                    ((o as any).sync_version ?? 0) + 1;
+                }
+              });
+              // Reviewer #2 critical #2: the order-broadcast pipeline writes
+              // to useOrderStore only — `usePreviousOrdersStore` is not
+              // patched. Closed orders shown in the previous-orders list
+              // would keep stale `station_id` / `station_name` and the
+              // foreign pill wouldn't flip. Patch explicitly.
+              usePreviousOrdersStore.getState().patchPreviousOrder(dbOrderId, {
+                station_id: currentStationId,
+                station_name: ourStationName,
+              });
+            };
+
             if (!data?.success) {
               const errCode = data?.error as
                 | "ORDER_NOT_FOUND"
@@ -6268,6 +6332,39 @@ export const useOrderStore = create<OrderState>()(
                 | "ORDER_LOCKED_FOR_PAYMENT"
                 | "CONCURRENT_CLAIM"
                 | undefined;
+
+              // Bad-WiFi recovery: deadline-wrapped RPCs that timed out may
+              // have actually succeeded server-side. A retry will then come
+              // back as CONCURRENT_CLAIM with the new owner being US. Treat
+              // as idempotent success so the user doesn't see a spurious
+              // "couldn't take over" toast.
+              if (
+                errCode === "CONCURRENT_CLAIM" &&
+                typeof data?.current_station_id === "string" &&
+                data.current_station_id === currentStationId
+              ) {
+                applyLocalSuccess(
+                  typeof data?.sync_version === "number"
+                    ? data.sync_version
+                    : undefined,
+                );
+                return { success: true as const };
+              }
+
+              // Lost the race to a *different* station — patch local state
+              // to reality so the UI flips to that station's ownership
+              // immediately instead of waiting for the broadcast.
+              if (
+                errCode === "CONCURRENT_CLAIM" &&
+                typeof data?.current_station_id === "string"
+              ) {
+                set((state) => {
+                  const o = state.ordersById[localOrderId];
+                  if (!o) return;
+                  o.station_id = data.current_station_id;
+                  // Leave _sourceStationName alone — broadcast will update.
+                });
+              }
 
               const messages: Record<
                 string,
@@ -6296,7 +6393,7 @@ export const useOrderStore = create<OrderState>()(
                 : { title: "Couldn't take over", message: "Unknown error." };
               toastService.show({ ...msg, type: "warning" });
               if (__DEV__)
-                console.warn("[claimActiveOrder] server rejected:", data);
+                console.warn("[claimOrder] server rejected:", data);
               return {
                 success: false,
                 error: errCode ?? ("NETWORK" as const),
@@ -6305,18 +6402,11 @@ export const useOrderStore = create<OrderState>()(
 
             // Success — optimistic local update; the realtime broadcast will
             // arrive with the same delta and the version-guard dedupes.
-            set((state) => {
-              const o = state.ordersById[activeOrderId];
-              if (!o) return;
-              o.station_id = currentStationId;
-              o._sourceStationId = undefined;
-              o._sourceStationName = undefined;
-              const newVersion =
-                typeof data.sync_version === "number"
-                  ? data.sync_version
-                  : ((o as any).sync_version ?? 0) + 1;
-              (o as any).sync_version = newVersion;
-            });
+            applyLocalSuccess(
+              typeof data?.sync_version === "number"
+                ? data.sync_version
+                : undefined,
+            );
 
             return { success: true as const };
           },

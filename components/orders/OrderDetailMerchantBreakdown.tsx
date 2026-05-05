@@ -1,17 +1,21 @@
 /**
- * OrderDetailMerchantBreakdown — staff-only platform-fee breakdown.
+ * OrderDetailMerchantBreakdown — staff-only processor-fee breakdown.
  *
- * Shows the merchant-side decomposition of a captured payment:
- *   - Subtotal charged / Platform fee / Merchant subtotal
- *   - Tip charged / Tip platform fee / Merchant tip
- *   - Merchant take-home
+ * Shows the bank/processor fee decomposition of a captured payment:
+ *   - Subtotal charged / Processor fee on subtotal / Merchant subtotal
+ *   - Tip charged / Processor fee on tip / Merchant tip
+ *   - Merchant take-home (after processor fee)
+ *
+ * The processor fee is the cut the bank takes from the merchant payout
+ * (typically ~4%). The platform does NOT add to the card charge — the
+ * customer pays the displayed amount; the bank deducts its fee from the
+ * merchant's payout. This component is pure reporting for reconciliation.
  *
  * Customer-invisibility invariant (per `feedback_platform_fees_invisible_to_customer`):
- *   This component is gated to manager roles and must NEVER be imported by
- *   any customer-facing render path (printed receipts, CFD `ResultScreen`,
- *   PDF receipt templates, email receipts). The
- *   `__tests__/platformFeesCustomerInvisibility.test.ts` regression test
- *   guards this.
+ *   Manager-gated. Must NEVER be imported by any customer-facing render
+ *   path (printed receipts, CFD `ResultScreen`, PDF receipt templates,
+ *   email receipts). The `__tests__/platformFeesCustomerInvisibility.test.ts`
+ *   regression test guards this.
  */
 
 import { colors } from "@/lib/theme";
@@ -27,13 +31,13 @@ const MANAGER_ROLES: MerchantRole[] = [
 ];
 
 interface Props {
-  /** Card-priced payment subtotal (already includes baked-in surcharge). */
+  /** Card-priced payment subtotal. */
   amount: number;
-  /** Tip charged to card (marked-up if surcharge > 0). */
+  /** Tip charged to card. */
   tipAmount: number;
-  /** Surcharge portion of `amount`. 0 for cash payments. */
+  /** Processor (bank) fee on the subtotal portion. 0 for cash payments. */
   dualPricingFee?: number;
-  /** Surcharge portion of `tipAmount`. 0 for cash payments. */
+  /** Processor (bank) fee on the tip portion. 0 for cash payments. */
   tipFee?: number;
 }
 
@@ -118,13 +122,13 @@ export const OrderDetailMerchantBreakdown: React.FC<Props> = ({
             letterSpacing: 0.5,
           }}
         >
-          Merchant breakdown · internal
+          Processor fee breakdown · internal
         </Text>
       </View>
 
       <Row label="Subtotal charged" value={dollar(amount)} />
       {dualPricingFee > 0 && (
-        <Row label="Platform fee" value={`-${dollar(dualPricingFee)}`} accent="muted" />
+        <Row label="Processor fee on subtotal" value={`-${dollar(dualPricingFee)}`} accent="muted" />
       )}
       <Row label="Merchant subtotal" value={dollar(merchantSubtotal)} accent="info" />
 
@@ -132,7 +136,7 @@ export const OrderDetailMerchantBreakdown: React.FC<Props> = ({
         <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.border }}>
           <Row label="Tip charged" value={dollar(tipAmount)} />
           {tipFee > 0 && (
-            <Row label="Tip platform fee" value={`-${dollar(tipFee)}`} accent="muted" />
+            <Row label="Processor fee on tip" value={`-${dollar(tipFee)}`} accent="muted" />
           )}
           <Row label="Merchant tip" value={dollar(merchantTip)} accent="info" />
         </View>

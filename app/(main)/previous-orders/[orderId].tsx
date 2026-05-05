@@ -70,6 +70,8 @@ const OrderDetailsScreen = () => {
   const [historyHydrated, setHistoryHydrated] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [showNotesModal, setShowNotesModal] = useState(false)
+  const [isClaiming, setIsClaiming] = useState(false)
+  const currentStationId = useOrderStore(s => s.currentStationId)
 
   // Reactive selector — re-renders whenever the underlying previous-orders
   // store is patched (e.g. via `_handleOrderBroadcast` → `patchPreviousOrder`),
@@ -150,6 +152,41 @@ const OrderDetailsScreen = () => {
     if (!order?.db_order_id) return
     reopenCheckMutation.mutate({ dbOrderId: order.db_order_id })
   }, [order?.db_order_id, reopenCheckMutation])
+
+  // Take Over: closed/historical orders may not be hydrated into the live
+  // order store yet — sync first so `claimOrderById` can find it. The RPC
+  // itself rejects finalized orders, so we surface that via the toast inside
+  // `claimOrderById` rather than gating client-side.
+  const handleClaim = useCallback(async () => {
+    if (!orderIdParam) return
+    setIsClaiming(true)
+    try {
+      let localId: string | null = orderIdParam
+      if (!useOrderStore.getState().ordersById[localId]) {
+        const lookupKey = order?.db_order_id ?? orderIdParam
+        localId = await useOrderStore
+          .getState()
+          .syncOrderFromDatabase(lookupKey)
+        if (!localId) {
+          _show({
+            title: "Couldn't take over",
+            message: 'Could not load order data — please refresh.',
+            type: 'error'
+          })
+          return
+        }
+      }
+      await useOrderStore.getState().claimOrderById(localId)
+    } finally {
+      setIsClaiming(false)
+    }
+  }, [orderIdParam, order?.db_order_id, _show])
+
+  const isForeign =
+    !!order?.station_id &&
+    !!currentStationId &&
+    order.station_id !== currentStationId
+  const ownerLabel = order?.station_name?.trim() || undefined
 
   const mappedOrder = useMemo(
     () => (order ? previousOrderToOrderProfile(order) : null),
@@ -476,9 +513,13 @@ const OrderDetailsScreen = () => {
                 })
               }}
               onNotes={() => setShowNotesModal(true)}
+              onClaim={handleClaim}
               isClosingCheck={closeCheckMutation.isPending}
               isReopeningCheck={reopenCheckMutation.isPending}
               isVoiding={voidOrderMutation.isPending}
+              isClaiming={isClaiming}
+              isForeign={isForeign}
+              ownerLabel={ownerLabel}
             />
           </Animated.View>
         </ScrollView>

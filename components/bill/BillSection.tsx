@@ -1250,6 +1250,13 @@ const BillSectionContent = ({
         .dispatchAction({ type: "PRESENT_CHECK", tableId: linkedTableId });
     }
 
+    // Flush any pending totals recompute (rapid-add coalescer) so the payment
+    // sheet reads fresh totals on its first frame instead of the stale
+    // pre-add value. No-op when nothing is queued.
+    if (activeOrderId) {
+      useOrderStore.getState()._ensureTotalsFresh(activeOrderId);
+    }
+
     // Directly open the payment bottom sheet to the method selection
     usePaymentStore
       .getState()

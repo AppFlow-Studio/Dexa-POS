@@ -363,6 +363,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       return
     }
 
+    // Flush any pending totals recompute so the sheet reads fresh totals on
+    // its first frame. No-op when nothing is queued.
+    if (orderState.activeOrderId) {
+      orderState._ensureTotalsFresh(orderState.activeOrderId)
+    }
+
     // OPTIMIZED: Update state BEFORE animation for instant UI response
     // This ensures the payment view is ready before the sheet animates open
     set({

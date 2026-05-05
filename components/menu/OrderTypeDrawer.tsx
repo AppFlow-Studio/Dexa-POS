@@ -6,6 +6,7 @@ import { useCustomerStore } from '@/stores/useCustomerStore'
 import { useDineInStore } from '@/stores/useDineInStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { useShallow } from 'zustand/react/shallow'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { formatAddress } from '@/utils/addressUtils'
 import { useRouter } from 'expo-router'
@@ -53,8 +54,20 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
   const { selectedTable, setSelectedTable, clearSelectedTable } =
     useDineInStore()
-  const activeOrder = useOrderStore(state =>
-    activeOrderId ? state.ordersById[activeOrderId] : undefined
+  // Narrow subscription: only re-render when the three fields this drawer
+  // actually reads change, not on every items mutation. Each rapid item
+  // add otherwise re-renders the whole drawer tree.
+  const activeOrder = useOrderStore(
+    useShallow(state => {
+      if (!activeOrderId) return undefined
+      const order = state.ordersById[activeOrderId]
+      if (!order) return undefined
+      return {
+        hasItems: order.items.length > 0,
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+      }
+    }),
   )
 
   const { openSheet } = useCustomerSheetStore()
@@ -122,7 +135,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     if (!selectedTable) return
 
     // Check if there's an active order with items
-    if (activeOrderId && activeOrder && activeOrder.items.length > 0) {
+    if (activeOrderId && activeOrder && activeOrder.hasItems) {
       // Transfer existing order to the table
       assignOrderToTable(activeOrderId, selectedTable.id)
       updateActiveOrderDetails({

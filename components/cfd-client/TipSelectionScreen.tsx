@@ -77,20 +77,14 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const subtotal = tipConfig?.subtotalForTip ?? 0
   const presets = tipConfig?.presetPercentages ?? [15, 20, 25]
   const maxTipPct = tipConfig?.maxTipPercentage ?? 100
-  // P1 (platform tip surcharge bake-into-display): when > 0, every
-  // displayed tip number — preset chips and the customer-typed custom
-  // amount — is the marked-up final number. The customer never sees a
-  // breakdown. Backend extracts the surcharge silently into tip_fee.
-  const tipSurchargePct = tipConfig?.tipSurchargePercentage ?? 0
-  const tipMarkup = 1 + tipSurchargePct / 100
   const maxTipCents =
-    subtotal > 0 ? Math.round(subtotal * (maxTipPct / 100) * tipMarkup) : Infinity
+    subtotal > 0 ? Math.round(subtotal * (maxTipPct / 100)) : Infinity
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
   const customAmountCents = Math.round((parseFloat(customAmount) || 0) * 100)
   const selectedTipAmount = showCustom
     ? customAmountCents
     : selectedPercentage != null
-    ? Math.round(subtotal * (selectedPercentage / 100) * tipMarkup)
+    ? Math.round(subtotal * (selectedPercentage / 100))
     : 0
   const hasSelection =
     hasMadeSelection && (!showCustom || customAmount.trim().length > 0)
@@ -98,8 +92,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
 
   const handlePresetSelect = (percentage: number) => {
     if (isConfirming) return
-    // Marked-up final tip — what the customer just tapped on the chip.
-    const tipAmount = Math.round(subtotal * (percentage / 100) * tipMarkup)
+    const tipAmount = Math.round(subtotal * (percentage / 100))
     setSelectedPercentage(percentage)
     setShowCustom(false)
     setHasMadeSelection(true)
@@ -391,8 +384,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
 
         <View style={styles.presetGrid}>
           {presets.map((pct, index) => {
-            // Marked-up amount displayed on the chip when surcharge > 0.
-            const tipAmt = Math.round(subtotal * (pct / 100) * tipMarkup)
+            const tipAmt = Math.round(subtotal * (pct / 100))
             const isSelected = selectedPercentage === pct && !showCustom
             return (
               <Animated.View

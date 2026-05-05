@@ -120,9 +120,35 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  // Narrow selector: only active order + working set + own-station active orders.
-  // History comes from previousOrders (date-bounded). Do NOT scan all orderIds —
-  // useOrderStore can have 800+ stale orders with non-final statuses from useOrdersQuery.
+  // Read the resolved date-window bounds at the component level so the
+  // `liveOrders` selector below can gate on them. These bounds come from
+  // `get_business_day_bounds` (or the Luxon fallback) — same source used to
+  // fetch `previousOrders`, so the live and history sides agree on what
+  // "Today" / "Yesterday" / "Last 7 days" mean.
+  const liveDateBounds = usePreviousOrdersStore(
+    useShallow(s => ({
+      startTs: s.dateWindow?._resolvedStartTs ?? null,
+      endTs: s.dateWindow?._resolvedEndTs ?? null
+    }))
+  )
+
+  // Narrow selector: active order + working set + station-visible, in-window,
+  // non-final orders. History comes from previousOrders (date-bounded). Do NOT
+  // scan all orderIds blindly — useOrderStore can have 1500+ stale non-final
+  // orders from useOrdersQuery (which has no date bound today).
+  //
+  // Date window: skip orders whose `opened_at` falls outside the active pill's
+  // resolved bounds. The `useOrdersQuery` fetch is status-only with no date
+  // bound, so without this filter the user sees months of stale "ready" /
+  // "preparing" orders piled up in the list. The active order + working set
+  // bypass the date filter — the cashier is mid-edit on those, regardless of
+  // when they were opened.
+  //
+  // Station visibility honours `view_scope` (mirrors `isOrderVisible` in
+  // useOrderStore):
+  //   own      → only this station's orders
+  //   location → any station at this location
+  //   online   → this station + delivery/takeout from any station
   const liveOrders = useOrderStore(
     useShallow(s => {
       const ids = new Set<string>()
@@ -131,21 +157,36 @@ const PreviousOrdersSection = () => {
         const localId = s.dbOrderIdIndex[wsId] || wsId
         ids.add(localId)
       }
-      // Only include own-station, non-final, non-empty-draft orders
-      // (not ALL orders — that pulls in hundreds of stale "ready" orders)
       const finalStatuses = new Set([
         'completed',
         'void',
         'cancelled',
         'voided'
       ])
+      const viewScope = s.currentStation?.view_scope ?? 'own'
+      const startTs = liveDateBounds.startTs
+      const endTs = liveDateBounds.endTs
       for (const id of s.orderIds) {
         if (ids.has(id)) continue
         const o = s.ordersById[id]
         if (!o) continue
-        if (o.station_id !== s.currentStationId) continue // own station only
+        if (viewScope === 'own') {
+          if (o.station_id !== s.currentStationId) continue
+        } else if (viewScope === 'online') {
+          const isOnlineType =
+            o.order_type === 'delivery' || o.order_type === 'takeout'
+          if (o.station_id !== s.currentStationId && !isOnlineType) continue
+        }
+        // viewScope === 'location' → no station gate
         if (finalStatuses.has(o.order_status ?? '')) continue
         if (o.order_status === 'draft' && o.items.length === 0) continue
+        // Date-window gate (skip when bounds aren't resolved yet — initial
+        // render before the RPC returns). `opened_at` can be null on brand-
+        // new drafts; let those through so the user sees what they're
+        // currently typing.
+        if (startTs && endTs && o.opened_at) {
+          if (o.opened_at < startTs || o.opened_at >= endTs) continue
+        }
         ids.add(id)
       }
       const result: OrderProfile[] = []

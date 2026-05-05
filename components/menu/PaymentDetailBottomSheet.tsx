@@ -1,4 +1,5 @@
 import { ToastRenderer, useToast } from '@/contexts/ToastContext'
+import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { useOrderDetailsFetch } from '@/hooks/orders/useOrderDetailsFetch'
 import { OrderDetailMerchantBreakdown } from '@/components/orders/OrderDetailMerchantBreakdown'
@@ -714,9 +715,13 @@ interface RightPaneSummaryProps {
   onPrintKitchenTicket: () => void
   onTipAdjust: () => void
   onRefund: () => void
+  onTakeOver: () => void
   formatTimestamp: (timestamp: string) => string
   terminalCanProcess: boolean
   terminalBlockReason?: string
+  isReadOnly?: boolean
+  isClaiming?: boolean
+  ownerLabel?: string | null
 }
 
 const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
@@ -729,9 +734,13 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onPrintKitchenTicket,
   onTipAdjust,
   onRefund,
+  onTakeOver,
   formatTimestamp,
   terminalCanProcess,
-  terminalBlockReason
+  terminalBlockReason,
+  isReadOnly = false,
+  isClaiming = false,
+  ownerLabel
 }) => {
   const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
     number | null
@@ -764,6 +773,17 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
+        {/* Foreign-station read-only state — replaces management actions in
+            the footer. The banner itself carries the Take Over button so the
+            user has one obvious affordance instead of duplicate triggers. */}
+        {isReadOnly && (
+          <ReadOnlyBanner
+            sourceStationName={ownerLabel ?? null}
+            isClaiming={isClaiming}
+            onTakeOver={onTakeOver}
+          />
+        )}
+
         {/* Summary Cards */}
         <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1144,7 +1164,11 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
       {/* Action Buttons Footer */}
       <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.panel, borderTopWidth: 1.5, borderTopColor: colors.teal + '30' }}>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {!isOpen && (
+          {/* Management actions (Reopen / Close / Charge / Adjust Tip /
+              Process Refund) are hidden when the order belongs to another
+              station — Take Over is offered via the ReadOnlyBanner above
+              instead. Print Receipt + Print Kitchen always remain. */}
+          {!isReadOnly && !isOpen && (
             <ActionButton
               icon={<RotateCcw size={16} />}
               label='Reopen'
@@ -1152,7 +1176,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               variant='primary'
             />
           )}
-          {isOpen && (
+          {!isReadOnly && isOpen && (
             <ActionButton
               icon={<Check size={16} />}
               label='Close Order'
@@ -1160,7 +1184,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               variant='primary'
             />
           )}
-          {isOpen && hasBalanceDue && (
+          {!isReadOnly && isOpen && hasBalanceDue && (
             <ActionButton
               icon={<DollarSign size={16} />}
               label='Charge'
@@ -1184,7 +1208,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               variant='primary'
             />
           )}
-          {hasCardPayments && terminalCanProcess && (
+          {!isReadOnly && hasCardPayments && terminalCanProcess && (
             <ActionButton
               icon={<CircleDollarSign size={16} />}
               label='Adjust Tip'
@@ -1192,7 +1216,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               variant='primary'
             />
           )}
-          {paymentSummary.collected > 0 && terminalCanProcess && (
+          {!isReadOnly && paymentSummary.collected > 0 && terminalCanProcess && (
             <ActionButton
               icon={<RefreshCcw size={16} />}
               label='Process Refund'
@@ -3672,8 +3696,10 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   const pathname = usePathname()
   const supabase = useSupabaseClient()
   const [tipProcessing, setTipProcessing] = useState(false)
+  const [isClaiming, setIsClaiming] = useState(false)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const currentStationId = useOrderStore(s => s.currentStationId)
 
   // Mutation hooks
   const refundMutation = useRefundMutation()
@@ -4189,6 +4215,37 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     }
   }, [orderId, close, show, pathname, router])
 
+  // Take Over: claim ownership from another station. Mirrors the sync-then-
+  // claim flow in handleContinueCharging so historical (closed) orders that
+  // aren't yet hydrated into the live store can also be claimed (the RPC
+  // itself rejects finalized orders with ORDER_FINALIZED → toast inside
+  // claimOrderById). After success the broadcast handler force-closes the
+  // sheet on the previous owner; here we keep it open so the new owner sees
+  // the buttons swap to the full set.
+  const handleTakeOver = useCallback(async () => {
+    if (!orderId) return
+    setIsClaiming(true)
+    try {
+      let localId: string | null = orderId
+      if (!useOrderStore.getState().ordersById[localId]) {
+        localId = await useOrderStore
+          .getState()
+          .syncOrderFromDatabase(localId)
+        if (!localId) {
+          show({
+            title: "Couldn't take over",
+            message: 'Could not load order data — please refresh.',
+            type: 'error'
+          })
+          return
+        }
+      }
+      await useOrderStore.getState().claimOrderById(localId)
+    } finally {
+      setIsClaiming(false)
+    }
+  }, [orderId, show])
+
   const handleIssueReceipt = useCallback(async () => {
     if (!order || !selectedStore) {
       show({
@@ -4536,9 +4593,17 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onPrintKitchenTicket={handlePrintKitchenTicket}
                     onTipAdjust={handleTipAdjust}
                     onRefund={handleRefund}
+                    onTakeOver={handleTakeOver}
                     formatTimestamp={formatTimestamp}
                     terminalCanProcess={terminalCanProcess}
                     terminalBlockReason={terminalBlockReason}
+                    isReadOnly={isOrderReadOnly(order, currentStationId)}
+                    isClaiming={isClaiming}
+                    ownerLabel={
+                      (order as any)?._sourceStationName ||
+                      (order as any)?.station_name ||
+                      null
+                    }
                   />
                 ) : rightPaneView === 'refund' ? (
                   <RightPaneRefund

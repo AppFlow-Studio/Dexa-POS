@@ -2,6 +2,7 @@ import { queryClient } from "@/contexts/TanstackProvider";
 import { useInventorySync } from "@/hooks/pos/useInventorySync";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
+import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { usePreviousOrdersBootstrap } from "@/hooks/pos/usePreviousOrdersBootstrap";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
@@ -135,6 +136,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
   usePreviousOrdersBootstrap({
     locationId: selectedStore?.id ?? null,
+    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
+  });
+
+  useBusinessDayRollover({
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
 

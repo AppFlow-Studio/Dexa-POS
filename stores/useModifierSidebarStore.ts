@@ -1,8 +1,30 @@
 import { CartItem, MenuItemType, ModifierCategory } from '@/lib/types'
+import { Image } from 'expo-image'
 import { create } from 'zustand'
 import { useLocationConfigStore } from './useLocationConfigStore'
 import { useMenuStore } from './useMenuStore'
 import { useSeatingStore } from './useSeatingStore'
+
+/**
+ * Fire-and-forget prefetch for a single menu item's remote image. Used by
+ * preWarm so a tap on an item that wasn't in MenuSection's bulk prefetch
+ * window still warms the disk/memory cache before the modifier screen
+ * renders the image. No-op for non-http(s) sources.
+ */
+function prefetchMenuItemImage (image: string | undefined): void {
+  if (!image || typeof image !== 'string') return
+  const trimmed = image.trim()
+  if (!trimmed) return
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return
+    void Image.prefetch([trimmed], { cachePolicy: 'memory-disk' }).catch(
+      () => {},
+    )
+  } catch {
+    // not a URL — ignore
+  }
+}
 
 // ============================================================================
 // SYNCHRONOUS TOUCH BLOCKING - For same-frame menu blocking
@@ -26,11 +48,25 @@ const nowMs = () =>
 
 let lastModifierOpenStartedAt = 0
 let deferredModifierResetTimer: ReturnType<typeof setTimeout> | null = null
+let deferredDraftTimer: ReturnType<typeof setTimeout> | null = null
+
+// Drafts only become visible to the user after the modifier screen closes,
+// so a press-DONE-fast flow never benefits from the draft having been
+// written to the cart. This delay skips the draft cart-write entirely
+// on the rapid path while still showing a placeholder for users who dwell.
+const DRAFT_CREATION_DELAY_MS = 220
 
 const clearDeferredModifierResetTimer = () => {
   if (deferredModifierResetTimer) {
     clearTimeout(deferredModifierResetTimer)
     deferredModifierResetTimer = null
+  }
+}
+
+const clearDeferredDraftTimer = () => {
+  if (deferredDraftTimer) {
+    clearTimeout(deferredDraftTimer)
+    deferredDraftTimer = null
   }
 }
 
@@ -403,6 +439,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
     draftCreatedId: null,
 
     preWarm: (item, categoryId, menuId) => {
+      // Warm the image cache regardless of modifier-cache hit so a recently
+      // re-tapped item with an evicted image still has bytes ready.
+      prefetchMenuItemImage(item.image)
       const existing = getOrEvictCache(item.id)
       if (existing) return
       // Compute WITHOUT setFn — no deferred price update yet; open() will handle it
@@ -436,6 +475,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
 
     open: config => {
       clearDeferredModifierResetTimer()
+      clearDeferredDraftTimer()
 
       const {
         menuItem: menuItemParam,
@@ -586,9 +626,23 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           showSeatPicker
         })
 
-        // Draft creation is intentionally deferred so the modifier UI opens first.
+        // Draft creation is deferred past the rapid-DONE window. If the
+        // user closes within DRAFT_CREATION_DELAY_MS, the draft is never
+        // written to the cart — handleSave's real addItem covers the full
+        // mutation in one step. clearDeferredDraftTimer fires from close()
+        // and from the start of the next open().
         if (menuItemParam && !cartItemParam) {
-          queueMicrotask(() => {
+          const expectedItemId = precomputed.forItemId
+          deferredDraftTimer = setTimeout(() => {
+            deferredDraftTimer = null
+            const state = get()
+            if (
+              !state.isOpen ||
+              state.cartItem ||
+              state.precomputedForItemId !== expectedItemId
+            ) {
+              return
+            }
             const draftCreatedId = _createDraftInOpen(
               sourceItem,
               precomputed.itemPrice,
@@ -596,16 +650,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
               resolvedCatId,
               resolvedMenuId
             )
-
-            const state = get()
+            const after = get()
             if (
-              state.isOpen &&
-              !state.cartItem &&
-              state.precomputedForItemId === precomputed.forItemId
+              after.isOpen &&
+              !after.cartItem &&
+              after.precomputedForItemId === expectedItemId
             ) {
               set({ draftCreatedId })
             }
-          })
+          }, DRAFT_CREATION_DELAY_MS)
         }
       } else if (cartItemParam) {
         // Fallback: no menu item found, use cart item data directly
@@ -668,6 +721,11 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
     close: () => {
       // Cache persisted for re-tap speed; TTL evicts stale entries
 
+      // Cancel any deferred draft creation — if it hasn't fired yet, the
+      // user pressed DONE/Cancel before the dwell threshold and we skip
+      // the cart write entirely.
+      clearDeferredDraftTimer()
+
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
       if (__DEV__ && lastModifierOpenStartedAt > 0) {
@@ -686,36 +744,38 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         activeEditingItemId: null // Clear active item highlight
       })
 
-      // Phase 2: clear heavier payload after close animation settles.
+      // Phase 2: release the heavy precomputed maps after the close slide
+      // settles. open() calls clearDeferredModifierResetTimer() before any
+      // state writes, so a rapid re-open cancels this timer cleanly. The
+      // double guard below covers the off-by-a-tick case where the timer
+      // task was already dispatched when the next open() ran.
+      //
+      // Lightweight scalars (mode, seatCount, etc.) are NOT cleared here —
+      // they get overwritten by the next open() and clearing them now just
+      // adds re-render fan-out on the keep-mounted ModifierScreen.
       clearDeferredModifierResetTimer()
+      const closedAt = nowMs()
       deferredModifierResetTimer = setTimeout(() => {
         deferredModifierResetTimer = null
         const state = get()
         if (state.isOpen) return
+        // A new open() landed but its timer-clear hasn't been reflected yet.
+        if (lastModifierOpenStartedAt > closedAt) return
         set({
-          mode: 'add',
-          menuItem: null,
-          cartItem: null,
-          categoryId: null,
-          menuId: null,
           precomputedModifiers: null,
           precomputedCategoriesById: null,
           precomputedOptionsById: null,
           initialSelections: null,
-          itemPrice: 0,
-          itemCashPrice: 0,
-          activeModifierCategory: null,
-          precomputedForItemId: null,
-          draftCreatedId: null,
-          seatOverride: null,
-          seatCount: 0,
-          showSeatPicker: false
+          precomputedForItemId: null
         })
       }, 90)
     },
 
     cancelAndRemoveDraft: () => {
       // Cache persisted for re-tap speed; TTL evicts stale entries
+
+      // Cancel any pending deferred draft creation before tearing down.
+      clearDeferredDraftTimer()
 
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)

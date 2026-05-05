@@ -1,11 +1,12 @@
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import {
-    getCurrentBusinessDay,
-    type BusinessDayConfig,
+  getBusinessDayBounds,
+  getCurrentBusinessDay,
+  type BusinessDayConfig,
 } from "@/lib/businessDay";
 import {
-    derivePaidStatus,
-    derivePaymentRefundState,
+  derivePaidStatus,
+  derivePaymentRefundState,
 } from "@/lib/paymentStatus";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
@@ -14,15 +15,15 @@ import { projectToSummary, todayOrdersCache } from "@/stores/todayOrdersCache";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
-    RefundReasonType,
-    RefundRequest,
-    RefundResult,
-    RefundRpcOutcome,
+  RefundReasonType,
+  RefundRequest,
+  RefundResult,
+  RefundRpcOutcome,
 } from "@/types/refunds";
 import {
-    FetchedOrderData,
-    normalizeFetchedOrder,
-    transformBroadcastToOrder,
+  FetchedOrderData,
+  normalizeFetchedOrder,
+  transformBroadcastToOrder,
 } from "@/utils/orderTransformers";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
@@ -69,7 +70,6 @@ function _derivePaymentStatus(
 ): PreviousOrder["paymentStatus"] {
   const derived = derivePaidStatus(profile);
   if (derived === "Paid") return "Paid";
-  if (derived === "Refunded") return "Refunded";
   if (derived === "Partial") return "In Progress";
   if (profile.paid_status === "Unpaid") return "Unpaid";
   return "Unpaid";
@@ -87,7 +87,25 @@ function _isFinalState(profile: OrderProfile): boolean {
 }
 
 const HISTORY_REFRESH_COALESCE_MS = 4000;
+const SET_DATE_WINDOW_DEBOUNCE_MS = 200;
 let refreshPreviousOrdersInFlight: Promise<void> | null = null;
+let _setDateWindowDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Trailing-edge debounce wrapper around `refreshPreviousOrders`. Used by
+ * `setDateWindow` so rapid pill taps don't fire multiple RPC + fetch passes.
+ * Module-level (not store-level) so the timer survives `set()` calls and a
+ * single in-flight timer is shared across all callers.
+ */
+const _scheduleDebouncedRefresh = () => {
+  if (_setDateWindowDebounceTimer) clearTimeout(_setDateWindowDebounceTimer);
+  _setDateWindowDebounceTimer = setTimeout(() => {
+    _setDateWindowDebounceTimer = null;
+    void usePreviousOrdersStore
+      .getState()
+      .refreshPreviousOrders({ force: true });
+  }, SET_DATE_WINDOW_DEBOUNCE_MS);
+};
 
 // Global client reference
 let _supabaseClient: SupabaseClient | null = null;
@@ -318,7 +336,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         _isLoadingMore: false,
         newOrdersCount: 0,
       });
-      void get().refreshPreviousOrders({ force: true });
+      // Trailing-edge debounce: rapid pill taps (Today → Yesterday → Last 7
+      // → Yesterday) only fire one refetch for the final selection. UI
+      // updates immediately above; the network call is what we collapse.
+      _scheduleDebouncedRefresh();
     },
 
     addOrderToHistory: (order: OrderProfile) => {
@@ -572,23 +593,19 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             try {
               const config = resolveBusinessDayConfig();
               if (config) {
-                const {
-                  getBusinessDayBounds: getLocalBounds,
-                  getCurrentBusinessDay: getLocalDay,
-                } = require("@/lib/businessDay");
                 if (dateWindow.label === "today" || !dateWindow.startDate) {
-                  const localDay = getLocalDay(config);
-                  const localBounds = getLocalBounds(localDay, config);
+                  const localDay = getCurrentBusinessDay(config);
+                  const localBounds = getBusinessDayBounds(localDay, config);
                   startTs = localBounds.startUtc;
                   endTs = localBounds.endUtc;
                 } else {
-                  const localBounds = getLocalBounds(
+                  const localBounds = getBusinessDayBounds(
                     dateWindow.startDate,
                     config,
                   );
                   startTs = localBounds.startUtc;
                   endTs = dateWindow.endDate
-                    ? getLocalBounds(dateWindow.endDate, config).endUtc
+                    ? getBusinessDayBounds(dateWindow.endDate, config).endUtc
                     : localBounds.endUtc;
                 }
                 console.log(
@@ -600,29 +617,13 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             }
           }
 
-          // Strategy 3: Plain JS Date (absolute last resort — no dependencies)
+          // No plain-JS date fallback here. That path can compute the wrong
+          // business day when device timezone and merchant timezone differ.
           if (!startTs || !endTs) {
-            const store = useStoreSettingsStore.getState().selectedStore;
-            const tz = store?.timezone || "America/New_York";
-            const rollover = store?.business_day_start_hour ?? 0;
-            // Get current time in merchant timezone using Intl
-            const nowStr = new Date().toLocaleString("en-US", { timeZone: tz });
-            const localNow = new Date(nowStr);
-            const localHour = localNow.getHours();
-            // Compute business day start in local time
-            const dayStart = new Date(localNow);
-            dayStart.setHours(rollover, 0, 0, 0);
-            if (localHour < rollover) {
-              dayStart.setDate(dayStart.getDate() - 1);
-            }
-            const dayEnd = new Date(dayStart);
-            dayEnd.setDate(dayEnd.getDate() + 1);
-            // Convert back to UTC ISO strings (approximate — Intl round-trip)
-            startTs = dayStart.toISOString();
-            endTs = dayEnd.toISOString();
-            console.log(
-              `[PreviousOrders] 🔧 Using JS Date fallback bounds: ${startTs} → ${endTs}`,
+            console.error(
+              "[PreviousOrders] Both RPC and Luxon bounds resolution failed - aborting fetch.",
             );
+            return;
           }
 
           // Cache resolved bounds for broadcast guard + loadMore
@@ -1289,6 +1290,31 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           checkStatus: profile.check_status || existing.checkStatus,
         });
       } else if (_isFinalState(profile)) {
+        // Bounds gate: only add to history if the order falls within the
+        // currently-rendered date window. Without this, an order that becomes
+        // final right now (today's business day) would land in the user's
+        // Yesterday/Last-7-days view and quietly inflate counts. Skipping the
+        // write also avoids re-running the buildOrderLookupMap pass on busy
+        // stations broadcasting throughout the day.
+        const dateWindow = get().dateWindow;
+        const startTs = dateWindow?._resolvedStartTs;
+        const endTs = dateWindow?._resolvedEndTs;
+        // Prefer `created_at` directly off the raw broadcast — it's the
+        // canonical timestamp. Fall back to `opened_at` from the transformed
+        // profile (sometimes equal to created_at, sometimes set later for
+        // dine-in flows).
+        const broadcastCreatedAt =
+          (broadcastOrder as { created_at?: string }).created_at ?? null;
+        const createdAt = broadcastCreatedAt ?? profile.opened_at;
+        if (startTs && endTs && createdAt) {
+          if (createdAt < startTs || createdAt >= endTs) {
+            if (__DEV__)
+              console.log(
+                `[PreviousOrders] broadcast outside window — skipping ${dbOrderId} (${createdAt} ∉ [${startTs}, ${endTs}))`,
+              );
+            return;
+          }
+        }
         get().addOrderToHistory(profile);
       }
     },
