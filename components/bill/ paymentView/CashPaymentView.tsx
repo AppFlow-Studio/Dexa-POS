@@ -13,8 +13,7 @@ import { ArrowLeft, Delete, Printer } from 'lucide-react-native'
 import { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
-const PRESET_BILLS_ROW1 = [10, 20]
-const PRESET_BILLS_ROW2 = [50, 100]
+const PRESET_BILLS = [10, 20, 50, 100]
 
 const CashPaymentView = () => {
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -169,6 +168,11 @@ const CashPaymentView = () => {
     setAmountTendered(amount.toString())
     setActiveInput('tendered')
   }
+
+  const eligiblePresets =
+    totalWithTip > 100 ? [] : PRESET_BILLS.filter(b => b > totalWithTip)
+  const presetsRow1 = eligiblePresets.slice(0, 2)
+  const presetsRow2 = eligiblePresets.slice(2)
 
   // Change calculator rows: bills to break down the change
   const changeBreakdown = (() => {
@@ -576,7 +580,7 @@ const CashPaymentView = () => {
                       ${totalWithTip.toFixed(2)}
                     </Text>
                   </TouchableOpacity>
-                  {PRESET_BILLS_ROW1.map(bill => (
+                  {presetsRow1.map(bill => (
                     <TouchableOpacity
                       key={bill}
                       onPress={() => handleSelectPreset(bill)}
@@ -605,8 +609,9 @@ const CashPaymentView = () => {
                 </View>
 
                 {/* Preset row 2: $50 + $100 */}
+                {presetsRow2.length > 0 && (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {PRESET_BILLS_ROW2.map(bill => (
+                  {presetsRow2.map(bill => (
                     <TouchableOpacity
                       key={bill}
                       onPress={() => handleSelectPreset(bill)}
@@ -633,6 +638,7 @@ const CashPaymentView = () => {
                     </TouchableOpacity>
                   ))}
                 </View>
+                )}
               </View>
             </View>
           </View>
