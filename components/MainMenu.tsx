@@ -236,14 +236,14 @@ const MainMenu: React.FC = () => {
       subtitle: 'Manage Orders',
       route: '/kds'
     },
-    {
-      id: 'scheduling',
-      icon: <CalendarClock color={colors.teal} size={20} />,
-      title: 'Scheduling',
-      subtitle: 'Time Management',
-      route: '/scheduling',
-      isLocked: true
-    },
+    // {
+    //   id: 'scheduling',
+    //   icon: <CalendarClock color={colors.teal} size={20} />,
+    //   title: 'Scheduling',
+    //   subtitle: 'Time Management',
+    //   route: '/scheduling',
+    //   isLocked: true
+    // },
     {
       id: 'menu-management',
       icon: <UtensilsCrossed color={colors.teal} size={20} />,
