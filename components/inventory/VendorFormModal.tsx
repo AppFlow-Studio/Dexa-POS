@@ -1,21 +1,24 @@
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
 import { colors } from "@/lib/theme";
 import { Vendor } from "@/lib/types";
+import { useColorScheme } from "@/lib/useColorScheme";
 import React, { useEffect, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Keyboard,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from "react-native";
 
 interface VendorFormModalProps {
@@ -57,6 +60,11 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [desc, setDesc] = useState("");
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const { colorScheme } = useColorScheme();
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboardAppearance = colorScheme === "dark" ? "dark" : "light";
 
   useEffect(() => {
     if (isOpen && initialData) {
@@ -76,6 +84,38 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
     }
   }, [initialData, isOpen]);
 
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && isKeyboardVisible) {
+      Keyboard.dismiss();
+      return;
+    }
+
+    if (!nextOpen) {
+      onClose();
+    }
+  };
+
   const handleSave = () => {
     if (!name) {
       alert("Please fill in the vendor name.");
@@ -91,21 +131,51 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
         website: null,
         description: desc || undefined,
       },
-      initialData?.id
+      initialData?.id,
     );
     onClose();
   };
 
+  const modalTranslateY = isKeyboardVisible
+    ? -Math.min(Math.max(keyboardHeight * 0.42, 80), 220)
+    : 0;
+  const modalMaxHeight = isKeyboardVisible
+    ? Math.max(280, windowHeight - keyboardHeight - 40)
+    : windowHeight * 0.88;
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
         className="w-[480px]"
-        style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+        style={{
+          backgroundColor: colors.panel,
+          borderColor: colors.border,
+          maxHeight: modalMaxHeight,
+          transform: [{ translateY: modalTranslateY }],
+        }}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+          style={{ flexShrink: 1 }}
+        >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={
+              Platform.OS === "ios" ? "interactive" : "on-drag"
+            }
+            bounces={false}
+            contentContainerStyle={{ paddingBottom: 8 }}
+          >
             <DialogHeader>
-              <DialogTitle style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+              <DialogTitle
+                style={{
+                  fontSize: 15,
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+              >
                 {initialData ? "Edit" : "Add New"} Vendor
               </DialogTitle>
             </DialogHeader>
@@ -120,6 +190,9 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                     onChangeText={setName}
                     placeholder="e.g. Fresh Farms Co."
                     placeholderTextColor={colors.muted}
+                    keyboardAppearance={keyboardAppearance}
+                    selectionColor={colors.teal}
+                    cursorColor={colors.teal}
                     style={inputStyle}
                   />
                 </View>
@@ -130,6 +203,9 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                     onChangeText={setContactName}
                     placeholder="e.g. John Smith"
                     placeholderTextColor={colors.muted}
+                    keyboardAppearance={keyboardAppearance}
+                    selectionColor={colors.teal}
+                    cursorColor={colors.teal}
                     style={inputStyle}
                   />
                 </View>
@@ -146,6 +222,9 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                     autoCapitalize="none"
                     placeholder="email@vendor.com"
                     placeholderTextColor={colors.muted}
+                    keyboardAppearance={keyboardAppearance}
+                    selectionColor={colors.teal}
+                    cursorColor={colors.teal}
                     style={inputStyle}
                   />
                 </View>
@@ -157,6 +236,9 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                     keyboardType="phone-pad"
                     placeholder="+1 (555) 000-0000"
                     placeholderTextColor={colors.muted}
+                    keyboardAppearance={keyboardAppearance}
+                    selectionColor={colors.teal}
+                    cursorColor={colors.teal}
                     style={inputStyle}
                   />
                 </View>
@@ -170,6 +252,9 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                   onChangeText={setAddress}
                   placeholder="123 Main St, City, State"
                   placeholderTextColor={colors.muted}
+                  keyboardAppearance={keyboardAppearance}
+                  selectionColor={colors.teal}
+                  cursorColor={colors.teal}
                   style={inputStyle}
                 />
               </View>
@@ -182,7 +267,13 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                   onChangeText={setDesc}
                   placeholder="Optional notes about this vendor..."
                   placeholderTextColor={colors.muted}
-                  style={[inputStyle, { height: 72, paddingTop: 10, textAlignVertical: "top" }]}
+                  keyboardAppearance={keyboardAppearance}
+                  selectionColor={colors.teal}
+                  cursorColor={colors.teal}
+                  style={[
+                    inputStyle,
+                    { height: 72, paddingTop: 10, textAlignVertical: "top" },
+                  ]}
                   multiline
                   numberOfLines={3}
                 />
@@ -202,7 +293,13 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                   alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: colors.label,
+                  }}
+                >
                   Cancel
                 </Text>
               </TouchableOpacity>
@@ -218,7 +315,13 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                   alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: colors.teal,
+                  }}
+                >
                   Save Vendor
                 </Text>
               </TouchableOpacity>
