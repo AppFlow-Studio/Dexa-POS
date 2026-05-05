@@ -193,9 +193,10 @@ const useTableData = (table: FloorPlanObject) => {
   const tablesById = useFloorPlanStore((s) => s.tablesById);
   const liveSession = useTableSessionStore((s) => s.sessions[table.id]);
   const getEmployeeByStaffId = useEmployeeStore((s) => s.getEmployeeByStaffId);
+  const session = liveSession ?? table.session;
 
   // Get session order ID for payment calculations — reactive via useOrderByAnyId
-  const sessionOrderId = table.session?.order_id || null;
+  const sessionOrderId = session?.order_id || null;
   const resolvedOrder = useOrderByAnyId(sessionOrderId);
   const orderIdForPayments = resolvedOrder?.id || null;
 
@@ -205,7 +206,7 @@ const useTableData = (table: FloorPlanObject) => {
   // table.session?.merged_tables -> array of strings (IDs)
 
   return useMemo(() => {
-    const status = table.session?.status || "available";
+    const status = session?.status || "available";
     const normalizedStatus = status.toLowerCase();
 
     // If table is not in use (conceptually), don't fetch order data.
@@ -235,30 +236,30 @@ const useTableData = (table: FloorPlanObject) => {
     }
 
     // Check for merged tables
-    const mergedIds = table.session?.merged_tables || [];
+    const mergedIds = (session?.merged_tables || []).filter(
+      (id) => id && id !== table.id && !!tablesById[id],
+    );
     const isMerged = mergedIds.length > 0;
 
     // For merged tables, they all share the same session_id and order_id
     // So we just need to check the current table's session
-    const sessionOrderId = table.session?.order_id;
+    const sessionOrderId = session?.order_id;
 
     // If no session or no order_id, return empty orders (seated but not ordered yet)
-    if (!table.session || !sessionOrderId) {
+    if (!session || !sessionOrderId) {
       return {
         isMerged: false,
         primaryTableId: table.id,
         displayName: table.name,
         status: status,
-        guestCount: table.session?.party_size || 0,
+        guestCount: session?.party_size || 0,
         subtotal: 0,
         tax: 0,
         total: 0,
         amountDue: 0,
         amountPaid: 0,
         paidStatus: "Unpaid" as PaymentStatus,
-        seatedTime: table.session?.seated_at
-          ? new Date(table.session.seated_at)
-          : null,
+        seatedTime: session?.seated_at ? new Date(session.seated_at) : null,
         server: "N/A",
         orders: [],
       };
@@ -292,9 +293,7 @@ const useTableData = (table: FloorPlanObject) => {
         amountDue: 0,
         amountPaid: 0,
         paidStatus: "Unpaid" as PaymentStatus,
-        seatedTime: table.session?.seated_at
-          ? new Date(table.session.seated_at)
-          : null,
+        seatedTime: session?.seated_at ? new Date(session.seated_at) : null,
         server: "N/A",
         orders: [],
       };
@@ -307,9 +306,8 @@ const useTableData = (table: FloorPlanObject) => {
 
     // Calculate display values from the single order
     const seatedTime = order.opened_at ? new Date(order.opened_at) : null;
-    const effectiveSession = liveSession ?? table.session;
-    const serverFromSession = effectiveSession?.server_staff_id
-      ? getEmployeeByStaffId(effectiveSession.server_staff_id)?.fullName
+    const serverFromSession = session?.server_staff_id
+      ? getEmployeeByStaffId(session.server_staff_id)?.fullName
       : null;
     const serverDisplay = serverFromSession || order.server_name || "N/A";
 
@@ -347,7 +345,7 @@ const useTableData = (table: FloorPlanObject) => {
             .join(", ")}`
         : table.name,
       status: status,
-      guestCount: order.guest_count || table.session?.party_size || 0,
+      guestCount: order.guest_count || session?.party_size || 0,
       subtotal,
       tax,
       total,
@@ -355,17 +353,16 @@ const useTableData = (table: FloorPlanObject) => {
       amountPaid,
       paidStatus,
       seatedTime:
-        seatedTime ||
-        (table.session?.seated_at ? new Date(table.session.seated_at) : null),
+        seatedTime || (session?.seated_at ? new Date(session.seated_at) : null),
       server: serverDisplay,
       orders: groupOrders,
     };
   }, [
     table,
+    session,
     resolvedOrder,
     tablesById,
     orderTotals,
-    liveSession,
     getEmployeeByStaffId,
   ]);
 };
