@@ -25,6 +25,10 @@
 
 ## Pending
 
+- [x] Fix cash full-refund display in Previous Orders
+  - Use payment-level refund completion instead of comparing cash refunds to card totals
+  - Show cash-priced subtotal/tax/net totals when the order was paid with cash pricing
+  - Verify with targeted tests/type checks
 - [ ] Clean up OrderLineItemsView modal design — layout is cramped/broken
   - Item names wrapping mid-word ("Macchiato" breaks to "Macchiat o")
   - Modifier text truncated ("+$" cut off on Syrup Flavors)
@@ -36,6 +40,8 @@
   - Validate tap selects without opening context sheet in merge mode
 
 ## Review
+
+- Cash full refunds in Previous Orders: row refund state now compares each payment's refunded amount to that payment's actual charged amount, so cash-priced full refunds no longer show as partial. Expanded totals use cash subtotals/tax/net for cash-priced orders, and full refunds suppress the secondary refund badge to avoid duplicate Refunded pills. `npm test -- --runTestsByPath __tests__/paymentStatus.test.ts` passes. `npx tsc --noEmit` is still blocked by existing `lib/mockData.ts` inventory fixture errors unrelated to this change.
 
 - MenuSection performance: Menu tiles now do less per-item setup work, temporary unlocked menu checks are O(1), and FlatList renders 15 initial cells / 10-cell batches instead of 25 / 20. `npm test -- --runTestsByPath __tests__/wave26AddItemStaleStateCleanup.test.ts __tests__/wave27OwnershipRecheck.test.ts` passes.
 - Order-processing performance: `useStableOrderList` now fingerprints fields rendered by the order line and order badges, avoiding stale rows when totals/customer/status/display fields change. The order-line selector and grid render path also avoid several unnecessary date/array allocations. `npm test -- --runTestsByPath __tests__/wave27OwnershipRecheck.test.ts` passes. `npx tsc --noEmit` is still blocked by existing `lib/mockData.ts` fixture type errors unrelated to this change.

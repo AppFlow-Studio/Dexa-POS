@@ -355,51 +355,51 @@ export class OrderService {
    * device sees it. If a concurrent claim has moved it elsewhere, the RPC
    * returns `CONCURRENT_CLAIM` and the caller should refresh.
    */
-  static async claimOrder (
+  static async claimOrder(
     client: SupabaseClient,
     params: {
-      orderId: string
-      stationId: string
-      expectedStationId: string | null
-    }
+      orderId: string;
+      stationId: string;
+      expectedStationId: string | null;
+    },
   ): Promise<
     | {
         data: {
-          success: true
-          order_id: string
-          new_station_id: string
-          sync_version: number
-        }
-        error: null
+          success: true;
+          order_id: string;
+          new_station_id: string;
+          sync_version: number;
+        };
+        error: null;
       }
     | {
         data: {
-          success: false
+          success: false;
           error:
-            | 'ORDER_NOT_FOUND'
-            | 'ORDER_FINALIZED'
-            | 'ORDER_LOCKED_FOR_PAYMENT'
-            | 'CONCURRENT_CLAIM'
-          [key: string]: any
-        }
-        error: null
+            | "ORDER_NOT_FOUND"
+            | "ORDER_FINALIZED"
+            | "ORDER_LOCKED_FOR_PAYMENT"
+            | "CONCURRENT_CLAIM";
+          [key: string]: any;
+        };
+        error: null;
       }
     | { data: null; error: any }
   > {
     return _runWithDeadline<any>(
-      'claim_order_v1',
+      "claim_order_v1",
       DEADLINES.read,
       async (signal) => {
         const { data, error } = await client
-          .rpc('claim_order_v1', {
+          .rpc("claim_order_v1", {
             p_order_id: params.orderId,
             p_station_id: params.stationId,
-            p_expected_station_id: params.expectedStationId
+            p_expected_station_id: params.expectedStationId,
           })
-          .abortSignal(signal)
-        return { data, error }
-      }
-    ) as any
+          .abortSignal(signal);
+        return { data, error };
+      },
+    ) as any;
   }
 
   /**
@@ -480,6 +480,7 @@ export class OrderService {
       initiated_by: string;
       approved_by?: string | null;
     },
+    opts?: { keyOverride?: string },
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await rpcWithIdempotency(
       client,
@@ -497,13 +498,15 @@ export class OrderService {
         p_initiated_by: params.initiated_by,
         p_approved_by: params.approved_by ?? null,
       },
-      { deadline: DEADLINES.read }, // refund money path — give it more headroom than hotMutation
+      { deadline: DEADLINES.read, keyOverride: opts?.keyOverride },
     );
     return { data, error };
   }
 
   /**
    * Update reversal status and terminal response.
+   * Wave R-0: opts.keyOverride threads the refund journal's idempotency key
+   * so retries on bad-WiFi do not overwrite an already-completed row.
    */
   static async updateReversalStatus(
     client: SupabaseClient,
@@ -514,16 +517,24 @@ export class OrderService {
     resultCode?: string | null,
     responseMessage?: string | null,
     reversalPspReference?: string | null,
+    opts?: { keyOverride?: string },
   ): Promise<{ data: any | null; error: any }> {
-    const { data, error } = await client.rpc("update_reversal_status", {
-      p_reversal_id: reversalId,
-      p_status: status,
-      p_terminal_response: terminalResponse ?? null,
-      p_emv_data: emvData ?? null,
-      p_result_code: resultCode ?? null,
-      p_response_message: responseMessage ?? null,
-      p_reversal_psp_reference: reversalPspReference ?? null,
-    });
+    const { data, error } = await rpcWithIdempotency(
+      client,
+      "update_reversal_status",
+      "update_reversal_status",
+      "update_reversal_status_v2",
+      {
+        p_reversal_id: reversalId,
+        p_status: status,
+        p_terminal_response: terminalResponse ?? null,
+        p_emv_data: emvData ?? null,
+        p_result_code: resultCode ?? null,
+        p_response_message: responseMessage ?? null,
+        p_reversal_psp_reference: reversalPspReference ?? null,
+      },
+      { deadline: DEADLINES.read, keyOverride: opts?.keyOverride },
+    );
     if (__DEV__) console.log("updateReversalStatus", data, error);
     return { data, error };
   }
@@ -552,6 +563,7 @@ export class OrderService {
        *  splitting tip vs subtotal so v3 can decompose tip_fee correctly. */
       tipRefundAmount?: number;
     },
+    opts?: { keyOverride?: string },
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await rpcWithIdempotency(
       client,
@@ -573,7 +585,7 @@ export class OrderService {
         p_initiated_by: returnDetails?.initiatedBy ?? null,
         p_restore_paid_quantity: options?.restorePaidQuantity ?? false,
       },
-      { deadline: DEADLINES.read }, // refund money path
+      { deadline: DEADLINES.read, keyOverride: opts?.keyOverride },
     );
     if (__DEV__) console.log("applyRefundToPayment", data, error);
     return { data, error };
@@ -589,6 +601,7 @@ export class OrderService {
     reversalId: string,
     items: Array<Record<string, unknown>>,
     skipQuantityUpdate: boolean = false,
+    opts?: { keyOverride?: string },
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await rpcWithIdempotency(
       client,
@@ -600,21 +613,28 @@ export class OrderService {
         p_items: items,
         p_skip_quantity_update: skipQuantityUpdate,
       },
-      { deadline: DEADLINES.read }, // refund money path
+      { deadline: DEADLINES.read, keyOverride: opts?.keyOverride },
     );
     return { data, error };
   }
 
   /**
    * Recalculate order payment status after refunds.
+   * Wave R-0: opts.keyOverride threads the refund journal's idempotency key
+   * so a DEADLINE_EXCEEDED on this final step doesn't cause double-status-flip.
    */
   static async updateOrderPaymentStatusAfterRefund(
     client: SupabaseClient,
     orderId: string,
+    opts?: { keyOverride?: string },
   ): Promise<{ data: any | null; error: any }> {
-    const { data, error } = await client.rpc(
+    const { data, error } = await rpcWithIdempotency(
+      client,
       "update_order_payment_status_after_refund",
+      "update_order_payment_status_after_refund",
+      "update_order_payment_status_after_refund_v3",
       { p_order_id: orderId },
+      { deadline: DEADLINES.read, keyOverride: opts?.keyOverride },
     );
     if (__DEV__)
       console.log("updateOrderPaymentStatusAfterRefund", data, error);
@@ -680,44 +700,46 @@ export class OrderService {
    * Pass `selectedStation.id` for cross-station ownership enforcement.
    * Null is permissive (back-compat) and matches the helper's contract.
    */
-  static async updateOrderDetails (
+  static async updateOrderDetails(
     client: SupabaseClient,
     orderId: string,
     stationId: string | null,
     updates: {
       customer?: {
-        id: string | null
-        name: string | null
-        phone: string | null
-        email: string | null
-      }
-      orderType?: string | null
-      deliveryAddress?: string | null
-      notes?: string | null
-    }
+        id: string | null;
+        name: string | null;
+        phone: string | null;
+        email: string | null;
+      };
+      orderType?: string | null;
+      deliveryAddress?: string | null;
+      notes?: string | null;
+    },
   ): Promise<{ data: any; error: any }> {
     return _runWithDeadline<any>(
-      'update_order_details_v1',
+      "update_order_details_v1",
       DEADLINES.hotMutation,
       async (signal) => {
-        const { data, error } = await client.rpc('update_order_details_v1', {
-          p_order_id: orderId,
-          p_station_id: stationId,
-          p_update_customer: updates.customer !== undefined,
-          p_customer_id: updates.customer?.id ?? null,
-          p_customer_name: updates.customer?.name ?? null,
-          p_customer_phone: updates.customer?.phone ?? null,
-          p_customer_email: updates.customer?.email ?? null,
-          p_update_order_type: updates.orderType !== undefined,
-          p_order_type: updates.orderType ?? null,
-          p_update_delivery_address: updates.deliveryAddress !== undefined,
-          p_delivery_address: updates.deliveryAddress ?? null,
-          p_update_notes: updates.notes !== undefined,
-          p_notes: updates.notes ?? null
-        }).abortSignal(signal)
-        return { data, error }
-      }
-    )
+        const { data, error } = await client
+          .rpc("update_order_details_v1", {
+            p_order_id: orderId,
+            p_station_id: stationId,
+            p_update_customer: updates.customer !== undefined,
+            p_customer_id: updates.customer?.id ?? null,
+            p_customer_name: updates.customer?.name ?? null,
+            p_customer_phone: updates.customer?.phone ?? null,
+            p_customer_email: updates.customer?.email ?? null,
+            p_update_order_type: updates.orderType !== undefined,
+            p_order_type: updates.orderType ?? null,
+            p_update_delivery_address: updates.deliveryAddress !== undefined,
+            p_delivery_address: updates.deliveryAddress ?? null,
+            p_update_notes: updates.notes !== undefined,
+            p_notes: updates.notes ?? null,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**

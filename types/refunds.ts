@@ -2,11 +2,7 @@ import type { PaymentMethod } from "@/types/db-order-management-types";
 import type { DejavooRefundResponse } from "@/types/dejavoo-spin-api";
 import { StationPaymentTerminal } from "./station";
 
-export type ReversalType =
-  | "void"
-  | "refund"
-  | "partial_refund"
-  | "item_return";
+export type ReversalType = "void" | "refund" | "partial_refund" | "item_return";
 
 export type RefundReasonType =
   | "customer_request"
@@ -116,6 +112,29 @@ export interface PaymentRefundContext {
   terminalId?: string | null;
   terminalConfig?: StationPaymentTerminal; // resolved from payment_terminals at gather time
 }
+
+// ─────────────────────────────────────────────
+// Wave R-1 — Refund pipeline outcome union
+// ─────────────────────────────────────────────
+
+/**
+ * Discriminated union returned by refundService.processRefund (and the
+ * store wrappers refundFullOrder / refundItems). The modal branches on
+ * `kind`:
+ *   'success'   — pipeline completed; data holds the RefundResult.
+ *   'verifying' — a transient error (DEADLINE_EXCEEDED / 40001) left the
+ *                 outcome unknown; show the polling verifying view.
+ *   'error'     — permanent failure (e.g. terminal declined); show error toast.
+ */
+export type RefundRpcOutcome<T = RefundResult> =
+  | { kind: "success"; data: T }
+  | {
+      kind: "verifying";
+      journalId: string;
+      failedStep: import("@/services/refundJournal").RefundPipelineStep;
+      reason: string;
+    }
+  | { kind: "error"; error: string };
 
 export interface PaymentItemAllocation {
   paymentId: string;

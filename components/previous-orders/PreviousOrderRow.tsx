@@ -1,84 +1,88 @@
-import { colors } from '@/lib/theme'
-import { OrderProfile } from '@/lib/types'
 import {
-  AlertTriangle,
-  CheckCircle,
-  FileText,
-  Lock,
-  MoreHorizontal,
-  Printer,
-  RefreshCw,
-  RotateCcw,
-  ShoppingBag,
-  Truck,
-  Utensils,
-  XCircle
-} from 'lucide-react-native'
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+    derivePaymentRefundState,
+    getCashPricedOrderTotal,
+} from "@/lib/paymentStatus";
+import { colors } from "@/lib/theme";
+import { OrderProfile } from "@/lib/types";
 import {
-  LayoutAnimation,
-  Modal,
-  Platform,
-  Text,
-  TouchableOpacity,
-  UIManager,
-  View
-} from 'react-native'
-import DeliveryPlatformBadge from '../order/DeliveryPlatformBadge'
-import ExpandedOrderPanel from './ExpandedOrderPanel'
+    AlertTriangle,
+    CheckCircle,
+    FileText,
+    Lock,
+    MoreHorizontal,
+    Printer,
+    RefreshCw,
+    RotateCcw,
+    ShoppingBag,
+    Truck,
+    Utensils,
+    XCircle,
+} from "lucide-react-native";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import {
+    LayoutAnimation,
+    Modal,
+    Platform,
+    Text,
+    TouchableOpacity,
+    UIManager,
+    View,
+} from "react-native";
+import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
+import ExpandedOrderPanel from "./ExpandedOrderPanel";
 
 if (
-  Platform.OS === 'android' &&
+  Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental
 ) {
-  UIManager.setLayoutAnimationEnabledExperimental(true)
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 interface PreviousOrderRowProps {
-  order: OrderProfile
-  isExpanded: boolean
-  onPress: (order: OrderProfile) => void
-  onDoublePress: (order: OrderProfile) => void
-  onPrint: (order: OrderProfile) => void
-  onViewTimeline: (order: OrderProfile) => void
-  onTipAdjust: (order: OrderProfile) => void
-  onViewNotes: (order: OrderProfile) => void
-  onCloseCheck?: (order: OrderProfile) => void
-  onReopenCheck?: (order: OrderProfile) => void
-  onRefund?: (order: OrderProfile) => void
-  onVoid?: (order: OrderProfile) => void
-  onContinue?: (order: OrderProfile) => void
+  order: OrderProfile;
+  isExpanded: boolean;
+  onPress: (order: OrderProfile) => void;
+  onDoublePress: (order: OrderProfile) => void;
+  onPrint: (order: OrderProfile) => void;
+  onViewTimeline: (order: OrderProfile) => void;
+  onTipAdjust: (order: OrderProfile) => void;
+  onViewNotes: (order: OrderProfile) => void;
+  onCloseCheck?: (order: OrderProfile) => void;
+  onReopenCheck?: (order: OrderProfile) => void;
+  onRefund?: (order: OrderProfile) => void;
+  onVoid?: (order: OrderProfile) => void;
+  onContinue?: (order: OrderProfile) => void;
 }
 
 // Status → color mapping with variety
 const statusColorMap: Record<string, { color: string; bgOpacity: string }> = {
-  Paid: { color: colors.teal, bgOpacity: '25' },
-  Partial: { color: colors.warning, bgOpacity: '25' },
-  Pending: { color: colors.warning, bgOpacity: '20' },
-  Unpaid: { color: colors.danger, bgOpacity: '20' },
-  'In Progress': { color: colors.teal, bgOpacity: '25' },
-  Refunded: { color: colors.danger, bgOpacity: '25' },
-  'Partially Refunded': { color: colors.warning, bgOpacity: '20' }
-}
+  Paid: { color: colors.teal, bgOpacity: "25" },
+  Partial: { color: colors.warning, bgOpacity: "25" },
+  Pending: { color: colors.warning, bgOpacity: "20" },
+  Unpaid: { color: colors.danger, bgOpacity: "20" },
+  "In Progress": { color: colors.teal, bgOpacity: "25" },
+  Refunded: { color: colors.danger, bgOpacity: "25" },
+  "Partially Refunded": { color: colors.warning, bgOpacity: "20" },
+};
 
 // Order type → semantic color + icon mapping
 const orderTypeColorMap: Record<
   string,
   { color: string; icon: React.ElementType }
 > = {
-  'Dine In': { color: colors.teal, icon: Utensils },
+  "Dine In": { color: colors.teal, icon: Utensils },
   dine_in: { color: colors.teal, icon: Utensils },
   Takeaway: { color: colors.teal, icon: ShoppingBag },
   takeout: { color: colors.teal, icon: ShoppingBag },
   Delivery: { color: colors.teal, icon: Truck },
-  delivery: { color: colors.teal, icon: Truck }
-}
+  delivery: { color: colors.teal, icon: Truck },
+};
 
 const displayTypeLabels: Record<string, string> = {
-  dine_in: 'Dine In',
-  takeout: 'Takeaway',
-  delivery: 'Delivery'
-}
+  dine_in: "Dine In",
+  takeout: "Takeaway",
+  delivery: "Delivery",
+};
 
 const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   order,
@@ -93,99 +97,96 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   onReopenCheck,
   onRefund,
   onVoid,
-  onContinue
+  onContinue,
 }) => {
-  const lastPressRef = useRef<number>(0)
-  const DOUBLE_PRESS_DELAY = 400
+  const lastPressRef = useRef<number>(0);
+  const DOUBLE_PRESS_DELAY = 400;
 
   const handlePress = () => {
-    const now = Date.now()
+    const now = Date.now();
     if (
       now - lastPressRef.current < DOUBLE_PRESS_DELAY &&
       lastPressRef.current !== 0
     ) {
-      onDoublePress(order)
-      lastPressRef.current = 0
+      onDoublePress(order);
+      lastPressRef.current = 0;
     } else {
-      lastPressRef.current = now
+      lastPressRef.current = now;
       setTimeout(() => {
         if (lastPressRef.current !== 0) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-          onPress(order)
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          onPress(order);
         }
-      }, DOUBLE_PRESS_DELAY)
+      }, DOUBLE_PRESS_DELAY);
     }
-  }
+  };
 
   const orderTime = order.opened_at
-    ? new Date(order.opened_at).toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit'
+    ? new Date(order.opened_at).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
       })
-    : '-'
+    : "-";
 
-  const totalRefunded = useMemo(
-    () =>
-      (order.payments || []).reduce(
-        (sum, p) => sum + (p.refundedAmount ?? 0),
-        0
-      ),
-    [order.payments]
-  )
-
+  const refundState = useMemo(
+    () => derivePaymentRefundState(order.payments),
+    [order.payments],
+  );
+  const totalRefunded = refundState.totalRefunded;
   const isFullyRefunded =
-    order.order_status === 'refunded' ||
-    (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0))
+    order.order_status === "refunded" || refundState.isFullyRefunded;
+  const displayTotal =
+    getCashPricedOrderTotal(order) ?? order.total_amount ?? 0;
 
-  const status = order.paid_status || 'Unpaid'
+  const status = order.paid_status || "Unpaid";
   const statusConfig = statusColorMap[status] ?? {
     color: colors.label,
-    bgOpacity: '15'
-  }
+    bgOpacity: "15",
+  };
 
-  const orderType = order.order_type || 'Dine In'
+  const orderType = order.order_type || "Dine In";
   const typeConfig = orderTypeColorMap[orderType] ?? {
     color: colors.teal,
-    icon: Utensils
-  }
-  const TypeIcon = typeConfig.icon
-  const displayType = displayTypeLabels[orderType] || orderType
+    icon: Utensils,
+  };
+  const TypeIcon = typeConfig.icon;
+  const displayType = displayTypeLabels[orderType] || orderType;
 
-  const needsAttention = order.paid_status === 'Pending'
+  const needsAttention = order.paid_status === "Pending";
 
-  const [menuVisible, setMenuVisible] = useState(false)
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
-  const triggerRef = useRef<View>(null)
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<View>(null);
 
   const openMenu = useCallback(() => {
     triggerRef.current?.measureInWindow((x, y, width, height) => {
-      const menuWidth = 256
+      const menuWidth = 256;
       setMenuPos({
         top: y + height + 8,
-        left: Math.max(8, x + width - menuWidth)
-      })
-      setMenuVisible(true)
-    })
-  }, [])
+        left: Math.max(8, x + width - menuWidth),
+      });
+      setMenuVisible(true);
+    });
+  }, []);
 
-  const closeMenu = useCallback(() => setMenuVisible(false), [])
+  const closeMenu = useCallback(() => setMenuVisible(false), []);
 
   const refundBadge = useMemo(() => {
-    if (totalRefunded <= 0) return null
+    if (totalRefunded <= 0) return null;
     if (isFullyRefunded) {
-      return { label: 'Refunded', color: colors.teal }
+      return null;
     }
-    return { label: 'Partial Refund', color: colors.teal }
-  }, [totalRefunded, isFullyRefunded])
+    return { label: "Partial Refund", color: colors.teal };
+  }, [totalRefunded, isFullyRefunded]);
 
   const isSettled = useMemo(() => {
     const cardPayments = (order.payments || []).filter(
-      p => p.method !== 'Cash' && !p.isVoided
-    )
-    return cardPayments.length > 0 && cardPayments.every(p => p.is_settled)
-  }, [order.payments])
+      (p) => p.method !== "Cash" && !p.isVoided,
+    );
+    return cardPayments.length > 0 && cardPayments.every((p) => p.is_settled);
+  }, [order.payments]);
 
-  const isVoided = order.order_status === 'void'
+  const isVoided = order.order_status === "void";
 
   return (
     <View
@@ -193,9 +194,9 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         marginBottom: 8,
         marginHorizontal: 8,
         borderRadius: 12,
-        overflow: 'hidden',
+        overflow: "hidden",
         borderWidth: 1,
-        borderColor: needsAttention ? colors.warning + '30' : colors.border
+        borderColor: needsAttention ? colors.warning + "30" : colors.border,
       }}
     >
       {/* Collapsed row */}
@@ -204,29 +205,29 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         onPress={handlePress}
         style={{
           backgroundColor: needsAttention
-            ? colors.warning + '20'
+            ? colors.warning + "20"
             : colors.panel,
           paddingHorizontal: 14,
           paddingVertical: 10,
-          flexDirection: 'row',
-          alignItems: 'center',
+          flexDirection: "row",
+          alignItems: "center",
           gap: 12,
           ...(needsAttention
             ? {}
             : {
-                shadowColor: '#000000',
+                shadowColor: "#000000",
                 shadowOffset: { width: 0, height: 1 },
                 shadowOpacity: 0.05,
                 shadowRadius: 1.5,
-                elevation: 1
-              })
+                elevation: 1,
+              }),
         }}
       >
         {/* Left: order number + meta line */}
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
             >
               {order.display_number ||
                 order.order_number ||
@@ -238,7 +239,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             <DeliveryPlatformBadge
               deliveryPlatform={order.delivery_platform}
               orderSource={order.order_source}
-              size='sm'
+              size="sm"
             />
             {needsAttention && (
               <AlertTriangle size={12} color={colors.warning} />
@@ -246,10 +247,10 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           </View>
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
+              flexDirection: "row",
+              alignItems: "center",
               gap: 6,
-              marginTop: 3
+              marginTop: 3,
             }}
           >
             <TypeIcon color={typeConfig.color} size={11} />
@@ -257,7 +258,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               style={{
                 fontSize: 11,
                 color: typeConfig.color,
-                fontWeight: '600'
+                fontWeight: "600",
               }}
             >
               {displayType}
@@ -277,7 +278,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         </View>
 
         {/* Status badges */}
-        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        <View style={{ alignItems: "flex-end", gap: 4 }}>
           <View
             style={{
               paddingHorizontal: 8,
@@ -285,14 +286,14 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               borderRadius: 20,
               backgroundColor: statusConfig.color + statusConfig.bgOpacity,
               borderWidth: 1,
-              borderColor: statusConfig.color + '40'
+              borderColor: statusConfig.color + "40",
             }}
           >
             <Text
               style={{
                 fontSize: 11,
-                fontWeight: '600',
-                color: statusConfig.color
+                fontWeight: "600",
+                color: statusConfig.color,
               }}
             >
               {status}
@@ -304,16 +305,16 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                 paddingHorizontal: 8,
                 paddingVertical: 3,
                 borderRadius: 20,
-                backgroundColor: refundBadge.color + '20',
+                backgroundColor: refundBadge.color + "20",
                 borderWidth: 1,
-                borderColor: refundBadge.color + '50'
+                borderColor: refundBadge.color + "50",
               }}
             >
               <Text
                 style={{
                   fontSize: 11,
-                  fontWeight: '600',
-                  color: refundBadge.color
+                  fontWeight: "600",
+                  color: refundBadge.color,
                 }}
               >
                 {refundBadge.label}
@@ -323,23 +324,23 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           {isVoided && (
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
+                flexDirection: "row",
+                alignItems: "center",
                 gap: 3,
                 paddingHorizontal: 6,
                 paddingVertical: 2,
                 borderRadius: 20,
-                backgroundColor: colors.danger + '20',
+                backgroundColor: colors.danger + "20",
                 borderWidth: 1,
-                borderColor: colors.danger + '40'
+                borderColor: colors.danger + "40",
               }}
             >
               <XCircle size={9} color={colors.danger} />
               <Text
                 style={{
                   fontSize: 10,
-                  fontWeight: '600',
-                  color: colors.danger
+                  fontWeight: "600",
+                  color: colors.danger,
                 }}
               >
                 Voided
@@ -349,20 +350,20 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           {isSettled && (
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
+                flexDirection: "row",
+                alignItems: "center",
                 gap: 3,
                 paddingHorizontal: 6,
                 paddingVertical: 2,
                 borderRadius: 20,
-                backgroundColor: colors.muted + '20',
+                backgroundColor: colors.muted + "20",
                 borderWidth: 1,
-                borderColor: colors.muted + '40'
+                borderColor: colors.muted + "40",
               }}
             >
               <Lock size={9} color={colors.muted} />
               <Text
-                style={{ fontSize: 10, fontWeight: '600', color: colors.muted }}
+                style={{ fontSize: 10, fontWeight: "600", color: colors.muted }}
               >
                 Settled
               </Text>
@@ -371,11 +372,11 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         </View>
 
         {/* Price */}
-        <View style={{ alignItems: 'flex-end', minWidth: 70 }}>
+        <View style={{ alignItems: "flex-end", minWidth: 70 }}>
           <Text
-            style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}
           >
-            ${(order.total_amount ?? 0).toFixed(2)}
+            ${displayTotal.toFixed(2)}
           </Text>
           {totalRefunded > 0 && (
             <Text style={{ fontSize: 11, color: colors.danger }}>
@@ -385,13 +386,13 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         </View>
 
         {/* 3-dot menu */}
-        <View ref={triggerRef} onTouchStart={e => e.stopPropagation()}>
+        <View ref={triggerRef} onTouchStart={(e) => e.stopPropagation()}>
           <TouchableOpacity
             onPress={openMenu}
             style={{
               padding: 6,
               borderRadius: 8,
-              backgroundColor: colors.muted + '15'
+              backgroundColor: colors.muted + "15",
             }}
           >
             <MoreHorizontal color={colors.heading} size={16} />
@@ -415,7 +416,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       <Modal
         visible={menuVisible}
         transparent
-        animationType='fade'
+        animationType="fade"
         onRequestClose={closeMenu}
       >
         <TouchableOpacity
@@ -426,7 +427,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           <View
             onStartShouldSetResponder={() => true}
             style={{
-              position: 'absolute',
+              position: "absolute",
               top: menuPos.top,
               left: menuPos.left,
               width: 220,
@@ -435,64 +436,64 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               borderWidth: 1,
               borderColor: colors.border,
               paddingVertical: 4,
-              shadowColor: '#000',
+              shadowColor: "#000",
               shadowOffset: { width: 0, height: 6 },
               shadowOpacity: 0.35,
               shadowRadius: 16,
-              elevation: 20
+              elevation: 20,
             }}
           >
-            {order.paid_status === 'Paid' &&
-              order.check_status !== 'Closed' &&
+            {order.paid_status === "Paid" &&
+              order.check_status !== "Closed" &&
               onCloseCheck && (
                 <MenuRow
                   icon={<CheckCircle color={colors.success} size={15} />}
-                  label='Close Check'
-                  iconBg={colors.success + '15'}
+                  label="Close Check"
+                  iconBg={colors.success + "15"}
                   onPress={() => {
-                    closeMenu()
-                    onCloseCheck(order)
+                    closeMenu();
+                    onCloseCheck(order);
                   }}
                 />
               )}
-            {order.check_status === 'Closed' && onReopenCheck && (
+            {order.check_status === "Closed" && onReopenCheck && (
               <MenuRow
                 icon={<RefreshCw color={colors.info} size={15} />}
-                label='Reopen Check'
-                iconBg={colors.info + '15'}
+                label="Reopen Check"
+                iconBg={colors.info + "15"}
                 onPress={() => {
-                  closeMenu()
-                  onReopenCheck(order)
+                  closeMenu();
+                  onReopenCheck(order);
                 }}
               />
             )}
-            {onRefund && (
+            {onRefund && !isFullyRefunded && (
               <MenuRow
                 icon={<RotateCcw color={colors.teal} size={15} />}
-                label='Process Refund'
-                iconBg={colors.teal + '15'}
+                label="Process Refund"
+                iconBg={colors.teal + "15"}
                 onPress={() => {
-                  closeMenu()
-                  onRefund(order)
+                  closeMenu();
+                  onRefund(order);
                 }}
               />
             )}
             <MenuRow
               icon={<FileText color={colors.info} size={15} />}
-              label='View Notes'
-              iconBg={colors.info + '15'}
+              label="View Notes"
+              iconBg={colors.info + "15"}
               onPress={() => {
-                closeMenu()
-                onViewNotes(order)
+                closeMenu();
+                onViewNotes(order);
               }}
             />
             <MenuRow
               icon={<Printer color={colors.label} size={15} />}
-              label='Print Receipt'
+              label="Print Receipt"
               iconBg={colors.card}
               onPress={() => {
-                closeMenu()
-                onPrint(order)
+                closeMenu();
+                onPrint(order);
               }}
             />
             {onVoid && (
@@ -502,17 +503,17 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                     height: 1,
                     backgroundColor: colors.border,
                     marginVertical: 4,
-                    marginHorizontal: 12
+                    marginHorizontal: 12,
                   }}
                 />
                 <MenuRow
                   icon={<XCircle color={colors.danger} size={15} />}
-                  label='Void Order'
-                  iconBg={colors.danger + '15'}
+                  label="Void Order"
+                  iconBg={colors.danger + "15"}
                   labelColor={colors.danger}
                   onPress={() => {
-                    closeMenu()
-                    onVoid(order)
+                    closeMenu();
+                    onVoid(order);
                   }}
                 />
               </>
@@ -521,33 +522,33 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         </TouchableOpacity>
       </Modal>
     </View>
-  )
-}
+  );
+};
 
 const MenuRow = ({
   icon,
   label,
   iconBg,
   labelColor,
-  onPress
+  onPress,
 }: {
-  icon: React.ReactNode
-  label: string
-  iconBg: string
-  labelColor?: string
-  onPress: () => void
+  icon: React.ReactNode;
+  label: string;
+  iconBg: string;
+  labelColor?: string;
+  onPress: () => void;
 }) => (
   <TouchableOpacity
     activeOpacity={0.6}
     onPress={onPress}
     style={{
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       gap: 10,
       paddingHorizontal: 12,
       paddingVertical: 8,
       marginHorizontal: 4,
-      borderRadius: 8
+      borderRadius: 8,
     }}
   >
     <View
@@ -556,8 +557,8 @@ const MenuRow = ({
         height: 28,
         borderRadius: 7,
         backgroundColor: iconBg,
-        alignItems: 'center',
-        justifyContent: 'center'
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
       {icon}
@@ -566,13 +567,13 @@ const MenuRow = ({
       style={{
         fontSize: 13,
         color: labelColor ?? colors.heading,
-        fontWeight: '500'
+        fontWeight: "500",
       }}
     >
       {label}
     </Text>
   </TouchableOpacity>
-)
+);
 
 const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
   return (
@@ -587,6 +588,6 @@ const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
     prev.order.payments === next.order.payments &&
     prev.isExpanded === next.isExpanded &&
     prev.onContinue === next.onContinue
-  )
-})
-export default PreviousOrderRow
+  );
+});
+export default PreviousOrderRow;

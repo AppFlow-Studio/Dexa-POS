@@ -24,6 +24,7 @@ import { NAV_THEME } from "@/lib/constants";
 import { initImmer } from "@/lib/initImmer";
 import { initLogCollector } from "@/lib/logCollector";
 import { logger } from "@/lib/logger";
+import { isRefundRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
     markNavigationEvent,
     setRootNavigationRef,
@@ -37,12 +38,17 @@ import {
     pruneOldJournals,
 } from "@/services/paymentJournal";
 import { PrinterService } from "@/services/printing/PrinterService";
+import {
+    getIncompleteRefundJournals,
+    pruneOldRefundJournals,
+} from "@/services/refundJournal";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
+import { useRefundRecoveryStore } from "@/stores/useRefundRecoveryStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
@@ -474,8 +480,7 @@ export default Sentry.wrap(function RootLayout() {
                 statuses: incomplete.map((j) => j.status),
                 ages_minutes: incomplete.map((j) =>
                   Math.round(
-                    (Date.now() - new Date(j.createdAt).getTime()) /
-                      60_000,
+                    (Date.now() - new Date(j.createdAt).getTime()) / 60_000,
                   ),
                 ),
               },
@@ -500,10 +505,59 @@ export default Sentry.wrap(function RootLayout() {
           });
         }
       } catch (err) {
-        console.error(
-          "[paymentJournal] Recovery hydration failed:",
-          err,
-        );
+        console.error("[paymentJournal] Recovery hydration failed:", err);
+      }
+
+      // Wave R-3: surface refunds that crashed mid-flow (terminal_approved
+      // entries from a prior app session). Hydrate the refund recovery store.
+      // UI is gated by isRefundRecoveryUIEnabled() — disabled by default until
+      // the feature flag is set in production.
+      try {
+        pruneOldRefundJournals();
+        const incompleteRefunds = getIncompleteRefundJournals();
+        if (incompleteRefunds.length > 0 && isRefundRecoveryUIEnabled()) {
+          console.warn(
+            `[refundJournal] ${incompleteRefunds.length} incomplete refund journal(s) detected on startup`,
+            incompleteRefunds.map((j) => ({
+              id: j.id,
+              status: j.status,
+              orderId: j.orderId,
+              amount: j.amount,
+              createdAt: j.createdAt,
+            })),
+          );
+          // Sentry site 2: track relaunch-recovery rate for refunds.
+          try {
+            Sentry.addBreadcrumb({
+              category: "refund_recovery",
+              level: "warning",
+              message: `Relaunch: ${incompleteRefunds.length} incomplete refund journal(s) detected`,
+              data: {
+                count: incompleteRefunds.length,
+                statuses: incompleteRefunds.map((j) => j.status),
+                ages_minutes: incompleteRefunds.map((j) =>
+                  Math.round(
+                    (Date.now() - new Date(j.createdAt).getTime()) / 60_000,
+                  ),
+                ),
+              },
+            });
+            Sentry.captureMessage(
+              "refund_recovery.relaunch_detected_incomplete",
+              {
+                level: "warning",
+                tags: { event: "relaunch_recovery" },
+                extra: {
+                  count: incompleteRefunds.length,
+                  head_status: incompleteRefunds[0]?.status,
+                },
+              },
+            );
+          } catch {}
+          useRefundRecoveryStore.getState().hydrate(incompleteRefunds);
+        }
+      } catch (err) {
+        console.error("[refundJournal] Recovery hydration failed:", err);
       }
     }
   }, []);
