@@ -1,39 +1,45 @@
-import { useToast } from '@/contexts/ToastContext'
-import { colors } from '@/lib/theme'
-import { PrinterService } from '@/services/printing/PrinterService'
-import { useOrder } from '@/stores/selectors/orderSelectors'
-import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { getTerminalMatchInfo } from '@/utils/terminalMatchGuard'
-import * as Haptics from 'expo-haptics'
+import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { useOrder } from "@/stores/selectors/orderSelectors";
+import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { getTerminalMatchInfo } from "@/utils/terminalMatchGuard";
+import * as Haptics from "expo-haptics";
 import {
-  ChefHat,
-  DollarSign,
-  Eye,
-  LogIn,
-  Plus,
-  Printer,
-  ReceiptText,
-  Trash2
-} from 'lucide-react-native'
-import React, { useMemo } from 'react'
-import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
+    ChefHat,
+    DollarSign,
+    Eye,
+    LogIn,
+    Plus,
+    Printer,
+    Trash2,
+} from "lucide-react-native";
+import React, { useMemo } from "react";
+import {
+    Modal,
+    Pressable,
+    Text,
+    TouchableOpacity,
+    View,
+    useWindowDimensions,
+} from "react-native";
 
 interface OrderActionsMenuProps {
-  isOpen: boolean
-  onClose: () => void
-  orderId: string | null
-  onViewDetails: () => void
-  position?: { x: number; y: number; width: number; height: number } | null
+  isOpen: boolean;
+  onClose: () => void;
+  orderId: string | null;
+  onViewDetails: () => void;
+  position?: { x: number; y: number; width: number; height: number } | null;
 }
 
 interface MenuItem {
-  icon: React.ReactNode
-  label: string
-  onPress: () => void
-  disabled?: boolean
-  destructive?: boolean
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
 }
 
 const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
@@ -41,54 +47,55 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   onClose,
   orderId,
   onViewDetails,
-  position
+  position,
 }) => {
-  const activeOrderId = useOrderStore(s => s.activeOrderId)
-  const currentStationId = useOrderStore(s => s.currentStationId)
-  const addItemToActiveOrder = useOrderStore(s => s.addItemToActiveOrder)
-  const generateCartItemId = useOrderStore(s => s.generateCartItemId)
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
-  const { show } = useToast()
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
+  const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const { show } = useToast();
+  const { height: screenHeight } = useWindowDimensions();
 
   // Get order (single index lookup - benefits from immer structural sharing)
-  const order = useOrder(orderId)
+  const order = useOrder(orderId);
 
   // Check if active terminal matches the order's payment terminal type
   const { canProcess: canTerminalRefund } = useMemo(
     () =>
       getTerminalMatchInfo(
         order?.payments,
-        selectedStation?.payment_terminal?.terminal_type
+        selectedStation?.payment_terminal?.terminal_type,
       ),
-    [order?.payments, selectedStation?.payment_terminal?.terminal_type]
-  )
+    [order?.payments, selectedStation?.payment_terminal?.terminal_type],
+  );
 
   // Handle add to bill
   const handleAddToBill = () => {
-    onClose()
+    onClose();
 
     if (!activeOrderId) {
       show({
-        title: 'No Active Order',
-        message: 'Please start a new order before adding items.',
-        type: 'error'
-      })
-      return
+        title: "No Active Order",
+        message: "Please start a new order before adding items.",
+        type: "error",
+      });
+      return;
     }
 
     if (!order || !order.items || order.items.length === 0) {
       show({
-        title: 'No Items to Add',
-        message: 'This order has no items to add to the bill.',
-        type: 'warning'
-      })
-      return
+        title: "No Items to Add",
+        message: "This order has no items to add to the bill.",
+        type: "warning",
+      });
+      return;
     }
 
     // Add items from the order to the current active order
-    let addedCount = 0
-    order.items.forEach(item => {
+    let addedCount = 0;
+    order.items.forEach((item) => {
       const newItem = {
         ...item,
         id: generateCartItemId(item.menuItemId, item.customizations),
@@ -98,233 +105,216 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
         // and the server's 4% cash-discount fallback fires.
         baseCardPrice: item.baseCardPrice ?? item.price ?? item.originalPrice,
         baseCashPrice: item.baseCashPrice ?? item.cashPrice ?? item.price,
-      }
-      addItemToActiveOrder(newItem)
-      addedCount++
-    })
+      };
+      addItemToActiveOrder(newItem);
+      addedCount++;
+    });
 
     show({
-      title: 'Items Added',
+      title: "Items Added",
       message: `${addedCount} items from the order have been added to the current bill.`,
-      type: 'success'
-    })
-  }
+      type: "success",
+    });
+  };
 
   // Handle pay outstanding
   const handlePayOutstanding = () => {
-    onClose()
+    onClose();
     show({
-      title: 'Pay Outstanding',
-      message: 'Payment flow coming soon',
-      type: 'warning'
-    })
-  }
+      title: "Pay Outstanding",
+      message: "Payment flow coming soon",
+      type: "warning",
+    });
+  };
 
   // Handle print receipt
   const handlePrintReceipt = async () => {
-    onClose()
+    onClose();
 
     if (!order) {
       show({
-        title: 'Print Error',
-        message: 'No order data available.',
-        type: 'error'
-      })
-      return
+        title: "Print Error",
+        message: "No order data available.",
+        type: "error",
+      });
+      return;
     }
 
     if (!selectedStore) {
       show({
-        title: 'Print Error',
-        message: 'No store location selected.',
-        type: 'error'
-      })
-      return
+        title: "Print Error",
+        message: "No store location selected.",
+        type: "error",
+      });
+      return;
     }
 
-    const success = await PrinterService.printReceipt(order, selectedStore)
+    const success = await PrinterService.printReceipt(order, selectedStore);
 
     if (success) {
       show({
-        title: 'Receipt Sent',
-        message: 'Receipt sent to printer.',
-        type: 'success'
-      })
+        title: "Receipt Sent",
+        message: "Receipt sent to printer.",
+        type: "success",
+      });
     } else {
-      useNoPrinterModalStore.getState().show('receipt')
+      useNoPrinterModalStore.getState().show("receipt");
     }
-  }
+  };
 
   // Handle print kitchen ticket
   const handlePrintKitchenTicket = async () => {
-    onClose()
+    onClose();
 
     if (!order) {
       show({
-        title: 'Print Error',
-        message: 'No order data available.',
-        type: 'error'
-      })
-      return
+        title: "Print Error",
+        message: "No order data available.",
+        type: "error",
+      });
+      return;
     }
 
     if (!selectedStore) {
       show({
-        title: 'Print Error',
-        message: 'No store location selected.',
-        type: 'error'
-      })
-      return
+        title: "Print Error",
+        message: "No store location selected.",
+        type: "error",
+      });
+      return;
     }
 
-    const nonVoidedItems = order.items.filter(item => !item.is_voided)
+    const nonVoidedItems = order.items.filter((item) => !item.is_voided);
     if (nonVoidedItems.length === 0) {
       show({
-        title: 'No Items',
-        message: 'No items to print on kitchen ticket.',
-        type: 'warning'
-      })
-      return
+        title: "No Items",
+        message: "No items to print on kitchen ticket.",
+        type: "warning",
+      });
+      return;
     }
 
     const success = await PrinterService.printKitchenTickets(
       order,
       nonVoidedItems,
-      selectedStore
-    )
+      selectedStore,
+    );
 
     if (success) {
       show({
-        title: 'Kitchen Ticket Sent',
-        message: 'Kitchen ticket sent to printer.',
-        type: 'success'
-      })
+        title: "Kitchen Ticket Sent",
+        message: "Kitchen ticket sent to printer.",
+        type: "success",
+      });
     } else {
-      useNoPrinterModalStore.getState().show('kitchen')
+      useNoPrinterModalStore.getState().show("kitchen");
     }
-  }
-
-  // Handle refund
-  const handleRefund = () => {
-    onClose()
-    show({
-      title: 'Refund',
-      message: 'Refund functionality coming soon',
-      type: 'warning'
-    })
-  }
+  };
 
   // Handle void order
   const handleVoidOrder = () => {
-    onClose()
+    onClose();
     show({
-      title: 'Void Order',
-      message: 'Order void functionality coming soon',
-      type: 'warning'
-    })
-  }
+      title: "Void Order",
+      message: "Order void functionality coming soon",
+      type: "warning",
+    });
+  };
 
   // Handle take over (foreign-station claim) — no confirm modal, the menu
   // tap itself is the deliberate action. Light haptic for feedback.
   const handleTakeOver = () => {
-    onClose()
-    if (!orderId) return
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
-    void useOrderStore.getState().claimOrderById(orderId)
-  }
+    onClose();
+    if (!orderId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    void useOrderStore.getState().claimOrderById(orderId);
+  };
 
-  if (!order) return null
+  if (!order) return null;
 
-  const hasOutstanding = order.paid_status !== 'Paid'
+  const hasOutstanding = order.paid_status !== "Paid";
   const isForeign =
     !!order.station_id &&
     !!currentStationId &&
-    order.station_id !== currentStationId
-  const overlayBackground = 'rgba(0,0,0,0.5)'
-  const menuBorder = colors.border
-  const rowDivider = colors.border
-  const destructiveColor = colors.danger
-  const normalLabelColor = colors.heading
-  const disabledOpacity = 0.4
+    order.station_id !== currentStationId;
+  const overlayBackground = "rgba(0,0,0,0.5)";
+  const menuBorder = colors.border;
+  const rowDivider = colors.border;
+  const destructiveColor = colors.danger;
+  const normalLabelColor = colors.heading;
+  const disabledOpacity = 0.4;
 
   const menuItems: MenuItem[] = [
     {
       icon: <Eye size={18} color={colors.muted} />,
-      label: 'View Details',
+      label: "View Details",
       onPress: () => {
-        onClose()
-        onViewDetails()
-      }
+        onClose();
+        onViewDetails();
+      },
     },
     ...(isForeign
       ? [
           {
             icon: <LogIn size={18} color={colors.warning} />,
-            label: 'Take Over Order',
-            onPress: handleTakeOver
-          }
+            label: "Take Over Order",
+            onPress: handleTakeOver,
+          },
         ]
       : []),
     {
       icon: <Plus size={18} color={colors.muted} />,
-      label: 'Add to Bill',
+      label: "Add to Bill",
       onPress: handleAddToBill,
-      disabled: !activeOrderId || !order.items || order.items.length === 0
+      disabled: !activeOrderId || !order.items || order.items.length === 0,
     },
     {
       icon: <DollarSign size={18} color={colors.muted} />,
-      label: 'Pay Outstanding',
+      label: "Pay Outstanding",
       onPress: handlePayOutstanding,
-      disabled: !hasOutstanding
+      disabled: !hasOutstanding,
     },
     {
       icon: <Printer size={18} color={colors.muted} />,
-      label: 'Print Receipt',
-      onPress: handlePrintReceipt
+      label: "Print Receipt",
+      onPress: handlePrintReceipt,
     },
     {
       icon: <ChefHat size={18} color={colors.muted} />,
-      label: 'Print Kitchen Ticket',
+      label: "Print Kitchen Ticket",
       onPress: handlePrintKitchenTicket,
       disabled:
-        !order.items || order.items.filter(i => !i.is_voided).length === 0
-    },
-    {
-      icon: <ReceiptText size={18} color={colors.danger} />,
-      label: canTerminalRefund ? 'Refund' : 'Refund — wrong terminal',
-      onPress: handleRefund,
-      destructive: true,
-      disabled: !canTerminalRefund
+        !order.items || order.items.filter((i) => !i.is_voided).length === 0,
     },
     {
       icon: <Trash2 size={18} color={colors.danger} />,
-      label: canTerminalRefund ? 'Void Order' : 'Void — wrong terminal',
+      label: canTerminalRefund ? "Void Order" : "Void — wrong terminal",
       onPress: handleVoidOrder,
       destructive: true,
-      disabled: !canTerminalRefund
-    }
-  ]
+      disabled: !canTerminalRefund,
+    },
+  ];
 
   return (
     <Modal
       visible={isOpen}
       transparent={true}
-      animationType='fade'
+      animationType="fade"
       onRequestClose={onClose}
     >
       <Pressable
-        className='flex-1'
+        className="flex-1"
         style={{ backgroundColor: overlayBackground }}
         onPress={onClose}
       >
         <View
           className={`flex-1 p-4 ${
-            position ? '' : 'items-center justify-center'
+            position ? "" : "items-center justify-center"
           }`}
         >
           <Pressable
-            className='rounded-lg overflow-hidden min-w-[220px] border'
-            onPress={e => e.stopPropagation()}
+            className="rounded-lg overflow-hidden min-w-[220px] border"
+            onPress={(e) => e.stopPropagation()}
             style={{
               backgroundColor: colors.panel,
               borderColor: menuBorder,
@@ -332,7 +322,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
               shadowOffset: { width: 0, height: 10 },
               shadowOpacity: 0.28,
               shadowRadius: 20,
-              elevation: 20
+              elevation: 20,
             }}
             style={
               position
@@ -344,9 +334,20 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
                     shadowOpacity: 0.28,
                     shadowRadius: 20,
                     elevation: 20,
-                    position: 'absolute',
-                    top: position.y, // Align top with button
-                    left: position.x - 210 // Align right of menu with left of button (approx)
+                    position: "absolute",
+                    // Estimate menu height: header (~44) + items (46 each) + padding
+                    // Flip above the button if too close to bottom of screen
+                    ...(() => {
+                      const MENU_HEIGHT = 44 + menuItems.length * 46 + 16;
+                      const spaceBelow = screenHeight - position.y;
+                      if (spaceBelow < MENU_HEIGHT) {
+                        return {
+                          bottom: screenHeight - position.y - position.height,
+                        };
+                      }
+                      return { top: position.y };
+                    })(),
+                    left: position.x - 210,
                   }
                 : {
                     backgroundColor: colors.panel,
@@ -355,20 +356,20 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
                     shadowOffset: { width: 0, height: 10 },
                     shadowOpacity: 0.28,
                     shadowRadius: 20,
-                    elevation: 20
+                    elevation: 20,
                   }
             }
           >
             {/* Menu Header */}
             <View
-              className='px-4 py-3 border-b'
+              className="px-4 py-3 border-b"
               style={{
                 borderBottomColor: rowDivider,
-                backgroundColor: colors.panel
+                backgroundColor: colors.panel,
               }}
             >
               <Text
-                className='text-xs font-semibold uppercase'
+                className="text-xs font-semibold uppercase"
                 style={{ color: colors.muted }}
               >
                 Order Actions
@@ -376,40 +377,69 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
             </View>
 
             {/* Menu Items */}
-            <View className='py-1'>
-              {menuItems.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={item.onPress}
-                  disabled={item.disabled}
-                  className='flex-row items-center px-4 py-3'
-                  style={{
-                    opacity: item.disabled ? disabledOpacity : 1,
-                    borderBottomWidth:
-                      index < menuItems.length - 1 && !item.destructive ? 1 : 0,
-                    borderBottomColor: rowDivider,
-                    backgroundColor: colors.panel
-                  }}
-                >
-                  <View className='mr-3'>{item.icon}</View>
-                  <Text
-                    className='text-sm font-medium'
+            <View className="py-1">
+              {menuItems.map((item, index) => {
+                const isLastNormal =
+                  !item.destructive &&
+                  (index === menuItems.length - 1 ||
+                    menuItems[index + 1]?.destructive);
+                const isFirstDestructive =
+                  item.destructive &&
+                  (index === 0 || !menuItems[index - 1]?.destructive);
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={item.onPress}
+                    disabled={item.disabled}
+                    className="flex-row items-center px-4"
                     style={{
-                      color: item.destructive
-                        ? destructiveColor
-                        : normalLabelColor
+                      opacity: item.disabled ? disabledOpacity : 1,
+                      height: 46,
+                      marginTop: isFirstDestructive ? 4 : 0,
+                      borderTopWidth: isFirstDestructive ? 1 : 0,
+                      borderTopColor: item.destructive
+                        ? colors.danger + "25"
+                        : rowDivider,
+                      backgroundColor: item.destructive
+                        ? colors.danger + "08"
+                        : colors.panel,
                     }}
                   >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <View
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        backgroundColor: item.destructive
+                          ? colors.danger + "15"
+                          : colors.muted + "12",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 12,
+                      }}
+                    >
+                      {item.icon}
+                    </View>
+                    <Text
+                      className="text-sm font-medium"
+                      style={{
+                        color: item.destructive
+                          ? destructiveColor
+                          : normalLabelColor,
+                        flex: 1,
+                      }}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </Pressable>
         </View>
       </Pressable>
     </Modal>
-  )
-}
+  );
+};
 
-export default OrderActionsMenu
+export default OrderActionsMenu;
