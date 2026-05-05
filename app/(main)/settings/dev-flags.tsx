@@ -24,9 +24,12 @@ import {
   CheckCircle2,
   CircleOff,
   FlaskConical,
+  Send,
 } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
+import { useOrderStore } from '@/stores/useOrderStore'
 
 const ALL_RPCS: { key: IdempotentRpc; label: string; description: string }[] = [
   { key: 'seat_guests', label: 'seat_guests', description: 'Seating guests at a table → seat_guests_v3' },
@@ -224,6 +227,65 @@ export default function DevFlagsScreen () {
           )
         })}
       </SettingsCard>
+
+      <DevSendReceiptCard />
     </ScrollView>
+  )
+}
+
+function DevSendReceiptCard () {
+  const [open, setOpen] = useState(false)
+  const ordersById = useOrderStore(s => s.ordersById)
+  const mostRecentDbOrderId = React.useMemo(() => {
+    let bestId: string | null = null
+    let bestTs = 0
+    for (const o of Object.values(ordersById)) {
+      if (!o?.db_order_id) continue
+      const ts = new Date(o.last_activity_at ?? o.opened_at ?? 0).getTime()
+      if (ts >= bestTs) {
+        bestTs = ts
+        bestId = o.db_order_id
+      }
+    }
+    return bestId
+  }, [ordersById])
+
+  return (
+    <SettingsCard title='Send Receipt (Debug)'>
+      <View style={{ paddingVertical: 8, gap: 8 }}>
+        <Text style={{ fontSize: 12, color: colors.muted }}>
+          Invokes send-receipt edge function for the most recent synced order.
+        </Text>
+        <Text style={{ fontSize: 12, color: colors.muted }}>
+          db_order_id: {mostRecentDbOrderId ?? '— none —'}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Send size={14} color={colors.teal} />
+          <Text style={{ fontSize: 11, color: colors.teal, fontWeight: '600' }}>
+            Debug only
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => setOpen(true)}
+          disabled={!mostRecentDbOrderId}
+          style={{
+            paddingVertical: 10,
+            borderRadius: 8,
+            backgroundColor: colors.teal,
+            opacity: mostRecentDbOrderId ? 1 : 0.4,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: colors.onSolid, fontWeight: '700' }}>
+            Open Send Receipt Sheet
+          </Text>
+        </TouchableOpacity>
+      </View>
+      <SendReceiptSheet
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        dbOrderId={mostRecentDbOrderId}
+      />
+    </SettingsCard>
   )
 }

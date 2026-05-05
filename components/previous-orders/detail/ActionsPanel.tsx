@@ -6,6 +6,8 @@ import {
   CreditCard,
   FileText,
   LogIn,
+  Mail,
+  MessageSquare,
   Printer,
   RefreshCcw,
   RotateCcw,
@@ -19,6 +21,8 @@ interface ActionsPanelProps {
   onRefund: () => void
   onTipAdjust: () => void
   onPrint: () => void
+  onEmailReceipt?: () => void
+  onTextReceipt?: () => void
   onReopen: () => void
   onCloseCheck: () => void
   onVoidOrder: () => void
@@ -37,6 +41,8 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   onRefund,
   onTipAdjust,
   onPrint,
+  onEmailReceipt,
+  onTextReceipt,
   onReopen,
   onCloseCheck,
   onVoidOrder,
@@ -103,6 +109,28 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         variant='primary'
         disabled={anyLoading}
       />
+
+      {/* Email Receipt */}
+      {onEmailReceipt && (
+        <ActionButton
+          icon={<Mail color={colors.teal} size={18} />}
+          label='Email Receipt'
+          onPress={onEmailReceipt}
+          variant='teal'
+          disabled={anyLoading || !order.db_order_id}
+        />
+      )}
+
+      {/* Text Receipt */}
+      {onTextReceipt && (
+        <ActionButton
+          icon={<MessageSquare color={colors.teal} size={18} />}
+          label='Text Receipt'
+          onPress={onTextReceipt}
+          variant='teal'
+          disabled={anyLoading || !order.db_order_id}
+        />
+      )}
 
       {/* Refund */}
       {canRefund && (

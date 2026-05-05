@@ -3,6 +3,8 @@ import AdvancedRefundModal, {
 } from '@/components/previous-orders/AdvancedRefundModal'
 import OrderNotesModal from '@/components/previous-orders/OrderNotesModal'
 import PrintReceiptModal from '@/components/previous-orders/PrintReceiptModal'
+import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
+import type { SendReceiptDeliveryMethod } from '@/services/messaging/sendReceiptService'
 import ActionsPanel from '@/components/previous-orders/detail/ActionsPanel'
 import BillTab from '@/components/previous-orders/detail/BillTab'
 import OrderDetailHeader from '@/components/previous-orders/detail/OrderDetailHeader'
@@ -70,6 +72,10 @@ const OrderDetailsScreen = () => {
   const [historyHydrated, setHistoryHydrated] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [showNotesModal, setShowNotesModal] = useState(false)
+  const [receiptSheet, setReceiptSheet] = useState<{
+    open: boolean
+    method: SendReceiptDeliveryMethod
+  }>({ open: false, method: 'email' })
   const [isClaiming, setIsClaiming] = useState(false)
   const currentStationId = useOrderStore(s => s.currentStationId)
 
@@ -501,6 +507,12 @@ const OrderDetailsScreen = () => {
               onRefund={() => refundModalRef.current?.open()}
               onTipAdjust={() => tipAdjustRef.current?.open()}
               onPrint={() => setShowPrintModal(true)}
+              onEmailReceipt={() =>
+                setReceiptSheet({ open: true, method: 'email' })
+              }
+              onTextReceipt={() =>
+                setReceiptSheet({ open: true, method: 'sms' })
+              }
               onReopen={handleReopen}
               onCloseCheck={() => {
                 if (!profileOrder.db_order_id) return
@@ -545,6 +557,15 @@ const OrderDetailsScreen = () => {
         isOpen={showNotesModal}
         onClose={() => setShowNotesModal(false)}
         order={profileOrder}
+      />
+
+      <SendReceiptSheet
+        isOpen={receiptSheet.open}
+        onClose={() => setReceiptSheet((s) => ({ ...s, open: false }))}
+        dbOrderId={profileOrder?.db_order_id ?? null}
+        defaultMethod={receiptSheet.method}
+        defaultEmail={profileOrder?.customer_email}
+        defaultPhone={profileOrder?.customer_phone}
       />
     </View>
   )
