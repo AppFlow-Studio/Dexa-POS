@@ -9,6 +9,7 @@ import Constants from 'expo-constants'
 import { usePathname, useRouter } from 'expo-router'
 import * as Updates from 'expo-updates'
 import {
+  BadgeDollarSign,
   Banknote,
   Bell,
   ChevronDown,
@@ -149,6 +150,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         label: 'End of Day',
         icon: Clover,
         route: '/settings/end-of-day'
+      },
+      {
+        id: 'batchout',
+        label: 'Batchout',
+        icon: BadgeDollarSign,
+        route: '/settings/batchout'
       }
     ]
   },

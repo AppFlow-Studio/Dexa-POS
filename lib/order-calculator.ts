@@ -134,9 +134,7 @@ function pruneCache (): void {
 //   return round2(effectivePrice);
 // }
 export function calculateItemEffectiveCashPrice (item: CartItem): number {
-  let effectivePrice = new Decimal(
-    item.baseCashPrice ?? item.cashPrice ?? item.unitPrice ?? 0
-  )
+  let effectivePrice = new Decimal(item.baseCashPrice ?? item.unitPrice ?? 0)
 
   if (item.customizations?.size?.priceModifier) {
     effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier)
