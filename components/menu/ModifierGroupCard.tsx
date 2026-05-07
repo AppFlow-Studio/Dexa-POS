@@ -7,11 +7,13 @@ import { Text, TouchableOpacity, View } from "react-native";
 interface ModifierGroupCardProps {
   modifierGroup: ExtendedModifierGroup;
   onEdit: () => void;
+  disabled?: boolean;
 }
 
 export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
   modifierGroup,
   onEdit,
+  disabled = false,
 }) => {
   return (
     <View className="bg-surface rounded-lg border border-gray-700 p-4 mb-3">
@@ -46,10 +48,13 @@ export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
 
         <View className="flex-row items-center">
           <TouchableOpacity
-            onPress={onEdit}
-            className="p-2 bg-panel rounded border border-gray-600"
+            onPress={disabled ? undefined : onEdit}
+            disabled={disabled}
+            className={`p-2 bg-panel rounded border border-gray-600 ${
+              disabled ? 'opacity-40' : ''
+            }`}
           >
-            <Pencil size={16} color={colors.label} />
+            <Pencil size={16} color={disabled ? colors.muted : colors.label} />
           </TouchableOpacity>
         </View>
       </View>

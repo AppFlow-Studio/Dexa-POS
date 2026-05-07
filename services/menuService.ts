@@ -965,12 +965,29 @@ export class MenuService {
     client: SupabaseClient,
     menuId: string,
     locationId: string,
-    categoryOrders: Array<{ categoryId: string; displayOrder: number }>
+    categoryOrders: {
+      categoryId?: string
+      category_id?: string
+      displayOrder?: number
+      display_order?: number
+    }[]
   ): Promise<{ success: boolean; error: any }> {
+    const normalizedCategoryOrders = categoryOrders.map(order => ({
+      category_id: order.category_id ?? order.categoryId ?? null,
+      display_order:
+        order.display_order ?? order.displayOrder ?? null
+    }))
+
+    if (normalizedCategoryOrders.some(order => !order.category_id)) {
+      const error = new Error('Missing category_id for menu category reorder')
+      console.error('Failed to reorder menu categories:', error)
+      return { success: false, error }
+    }
+
     const { error } = await client.rpc('reorder_menu_categories', {
       p_menu_id: menuId,
       p_location_id: locationId,
-      p_category_orders: categoryOrders
+      p_category_orders: normalizedCategoryOrders
     })
 
     if (error) {
@@ -988,7 +1005,7 @@ export class MenuService {
     client: SupabaseClient,
     categoryId: string,
     locationId: string,
-    itemOrders: Array<{ menuItemId: string; displayOrder: number }>
+    itemOrders: { menuItemId: string; displayOrder: number }[]
   ): Promise<{ success: boolean; error: any }> {
     const { error } = await client.rpc('reorder_category_items', {
       p_category_id: categoryId,

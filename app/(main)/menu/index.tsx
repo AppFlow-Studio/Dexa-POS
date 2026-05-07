@@ -918,8 +918,8 @@ const MenuPage: React.FC = () => {
 
       // Persist
       const categoryOrders = newCategories.map((c, idx) => ({
-        categoryId: c.id,
-        displayOrder: idx
+        category_id: c.id,
+        display_order: idx
       }))
       const { error } = await MenuService.reorderMenuCategories(
         supabase,
@@ -1718,18 +1718,26 @@ const MenuPage: React.FC = () => {
                 </View>
 
                 <TouchableOpacity
-                  onPress={() =>
-                    router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)
+                  onPress={
+                    editable
+                      ? () =>
+                          router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)
+                      : undefined
                   }
+                  disabled={!editable}
                   style={{
                     padding: 6,
                     backgroundColor: colors.panel,
                     borderRadius: 8,
                     borderWidth: 1,
-                    borderColor: colors.border
+                    borderColor: colors.border,
+                    opacity: editable ? 1 : 0.4
                   }}
                 >
-                  <Pencil size={14} color={colors.label} />
+                  <Pencil
+                    size={14}
+                    color={editable ? colors.label : colors.muted}
+                  />
                 </TouchableOpacity>
               </View>
 
@@ -2089,7 +2097,12 @@ const MenuPage: React.FC = () => {
                     </View>
                   )}
                   <TouchableOpacity
-                    onPress={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
+                    onPress={
+                      menu.location_id === selectedStore?.id
+                        ? () => router.push(`/menu/edit-menu?id=${menu.id}`)
+                        : undefined
+                    }
+                    disabled={menu.location_id !== selectedStore?.id}
                     style={{
                       alignSelf: 'flex-start',
                       paddingHorizontal: 12,
@@ -2097,7 +2110,8 @@ const MenuPage: React.FC = () => {
                       borderRadius: 8,
                       backgroundColor: colors.teal + '20',
                       borderWidth: 1,
-                      borderColor: colors.teal + '50'
+                      borderColor: colors.teal + '50',
+                      opacity: menu.location_id === selectedStore?.id ? 1 : 0.4
                     }}
                   >
                     <Text
@@ -2207,9 +2221,13 @@ const MenuPage: React.FC = () => {
                     </View>
                   )}
                   <TouchableOpacity
-                    onPress={() =>
-                      router.push(`/menu/edit-category?id=${category.id}`)
+                    onPress={
+                      category.location_id === selectedStore?.id
+                        ? () =>
+                            router.push(`/menu/edit-category?id=${category.id}`)
+                        : undefined
                     }
+                    disabled={category.location_id !== selectedStore?.id}
                     style={{
                       alignSelf: 'flex-start',
                       paddingHorizontal: 12,
@@ -2217,7 +2235,9 @@ const MenuPage: React.FC = () => {
                       borderRadius: 8,
                       backgroundColor: colors.teal + '20',
                       borderWidth: 1,
-                      borderColor: colors.teal + '50'
+                      borderColor: colors.teal + '50',
+                      opacity:
+                        category.location_id === selectedStore?.id ? 1 : 0.4
                     }}
                   >
                     <Text
