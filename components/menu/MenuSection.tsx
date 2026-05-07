@@ -696,7 +696,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                               ? colors.border + "90"
                               : colors.border,
                           opacity: !isAvailable ? 0.65 : 1,
-                          shadowColor: colors.black,
+                          shadowColor: "#000000",
                           shadowOpacity: 0.04,
                           shadowRadius: 4,
                           shadowOffset: { width: 0, height: 2 },

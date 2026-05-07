@@ -132,9 +132,6 @@ interface DraggableMenuProps {
   onAutoScroll?: (absoluteY: number) => void
   onToggleHidden: (menuId: string) => void
   isHidden: boolean
-  categoryDragPreview: { fromIndex: number; toIndex: number } | null
-  onCategoryDragPreviewChange: (fromIndex: number, toIndex: number) => void
-  onCategoryDragPreviewEnd: () => void
 }
 
 // Helper to check if now is within a schedule
