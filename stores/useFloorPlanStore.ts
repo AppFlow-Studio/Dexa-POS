@@ -94,6 +94,7 @@ interface FloorPlanState {
   selectedTableIds: string[];
   isDesignMode: boolean;
   isLoading: boolean;
+  loadingFloorPlanId: string | null;
   error: string | null;
   lastSyncAt: string | null; // ISO string for persistence
 
@@ -275,6 +276,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         selectedTableIds: [],
         isDesignMode: false,
         isLoading: false,
+        loadingFloorPlanId: null,
         error: null,
         lastSyncAt: null,
         past: [],
@@ -576,6 +578,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             locationId: null,
             floorPlans: [],
             activeFloorPlanId: null,
+            loadingFloorPlanId: null,
             tables: [],
             tablesById: {},
             waitlist: [],
@@ -591,9 +594,20 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // ====================================================================
 
         setActiveFloorPlan: async (floorPlanId: string) => {
-          set({ activeFloorPlanId: floorPlanId, isLoading: true });
+          set({
+            activeFloorPlanId: floorPlanId,
+            loadingFloorPlanId: floorPlanId,
+            isLoading: true,
+            error: null,
+            tables: [],
+            tablesById: {},
+            sections: [],
+            sectionsById: {},
+          });
           await get().loadFloorPlanStatus();
-          set({ isLoading: false });
+          if (get().activeFloorPlanId === floorPlanId) {
+            set({ isLoading: false, loadingFloorPlanId: null });
+          }
         },
 
         loadFloorPlans: async () => {
@@ -681,7 +695,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (isActive && newPlans.length > 0) {
             get().setActiveFloorPlan(newPlans[0].id);
           } else if (newPlans.length === 0) {
-            set({ tables: [], tablesById: {} });
+            set({
+              tables: [],
+              tablesById: {},
+              isLoading: false,
+              loadingFloorPlanId: null,
+            });
           }
         },
 
@@ -696,7 +715,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           }
 
           _loadFloorPlanId = floorPlanId;
-          _loadFloorPlanPromise = (async () => {
+          const loadPromise = (async () => {
             try {
               // Parallel fetch: all floor plan objects + sections
               const [objectsResult, sectionsResult] = await Promise.all([
@@ -773,6 +792,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 {} as Record<string, ServerSection>,
               );
 
+              // If the user switched floor plans while this request was in flight,
+              // ignore the stale response so it can't paint the previous layout back in.
+              if (get().activeFloorPlanId !== floorPlanId) {
+                return;
+              }
+
               set({
                 tables: enrichedTables,
                 tablesById: buildTablesById(enrichedTables),
@@ -780,6 +805,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 sectionsById: newSectionsById,
                 lastSyncAt: new Date().toISOString(),
                 error: null,
+                isLoading: false,
+                loadingFloorPlanId: null,
               });
 
               // Hydrate session store from fresh table data
@@ -789,12 +816,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
-              _loadFloorPlanPromise = null;
-              _loadFloorPlanId = null;
+              if (_loadFloorPlanPromise === loadPromise) {
+                _loadFloorPlanPromise = null;
+                _loadFloorPlanId = null;
+              }
             }
           })();
 
-          return _loadFloorPlanPromise;
+          _loadFloorPlanPromise = loadPromise;
+          return loadPromise;
         },
 
         loadFloorPlanStatusIfStale: async (ttlMs: number = 30000) => {
@@ -842,6 +872,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         refreshTableSessions: async () => {
           const supabase = getClient();
           const locationId = get().locationId;
+          const floorPlanId = get().activeFloorPlanId;
           if (!locationId || !supabase) return;
 
           const { data, error } = await FloorPlanService.getLocationTableStatus(
@@ -862,6 +893,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 const session = sessionState.sessions[table.id];
                 return session ? { ...table, session } : table;
               });
+              if (get().activeFloorPlanId !== floorPlanId) {
+                return;
+              }
               set({
                 tables: restored,
                 tablesById: buildTablesById(restored),
@@ -914,6 +948,10 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           const currentTables = get().tables;
           const currentTablesById = get().tablesById;
+
+          if (get().activeFloorPlanId !== floorPlanId) {
+            return;
+          }
 
           // Merge sessions into existing tables, preserving geometry
           const mergedTables = currentTables.map((table) => {
