@@ -132,6 +132,9 @@ interface DraggableMenuProps {
   onAutoScroll?: (absoluteY: number) => void
   onToggleHidden: (menuId: string) => void
   isHidden: boolean
+  categoryDragPreview: { fromIndex: number; toIndex: number } | null
+  onCategoryDragPreviewChange: (fromIndex: number, toIndex: number) => void
+  onCategoryDragPreviewEnd: () => void
 }
 
 // Helper to check if now is within a schedule
@@ -215,7 +218,7 @@ const DraggableMenu = React.memo(
     dragPreview,
     onDragPreviewChange,
     onDragPreviewEnd,
-  onAutoScroll,
+    onAutoScroll,
     onToggleHidden,
     isHidden
   }: DraggableMenuProps) => {
@@ -229,6 +232,10 @@ const DraggableMenu = React.memo(
     const dragOriginIndex = useSharedValue(index)
     const [isDragActive, setIsDragActive] = useState(false)
     const [isCollapsed, setIsCollapsed] = useState(true)
+    const [categoryDragPreview, setCategoryDragPreview] = useState<{
+      fromIndex: number
+      toIndex: number
+    } | null>(null)
 
     const hapticStart = () => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -315,6 +322,20 @@ const DraggableMenu = React.memo(
     const isAvailable = checkAvailability(menu.schedules)
     const statusActive = menu.isActive && isAvailable
     const menuCategories = Array.isArray(menu.categories) ? menu.categories : []
+    const visibleCategories = useMemo(() => {
+      if (
+        !categoryDragPreview ||
+        categoryDragPreview.fromIndex === categoryDragPreview.toIndex
+      ) {
+        return menuCategories
+      }
+
+      const reordered = [...menuCategories]
+      const [moved] = reordered.splice(categoryDragPreview.fromIndex, 1)
+      if (!moved) return menuCategories
+      reordered.splice(categoryDragPreview.toIndex, 0, moved)
+      return reordered
+    }, [menuCategories, categoryDragPreview])
 
     return (
       <Animated.View
@@ -476,7 +497,7 @@ const DraggableMenu = React.memo(
           >
             Categories ({menuCategories.length})
           </Text>
-          {menuCategories.map((category: any, categoryIndex: number) => (
+          {visibleCategories.map((category: any, categoryIndex: number) => (
             <DraggableMenuCategory
               key={category.id}
               category={category}
@@ -490,6 +511,11 @@ const DraggableMenu = React.memo(
               onItemPriceEdit={onItemPriceEdit}
               onReorderItems={onReorderItems}
               itemCount={menuCategories.length}
+              dragPreview={categoryDragPreview}
+              onDragPreviewChange={(fromIndex, toIndex) =>
+                setCategoryDragPreview({ fromIndex, toIndex })
+              }
+              onDragPreviewEnd={() => setCategoryDragPreview(null)}
               isEditable={
                 !!(
                   category.location_id &&
@@ -525,6 +551,9 @@ interface DraggableMenuCategoryProps {
   ) => void
   isEditable: boolean
   itemCount: number
+  dragPreview: { fromIndex: number; toIndex: number } | null
+  onDragPreviewChange: (fromIndex: number, toIndex: number) => void
+  onDragPreviewEnd: () => void
 }
 
 const DraggableMenuCategory = React.memo(
@@ -538,11 +567,15 @@ const DraggableMenuCategory = React.memo(
     onItemPriceEdit,
     isEditable,
     onReorderItems,
-    itemCount
+    itemCount,
+    dragPreview,
+    onDragPreviewChange,
+    onDragPreviewEnd
   }: DraggableMenuCategoryProps) => {
     const translateY = useSharedValue(0)
     const scale = useSharedValue(1)
     const isDragging = useSharedValue(false)
+    const dragOriginIndex = useSharedValue(index)
     const [isExpanded, setIsExpanded] = useState(false)
 
     const hapticStart = () => {
@@ -558,26 +591,43 @@ const DraggableMenuCategory = React.memo(
       .activeOffsetY([-8, 8])
       .onStart(() => {
         isDragging.value = true
-        scale.value = withSpring(1.05)
+        scale.value = withTiming(1.03, { duration: 120 })
+        dragOriginIndex.value = index
+        runOnJS(onDragPreviewChange)(index, index)
         runOnJS(hapticStart)()
       })
       .onUpdate(event => {
         translateY.value = event.translationY
+
+        const itemHeight = 60
+        const targetIndex = Math.round(
+          dragOriginIndex.value + event.translationY / itemHeight
+        )
+        const newIndex = Math.max(0, Math.min(itemCount - 1, targetIndex))
+
+        if (
+          !dragPreview ||
+          dragPreview.fromIndex !== dragOriginIndex.value ||
+          dragPreview.toIndex !== newIndex
+        ) {
+          runOnJS(onDragPreviewChange)(dragOriginIndex.value, newIndex)
+        }
       })
       .onEnd(event => {
         const itemHeight = 60
         const targetIndex = Math.round(
-          index + event.translationY / itemHeight
+          dragOriginIndex.value + event.translationY / itemHeight
         )
         const newIndex = Math.max(0, Math.min(itemCount - 1, targetIndex))
 
-        if (newIndex !== index && newIndex >= 0) {
-          runOnJS(onReorder)(index, newIndex)
+        runOnJS(onDragPreviewEnd)()
+        if (newIndex !== dragOriginIndex.value && newIndex >= 0) {
+          runOnJS(onReorder)(dragOriginIndex.value, newIndex)
           runOnJS(hapticDrop)()
         }
 
         translateY.value = withTiming(0)
-        scale.value = withSpring(1)
+        scale.value = withTiming(1, { duration: 140 })
         isDragging.value = false
       })
 
@@ -588,12 +638,19 @@ const DraggableMenuCategory = React.memo(
         [0, 0.2],
         Extrapolate.CLAMP
       )
+      const dragCompensation = isDragging.value
+        ? (index - dragOriginIndex.value) * 60
+        : 0
 
       return {
-        transform: [{ translateY: translateY.value }, { scale: scale.value }],
+        transform: [
+          { translateY: translateY.value - dragCompensation },
+          { scale: scale.value }
+        ],
         shadowOpacity,
         elevation: isDragging.value ? 4 : 0,
-        zIndex: isDragging.value ? 500 : 1
+        zIndex: isDragging.value ? 500 : 1,
+        shadowRadius: isDragging.value ? 6 : 0
       }
     })
 
@@ -608,6 +665,11 @@ const DraggableMenuCategory = React.memo(
             borderColor: colors.border
           }
         ]}
+        layout={
+          isDragging.value
+            ? undefined
+            : Layout.springify().damping(30).stiffness(180).mass(0.9)
+        }
       >
         <View
           style={{
@@ -1533,8 +1595,8 @@ const MenuPage: React.FC = () => {
                           <View
                             key={item.id}
                             style={{
-                              width: 130,
-                              height: 160,
+                              width: 152,
+                              minHeight: 186,
                               borderRadius: 10,
                               backgroundColor: colors.panel,
                               borderWidth: 1,
@@ -1543,7 +1605,7 @@ const MenuPage: React.FC = () => {
                               position: 'relative'
                             }}
                           >
-                            <View style={{ height: 100, width: '100%' }}>
+                            <View style={{ height: 104, width: '100%' }}>
                               {item.image ? (
                                 <Image
                                   source={{
@@ -1575,16 +1637,18 @@ const MenuPage: React.FC = () => {
                             <View
                               style={{
                                 paddingHorizontal: 8,
-                                paddingVertical: 6,
-                                gap: 2
+                                paddingTop: 7,
+                                paddingBottom: 42,
+                                gap: 3
                               }}
                             >
                               <Text
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: '600',
                                   color: colors.heading,
-                                  lineHeight: 14
+                                  lineHeight: 15,
+                                  flexShrink: 1
                                 }}
                                 numberOfLines={2}
                               >
@@ -1592,7 +1656,7 @@ const MenuPage: React.FC = () => {
                               </Text>
                               <Text
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: '700',
                                   color: colors.teal
                                 }}
@@ -1604,8 +1668,8 @@ const MenuPage: React.FC = () => {
                             <View
                               style={{
                                 position: 'absolute',
-                                bottom: 6,
-                                right: 6,
+                                bottom: 7,
+                                right: 7,
                                 flexDirection: 'row',
                                 gap: 4,
                                 zIndex: 20
@@ -1727,8 +1791,8 @@ const MenuPage: React.FC = () => {
                           key={item.id}
                           style={{
                             position: 'relative',
-                            width: 130,
-                            height: 160,
+                            width: 152,
+                            minHeight: 186,
                             borderRadius: 10,
                             backgroundColor: colors.panel,
                             borderWidth: 1,
@@ -1737,7 +1801,7 @@ const MenuPage: React.FC = () => {
                           }}
                         >
                           {/* Image */}
-                          <View style={{ height: 100, width: '100%' }}>
+                          <View style={{ height: 104, width: '100%' }}>
                             {item.image ? (
                               <Image
                                 source={{
@@ -1770,16 +1834,18 @@ const MenuPage: React.FC = () => {
                           <View
                             style={{
                               paddingHorizontal: 8,
-                              paddingVertical: 6,
-                              gap: 2
+                              paddingTop: 7,
+                              paddingBottom: 42,
+                              gap: 3
                             }}
                           >
                             <Text
                               style={{
-                                fontSize: 11,
+                                fontSize: 12,
                                 fontWeight: '600',
                                 color: colors.heading,
-                                lineHeight: 14
+                                lineHeight: 15,
+                                flexShrink: 1
                               }}
                               numberOfLines={2}
                             >
@@ -1787,7 +1853,7 @@ const MenuPage: React.FC = () => {
                             </Text>
                             <Text
                               style={{
-                                fontSize: 11,
+                                fontSize: 12,
                                 fontWeight: '700',
                                 color: colors.teal
                               }}
@@ -1799,8 +1865,8 @@ const MenuPage: React.FC = () => {
                           <View
                             style={{
                               position: 'absolute',
-                              bottom: 6,
-                              right: 6,
+                              bottom: 7,
+                              right: 7,
                               flexDirection: 'row',
                               gap: 4,
                               zIndex: 20
