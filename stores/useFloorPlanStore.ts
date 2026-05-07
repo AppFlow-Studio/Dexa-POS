@@ -97,6 +97,15 @@ interface FloorPlanState {
   loadingFloorPlanId: string | null;
   error: string | null;
   lastSyncAt: string | null; // ISO string for persistence
+  floorPlanCache: Record<
+    string,
+    {
+      tables: FloorPlanObject[];
+      sections: ServerSection[];
+      sectionsById: Record<string, ServerSection>;
+      lastSyncAt: string | null;
+    }
+  >;
 
   // Undo/Redo (design mode only)
   past: FloorPlanObject[][];
@@ -121,6 +130,14 @@ interface FloorPlanState {
   loadFloorPlanStatus: () => Promise<void>;
   loadFloorPlanStatusIfStale: (ttlMs?: number) => Promise<void>;
   refreshTableSessions: () => Promise<void>;
+  getCachedFloorPlan: (
+    floorPlanId: string,
+  ) => {
+    tables: FloorPlanObject[];
+    sections: ServerSection[];
+    sectionsById: Record<string, ServerSection>;
+    lastSyncAt: string | null;
+  } | null;
 
   // Table Design Actions (Design Mode)
   setDesignMode: (enabled: boolean) => void;
@@ -279,6 +296,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         loadingFloorPlanId: null,
         error: null,
         lastSyncAt: null,
+        floorPlanCache: {},
         past: [],
         future: [],
         isOnline: true,
@@ -583,6 +601,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             tablesById: {},
             waitlist: [],
             reservations: [],
+            floorPlanCache: {},
             _reconnectAttempts: 0,
             _reconnectTimeout: null,
             _isCleaningUp: false,
@@ -594,16 +613,30 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // ====================================================================
 
         setActiveFloorPlan: async (floorPlanId: string) => {
+          const cached = get().floorPlanCache[floorPlanId];
           set({
             activeFloorPlanId: floorPlanId,
             loadingFloorPlanId: floorPlanId,
             isLoading: true,
             error: null,
-            tables: [],
-            tablesById: {},
-            sections: [],
-            sectionsById: {},
           });
+          if (cached) {
+            set({
+              tables: cached.tables,
+              tablesById: buildTablesById(cached.tables),
+              sections: cached.sections,
+              sectionsById: cached.sectionsById,
+              lastSyncAt: cached.lastSyncAt,
+              isLoading: false,
+            });
+          } else {
+            set({
+              tables: [],
+              tablesById: {},
+              sections: [],
+              sectionsById: {},
+            });
+          }
           await get().loadFloorPlanStatus();
           if (get().activeFloorPlanId === floorPlanId) {
             set({ isLoading: false, loadingFloorPlanId: null });
@@ -807,6 +840,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 error: null,
                 isLoading: false,
                 loadingFloorPlanId: null,
+                floorPlanCache: {
+                  ...get().floorPlanCache,
+                  [floorPlanId]: {
+                    tables: enrichedTables,
+                    sections: freshSections,
+                    sectionsById: newSectionsById,
+                    lastSyncAt: new Date().toISOString(),
+                  },
+                },
               });
 
               // Hydrate session store from fresh table data
@@ -899,6 +941,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               set({
                 tables: restored,
                 tablesById: buildTablesById(restored),
+                floorPlanCache: {
+                  ...get().floorPlanCache,
+                  [floorPlanId]: {
+                    tables: restored,
+                    sections: get().sections,
+                    sectionsById: get().sectionsById,
+                    lastSyncAt: get().lastSyncAt,
+                  },
+                },
               });
               return;
             }
@@ -980,12 +1031,25 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             tablesById: buildTablesById(mergedTables),
             lastSyncAt: new Date().toISOString(),
             error: null,
+            floorPlanCache: {
+              ...get().floorPlanCache,
+              [floorPlanId]: {
+                tables: mergedTables,
+                sections: get().sections,
+                sectionsById: get().sectionsById,
+                lastSyncAt: new Date().toISOString(),
+              },
+            },
           });
 
           // Hydrate session store from merged tables
           getTableSessionStore()
             .getState()
             ._patchSessionsFromTables(mergedTables);
+        },
+
+        getCachedFloorPlan: (floorPlanId: string) => {
+          return get().floorPlanCache[floorPlanId] ?? null;
         },
 
         // ====================================================================
