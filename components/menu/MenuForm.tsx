@@ -1,5 +1,6 @@
 import ScheduleFormSheet from "@/components/menu/ScheduleFormSheet";
 import ScheduleManager from "@/components/menu/ScheduleManager";
+import AppNoticeModal from "@/components/ui/AppNoticeModal";
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
@@ -21,7 +22,6 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -90,6 +90,10 @@ const MenuForm: React.FC<MenuFormProps> = ({
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [validationNotice, setValidationNotice] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
 
   const [hasChanges, setHasChanges] = useState(false);
   const hasSavedRef = useRef(false);
@@ -162,11 +166,17 @@ const MenuForm: React.FC<MenuFormProps> = ({
 
   const validateForm = (): boolean => {
     if (!name.trim()) {
-      Alert.alert("Error", "Please enter a menu name");
+      setValidationNotice({
+        title: "Menu Name Required",
+        description: "Please enter a menu name before saving.",
+      });
       return false;
     }
     if (selectedCategories.length === 0) {
-      Alert.alert("Error", "Please select at least one category for this menu");
+      setValidationNotice({
+        title: "Select a Category",
+        description: "Choose at least one category before creating the menu.",
+      });
       return false;
     }
     return true;
@@ -848,7 +858,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
                 {initialData ? "Save Changes?" : "Create Menu?"}
               </Text>
               <Text style={{ fontSize: 13, color: colors.label, textAlign: "center", lineHeight: 19 }}>
-                {initialData ? "Save changes to" : "Create"} "{name}" with {selectedCategories.length} {selectedCategories.length === 1 ? "category" : "categories"}
+                {initialData ? "Save changes to" : "Create"} &quot;{name}&quot; with {selectedCategories.length} {selectedCategories.length === 1 ? "category" : "categories"}
               </Text>
             </View>
 
@@ -908,6 +918,14 @@ const MenuForm: React.FC<MenuFormProps> = ({
           setShowDeleteDialog(false);
           onDelete?.();
         }}
+      />
+
+      <AppNoticeModal
+        visible={!!validationNotice}
+        onClose={() => setValidationNotice(null)}
+        title={validationNotice?.title || ""}
+        description={validationNotice?.description || ""}
+        variant="warning"
       />
 
       <ScheduleFormSheet

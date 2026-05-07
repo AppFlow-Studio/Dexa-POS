@@ -680,6 +680,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     const isScheduled =
                       menu.schedules && menu.schedules.length > 0;
                     const isSelected = activeMeal === menu.name;
+                    const menuCategories = Array.isArray(menu.categories)
+                      ? menu.categories
+                      : [];
 
                     return (
                       <TouchableOpacity
@@ -781,7 +784,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             {menu.description}
                           </Text>
                         ) : null}
-                        {menu.categories.length > 0 && (
+                        {menuCategories.length > 0 && (
                           <View
                             style={{
                               flexDirection: "row",
@@ -790,23 +793,30 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                               marginTop: 10,
                             }}
                           >
-                            {menu.categories.map((category, index) => (
-                              <View
-                                key={index}
-                                style={{
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 4,
-                                  borderRadius: 12,
-                                  backgroundColor: colors.screen,
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                }}
-                              >
-                                <Text style={{ fontSize: 12, color: colors.label }}>
-                                  {category.name}
-                                </Text>
-                              </View>
-                            ))}
+                            {menuCategories.map((category, index) => {
+                              const categoryLabel =
+                                typeof category === "string"
+                                  ? category
+                                  : category?.name || "Category";
+
+                              return (
+                                <View
+                                  key={`${categoryLabel}-${index}`}
+                                  style={{
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 4,
+                                    borderRadius: 12,
+                                    backgroundColor: colors.screen,
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 12, color: colors.label }}>
+                                    {categoryLabel}
+                                  </Text>
+                                </View>
+                              );
+                            })}
                           </View>
                         )}
                       </TouchableOpacity>
