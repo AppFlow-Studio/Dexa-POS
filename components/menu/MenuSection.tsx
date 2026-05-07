@@ -10,6 +10,7 @@ import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useMenuVisibilityStore } from "@/stores/useMenuVisibilityStore";
 import {
     isMenuBlockedSync,
     selectCancelAndRemoveDraft,
@@ -77,6 +78,7 @@ interface MenuSectionProps {
 import { colors } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { useSearchStore } from "@/stores/searchStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { StyleSheet, ViewStyle } from "react-native";
 
 const menuSectionStyles = StyleSheet.create({
@@ -156,6 +158,15 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
   const { requestPinOverride, isUnlocked } = usePinOverrideStore();
   const addTemporaryMenuAccess = useMenuStore((s) => s.addTemporaryMenuAccess);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const hiddenMenuMap = useMenuVisibilityStore(
+    (s) => s.hiddenMenuIdsByLocation,
+  );
+  const selectedStoreId = selectedStore?.id ?? null;
+  const hiddenMenuIds = useMemo(
+    () => (selectedStoreId ? hiddenMenuMap[selectedStoreId] ?? [] : []),
+    [hiddenMenuMap, selectedStoreId],
+  );
 
   // OPTIMIZED: Use computed selector to get only order_type, avoiding re-renders on item changes
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
@@ -185,25 +196,30 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     [temporaryActiveMenus],
   );
 
+  const visibleMenus = useMemo(
+    () => menus.filter((menu) => !hiddenMenuIds.includes(menu.id)),
+    [menus, hiddenMenuIds],
+  );
+
   const menusById = useMemo(() => {
     const next = new Map<string, (typeof menus)[number]>();
-    for (const menu of menus) next.set(menu.id, menu);
+    for (const menu of visibleMenus) next.set(menu.id, menu);
     return next;
-  }, [menus]);
+  }, [visibleMenus]);
 
   const menusByName = useMemo(() => {
     const next = new Map<string, (typeof menus)[number]>();
-    for (const menu of menus) next.set(menu.name, menu);
+    for (const menu of visibleMenus) next.set(menu.name, menu);
     return next;
-  }, [menus]);
+  }, [visibleMenus]);
 
   const availableMenus = useMemo(
     () =>
-      menus.filter(
+      visibleMenus.filter(
         (menu) =>
           isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name),
       ),
-    [menus, isMenuAvailableNow, temporaryActiveMenuSet],
+    [visibleMenus, isMenuAvailableNow, temporaryActiveMenuSet],
   );
 
   useEffect(() => {
@@ -277,7 +293,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // Auto-scroll to selected menu when dialog opens
   useEffect(() => {
     if (isMenuDialogOpen && activeMeal) {
-      const selectedIndex = menus.findIndex((m) => m.name === activeMeal);
+      const selectedIndex = visibleMenus.findIndex((m) => m.name === activeMeal);
       if (selectedIndex >= 0) {
         // Estimate ~140px per menu item (card height + gap)
         const scrollOffset = selectedIndex * 140;
@@ -291,7 +307,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         return () => clearTimeout(timeoutId);
       }
     }
-  }, [isMenuDialogOpen, activeMeal, menus]);
+  }, [isMenuDialogOpen, activeMeal, visibleMenus]);
 
   // Effect to ensure we always have a valid available menu selected
   useEffect(() => {
@@ -657,13 +673,16 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   className="w-full"
                   contentContainerStyle={{ padding: 16, gap: 10 }}
                 >
-                  {menus.map((menu) => {
+                  {visibleMenus.map((menu) => {
                     const isAvailable =
                       isMenuAvailableNow(menu.id) ||
                       temporaryActiveMenuSet.has(menu.name);
                     const isScheduled =
                       menu.schedules && menu.schedules.length > 0;
                     const isSelected = activeMeal === menu.name;
+                    const menuCategories = Array.isArray(menu.categories)
+                      ? menu.categories
+                      : [];
 
                     return (
                       <TouchableOpacity
@@ -671,17 +690,20 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                         onPress={() => handleMenuSelect(menu.name)}
                         className="p-4 rounded-xl border"
                         style={{
-                          backgroundColor: isSelected
-                            ? colors.teal + "20"
-                            : !isAvailable
-                              ? colors.screen
+                          backgroundColor: !isAvailable
+                              ? colors.panel + "cc"
                               : colors.panel,
                           borderColor: isSelected
-                            ? colors.teal
+                            ? colors.teal + "b0"
                             : !isAvailable
-                              ? colors.border
+                              ? colors.border + "90"
                               : colors.border,
-                          opacity: !isAvailable ? 0.75 : 1,
+                          opacity: !isAvailable ? 0.65 : 1,
+                          shadowColor: "#000000",
+                          shadowOpacity: 0.04,
+                          shadowRadius: 4,
+                          shadowOffset: { width: 0, height: 2 },
+                          elevation: 1,
                         }}
                       >
                         <View className="flex-row justify-between items-center">
@@ -689,27 +711,51 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             style={{
                               fontWeight: "600",
                               fontSize: 16,
-                              color: colors.heading,
+                              color: !isAvailable ? colors.muted : colors.heading,
                             }}
                           >
                             {menu.name}
                           </Text>
                           <View className="flex-row items-center gap-2">
+                            {isSelected && (
+                              <View
+                                style={{
+                                  paddingHorizontal: 7,
+                                  paddingVertical: 3,
+                                  borderRadius: 999,
+                                  backgroundColor: colors.teal + "1f",
+                                  borderWidth: 1,
+                                  borderColor: colors.teal + "66",
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: "700",
+                                    color: colors.teal,
+                                  }}
+                                >
+                                  Selected
+                                </Text>
+                              </View>
+                            )}
                             {isScheduled && !isAvailable && (
                               <View
                                 style={{
                                   flexDirection: "row",
                                   alignItems: "center",
                                   gap: 4,
-                                  backgroundColor: colors.border + "60",
+                                  backgroundColor: colors.danger + "18",
+                                  borderWidth: 1,
+                                  borderColor: colors.danger + "40",
                                   paddingHorizontal: 7,
                                   paddingVertical: 3,
                                   borderRadius: 6,
                                 }}
                               >
-                                <Lock size={11} color={colors.muted} />
+                                <Lock size={11} color={colors.danger} />
                                 <Text
-                                  style={{ fontSize: 10, color: colors.muted }}
+                                  style={{ fontSize: 10, color: colors.danger }}
                                 >
                                   Schedule
                                 </Text>
@@ -718,8 +764,12 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             {isScheduled && isAvailable && (
                               <Clock size={14} color={colors.label} />
                             )}
-                            {isSelected && (
+                            {isSelected ? (
                               <CheckCircle2 size={16} color={colors.teal} />
+                            ) : isAvailable ? (
+                              <CheckCircle2 size={16} color={colors.success} />
+                            ) : (
+                              <Lock size={16} color={colors.muted} />
                             )}
                           </View>
                         </View>
@@ -734,7 +784,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             {menu.description}
                           </Text>
                         ) : null}
-                        {menu.categories.length > 0 && (
+                        {menuCategories.length > 0 && (
                           <View
                             style={{
                               flexDirection: "row",
@@ -743,25 +793,30 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                               marginTop: 10,
                             }}
                           >
-                            {menu.categories.map((category, index) => (
-                              <View
-                                key={index}
-                                style={{
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 4,
-                                  borderRadius: 12,
-                                  backgroundColor: colors.panel,
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                }}
-                              >
-                                <Text
-                                  style={{ fontSize: 12, color: colors.label }}
+                            {menuCategories.map((category, index) => {
+                              const categoryLabel =
+                                typeof category === "string"
+                                  ? category
+                                  : category?.name || "Category";
+
+                              return (
+                                <View
+                                  key={`${categoryLabel}-${index}`}
+                                  style={{
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 4,
+                                    borderRadius: 12,
+                                    backgroundColor: colors.screen,
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                  }}
                                 >
-                                  {category.name}
-                                </Text>
-                              </View>
-                            ))}
+                                  <Text style={{ fontSize: 12, color: colors.label }}>
+                                    {categoryLabel}
+                                  </Text>
+                                </View>
+                              );
+                            })}
                           </View>
                         )}
                       </TouchableOpacity>

@@ -7,7 +7,10 @@ import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 interface ScheduleCardProps {
-  item: (Menu | Category) & { type: "menu" | "category" };
+  item: (Menu | Category) & {
+    type: "menu" | "category";
+    location_id?: string | null;
+  };
 }
 
 // Helper to format days for display
@@ -22,6 +25,8 @@ const formatDays = (days: string[] | undefined | null): string => {
 };
 
 export const ScheduleCard: React.FC<ScheduleCardProps> = ({ item }) => {
+  const isEditable = !!item.location_id;
+
   const handleEdit = () => {
     if (item.type === "menu") {
       router.push(`/menu/edit-menu?id=${item.id}`);
@@ -40,10 +45,16 @@ export const ScheduleCard: React.FC<ScheduleCardProps> = ({ item }) => {
           <Text className="text-xl font-bold text-white">{item.name}</Text>
         </View>
         <TouchableOpacity
-          onPress={handleEdit}
-          className="p-2 bg-panel rounded border border-gray-600"
+          onPress={isEditable ? handleEdit : undefined}
+          disabled={!isEditable}
+          className={`p-2 bg-panel rounded border border-gray-600 ${
+            isEditable ? '' : 'opacity-40'
+          }`}
         >
-          <Settings size={20} color={colors.label} />
+          <Settings
+            size={20}
+            color={isEditable ? colors.label : colors.muted}
+          />
         </TouchableOpacity>
       </View>
 

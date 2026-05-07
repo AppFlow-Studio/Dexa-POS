@@ -7,12 +7,14 @@ import {
 } from '@/lib/menuItemPlaceholderIcon'
 import { colors } from '@/lib/theme'
 import { MenuItemType } from '@/lib/types'
+import * as Haptics from 'expo-haptics'
 import { GripVertical } from 'lucide-react-native'
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   Extrapolate,
+  Layout,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -33,17 +35,26 @@ interface DraggableMenuItemProps {
     menuId: string
   ) => void
   isEditable: boolean
+  itemCount: number
+  columnCount: number
+  dragPreview: { fromIndex: number; toIndex: number } | null
+  onDragPreviewChange: (fromIndex: number, toIndex: number) => void
+  onDragPreviewEnd: () => void
 }
 
-const styles = StyleSheet.create({
+const ITEM_CARD_WIDTH = 130
+const ITEM_CARD_HEIGHT = 160
+const ITEM_GRID_GAP = 6
+const ITEM_GRID_CELL_WIDTH = ITEM_CARD_WIDTH + ITEM_GRID_GAP
+const ITEM_GRID_CELL_HEIGHT = ITEM_CARD_HEIGHT + ITEM_GRID_GAP
+
+const baseStyles = StyleSheet.create({
   card: {
-    width: 130,
-    height: 160,
+    width: ITEM_CARD_WIDTH,
+    height: ITEM_CARD_HEIGHT,
     borderRadius: 10,
     marginBottom: 4,
-    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.teal + '35',
     overflow: 'hidden',
     flexDirection: 'column'
   },
@@ -59,8 +70,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: `${colors.teal}08`
+    justifyContent: 'center'
   },
   contentContainer: {
     paddingHorizontal: 8,
@@ -72,20 +82,17 @@ const styles = StyleSheet.create({
   nameText: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.heading,
     lineHeight: 14
   },
   priceText: {
     fontSize: 11,
-    fontWeight: '700',
-    color: colors.teal
+    fontWeight: '700'
   },
   gripHandle: {
     position: 'absolute',
     top: 8,
     right: 8,
     zIndex: 10,
-    backgroundColor: `${colors.panel}cc`,
     borderRadius: 6,
     padding: 4
   }
@@ -99,32 +106,90 @@ const DraggableMenuItem = React.memo(
     menuId,
     onReorder,
     onItemPriceEdit,
-    isEditable
+    isEditable,
+    itemCount,
+    columnCount,
+    dragPreview,
+    onDragPreviewChange,
+    onDragPreviewEnd
   }: DraggableMenuItemProps) => {
+    const translateX = useSharedValue(0)
     const translateY = useSharedValue(0)
     const scale = useSharedValue(1)
     const isDragging = useSharedValue(false)
+    const dragOriginIndex = useSharedValue(index)
+    const [isDragActive, setIsDragActive] = React.useState(false)
+
+    const hapticStart = () => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    }
+
+    const hapticDrop = () => {
+      void Haptics.selectionAsync()
+    }
 
     const panGesture = Gesture.Pan()
-      .enabled(isEditable)
+      .activateAfterLongPress(120)
+      .activeOffsetX([-8, 8])
+      .activeOffsetY([-8, 8])
       .onStart(() => {
         isDragging.value = true
         scale.value = withSpring(1.05)
+        dragOriginIndex.value = index
+        runOnJS(setIsDragActive)(true)
+        runOnJS(onDragPreviewChange)(index, index)
+        runOnJS(hapticStart)()
       })
       .onUpdate(event => {
+        translateX.value = event.translationX
         translateY.value = event.translationY
+
+        const safeColumns = Math.max(1, columnCount)
+        const originColumn = dragOriginIndex.value % safeColumns
+        const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+        const targetColumn = Math.round(
+          originColumn + event.translationX / ITEM_GRID_CELL_WIDTH
+        )
+        const targetRow = Math.round(
+          originRow + event.translationY / ITEM_GRID_CELL_HEIGHT
+        )
+        const clampedColumn = Math.max(0, Math.min(safeColumns - 1, targetColumn))
+        const unclampedIndex = targetRow * safeColumns + clampedColumn
+        const newIndex = Math.max(0, Math.min(itemCount - 1, unclampedIndex))
+
+        if (
+          !dragPreview ||
+          dragPreview.fromIndex !== dragOriginIndex.value ||
+          dragPreview.toIndex !== newIndex
+        ) {
+          runOnJS(onDragPreviewChange)(dragOriginIndex.value, newIndex)
+        }
       })
       .onEnd(event => {
-        const itemHeight = 140 // Approximate height of each item card
-        const newIndex = Math.round(index + event.translationY / itemHeight)
+        const safeColumns = Math.max(1, columnCount)
+        const originColumn = dragOriginIndex.value % safeColumns
+        const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+        const targetColumn = Math.round(
+          originColumn + event.translationX / ITEM_GRID_CELL_WIDTH
+        )
+        const targetRow = Math.round(
+          originRow + event.translationY / ITEM_GRID_CELL_HEIGHT
+        )
+        const clampedColumn = Math.max(0, Math.min(safeColumns - 1, targetColumn))
+        const unclampedIndex = targetRow * safeColumns + clampedColumn
+        const newIndex = Math.max(0, Math.min(itemCount - 1, unclampedIndex))
 
-        if (newIndex !== index && newIndex >= 0) {
-          runOnJS(onReorder)(index, newIndex)
+        runOnJS(onDragPreviewEnd)()
+        if (newIndex !== dragOriginIndex.value && newIndex >= 0) {
+          runOnJS(onReorder)(dragOriginIndex.value, newIndex)
+          runOnJS(hapticDrop)()
         }
 
+        translateX.value = withTiming(0)
         translateY.value = withTiming(0)
         scale.value = withSpring(1)
         isDragging.value = false
+        runOnJS(setIsDragActive)(false)
       })
 
     const animatedStyle = useAnimatedStyle(() => {
@@ -134,9 +199,24 @@ const DraggableMenuItem = React.memo(
         [0, 0.2],
         Extrapolate.CLAMP
       )
+      const safeColumns = Math.max(1, columnCount)
+      const currentColumn = index % safeColumns
+      const currentRow = Math.floor(index / safeColumns)
+      const originColumn = dragOriginIndex.value % safeColumns
+      const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+      const dragCompensationX = isDragging.value
+        ? (currentColumn - originColumn) * ITEM_GRID_CELL_WIDTH
+        : 0
+      const dragCompensationY = isDragging.value
+        ? (currentRow - originRow) * ITEM_GRID_CELL_HEIGHT
+        : 0
 
       return {
-        transform: [{ translateY: translateY.value }, { scale: scale.value }],
+        transform: [
+          { translateX: translateX.value - dragCompensationX },
+          { translateY: translateY.value - dragCompensationY },
+          { scale: scale.value }
+        ],
         shadowOpacity,
         elevation: isDragging.value ? 4 : 0,
         zIndex: isDragging.value ? 500 : 1
@@ -154,14 +234,28 @@ const DraggableMenuItem = React.memo(
     }, [item.placeholderIcon, item.cardBgColor])
 
     return (
-      <Animated.View style={[animatedStyle, { width: 130 }]}>
+      <Animated.View
+        style={[animatedStyle, { width: ITEM_CARD_WIDTH }]}
+        layout={
+          isDragActive
+            ? undefined
+            : Layout.springify().damping(24).stiffness(220)
+        }
+      >
         <TouchableOpacity
           onPress={() => {}}
-          style={[styles.card, styles.touchable]}
+          style={[
+            baseStyles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.teal + '35'
+            },
+            baseStyles.touchable
+          ]}
           activeOpacity={0.7}
         >
           {/* Image */}
-          <View style={styles.imageWrapper}>
+          <View style={baseStyles.imageWrapper}>
             {imageSource ? (
               <OptimizedListImage
                 source={imageSource}
@@ -170,7 +264,12 @@ const DraggableMenuItem = React.memo(
                 recyclingKey={`${item.id}:${item.image ?? ''}`}
               />
             ) : (
-              <View style={styles.placeholderContainer}>
+              <View
+                style={[
+                  baseStyles.placeholderContainer,
+                  { backgroundColor: `${colors.teal}08` }
+                ]}
+              >
                 <PlaceholderIcon
                   color={`${colors.label}72`}
                   size={18}
@@ -183,21 +282,32 @@ const DraggableMenuItem = React.memo(
           {/* Content overlay at bottom */}
           <View
             style={[
-              styles.contentContainer,
+              baseStyles.contentContainer,
               { backgroundColor: `${colors.card}f0`, paddingTop: 4 }
             ]}
           >
-            {isEditable && (
-              <GestureDetector gesture={panGesture}>
-                <View style={styles.gripHandle}>
-                  <GripVertical size={10} color={colors.muted} />
-                </View>
-              </GestureDetector>
-            )}
-            <Text style={styles.nameText} numberOfLines={2}>
+            <GestureDetector gesture={panGesture}>
+              <View
+                style={[
+                  baseStyles.gripHandle,
+                  {
+                    backgroundColor: `${colors.panel}cc`,
+                    opacity: isEditable ? 1 : 0.85
+                  }
+                ]}
+              >
+                <GripVertical size={10} color={colors.muted} />
+              </View>
+            </GestureDetector>
+            <Text
+              style={[baseStyles.nameText, { color: colors.heading }]}
+              numberOfLines={2}
+            >
               {item.name}
             </Text>
-            <Text style={styles.priceText}>${item.price.toFixed(2)}</Text>
+            <Text style={[baseStyles.priceText, { color: colors.teal }]}>
+              ${item.price.toFixed(2)}
+            </Text>
           </View>
         </TouchableOpacity>
       </Animated.View>
