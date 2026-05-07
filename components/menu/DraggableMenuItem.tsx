@@ -14,6 +14,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   Extrapolate,
+  Layout,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -35,12 +36,22 @@ interface DraggableMenuItemProps {
   ) => void
   isEditable: boolean
   itemCount: number
+  columnCount: number
+  dragPreview: { fromIndex: number; toIndex: number } | null
+  onDragPreviewChange: (fromIndex: number, toIndex: number) => void
+  onDragPreviewEnd: () => void
 }
+
+const ITEM_CARD_WIDTH = 130
+const ITEM_CARD_HEIGHT = 160
+const ITEM_GRID_GAP = 6
+const ITEM_GRID_CELL_WIDTH = ITEM_CARD_WIDTH + ITEM_GRID_GAP
+const ITEM_GRID_CELL_HEIGHT = ITEM_CARD_HEIGHT + ITEM_GRID_GAP
 
 const baseStyles = StyleSheet.create({
   card: {
-    width: 130,
-    height: 160,
+    width: ITEM_CARD_WIDTH,
+    height: ITEM_CARD_HEIGHT,
     borderRadius: 10,
     marginBottom: 4,
     borderWidth: 1,
@@ -96,11 +107,18 @@ const DraggableMenuItem = React.memo(
     onReorder,
     onItemPriceEdit,
     isEditable,
-    itemCount
+    itemCount,
+    columnCount,
+    dragPreview,
+    onDragPreviewChange,
+    onDragPreviewEnd
   }: DraggableMenuItemProps) => {
+    const translateX = useSharedValue(0)
     const translateY = useSharedValue(0)
     const scale = useSharedValue(1)
     const isDragging = useSharedValue(false)
+    const dragOriginIndex = useSharedValue(index)
+    const [isDragActive, setIsDragActive] = React.useState(false)
 
     const hapticStart = () => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -112,33 +130,66 @@ const DraggableMenuItem = React.memo(
 
     const panGesture = Gesture.Pan()
       .activateAfterLongPress(120)
+      .activeOffsetX([-8, 8])
       .activeOffsetY([-8, 8])
       .onStart(() => {
         isDragging.value = true
         scale.value = withSpring(1.05)
+        dragOriginIndex.value = index
+        runOnJS(setIsDragActive)(true)
+        runOnJS(onDragPreviewChange)(index, index)
         runOnJS(hapticStart)()
       })
       .onUpdate(event => {
+        translateX.value = event.translationX
         translateY.value = event.translationY
+
+        const safeColumns = Math.max(1, columnCount)
+        const originColumn = dragOriginIndex.value % safeColumns
+        const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+        const targetColumn = Math.round(
+          originColumn + event.translationX / ITEM_GRID_CELL_WIDTH
+        )
+        const targetRow = Math.round(
+          originRow + event.translationY / ITEM_GRID_CELL_HEIGHT
+        )
+        const clampedColumn = Math.max(0, Math.min(safeColumns - 1, targetColumn))
+        const unclampedIndex = targetRow * safeColumns + clampedColumn
+        const newIndex = Math.max(0, Math.min(itemCount - 1, unclampedIndex))
+
+        if (
+          !dragPreview ||
+          dragPreview.fromIndex !== dragOriginIndex.value ||
+          dragPreview.toIndex !== newIndex
+        ) {
+          runOnJS(onDragPreviewChange)(dragOriginIndex.value, newIndex)
+        }
       })
       .onEnd(event => {
-        const itemHeight = 140 // Approximate height of each item card
-        const targetIndex = Math.round(
-          index + event.translationY / itemHeight
+        const safeColumns = Math.max(1, columnCount)
+        const originColumn = dragOriginIndex.value % safeColumns
+        const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+        const targetColumn = Math.round(
+          originColumn + event.translationX / ITEM_GRID_CELL_WIDTH
         )
-        const newIndex = Math.max(
-          0,
-          Math.min(itemCount - 1, targetIndex)
+        const targetRow = Math.round(
+          originRow + event.translationY / ITEM_GRID_CELL_HEIGHT
         )
+        const clampedColumn = Math.max(0, Math.min(safeColumns - 1, targetColumn))
+        const unclampedIndex = targetRow * safeColumns + clampedColumn
+        const newIndex = Math.max(0, Math.min(itemCount - 1, unclampedIndex))
 
-        if (newIndex !== index && newIndex >= 0) {
-          runOnJS(onReorder)(index, newIndex)
+        runOnJS(onDragPreviewEnd)()
+        if (newIndex !== dragOriginIndex.value && newIndex >= 0) {
+          runOnJS(onReorder)(dragOriginIndex.value, newIndex)
           runOnJS(hapticDrop)()
         }
 
+        translateX.value = withTiming(0)
         translateY.value = withTiming(0)
         scale.value = withSpring(1)
         isDragging.value = false
+        runOnJS(setIsDragActive)(false)
       })
 
     const animatedStyle = useAnimatedStyle(() => {
@@ -148,9 +199,24 @@ const DraggableMenuItem = React.memo(
         [0, 0.2],
         Extrapolate.CLAMP
       )
+      const safeColumns = Math.max(1, columnCount)
+      const currentColumn = index % safeColumns
+      const currentRow = Math.floor(index / safeColumns)
+      const originColumn = dragOriginIndex.value % safeColumns
+      const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+      const dragCompensationX = isDragging.value
+        ? (currentColumn - originColumn) * ITEM_GRID_CELL_WIDTH
+        : 0
+      const dragCompensationY = isDragging.value
+        ? (currentRow - originRow) * ITEM_GRID_CELL_HEIGHT
+        : 0
 
       return {
-        transform: [{ translateY: translateY.value }, { scale: scale.value }],
+        transform: [
+          { translateX: translateX.value - dragCompensationX },
+          { translateY: translateY.value - dragCompensationY },
+          { scale: scale.value }
+        ],
         shadowOpacity,
         elevation: isDragging.value ? 4 : 0,
         zIndex: isDragging.value ? 500 : 1
@@ -168,7 +234,14 @@ const DraggableMenuItem = React.memo(
     }, [item.placeholderIcon, item.cardBgColor])
 
     return (
-      <Animated.View style={[animatedStyle, { width: 130 }]}>
+      <Animated.View
+        style={[animatedStyle, { width: ITEM_CARD_WIDTH }]}
+        layout={
+          isDragActive
+            ? undefined
+            : Layout.springify().damping(24).stiffness(220)
+        }
+      >
         <TouchableOpacity
           onPress={() => {}}
           style={[

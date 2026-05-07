@@ -574,6 +574,11 @@ const DraggableMenuCategory = React.memo(
     const isDragging = useSharedValue(false)
     const dragOriginIndex = useSharedValue(index)
     const [isExpanded, setIsExpanded] = useState(false)
+    const [itemDragPreview, setItemDragPreview] = useState<{
+      fromIndex: number
+      toIndex: number
+    } | null>(null)
+    const [itemGridWidth, setItemGridWidth] = useState(0)
 
     const hapticStart = () => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -582,6 +587,28 @@ const DraggableMenuCategory = React.memo(
     const hapticDrop = () => {
       void Haptics.selectionAsync()
     }
+
+    const visibleItems = useMemo(() => {
+      if (
+        !itemDragPreview ||
+        itemDragPreview.fromIndex === itemDragPreview.toIndex
+      ) {
+        return items
+      }
+
+      const reorderedItems = [...items]
+      const [movedItem] = reorderedItems.splice(itemDragPreview.fromIndex, 1)
+      if (!movedItem) return items
+      reorderedItems.splice(itemDragPreview.toIndex, 0, movedItem)
+      return reorderedItems
+    }, [items, itemDragPreview])
+
+    const itemColumnCount = useMemo(() => {
+      const estimatedWidth = 130
+      const gap = 6
+      if (itemGridWidth <= 0) return 1
+      return Math.max(1, Math.floor((itemGridWidth + gap) / (estimatedWidth + gap)))
+    }, [itemGridWidth])
 
     const panGesture = Gesture.Pan()
       .activateAfterLongPress(120)
@@ -775,8 +802,13 @@ const DraggableMenuCategory = React.memo(
                 No items in this category
               </Text>
             ) : (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {items.map((item, itemIndex) => (
+              <View
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
+                onLayout={event => {
+                  setItemGridWidth(event.nativeEvent.layout.width)
+                }}
+              >
+                {visibleItems.map((item, itemIndex) => (
                   <DraggableMenuItem
                     key={item.id}
                     item={item}
@@ -789,6 +821,12 @@ const DraggableMenuCategory = React.memo(
                     onItemPriceEdit={onItemPriceEdit}
                     isEditable={isEditable}
                     itemCount={items.length}
+                    columnCount={itemColumnCount}
+                    dragPreview={itemDragPreview}
+                    onDragPreviewChange={(fromIndex, toIndex) =>
+                      setItemDragPreview({ fromIndex, toIndex })
+                    }
+                    onDragPreviewEnd={() => setItemDragPreview(null)}
                   />
                 ))}
               </View>

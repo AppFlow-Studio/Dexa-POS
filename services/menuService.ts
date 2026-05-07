@@ -1051,10 +1051,17 @@ export class MenuService {
     locationId: string,
     itemOrders: { menuItemId: string; displayOrder: number }[]
   ): Promise<{ success: boolean; error: any }> {
+    const normalizedOrders = itemOrders
+      .map(order => ({
+        menu_item_id: order.menuItemId,
+        display_order: order.displayOrder
+      }))
+      .filter(order => !!order.menu_item_id)
+
     const { error } = await client.rpc('reorder_category_items', {
       p_category_id: categoryId,
       p_location_id: locationId,
-      p_item_orders: itemOrders
+      p_item_orders: normalizedOrders
     })
 
     if (error) {
