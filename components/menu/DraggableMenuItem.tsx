@@ -35,15 +35,13 @@ interface DraggableMenuItemProps {
   isEditable: boolean
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   card: {
     width: 130,
     height: 160,
     borderRadius: 10,
     marginBottom: 4,
-    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.teal + '35',
     overflow: 'hidden',
     flexDirection: 'column'
   },
@@ -59,8 +57,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: `${colors.teal}08`
+    justifyContent: 'center'
   },
   contentContainer: {
     paddingHorizontal: 8,
@@ -72,20 +69,17 @@ const styles = StyleSheet.create({
   nameText: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.heading,
     lineHeight: 14
   },
   priceText: {
     fontSize: 11,
-    fontWeight: '700',
-    color: colors.teal
+    fontWeight: '700'
   },
   gripHandle: {
     position: 'absolute',
     top: 8,
     right: 8,
     zIndex: 10,
-    backgroundColor: `${colors.panel}cc`,
     borderRadius: 6,
     padding: 4
   }
@@ -157,11 +151,18 @@ const DraggableMenuItem = React.memo(
       <Animated.View style={[animatedStyle, { width: 130 }]}>
         <TouchableOpacity
           onPress={() => {}}
-          style={[styles.card, styles.touchable]}
+          style={[
+            baseStyles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.teal + '35'
+            },
+            baseStyles.touchable
+          ]}
           activeOpacity={0.7}
         >
           {/* Image */}
-          <View style={styles.imageWrapper}>
+          <View style={baseStyles.imageWrapper}>
             {imageSource ? (
               <OptimizedListImage
                 source={imageSource}
@@ -170,7 +171,12 @@ const DraggableMenuItem = React.memo(
                 recyclingKey={`${item.id}:${item.image ?? ''}`}
               />
             ) : (
-              <View style={styles.placeholderContainer}>
+              <View
+                style={[
+                  baseStyles.placeholderContainer,
+                  { backgroundColor: `${colors.teal}08` }
+                ]}
+              >
                 <PlaceholderIcon
                   color={`${colors.label}72`}
                   size={18}
@@ -183,21 +189,31 @@ const DraggableMenuItem = React.memo(
           {/* Content overlay at bottom */}
           <View
             style={[
-              styles.contentContainer,
+              baseStyles.contentContainer,
               { backgroundColor: `${colors.card}f0`, paddingTop: 4 }
             ]}
           >
             {isEditable && (
               <GestureDetector gesture={panGesture}>
-                <View style={styles.gripHandle}>
+                <View
+                  style={[
+                    baseStyles.gripHandle,
+                    { backgroundColor: `${colors.panel}cc` }
+                  ]}
+                >
                   <GripVertical size={10} color={colors.muted} />
                 </View>
               </GestureDetector>
             )}
-            <Text style={styles.nameText} numberOfLines={2}>
+            <Text
+              style={[baseStyles.nameText, { color: colors.heading }]}
+              numberOfLines={2}
+            >
               {item.name}
             </Text>
-            <Text style={styles.priceText}>${item.price.toFixed(2)}</Text>
+            <Text style={[baseStyles.priceText, { color: colors.teal }]}>
+              ${item.price.toFixed(2)}
+            </Text>
           </View>
         </TouchableOpacity>
       </Animated.View>
