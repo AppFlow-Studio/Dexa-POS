@@ -262,6 +262,12 @@ export class MenuService {
       return { data: null, error }
     }
 
+    if (!data?.length) {
+      const noRowsError = new Error('No menu row was updated')
+      console.error('Failed to update menu:', noRowsError)
+      return { data: null, error: noRowsError }
+    }
+
     return { data: data?.[0] ?? null, error: null }
   }
 
@@ -957,6 +963,44 @@ export class MenuService {
   // ============================================================
   // REORDERING OPERATIONS
   // ============================================================
+
+  /**
+   * Reorder menus for a specific location.
+   * The POS sync RPC reads location_menus.display_order before menus.display_order,
+   * so inherited/global menus must be ordered through this location override table.
+   */
+  static async reorderLocationMenus (
+    client: SupabaseClient,
+    locationId: string,
+    menuOrders: { menuId: string; displayOrder: number }[]
+  ): Promise<{ success: boolean; error: any }> {
+    if (!locationId) {
+      const error = new Error('Missing location_id for menu reorder')
+      console.error('Failed to reorder menus:', error)
+      return { success: false, error }
+    }
+
+    if (menuOrders.some(order => !order.menuId)) {
+      const error = new Error('Missing menu_id for menu reorder')
+      console.error('Failed to reorder menus:', error)
+      return { success: false, error }
+    }
+
+    const { error } = await client.rpc('reorder_location_menus', {
+      p_location_id: locationId,
+      p_menu_orders: menuOrders.map(order => ({
+        menu_id: order.menuId,
+        display_order: order.displayOrder
+      }))
+    })
+
+    if (error) {
+      console.error('Failed to reorder menus:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, error: null }
+  }
 
   /**
    * Reorder categories within a menu

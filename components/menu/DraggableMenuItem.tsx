@@ -7,6 +7,7 @@ import {
 } from '@/lib/menuItemPlaceholderIcon'
 import { colors } from '@/lib/theme'
 import { MenuItemType } from '@/lib/types'
+import * as Haptics from 'expo-haptics'
 import { GripVertical } from 'lucide-react-native'
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
@@ -33,6 +34,7 @@ interface DraggableMenuItemProps {
     menuId: string
   ) => void
   isEditable: boolean
+  itemCount: number
 }
 
 const baseStyles = StyleSheet.create({
@@ -93,27 +95,45 @@ const DraggableMenuItem = React.memo(
     menuId,
     onReorder,
     onItemPriceEdit,
-    isEditable
+    isEditable,
+    itemCount
   }: DraggableMenuItemProps) => {
     const translateY = useSharedValue(0)
     const scale = useSharedValue(1)
     const isDragging = useSharedValue(false)
 
+    const hapticStart = () => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    }
+
+    const hapticDrop = () => {
+      void Haptics.selectionAsync()
+    }
+
     const panGesture = Gesture.Pan()
-      .enabled(isEditable)
+      .activateAfterLongPress(120)
+      .activeOffsetY([-8, 8])
       .onStart(() => {
         isDragging.value = true
         scale.value = withSpring(1.05)
+        runOnJS(hapticStart)()
       })
       .onUpdate(event => {
         translateY.value = event.translationY
       })
       .onEnd(event => {
         const itemHeight = 140 // Approximate height of each item card
-        const newIndex = Math.round(index + event.translationY / itemHeight)
+        const targetIndex = Math.round(
+          index + event.translationY / itemHeight
+        )
+        const newIndex = Math.max(
+          0,
+          Math.min(itemCount - 1, targetIndex)
+        )
 
         if (newIndex !== index && newIndex >= 0) {
           runOnJS(onReorder)(index, newIndex)
+          runOnJS(hapticDrop)()
         }
 
         translateY.value = withTiming(0)
@@ -193,18 +213,19 @@ const DraggableMenuItem = React.memo(
               { backgroundColor: `${colors.card}f0`, paddingTop: 4 }
             ]}
           >
-            {isEditable && (
-              <GestureDetector gesture={panGesture}>
-                <View
-                  style={[
-                    baseStyles.gripHandle,
-                    { backgroundColor: `${colors.panel}cc` }
-                  ]}
-                >
-                  <GripVertical size={10} color={colors.muted} />
-                </View>
-              </GestureDetector>
-            )}
+            <GestureDetector gesture={panGesture}>
+              <View
+                style={[
+                  baseStyles.gripHandle,
+                  {
+                    backgroundColor: `${colors.panel}cc`,
+                    opacity: isEditable ? 1 : 0.85
+                  }
+                ]}
+              >
+                <GripVertical size={10} color={colors.muted} />
+              </View>
+            </GestureDetector>
             <Text
               style={[baseStyles.nameText, { color: colors.heading }]}
               numberOfLines={2}

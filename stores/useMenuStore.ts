@@ -1127,7 +1127,11 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const newMenus = [...state.menus]
         const [movedItem] = newMenus.splice(fromIndex, 1)
         newMenus.splice(toIndex, 0, movedItem)
-        return { menus: newMenus }
+        const normalizedMenus = newMenus.map((menu, idx) => ({
+          ...menu,
+          displayOrder: idx
+        }))
+        return { menus: normalizedMenus }
       })
     },
 
