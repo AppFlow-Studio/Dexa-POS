@@ -580,11 +580,15 @@ const VendorCreatePOModule = ({
                                   borderColor: colors.border,
                                   borderRadius: 6,
                                   paddingHorizontal: 8,
+                                  paddingVertical: 0,
                                   color: colors.heading,
                                   fontSize: 13,
+                                  lineHeight: 16,
                                   textAlign: 'center',
+                                  textAlignVertical: 'center',
+                                  includeFontPadding: false,
                                   width: 52,
-                                  height: 32
+                                  height: 28
                                 }}
                               />
                               <TouchableOpacity
@@ -644,9 +648,28 @@ const VendorCreatePOModule = ({
                                     lineItem.quantity
                                   )
                                 }
-                                style={{ padding: 5 }}
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 5,
+                                  borderWidth: 1,
+                                  borderColor: colors.border,
+                                  borderRadius: 6,
+                                  backgroundColor: colors.panel
+                                }}
                               >
                                 <Edit3 size={13} color={colors.label} />
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: '600',
+                                    color: colors.label
+                                  }}
+                                >
+                                  Edit
+                                </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() =>
@@ -752,7 +775,7 @@ const VendorCreatePOModule = ({
                               marginTop: 2
                             }}
                           >
-                            {item.category} � ${item.cost.toFixed(2)} per{' '}
+                            {item.category} | ${item.cost.toFixed(2)} per{' '}
                             {item.unit}
                           </Text>
                         </View>
