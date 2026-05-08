@@ -16,11 +16,13 @@
 -- and is not used for dual_pricing_fee reporting.
 -- =====================================================================
 
+-- Fee base = full charge amount sent to the bank (total_amount). tip is
+-- rolled in, so tip_fee stays 0 to avoid double counting.
 UPDATE order_payments p
 SET
   processor_fee_percentage_snapshot = l.dual_pricing_percentage,
-  dual_pricing_fee = ROUND(COALESCE(p.subtotal_portion, 0) * l.dual_pricing_percentage / 100, 2),
-  tip_fee          = ROUND(COALESCE(p.tip_amount,       0) * l.dual_pricing_percentage / 100, 2)
+  dual_pricing_fee = ROUND(COALESCE(p.total_amount, p.amount, 0) * l.dual_pricing_percentage / 100, 2),
+  tip_fee          = 0
 FROM locations l
 WHERE l.id = p.location_id
   AND l.dual_pricing_percentage > 0

@@ -36,11 +36,16 @@ BEGIN
   END IF;
 
   NEW.processor_fee_percentage_snapshot := v_pct;
+  -- Fee base = full charge amount sent to the bank (total_amount =
+  -- subtotal + tax + tip). The bank withholds pct% of whatever we
+  -- authorized, so the reported fee must match. tip_fee is intentionally
+  -- 0 because tip is already included in total_amount — splitting the
+  -- two would double-count.
   IF COALESCE(NEW.dual_pricing_fee, 0) = 0 THEN
-    NEW.dual_pricing_fee := ROUND(COALESCE(NEW.subtotal_portion, 0) * v_pct / 100, 2);
+    NEW.dual_pricing_fee := ROUND(COALESCE(NEW.total_amount, NEW.amount, 0) * v_pct / 100, 2);
   END IF;
   IF COALESCE(NEW.tip_fee, 0) = 0 THEN
-    NEW.tip_fee := ROUND(COALESCE(NEW.tip_amount, 0) * v_pct / 100, 2);
+    NEW.tip_fee := 0;
   END IF;
 
   RETURN NEW;

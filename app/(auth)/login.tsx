@@ -3,6 +3,7 @@ import { useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
+import { signInWithGoogleNative } from "@/services/auth/googleNativeSignIn";
 import { Eye, EyeOff } from "lucide-react-native";
 import { useState } from "react";
 import {
@@ -75,9 +76,32 @@ const MerchantLoginScreen = () => {
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const signInWithGoogle = async () => {
+    if (!signIn || !setActive) return;
     setIsGoogleLoading(true);
     setError(null);
     try {
+      const native = await signInWithGoogleNative();
+
+      if (native.kind === "cancelled") {
+        return;
+      }
+
+      if (native.kind === "success") {
+        await signIn.create({
+          strategy: "google_one_tap",
+          token: native.idToken,
+        });
+        const createdSessionId = signIn.createdSessionId;
+        if (createdSessionId) {
+          await setActive({ session: createdSessionId });
+          router.replace("/store-select");
+        } else {
+          setError("Google sign-in failed — no session created.");
+        }
+        return;
+      }
+
+      // native.kind === "unavailable" — fall back to browser SSO flow
       const { createdSessionId, setActive: setActiveSession } =
         await startSSOFlow({
           strategy: "oauth_google",

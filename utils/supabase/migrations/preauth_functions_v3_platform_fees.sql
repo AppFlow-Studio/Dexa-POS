@@ -243,8 +243,9 @@ BEGIN
     FROM locations WHERE id = v_order.location_id;
   END IF;
 
-  v_dual_pricing_fee := ROUND(v_subtotal_portion * v_processor_fee_pct / 100, 2);
-  v_tip_fee := ROUND(COALESCE(p_tip_amount, 0) * v_processor_fee_pct / 100, 2);
+  -- Fee base = full charge amount sent to the bank. tip is rolled in.
+  v_dual_pricing_fee := ROUND(v_total_collected * v_processor_fee_pct / 100, 2);
+  v_tip_fee := 0;
 
   IF v_order_fully_paid THEN
     SELECT COALESCE(array_agg(id), '{}')
