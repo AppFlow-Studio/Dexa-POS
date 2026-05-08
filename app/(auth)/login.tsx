@@ -621,7 +621,10 @@ const MerchantLoginScreen = () => {
           </View>
 
           {/* Forgot password */}
-          <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 16 }}>
+          <TouchableOpacity
+            style={{ alignSelf: "flex-end", marginBottom: 16 }}
+            onPress={() => router.push("/forgot-password" as any)}
+          >
             <Text
               style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}
             >
@@ -656,26 +659,6 @@ const MerchantLoginScreen = () => {
             )}
           </TouchableOpacity>
 
-          {/* Sign up */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "center",
-              marginTop: 16,
-              gap: 4,
-            }}
-          >
-            <Text style={{ fontSize: 12, color: colors.muted }}>
-              Don't have an account?
-            </Text>
-            <TouchableOpacity onPress={() => router.push("/sign-up" as any)}>
-              <Text
-                style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}
-              >
-                Sign up
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

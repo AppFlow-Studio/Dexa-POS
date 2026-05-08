@@ -243,7 +243,8 @@ export function getItemEffectiveSubtotal(item: CartItem): number {
  * @returns The effective cash subtotal (cashPrice * quantity - discount)
  */
 export function getItemEffectiveCashSubtotal(item: CartItem): number {
-  const grossCashSubtotal = (item.cashPrice || item.price) * item.quantity;
+  const grossCashSubtotal =
+    calculateItemEffectiveCashPrice(item) * item.quantity;
   const discountAmount = item.discount_cash_amount ?? item.discount_amount ?? 0;
   return Math.max(0, round2(grossCashSubtotal - discountAmount));
 }
@@ -5701,7 +5702,15 @@ export const useOrderStore = create<OrderState>()(
                 throw new Error("Supabase client not available");
               }
 
-              // Fetch active orders from our station
+              // Fetch active orders from our station.
+              // Bounded by a 48h recency cutoff + LIMIT to keep the row /
+              // nested-embed payload small enough to stay under the
+              // Supabase statement_timeout. Active orders older than 48h
+              // are either stuck or orphaned and won't be picked up by a
+              // simple orphan-recovery pass anyway.
+              const sinceIso = new Date(
+                Date.now() - 48 * 60 * 60 * 1000,
+              ).toISOString();
               const { data, error } = await supabase
                 .from("orders")
                 .select(
@@ -5717,7 +5726,9 @@ export const useOrderStore = create<OrderState>()(
                 .eq("location_id", locationId)
                 .eq("station_id", currentStationId)
                 .not("status", "in", '("completed","void","cancelled")')
-                .order("created_at", { ascending: false });
+                .gte("created_at", sinceIso)
+                .order("created_at", { ascending: false })
+                .limit(200);
 
               if (error) throw error;
 
@@ -13497,10 +13508,9 @@ export const useOrderStore = create<OrderState>()(
                         // Required base prices (for recalculation)
                         // Use base_card_price/base_cash_price (without modifiers)
                         // so calculateItemEffective*Price can add modifiers correctly.
-                        // Falls back to unit_price/cash_price for older items that
-                        // lack the base columns — in that case modifiers will be
-                        // double-counted, but calculate_order_totals_fast on the
-                        // backend remains authoritative.
+                        // When the dedicated base column is missing, fall back to
+                        // unit_price (the true base) — never to cash_price/cash_unit_price,
+                        // which already include modifiers and would double-count.
                         baseCardPrice: dbItem.is_open_item
                           ? dbItem.open_item_price || 0
                           : ((dbItem as any).base_card_price ??
@@ -13508,12 +13518,9 @@ export const useOrderStore = create<OrderState>()(
                             0),
                         baseCashPrice:
                           (dbItem as any).base_cash_price ??
-                          (dbItem.cash_price ||
-                            dbItem.cash_unit_price ||
-                            (dbItem.is_open_item
-                              ? dbItem.open_item_price
-                              : dbItem.unit_price) ||
-                            0),
+                          (dbItem.is_open_item
+                            ? dbItem.open_item_price || 0
+                            : dbItem.unit_price ?? 0),
                       })) || [];
 
                   const allItems = [...syncedItems, ...newItemsFromDb];

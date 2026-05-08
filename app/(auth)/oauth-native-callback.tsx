@@ -1,7 +1,10 @@
 import { spinnerColor } from "@/lib/theme";
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import React from "react";
 import { ActivityIndicator, Text, View } from "react-native";
+
+WebBrowser.maybeCompleteAuthSession();
 
 /**
  * OAuth Callback Page

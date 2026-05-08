@@ -244,7 +244,8 @@ export function mapBackendItemToCartItem (
     baseCardPrice: isOpenItem
       ? item.open_item_price || 0
       : item.base_card_price ?? item.unit_price ?? 0,
-    baseCashPrice: item.base_cash_price || cashPrice,
+    baseCashPrice:
+      item.base_cash_price ?? (isOpenItem ? item.open_item_price || 0 : unitPrice),
 
     // Discount distribution
     discount_amount: item.discount_amount ?? 0,
