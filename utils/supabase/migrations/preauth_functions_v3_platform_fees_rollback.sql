@@ -1,0 +1,3 @@
+DROP FUNCTION IF EXISTS public.process_preauth_v3(UUID, NUMERIC, JSONB, UUID, TEXT);
+DROP FUNCTION IF EXISTS public.update_preauth_amount_v3(UUID, NUMERIC, JSONB);
+DROP FUNCTION IF EXISTS public.capture_preauth_v3(UUID, NUMERIC, NUMERIC, JSONB, UUID);

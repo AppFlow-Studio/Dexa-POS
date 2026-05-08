@@ -562,6 +562,14 @@ export async function releaseTab(
 // BACKEND SYNC HELPERS
 // ============================================================
 
+// Pre-auth v3 adds processor_fee_percentage_snapshot / dual_pricing_fee /
+// tip_fee stamping. Gated by EXPO_PUBLIC_PREAUTH_V3 — flip to '1' on staging
+// first, then prod, mirroring the v9 → v10 rollout for process_payment.
+const PREAUTH_USE_V3 =
+  process.env.EXPO_PUBLIC_PREAUTH_V3 === "1" ||
+  process.env.EXPO_PUBLIC_PREAUTH_V3 === "true";
+
+
 async function syncPreAuthToBackend(
   orderId: string,
   payment: OrderProfilePayment,
@@ -577,7 +585,8 @@ async function syncPreAuthToBackend(
     return;
   }
 
-  const { data, error } = await supabase.rpc("process_preauth_v1", {
+  const rpcName = PREAUTH_USE_V3 ? "process_preauth_v3" : "process_preauth_v1";
+  const { data, error } = await supabase.rpc(rpcName, {
     p_order_id: dbOrderId,
     p_amount: payment.amount,
     p_terminal_response: terminalResponse ?? null,
@@ -586,7 +595,7 @@ async function syncPreAuthToBackend(
   });
 
   if (error) {
-    console.error("[PreAuthService] process_preauth_v1 failed:", error.message);
+    console.error(`[PreAuthService] ${rpcName} failed:`, error.message);
     return;
   }
 
@@ -609,14 +618,15 @@ async function syncIncrementToBackend(
   terminalResponse: Record<string, unknown> | undefined,
   supabase: SupabaseClient,
 ): Promise<void> {
-  const { error } = await supabase.rpc("update_preauth_amount_v1", {
+  const rpcName = PREAUTH_USE_V3 ? "update_preauth_amount_v3" : "update_preauth_amount_v1";
+  const { error } = await supabase.rpc(rpcName, {
     p_payment_id: dbPaymentId,
     p_new_amount: newAmount,
     p_terminal_response: terminalResponse ?? null,
   });
 
   if (error) {
-    console.error("[PreAuthService] update_preauth_amount_v1 failed:", error.message);
+    console.error(`[PreAuthService] ${rpcName} failed:`, error.message);
   }
 }
 
@@ -627,7 +637,8 @@ async function syncCaptureToBackend(
   terminalResponse: Record<string, unknown> | undefined,
   supabase: SupabaseClient,
 ): Promise<void> {
-  const { error } = await supabase.rpc("capture_preauth_v1", {
+  const rpcName = PREAUTH_USE_V3 ? "capture_preauth_v3" : "capture_preauth_v1";
+  const { error } = await supabase.rpc(rpcName, {
     p_payment_id: dbPaymentId,
     p_capture_amount: captureAmount,
     p_tip_amount: tipAmount,
@@ -636,7 +647,7 @@ async function syncCaptureToBackend(
   });
 
   if (error) {
-    console.error("[PreAuthService] capture_preauth_v1 failed:", error.message);
+    console.error(`[PreAuthService] ${rpcName} failed:`, error.message);
   }
 }
 

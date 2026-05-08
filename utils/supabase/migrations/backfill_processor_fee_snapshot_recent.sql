@@ -1,0 +1,26 @@
+-- =====================================================================
+-- One-time backfill: stamp processor_fee_percentage_snapshot / dual_pricing_fee
+-- / tip_fee on card captures from the last 60 days where they were left at 0.
+--
+-- Scope intentionally bounded:
+--   * Card payment methods only (cash is fee-free).
+--   * status IN ('captured','partially_refunded','refunded') — open auths
+--     and voids excluded.
+--   * captured_at > now() - 60 days — older rows are settled and merchant
+--     statements have already been issued; do not retroactively change them.
+--   * Only locations with processor_fee_percentage > 0.
+--   * Only rows where snapshot was actually missing (= 0).
+-- =====================================================================
+
+UPDATE order_payments p
+SET
+  processor_fee_percentage_snapshot = l.processor_fee_percentage,
+  dual_pricing_fee = ROUND(COALESCE(p.subtotal_portion, 0) * l.processor_fee_percentage / 100, 2),
+  tip_fee          = ROUND(COALESCE(p.tip_amount,       0) * l.processor_fee_percentage / 100, 2)
+FROM locations l
+WHERE l.id = p.location_id
+  AND l.processor_fee_percentage > 0
+  AND p.payment_method::text IN ('card','card_spinapi','card_dvpaylite','card_manual','card_online')
+  AND p.status IN ('captured','partially_refunded','refunded')
+  AND p.captured_at > now() - interval '60 days'
+  AND COALESCE(p.processor_fee_percentage_snapshot, 0) = 0;
