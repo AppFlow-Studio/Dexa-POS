@@ -34,6 +34,13 @@ import { getReceiptPrinter, routeKitchenItems } from './PrintRouter'
 import { buildKitchenTicketDocument } from './templates/KitchenTicketDocumentTemplate'
 import { buildKitchenTicketCommands } from './templates/KitchenTicketTemplate'
 import {
+  BatchSummary,
+  BatchSummaryStoreContext,
+  BusinessDaySummary,
+  buildBatchSummaryDocument,
+  buildBusinessDaySummaryDocument
+} from './templates/BatchSummaryDocumentTemplate'
+import {
   buildNoSaleDocument,
   NoSaleReceiptData
 } from './templates/NoSaleDocumentTemplate'
@@ -440,6 +447,49 @@ export const PrinterService = {
       .getState()
       .getTimeSheetTemplate(data.locationId)
     const doc = buildTimeSheetDocument(data, template)
+    const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
+    usePrintQueueStore.getState().enqueue(job)
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print a Castles batch closeout summary on the receipt printer.
+   * Caller is responsible for fetching the structured summary via the
+   * `get_batch_summary_v1` Supabase RPC.
+   */
+  async printBatchSummary (
+    summary: BatchSummary,
+    locationId: string,
+    store?: BatchSummaryStoreContext
+  ): Promise<boolean> {
+    const printer = getReceiptPrinter(locationId)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer for batch summary')
+      return false
+    }
+    const doc = buildBatchSummaryDocument(summary, store ?? {})
+    const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
+    usePrintQueueStore.getState().enqueue(job)
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print a rolled-up business-day summary covering every batch closed on
+   * a given business day. Fetched via `get_business_day_summary_v1`.
+   */
+  async printBusinessDaySummary (
+    day: BusinessDaySummary,
+    locationId: string,
+    store?: BatchSummaryStoreContext
+  ): Promise<boolean> {
+    const printer = getReceiptPrinter(locationId)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer for business-day summary')
+      return false
+    }
+    const doc = buildBusinessDaySummaryDocument(day, store ?? {})
     const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
     usePrintQueueStore.getState().enqueue(job)
     this.ensureProcessing()

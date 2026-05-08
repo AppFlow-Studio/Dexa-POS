@@ -1,6 +1,12 @@
 import { getBusinessDayBounds, getCurrentBusinessDay } from '@/lib/businessDay'
 import { colors } from '@/lib/theme'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { PrinterService } from '@/services/printing/PrinterService'
+import type {
+  BatchSummary,
+  BatchSummaryStoreContext,
+  BusinessDaySummary
+} from '@/services/printing/templates/BatchSummaryDocumentTemplate'
 import {
   getUnsettledPaymentStats,
   runSettlement,
@@ -16,6 +22,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
+  Printer,
   XCircle
 } from 'lucide-react-native'
 import { useCallback, useEffect, useState } from 'react'
@@ -124,6 +131,76 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
     loadStats()
   }, [loadStats])
 
+  const storeCtx = useCallback<() => BatchSummaryStoreContext>(() => {
+    if (!selectedStore) return {}
+    const addr = [
+      selectedStore.address_line1,
+      selectedStore.address_line2,
+      `${selectedStore.city}, ${selectedStore.state} ${selectedStore.postal_code}`
+    ]
+      .filter(Boolean)
+      .join(', ')
+    return { storeName: selectedStore.name, storeAddress: addr }
+  }, [selectedStore])
+
+  const printBatch = useCallback(
+    async (settlementBatchId: string) => {
+      if (!locationId) return
+      try {
+        const { data, error } = await supabase.rpc('get_batch_summary_v1', {
+          p_settlement_batch_id: settlementBatchId
+        })
+        if (error) throw error
+        if (!data) throw new Error('Empty batch summary')
+        await PrinterService.printBatchSummary(
+          data as unknown as BatchSummary,
+          locationId,
+          storeCtx()
+        )
+      } catch (e) {
+        console.warn('[BatchoutPanel] printBatch failed:', e)
+        Alert.alert(
+          'Print Failed',
+          e instanceof Error ? e.message : 'Could not print batch summary'
+        )
+      }
+    },
+    [supabase, locationId, storeCtx]
+  )
+
+  const printDay = useCallback(async () => {
+    if (!locationId) return
+    try {
+      // Closing report — location-wide totals. Scoping by current
+      // station's terminal_id would silently drop cash payments and any
+      // card payment whose row didn't get terminal_id stamped (most of
+      // them today, since terminal_id is only populated by the Castles
+      // capture path). A store-level closing report is also what the
+      // cashier expects for end-of-day reconciliation.
+      const { data, error } = await supabase.rpc(
+        'get_business_day_activity_summary_v1' as any,
+        {
+          p_location_id: locationId,
+          p_business_date: businessDay,
+          p_terminal_id: null
+        } as any
+      )
+      if (error) throw error
+      if (!data) throw new Error('Empty business-day summary')
+      await PrinterService.printBusinessDaySummary(
+        data as unknown as BusinessDaySummary,
+        locationId,
+        storeCtx()
+      )
+    } catch (e) {
+      console.warn('[BatchoutPanel] printDay failed:', e)
+      Alert.alert(
+        'Print Failed',
+        e instanceof Error ? e.message : 'Could not print day summary'
+      )
+    }
+  }, [supabase, locationId, businessDay, storeCtx])
+
   const handleSettle = useCallback(async () => {
     if (
       !terminal?.id ||
@@ -151,6 +228,12 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
       setResult(output)
       setState('results')
       refetchBatches()
+
+      // Auto-print: only after finalize_castles_settlement succeeds, since
+      // order_payments.settlement_batch_id is backfilled at that step.
+      if ((output.success || output.partialSuccess) && output.batchUuid) {
+        printBatch(output.batchUuid).catch(() => {})
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setResult({
@@ -170,7 +253,8 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
     selectedStore,
     supabase,
     userId,
-    refetchBatches
+    refetchBatches,
+    printBatch
   ])
 
   const handleConfirm = useCallback(() => {
@@ -243,6 +327,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
           stats={unsettledStats}
           statsLoading={statsLoading}
           onSettle={handleConfirm}
+          onPrintDay={printDay}
           disabled={state === 'confirming' || !terminalHost}
         />
       ) : state === 'settling' ? (
@@ -260,6 +345,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
           batches={batches}
           loading={batchesLoading}
           businessDay={businessDay}
+          onPrintBatch={printBatch}
         />
       ) : null}
     </View>
@@ -272,11 +358,13 @@ function IdleView ({
   stats,
   statsLoading,
   onSettle,
+  onPrintDay,
   disabled
 }: {
   stats: UnsettledStats | null
   statsLoading: boolean
   onSettle: () => void
+  onPrintDay: () => void
   disabled: boolean
 }) {
   const isSettleDisabled = disabled || (stats?.count ?? 0) === 0
@@ -375,6 +463,26 @@ function IdleView ({
           }}
         >
           Batch Out Terminal
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={onPrintDay}
+        style={{
+          borderRadius: 14,
+          paddingVertical: 14,
+          alignItems: 'center',
+          flexDirection: 'row',
+          justifyContent: 'center',
+          gap: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.card
+        }}
+      >
+        <Printer size={16} color={colors.label} />
+        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.label }}>
+          Print Today's Summary
         </Text>
       </TouchableOpacity>
     </View>
@@ -681,11 +789,13 @@ function HostCard ({ host }: { host: CastlesSettlementHostResult }) {
 function BatchLog ({
   batches,
   loading,
-  businessDay
+  businessDay,
+  onPrintBatch
 }: {
   batches: SettlementBatchRow[] | undefined
   loading: boolean
   businessDay: string
+  onPrintBatch: (settlementBatchId: string) => void
 }) {
   const list = batches || []
 
@@ -719,13 +829,21 @@ function BatchLog ({
           </Text>
         </Card>
       ) : (
-        list.map(b => <BatchRow key={b.id} batch={b} />)
+        list.map(b => (
+          <BatchRow key={b.id} batch={b} onPrint={() => onPrintBatch(b.id)} />
+        ))
       )}
     </View>
   )
 }
 
-function BatchRow ({ batch }: { batch: SettlementBatchRow }) {
+function BatchRow ({
+  batch,
+  onPrint
+}: {
+  batch: SettlementBatchRow
+  onPrint: () => void
+}) {
   const isSettled = batch.status === 'settled'
   const isFailed =
     batch.status === 'failed' ||
@@ -797,25 +915,40 @@ function BatchRow ({ batch }: { batch: SettlementBatchRow }) {
             </Text>
           </View>
         </View>
-        <View
-          style={{
-            paddingHorizontal: 8,
-            paddingVertical: 3,
-            borderRadius: 6,
-            backgroundColor: tone + '20'
-          }}
-        >
-          <Text
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View
             style={{
-              fontSize: 10,
-              fontWeight: '700',
-              color: tone,
-              textTransform: 'uppercase',
-              letterSpacing: 0.5
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 6,
+              backgroundColor: tone + '20'
             }}
           >
-            {batch.status}
-          </Text>
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '700',
+                color: tone,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5
+              }}
+            >
+              {batch.status}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={onPrint}
+            hitSlop={8}
+            accessibilityLabel='Print batch summary'
+            style={{
+              padding: 6,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
+          >
+            <Printer size={14} color={colors.label} />
+          </TouchableOpacity>
         </View>
       </View>
 

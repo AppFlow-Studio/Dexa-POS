@@ -5702,7 +5702,15 @@ export const useOrderStore = create<OrderState>()(
                 throw new Error("Supabase client not available");
               }
 
-              // Fetch active orders from our station
+              // Fetch active orders from our station.
+              // Bounded by a 48h recency cutoff + LIMIT to keep the row /
+              // nested-embed payload small enough to stay under the
+              // Supabase statement_timeout. Active orders older than 48h
+              // are either stuck or orphaned and won't be picked up by a
+              // simple orphan-recovery pass anyway.
+              const sinceIso = new Date(
+                Date.now() - 48 * 60 * 60 * 1000,
+              ).toISOString();
               const { data, error } = await supabase
                 .from("orders")
                 .select(
@@ -5718,7 +5726,9 @@ export const useOrderStore = create<OrderState>()(
                 .eq("location_id", locationId)
                 .eq("station_id", currentStationId)
                 .not("status", "in", '("completed","void","cancelled")')
-                .order("created_at", { ascending: false });
+                .gte("created_at", sinceIso)
+                .order("created_at", { ascending: false })
+                .limit(200);
 
               if (error) throw error;
 
