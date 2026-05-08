@@ -277,12 +277,22 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             }}
             scrollEventThrottle={16}
           >
-            {categories?.map(cat => {
-              const tab = cat.name
-              const isScheduled = cat.schedules && cat.schedules.length > 0
+            {categories?.map((cat, index) => {
+              const tab = typeof cat === 'string' ? cat : cat?.name
+              if (!tab) return null
+
+              const categoryId =
+                typeof cat === 'string' ? `${tab}-${index}` : cat?.id || tab
+              const isScheduled =
+                typeof cat === 'string'
+                  ? false
+                  : !!(cat.schedules && cat.schedules.length > 0)
               const isNormallyAvailable =
                 isCategoryAvailableNow(tab) && currentMenu
-                  ? isCategoryActiveForMenu(currentMenu.id, cat.id)
+                  ? isCategoryActiveForMenu(
+                      currentMenu.id,
+                      typeof cat === 'string' ? tab : cat.id
+                    )
                   : false
               const hasOverride = temporaryActiveCategorySet.has(tab)
               const isAvailable = isNormallyAvailable || hasOverride
@@ -291,7 +301,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
               return (
                 <TouchableOpacity
-                  key={cat.id || tab}
+                  key={categoryId}
                   onPress={() => handleCategoryPress(tab, isAvailable)}
                   style={[
                     styles.tab,

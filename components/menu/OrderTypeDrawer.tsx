@@ -459,6 +459,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                   style={{ borderColor: colors.border, minHeight: 300 }}
                 >
                   <TableLayoutView
+                    key={selectedFloor || 'floor-plan'}
                     layoutId={selectedFloor}
                     tables={floorTables}
                     isSelectionMode={true}
