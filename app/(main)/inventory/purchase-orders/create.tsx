@@ -362,7 +362,21 @@ const CreatePurchaseOrderScreen = () => {
                     value={item.quantity.toString()}
                     onChangeText={(t) => handleQuantityChange(item.inventoryItemId, t)}
                     keyboardType="number-pad"
-                    style={{ width: 52, height: 34, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 6, color: colors.heading, fontSize: 13, textAlign: "center", paddingVertical: 0 }}
+                    style={{
+                      width: 52,
+                      height: 28,
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 6,
+                      color: colors.heading,
+                      fontSize: 13,
+                      lineHeight: 16,
+                      textAlign: "center",
+                      textAlignVertical: "center",
+                      includeFontPadding: false,
+                      paddingVertical: 0,
+                    }}
                   />
                   <Text style={{ fontSize: 12, color: colors.muted, width: 36 }}>{inv?.unit}</Text>
                   <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, width: 70, textAlign: "right" }}>
@@ -489,7 +503,7 @@ const CreatePurchaseOrderScreen = () => {
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontSize: 13, fontWeight: "600", color: isSelected ? colors.teal : colors.heading }}>{inv.name}</Text>
                           <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
-                            {inv.unit} · ${inv.cost.toFixed(2)} · Stock: {inv.stockQuantity}
+                            {inv.unit} | ${inv.cost.toFixed(2)} | Stock: {inv.stockQuantity}
                           </Text>
                         </View>
                         {isSelected && (
