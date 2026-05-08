@@ -960,10 +960,11 @@ const TablesScreen = () => {
               overflow: 'hidden'
             }}
           >
-            {floorPlanLoading && tables.length === 0 ? (
+            {floorPlanLoading ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
               <TableLayoutView
+                key={activeFloorPlanId || 'floor-plan'}
                 tables={filteredTables || []}
                 isSelectionMode={true}
                 onTableSelect={handleTablePress}
