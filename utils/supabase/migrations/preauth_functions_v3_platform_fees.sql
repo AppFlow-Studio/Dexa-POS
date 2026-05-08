@@ -73,7 +73,10 @@ BEGIN
 
   -- Snapshot processor fee percentage at auth time. Locked for the
   -- life of the auth so a mid-tab config change can't shift the fee.
-  SELECT COALESCE(processor_fee_percentage, 0) INTO v_processor_fee_pct
+  -- dual_pricing_percentage is the markup applied to card prices; the
+  -- reported dual_pricing_fee must match it. processor_fee_percentage is a
+  -- separate concept (bank fee) and is intentionally not used here.
+  SELECT COALESCE(dual_pricing_percentage, 0) INTO v_processor_fee_pct
   FROM locations WHERE id = v_order.location_id;
 
   INSERT INTO order_payments (

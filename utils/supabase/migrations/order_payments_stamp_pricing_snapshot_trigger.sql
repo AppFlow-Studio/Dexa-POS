@@ -24,7 +24,11 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT processor_fee_percentage INTO v_pct
+  -- Source of truth: dual_pricing_percentage is the markup applied to
+  -- card prices in add_order_item_v3 / add_open_item_v3. The reported
+  -- dual_pricing_fee must match that exact percentage. processor_fee_percentage
+  -- is a different concept (the bank's processing fee) and is not used here.
+  SELECT dual_pricing_percentage INTO v_pct
     FROM public.locations WHERE id = NEW.location_id;
 
   IF v_pct IS NULL OR v_pct <= 0 THEN

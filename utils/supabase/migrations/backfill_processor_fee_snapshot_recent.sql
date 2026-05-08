@@ -8,18 +8,22 @@
 --     and voids excluded.
 --   * captured_at > now() - 60 days — older rows are settled and merchant
 --     statements have already been issued; do not retroactively change them.
---   * Only locations with processor_fee_percentage > 0.
+--   * Only locations with dual_pricing_percentage > 0.
 --   * Only rows where snapshot was actually missing (= 0).
+--
+-- Source of truth: locations.dual_pricing_percentage (the markup added to
+-- card prices). processor_fee_percentage is a separate concept (bank fee)
+-- and is not used for dual_pricing_fee reporting.
 -- =====================================================================
 
 UPDATE order_payments p
 SET
-  processor_fee_percentage_snapshot = l.processor_fee_percentage,
-  dual_pricing_fee = ROUND(COALESCE(p.subtotal_portion, 0) * l.processor_fee_percentage / 100, 2),
-  tip_fee          = ROUND(COALESCE(p.tip_amount,       0) * l.processor_fee_percentage / 100, 2)
+  processor_fee_percentage_snapshot = l.dual_pricing_percentage,
+  dual_pricing_fee = ROUND(COALESCE(p.subtotal_portion, 0) * l.dual_pricing_percentage / 100, 2),
+  tip_fee          = ROUND(COALESCE(p.tip_amount,       0) * l.dual_pricing_percentage / 100, 2)
 FROM locations l
 WHERE l.id = p.location_id
-  AND l.processor_fee_percentage > 0
+  AND l.dual_pricing_percentage > 0
   AND p.payment_method::text IN ('card','card_spinapi','card_dvpaylite','card_manual','card_online')
   AND p.status IN ('captured','partially_refunded','refunded')
   AND p.captured_at > now() - interval '60 days'
