@@ -916,14 +916,20 @@ export class MenuService {
   static async upsertMenuItemRecipe (
     client: SupabaseClient,
     menuItemId: string,
+    locationId: string | null | undefined,
     ingredients: { inventoryItemId: string; quantity: number }[]
   ): Promise<{ success: boolean; error: any }> {
+    const recipePayload = ingredients.map(i => ({
+      inventoryItemId: i.inventoryItemId,
+      inventory_item_id: i.inventoryItemId,
+      quantity: i.quantity
+    }))
+
     const { error } = await client.rpc('upsert_menu_item_with_recipe', {
       p_menu_item_id: menuItemId,
-      p_recipe_items: ingredients.map(i => ({
-        inventoryItemId: i.inventoryItemId,
-        quantity: i.quantity
-      }))
+      p_location_id: locationId ?? null,
+      p_recipe_items: recipePayload,
+      p_ingredients: recipePayload
     })
 
     if (error) {

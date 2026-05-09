@@ -455,7 +455,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         category: directRow?.category ?? '',
         description: null,
         image: null,
-        stockQuantity: directRow?.current_stock ?? i.stock_quantity ?? 0,
+        stockQuantity: i.stock_quantity ?? directRow?.current_stock ?? 0,
         unit: directRow?.unit_type ?? i.unit_type,
         unitType: (directRow?.unit_type ?? i.unit_type),
         reorderThreshold:
@@ -706,10 +706,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       stock_mode: toDbInventoryTrackingMode(itemData.stockTrackingMode),
     };
 
-    if (newItemId && stockQuantity !== undefined) {
-      directItemPatch.current_stock = stockQuantity;
-    }
-
     if (newItemId) {
       const { error: directPatchError } = await supabase
         .from("inventory_items")
@@ -718,6 +714,21 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
       if (directPatchError) {
         throw directPatchError;
+      }
+    }
+
+    if (newItemId && stockQuantity !== undefined) {
+      const { error: stockError } = await supabase.rpc(
+        "app_set_location_stock",
+        {
+          p_inventory_item_id: newItemId,
+          p_location_id: locationId,
+          p_quantity: stockQuantity,
+        }
+      );
+
+      if (stockError) {
+        throw stockError;
       }
     }
 
@@ -779,10 +790,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
           directItemPatch.vendor_id = updates.vendorId ?? null;
         }
 
-        if (stockQuantity !== undefined && stockQuantity !== item.stockQuantity) {
-          directItemPatch.current_stock = stockQuantity;
-        }
-
         if (updates.reorderThreshold !== undefined) {
           directItemPatch.reorder_point = updates.reorderThreshold;
         }
@@ -797,6 +804,18 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
             .update(directItemPatch)
             .eq("id", itemId);
           if (directPatchError) throw directPatchError;
+        }
+
+        if (stockQuantity !== undefined && stockQuantity !== item.stockQuantity) {
+          const { error: stockError } = await supabase.rpc(
+            "app_set_location_stock",
+            {
+              p_inventory_item_id: itemId,
+              p_location_id: locationId,
+              p_quantity: stockQuantity,
+            }
+          );
+          if (stockError) throw stockError;
         }
       }
 
@@ -1219,23 +1238,23 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     soldItems.forEach((cartItem) => {
       const menuItem = menuItems.find((mi) => mi.id === cartItem.menuItemId);
       if (!menuItem) return;
-      // Check if menu item has a recipe
+      if (menuItem.recipe && menuItem.recipe.length > 0) {
+        // Recipe-based depletion: deplete ingredients according to recipe
+        menuItem.recipe.forEach((recipeItem) => {
+          const currentDecrement =
+            stockUpdates[recipeItem.inventoryItemId] || 0;
+          stockUpdates[recipeItem.inventoryItemId] =
+            currentDecrement + recipeItem.quantity * cartItem.quantity;
+        });
+        console.log("Found recipe", menuItem.recipe);
+        console.log("Stock updates", stockUpdates);
+        return;
+      }
+
       if (
         menuItem.stockTrackingMode === "quantity" &&
         menuItem.stockQuantity !== undefined
       ) {
-        if (menuItem.recipe && menuItem.recipe.length > 0) {
-          // Recipe-based depletion: deplete ingredients according to recipe
-
-          menuItem.recipe.forEach((recipeItem) => {
-            const currentDecrement =
-              stockUpdates[recipeItem.inventoryItemId] || 0;
-            stockUpdates[recipeItem.inventoryItemId] =
-              currentDecrement + recipeItem.quantity * cartItem.quantity;
-          });
-          console.log("Found recipe", menuItem.recipe);
-          console.log("Stock updates", stockUpdates);
-        }
         // Simple item depletion: deplete the menu item's own stock
         const currentDecrement = menuItemStockUpdates[menuItem.id] || 0;
         menuItemStockUpdates[menuItem.id] =

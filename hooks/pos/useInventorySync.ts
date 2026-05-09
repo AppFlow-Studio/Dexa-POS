@@ -86,7 +86,7 @@ export const useInventorySync = (locationId: string | null) => {
           category: directRow?.category ?? "",
           description: null,
           image: null,
-          stockQuantity: directRow?.current_stock ?? i.stock_quantity ?? 0,
+          stockQuantity: i.stock_quantity ?? directRow?.current_stock ?? 0,
           unit: directRow?.unit_type ?? i.unit_type,
           unitType: (directRow?.unit_type ?? i.unit_type) as InventoryUnitType,
           reorderThreshold:

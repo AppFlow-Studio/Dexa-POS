@@ -29,6 +29,18 @@ import {
 import React, { useEffect, useMemo, useState } from 'react'
 import { FlatList, Text, TextInput, TouchableOpacity, View } from 'react-native'
 
+const formatInventoryQuantity = (value: number | null | undefined) => {
+  const quantity = Number(value ?? 0)
+
+  if (!Number.isFinite(quantity)) return '0'
+  if (Number.isInteger(quantity)) return String(quantity)
+
+  return quantity.toFixed(2).replace(/\.?0+$/, '')
+}
+
+const formatInventoryUnit = (item: InventoryItem) =>
+  item.unit?.trim() || item.unitType?.trim() || 'unit'
+
 /* =========================
    Grid Box
 ========================= */
@@ -172,7 +184,7 @@ const InventoryItemBox: React.FC<{
             color: isLowStock ? colors.danger : colors.teal
           }}
         >
-          {(item.stockQuantity ?? 0).toFixed(0)} {item.unit}
+          {formatInventoryQuantity(item.stockQuantity)} {formatInventoryUnit(item)}
         </Text>
       </View>
 
@@ -285,9 +297,11 @@ const InventoryItemRow: React.FC<{
               color: isLowStock ? colors.danger : colors.teal
             }}
           >
-            {(item.stockQuantity ?? 0).toFixed(0)}
+            {formatInventoryQuantity(item.stockQuantity)}
           </Text>
-          <Text style={{ fontSize: 9, color: colors.muted }}>{item.unit}</Text>
+          <Text style={{ fontSize: 9, color: colors.muted }}>
+            {formatInventoryUnit(item)}
+          </Text>
           {isLowStock && <AlertTriangle size={10} color={colors.danger} />}
         </View>
       </View>
@@ -298,7 +312,7 @@ const InventoryItemRow: React.FC<{
           Reorder
         </Text>
         <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>
-          {item.reorderThreshold ?? 0}
+          {formatInventoryQuantity(item.reorderThreshold)}
         </Text>
       </View>
 
@@ -462,7 +476,7 @@ const InventoryScreen = () => {
                     color: colors.danger
                   }}
                 >
-                  • {item.name} ({item.stockQuantity}/{item.reorderThreshold})
+                  • {item.name} ({formatInventoryQuantity(item.stockQuantity)} {formatInventoryUnit(item)} / {formatInventoryQuantity(item.reorderThreshold)})
                 </Text>
               ))}
             </View>
