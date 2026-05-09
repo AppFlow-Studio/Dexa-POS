@@ -17,6 +17,23 @@ interface RpcInventoryRow {
   effective_reorder_point: number | null;
 }
 
+const normalizeInventoryTrackingMode = (
+  mode: string | null | undefined,
+  currentStock?: number | null,
+  reorderPoint?: number | null
+): InventoryItem["stockTrackingMode"] => {
+  if (mode === "stock_tracking") return "quantity";
+  if (
+    mode === "in_stock" &&
+    (currentStock !== null && currentStock !== undefined ||
+      reorderPoint !== null && reorderPoint !== undefined)
+  ) {
+    return "quantity";
+  }
+  if (mode === "in_stock" || mode === "out_of_stock") return mode;
+  return "quantity";
+};
+
 export const useInventorySync = (locationId: string | null) => {
   const supabase = useSupabaseClient();
 
@@ -36,16 +53,17 @@ export const useInventorySync = (locationId: string | null) => {
         throw itemsError;
       }
 
-      // Fetch vendor_id mapping from inventory_items (RPC doesn't return it)
-      const { data: itemVendorRows } = await supabase
+      // Fetch the live item rows directly so recent stock/item writes are
+      // visible immediately even if the sync RPC lags behind.
+      const { data: itemRows } = await supabase
         .from("inventory_items")
-        .select("id, vendor_id")
+        .select(
+          "id, name, category, current_stock, unit_type, reorder_point, cost_per_unit, vendor_id, stock_mode"
+        )
+        .eq("location_id", locationId)
         .eq("is_active", true);
 
-      const vendorIdMap: Record<string, string | null> = {};
-      for (const row of itemVendorRows ?? []) {
-        vendorIdMap[row.id] = row.vendor_id ?? null;
-      }
+      const itemRowMap = new Map((itemRows ?? []).map((row) => [row.id, row]));
 
       // Fetch vendors scoped to the active location
       const { data: vendorsData, error: vendorsError } = await supabase
@@ -60,22 +78,57 @@ export const useInventorySync = (locationId: string | null) => {
 
       const rows = (itemsData as RpcInventoryRow[] | null) ?? [];
 
-      const inventoryItems: InventoryItem[] = rows.map((i) => ({
-        id: i.id,
-        name: i.name,
-        category: "",
-        description: null,
-        image: null,
-        stockQuantity: i.stock_quantity ?? 0,
-        unit: i.unit_type,
-        unitType: i.unit_type as InventoryUnitType,
-        reorderThreshold: i.effective_reorder_point ?? i.reorder_point ?? 0,
-        cost: i.effective_cost ?? 0,
-        vendorId: vendorIdMap[i.id] ?? null,
-        locationId: locationId,
-        isGlobal: false,
-        stockTrackingMode: "quantity" as const,
-      }));
+      const inventoryItems: InventoryItem[] = rows.filter((i) => itemRowMap.has(i.id)).map((i) => {
+        const directRow = itemRowMap.get(i.id);
+        return {
+          id: i.id,
+          name: directRow?.name ?? i.name,
+          category: directRow?.category ?? "",
+          description: null,
+          image: null,
+          stockQuantity: directRow?.current_stock ?? i.stock_quantity ?? 0,
+          unit: directRow?.unit_type ?? i.unit_type,
+          unitType: (directRow?.unit_type ?? i.unit_type) as InventoryUnitType,
+          reorderThreshold:
+            directRow?.reorder_point ??
+            i.effective_reorder_point ??
+            i.reorder_point ??
+            0,
+          cost: directRow?.cost_per_unit ?? i.effective_cost ?? 0,
+          vendorId: directRow?.vendor_id ?? null,
+          locationId: locationId,
+          isGlobal: false,
+          stockTrackingMode: normalizeInventoryTrackingMode(
+            directRow?.stock_mode,
+            directRow?.current_stock,
+            directRow?.reorder_point
+          ),
+        };
+      });
+
+      const rpcItemIds = new Set(inventoryItems.map((item) => item.id));
+      const missingDirectItems: InventoryItem[] = (itemRows ?? [])
+        .filter((row) => !rpcItemIds.has(row.id))
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          category: row.category ?? "",
+          description: null,
+          image: null,
+          stockQuantity: row.current_stock ?? 0,
+          unit: row.unit_type,
+          unitType: row.unit_type as InventoryUnitType,
+          reorderThreshold: row.reorder_point ?? 0,
+          cost: row.cost_per_unit ?? 0,
+          vendorId: row.vendor_id ?? null,
+          locationId: locationId,
+          isGlobal: false,
+          stockTrackingMode: normalizeInventoryTrackingMode(
+            row.stock_mode,
+            row.current_stock,
+            row.reorder_point
+          ),
+        }));
 
       const vendors = (vendorsData ?? []).map((v) => ({
         id: v.id,
@@ -90,7 +143,7 @@ export const useInventorySync = (locationId: string | null) => {
 
       return {
         vendors,
-        inventoryItems,
+        inventoryItems: [...inventoryItems, ...missingDirectItems],
         menuRecipes: [] as any[],
         modifierRecipes: [] as any[],
       };

@@ -14,6 +14,31 @@ import { useMenuStore } from "./useMenuStore";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
 
 type PurchaseOrderStatus = PurchaseOrder["status"];
+type InventoryTrackingMode = InventoryItem["stockTrackingMode"];
+
+const normalizeInventoryTrackingMode = (
+  mode: string | null | undefined,
+  currentStock?: number | null,
+  reorderPoint?: number | null
+): InventoryTrackingMode => {
+  if (mode === "stock_tracking") return "quantity";
+  if (
+    mode === "in_stock" &&
+    (currentStock !== null && currentStock !== undefined ||
+      reorderPoint !== null && reorderPoint !== undefined)
+  ) {
+    return "quantity";
+  }
+  if (mode === "in_stock" || mode === "out_of_stock") return mode;
+  return "quantity";
+};
+
+const toDbInventoryTrackingMode = (
+  mode: InventoryTrackingMode | undefined
+): "stock_tracking" | "in_stock" | "out_of_stock" => {
+  if (mode === "in_stock" || mode === "out_of_stock") return mode;
+  return "stock_tracking";
+};
 
 const purchaseOrderStatusToDb = (
   status: PurchaseOrderStatus
@@ -410,39 +435,71 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     // RPC returns a flat JSON array of inventory rows
     const rows = (data as any[]) ?? [];
 
-    const inventoryItems: InventoryItem[] = rows.map((i: any) => ({
-      id: i.id,
-      name: i.name,
-      category: '',
-      description: null,
-      image: null,
-      stockQuantity: i.stock_quantity ?? 0,
-      unit: i.unit_type,
-      unitType: i.unit_type,
-      reorderThreshold: i.effective_reorder_point ?? i.reorder_point ?? 0,
-      cost: i.effective_cost ?? 0,
-      vendorId: null,
-      locationId,
-      isGlobal: false,
-      stockTrackingMode: 'quantity' as const,
-    }));
-
-    // Fetch vendor_id mapping
-    const { data: itemVendorRows } = await supabase
+    const { data: itemRows } = await supabase
       .from('inventory_items')
-      .select('id, vendor_id')
+      .select('id, name, category, current_stock, unit_type, reorder_point, cost_per_unit, vendor_id, stock_mode')
+      .eq('location_id', locationId)
       .eq('is_active', true);
 
-    const vendorIdMap: Record<string, string | null> = {};
-    for (const row of itemVendorRows ?? []) {
-      vendorIdMap[row.id] = row.vendor_id ?? null;
-    }
+    const itemRowMap = new Map(
+      (itemRows ?? []).map((row: any) => [row.id, row])
+    );
 
-    // Re-map vendorId onto items
-    const itemsWithVendor = inventoryItems.map(i => ({
-      ...i,
-      vendorId: vendorIdMap[i.id] ?? null,
-    }));
+    const inventoryItems: InventoryItem[] = rows
+      .filter((i: any) => itemRowMap.has(i.id))
+      .map((i: any) => {
+      const directRow = itemRowMap.get(i.id);
+      return {
+        id: i.id,
+        name: directRow?.name ?? i.name,
+        category: directRow?.category ?? '',
+        description: null,
+        image: null,
+        stockQuantity: directRow?.current_stock ?? i.stock_quantity ?? 0,
+        unit: directRow?.unit_type ?? i.unit_type,
+        unitType: (directRow?.unit_type ?? i.unit_type),
+        reorderThreshold:
+          directRow?.reorder_point ??
+          i.effective_reorder_point ??
+          i.reorder_point ??
+          0,
+        cost: directRow?.cost_per_unit ?? i.effective_cost ?? 0,
+        vendorId: directRow?.vendor_id ?? null,
+        locationId,
+        isGlobal: false,
+        stockTrackingMode: normalizeInventoryTrackingMode(
+          directRow?.stock_mode,
+          directRow?.current_stock,
+          directRow?.reorder_point
+        ),
+      };
+    });
+
+    const rpcItemIds = new Set(inventoryItems.map((item) => item.id));
+    const missingDirectItems: InventoryItem[] = (itemRows ?? [])
+      .filter((row: any) => !rpcItemIds.has(row.id))
+      .map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        category: row.category ?? '',
+        description: null,
+        image: null,
+        stockQuantity: row.current_stock ?? 0,
+        unit: row.unit_type,
+        unitType: row.unit_type,
+        reorderThreshold: row.reorder_point ?? 0,
+        cost: row.cost_per_unit ?? 0,
+        vendorId: row.vendor_id ?? null,
+        locationId,
+        isGlobal: false,
+        stockTrackingMode: normalizeInventoryTrackingMode(
+          row.stock_mode,
+          row.current_stock,
+          row.reorder_point
+        ),
+      }));
+
+    const itemsWithVendor = [...inventoryItems, ...missingDirectItems];
 
     const { data: vendorsData } = await supabase
       .from('vendors')
@@ -644,6 +701,26 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         .eq('id', newItemId);
     }
 
+    const directItemPatch: Record<string, unknown> = {
+      reorder_point: itemData.reorderThreshold,
+      stock_mode: toDbInventoryTrackingMode(itemData.stockTrackingMode),
+    };
+
+    if (newItemId && stockQuantity !== undefined) {
+      directItemPatch.current_stock = stockQuantity;
+    }
+
+    if (newItemId) {
+      const { error: directPatchError } = await supabase
+        .from("inventory_items")
+        .update(directItemPatch)
+        .eq("id", newItemId);
+
+      if (directPatchError) {
+        throw directPatchError;
+      }
+    }
+
     // Re-fetch to get the real item back with correct shape
     await get().fetchInventoryItems(locationId);
     // Invalidate TanStack query cache so PosSyncProvider also sees fresh data
@@ -696,19 +773,30 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         }
 
         // Patch vendor_id directly since the RPC doesn't support it
+        const directItemPatch: Record<string, unknown> = {};
+
         if ('vendorId' in updates) {
-          await supabase
-            .from('inventory_items')
-            .update({ vendor_id: updates.vendorId ?? null })
-            .eq('id', itemId);
+          directItemPatch.vendor_id = updates.vendorId ?? null;
         }
 
         if (stockQuantity !== undefined && stockQuantity !== item.stockQuantity) {
-          const { error: stockError } = await supabase
+          directItemPatch.current_stock = stockQuantity;
+        }
+
+        if (updates.reorderThreshold !== undefined) {
+          directItemPatch.reorder_point = updates.reorderThreshold;
+        }
+
+        if (updates.stockTrackingMode !== undefined) {
+          directItemPatch.stock_mode = toDbInventoryTrackingMode(updates.stockTrackingMode);
+        }
+
+        if (Object.keys(directItemPatch).length > 0) {
+          const { error: directPatchError } = await supabase
             .from("inventory_items")
-            .update({ current_stock: stockQuantity })
+            .update(directItemPatch)
             .eq("id", itemId);
-          if (stockError) throw stockError;
+          if (directPatchError) throw directPatchError;
         }
       }
 
