@@ -26,31 +26,31 @@ type Props = {
   openSignal: number
 }
 
-const inputStyle = {
-  backgroundColor: colors.screen,
-  borderWidth: 1,
-  borderColor: colors.border,
-  borderRadius: 8,
-  color: colors.heading,
-  fontSize: 13,
-  height: 38,
-  paddingHorizontal: 12,
-  paddingVertical: 0
-} as const
-
-const fieldLabel = {
-  fontSize: 11,
-  fontWeight: '600' as const,
-  color: colors.muted,
-  textTransform: 'uppercase' as const,
-  letterSpacing: 0.5,
-  marginBottom: 5
-} as const
-
 const AddExpenseModule = ({ openSignal }: Props) => {
   const { inventoryItems, purchaseOrders, addExternalExpense } =
     useInventoryStore()
   const { activeEmployeeId, employees } = useEmployeeStore()
+
+  const inputStyle = {
+    backgroundColor: colors.screen,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    color: colors.heading,
+    fontSize: 13,
+    height: 38,
+    paddingHorizontal: 12,
+    paddingVertical: 0
+  } as const
+
+  const fieldLabel = {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: colors.muted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginBottom: 5
+  } as const
 
   const [isOpen, setIsOpen] = useState(false)
   const [isEmployeePickerOpen, setIsEmployeePickerOpen] = useState(false)
