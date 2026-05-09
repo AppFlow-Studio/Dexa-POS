@@ -88,6 +88,12 @@ const normalizePaymentMethod = (
   return undefined;
 };
 
+const toDbPurchaseOrderPaymentMethod = (
+  method: "Card" | "Cash"
+): "card" | "cash" => {
+  return method === "Card" ? "card" : "cash";
+};
+
 const calculatePurchaseOrderTotal = (items: POLineItem[]) =>
   items.reduce((sum, item) => sum + item.quantity * item.cost, 0);
 
@@ -853,9 +859,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     if (!supabase) return;
 
     const { merchantId, locationId } = getCurrentStoreContext();
+    const { userId } = getActiveEmployeeContext();
     const now = new Date().toISOString();
     const poNumber = await getNextPurchaseOrderNumber(supabase, merchantId, locationId);
     const totalAmount = calculatePurchaseOrderTotal(poData.items);
+    const createdByUserId = poData.createdByEmployeeId ?? userId ?? null;
 
     const { data: purchaseOrderRow, error: purchaseOrderError } = await supabase
       .from("purchase_orders")
@@ -865,7 +873,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         vendor_id: poData.vendorId,
         status: purchaseOrderStatusToDb(poData.status),
         po_number: poNumber,
-        created_by: poData.createdByEmployeeId ?? null,
+        created_by: createdByUserId,
         ordered_at: poData.status === "Pending Delivery" ? now : null,
         total_amount: totalAmount,
       })
@@ -1090,20 +1098,51 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
     const { locationId } = getCurrentStoreContext();
     const { userId, userName } = getActiveEmployeeContext();
-    const { error } = await supabase.rpc("log_purchase_order_payment", {
-      p_purchase_order_id: poId,
-      p_amount: data.amount,
-      p_payment_method: data.method,
-      p_paid_to: data.paidToEmployee || "",
-      p_paid_by_user_id: userId,
-      p_paid_by_name: userName,
-      p_notes: "",
-      p_card_last_four: data.method === "Card" ? data.cardLast4 || "" : "",
-    });
+    const paidAt = data.paidAt || new Date().toISOString();
+    const cardLast4 = data.method === "Card" ? data.cardLast4 || null : null;
+    const paymentMethod = toDbPurchaseOrderPaymentMethod(data.method);
 
-    if (error) {
-      console.error("[InventoryStore] logPaymentForPO error:", error);
-      throw error;
+    const { error: paymentInsertError } = await supabase
+      .from("purchase_order_payments")
+      .insert({
+        purchase_order_id: poId,
+        amount: data.amount,
+        payment_method: paymentMethod,
+        paid_to: data.paidToEmployee || null,
+        paid_by_user_id: userId || null,
+        paid_by_name: userName || null,
+        notes: null,
+        card_last_four: cardLast4,
+        paid_at: paidAt,
+        vendor_id: po.vendorId || null,
+        vendor_name:
+          get().vendors.find((vendor) => vendor.id === po.vendorId)?.name ?? null,
+      });
+
+    if (paymentInsertError) {
+      console.error(
+        "[InventoryStore] logPaymentForPO payment insert error:",
+        paymentInsertError,
+      );
+      throw paymentInsertError;
+    }
+
+    const { error: purchaseOrderUpdateError } = await supabase
+      .from("purchase_orders")
+      .update({
+        status: purchaseOrderStatusToDb("Paid"),
+        payment_method: paymentMethod,
+        card_last_four: cardLast4,
+        paid_at: paidAt,
+      })
+      .eq("id", poId);
+
+    if (purchaseOrderUpdateError) {
+      console.error(
+        "[InventoryStore] logPaymentForPO purchase order update error:",
+        purchaseOrderUpdateError,
+      );
+      throw purchaseOrderUpdateError;
     }
 
     await get().fetchPurchaseOrders(locationId);
