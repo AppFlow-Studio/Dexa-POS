@@ -114,6 +114,14 @@ const BillItemsAndTotals = React.memo(
       orderNote ?? "",
     );
     const orderNoteInputRef = useRef<TextInput>(null);
+    const orderNoteFocusTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>(
+      [],
+    );
+
+    const clearOrderNoteFocusTimeouts = useCallback(() => {
+      orderNoteFocusTimeoutsRef.current.forEach(clearTimeout);
+      orderNoteFocusTimeoutsRef.current = [];
+    }, []);
 
     useEffect(() => {
       const nextNote = orderNote ?? "";
@@ -122,6 +130,8 @@ const BillItemsAndTotals = React.memo(
         setOrderNoteModalDraft(nextNote);
       }
     }, [isOrderNoteEditorOpen, orderNote]);
+
+    useEffect(() => clearOrderNoteFocusTimeouts, [clearOrderNoteFocusTimeouts]);
 
     const handleToggleExpand = useCallback((itemId: string) => {
       setExpandedItemId((prev) => (prev === itemId ? null : itemId));
@@ -133,22 +143,31 @@ const BillItemsAndTotals = React.memo(
     }, [orderNoteDraft]);
 
     const closeOrderNoteEditor = useCallback(() => {
+      clearOrderNoteFocusTimeouts();
       setIsOrderNoteEditorOpen(false);
       setOrderNoteModalDraft(orderNoteDraft);
-    }, [orderNoteDraft]);
+    }, [clearOrderNoteFocusTimeouts, orderNoteDraft]);
 
     const handleDoneOrderNoteEditor = useCallback(() => {
+      clearOrderNoteFocusTimeouts();
       const nextNote = orderNoteModalDraft;
       setOrderNoteDraft(nextNote);
       setIsOrderNoteEditorOpen(false);
       onSaveOrderNote(nextNote);
-    }, [onSaveOrderNote, orderNoteModalDraft]);
+    }, [clearOrderNoteFocusTimeouts, onSaveOrderNote, orderNoteModalDraft]);
 
     const focusOrderNoteEditor = useCallback(() => {
-      setTimeout(() => {
+      clearOrderNoteFocusTimeouts();
+
+      const focusInput = () => {
         orderNoteInputRef.current?.focus();
-      }, 60);
-    }, []);
+      };
+
+      [350, 650].forEach((delay) => {
+        const timeoutId = setTimeout(focusInput, delay);
+        orderNoteFocusTimeoutsRef.current.push(timeoutId);
+      });
+    }, [clearOrderNoteFocusTimeouts]);
 
     const renderOrderNoteButton = () => (
       <TouchableOpacity activeOpacity={0.9} onPress={openOrderNoteEditor}>
@@ -259,7 +278,7 @@ const BillItemsAndTotals = React.memo(
                   placeholder="Add order note..."
                   placeholderTextColor={colors.muted}
                   multiline
-                  autoFocus
+                  showSoftInputOnFocus
                   style={{
                     minHeight: 104,
                     color: colors.heading,
