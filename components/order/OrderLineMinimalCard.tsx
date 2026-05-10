@@ -1,3 +1,4 @@
+import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { formatOrderStatus } from '@/utils/orderStatusHelpers'
@@ -25,6 +26,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
   onPrintReceipt
 }) => {
   const totalAmount = order.total_amount ?? 0
+  const effectivePaidStatus = deriveEffectivePaidStatus(order) ?? order.paid_status
 
   const displayId =
     order.display_number || order.order_number || `#${order.id.slice(-4)}`
@@ -44,7 +46,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
   const canMarkDone =
     order.order_status === 'preparing' ||
     order.order_status === 'sent_to_kitchen' ||
-    (order.order_status === 'ready' && order.paid_status === 'Paid')
+    (order.order_status === 'ready' && effectivePaidStatus === 'Paid')
 
   const orderStatusColor = useMemo(() => {
     switch (order.order_status) {
@@ -65,9 +67,9 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
   }, [order.order_status])
 
   const paidStatusColor =
-    order.paid_status === 'Paid'
+    effectivePaidStatus === 'Paid'
       ? colors.success
-      : order.paid_status === 'Partial'
+      : effectivePaidStatus === 'Partial'
       ? colors.warning
       : colors.muted
 
@@ -128,7 +130,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
                 color: paidStatusColor
               }}
             >
-              {order.paid_status}
+              {effectivePaidStatus ?? order.paid_status}
             </Text>
           </View>
         </View>
@@ -289,7 +291,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
           <ChevronRight size={16} color={colors.label} />
         </TouchableOpacity>
 
-        {onPrintReceipt && order.paid_status === 'Paid' && (
+        {onPrintReceipt && effectivePaidStatus === 'Paid' && (
           <TouchableOpacity
             onPress={onPrintReceipt}
             style={{

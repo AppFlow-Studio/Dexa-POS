@@ -1,3 +1,4 @@
+import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
 import { toastService } from '@/lib/toastService'
@@ -145,6 +146,11 @@ const PopoverContent = React.memo<PopoverContentProps>(
     onPrintReceipt,
     onClose
   }) => {
+    const effectivePaidStatus = useMemo(
+      () => deriveEffectivePaidStatus(order) ?? order.paid_status,
+      [order]
+    )
+
     // Memoize refund status
     const refundStatus = useMemo(() => {
       const payments = order.payments || []
@@ -175,7 +181,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
       useMemo(() => {
         const due = order.amount_due ?? order.total_amount ?? 0
         const paid = order.amount_paid ?? 0
-        const partial = paid > 0 && order.paid_status !== 'Paid'
+        const partial = paid > 0 && effectivePaidStatus !== 'Paid'
         const cashDue = order.cash_amount_due ?? due
         const savings = due - cashDue
         return {
@@ -188,7 +194,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
         order.amount_due,
         order.total_amount,
         order.amount_paid,
-        order.paid_status,
+        effectivePaidStatus,
         order.cash_amount_due
       ])
 
@@ -220,12 +226,12 @@ const PopoverContent = React.memo<PopoverContentProps>(
     // Status pill
     const statusPill = useMemo(
       () =>
-        getStatusPillStyle(order.paid_status, order.order_status, {
+        getStatusPillStyle(effectivePaidStatus, order.order_status, {
           isFullyRefunded: refundStatus.isFullyRefunded,
           isPartiallyRefunded: refundStatus.isPartiallyRefunded
         }),
       [
-        order.paid_status,
+        effectivePaidStatus,
         order.order_status,
         refundStatus.isFullyRefunded,
         refundStatus.isPartiallyRefunded
@@ -451,7 +457,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 Refunded ${refundStatus.totalRefunded.toFixed(2)}
               </Text>
             )}
-            {order.paid_status !== 'Paid' &&
+            {effectivePaidStatus !== 'Paid' &&
               !refundStatus.hasRefund &&
               cashSavings > 0.01 && (
                 <Text style={{ fontSize: 11, color: colors.success }}>
@@ -487,7 +493,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
           {(order.order_status === 'preparing' ||
             order.order_status === 'sent_to_kitchen' ||
             (order.order_status === 'ready' &&
-              order.paid_status === 'Paid')) && (
+              effectivePaidStatus === 'Paid')) && (
             <TouchableOpacity
               onPress={() => {
                 onMarkDone()
@@ -567,7 +573,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
           </TouchableOpacity>
 
           {/* Print Receipt */}
-          {onPrintReceipt && order.paid_status === 'Paid' && (
+          {onPrintReceipt && effectivePaidStatus === 'Paid' && (
             <TouchableOpacity
               onPress={() => {
                 onPrintReceipt()
@@ -608,7 +614,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
           )}
 
           {/* Retrieve to Pay / Pay Remaining */}
-          {order.paid_status !== 'Paid' &&
+          {effectivePaidStatus !== 'Paid' &&
             amountDue > 0.01 &&
             order.check_status !== 'Closed' && (
               <TouchableOpacity
@@ -682,7 +688,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
             )}
 
           {/* Reopen Check */}
-          {order.paid_status !== 'Paid' &&
+          {effectivePaidStatus !== 'Paid' &&
             amountDue >= 0.01 &&
             order.check_status === 'Closed' && (
               <TouchableOpacity
@@ -753,6 +759,10 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   const currentStationId = useOrderStore(s => s.currentStationId)
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
+  const effectivePaidStatus = useMemo(
+    () => deriveEffectivePaidStatus(order) ?? order.paid_status,
+    [order]
+  )
 
   // Phase 6: Check if order was recently updated by another station
   const wasRecentlyUpdated = useWasOrderRecentlyUpdated(
@@ -807,10 +817,10 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
     if (order.order_status === 'completed' || order.order_status === 'void')
       return false
     if (orderCompletionMode === 'auto_on_payment')
-      return order.paid_status === 'Paid'
+      return effectivePaidStatus === 'Paid'
     // manual & auto: require ready + paid
-    return order.paid_status === 'Paid' && order.order_status === 'ready'
-  }, [order.paid_status, order.order_status, orderCompletionMode])
+    return effectivePaidStatus === 'Paid' && order.order_status === 'ready'
+  }, [effectivePaidStatus, order.order_status, orderCompletionMode])
 
   // Swipe-to-complete gesture (single shared value — lightweight)
   const translateY = useSharedValue(0)
@@ -1044,8 +1054,10 @@ const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
     prev.order.items.length === next.order.items.length &&
     prev.order._broadcastItemCount === next.order._broadcastItemCount &&
     prev.order.amount_due === next.order.amount_due &&
+    prev.order.cash_amount_due === next.order.cash_amount_due &&
     prev.order.amount_paid === next.order.amount_paid &&
     prev.order.total_amount === next.order.total_amount &&
+    prev.order.total_cash_amount === next.order.total_cash_amount &&
     prev.order.customer_name === next.order.customer_name &&
     prev.order.payments?.length === next.order.payments?.length &&
     getCachedRefunded(prev.order) === getCachedRefunded(next.order) &&

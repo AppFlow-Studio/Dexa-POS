@@ -4,6 +4,11 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { getDeviceId } from "@/lib/deviceId";
+import {
+  findLatestReusableEmptyDraftId,
+  getRefreshedReusableDraftNumbers,
+  isReusableEmptyDraftOrder,
+} from "@/lib/reusableEmptyDraft";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
@@ -46,14 +51,13 @@ import {
 import React, {
     useCallback,
     useEffect,
-    useMemo,
     useRef,
+    useMemo,
     useState,
 } from "react";
 import {
     ActivityIndicator,
-    Dimensions,
-    Keyboard,
+    KeyboardAvoidingView,
     Modal,
     Platform,
     Pressable,
@@ -82,6 +86,7 @@ import Totals from "./Totals";
 // items reference changes (Immer mutates items on add) but not when other
 // order fields change. Parent's re-render no longer cascades here.
 const EMPTY_CART_ITEMS: CartItem[] = [];
+
 const BillItemsAndTotals = React.memo(
   ({
     orderNote,
@@ -110,112 +115,93 @@ const BillItemsAndTotals = React.memo(
     );
     const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
     const [isOrderNoteEditorOpen, setIsOrderNoteEditorOpen] = useState(false);
-    const [keyboardTop, setKeyboardTop] = useState<number | null>(null);
     const [orderNoteDraft, setOrderNoteDraft] = useState(orderNote ?? "");
+    const [orderNoteModalDraft, setOrderNoteModalDraft] = useState(
+      orderNote ?? "",
+    );
     const orderNoteInputRef = useRef<TextInput>(null);
-    const lastSavedNoteRef = useRef(orderNote ?? "");
+    const orderNoteFocusTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>(
+      [],
+    );
+
+    const clearOrderNoteFocusTimeouts = useCallback(() => {
+      orderNoteFocusTimeoutsRef.current.forEach(clearTimeout);
+      orderNoteFocusTimeoutsRef.current = [];
+    }, []);
 
     useEffect(() => {
       const nextNote = orderNote ?? "";
-      lastSavedNoteRef.current = nextNote;
       setOrderNoteDraft(nextNote);
-    }, [orderNote]);
+      if (!isOrderNoteEditorOpen) {
+        setOrderNoteModalDraft(nextNote);
+      }
+    }, [isOrderNoteEditorOpen, orderNote]);
 
-    useEffect(() => {
-      if (orderNoteDraft.trim() === lastSavedNoteRef.current.trim()) return;
-      const timeoutId = setTimeout(() => {
-        lastSavedNoteRef.current = orderNoteDraft;
-        onSaveOrderNote(orderNoteDraft);
-      }, 450);
-      return () => clearTimeout(timeoutId);
-    }, [onSaveOrderNote, orderNoteDraft]);
-
-    useEffect(() => {
-      if (Platform.OS !== "android") return;
-
-      const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
-        const fallbackTop =
-          Dimensions.get("window").height - (event.endCoordinates?.height ?? 0);
-        setKeyboardTop(event.endCoordinates?.screenY ?? fallbackTop);
-      });
-
-      const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-        setKeyboardTop(null);
-        setIsOrderNoteEditorOpen(false);
-      });
-
-      return () => {
-        showSub.remove();
-        hideSub.remove();
-      };
-    }, []);
+    useEffect(() => clearOrderNoteFocusTimeouts, [clearOrderNoteFocusTimeouts]);
 
     const handleToggleExpand = useCallback((itemId: string) => {
       setExpandedItemId((prev) => (prev === itemId ? null : itemId));
     }, []);
 
-    const closeOrderNoteEditor = useCallback(() => {
-      setIsOrderNoteEditorOpen(false);
-      setKeyboardTop(null);
-      lastSavedNoteRef.current = orderNoteDraft;
-      onSaveOrderNote(orderNoteDraft);
-      Keyboard.dismiss();
-    }, [onSaveOrderNote, orderNoteDraft]);
+    const openOrderNoteEditor = useCallback(() => {
+      setOrderNoteModalDraft(orderNoteDraft);
+      setIsOrderNoteEditorOpen(true);
+    }, [orderNoteDraft]);
 
-    const handleOrderNoteEditorBlur = useCallback(() => {
+    const closeOrderNoteEditor = useCallback(() => {
+      clearOrderNoteFocusTimeouts();
       setIsOrderNoteEditorOpen(false);
-      setKeyboardTop(null);
-      lastSavedNoteRef.current = orderNoteDraft;
-      onSaveOrderNote(orderNoteDraft);
-    }, [onSaveOrderNote, orderNoteDraft]);
+      setOrderNoteModalDraft(orderNoteDraft);
+    }, [clearOrderNoteFocusTimeouts, orderNoteDraft]);
+
+    const handleDoneOrderNoteEditor = useCallback(() => {
+      clearOrderNoteFocusTimeouts();
+      const nextNote = orderNoteModalDraft;
+      setOrderNoteDraft(nextNote);
+      setIsOrderNoteEditorOpen(false);
+      onSaveOrderNote(nextNote);
+    }, [clearOrderNoteFocusTimeouts, onSaveOrderNote, orderNoteModalDraft]);
 
     const focusOrderNoteEditor = useCallback(() => {
-      setTimeout(() => {
-        orderNoteInputRef.current?.focus();
-      }, 60);
-    }, []);
+      clearOrderNoteFocusTimeouts();
 
-    const renderOrderNoteInput = () => (
-      <View
-        className="h-9 rounded-lg flex-row items-center mb-1"
-        style={{
-          backgroundColor: colors.panel,
-          borderWidth: 1,
-          borderColor: colors.border,
-          paddingHorizontal: 10,
-          gap: 7,
-        }}
-      >
-        <NotebookPen size={13} color={colors.muted} />
-        <TextInput
-          ref={orderNoteInputRef}
-          value={orderNoteDraft}
-          onChangeText={setOrderNoteDraft}
-          onBlur={
-            Platform.OS === "android"
-              ? handleOrderNoteEditorBlur
-              : () => onSaveOrderNote(orderNoteDraft)
-          }
-          onEndEditing={() => onSaveOrderNote(orderNoteDraft)}
-          placeholder="Add order note..."
-          placeholderTextColor={colors.muted}
-          multiline={false}
-          numberOfLines={1}
-          textAlignVertical="center"
+      const focusInput = () => {
+        orderNoteInputRef.current?.focus();
+      };
+
+      [350, 650].forEach((delay) => {
+        const timeoutId = setTimeout(focusInput, delay);
+        orderNoteFocusTimeoutsRef.current.push(timeoutId);
+      });
+    }, [clearOrderNoteFocusTimeouts]);
+
+    const renderOrderNoteButton = () => (
+      <TouchableOpacity activeOpacity={0.9} onPress={openOrderNoteEditor}>
+        <View
+          className="h-9 rounded-lg flex-row items-center mb-1"
           style={{
-            flex: 1,
-            color: colors.heading,
-            fontSize: 12,
-            lineHeight: 16,
-            height: 18,
-            paddingHorizontal: 0,
-            paddingVertical: 0,
-            margin: 2,
-            includeFontPadding: false,
-            fontFamily: "System",
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            paddingHorizontal: 10,
+            gap: 7,
           }}
-        />
-      </View>
+        >
+          <NotebookPen size={13} color={colors.muted} />
+          <Text
+            numberOfLines={1}
+            style={{
+              flex: 1,
+              color: orderNoteDraft.trim() ? colors.heading : colors.muted,
+              fontSize: 12,
+              lineHeight: 16,
+              fontFamily: "System",
+            }}
+          >
+            {orderNoteDraft.trim() || "Add order note..."}
+          </Text>
+        </View>
+      </TouchableOpacity>
     );
 
     return (
@@ -233,74 +219,126 @@ const BillItemsAndTotals = React.memo(
           isNetworkDegraded={isNetworkDegraded}
         />
         <View className="px-3 pb-1">
-          {Platform.OS === "android" ? (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setIsOrderNoteEditorOpen(true)}
-            >
-              <View
-                className="h-9 rounded-lg flex-row items-center mb-1"
-                style={{
-                  backgroundColor: colors.panel,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  paddingHorizontal: 10,
-                  gap: 7,
-                }}
-              >
-                <NotebookPen size={13} color={colors.muted} />
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                    color: (orderNote ?? "").trim()
-                      ? colors.heading
-                      : colors.muted,
-                    fontSize: 12,
-                    lineHeight: 16,
-                    fontFamily: "System",
-                  }}
-                >
-                  {orderNoteDraft.trim() || "Add order note..."}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            renderOrderNoteInput()
-          )}
+          {renderOrderNoteButton()}
         </View>
 
-        {Platform.OS === "android" && (
-          <Modal
-            transparent
-            visible={isOrderNoteEditorOpen}
-            animationType="fade"
-            onShow={focusOrderNoteEditor}
-            onRequestClose={closeOrderNoteEditor}
+        <Modal
+          transparent
+          visible={isOrderNoteEditorOpen}
+          animationType="fade"
+          onShow={focusOrderNoteEditor}
+          onRequestClose={closeOrderNoteEditor}
+        >
+          <Pressable
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.28)",
+              justifyContent: "center",
+              paddingHorizontal: 16,
+            }}
+            onPress={closeOrderNoteEditor}
           >
-            <Pressable
-              style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.18)" }}
-              onPress={closeOrderNoteEditor}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+              style={{
+                width: "50%",
+                alignSelf: "center",
+              }}
             >
               <Pressable
                 onPress={() => {}}
                 style={{
-                  position: "absolute",
-                  left: 12,
-                  right: 12,
-                  opacity: keyboardTop != null ? 1 : 0,
-                  top:
-                    keyboardTop != null
-                      ? Math.max(12, keyboardTop - 44)
-                      : undefined,
-                  bottom: keyboardTop == null ? 12 : undefined,
+                  backgroundColor: colors.panel,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 16,
+                  gap: 14,
                 }}
               >
-                {renderOrderNoteInput()}
+                <View style={{ gap: 6 }}>
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontSize: 18,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Order Note
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 13,
+                      lineHeight: 18,
+                    }}
+                  >
+                    Add a note for this order.
+                  </Text>
+                </View>
+                <TextInput
+                  ref={orderNoteInputRef}
+                  value={orderNoteModalDraft}
+                  onChangeText={setOrderNoteModalDraft}
+                  placeholder="Add order note..."
+                  placeholderTextColor={colors.muted}
+                  multiline
+                  showSoftInputOnFocus
+                  style={{
+                    minHeight: 104,
+                    color: colors.heading,
+                    fontSize: 14,
+                    lineHeight: 20,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.card,
+                    textAlignVertical: "top",
+                  }}
+                />
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <TouchableOpacity
+                    onPress={closeOrderNoteEditor}
+                    className="flex-1 h-11 rounded-xl items-center justify-center"
+                    style={{
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.heading,
+                        fontSize: 14,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleDoneOrderNoteEditor}
+                    className="flex-1 h-11 rounded-xl items-center justify-center"
+                    style={{ backgroundColor: colors.teal }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.onSolid,
+                        fontSize: 14,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Done
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </Pressable>
-            </Pressable>
-          </Modal>
-        )}
+            </KeyboardAvoidingView>
+          </Pressable>
+        </Modal>
       </View>
     );
   },
@@ -494,18 +532,8 @@ const BillSectionContent = ({
 
   const isCurrentOrderEmptyDraft = useMemo(() => {
     if (!activeOrder) return false;
-    const hasNonVoidedPayments = !!activeOrder.payments?.some(
-      (p: any) => !p.isVoided,
-    );
-    return (
-      activeOrder.order_status === "draft" &&
-      cart.length === 0 &&
-      activeOrder.service_location_id === null &&
-      activeOrder.paid_status !== "Paid" &&
-      !activeOrder.customer_name &&
-      !activeOrder.customer_id &&
-      !hasNonVoidedPayments
-    );
+    if (cart.length > 0) return false;
+    return isReusableEmptyDraftOrder(activeOrder);
   }, [activeOrder, cart]);
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1323,6 +1351,37 @@ const BillSectionContent = ({
       setActiveOrder(activeOrder.id);
       return;
     }
+
+    const { activeOrderId: currentActiveOrderId, orderIds, ordersById } =
+      useOrderStore.getState();
+    const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+      ordersById,
+      orderIds,
+      currentActiveOrderId,
+    );
+
+    if (reusableEmptyDraftId) {
+      if (selectedStore) {
+        const refreshedNumbers = getRefreshedReusableDraftNumbers({
+          draftId: reusableEmptyDraftId,
+          ordersById,
+          orderIds,
+          locationId: selectedStore.id,
+          stationNumber: selectedStation?.station_number ?? null,
+        });
+        if (refreshedNumbers) {
+          useOrderStore.setState((state) => {
+            const draft = state.ordersById[reusableEmptyDraftId];
+            if (!draft) return;
+            draft.order_number = refreshedNumbers.orderNumber;
+            draft.display_number = refreshedNumbers.displayNumber;
+          });
+        }
+      }
+      setActiveOrder(reusableEmptyDraftId);
+      return;
+    }
+
     const newOrder = startNewOrder();
     setActiveOrder(newOrder.id);
   }, [
@@ -1335,28 +1394,126 @@ const BillSectionContent = ({
   if (!activeOrderId)
     return (
       <View
-        className="w-[38%] items-center justify-center p-6"
-        style={{ backgroundColor: colors.screen }}
+        className="w-[38%] px-4 py-5"
+        style={{
+          backgroundColor: colors.screen,
+          borderRightWidth: 2,
+          borderColor: colors.border,
+        }}
       >
-        <Text
-          className="text-sm font-semibold mb-3"
-          style={{ color: colors.heading }}
-        >
-          No Active Order
-        </Text>
-        <TouchableOpacity
-          className="px-4 py-2 bg-teal-600 rounded-lg active:opacity-80"
-          onPress={() => {
-            const newOrder = startNewOrder();
-            setActiveOrder(newOrder.id);
-          }}
-        >
-          <Text
-            style={{ color: colors.onSolid, fontSize: 14, fontWeight: "600" }}
+        <View style={{ flex: 1 }}>
+          <View
+            style={{
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            Start New Order
-          </Text>
-        </TouchableOpacity>
+            <View
+              style={{
+                width: "100%",
+                maxWidth: 320,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 22,
+                paddingHorizontal: 22,
+                paddingVertical: 24,
+                alignItems: "center",
+              }}
+            >
+              <View
+                style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 18,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: colors.tealMuted,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  marginBottom: 14,
+                }}
+              >
+                <Plus size={22} color={colors.teal} />
+              </View>
+
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: 19,
+                  fontWeight: "700",
+                  textAlign: "center",
+                }}
+              >
+                No Active Order
+              </Text>
+              <Text
+                style={{
+                  color: colors.muted,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  textAlign: "center",
+                  marginTop: 8,
+                  marginBottom: 18,
+                }}
+              >
+                Start a fresh ticket or jump back into the latest empty draft.
+              </Text>
+
+              <TouchableOpacity
+                className="h-11 px-4 rounded-xl flex-row items-center justify-center gap-2 active:opacity-80"
+                style={{
+                  backgroundColor: colors.teal,
+                  minWidth: 176,
+                }}
+                onPress={() => {
+                  const { orderIds, ordersById } = useOrderStore.getState();
+                  const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+                    ordersById,
+                    orderIds,
+                  );
+
+                  if (reusableEmptyDraftId) {
+                    if (selectedStore) {
+                      const refreshedNumbers = getRefreshedReusableDraftNumbers({
+                        draftId: reusableEmptyDraftId,
+                        ordersById,
+                        orderIds,
+                        locationId: selectedStore.id,
+                        stationNumber: selectedStation?.station_number ?? null,
+                      });
+                      if (refreshedNumbers) {
+                        useOrderStore.setState((state) => {
+                          const draft = state.ordersById[reusableEmptyDraftId];
+                          if (!draft) return;
+                          draft.order_number = refreshedNumbers.orderNumber;
+                          draft.display_number = refreshedNumbers.displayNumber;
+                        });
+                      }
+                    }
+                    setActiveOrder(reusableEmptyDraftId);
+                    return;
+                  }
+
+                  const newOrder = startNewOrder();
+                  setActiveOrder(newOrder.id);
+                }}
+              >
+                <Plus color={colors.onSolid} size={14} />
+                <Text
+                  style={{
+                    color: colors.onSolid,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  Start New Order
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </View>
     );
   // Handle retry failed syncs

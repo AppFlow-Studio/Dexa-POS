@@ -2,6 +2,7 @@
 // Real-time updates for order management
 
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { getOrderPaymentsQueryOptions, orderPaymentsQueryKey } from '@/hooks/orders/useOrderPayments'
 import type {
   OrderPayload,
   RealtimeEventType,
@@ -307,6 +308,7 @@ export function useOrdersRealtime ({
   onPaymentChange
 }: UseOrdersRealtimeOptions) {
   const supabase = useSupabaseClient()
+  const queryClient = useQueryClient()
 
   const events: RealtimeEventType[] = useMemo(
     () => ['INSERT', 'UPDATE', 'DELETE'],
@@ -327,6 +329,23 @@ export function useOrdersRealtime ({
 
       if (event === 'INSERT' || event === 'UPDATE' || event === 'DELETE') {
         const broadcastPayload = payload as OrderBroadcastPayload
+        const broadcastOrder = broadcastPayload.data?.order
+        const orderId = broadcastOrder?.id
+        const orderSource = broadcastOrder?.order_source?.toLowerCase()
+
+        if (
+          orderId &&
+          orderSource === 'online' &&
+          (event === 'INSERT' || event === 'UPDATE')
+        ) {
+          void queryClient.invalidateQueries({
+            queryKey: orderPaymentsQueryKey(orderId)
+          })
+
+          void queryClient.prefetchQuery(
+            getOrderPaymentsQueryOptions(supabase, orderId)
+          )
+        }
 
         if (onOrderChange) {
           try {
@@ -339,7 +358,7 @@ export function useOrdersRealtime ({
         }
       }
     },
-    [onOrderChange]
+    [onOrderChange, queryClient, supabase]
   )
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({

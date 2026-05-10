@@ -4,6 +4,20 @@ import { useQuery } from "@tanstack/react-query";
 
 import { MenuItemIngredientSync, ModifierIngredientSync } from "@/types/menu";
 
+interface MenuItemRecipeRow {
+  id: string;
+  menu_item_id: string;
+  inventory_item_id: string | null;
+  quantity_used: number | null;
+}
+
+interface ModifierGroupItemRecipeRow {
+  id: string;
+  modifier_group_item_id: string;
+  inventory_item_id: string;
+  quantity_used: number;
+}
+
 /**
  * Types for standalone data (not part of menu hierarchy)
  */
@@ -201,23 +215,17 @@ export const useStandaloneSync = (
           .order("display_order", { ascending: true, nullsFirst: false })
           .order("created_at", { ascending: false }),
 
-        // 5. Menu Item Ingredients - TEMPORARILY DISABLED: Table name mismatch (PGRST205)
-        // supabase
-        //   .from("menu_item_ingredients")
-        //   .select("*, menu_items!inner(id, merchant_id)")
-        //   .eq("menu_items.merchant_id", merchantId),
+        // 5. Menu Item Recipes
+        supabase
+          .from("menu_item_recipes")
+          .select("id, menu_item_id, inventory_item_id, quantity_used")
+          .eq("merchant_id", merchantId),
 
-        // Placeholder for result
-        { data: [], error: null },
-
-        // 6. Modifier Group Item Ingredients - TEMPORARILY DISABLED: Table name mismatch
-        // supabase
-        //   .from("modifier_group_item_ingredients")
-        //   .select("*, modifier_group_items!inner(id, merchant_id)")
-        //   .eq("modifier_group_items.merchant_id", merchantId),
-
-        // Placeholder for result
-        { data: [], error: null },
+        // 6. Modifier Group Item Recipes
+        supabase
+          .from("modifier_group_item_recipes")
+          .select("id, modifier_group_item_id, inventory_item_id, quantity_used")
+          .eq("merchant_id", merchantId),
       ]);
       // Log errors but don't fail completely
       if (categoriesResult.error) {
@@ -296,10 +304,26 @@ export const useStandaloneSync = (
         modifierGroups:
           (modifiersResult.data as unknown as StandaloneModifierGroup[]) || [],
         menus: (menusResult.data || []) as StandaloneMenu[],
-        menu_item_ingredients: (menuItemIngredientsResult.data ||
-          []) as MenuItemIngredientSync[],
-        modifier_group_item_ingredients: (modifierIngredientsResult.data ||
-          []) as ModifierIngredientSync[],
+        menu_item_ingredients: (
+          (menuItemIngredientsResult.data as MenuItemRecipeRow[] | null) || []
+        )
+          .filter((row) => !!row.inventory_item_id)
+          .map((row) => ({
+            id: row.id,
+            menu_item_id: row.menu_item_id,
+            inventory_item_id: row.inventory_item_id as string,
+            quantity: row.quantity_used ?? 0,
+          })),
+        modifier_group_item_ingredients: (
+          (modifierIngredientsResult.data as
+            | ModifierGroupItemRecipeRow[]
+            | null) || []
+        ).map((row) => ({
+          id: row.id,
+          modifier_group_item_id: row.modifier_group_item_id,
+          inventory_item_id: row.inventory_item_id,
+          quantity: row.quantity_used ?? 0,
+        })),
       };
     },
 

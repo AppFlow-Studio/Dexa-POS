@@ -13,11 +13,16 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
 import {
+    findLatestReusableEmptyDraftId,
+    getRefreshedReusableDraftNumbers,
+    isReusableEmptyDraftOrder,
+} from "@/lib/reusableEmptyDraft";
+import {
     forceSetLocalSequence,
-    generateLocalOrderNumbers,
     parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { iosOnly } from "@/lib/safeAnimations";
+import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -59,6 +64,8 @@ import React, {
     useState,
 } from "react";
 import {
+    Dimensions,
+    Keyboard,
     Modal,
     PanResponder,
     Pressable,
@@ -119,6 +126,14 @@ const OrderProcessing = () => {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
+  const customItemModalHeight = useMemo(() => {
+    const screenHeight = Dimensions.get("screen").height;
+    return Math.min(560, Math.max(420, screenHeight - 40));
+  }, []);
+  const customItemModalTop = useMemo(() => {
+    const screenHeight = Dimensions.get("screen").height;
+    return Math.max(20, Math.round((screenHeight - customItemModalHeight) / 2));
+  }, [customItemModalHeight]);
 
   // Wave 2.7: per-order ownership recheck on screen focus + connectionQuality
   // recovery. Closes the gap between Wave 2.1 (realtime) and Wave 2.1.1
@@ -158,6 +173,8 @@ const OrderProcessing = () => {
   const [isNoSaleModalOpen, setNoSaleModalOpen] = useState(false);
   const [bulkCompleteModalOpen, setBulkCompleteModalOpen] = useState(false);
   const [isCustomItemModuleOpen, setIsCustomItemModuleOpen] = useState(false);
+  const [isCustomItemKeyboardVisible, setIsCustomItemKeyboardVisible] =
+    useState(false);
   const [isInlinePreviousOrdersOpen, setIsInlinePreviousOrdersOpen] =
     useState(false);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
@@ -169,6 +186,29 @@ const OrderProcessing = () => {
   const didInitializeOrderRef = useRef(false);
   const [canScrollBadgesLeft, setCanScrollBadgesLeft] = useState(false);
   const [canScrollBadgesRight, setCanScrollBadgesRight] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
+      setIsCustomItemKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
+      setIsCustomItemKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const handleCustomItemBackdropPress = useCallback(() => {
+    if (isCustomItemKeyboardVisible) {
+      Keyboard.dismiss();
+      return;
+    }
+
+    setIsCustomItemModuleOpen(false);
+  }, [isCustomItemKeyboardVisible]);
   const ordersSheetHeight = useSharedValue<number>(windowHeight);
   const dragStartHeightRef = useRef<number>(windowHeight);
 
@@ -186,19 +226,33 @@ const OrderProcessing = () => {
     didInitializeOrderRef.current = true;
 
     const state = useOrderStore.getState();
-    const isReusableEmptyDraft = (o?: OrderProfile | null) =>
-      !!o &&
-      o.order_status === "draft" &&
-      o.items.length === 0 &&
-      o.service_location_id === null &&
-      o.paid_status !== "Paid" &&
-      !o.customer_name &&
-      !o.customer_id;
+    const selectedStore = useStoreSettingsStore.getState().selectedStore;
+    const stationNumberFromOrderStore =
+      state.currentStation?.station_number ?? null;
 
     const currentActiveOrder = state.activeOrderId
       ? state.ordersById[state.activeOrderId]
       : null;
-    if (currentActiveOrder && isReusableEmptyDraft(currentActiveOrder)) {
+    if (currentActiveOrder) {
+      if (isReusableEmptyDraftOrder(currentActiveOrder) && selectedStore) {
+        const refreshedNumbers = getRefreshedReusableDraftNumbers({
+          draftId: currentActiveOrder.id,
+          ordersById: state.ordersById,
+          orderIds: state.orderIds,
+          locationId: selectedStore.id,
+          stationNumber: stationNumberFromOrderStore,
+        });
+
+        if (refreshedNumbers) {
+          useOrderStore.setState((storeState) => {
+            const draft = storeState.ordersById[currentActiveOrder.id];
+            if (!draft) return;
+            draft.order_number = refreshedNumbers.orderNumber;
+            draft.display_number = refreshedNumbers.displayNumber;
+          });
+        }
+      }
+
       setActiveOrder(currentActiveOrder.id);
       return;
     }
@@ -210,9 +264,6 @@ const OrderProcessing = () => {
     // Heal the local sequence counter from meaningful today/station orders.
     // Empty placeholder drafts are excluded so stale highs (e.g. #109) don't
     // poison the next local number.
-    const selectedStore = useStoreSettingsStore.getState().selectedStore;
-    const stationNumberFromOrderStore =
-      state.currentStation?.station_number ?? null;
     let reliableHighestSeq = 0;
     let highestSeenTodaySeq = 0;
     if (selectedStore) {
@@ -269,46 +320,35 @@ const OrderProcessing = () => {
       );
     }
 
-    const emptyDraft = [...allOrders]
-      .reverse()
-      .find((o) => isReusableEmptyDraft(o));
+    const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+      state.ordersById,
+      state.orderIds,
+    );
 
-    if (emptyDraft) {
+    if (reusableEmptyDraftId) {
       // Keep reusing the empty draft. Only refresh its local number when the
       // existing number is missing, from another day, or collides with another
       // visible order. Mounting alone should not consume a new sequence.
       if (selectedStore) {
-        const stationNumber = stationNumberFromOrderStore;
-        const todayDateKey = getDateKey(new Date());
-        const todayOrderPrefix = `ORD-${todayDateKey}-`;
-        const takenDisplayNumbers = new Set(
-          allOrders
-            .filter((o) => o.id !== emptyDraft.id)
-            .map((o) => o.display_number)
-            .filter(Boolean),
-        );
+        const refreshedNumbers = getRefreshedReusableDraftNumbers({
+          draftId: reusableEmptyDraftId,
+          ordersById: state.ordersById,
+          orderIds: state.orderIds,
+          locationId: selectedStore.id,
+          stationNumber: stationNumberFromOrderStore,
+        });
 
-        const shouldRefreshLocalNumber =
-          !emptyDraft.order_number ||
-          !emptyDraft.order_number.startsWith(todayOrderPrefix) ||
-          (!!emptyDraft.display_number &&
-            takenDisplayNumbers.has(emptyDraft.display_number));
-
-        if (shouldRefreshLocalNumber) {
-          const localNumbers = generateLocalOrderNumbers(
-            selectedStore.id,
-            stationNumber,
-          );
+        if (refreshedNumbers) {
           useOrderStore.setState((storeState) => {
-            const draft = storeState.ordersById[emptyDraft.id];
+            const draft = storeState.ordersById[reusableEmptyDraftId];
             if (!draft) return;
-            draft.order_number = localNumbers.orderNumber;
-            draft.display_number = localNumbers.displayNumber;
+            draft.order_number = refreshedNumbers.orderNumber;
+            draft.display_number = refreshedNumbers.displayNumber;
           });
         }
       }
 
-      setActiveOrder(emptyDraft.id);
+      setActiveOrder(reusableEmptyDraftId);
       return;
     }
 
@@ -326,10 +366,12 @@ const OrderProcessing = () => {
     (orderId: string) => {
       const order = useOrderStore.getState().ordersById[orderId];
       if (!order) return;
+      const effectivePaidStatus =
+        deriveEffectivePaidStatus(order) ?? order.paid_status;
 
       markAllItemsAsReady(orderId);
 
-      if (order.paid_status === "Paid") {
+      if (effectivePaidStatus === "Paid") {
         archiveOrder(orderId);
         // Toast fires from inside archiveOrder
       }
@@ -464,6 +506,9 @@ const OrderProcessing = () => {
     const isDineInOrder =
       currentActiveOrder.order_type === "dine_in" ||
       currentActiveOrder.order_type === "Dine In";
+    const effectivePaidStatus =
+      deriveEffectivePaidStatus(currentActiveOrder) ??
+      currentActiveOrder.paid_status;
 
     if (!isDineInOrder) {
       show({
@@ -474,7 +519,7 @@ const OrderProcessing = () => {
       return;
     }
 
-    if (currentActiveOrder.paid_status !== "Paid") {
+    if (effectivePaidStatus !== "Paid") {
       show({
         title: "Cannot Close Session",
         message: "Order must be fully paid before closing the table session.",
@@ -639,11 +684,12 @@ const OrderProcessing = () => {
   // Bulk complete: orders eligible for completion
   const completableOrders = useMemo(() => {
     return displayOrders.filter((order) => {
+      const effectivePaidStatus = deriveEffectivePaidStatus(order);
       if (order.order_status === "completed" || order.order_status === "void")
         return false;
       if (orderCompletionMode === "auto_on_payment")
-        return order.paid_status === "Paid";
-      return order.paid_status === "Paid" && order.order_status === "ready";
+        return effectivePaidStatus === "Paid";
+      return effectivePaidStatus === "Paid" && order.order_status === "ready";
     });
   }, [displayOrders, orderCompletionMode]);
 
@@ -775,12 +821,13 @@ const OrderProcessing = () => {
           : (item._broadcastItemCount ?? 0);
       const openedAt = formatOrderOpenedTime(item.opened_at);
       const orderStatusColor = getOrderStatusColor(item.order_status);
-      const paidStatusColor = getPaidStatusColor(item.paid_status);
+      const effectivePaidStatus = deriveEffectivePaidStatus(item);
+      const paidStatusColor = getPaidStatusColor(effectivePaidStatus);
 
       const canMarkDone =
         item.order_status === "preparing" ||
         item.order_status === "sent_to_kitchen" ||
-        (item.order_status === "ready" && item.paid_status === "Paid");
+        (item.order_status === "ready" && effectivePaidStatus === "Paid");
 
       const cashDue = item.cash_amount_due ?? item.amount_due ?? totalAmount;
       const statusLabel = formatOrderStatusLabel(item.order_status);
@@ -874,7 +921,7 @@ const OrderProcessing = () => {
                     fontWeight: "700",
                   }}
                 >
-                  {item.paid_status}
+                  {effectivePaidStatus ?? item.paid_status}
                 </Text>
               </View>
             </View>
@@ -1033,7 +1080,7 @@ const OrderProcessing = () => {
               <ChevronRight size={13} color={colors.label} />
             </TouchableOpacity>
 
-            {item.paid_status === "Paid" && (
+            {effectivePaidStatus === "Paid" && (
               <TouchableOpacity
                 onPress={() => handlePrintReceipt(item)}
                 style={{
@@ -1790,16 +1837,16 @@ const OrderProcessing = () => {
         visible={isCustomItemModuleOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsCustomItemModuleOpen(false)}
+        onRequestClose={handleCustomItemBackdropPress}
       >
         <Pressable
-          onPress={() => setIsCustomItemModuleOpen(false)}
+          onPress={handleCustomItemBackdropPress}
           style={{
             flex: 1,
             backgroundColor: "rgba(0,0,0,0.5)",
-            justifyContent: "center",
+            justifyContent: "flex-start",
             paddingHorizontal: 24,
-            paddingVertical: 20,
+            paddingTop: customItemModalTop,
           }}
         >
           <Pressable
@@ -1807,9 +1854,9 @@ const OrderProcessing = () => {
             style={{
               width: 500,
               maxWidth: "96%",
-              height: 560,
+              height: customItemModalHeight,
               alignSelf: "center",
-              maxHeight: "90%",
+              maxHeight: customItemModalHeight,
               borderRadius: 18,
               borderWidth: 1,
               borderColor: colors.teal + "45",

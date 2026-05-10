@@ -7,6 +7,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Delete, Plus, X } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import {
+  Keyboard,
   StyleSheet,
   Text,
   TextInput,
@@ -491,6 +492,7 @@ const OpenItemAdder = ({
     ]);
     setModifierName("");
     setModifierPrice("");
+    Keyboard.dismiss();
   };
 
   const removeModifier = (modifierId: string) => {

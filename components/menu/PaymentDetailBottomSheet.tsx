@@ -2,6 +2,7 @@ import { ToastRenderer, useToast } from '@/contexts/ToastContext'
 import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { useOrderDetailsFetch } from '@/hooks/orders/useOrderDetailsFetch'
+import { useOrderPayments } from '@/hooks/orders/useOrderPayments'
 import { OrderDetailMerchantBreakdown } from '@/components/orders/OrderDetailMerchantBreakdown'
 import {
   useRefundMutation,
@@ -702,6 +703,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
 // ============================================================================
 interface RightPaneSummaryProps {
   order: any
+  isPaymentsLoading: boolean
   paymentSummary: {
     orderTotal: number
     orderCashTotal: number
@@ -730,6 +732,7 @@ interface RightPaneSummaryProps {
 
 const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   order,
+  isPaymentsLoading,
   paymentSummary,
   onReopenOrder,
   onCloseOrder,
@@ -794,7 +797,11 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <SummaryCard
               amount={paymentSummary.orderTotal}
-              cashAmount={paymentSummary.orderCashTotal}
+              cashAmount={
+                order?.order_source?.toLowerCase() === 'online'
+                  ? undefined
+                  : paymentSummary.orderCashTotal
+              }
               label='Order Total'
               icon={<DollarSign size={18} color={colors.teal} />}
               accentColor={colors.teal}
@@ -842,7 +849,14 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           </View>
 
           {/* Payment List */}
-          {paymentSummary.payments.length === 0 ? (
+          {isPaymentsLoading ? (
+            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+              <ActivityIndicator size='small' color={colors.teal} />
+              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 10 }}>
+                Loading payment...
+              </Text>
+            </View>
+          ) : paymentSummary.payments.length === 0 ? (
             <View style={{ paddingVertical: 32, alignItems: 'center' }}>
               <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
                 <CreditCard size={20} color={colors.muted} />
@@ -3764,6 +3778,21 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       enabled: isOpen && !!orderId
     })
 
+  const {
+    payments: hydratedPayments,
+    isPending: isPaymentsPending,
+    isFetching: isPaymentsFetching
+  } = useOrderPayments(dbOrderId, {
+    enabled: isOpen && !!dbOrderId
+  })
+
+  const storedPaymentsCount =
+    activeOrder?.payments?.length ?? previousOrder?.payments?.length ?? 0
+  const isPaymentsLoading =
+    !!dbOrderId &&
+    storedPaymentsCount === 0 &&
+    (isPaymentsPending || isPaymentsFetching)
+
   // Map previousOrder to OrderProfile format (same as PreviousOrdersSection)
   const order = useMemo((): OrderProfile | null => {
     if (activeOrder) {
@@ -3771,8 +3800,18 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       if (fetchedReversals.length > 0 && !activeOrder.reversals?.length) {
         return {
           ...activeOrder,
+          payments:
+            hydratedPayments.length > 0
+              ? hydratedPayments
+              : activeOrder.payments,
           reversals: fetchedReversals,
           order_refund_items: fetchedRefundItems
+        }
+      }
+      if (hydratedPayments.length > 0) {
+        return {
+          ...activeOrder,
+          payments: hydratedPayments
         }
       }
       return activeOrder
@@ -3809,7 +3848,10 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       station_id: previousOrder.station_id || null,
       _sourceStationName: previousOrder.station_name,
       notes: previousOrder.notes,
-      payments: previousOrder.payments || [],
+      payments:
+        hydratedPayments.length > 0
+          ? hydratedPayments
+          : previousOrder.payments || [],
       // Include reversals/refund_items: prefer fetched, fallback to cached on previousOrder
       reversals:
         fetchedReversals.length > 0
@@ -3820,7 +3862,13 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           ? fetchedRefundItems
           : previousOrder.order_refund_items
     } as OrderProfile
-  }, [activeOrder, previousOrder, fetchedReversals, fetchedRefundItems])
+  }, [
+    activeOrder,
+    previousOrder,
+    fetchedReversals,
+    fetchedRefundItems,
+    hydratedPayments
+  ])
 
   // Check if active terminal matches the order's payment terminal type
   const { canProcess: terminalCanProcess, blockReason: terminalBlockReason } =
@@ -4602,6 +4650,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                 {rightPaneView === 'summary' ? (
                   <RightPaneSummary
                     order={order}
+                    isPaymentsLoading={isPaymentsLoading}
                     paymentSummary={paymentSummary}
                     onReopenOrder={handleReopenOrder}
                     onCloseOrder={handleCloseOrder}

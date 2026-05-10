@@ -5,6 +5,7 @@ import React, { useCallback } from "react";
 import {
   FlatList,
   Modal,
+  Pressable,
   Text,
   TouchableOpacity,
   View,
@@ -94,143 +95,244 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
       animationType="fade"
       onRequestClose={onCancel}
     >
-      <View
+      <Pressable
         style={{
           flex: 1,
-          backgroundColor: "rgba(0,0,0,0.6)",
+          backgroundColor: "rgba(7, 10, 18, 0.58)",
           justifyContent: "center",
           alignItems: "center",
           padding: 24,
         }}
+        onPress={onCancel}
       >
-        <View
+        <Pressable
+          onPress={() => {}}
           style={{
             width: "100%",
             maxWidth: 420,
             backgroundColor: colors.panel,
-            borderRadius: 16,
+            borderRadius: 22,
             borderWidth: 1,
             borderColor: colors.border,
             overflow: "hidden",
           }}
         >
-          {/* Header */}
           <View
             style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              paddingHorizontal: 16,
-              paddingTop: 16,
-              paddingBottom: 12,
+              paddingHorizontal: 18,
+              paddingTop: 18,
+              paddingBottom: 14,
             }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                backgroundColor: colors.success + "15",
+                flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "center",
+                justifyContent: "space-between",
               }}
             >
-              <CheckCircle2 size={16} color={colors.success} />
-            </View>
-            <Text
-              style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}
-            >
-              Complete Orders
-            </Text>
-          </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 14,
+                    backgroundColor: colors.success + "16",
+                    borderWidth: 1,
+                    borderColor: colors.success + "26",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <CheckCircle2 size={18} color={colors.success} />
+                </View>
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: "700",
+                      color: colors.heading,
+                    }}
+                  >
+                    Complete Orders
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
+                    Finalize ready tickets and move them into history.
+                  </Text>
+                </View>
+              </View>
 
-          {/* Banner */}
-          <View
-            style={{
-              marginHorizontal: 14,
-              marginBottom: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: colors.success + "10",
-              borderWidth: 1,
-              borderColor: colors.success + "25",
-            }}
-          >
-            <Text style={{ fontSize: 12, color: colors.success, lineHeight: 18 }}>
-              The following {orders.length} order{orders.length !== 1 ? "s" : ""} will
-              be marked as completed. This will finalize inventory and move them to
-              order history.
-            </Text>
-          </View>
-
-          {/* Order list */}
-          <FlatList
-            data={orders}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
-            style={{ maxHeight: 300 }}
-            initialNumToRender={10}
-            windowSize={3}
-          />
-
-          {/* Actions */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              gap: 10,
-              paddingHorizontal: 14,
-              paddingVertical: 14,
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-            }}
-          >
-            <TouchableOpacity
-              onPress={onCancel}
-              style={{
-                paddingHorizontal: 16,
-                paddingVertical: 9,
-                borderRadius: 10,
-              }}
-            >
-              <Text
+              <View
                 style={{
-                  fontSize: 13,
-                  fontWeight: "600",
-                  color: colors.muted,
+                  minWidth: 34,
+                  height: 28,
+                  paddingHorizontal: 10,
+                  borderRadius: 999,
+                  backgroundColor: colors.success + "16",
+                  borderWidth: 1,
+                  borderColor: colors.success + "28",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                Cancel
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "700",
+                    color: colors.success,
+                  }}
+                >
+                  {orders.length}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View
+            style={{
+              marginHorizontal: 18,
+              marginBottom: 14,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderRadius: 14,
+              backgroundColor: colors.success + "0E",
+              borderWidth: 1,
+              borderColor: colors.success + "24",
+            }}
+          >
+            <Text style={{ fontSize: 12, color: colors.label, lineHeight: 18 }}>
+              You are about to complete{" "}
+              <Text style={{ color: colors.heading, fontWeight: "700" }}>
+                {orders.length} order{orders.length !== 1 ? "s" : ""}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onConfirm}
+              . This finalizes inventory and clears them from the active line.
+            </Text>
+          </View>
+
+          <View
+            style={{
+              marginHorizontal: 18,
+              marginBottom: 16,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              overflow: "hidden",
+            }}
+          >
+            <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 16,
-                paddingVertical: 9,
-                borderRadius: 10,
-                backgroundColor: colors.success,
+                justifyContent: "space-between",
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                backgroundColor: colors.panel,
               }}
             >
-              <CheckCircle2 size={14} color={colors.onSolid} />
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: "700",
-                  color: colors.onSolid,
+                  color: colors.muted,
+                  letterSpacing: 0.4,
+                  textTransform: "uppercase",
                 }}
               >
-                Complete All ({orders.length})
+                Orders Ready To Close
               </Text>
-            </TouchableOpacity>
+              <Text style={{ fontSize: 11, color: colors.muted }}>
+                Review before confirming
+              </Text>
+            </View>
+
+            <FlatList
+              data={orders}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
+              style={{ maxHeight: 300 }}
+              initialNumToRender={10}
+              windowSize={3}
+            />
           </View>
-        </View>
-      </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              paddingHorizontal: 18,
+              paddingVertical: 16,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+              backgroundColor: colors.panel,
+            }}
+          >
+            <Text style={{ flex: 1, fontSize: 11, color: colors.muted, lineHeight: 16 }}>
+              This action marks every listed order as completed immediately.
+            </Text>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                marginLeft: 12,
+              }}
+            >
+              <TouchableOpacity
+                onPress={onCancel}
+                style={{
+                  height: 40,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: colors.label,
+                  }}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onConfirm}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 7,
+                  height: 40,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  backgroundColor: colors.success,
+                }}
+              >
+                <CheckCircle2 size={14} color={colors.onSolid} />
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "700",
+                    color: colors.onSolid,
+                  }}
+                >
+                  Complete All ({orders.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 };

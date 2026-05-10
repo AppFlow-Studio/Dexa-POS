@@ -177,14 +177,34 @@ const EditMenuItemScreen: React.FC = () => {
       // 4. Save Recipe Ingredients (New)
       if (data.recipe) {
         // Always upsert if present (even if empty, it might mean clearing ingredients)
-        await MenuService.upsertMenuItemRecipe(
+        const recipeResult = await MenuService.upsertMenuItemRecipe(
           supabase,
           itemId,
+          selectedStore?.id,
           data.recipe.map(r => ({
             inventoryItemId: r.inventoryItemId,
             quantity: r.quantity
           }))
         )
+
+        if (!recipeResult.success) {
+          console.error('Failed to save menu item recipe:', recipeResult.error)
+          show({
+            title: 'Recipe Save Failed',
+            message:
+              recipeResult.error?.message ||
+              'The item was updated, but its recipe items were not saved.',
+            type: 'error'
+          })
+          return false
+        }
+
+        if (selectedStore?.id) {
+          const { queryClient } = require('@/contexts/TanstackProvider') as typeof import('@/contexts/TanstackProvider')
+          await queryClient.invalidateQueries({
+            queryKey: ['pos_sync', selectedStore.id]
+          })
+        }
       }
 
       // Update local store for immediate UI feedback
