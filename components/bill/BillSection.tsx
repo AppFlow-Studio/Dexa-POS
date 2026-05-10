@@ -46,14 +46,13 @@ import {
 import React, {
     useCallback,
     useEffect,
-    useMemo,
     useRef,
+    useMemo,
     useState,
 } from "react";
 import {
     ActivityIndicator,
-    Dimensions,
-    Keyboard,
+    KeyboardAvoidingView,
     Modal,
     Platform,
     Pressable,
@@ -110,64 +109,40 @@ const BillItemsAndTotals = React.memo(
     );
     const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
     const [isOrderNoteEditorOpen, setIsOrderNoteEditorOpen] = useState(false);
-    const [keyboardTop, setKeyboardTop] = useState<number | null>(null);
     const [orderNoteDraft, setOrderNoteDraft] = useState(orderNote ?? "");
+    const [orderNoteModalDraft, setOrderNoteModalDraft] = useState(
+      orderNote ?? "",
+    );
     const orderNoteInputRef = useRef<TextInput>(null);
-    const lastSavedNoteRef = useRef(orderNote ?? "");
 
     useEffect(() => {
       const nextNote = orderNote ?? "";
-      lastSavedNoteRef.current = nextNote;
       setOrderNoteDraft(nextNote);
-    }, [orderNote]);
-
-    useEffect(() => {
-      if (orderNoteDraft.trim() === lastSavedNoteRef.current.trim()) return;
-      const timeoutId = setTimeout(() => {
-        lastSavedNoteRef.current = orderNoteDraft;
-        onSaveOrderNote(orderNoteDraft);
-      }, 450);
-      return () => clearTimeout(timeoutId);
-    }, [onSaveOrderNote, orderNoteDraft]);
-
-    useEffect(() => {
-      if (Platform.OS !== "android") return;
-
-      const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
-        const fallbackTop =
-          Dimensions.get("window").height - (event.endCoordinates?.height ?? 0);
-        setKeyboardTop(event.endCoordinates?.screenY ?? fallbackTop);
-      });
-
-      const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-        setKeyboardTop(null);
-        setIsOrderNoteEditorOpen(false);
-      });
-
-      return () => {
-        showSub.remove();
-        hideSub.remove();
-      };
-    }, []);
+      if (!isOrderNoteEditorOpen) {
+        setOrderNoteModalDraft(nextNote);
+      }
+    }, [isOrderNoteEditorOpen, orderNote]);
 
     const handleToggleExpand = useCallback((itemId: string) => {
       setExpandedItemId((prev) => (prev === itemId ? null : itemId));
     }, []);
 
+    const openOrderNoteEditor = useCallback(() => {
+      setOrderNoteModalDraft(orderNoteDraft);
+      setIsOrderNoteEditorOpen(true);
+    }, [orderNoteDraft]);
+
     const closeOrderNoteEditor = useCallback(() => {
       setIsOrderNoteEditorOpen(false);
-      setKeyboardTop(null);
-      lastSavedNoteRef.current = orderNoteDraft;
-      onSaveOrderNote(orderNoteDraft);
-      Keyboard.dismiss();
-    }, [onSaveOrderNote, orderNoteDraft]);
+      setOrderNoteModalDraft(orderNoteDraft);
+    }, [orderNoteDraft]);
 
-    const handleOrderNoteEditorBlur = useCallback(() => {
+    const handleDoneOrderNoteEditor = useCallback(() => {
+      const nextNote = orderNoteModalDraft;
+      setOrderNoteDraft(nextNote);
       setIsOrderNoteEditorOpen(false);
-      setKeyboardTop(null);
-      lastSavedNoteRef.current = orderNoteDraft;
-      onSaveOrderNote(orderNoteDraft);
-    }, [onSaveOrderNote, orderNoteDraft]);
+      onSaveOrderNote(nextNote);
+    }, [onSaveOrderNote, orderNoteModalDraft]);
 
     const focusOrderNoteEditor = useCallback(() => {
       setTimeout(() => {
@@ -175,47 +150,33 @@ const BillItemsAndTotals = React.memo(
       }, 60);
     }, []);
 
-    const renderOrderNoteInput = () => (
-      <View
-        className="h-9 rounded-lg flex-row items-center mb-1"
-        style={{
-          backgroundColor: colors.panel,
-          borderWidth: 1,
-          borderColor: colors.border,
-          paddingHorizontal: 10,
-          gap: 7,
-        }}
-      >
-        <NotebookPen size={13} color={colors.muted} />
-        <TextInput
-          ref={orderNoteInputRef}
-          value={orderNoteDraft}
-          onChangeText={setOrderNoteDraft}
-          onBlur={
-            Platform.OS === "android"
-              ? handleOrderNoteEditorBlur
-              : () => onSaveOrderNote(orderNoteDraft)
-          }
-          onEndEditing={() => onSaveOrderNote(orderNoteDraft)}
-          placeholder="Add order note..."
-          placeholderTextColor={colors.muted}
-          multiline={false}
-          numberOfLines={1}
-          textAlignVertical="center"
+    const renderOrderNoteButton = () => (
+      <TouchableOpacity activeOpacity={0.9} onPress={openOrderNoteEditor}>
+        <View
+          className="h-9 rounded-lg flex-row items-center mb-1"
           style={{
-            flex: 1,
-            color: colors.heading,
-            fontSize: 12,
-            lineHeight: 16,
-            height: 18,
-            paddingHorizontal: 0,
-            paddingVertical: 0,
-            margin: 2,
-            includeFontPadding: false,
-            fontFamily: "System",
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            paddingHorizontal: 10,
+            gap: 7,
           }}
-        />
-      </View>
+        >
+          <NotebookPen size={13} color={colors.muted} />
+          <Text
+            numberOfLines={1}
+            style={{
+              flex: 1,
+              color: orderNoteDraft.trim() ? colors.heading : colors.muted,
+              fontSize: 12,
+              lineHeight: 16,
+              fontFamily: "System",
+            }}
+          >
+            {orderNoteDraft.trim() || "Add order note..."}
+          </Text>
+        </View>
+      </TouchableOpacity>
     );
 
     return (
@@ -233,74 +194,126 @@ const BillItemsAndTotals = React.memo(
           isNetworkDegraded={isNetworkDegraded}
         />
         <View className="px-3 pb-1">
-          {Platform.OS === "android" ? (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setIsOrderNoteEditorOpen(true)}
-            >
-              <View
-                className="h-9 rounded-lg flex-row items-center mb-1"
-                style={{
-                  backgroundColor: colors.panel,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  paddingHorizontal: 10,
-                  gap: 7,
-                }}
-              >
-                <NotebookPen size={13} color={colors.muted} />
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                    color: (orderNote ?? "").trim()
-                      ? colors.heading
-                      : colors.muted,
-                    fontSize: 12,
-                    lineHeight: 16,
-                    fontFamily: "System",
-                  }}
-                >
-                  {orderNoteDraft.trim() || "Add order note..."}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            renderOrderNoteInput()
-          )}
+          {renderOrderNoteButton()}
         </View>
 
-        {Platform.OS === "android" && (
-          <Modal
-            transparent
-            visible={isOrderNoteEditorOpen}
-            animationType="fade"
-            onShow={focusOrderNoteEditor}
-            onRequestClose={closeOrderNoteEditor}
+        <Modal
+          transparent
+          visible={isOrderNoteEditorOpen}
+          animationType="fade"
+          onShow={focusOrderNoteEditor}
+          onRequestClose={closeOrderNoteEditor}
+        >
+          <Pressable
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.28)",
+              justifyContent: "center",
+              paddingHorizontal: 16,
+            }}
+            onPress={closeOrderNoteEditor}
           >
-            <Pressable
-              style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.18)" }}
-              onPress={closeOrderNoteEditor}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+              style={{
+                width: "50%",
+                alignSelf: "center",
+              }}
             >
               <Pressable
                 onPress={() => {}}
                 style={{
-                  position: "absolute",
-                  left: 12,
-                  right: 12,
-                  opacity: keyboardTop != null ? 1 : 0,
-                  top:
-                    keyboardTop != null
-                      ? Math.max(12, keyboardTop - 44)
-                      : undefined,
-                  bottom: keyboardTop == null ? 12 : undefined,
+                  backgroundColor: colors.panel,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 16,
+                  gap: 14,
                 }}
               >
-                {renderOrderNoteInput()}
+                <View style={{ gap: 6 }}>
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontSize: 18,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Order Note
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 13,
+                      lineHeight: 18,
+                    }}
+                  >
+                    Add a note for this order.
+                  </Text>
+                </View>
+                <TextInput
+                  ref={orderNoteInputRef}
+                  value={orderNoteModalDraft}
+                  onChangeText={setOrderNoteModalDraft}
+                  placeholder="Add order note..."
+                  placeholderTextColor={colors.muted}
+                  multiline
+                  autoFocus
+                  style={{
+                    minHeight: 104,
+                    color: colors.heading,
+                    fontSize: 14,
+                    lineHeight: 20,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.card,
+                    textAlignVertical: "top",
+                  }}
+                />
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <TouchableOpacity
+                    onPress={closeOrderNoteEditor}
+                    className="flex-1 h-11 rounded-xl items-center justify-center"
+                    style={{
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.heading,
+                        fontSize: 14,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleDoneOrderNoteEditor}
+                    className="flex-1 h-11 rounded-xl items-center justify-center"
+                    style={{ backgroundColor: colors.teal }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.onSolid,
+                        fontSize: 14,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Done
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </Pressable>
-            </Pressable>
-          </Modal>
-        )}
+            </KeyboardAvoidingView>
+          </Pressable>
+        </Modal>
       </View>
     );
   },
