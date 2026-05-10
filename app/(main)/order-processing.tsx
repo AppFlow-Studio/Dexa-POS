@@ -59,6 +59,8 @@ import React, {
     useState,
 } from "react";
 import {
+    Dimensions,
+    Keyboard,
     Modal,
     PanResponder,
     Pressable,
@@ -119,6 +121,14 @@ const OrderProcessing = () => {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
+  const customItemModalHeight = useMemo(() => {
+    const screenHeight = Dimensions.get("screen").height;
+    return Math.min(560, Math.max(420, screenHeight - 40));
+  }, []);
+  const customItemModalTop = useMemo(() => {
+    const screenHeight = Dimensions.get("screen").height;
+    return Math.max(20, Math.round((screenHeight - customItemModalHeight) / 2));
+  }, [customItemModalHeight]);
 
   // Wave 2.7: per-order ownership recheck on screen focus + connectionQuality
   // recovery. Closes the gap between Wave 2.1 (realtime) and Wave 2.1.1
@@ -158,6 +168,8 @@ const OrderProcessing = () => {
   const [isNoSaleModalOpen, setNoSaleModalOpen] = useState(false);
   const [bulkCompleteModalOpen, setBulkCompleteModalOpen] = useState(false);
   const [isCustomItemModuleOpen, setIsCustomItemModuleOpen] = useState(false);
+  const [isCustomItemKeyboardVisible, setIsCustomItemKeyboardVisible] =
+    useState(false);
   const [isInlinePreviousOrdersOpen, setIsInlinePreviousOrdersOpen] =
     useState(false);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
@@ -169,6 +181,29 @@ const OrderProcessing = () => {
   const didInitializeOrderRef = useRef(false);
   const [canScrollBadgesLeft, setCanScrollBadgesLeft] = useState(false);
   const [canScrollBadgesRight, setCanScrollBadgesRight] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
+      setIsCustomItemKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
+      setIsCustomItemKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const handleCustomItemBackdropPress = useCallback(() => {
+    if (isCustomItemKeyboardVisible) {
+      Keyboard.dismiss();
+      return;
+    }
+
+    setIsCustomItemModuleOpen(false);
+  }, [isCustomItemKeyboardVisible]);
   const ordersSheetHeight = useSharedValue<number>(windowHeight);
   const dragStartHeightRef = useRef<number>(windowHeight);
 
@@ -1790,16 +1825,16 @@ const OrderProcessing = () => {
         visible={isCustomItemModuleOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsCustomItemModuleOpen(false)}
+        onRequestClose={handleCustomItemBackdropPress}
       >
         <Pressable
-          onPress={() => setIsCustomItemModuleOpen(false)}
+          onPress={handleCustomItemBackdropPress}
           style={{
             flex: 1,
             backgroundColor: "rgba(0,0,0,0.5)",
-            justifyContent: "center",
+            justifyContent: "flex-start",
             paddingHorizontal: 24,
-            paddingVertical: 20,
+            paddingTop: customItemModalTop,
           }}
         >
           <Pressable
@@ -1807,9 +1842,9 @@ const OrderProcessing = () => {
             style={{
               width: 500,
               maxWidth: "96%",
-              height: 560,
+              height: customItemModalHeight,
               alignSelf: "center",
-              maxHeight: "90%",
+              maxHeight: customItemModalHeight,
               borderRadius: 18,
               borderWidth: 1,
               borderColor: colors.teal + "45",
