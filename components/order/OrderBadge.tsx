@@ -1054,8 +1054,10 @@ const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
     prev.order.items.length === next.order.items.length &&
     prev.order._broadcastItemCount === next.order._broadcastItemCount &&
     prev.order.amount_due === next.order.amount_due &&
+    prev.order.cash_amount_due === next.order.cash_amount_due &&
     prev.order.amount_paid === next.order.amount_paid &&
     prev.order.total_amount === next.order.total_amount &&
+    prev.order.total_cash_amount === next.order.total_cash_amount &&
     prev.order.customer_name === next.order.customer_name &&
     prev.order.payments?.length === next.order.payments?.length &&
     getCachedRefunded(prev.order) === getCachedRefunded(next.order) &&

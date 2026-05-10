@@ -362,10 +362,12 @@ const OrderProcessing = () => {
     (orderId: string) => {
       const order = useOrderStore.getState().ordersById[orderId];
       if (!order) return;
+      const effectivePaidStatus =
+        deriveEffectivePaidStatus(order) ?? order.paid_status;
 
       markAllItemsAsReady(orderId);
 
-      if (order.paid_status === "Paid") {
+      if (effectivePaidStatus === "Paid") {
         archiveOrder(orderId);
         // Toast fires from inside archiveOrder
       }
@@ -500,6 +502,9 @@ const OrderProcessing = () => {
     const isDineInOrder =
       currentActiveOrder.order_type === "dine_in" ||
       currentActiveOrder.order_type === "Dine In";
+    const effectivePaidStatus =
+      deriveEffectivePaidStatus(currentActiveOrder) ??
+      currentActiveOrder.paid_status;
 
     if (!isDineInOrder) {
       show({
@@ -510,7 +515,7 @@ const OrderProcessing = () => {
       return;
     }
 
-    if (currentActiveOrder.paid_status !== "Paid") {
+    if (effectivePaidStatus !== "Paid") {
       show({
         title: "Cannot Close Session",
         message: "Order must be fully paid before closing the table session.",
@@ -912,7 +917,7 @@ const OrderProcessing = () => {
                     fontWeight: "700",
                   }}
                 >
-                  {item.paid_status}
+                  {effectivePaidStatus ?? item.paid_status}
                 </Text>
               </View>
             </View>
@@ -1071,7 +1076,7 @@ const OrderProcessing = () => {
               <ChevronRight size={13} color={colors.label} />
             </TouchableOpacity>
 
-            {item.paid_status === "Paid" && (
+            {effectivePaidStatus === "Paid" && (
               <TouchableOpacity
                 onPress={() => handlePrintReceipt(item)}
                 style={{
