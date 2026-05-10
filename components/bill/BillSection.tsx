@@ -81,6 +81,35 @@ import Totals from "./Totals";
 // items reference changes (Immer mutates items on add) but not when other
 // order fields change. Parent's re-render no longer cascades here.
 const EMPTY_CART_ITEMS: CartItem[] = [];
+
+const isReusableEmptyDraftOrder = (order: any) => {
+  if (!order) return false;
+
+  const hasNonVoidedPayments = !!order.payments?.some((p: any) => !p.isVoided);
+  const totalAmount = Number(order.total_amount ?? 0);
+  const amountDue = Number(order.amount_due ?? 0);
+  const cashAmountDue = Number(order.cash_amount_due ?? 0);
+  const amountPaid = Number(order.amount_paid ?? 0);
+  const hasFinancialFootprint =
+    totalAmount > 0.001 ||
+    amountDue > 0.001 ||
+    cashAmountDue > 0.001 ||
+    amountPaid > 0.001;
+
+  return (
+    order.order_status === "draft" &&
+    Array.isArray(order.items) &&
+    order.items.length === 0 &&
+    order.service_location_id === null &&
+    order.paid_status !== "Paid" &&
+    !order.customer_name &&
+    !order.customer_id &&
+    !order.notes?.trim() &&
+    !hasNonVoidedPayments &&
+    !hasFinancialFootprint
+  );
+};
+
 const BillItemsAndTotals = React.memo(
   ({
     orderNote,
@@ -526,18 +555,8 @@ const BillSectionContent = ({
 
   const isCurrentOrderEmptyDraft = useMemo(() => {
     if (!activeOrder) return false;
-    const hasNonVoidedPayments = !!activeOrder.payments?.some(
-      (p: any) => !p.isVoided,
-    );
-    return (
-      activeOrder.order_status === "draft" &&
-      cart.length === 0 &&
-      activeOrder.service_location_id === null &&
-      activeOrder.paid_status !== "Paid" &&
-      !activeOrder.customer_name &&
-      !activeOrder.customer_id &&
-      !hasNonVoidedPayments
-    );
+    if (cart.length > 0) return false;
+    return isReusableEmptyDraftOrder(activeOrder);
   }, [activeOrder, cart]);
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1355,6 +1374,21 @@ const BillSectionContent = ({
       setActiveOrder(activeOrder.id);
       return;
     }
+
+    const { activeOrderId: currentActiveOrderId, orderIds, ordersById } =
+      useOrderStore.getState();
+    const reusableEmptyDraftId = [...orderIds]
+      .reverse()
+      .find((orderId) => {
+        if (orderId === currentActiveOrderId) return false;
+        return isReusableEmptyDraftOrder(ordersById[orderId]);
+      });
+
+    if (reusableEmptyDraftId) {
+      setActiveOrder(reusableEmptyDraftId);
+      return;
+    }
+
     const newOrder = startNewOrder();
     setActiveOrder(newOrder.id);
   }, [
@@ -1379,6 +1413,18 @@ const BillSectionContent = ({
         <TouchableOpacity
           className="px-4 py-2 bg-teal-600 rounded-lg active:opacity-80"
           onPress={() => {
+            const { orderIds, ordersById } = useOrderStore.getState();
+            const reusableEmptyDraftId = [...orderIds]
+              .reverse()
+              .find((orderId) =>
+                isReusableEmptyDraftOrder(ordersById[orderId]),
+              );
+
+            if (reusableEmptyDraftId) {
+              setActiveOrder(reusableEmptyDraftId);
+              return;
+            }
+
             const newOrder = startNewOrder();
             setActiveOrder(newOrder.id);
           }}
