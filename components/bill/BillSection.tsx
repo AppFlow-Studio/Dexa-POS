@@ -4,6 +4,11 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { getDeviceId } from "@/lib/deviceId";
+import {
+  findLatestReusableEmptyDraftId,
+  getRefreshedReusableDraftNumbers,
+  isReusableEmptyDraftOrder,
+} from "@/lib/reusableEmptyDraft";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
@@ -81,34 +86,6 @@ import Totals from "./Totals";
 // items reference changes (Immer mutates items on add) but not when other
 // order fields change. Parent's re-render no longer cascades here.
 const EMPTY_CART_ITEMS: CartItem[] = [];
-
-const isReusableEmptyDraftOrder = (order: any) => {
-  if (!order) return false;
-
-  const hasNonVoidedPayments = !!order.payments?.some((p: any) => !p.isVoided);
-  const totalAmount = Number(order.total_amount ?? 0);
-  const amountDue = Number(order.amount_due ?? 0);
-  const cashAmountDue = Number(order.cash_amount_due ?? 0);
-  const amountPaid = Number(order.amount_paid ?? 0);
-  const hasFinancialFootprint =
-    totalAmount > 0.001 ||
-    amountDue > 0.001 ||
-    cashAmountDue > 0.001 ||
-    amountPaid > 0.001;
-
-  return (
-    order.order_status === "draft" &&
-    Array.isArray(order.items) &&
-    order.items.length === 0 &&
-    order.service_location_id === null &&
-    order.paid_status !== "Paid" &&
-    !order.customer_name &&
-    !order.customer_id &&
-    !order.notes?.trim() &&
-    !hasNonVoidedPayments &&
-    !hasFinancialFootprint
-  );
-};
 
 const BillItemsAndTotals = React.memo(
   ({
@@ -1377,14 +1354,30 @@ const BillSectionContent = ({
 
     const { activeOrderId: currentActiveOrderId, orderIds, ordersById } =
       useOrderStore.getState();
-    const reusableEmptyDraftId = [...orderIds]
-      .reverse()
-      .find((orderId) => {
-        if (orderId === currentActiveOrderId) return false;
-        return isReusableEmptyDraftOrder(ordersById[orderId]);
-      });
+    const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+      ordersById,
+      orderIds,
+      currentActiveOrderId,
+    );
 
     if (reusableEmptyDraftId) {
+      if (selectedStore) {
+        const refreshedNumbers = getRefreshedReusableDraftNumbers({
+          draftId: reusableEmptyDraftId,
+          ordersById,
+          orderIds,
+          locationId: selectedStore.id,
+          stationNumber: selectedStation?.station_number ?? null,
+        });
+        if (refreshedNumbers) {
+          useOrderStore.setState((state) => {
+            const draft = state.ordersById[reusableEmptyDraftId];
+            if (!draft) return;
+            draft.order_number = refreshedNumbers.orderNumber;
+            draft.display_number = refreshedNumbers.displayNumber;
+          });
+        }
+      }
       setActiveOrder(reusableEmptyDraftId);
       return;
     }
@@ -1401,40 +1394,126 @@ const BillSectionContent = ({
   if (!activeOrderId)
     return (
       <View
-        className="w-[38%] items-center justify-center p-6"
-        style={{ backgroundColor: colors.screen }}
+        className="w-[38%] px-4 py-5"
+        style={{
+          backgroundColor: colors.screen,
+          borderRightWidth: 2,
+          borderColor: colors.border,
+        }}
       >
-        <Text
-          className="text-sm font-semibold mb-3"
-          style={{ color: colors.heading }}
-        >
-          No Active Order
-        </Text>
-        <TouchableOpacity
-          className="px-4 py-2 bg-teal-600 rounded-lg active:opacity-80"
-          onPress={() => {
-            const { orderIds, ordersById } = useOrderStore.getState();
-            const reusableEmptyDraftId = [...orderIds]
-              .reverse()
-              .find((orderId) =>
-                isReusableEmptyDraftOrder(ordersById[orderId]),
-              );
-
-            if (reusableEmptyDraftId) {
-              setActiveOrder(reusableEmptyDraftId);
-              return;
-            }
-
-            const newOrder = startNewOrder();
-            setActiveOrder(newOrder.id);
-          }}
-        >
-          <Text
-            style={{ color: colors.onSolid, fontSize: 14, fontWeight: "600" }}
+        <View style={{ flex: 1 }}>
+          <View
+            style={{
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            Start New Order
-          </Text>
-        </TouchableOpacity>
+            <View
+              style={{
+                width: "100%",
+                maxWidth: 320,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 22,
+                paddingHorizontal: 22,
+                paddingVertical: 24,
+                alignItems: "center",
+              }}
+            >
+              <View
+                style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 18,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: colors.tealMuted,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  marginBottom: 14,
+                }}
+              >
+                <Plus size={22} color={colors.teal} />
+              </View>
+
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: 19,
+                  fontWeight: "700",
+                  textAlign: "center",
+                }}
+              >
+                No Active Order
+              </Text>
+              <Text
+                style={{
+                  color: colors.muted,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  textAlign: "center",
+                  marginTop: 8,
+                  marginBottom: 18,
+                }}
+              >
+                Start a fresh ticket or jump back into the latest empty draft.
+              </Text>
+
+              <TouchableOpacity
+                className="h-11 px-4 rounded-xl flex-row items-center justify-center gap-2 active:opacity-80"
+                style={{
+                  backgroundColor: colors.teal,
+                  minWidth: 176,
+                }}
+                onPress={() => {
+                  const { orderIds, ordersById } = useOrderStore.getState();
+                  const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+                    ordersById,
+                    orderIds,
+                  );
+
+                  if (reusableEmptyDraftId) {
+                    if (selectedStore) {
+                      const refreshedNumbers = getRefreshedReusableDraftNumbers({
+                        draftId: reusableEmptyDraftId,
+                        ordersById,
+                        orderIds,
+                        locationId: selectedStore.id,
+                        stationNumber: selectedStation?.station_number ?? null,
+                      });
+                      if (refreshedNumbers) {
+                        useOrderStore.setState((state) => {
+                          const draft = state.ordersById[reusableEmptyDraftId];
+                          if (!draft) return;
+                          draft.order_number = refreshedNumbers.orderNumber;
+                          draft.display_number = refreshedNumbers.displayNumber;
+                        });
+                      }
+                    }
+                    setActiveOrder(reusableEmptyDraftId);
+                    return;
+                  }
+
+                  const newOrder = startNewOrder();
+                  setActiveOrder(newOrder.id);
+                }}
+              >
+                <Plus color={colors.onSolid} size={14} />
+                <Text
+                  style={{
+                    color: colors.onSolid,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  Start New Order
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </View>
     );
   // Handle retry failed syncs

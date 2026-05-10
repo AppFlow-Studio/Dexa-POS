@@ -65,6 +65,7 @@ import {
   parseSequenceFromDisplayNumber,
   seedLocalSequence,
 } from "@/lib/localOrderSequence";
+import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
@@ -6523,10 +6524,23 @@ export const useOrderStore = create<OrderState>()(
             // Generate local order numbers (station-aware if station is set)
             const selectedStore =
               useStoreSettingsStore.getState().selectedStore;
+            const stationNumber = currentStation?.station_number ?? null;
+            if (selectedStore) {
+              const reliableSequenceFloor = getReliableTodaySequenceFloor(
+                get().ordersById,
+                get().orderIds,
+                stationNumber,
+              );
+              forceSetLocalSequence(
+                selectedStore.id,
+                stationNumber,
+                reliableSequenceFloor,
+              );
+            }
             const localNumbers = selectedStore
               ? generateLocalOrderNumbers(
                   selectedStore.id,
-                  currentStation?.station_number ?? null,
+                  stationNumber,
                 )
               : undefined;
 
