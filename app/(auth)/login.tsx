@@ -502,7 +502,7 @@ const MerchantLoginScreen = () => {
             </View>
           )}
 
-          {/* Google button */}
+          {/* Google button — temporarily disabled
           <TouchableOpacity
             onPress={signInWithGoogle}
             disabled={isFormLoading}
@@ -538,6 +538,7 @@ const MerchantLoginScreen = () => {
               </>
             )}
           </TouchableOpacity>
+          */}
 
           {/* Divider */}
           <View

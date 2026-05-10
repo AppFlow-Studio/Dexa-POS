@@ -14,6 +14,7 @@ import { getDeviceId } from "@/lib/deviceId";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { clearStationData } from "@/services/cacheService";
+import { refreshLocationConfig } from "@/services/locationConfigSync";
 import KDSSoundService, {
   DEFAULT_SOUND_CONFIG,
 } from "@/services/kds/kdsSoundService";
@@ -1683,6 +1684,8 @@ const KitchenDisplayScreen = () => {
       if (selectedStore?.id) promises.push(fetchTickets(selectedStore.id));
       if (selectedStation?.id)
         promises.push(fetchKDSDisplay(selectedStation.id));
+      if (supabase && selectedStore?.id)
+        promises.push(refreshLocationConfig(supabase, selectedStore.id));
       await Promise.all(promises);
     } finally {
       setRefreshing(false);
@@ -1693,6 +1696,7 @@ const KitchenDisplayScreen = () => {
     selectedStation?.id,
     fetchTickets,
     fetchKDSDisplay,
+    supabase,
   ]);
 
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted

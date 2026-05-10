@@ -4,6 +4,7 @@
 // ============================================================
 
 import { captureRpcError } from "@/lib/supabase";
+import { addPendingFinalize } from "@/services/pendingFinalize";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import type {
     CastlesSettlementHostResult,
@@ -270,6 +271,20 @@ export async function runSettlement(
       finalizeError,
     );
     captureRpcError("finalize_castles_settlement", finalizeError);
+
+    // Persist for later retry from the BatchoutPanel. The terminal has
+    // already closed its batch — re-talking to it would double-cut, so
+    // the only way back is replaying finalize with this exact response.
+    if (terminalResult.success || terminalResult.partialSuccess) {
+      addPendingFinalize({
+        batchUuid,
+        merchantId,
+        terminalId,
+        castlesResponse,
+        savedAt: new Date().toISOString(),
+      });
+    }
+
     return {
       success: terminalResult.success,
       partialSuccess: terminalResult.partialSuccess,
@@ -299,6 +314,38 @@ export async function runSettlement(
       !finalizeData.success && !finalizeData.should_retry
         ? `Settlement failed (${finalizeData.return_code ?? "unknown"}). Contact your payment processor.`
         : undefined,
+  };
+}
+
+// ── Manual reconcile (terminal already settled, POS catching up) ──
+
+export interface ManualMarkSettledInput {
+  supabase: SupabaseClient;
+  batchUuid: string;
+  merchantId: string;
+  reason?: string;
+}
+
+export interface ManualMarkSettledOutput {
+  success: boolean;
+  paymentsMarkedSettled?: number;
+  error?: string;
+}
+
+export async function manualMarkBatchSettled(
+  input: ManualMarkSettledInput,
+): Promise<ManualMarkSettledOutput> {
+  const { data, error } = await input.supabase.rpc("manual_mark_batch_settled", {
+    p_batch_uuid: input.batchUuid,
+    p_merchant_id: input.merchantId,
+    p_reason: input.reason ?? "",
+  });
+  if (error) {
+    return { success: false, error: error.message ?? "Failed to mark settled" };
+  }
+  return {
+    success: Boolean(data?.success),
+    paymentsMarkedSettled: Number(data?.payments_marked_settled ?? 0),
   };
 }
 

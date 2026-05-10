@@ -2510,9 +2510,9 @@ const syncPaymentToBackend = async (
       supabase,
       "process_payment",
       // Fallback (flag off): v9 — Cat-B idempotency, no platform fees.
-      // Primary  (flag on): v10 — adds dual_pricing_fee / tip_fee tracking.
+      // Primary  (flag on): v11 — adds acquirer + batch_number on top of v10's fee tracking.
       "process_payment_v9",
-      "process_payment_v10",
+      "process_payment_v11",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -10510,11 +10510,12 @@ export const useOrderStore = create<OrderState>()(
                       })
                       .then(({ error }) => {
                         if (error) {
-                          console.error(
-                            "[archiveOrder] Backend inventory deduction failed:",
-                            error,
-                          );
-                          // Queue for retry if needed
+                          if (__DEV__)
+                            console.warn(
+                              "[archiveOrder] Backend inventory deduction skipped:",
+                              error?.message ?? error,
+                            );
+                          // Non-fatal: archive proceeds regardless (e.g. insufficient stock P0002)
                         } else {
                           if (__DEV__)
                             console.log(
@@ -10525,7 +10526,8 @@ export const useOrderStore = create<OrderState>()(
                   }
                 }
               } catch (err) {
-                console.error("[archiveOrder] Inventory deduction error:", err);
+                if (__DEV__)
+                  console.warn("[archiveOrder] Inventory deduction error:", err);
                 // Continue archiving despite error
               }
             }

@@ -8,7 +8,13 @@ import type {
   BusinessDaySummary
 } from '@/services/printing/templates/BatchSummaryDocumentTemplate'
 import {
+  listPendingFinalizes,
+  retryPendingFinalize,
+  type PendingFinalizeEntry
+} from '@/services/pendingFinalize'
+import {
   getUnsettledPaymentStats,
+  manualMarkBatchSettled,
   runSettlement,
   type SettlementOutput,
   type UnsettledStats
@@ -21,8 +27,11 @@ import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Printer,
+  RefreshCw,
   XCircle
 } from 'lucide-react-native'
 import { useCallback, useEffect, useState } from 'react'
@@ -52,6 +61,29 @@ interface SettlementBatchRow {
   grossAmount: number
   tipAmount: number
   netDeposit: number
+  acquirer: string | null
+  batchNumber: string | null
+}
+
+interface BatchPaymentRow {
+  id: string
+  order_number: string | null
+  display_number: string | null
+  captured_at: string | null
+  payment_method: string | null
+  card_type: string | null
+  card_last_four: string | null
+  amount: number | string | null
+  tip_amount: number | string | null
+  total_amount: number | string | null
+  status: string | null
+  is_settled: boolean | null
+  is_returned: boolean | null
+  authorization_code: string | null
+  transaction_id: string | null
+  rrn: string | null
+  batch_number: string | null
+  acquirer: string | null
 }
 
 export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
@@ -73,6 +105,23 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   const terminalHost = terminal?.ip_address
   const terminalPort = terminal?.port ?? CASTLES_DEFAULT_PORT
 
+  // serial_number isn't in get_location_stations_with_status — fetch it
+  // separately so the header can show it.
+  const [terminalSerial, setTerminalSerial] = useState<string | null>(
+    terminal?.serial_number ?? null
+  )
+  useEffect(() => {
+    if (!terminal?.id || terminalSerial) return
+    supabase
+      .from('payment_terminals')
+      .select('serial_number')
+      .eq('id', terminal.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.serial_number) setTerminalSerial(data.serial_number)
+      })
+  }, [terminal?.id, terminalSerial, supabase])
+
   const bdConfig = {
     timezone: selectedStore?.timezone || 'UTC',
     rolloverHour: selectedStore?.business_day_start_hour ?? 0
@@ -90,17 +139,13 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
     enabled: Boolean(locationId) && Boolean(showBatchLog),
     staleTime: 30_000,
     queryFn: async (): Promise<SettlementBatchRow[]> => {
-      const { data, error } = await supabase
-        .from('settlement_batches')
-        .select(
-          'id, batch_id, status, closed_at, transaction_count, gross_amount, tip_amount, net_deposit'
-        )
-        .eq('location_id', locationId)
-        .gte('created_at', bounds.startUtc)
-        .lt('created_at', bounds.endUtc)
-        .order('created_at', { ascending: false })
+      const { data, error } = await supabase.rpc(
+        'get_batches_with_live_totals_v1',
+        { p_location_id: locationId, p_business_day: businessDay }
+      )
       if (error) throw error
-      return (data || []).map((b: any) => ({
+      const rows = Array.isArray(data) ? data : []
+      return rows.map((b: any) => ({
         id: b.id,
         batchId: b.batch_id,
         status: b.status,
@@ -108,7 +153,9 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         transactionCount: Number(b.transaction_count) || 0,
         grossAmount: Number(b.gross_amount) || 0,
         tipAmount: Number(b.tip_amount) || 0,
-        netDeposit: Number(b.net_deposit) || 0
+        netDeposit: Number(b.net_deposit) || 0,
+        acquirer: b.acquirer ?? null,
+        batchNumber: b.batch_number ?? null
       }))
     }
   })
@@ -306,6 +353,11 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
             ? `Castles @ ${terminalHost}:${terminalPort}`
             : terminal?.terminal_type ?? 'No terminal configured'}
         </Text>
+        {terminalSerial ? (
+          <Text style={{ marginTop: 2, fontSize: 12, color: colors.muted }}>
+            S/N {terminalSerial}
+          </Text>
+        ) : null}
       </View>
 
       {!isCastles ? (
@@ -337,6 +389,16 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
           result={result}
           onDone={handleResultDone}
           onRetry={handleRetry}
+        />
+      ) : null}
+
+      {showBatchLog ? (
+        <PendingFinalizeSection
+          supabase={supabase}
+          onResolved={() => {
+            refetchBatches()
+            loadStats()
+          }}
         />
       ) : null}
 
@@ -784,6 +846,198 @@ function HostCard ({ host }: { host: CastlesSettlementHostResult }) {
   )
 }
 
+// ── Pending Sync (terminal-settled, DB-write-failed) ──────────────
+
+function PendingFinalizeSection ({
+  supabase,
+  onResolved
+}: {
+  supabase: ReturnType<typeof useSupabaseClient>
+  onResolved: () => void
+}) {
+  const [entries, setEntries] = useState<PendingFinalizeEntry[]>([])
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  const refresh = useCallback(() => {
+    setEntries(listPendingFinalizes())
+  }, [])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const onRetry = async (entry: PendingFinalizeEntry) => {
+    setBusyId(entry.batchUuid)
+    setErrors(prev => ({ ...prev, [entry.batchUuid]: '' }))
+    try {
+      const result = await retryPendingFinalize(supabase, entry)
+      if (result.success) {
+        refresh()
+        onResolved()
+      } else {
+        setErrors(prev => ({
+          ...prev,
+          [entry.batchUuid]: result.error ?? 'Retry failed'
+        }))
+      }
+    } catch (e: any) {
+      setErrors(prev => ({
+        ...prev,
+        [entry.batchUuid]: e?.message ?? 'Retry failed'
+      }))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const onDiscard = (entry: PendingFinalizeEntry) => {
+    Alert.alert(
+      'Discard pending sync?',
+      'The batch was already closed on the terminal. Discarding only removes this local retry entry — the batch will stay in pending status on POS until you reconcile manually with support.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            // dynamic import to avoid hoisting concerns
+            const { removePendingFinalize } = require('@/services/pendingFinalize')
+            removePendingFinalize(entry.batchUuid)
+            refresh()
+          }
+        }
+      ]
+    )
+  }
+
+  if (entries.length === 0) return null
+
+  return (
+    <View style={{ gap: 10, marginTop: 8 }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}
+      >
+        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.danger }}>
+          Pending Sync ({entries.length})
+        </Text>
+        <Text style={{ fontSize: 11, color: colors.muted }}>
+          Settled on terminal, not yet recorded
+        </Text>
+      </View>
+
+      {entries.map(entry => {
+        const busy = busyId === entry.batchUuid
+        const err = errors[entry.batchUuid]
+        const saved = new Date(entry.savedAt).toLocaleString([], {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        })
+        return (
+          <View
+            key={entry.batchUuid}
+            style={{
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.danger + '60',
+              backgroundColor: colors.danger + '08',
+              padding: 12,
+              gap: 8
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8
+              }}
+            >
+              <AlertTriangle size={16} color={colors.danger} />
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  color: colors.heading,
+                  flex: 1
+                }}
+                numberOfLines={1}
+              >
+                Batch {entry.batchUuid.slice(0, 8)}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.muted }}>
+                {saved}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 12, color: colors.label, lineHeight: 17 }}>
+              The terminal closed this batch but the DB write failed. Tap
+              Retry to record the result. Safe to retry as many times as
+              needed.
+            </Text>
+            {err ? (
+              <Text style={{ fontSize: 12, color: colors.danger }}>{err}</Text>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => onRetry(entry)}
+                disabled={busy}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  backgroundColor: busy ? colors.inset : colors.teal,
+                  opacity: busy ? 0.6 : 1
+                }}
+              >
+                {busy ? (
+                  <ActivityIndicator color='#fff' size='small' />
+                ) : (
+                  <RefreshCw size={14} color='#fff' />
+                )}
+                <Text
+                  style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}
+                >
+                  {busy ? 'Retrying…' : 'Retry sync'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onDiscard(entry)}
+                disabled={busy}
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.label,
+                    fontWeight: '600',
+                    fontSize: 13
+                  }}
+                >
+                  Discard
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
 // ── Batch Log ──────────────────────────────────────────────────
 
 function BatchLog ({
@@ -830,7 +1084,11 @@ function BatchLog ({
         </Card>
       ) : (
         list.map(b => (
-          <BatchRow key={b.id} batch={b} onPrint={() => onPrintBatch(b.id)} />
+          <BatchRow
+            key={b.id}
+            batch={b}
+            onPrint={() => onPrintBatch(b.id)}
+          />
         ))
       )}
     </View>
@@ -844,6 +1102,33 @@ function BatchRow ({
   batch: SettlementBatchRow
   onPrint: () => void
 }) {
+  const supabase = useSupabaseClient()
+  const { selectedStore } = useStoreSettingsStore()
+  const [marking, setMarking] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [payments, setPayments] = useState<BatchPaymentRow[] | null>(null)
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [paymentsError, setPaymentsError] = useState<string | null>(null)
+
+  const togglePayments = useCallback(async () => {
+    const next = !expanded
+    setExpanded(next)
+    if (next && payments === null && !paymentsLoading) {
+      setPaymentsLoading(true)
+      setPaymentsError(null)
+      try {
+        const { data, error } = await supabase.rpc('get_batch_payments_v1', {
+          p_settlement_batch_id: batch.id
+        })
+        if (error) throw error
+        setPayments(Array.isArray(data) ? (data as BatchPaymentRow[]) : [])
+      } catch (e: any) {
+        setPaymentsError(e?.message ?? 'Failed to load payments')
+      } finally {
+        setPaymentsLoading(false)
+      }
+    }
+  }, [expanded, payments, paymentsLoading, supabase, batch.id])
   const isSettled = batch.status === 'settled'
   const isFailed =
     batch.status === 'failed' ||
@@ -908,7 +1193,9 @@ function BatchRow ({
               }}
               numberOfLines={1}
             >
-              Batch {batch.batchId || batch.id.slice(0, 8)}
+              {batch.batchNumber
+                ? `Batch ${batch.batchNumber}`
+                : `Batch ${batch.batchId || batch.id.slice(0, 8)}`}
             </Text>
             <Text style={{ fontSize: 11, color: colors.muted }}>
               Closed {closedDisplay}
@@ -916,6 +1203,28 @@ function BatchRow ({
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {batch.acquirer ? (
+            <View
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  color: colors.label,
+                  letterSpacing: 0.5
+                }}
+              >
+                {batch.acquirer}
+              </Text>
+            </View>
+          ) : null}
           <View
             style={{
               paddingHorizontal: 8,
@@ -952,6 +1261,65 @@ function BatchRow ({
         </View>
       </View>
 
+      {!isSettled && batch.status !== 'closed' ? (
+        <TouchableOpacity
+          onPress={() => {
+            if (!selectedStore?.merchant_id) return
+            Alert.alert(
+              'Mark this batch as settled?',
+              'Use this only when the terminal already closed this batch in a prior session and POS is out of sync. It marks the batch and its payments settled in the database without re-talking to the terminal. Cannot be undone.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Mark Settled',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setMarking(true)
+                    try {
+                      const result = await manualMarkBatchSettled({
+                        supabase,
+                        batchUuid: batch.id,
+                        merchantId: selectedStore.merchant_id!,
+                        reason:
+                          'Marked settled via BatchoutPanel — terminal had already closed this host batch.'
+                      })
+                      if (!result.success) {
+                        Alert.alert(
+                          'Could not mark settled',
+                          result.error ?? 'Unknown error'
+                        )
+                      }
+                    } finally {
+                      setMarking(false)
+                    }
+                  }
+                }
+              ]
+            )
+          }}
+          disabled={marking}
+          style={{
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: colors.border,
+            alignSelf: 'flex-start',
+            opacity: marking ? 0.6 : 1
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '600',
+              color: colors.label
+            }}
+          >
+            {marking ? 'Marking…' : 'Mark settled (terminal already closed)'}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <BatchStat label='Txns' value={String(batch.transactionCount)} />
         <BatchStat
@@ -964,6 +1332,170 @@ function BatchRow ({
           value={`$${batch.netDeposit.toFixed(2)}`}
           emphasize
         />
+      </View>
+
+      <TouchableOpacity
+        onPress={togglePayments}
+        accessibilityLabel={
+          expanded ? 'Hide batch payments' : 'Show batch payments'
+        }
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          paddingVertical: 8,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.inset
+        }}
+      >
+        {expanded ? (
+          <ChevronUp size={14} color={colors.label} />
+        ) : (
+          <ChevronDown size={14} color={colors.label} />
+        )}
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>
+          {expanded
+            ? 'Hide payments'
+            : `Show payments (${batch.transactionCount})`}
+        </Text>
+      </TouchableOpacity>
+
+      {expanded ? (
+        <BatchPaymentsList
+          loading={paymentsLoading}
+          error={paymentsError}
+          payments={payments}
+        />
+      ) : null}
+    </View>
+  )
+}
+
+function BatchPaymentsList ({
+  loading,
+  error,
+  payments
+}: {
+  loading: boolean
+  error: string | null
+  payments: BatchPaymentRow[] | null
+}) {
+  if (loading) {
+    return (
+      <View style={{ paddingVertical: 12 }}>
+        <ActivityIndicator color={colors.teal} />
+      </View>
+    )
+  }
+  if (error) {
+    return (
+      <Text style={{ fontSize: 12, color: colors.danger }}>{error}</Text>
+    )
+  }
+  if (!payments || payments.length === 0) {
+    return (
+      <Text style={{ fontSize: 12, color: colors.muted }}>
+        No payments linked to this batch.
+      </Text>
+    )
+  }
+  return (
+    <View style={{ gap: 6 }}>
+      {payments.map(p => (
+        <PaymentLine key={p.id} payment={p} />
+      ))}
+    </View>
+  )
+}
+
+function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
+  const time = payment.captured_at
+    ? new Date(payment.captured_at).toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit'
+      })
+    : '—'
+  const amount = Number(payment.amount ?? 0)
+  const tip = Number(payment.tip_amount ?? 0)
+  const total = Number(payment.total_amount ?? 0)
+  const card =
+    payment.card_last_four
+      ? `${payment.card_type ?? 'Card'} ••${payment.card_last_four}`
+      : (payment.payment_method ?? 'Card').toString()
+  const statusLabel = payment.is_returned
+    ? 'Refunded'
+    : payment.status === 'captured'
+    ? payment.is_settled
+      ? 'Settled'
+      : 'Captured'
+    : (payment.status ?? '').toString()
+  const statusTone =
+    payment.is_returned
+      ? colors.warning
+      : payment.is_settled
+      ? colors.success
+      : colors.label
+
+  return (
+    <View
+      style={{
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 10,
+        gap: 4
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+          {payment.display_number ?? payment.order_number ?? '—'}
+        </Text>
+        <Text style={{ fontSize: 11, color: colors.muted }}>{time}</Text>
+      </View>
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <Text style={{ fontSize: 12, color: colors.label }}>{card}</Text>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+          ${total.toFixed(2)}
+        </Text>
+      </View>
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <Text style={{ fontSize: 11, color: colors.muted }}>
+          Sale ${amount.toFixed(2)}
+          {tip > 0 ? ` · Tip $${tip.toFixed(2)}` : ''}
+          {payment.authorization_code ? ` · Auth ${payment.authorization_code}` : ''}
+        </Text>
+        <Text
+          style={{
+            fontSize: 10,
+            fontWeight: '700',
+            color: statusTone,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5
+          }}
+        >
+          {statusLabel}
+        </Text>
       </View>
     </View>
   )
