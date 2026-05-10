@@ -13,8 +13,12 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
 import {
+    findLatestReusableEmptyDraftId,
+    getRefreshedReusableDraftNumbers,
+    isReusableEmptyDraftOrder,
+} from "@/lib/reusableEmptyDraft";
+import {
     forceSetLocalSequence,
-    generateLocalOrderNumbers,
     parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { iosOnly } from "@/lib/safeAnimations";
@@ -222,19 +226,33 @@ const OrderProcessing = () => {
     didInitializeOrderRef.current = true;
 
     const state = useOrderStore.getState();
-    const isReusableEmptyDraft = (o?: OrderProfile | null) =>
-      !!o &&
-      o.order_status === "draft" &&
-      o.items.length === 0 &&
-      o.service_location_id === null &&
-      o.paid_status !== "Paid" &&
-      !o.customer_name &&
-      !o.customer_id;
+    const selectedStore = useStoreSettingsStore.getState().selectedStore;
+    const stationNumberFromOrderStore =
+      state.currentStation?.station_number ?? null;
 
     const currentActiveOrder = state.activeOrderId
       ? state.ordersById[state.activeOrderId]
       : null;
-    if (currentActiveOrder && isReusableEmptyDraft(currentActiveOrder)) {
+    if (currentActiveOrder) {
+      if (isReusableEmptyDraftOrder(currentActiveOrder) && selectedStore) {
+        const refreshedNumbers = getRefreshedReusableDraftNumbers({
+          draftId: currentActiveOrder.id,
+          ordersById: state.ordersById,
+          orderIds: state.orderIds,
+          locationId: selectedStore.id,
+          stationNumber: stationNumberFromOrderStore,
+        });
+
+        if (refreshedNumbers) {
+          useOrderStore.setState((storeState) => {
+            const draft = storeState.ordersById[currentActiveOrder.id];
+            if (!draft) return;
+            draft.order_number = refreshedNumbers.orderNumber;
+            draft.display_number = refreshedNumbers.displayNumber;
+          });
+        }
+      }
+
       setActiveOrder(currentActiveOrder.id);
       return;
     }
@@ -246,9 +264,6 @@ const OrderProcessing = () => {
     // Heal the local sequence counter from meaningful today/station orders.
     // Empty placeholder drafts are excluded so stale highs (e.g. #109) don't
     // poison the next local number.
-    const selectedStore = useStoreSettingsStore.getState().selectedStore;
-    const stationNumberFromOrderStore =
-      state.currentStation?.station_number ?? null;
     let reliableHighestSeq = 0;
     let highestSeenTodaySeq = 0;
     if (selectedStore) {
@@ -305,46 +320,35 @@ const OrderProcessing = () => {
       );
     }
 
-    const emptyDraft = [...allOrders]
-      .reverse()
-      .find((o) => isReusableEmptyDraft(o));
+    const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+      state.ordersById,
+      state.orderIds,
+    );
 
-    if (emptyDraft) {
+    if (reusableEmptyDraftId) {
       // Keep reusing the empty draft. Only refresh its local number when the
       // existing number is missing, from another day, or collides with another
       // visible order. Mounting alone should not consume a new sequence.
       if (selectedStore) {
-        const stationNumber = stationNumberFromOrderStore;
-        const todayDateKey = getDateKey(new Date());
-        const todayOrderPrefix = `ORD-${todayDateKey}-`;
-        const takenDisplayNumbers = new Set(
-          allOrders
-            .filter((o) => o.id !== emptyDraft.id)
-            .map((o) => o.display_number)
-            .filter(Boolean),
-        );
+        const refreshedNumbers = getRefreshedReusableDraftNumbers({
+          draftId: reusableEmptyDraftId,
+          ordersById: state.ordersById,
+          orderIds: state.orderIds,
+          locationId: selectedStore.id,
+          stationNumber: stationNumberFromOrderStore,
+        });
 
-        const shouldRefreshLocalNumber =
-          !emptyDraft.order_number ||
-          !emptyDraft.order_number.startsWith(todayOrderPrefix) ||
-          (!!emptyDraft.display_number &&
-            takenDisplayNumbers.has(emptyDraft.display_number));
-
-        if (shouldRefreshLocalNumber) {
-          const localNumbers = generateLocalOrderNumbers(
-            selectedStore.id,
-            stationNumber,
-          );
+        if (refreshedNumbers) {
           useOrderStore.setState((storeState) => {
-            const draft = storeState.ordersById[emptyDraft.id];
+            const draft = storeState.ordersById[reusableEmptyDraftId];
             if (!draft) return;
-            draft.order_number = localNumbers.orderNumber;
-            draft.display_number = localNumbers.displayNumber;
+            draft.order_number = refreshedNumbers.orderNumber;
+            draft.display_number = refreshedNumbers.displayNumber;
           });
         }
       }
 
-      setActiveOrder(emptyDraft.id);
+      setActiveOrder(reusableEmptyDraftId);
       return;
     }
 
