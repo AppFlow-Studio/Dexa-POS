@@ -276,13 +276,16 @@ export async function runSettlement(
     // already closed its batch — re-talking to it would double-cut, so
     // the only way back is replaying finalize with this exact response.
     if (terminalResult.success || terminalResult.partialSuccess) {
-      addPendingFinalize({
-        batchUuid,
-        merchantId,
-        terminalId,
-        castlesResponse,
-        savedAt: new Date().toISOString(),
-      });
+      await addPendingFinalize(
+        {
+          batchUuid,
+          merchantId,
+          terminalId,
+          castlesResponse,
+          savedAt: new Date().toISOString(),
+        },
+        supabase,
+      );
     }
 
     return {
@@ -323,7 +326,10 @@ export interface ManualMarkSettledInput {
   supabase: SupabaseClient;
   batchUuid: string;
   merchantId: string;
-  reason?: string;
+  /** Required, must be >= 10 chars after trim. RPC raises otherwise. */
+  reason: string;
+  /** Required. RPC raises otherwise. Audit row attributed to this staff. */
+  staffId: string;
 }
 
 export interface ManualMarkSettledOutput {
@@ -338,7 +344,8 @@ export async function manualMarkBatchSettled(
   const { data, error } = await input.supabase.rpc("manual_mark_batch_settled", {
     p_batch_uuid: input.batchUuid,
     p_merchant_id: input.merchantId,
-    p_reason: input.reason ?? "",
+    p_reason: input.reason,
+    p_staff_id: input.staffId,
   });
   if (error) {
     return { success: false, error: error.message ?? "Failed to mark settled" };

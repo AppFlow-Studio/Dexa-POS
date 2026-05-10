@@ -38,7 +38,9 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native'
@@ -859,9 +861,9 @@ function PendingFinalizeSection ({
   const [busyId, setBusyId] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const refresh = useCallback(() => {
-    setEntries(listPendingFinalizes())
-  }, [])
+  const refresh = useCallback(async () => {
+    setEntries(await listPendingFinalizes(supabase))
+  }, [supabase])
 
   useEffect(() => {
     refresh()
@@ -900,10 +902,10 @@ function PendingFinalizeSection ({
         {
           text: 'Discard',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             // dynamic import to avoid hoisting concerns
             const { removePendingFinalize } = require('@/services/pendingFinalize')
-            removePendingFinalize(entry.batchUuid)
+            await removePendingFinalize(entry.batchUuid, supabase)
             refresh()
           }
         }
@@ -1103,8 +1105,12 @@ function BatchRow ({
   onPrint: () => void
 }) {
   const supabase = useSupabaseClient()
+  const { userId } = useAuth()
   const { selectedStore } = useStoreSettingsStore()
   const [marking, setMarking] = useState(false)
+  const [reasonOpen, setReasonOpen] = useState(false)
+  const [reasonText, setReasonText] = useState('')
+  const [reasonError, setReasonError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [payments, setPayments] = useState<BatchPaymentRow[] | null>(null)
   const [paymentsLoading, setPaymentsLoading] = useState(false)
@@ -1261,37 +1267,69 @@ function BatchRow ({
         </View>
       </View>
 
+      <ReasonPromptModal
+        visible={reasonOpen}
+        value={reasonText}
+        error={reasonError}
+        busy={marking}
+        onChangeText={t => {
+          setReasonText(t)
+          if (reasonError) setReasonError(null)
+        }}
+        onCancel={() => {
+          setReasonOpen(false)
+          setReasonText('')
+          setReasonError(null)
+        }}
+        onSubmit={async () => {
+          if (!selectedStore?.merchant_id) return
+          if (!userId) {
+            setReasonError('Sign in to mark this batch settled.')
+            return
+          }
+          if (reasonText.trim().length < 10) {
+            setReasonError(
+              'Reason must be at least 10 characters (audit trail).'
+            )
+            return
+          }
+          setMarking(true)
+          try {
+            const result = await manualMarkBatchSettled({
+              supabase,
+              batchUuid: batch.id,
+              merchantId: selectedStore.merchant_id!,
+              reason: reasonText.trim(),
+              staffId: userId
+            })
+            if (result.success) {
+              setReasonOpen(false)
+              setReasonText('')
+              setReasonError(null)
+            } else {
+              setReasonError(result.error ?? 'Failed to mark settled.')
+            }
+          } finally {
+            setMarking(false)
+          }
+        }}
+      />
       {!isSettled && batch.status !== 'closed' ? (
         <TouchableOpacity
           onPress={() => {
             if (!selectedStore?.merchant_id) return
             Alert.alert(
               'Mark this batch as settled?',
-              'Use this only when the terminal already closed this batch in a prior session and POS is out of sync. It marks the batch and its payments settled in the database without re-talking to the terminal. Cannot be undone.',
+              'Use this only when the terminal already closed this batch in a prior session and POS is out of sync. It marks the batch and its payments settled in the database without re-talking to the terminal. Cannot be undone — the action is logged with your staff ID and the reason you provide.',
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
-                  text: 'Mark Settled',
+                  text: 'Continue',
                   style: 'destructive',
-                  onPress: async () => {
-                    setMarking(true)
-                    try {
-                      const result = await manualMarkBatchSettled({
-                        supabase,
-                        batchUuid: batch.id,
-                        merchantId: selectedStore.merchant_id!,
-                        reason:
-                          'Marked settled via BatchoutPanel — terminal had already closed this host batch.'
-                      })
-                      if (!result.success) {
-                        Alert.alert(
-                          'Could not mark settled',
-                          result.error ?? 'Unknown error'
-                        )
-                      }
-                    } finally {
-                      setMarking(false)
-                    }
+                  onPress: () => {
+                    setReasonText('')
+                    setReasonError(null)
+                    setReasonOpen(true)
                   }
                 }
               ]
@@ -1498,6 +1536,123 @@ function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
         </Text>
       </View>
     </View>
+  )
+}
+
+function ReasonPromptModal ({
+  visible,
+  value,
+  error,
+  busy,
+  onChangeText,
+  onCancel,
+  onSubmit
+}: {
+  visible: boolean
+  value: string
+  error: string | null
+  busy: boolean
+  onChangeText: (t: string) => void
+  onCancel: () => void
+  onSubmit: () => void
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType='fade'
+      onRequestClose={onCancel}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.4)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20
+        }}
+      >
+        <View
+          style={{
+            width: '100%',
+            maxWidth: 480,
+            backgroundColor: colors.card,
+            borderRadius: 14,
+            padding: 18,
+            gap: 12
+          }}
+        >
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}>
+            Reason for manual reconcile
+          </Text>
+          <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 17 }}>
+            Required for the audit log. Be specific (e.g. "Terminal auto-cut
+            batch overnight before POS could send finalize"). Minimum 10
+            characters.
+          </Text>
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            multiline
+            numberOfLines={4}
+            placeholder='Why are you marking this batch settled?'
+            placeholderTextColor={colors.muted}
+            style={{
+              borderWidth: 1,
+              borderColor: error ? colors.danger : colors.border,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              minHeight: 90,
+              textAlignVertical: 'top',
+              color: colors.heading,
+              fontSize: 13
+            }}
+          />
+          {error ? (
+            <Text style={{ fontSize: 12, color: colors.danger }}>{error}</Text>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <TouchableOpacity
+              onPress={onCancel}
+              disabled={busy}
+              style={{
+                flex: 1,
+                paddingVertical: 12,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center'
+              }}
+            >
+              <Text style={{ fontWeight: '600', color: colors.label }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onSubmit}
+              disabled={busy}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingVertical: 12,
+                borderRadius: 10,
+                backgroundColor: busy ? colors.inset : colors.danger,
+                opacity: busy ? 0.6 : 1
+              }}
+            >
+              {busy ? <ActivityIndicator color='#fff' size='small' /> : null}
+              <Text style={{ fontWeight: '700', color: '#fff' }}>
+                {busy ? 'Marking…' : 'Mark Settled'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   )
 }
 
