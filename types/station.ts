@@ -35,6 +35,8 @@ export interface StationPaymentTerminal {
   ip_address?: string;
   /** Castles terminal port (default 8080) */
   port?: number;
+  /** Hardware serial number printed on the device */
+  serial_number?: string | null;
   last_connection_status: "Online" | "Offline" | "NotFound" | null;
   last_connection_test_at: string | null;
   consecutive_failures?: number;

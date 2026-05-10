@@ -441,9 +441,9 @@ export class OrderService {
       client,
       "process_payment",
       // Fallback (flag off): v9 — Cat-B idempotency without platform fees.
-      // Primary  (flag on): v10 — adds dual_pricing_fee / tip_fee tracking.
+      // Primary  (flag on): v11 — adds acquirer + batch_number on top of v10's fee tracking.
       "process_payment_v9",
-      "process_payment_v10",
+      "process_payment_v11",
       params,
       {
         deadline: DEADLINES.paymentRpc,

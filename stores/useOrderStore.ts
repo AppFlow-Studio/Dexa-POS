@@ -2611,9 +2611,9 @@ const syncPaymentToBackend = async (
       supabase,
       "process_payment",
       // Fallback (flag off): v9 — Cat-B idempotency, no platform fees.
-      // Primary  (flag on): v10 — adds dual_pricing_fee / tip_fee tracking.
+      // Primary  (flag on): v11 — adds acquirer + batch_number on top of v10's fee tracking.
       "process_payment_v9",
-      "process_payment_v10",
+      "process_payment_v11",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -10619,40 +10619,33 @@ export const useOrderStore = create<OrderState>()(
                   console.log(`[archiveOrder] Local inventory decremented`);
 
                 // 2. Sync to backend (non-blocking)
-                const supabase = getOrderStoreSupabaseClient();
-                const locationId =
-                  get().currentLocationId ??
-                  useStoreSettingsStore.getState().selectedStore?.id;
-
-                if (supabase && locationId) {
-                  syncArchivedOrderInventoryByLocation(
-                    supabase,
-                    locationId,
-                    order.items,
-                    inventorySnapshotBeforeDeduction,
-                  ).then((result) => {
-                    if (!result.success) {
-                      console.error(
-                        "[archiveOrder] Backend inventory deduction failed:",
-                        result.failures,
-                      );
-                    } else if (__DEV__) {
-                      console.log(
-                        "[archiveOrder] Backend inventory deduction successful",
-                      );
-                    }
-                  });
-                } else if (__DEV__) {
-                  console.warn(
-                    "[archiveOrder] Skipped backend inventory deduction due to missing supabase or location",
-                    {
-                      hasSupabase: Boolean(supabase),
-                      locationId,
-                    },
-                  );
+                if (order.db_order_id) {
+                  const supabase = getOrderStoreSupabaseClient();
+                  if (supabase) {
+                    supabase
+                      .rpc("process_order_inventory_deduction", {
+                        p_order_id: order.db_order_id,
+                      })
+                      .then(({ error }) => {
+                        if (error) {
+                          if (__DEV__)
+                            console.warn(
+                              "[archiveOrder] Backend inventory deduction skipped:",
+                              error?.message ?? error,
+                            );
+                          // Non-fatal: archive proceeds regardless (e.g. insufficient stock P0002)
+                        } else {
+                          if (__DEV__)
+                            console.log(
+                              "[archiveOrder] Backend inventory deduction successful",
+                            );
+                        }
+                      });
+                  }
                 }
               } catch (err) {
-                console.error("[archiveOrder] Inventory deduction error:", err);
+                if (__DEV__)
+                  console.warn("[archiveOrder] Inventory deduction error:", err);
                 // Continue archiving despite error
               }
             }
