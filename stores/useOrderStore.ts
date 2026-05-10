@@ -65,6 +65,7 @@ import {
   parseSequenceFromDisplayNumber,
   seedLocalSequence,
 } from "@/lib/localOrderSequence";
+import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
@@ -448,6 +449,106 @@ export const setOrderStoreSupabaseClient = (client: SupabaseClient | null) => {
 };
 
 export const getOrderStoreSupabaseClient = () => _supabaseClient;
+
+type RecipeInventoryDeduction = {
+  inventoryItemId: string;
+  inventoryItemName: string;
+  deductedQuantity: number;
+  nextQuantity: number;
+};
+
+const buildRecipeInventoryDeductions = (
+  soldItems: CartItem[],
+  inventorySnapshot: Array<{
+    id: string;
+    name: string;
+    stockQuantity: number;
+  }>,
+): RecipeInventoryDeduction[] => {
+  const { menuItems } = useMenuStore.getState();
+  const totalUsageByInventoryItem = new Map<string, number>();
+
+  soldItems.forEach((cartItem) => {
+    const menuItem = menuItems.find((mi) => mi.id === cartItem.menuItemId);
+    if (!menuItem?.recipe?.length) return;
+
+    menuItem.recipe.forEach((recipeItem) => {
+      const currentUsage =
+        totalUsageByInventoryItem.get(recipeItem.inventoryItemId) ?? 0;
+      totalUsageByInventoryItem.set(
+        recipeItem.inventoryItemId,
+        currentUsage + recipeItem.quantity * cartItem.quantity,
+      );
+    });
+  });
+
+  return Array.from(totalUsageByInventoryItem.entries())
+    .map(([inventoryItemId, deductedQuantity]) => {
+      const inventoryItem = inventorySnapshot.find(
+        (item) => item.id === inventoryItemId,
+      );
+
+      if (!inventoryItem) {
+        console.warn(
+          "[archiveOrder] Missing inventory item for recipe deduction:",
+          inventoryItemId,
+        );
+        return null;
+      }
+
+      return {
+        inventoryItemId,
+        inventoryItemName: inventoryItem.name,
+        deductedQuantity,
+        nextQuantity: Math.max(
+          0,
+          Number(inventoryItem.stockQuantity ?? 0) - deductedQuantity,
+        ),
+      };
+    })
+    .filter((item): item is RecipeInventoryDeduction => item !== null);
+};
+
+const syncArchivedOrderInventoryByLocation = async (
+  supabase: SupabaseClient,
+  locationId: string,
+  soldItems: CartItem[],
+  inventorySnapshot: Array<{
+    id: string;
+    name: string;
+    stockQuantity: number;
+  }>,
+) => {
+  const deductions = buildRecipeInventoryDeductions(soldItems, inventorySnapshot);
+
+  if (deductions.length === 0) {
+    return { success: true as const };
+  }
+
+  const results = await Promise.all(
+    deductions.map(async (deduction) => {
+      const { error } = await supabase.rpc("app_set_location_stock", {
+        p_inventory_item_id: deduction.inventoryItemId,
+        p_location_id: locationId,
+        p_quantity: deduction.nextQuantity,
+      });
+
+      if (error) {
+        return { deduction, error };
+      }
+
+      return null;
+    }),
+  );
+
+  const failures = results.flatMap((result) => (result ? [result] : []));
+
+  if (failures.length > 0) {
+    return { success: false as const, failures };
+  }
+
+  return { success: true as const };
+};
 
 // ============================================================================
 // PER-ORDER CREATION LOCK - Prevents race conditions when adding items rapidly
@@ -6423,10 +6524,23 @@ export const useOrderStore = create<OrderState>()(
             // Generate local order numbers (station-aware if station is set)
             const selectedStore =
               useStoreSettingsStore.getState().selectedStore;
+            const stationNumber = currentStation?.station_number ?? null;
+            if (selectedStore) {
+              const reliableSequenceFloor = getReliableTodaySequenceFloor(
+                get().ordersById,
+                get().orderIds,
+                stationNumber,
+              );
+              forceSetLocalSequence(
+                selectedStore.id,
+                stationNumber,
+                reliableSequenceFloor,
+              );
+            }
             const localNumbers = selectedStore
               ? generateLocalOrderNumbers(
                   selectedStore.id,
-                  currentStation?.station_number ?? null,
+                  stationNumber,
                 )
               : undefined;
 
@@ -10482,6 +10596,10 @@ export const useOrderStore = create<OrderState>()(
             // Trigger stock deduction: Local + Backend
             if (order.items.length > 0) {
               try {
+                const inventorySnapshotBeforeDeduction = [
+                  ...useInventoryStore.getState().inventoryItems,
+                ];
+
                 // 1. Update local store immediately
                 useInventoryStore
                   .getState()
@@ -10490,28 +10608,37 @@ export const useOrderStore = create<OrderState>()(
                   console.log(`[archiveOrder] Local inventory decremented`);
 
                 // 2. Sync to backend (non-blocking)
-                if (order.db_order_id) {
-                  const supabase = getOrderStoreSupabaseClient();
-                  if (supabase) {
-                    supabase
-                      .rpc("process_order_inventory_deduction", {
-                        p_order_id: order.db_order_id,
-                      })
-                      .then(({ error }) => {
-                        if (error) {
-                          console.error(
-                            "[archiveOrder] Backend inventory deduction failed:",
-                            error,
-                          );
-                          // Queue for retry if needed
-                        } else {
-                          if (__DEV__)
-                            console.log(
-                              "[archiveOrder] Backend inventory deduction successful",
-                            );
-                        }
-                      });
-                  }
+                const supabase = getOrderStoreSupabaseClient();
+                const locationId =
+                  get().currentLocationId ??
+                  useStoreSettingsStore.getState().selectedStore?.id;
+
+                if (supabase && locationId) {
+                  syncArchivedOrderInventoryByLocation(
+                    supabase,
+                    locationId,
+                    order.items,
+                    inventorySnapshotBeforeDeduction,
+                  ).then((result) => {
+                    if (!result.success) {
+                      console.error(
+                        "[archiveOrder] Backend inventory deduction failed:",
+                        result.failures,
+                      );
+                    } else if (__DEV__) {
+                      console.log(
+                        "[archiveOrder] Backend inventory deduction successful",
+                      );
+                    }
+                  });
+                } else if (__DEV__) {
+                  console.warn(
+                    "[archiveOrder] Skipped backend inventory deduction due to missing supabase or location",
+                    {
+                      hasSupabase: Boolean(supabase),
+                      locationId,
+                    },
+                  );
                 }
               } catch (err) {
                 console.error("[archiveOrder] Inventory deduction error:", err);

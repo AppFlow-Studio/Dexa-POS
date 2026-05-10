@@ -4,6 +4,20 @@ import { withDeadline } from "@/lib/network/withDeadline";
 import { PosSyncData } from "@/types/menu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+interface MenuItemRecipeRow {
+  id: string;
+  menu_item_id: string;
+  inventory_item_id: string | null;
+  quantity_used: number | null;
+}
+
+interface ModifierGroupItemRecipeRow {
+  id: string;
+  modifier_group_item_id: string;
+  inventory_item_id: string;
+  quantity_used: number;
+}
+
 /**
  * Hook to sync POS data from the backend.
  * This fetches the full menu hierarchy for a given location.
@@ -32,12 +46,12 @@ export const usePosSync = (locationId: string | null) => {
                 .rpc("get_pos_full_sync", { p_location_id: locationId })
                 .abortSignal(signal),
               supabase
-                .from("menu_item_ingredients")
-                .select("*")
+                .from("menu_item_recipes")
+                .select("id, menu_item_id, inventory_item_id, quantity_used")
                 .abortSignal(signal),
               supabase
-                .from("modifier_group_item_ingredients")
-                .select("*")
+                .from("modifier_group_item_recipes")
+                .select("id, modifier_group_item_id, inventory_item_id, quantity_used")
                 .abortSignal(signal),
             ]),
           DEADLINES.menuSync,
@@ -52,13 +66,50 @@ export const usePosSync = (locationId: string | null) => {
 
       const data = syncResult.data as unknown as PosSyncData;
 
+      if (menuItemIngredientsResult.error) {
+        console.warn(
+          "menu_item_ingredients fetch warning:",
+          menuItemIngredientsResult.error,
+        );
+      }
+
+      if (modifierIngredientsResult.error) {
+        console.warn(
+          "modifier_group_item_ingredients fetch warning:",
+          modifierIngredientsResult.error,
+        );
+      }
+
       console.log("DEBUG: Synced Menu Data:", data.menus?.[0]);
 
-      // Attach ingredients to the sync data object
+      // Keep recipe data returned by the RPC as the source of truth.
+      // Only fall back to direct table queries when they actually return rows.
       return {
         ...data,
-        menu_item_ingredients: menuItemIngredientsResult.data || [],
-        modifier_group_item_ingredients: modifierIngredientsResult.data || [],
+        menu_item_ingredients:
+          menuItemIngredientsResult.data &&
+          menuItemIngredientsResult.data.length > 0
+            ? (menuItemIngredientsResult.data as MenuItemRecipeRow[])
+                .filter((row) => !!row.inventory_item_id)
+                .map((row) => ({
+                  id: row.id,
+                  menu_item_id: row.menu_item_id,
+                  inventory_item_id: row.inventory_item_id as string,
+                  quantity: row.quantity_used ?? 0,
+                }))
+            : data.menu_item_ingredients || [],
+        modifier_group_item_ingredients:
+          modifierIngredientsResult.data &&
+          modifierIngredientsResult.data.length > 0
+            ? (
+                modifierIngredientsResult.data as ModifierGroupItemRecipeRow[]
+              ).map((row) => ({
+                id: row.id,
+                modifier_group_item_id: row.modifier_group_item_id,
+                inventory_item_id: row.inventory_item_id,
+                quantity: row.quantity_used ?? 0,
+              }))
+            : data.modifier_group_item_ingredients || [],
       };
     },
 

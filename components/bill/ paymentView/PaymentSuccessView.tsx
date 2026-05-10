@@ -3,6 +3,10 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
+import {
+  findLatestReusableEmptyDraftId,
+  getRefreshedReusableDraftNumbers,
+} from "@/lib/reusableEmptyDraft";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -101,6 +105,40 @@ const PaymentSuccessView = () => {
 
     // For quick service / takeout, start a new order immediately
     setTimeout(() => {
+      const { orderIds, ordersById } = useOrderStore.getState();
+      const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+        ordersById,
+        orderIds,
+        activeOrderId,
+      );
+
+      if (reusableEmptyDraftId) {
+        if (selectedStore) {
+          const stationNumber =
+            useStoreSettingsStore.getState().selectedStation?.station_number ??
+            null;
+          const refreshedNumbers = getRefreshedReusableDraftNumbers({
+            draftId: reusableEmptyDraftId,
+            ordersById,
+            orderIds,
+            locationId: selectedStore.id,
+            stationNumber,
+          });
+
+          if (refreshedNumbers) {
+            useOrderStore.setState((state) => {
+              const draft = state.ordersById[reusableEmptyDraftId];
+              if (!draft) return;
+              draft.order_number = refreshedNumbers.orderNumber;
+              draft.display_number = refreshedNumbers.displayNumber;
+            });
+          }
+        }
+
+        setActiveOrder(reusableEmptyDraftId);
+        return;
+      }
+
       const newOrder = startNewOrder();
       setActiveOrder(newOrder.id);
     }, 100);

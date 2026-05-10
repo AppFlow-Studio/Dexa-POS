@@ -1,4 +1,8 @@
 import { eventBus, OrderPaidEvent } from '@/lib/eventBus'
+import {
+  findLatestReusableEmptyDraftId,
+  getRefreshedReusableDraftNumbers
+} from '@/lib/reusableEmptyDraft'
 import { toastService } from '@/lib/toastService'
 import {
   CartItem,
@@ -433,7 +437,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
   // Called when success view is dismissed by dragging down
   handleSuccessClose: () => {
-    const { activeOrderId, ordersById, startNewOrder, setActiveOrder } =
+    const { activeOrderId, ordersById, orderIds, startNewOrder, setActiveOrder } =
       useOrderStore.getState()
 
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
@@ -451,6 +455,41 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     // For quick service / takeout, start a new order immediately
     setTimeout(() => {
+      const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+        ordersById,
+        orderIds,
+        activeOrderId
+      )
+
+      if (reusableEmptyDraftId) {
+        const selectedStore = useStoreSettingsStore.getState().selectedStore
+        const stationNumber =
+          useStoreSettingsStore.getState().selectedStation?.station_number ??
+          null
+
+        if (selectedStore) {
+          const refreshedNumbers = getRefreshedReusableDraftNumbers({
+            draftId: reusableEmptyDraftId,
+            ordersById,
+            orderIds,
+            locationId: selectedStore.id,
+            stationNumber
+          })
+
+          if (refreshedNumbers) {
+            useOrderStore.setState(state => {
+              const draft = state.ordersById[reusableEmptyDraftId]
+              if (!draft) return
+              draft.order_number = refreshedNumbers.orderNumber
+              draft.display_number = refreshedNumbers.displayNumber
+            })
+          }
+        }
+
+        setActiveOrder(reusableEmptyDraftId)
+        return
+      }
+
       const newOrder = startNewOrder()
       setActiveOrder(newOrder.id)
     }, 100)

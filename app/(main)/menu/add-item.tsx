@@ -128,14 +128,32 @@ const AddMenuItemScreen: React.FC = () => {
 
       // 4. Save Recipe Ingredients (New)
       if (data.recipe && data.recipe.length > 0 && createdItem?.id) {
-        await MenuService.upsertMenuItemRecipe(
+        const recipeResult = await MenuService.upsertMenuItemRecipe(
           supabase,
           createdItem.id,
+          selectedStore.id,
           data.recipe.map(r => ({
             inventoryItemId: r.inventoryItemId,
             quantity: r.quantity
           }))
         )
+
+        if (!recipeResult.success) {
+          console.error('Failed to save menu item recipe:', recipeResult.error)
+          show({
+            title: 'Recipe Save Failed',
+            message:
+              recipeResult.error?.message ||
+              'The menu item was created, but its recipe items were not saved.',
+            type: 'error'
+          })
+          return false
+        }
+
+        const { queryClient } = require('@/contexts/TanstackProvider') as typeof import('@/contexts/TanstackProvider')
+        await queryClient.invalidateQueries({
+          queryKey: ['pos_sync', selectedStore.id]
+        })
       }
 
       // Also update local store for immediate UI feedback - use backend ID

@@ -460,19 +460,38 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   // Helper to merge recipes into menu store
-  const applyRecipes = (data: typeof inventoryData) => {
+  const applyRecipes = (
+    data:
+      | {
+          menu_item_ingredients?: Array<{
+            menu_item_id: string;
+            inventory_item_id: string;
+            quantity: number;
+          }>;
+          modifier_group_item_ingredients?: Array<{
+            modifier_group_item_id: string;
+            inventory_item_id: string;
+            quantity: number;
+          }>;
+        }
+      | null
+      | undefined,
+  ) => {
     if (!data) return;
-    if (data.menuRecipes?.length || data.modifierRecipes?.length) {
+    if (
+      data.menu_item_ingredients?.length ||
+      data.modifier_group_item_ingredients?.length
+    ) {
       useMenuStore.getState().mergeRecipeData({
-        menuRecipes: data.menuRecipes.map((r) => ({
+        menuRecipes: (data.menu_item_ingredients ?? []).map((r) => ({
           menu_item_id: r.menu_item_id,
           inventory_item_id: r.inventory_item_id,
-          quantity: r.quantity_used,
+          quantity: r.quantity,
         })),
-        modifierRecipes: data.modifierRecipes.map((r) => ({
+        modifierRecipes: (data.modifier_group_item_ingredients ?? []).map((r) => ({
           modifier_group_item_id: r.modifier_group_item_id,
           inventory_item_id: r.inventory_item_id,
-          quantity: r.quantity_used,
+          quantity: r.quantity,
         })),
       });
     }
@@ -486,7 +505,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       });
 
       // Merge Recipe Data into MenuStore
-      applyRecipes(inventoryData);
+      applyRecipes(posSyncData);
 
       console.log(
         "✅ Inventory & Recipe data synced:",
@@ -517,7 +536,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Re-apply recipes if available (since setMenuData might reset them)
-      applyRecipes(inventoryData);
+      applyRecipes(posSyncData);
 
       // Send menu data to debug server in development
       // const DEBUG_MENU_URL = __DEV__
@@ -544,7 +563,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       //     });
       // }
     }
-  }, [posSyncData, setMenuData, selectedStore?.id, inventoryData]);
+  }, [posSyncData, setMenuData, selectedStore?.id]);
 
   // Merge standalone data (categories, items, modifiers, menus including inactive)
   useEffect(() => {
@@ -553,7 +572,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       menuStore.mergeStandaloneData(standaloneData);
 
       // Re-apply recipes if available (since mergeStandaloneData might overwrite items)
-      applyRecipes(inventoryData);
+      applyRecipes(posSyncData);
 
       console.log("✅ Standalone data merged:", {
         categories: standaloneData.categories?.length || 0,
@@ -562,7 +581,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         menus: standaloneData.menus?.length || 0,
       });
     }
-  }, [standaloneData, inventoryData]);
+  }, [standaloneData, posSyncData]);
 
   // Floor plan sync is now handled in the combined useEffect above
 

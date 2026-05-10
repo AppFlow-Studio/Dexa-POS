@@ -22,27 +22,6 @@ import { UNIT_OPTIONS } from "./InventoryItemFormModal";
 
 export type AddInventoryItemSheetRef = BottomSheet;
 
-const inputStyle = {
-  backgroundColor: colors.screen,
-  borderWidth: 1,
-  borderColor: colors.border,
-  borderRadius: 10,
-  color: colors.heading,
-  fontSize: 13,
-  height: 38,
-  paddingHorizontal: 12,
-  paddingVertical: 8,
-};
-
-const fieldLabel = {
-  fontSize: 10,
-  fontWeight: "700" as const,
-  color: colors.muted,
-  textTransform: "uppercase" as const,
-  letterSpacing: 0.4,
-  marginBottom: 6,
-};
-
 const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
   (props, ref) => {
     const snapPoints = useMemo(() => ["90%"], []);
@@ -63,6 +42,25 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
     const { selectedStore } = useStoreSettingsStore();
     const { colorScheme } = useColorScheme();
     const keyboardAppearance = colorScheme === "dark" ? "dark" : "light";
+    const inputStyle = {
+      backgroundColor: colors.screen,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      color: colors.heading,
+      fontSize: 13,
+      height: 38,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    };
+    const fieldLabel = {
+      fontSize: 10,
+      fontWeight: "700" as const,
+      color: colors.muted,
+      textTransform: "uppercase" as const,
+      letterSpacing: 0.4,
+      marginBottom: 6,
+    };
 
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [name, setName] = useState("");

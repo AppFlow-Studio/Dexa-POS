@@ -91,6 +91,7 @@ const InventoryItemDetailModal: React.FC<{
   const handleSave = async () => {
     if (!item) return;
     const roundedStockQuantity = editForm.stockQuantity !== "" ? Number(parseFloat(editForm.stockQuantity).toFixed(2)) : item.stockQuantity;
+    const stockChanged = roundedStockQuantity !== item.stockQuantity;
     const quantityFields = editStockTrackingMode === "quantity"
       ? { stockQuantity: roundedStockQuantity, reorderThreshold: editForm.reorderThreshold ? parseInt(editForm.reorderThreshold) : item.reorderThreshold }
       : { stockQuantity: undefined, reorderThreshold: undefined };
@@ -103,34 +104,78 @@ const InventoryItemDetailModal: React.FC<{
       ...(quantityFields as any),
       stockTrackingMode: editStockTrackingMode,
       cost: editForm.cost ? parseFloat(editForm.cost) : item.cost,
+      stockUpdateReason: stockChanged ? "Manual Adjustment" : undefined,
     };
-    await onUpdate(item.id, updatedItem);
-    setIsEditing(false);
+    try {
+      await onUpdate(item.id, updatedItem);
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Failed to save inventory item:", error);
+      alert("Failed to save item changes.");
+    }
   };
 
   const handleLogUsage = async () => {
-    if (!item || !logUsageForm.quantityUsed || !logUsageForm.reason) return;
-    if (editStockTrackingMode !== "quantity") {
+    if (!item) return;
+    if (!logUsageForm.quantityUsed) {
+      alert("Enter the quantity used.");
+      return;
+    }
+    if (!logUsageForm.reason) {
+      alert("Select a reason.");
+      return;
+    }
+    if (trackingMode !== "quantity") {
       alert("This item is not set to track stock by quantity.");
       return;
     }
-    const quantityChange = -parseFloat(logUsageForm.quantityUsed);
+    const quantityUsed = parseFloat(logUsageForm.quantityUsed);
+    if (!Number.isFinite(quantityUsed) || quantityUsed <= 0) {
+      alert("Enter a valid quantity greater than 0.");
+      return;
+    }
+    const quantityChange = -quantityUsed;
     const newQuantity = Number(((item.stockQuantity || 0) + quantityChange).toFixed(2));
-    const updatedItem = { ...item, stockQuantity: newQuantity };
-    await onUpdate(item.id, updatedItem);
-    setLogUsageForm({ quantityUsed: "", reason: "", customReason: "", notes: "" });
-    setIsLogUsageModalOpen(false);
+    const updatedItem = { ...item, stockQuantity: newQuantity, stockUpdateReason: logUsageForm.reason };
+    try {
+      await onUpdate(item.id, updatedItem);
+      setLogUsageForm({ quantityUsed: "", reason: "", customReason: "", notes: "" });
+      setIsLogUsageModalOpen(false);
+    } catch (error) {
+      console.error("Failed to log inventory usage:", error);
+      alert("Failed to log usage.");
+    }
   };
 
   const handleAddStock = async () => {
-    if (!item || !addStockForm.quantityAdded || !addStockForm.reason) return;
-    if (editStockTrackingMode !== "quantity") return;
+    if (!item) return;
+    if (!addStockForm.quantityAdded) {
+      alert("Enter the quantity added.");
+      return;
+    }
+    if (!addStockForm.reason) {
+      alert("Select a reason.");
+      return;
+    }
+    if (trackingMode !== "quantity") {
+      alert("This item is not set to track stock by quantity.");
+      return;
+    }
     const quantityChange = parseFloat(addStockForm.quantityAdded);
+    if (!Number.isFinite(quantityChange) || quantityChange <= 0) {
+      alert("Enter a valid quantity greater than 0.");
+      return;
+    }
     const newQuantity = Number(((item.stockQuantity || 0) + quantityChange).toFixed(2));
-    const updatedItem = { ...item, stockQuantity: newQuantity };
-    await onUpdate(item.id, updatedItem);
-    setAddStockForm({ quantityAdded: "", reason: "", notes: "" });
-    setIsAddStockModalOpen(false);
+    const updatedItem = { ...item, stockQuantity: newQuantity, stockUpdateReason: addStockForm.reason };
+    try {
+      await onUpdate(item.id, updatedItem);
+      setAddStockForm({ quantityAdded: "", reason: "", notes: "" });
+      setIsAddStockModalOpen(false);
+    } catch (error) {
+      console.error("Failed to add stock:", error);
+      alert("Failed to add stock.");
+    }
   };
 
   const getVendorName = (vendorId?: string | null) => {
