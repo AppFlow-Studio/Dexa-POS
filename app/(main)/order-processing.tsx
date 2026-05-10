@@ -18,6 +18,7 @@ import {
     parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { iosOnly } from "@/lib/safeAnimations";
+import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -674,11 +675,12 @@ const OrderProcessing = () => {
   // Bulk complete: orders eligible for completion
   const completableOrders = useMemo(() => {
     return displayOrders.filter((order) => {
+      const effectivePaidStatus = deriveEffectivePaidStatus(order);
       if (order.order_status === "completed" || order.order_status === "void")
         return false;
       if (orderCompletionMode === "auto_on_payment")
-        return order.paid_status === "Paid";
-      return order.paid_status === "Paid" && order.order_status === "ready";
+        return effectivePaidStatus === "Paid";
+      return effectivePaidStatus === "Paid" && order.order_status === "ready";
     });
   }, [displayOrders, orderCompletionMode]);
 
@@ -810,12 +812,13 @@ const OrderProcessing = () => {
           : (item._broadcastItemCount ?? 0);
       const openedAt = formatOrderOpenedTime(item.opened_at);
       const orderStatusColor = getOrderStatusColor(item.order_status);
-      const paidStatusColor = getPaidStatusColor(item.paid_status);
+      const effectivePaidStatus = deriveEffectivePaidStatus(item);
+      const paidStatusColor = getPaidStatusColor(effectivePaidStatus);
 
       const canMarkDone =
         item.order_status === "preparing" ||
         item.order_status === "sent_to_kitchen" ||
-        (item.order_status === "ready" && item.paid_status === "Paid");
+        (item.order_status === "ready" && effectivePaidStatus === "Paid");
 
       const cashDue = item.cash_amount_due ?? item.amount_due ?? totalAmount;
       const statusLabel = formatOrderStatusLabel(item.order_status);
