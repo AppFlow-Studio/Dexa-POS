@@ -30,6 +30,8 @@ export interface BatchSummaryHeader {
   settlement_batch_id?: string | null;
   batch_id?: string | null;
   castles_batch_num?: string | null;
+  acquirer?: string | null;
+  batch_number?: string | null;
   opened_at?: string | null;
   closed_at?: string | null;
   settlement_date?: string | null;
@@ -42,6 +44,7 @@ export interface BatchSummaryHeader {
   processor?: string | null;
   terminal_id?: string | null;
   terminal_name?: string | null;
+  terminal_serial?: string | null;
   register_id?: string | null;
   transaction_count?: number | null;
 }
@@ -58,7 +61,7 @@ export interface BatchSummary {
     gross: number;
   };
   refunds: { count: number; amount: number };
-  net: { gross: number; refunds: number; net_deposit: number | null };
+  net: { gross: number; tips?: number; refunds: number; net_deposit: number | null };
   card_brands: Record<string, BatchSummaryAmount>;
   entry_modes: Record<string, BatchSummaryAmount>;
   payment_methods?: Record<string, BatchSummaryAmount>;
@@ -175,8 +178,24 @@ function pushHeader(
 
   nodes.push({ type: "divider", style: "solid", lineWidth: W });
 
-  // Header (Section 1) — always print full set
-  if (header.castles_batch_num) {
+  // Header (Section 1) — always print full set. Prefer the acquirer-
+  // keyed batch identifier (e.g. "TSYS-010") so the printed receipt
+  // matches what the processor and reconciliation tools display. Fall
+  // back to legacy castles_batch_num / batch_id only when host info is
+  // unavailable (pre-host-keyed batches).
+  const hostKeyedLabel =
+    header.acquirer && header.batch_number
+      ? `${header.acquirer}-${header.batch_number}`
+      : null;
+  if (hostKeyedLabel) {
+    nodes.push({
+      type: "two_column",
+      left: "Batch #",
+      right: hostKeyedLabel,
+      lineWidth: W,
+      format: BOLD,
+    });
+  } else if (header.castles_batch_num) {
     nodes.push({
       type: "two_column",
       left: "Batch #",
@@ -216,6 +235,15 @@ function pushHeader(
     right: sanitizeForPrint(String(terminalLabel)).slice(0, 20),
     lineWidth: W,
   });
+
+  if (header.terminal_serial) {
+    nodes.push({
+      type: "two_column",
+      left: "Serial",
+      right: sanitizeForPrint(header.terminal_serial).slice(0, 20),
+      lineWidth: W,
+    });
+  }
 
   if (header.register_id && header.terminal_name) {
     nodes.push({
@@ -311,18 +339,26 @@ function pushBody(nodes: PrintNode[], s: BatchSummary): void {
   // 4. NET DEPOSIT
   pushSection(nodes, "NET BATCH TOTAL");
   pushAmountRow(nodes, "Gross", s.net.gross);
+  const tipForNet = s.net.tips ?? s.adjustments.tip_total ?? 0;
+  if (tipForNet > 0) {
+    nodes.push({
+      type: "two_column",
+      left: "Plus Tips",
+      right: `+${fmtCurrency(tipForNet)}`,
+      lineWidth: W,
+    });
+  }
   nodes.push({
     type: "two_column",
     left: "Less Refunds",
     right: `-${fmtCurrency(s.net.refunds)}`,
     lineWidth: W,
   });
-  pushAmountRow(
-    nodes,
-    "Net Deposit",
-    s.net.net_deposit ?? s.net.gross - s.net.refunds,
-    BOLD,
-  );
+  const computedDeposit =
+    s.net.net_deposit && s.net.net_deposit !== 0
+      ? s.net.net_deposit
+      : s.net.gross + tipForNet - s.net.refunds;
+  pushAmountRow(nodes, "Net Deposit", computedDeposit, BOLD);
 
   // 5. CARD BRANDS — always render the four canonical brands at zero,
   // then any extra brands present (Diners, JCB, UnionPay, unknowns) get

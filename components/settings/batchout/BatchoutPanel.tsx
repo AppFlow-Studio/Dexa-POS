@@ -78,6 +78,7 @@ interface BatchPaymentRow {
   amount: number | string | null
   tip_amount: number | string | null
   total_amount: number | string | null
+  refunded_amount: number | string | null
   status: string | null
   is_settled: boolean | null
   is_returned: boolean | null
@@ -1111,6 +1112,11 @@ function BatchRow ({
   const [reasonOpen, setReasonOpen] = useState(false)
   const [reasonText, setReasonText] = useState('')
   const [reasonError, setReasonError] = useState<string | null>(null)
+  // Manual mark-settled is destructive and almost never the right action —
+  // the cascade trigger settles automatically when the host batch closes.
+  // Keep the button hidden until staff long-press the status badge to opt
+  // in. Resets per batch render so it doesn't linger.
+  const [manualUnlocked, setManualUnlocked] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [payments, setPayments] = useState<BatchPaymentRow[] | null>(null)
   const [paymentsLoading, setPaymentsLoading] = useState(false)
@@ -1123,7 +1129,7 @@ function BatchRow ({
       setPaymentsLoading(true)
       setPaymentsError(null)
       try {
-        const { data, error } = await supabase.rpc('get_batch_payments_v1', {
+        const { data, error } = await supabase.rpc('get_batch_payments_v2', {
           p_settlement_batch_id: batch.id
         })
         if (error) throw error
@@ -1231,12 +1237,24 @@ function BatchRow ({
               </Text>
             </View>
           ) : null}
-          <View
+          <TouchableOpacity
+            // Hidden long-press affordance to reveal the manual mark-settled
+            // override. No visual hint — staff must already know it exists.
+            // 1500ms delay prevents accidental triggers from a stray hold.
+            onLongPress={() => {
+              if (!isSettled && batch.status !== 'closed') {
+                setManualUnlocked(v => !v)
+              }
+            }}
+            delayLongPress={1500}
+            activeOpacity={1}
             style={{
               paddingHorizontal: 8,
               paddingVertical: 3,
               borderRadius: 6,
-              backgroundColor: tone + '20'
+              backgroundColor: tone + '20',
+              borderWidth: manualUnlocked ? 1 : 0,
+              borderColor: manualUnlocked ? colors.danger : 'transparent'
             }}
           >
             <Text
@@ -1250,7 +1268,7 @@ function BatchRow ({
             >
               {batch.status}
             </Text>
-          </View>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={onPrint}
             hitSlop={8}
@@ -1314,7 +1332,7 @@ function BatchRow ({
           }
         }}
       />
-      {!isSettled && batch.status !== 'closed' ? (
+      {!isSettled && batch.status !== 'closed' && manualUnlocked ? (
         <TouchableOpacity
           onPress={() => {
             if (!selectedStore?.merchant_id) return
@@ -1459,19 +1477,25 @@ function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
   const amount = Number(payment.amount ?? 0)
   const tip = Number(payment.tip_amount ?? 0)
   const total = Number(payment.total_amount ?? 0)
+  const refunded = Number(payment.refunded_amount ?? 0)
+  const isPartialRefund =
+    refunded > 0 && refunded + 0.005 < total // float-tolerant
+  const isFullRefund = payment.is_returned && !isPartialRefund
   const card =
     payment.card_last_four
       ? `${payment.card_type ?? 'Card'} ••${payment.card_last_four}`
       : (payment.payment_method ?? 'Card').toString()
-  const statusLabel = payment.is_returned
+  const statusLabel = isFullRefund
     ? 'Refunded'
+    : isPartialRefund
+    ? 'Partially Refunded'
     : payment.status === 'captured'
     ? payment.is_settled
       ? 'Settled'
       : 'Captured'
     : (payment.status ?? '').toString()
   const statusTone =
-    payment.is_returned
+    isFullRefund || isPartialRefund
       ? colors.warning
       : payment.is_settled
       ? colors.success
@@ -1535,6 +1559,11 @@ function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
           {statusLabel}
         </Text>
       </View>
+      {refunded > 0 ? (
+        <Text style={{ fontSize: 11, color: colors.warning, fontWeight: '600' }}>
+          Refunded ${refunded.toFixed(2)} of ${total.toFixed(2)}
+        </Text>
+      ) : null}
     </View>
   )
 }
