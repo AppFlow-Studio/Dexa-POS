@@ -50,17 +50,27 @@ const ShapeButton = ({
   <TouchableOpacity
     key={id}
     onPress={onPress}
-    className={`p-3 border-2 rounded-xl items-center justify-center w-[250px] h-[130px] ${
-      isSelected
-        ? "border-blue-500 bg-blue-500/10"
-        : "border-gray-700 bg-panel"
-    }`}
+    style={{
+      padding: 12,
+      borderWidth: 2,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      width: 250,
+      height: 130,
+      borderColor: isSelected ? colors.teal : colors.border,
+      backgroundColor: isSelected ? colors.tealMuted : colors.panel,
+    }}
   >
-    <ShapeComponent color={isSelected ? "#3b82f6" : "#9CA3AF"} height={60} />
+    <ShapeComponent color={isSelected ? colors.teal : colors.label} height={60} />
     <Text
-      className={`mt-2 font-semibold text-sm text-center ${
-        isSelected ? "text-blue-400" : "text-gray-400"
-      }`}
+      style={{
+        marginTop: 8,
+        fontWeight: "600",
+        fontSize: 14,
+        textAlign: "center",
+        color: isSelected ? colors.teal : colors.label,
+      }}
       numberOfLines={1}
     >
       {label}
@@ -113,46 +123,62 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[620px] p-8 rounded-2xl bg-surface border border-gray-700">
+      <DialogContent
+        style={{
+          width: 620,
+          padding: 32,
+          borderRadius: 16,
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-white">
+            <DialogTitle style={{ fontSize: 24, fontWeight: "700", color: colors.heading }}>
               Add New Object
             </DialogTitle>
-            <DialogDescription className="text-base text-gray-400 mt-1">
+            <DialogDescription style={{ fontSize: 16, color: colors.muted, marginTop: 4 }}>
               Enter a name and choose a shape to add to the floor plan.
             </DialogDescription>
           </DialogHeader>
 
-          <View className="gap-y-6 py-4">
-            {/* Name Input Section */}
+          <View style={{ rowGap: 24, paddingVertical: 16 }}>
             <View>
-              <Text className="text-base font-medium text-gray-300 mb-2">
+              <Text style={{ fontSize: 16, fontWeight: "500", color: colors.label, marginBottom: 8 }}>
                 Object Name
               </Text>
-              <View className="gap-y-3 py-3">
+              <View style={{ rowGap: 12, paddingVertical: 12 }}>
                 <View>
-                  <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  <Text style={{ fontSize: 18, color: colors.label, fontWeight: "500", marginBottom: 6 }}>
                     Table Name
                   </Text>
                   <TextInput
                     value={name}
                     onChangeText={setName}
                     placeholder="e.g., T-24 or Main Bar"
-                    placeholderTextColor="#6B7280"
-                    className="p-4 bg-panel border border-gray-600 rounded-lg text-lg text-white h-14"
+                    placeholderTextColor={colors.muted}
+                    style={{
+                      paddingHorizontal: 16,
+                      height: 56,
+                      backgroundColor: colors.inset,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 10,
+                      fontSize: 18,
+                      color: colors.heading,
+                    }}
                   />
                 </View>
 
-                {/* Shape Selection Section with Vertical Scroll */}
                 <View>
-                  <Text className="text-base font-medium text-gray-300 mb-2">
+                  <Text style={{ fontSize: 16, fontWeight: "500", color: colors.label, marginBottom: 8 }}>
                     Select Shape
                   </Text>
                   <ScrollView style={{ maxHeight: 290 }}>
-                    <View className="flex-row flex-wrap gap-4 justify-center">
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>
                       {SHAPE_OPTIONS.map(
                         ({ id, label, component: ShapeComponent }) => (
                           <ShapeButton
@@ -175,18 +201,42 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
               </View>
             </View>
           </View>
-          <DialogFooter className="flex-row gap-4 pt-4 border-t border-gray-700">
+          <DialogFooter
+            style={{
+              flexDirection: "row",
+              gap: 16,
+              paddingTop: 16,
+              borderTopWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-3 bg-gray-700 rounded-lg items-center"
+              style={{
+                flex: 1,
+                paddingVertical: 12,
+                backgroundColor: colors.inset,
+                borderRadius: 10,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
             >
-              <Text className="text-base font-bold text-gray-300">Cancel</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: colors.label }}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleAddPress}
-              className="flex-1 bg-blue-600 py-3 rounded-lg items-center"
+              style={{
+                flex: 1,
+                backgroundColor: colors.teal,
+                paddingVertical: 12,
+                borderRadius: 10,
+                alignItems: "center",
+              }}
             >
-              <Text className="text-white text-base font-bold">Add Object</Text>
+              <Text style={{ color: colors.onSolid, fontSize: 16, fontWeight: "700" }}>
+                Add Object
+              </Text>
             </TouchableOpacity>
           </DialogFooter>
         </KeyboardAvoidingView>

@@ -1,5 +1,10 @@
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
-import { TABLE_SHAPES } from '@/lib/table-shapes'
+import {
+  FREE_PLACEMENT_SHAPE_IDS,
+  RIGHT_ANGLE_ROTATION_SHAPE_IDS,
+  TABLE_SHAPES,
+  WALL_CORNER_SNAP_SHAPE_IDS
+} from '@/lib/table-shapes'
 import {
   registerTablePosition,
   unregisterTablePosition
@@ -261,13 +266,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Type check: only table/booth categories are interactive in normal view
   const isTableType = table.category === 'table' || table.category === 'booth'
   const isWall = table.shape_id === 'wall-section'
+  const snapsToWallCorners = WALL_CORNER_SNAP_SHAPE_IDS.has(table.shape_id)
+  const hasFreePlacement = FREE_PLACEMENT_SHAPE_IDS.has(table.shape_id)
 
   // Stable key that changes whenever any wall's geometry changes — used to invalidate
   // edge flags without subscribing to a new array reference every render.
   const wallGeometryKey = useFloorPlanStore(s =>
-    isWall
+    snapsToWallCorners
       ? s.tables
-          .filter(t => t.shape_id === 'wall-section')
+          .filter(t => WALL_CORNER_SNAP_SHAPE_IDS.has(t.shape_id))
           .map(
             t => `${t.id}:${t.x},${t.y},${t.width},${t.height},${t.rotation}`
           )
@@ -477,14 +484,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       let finalX: number
       let finalY: number
 
-      if (isWall) {
-        // Walls: try corner snap first, fall back to grid
+      if (hasFreePlacement) {
+        finalX = rawX
+        finalY = rawY
+      } else if (snapsToWallCorners) {
+        // Wall-like structural objects: try corner snap first, fall back to grid.
         const snap = findWallCornerSnap(
           rawX,
           rawY,
           effectiveWidth,
           effectiveHeight,
           rot,
+          table.shape_id,
           table.id
         )
         finalX = snap ? snap.x : Math.round(rawX / GRID_SIZE) * GRID_SIZE
@@ -499,7 +510,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       updateTablePosition(table.id, finalX, finalY, rot)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isWall, effectiveWidth, effectiveHeight, table.id]
+    [hasFreePlacement, snapsToWallCorners, effectiveWidth, effectiveHeight, table.id]
   )
 
   const dragGesture = Gesture.Pan()
@@ -520,7 +531,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         dragContext.value.y + event.translationY / canvasScale.value
     })
     .onEnd(() => {
-      // Snap to grid (or wall corner for walls) only on release
+      // Snap to grid (or wall corner for wall-like structure objects) only on release
       runOnJS(finalizeDrop)(translateX.value, translateY.value, rotation.value)
     })
 
@@ -535,7 +546,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       rotation.value = rotateContext.value + event.rotation
     })
     .onEnd(() => {
-      const snappedRotation = Math.round(rotation.value / 45) * 45
+      const snappedRotation = RIGHT_ANGLE_ROTATION_SHAPE_IDS.has(table.shape_id)
+        ? Math.round(rotation.value / 90) * 90
+        : Math.round(rotation.value / 45) * 45
       rotation.value = snappedRotation
       runOnJS(updateTablePosition)(
         table.id,

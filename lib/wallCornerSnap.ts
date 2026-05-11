@@ -1,3 +1,4 @@
+import { WALL_CORNER_SNAP_SHAPE_IDS } from '@/lib/table-shapes'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 
@@ -10,6 +11,151 @@ export type WallEdgeFlags = {
   hideRight: boolean
   hideBottom: boolean
   hideLeft: boolean
+}
+
+type WorldPoint = { x: number; y: number }
+type WorldSegment = { start: WorldPoint; end: WorldPoint }
+
+function rotateLocalPoint(
+  point: WorldPoint,
+  center: WorldPoint,
+  rotation: number
+): WorldPoint {
+  const rad = rotation * DEG_TO_RAD
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  return {
+    x: center.x + point.x * cos - point.y * sin,
+    y: center.y + point.x * sin + point.y * cos
+  }
+}
+
+function getStructureSnapPoints(
+  shapeId: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation: number
+): WorldPoint[] {
+  if (shapeId === 'door-single') {
+    const cx = x + width / 2
+    const cy = y + height / 2
+    const localPoints: WorldPoint[] = [
+      { x: width * (6 / 80) - width / 2, y: height * (70 / 80) - height / 2 },
+      { x: width * (74 / 80) - width / 2, y: height * (70 / 80) - height / 2 },
+    ]
+    return localPoints.map(point =>
+      rotateLocalPoint(point, { x: cx, y: cy }, rotation)
+    )
+  }
+
+  return getWallCorners(x, y, width, height, rotation)
+}
+
+function getStructureSnapSegment(
+  shapeId: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation: number
+): WorldSegment | null {
+  const cx = x + width / 2
+  const cy = y + height / 2
+
+  if (shapeId === 'door-single') {
+    const start = rotateLocalPoint(
+      { x: width * (6 / 80) - width / 2, y: height * (70 / 80) - height / 2 },
+      { x: cx, y: cy },
+      rotation
+    )
+    const end = rotateLocalPoint(
+      {
+        x: width * (74 / 80) - width / 2,
+        y: height * (70 / 80) - height / 2
+      },
+      { x: cx, y: cy },
+      rotation
+    )
+    return { start, end }
+  }
+
+  if (shapeId === 'door-double') {
+    const start = rotateLocalPoint(
+      { x: width * (2 / 160) - width / 2, y: height * (70 / 80) - height / 2 },
+      { x: cx, y: cy },
+      rotation
+    )
+    const end = rotateLocalPoint(
+      {
+        x: width * (158 / 160) - width / 2,
+        y: height * (70 / 80) - height / 2
+      },
+      { x: cx, y: cy },
+      rotation
+    )
+    return { start, end }
+  }
+
+  if (shapeId === 'wall-section') {
+    const start = rotateLocalPoint(
+      { x: -width / 2, y: 0 },
+      { x: cx, y: cy },
+      rotation
+    )
+    const end = rotateLocalPoint(
+      { x: width / 2, y: 0 },
+      { x: cx, y: cy },
+      rotation
+    )
+    return { start, end }
+  }
+
+  return null
+}
+
+function getSegmentMidpoint(segment: WorldSegment): WorldPoint {
+  return {
+    x: (segment.start.x + segment.end.x) / 2,
+    y: (segment.start.y + segment.end.y) / 2
+  }
+}
+
+function getClosestPointOnSegment(
+  point: WorldPoint,
+  segment: WorldSegment
+): WorldPoint {
+  const dx = segment.end.x - segment.start.x
+  const dy = segment.end.y - segment.start.y
+  const lengthSq = dx * dx + dy * dy
+
+  if (lengthSq === 0) return segment.start
+
+  const t =
+    ((point.x - segment.start.x) * dx + (point.y - segment.start.y) * dy) /
+    lengthSq
+  const clampedT = Math.max(0, Math.min(1, t))
+
+  return {
+    x: segment.start.x + dx * clampedT,
+    y: segment.start.y + dy * clampedT
+  }
+}
+
+function getSegmentAngleDegrees(segment: WorldSegment): number {
+  return (Math.atan2(
+    segment.end.y - segment.start.y,
+    segment.end.x - segment.start.x
+  ) /
+    DEG_TO_RAD +
+    360) %
+    180
+}
+
+function getParallelAngleDelta(a: number, b: number): number {
+  const diff = Math.abs(a - b) % 180
+  return Math.min(diff, 180 - diff)
 }
 
 /**
@@ -157,16 +303,32 @@ export function findWallCornerSnap(
   width: number,
   height: number,
   rotation: number,
+  shapeId: string,
   selfId: string
 ): { x: number; y: number } | null {
   const { tables } = useFloorPlanStore.getState()
   const walls = tables.filter(
-    t => t.shape_id === 'wall-section' && t.id !== selfId
+    t => WALL_CORNER_SNAP_SHAPE_IDS.has(t.shape_id) && t.id !== selfId
   )
 
   if (walls.length === 0) return null
 
-  const draggedCorners = getWallCorners(rawX, rawY, width, height, rotation)
+  const draggedCorners = getStructureSnapPoints(
+    shapeId,
+    rawX,
+    rawY,
+    width,
+    height,
+    rotation
+  )
+  const draggedSegment = getStructureSnapSegment(
+    shapeId,
+    rawX,
+    rawY,
+    width,
+    height,
+    rotation
+  )
 
   let bestDist = SNAP_THRESHOLD
   let bestSnap: { x: number; y: number } | null = null
@@ -174,7 +336,50 @@ export function findWallCornerSnap(
   for (const wall of walls) {
     const ww = wall.width ?? 200
     const wh = wall.height ?? 10
-    const targetCorners = getWallCorners(wall.x, wall.y, ww, wh, wall.rotation ?? 0)
+    const targetCorners = getStructureSnapPoints(
+      wall.shape_id,
+      wall.x,
+      wall.y,
+      ww,
+      wh,
+      wall.rotation ?? 0
+    )
+    const targetSegment = getStructureSnapSegment(
+      wall.shape_id,
+      wall.x,
+      wall.y,
+      ww,
+      wh,
+      wall.rotation ?? 0
+    )
+
+    if (
+      draggedSegment &&
+      targetSegment &&
+      shapeId.startsWith('door-') &&
+      wall.shape_id === 'wall-section'
+    ) {
+      const draggedAngle = getSegmentAngleDegrees(draggedSegment)
+      const targetAngle = getSegmentAngleDegrees(targetSegment)
+      const angleDelta = getParallelAngleDelta(draggedAngle, targetAngle)
+
+      if (angleDelta <= 12) {
+        const draggedMid = getSegmentMidpoint(draggedSegment)
+        const closestPoint = getClosestPointOnSegment(draggedMid, targetSegment)
+        const dist = Math.sqrt(
+          (draggedMid.x - closestPoint.x) ** 2 +
+            (draggedMid.y - closestPoint.y) ** 2
+        )
+
+        if (dist < bestDist) {
+          bestDist = dist
+          bestSnap = {
+            x: rawX + (closestPoint.x - draggedMid.x),
+            y: rawY + (closestPoint.y - draggedMid.y)
+          }
+        }
+      }
+    }
 
     for (const dc of draggedCorners) {
       for (const tc of targetCorners) {
