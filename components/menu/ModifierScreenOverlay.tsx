@@ -4,7 +4,7 @@ import {
     useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import React, { useEffect, useState } from "react";
-import { Dimensions, StyleSheet } from "react-native";
+import { Dimensions, Keyboard, Platform, StyleSheet } from "react-native";
 import Animated, {
     cancelAnimation,
     Easing,
@@ -30,6 +30,7 @@ const ModifierScreenOverlay: React.FC = () => {
   const [hasBeenShown, setHasBeenShown] = useState(false);
   const [isPrimed, setIsPrimed] = useState(false);
   const [keepScreenPainted, setKeepScreenPainted] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   const translateY = useSharedValue(SCREEN_HEIGHT);
 
@@ -71,6 +72,25 @@ const ModifierScreenOverlay: React.FC = () => {
     }
   }, [isFullscreen, translateY]);
 
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates?.height ?? 0);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
@@ -81,7 +101,11 @@ const ModifierScreenOverlay: React.FC = () => {
 
   return (
     <Animated.View
-      style={[styles.overlay, animatedStyle]}
+      style={[
+        styles.overlay,
+        animatedStyle,
+        keyboardInset > 0 ? { paddingBottom: keyboardInset } : null,
+      ]}
       pointerEvents={isOpen && isFullscreen ? "auto" : "none"}
     >
       <ModifierScreen keepMountedDuringClose={keepScreenPainted && !isOpen} />

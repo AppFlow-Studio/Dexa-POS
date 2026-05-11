@@ -20,6 +20,7 @@ import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     InteractionManager,
+    Keyboard,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -226,10 +227,12 @@ const NotesInput = memo(
     initialValue,
     isReadOnly,
     onChange,
+    onFocus,
   }: {
     initialValue: string;
     isReadOnly: boolean;
     onChange: (text: string) => void;
+    onFocus?: () => void;
   }) => {
     const [localValue, setLocalValue] = useState(initialValue);
     const latestValueRef = useRef(initialValue);
@@ -275,6 +278,7 @@ const NotesInput = memo(
               setLocalValue(text);
             }}
             onBlur={() => onChange(latestValueRef.current)}
+            onFocus={onFocus}
             placeholder="No onions, extra sauce..."
             numberOfLines={1}
             maxLength={80}
@@ -643,9 +647,11 @@ const ModifierScreenContent = ({
   const lastDraftMenuItemIdRef = useRef<string | null>(null);
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const [visibleOptionCount, setVisibleOptionCount] = useState(8);
   const [showSecondarySections, setShowSecondarySections] = useState(false);
   const [hasInteractedSinceOpen, setHasInteractedSinceOpen] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const deferSecondarySectionsAggressively = Platform.OS === "android";
 
   // When the store opens a new item session (different item or cart entry),
@@ -740,6 +746,31 @@ const ModifierScreenContent = ({
     isOpen,
     showSecondarySections,
   ]);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates?.height ?? 0);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const handleNotesFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
 
   const isReadOnly = mode === "view";
   const currentItem =
@@ -1667,7 +1698,15 @@ const ModifierScreenContent = ({
         </View>
       </View>
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          paddingBottom: keyboardInset > 0 ? keyboardInset + 24 : 24,
+        }}
+      >
         {/* ── Item Header ─────────────────────────────────────────────────── */}
         <View
           className="flex-row items-center gap-3 px-4 py-3 border-b"
@@ -2041,6 +2080,7 @@ const ModifierScreenContent = ({
             initialValue={state.notes}
             isReadOnly={isReadOnly}
             onChange={handleNotesChange}
+            onFocus={handleNotesFocus}
           />
         </View>
 
