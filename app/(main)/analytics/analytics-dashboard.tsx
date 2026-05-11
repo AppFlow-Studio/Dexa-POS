@@ -37,8 +37,15 @@ import {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-const fmt$ = (v: number) =>
-  v >= 10000 ? `$${(v / 1000).toFixed(1)}k` : v >= 1000 ? `$${(v / 1000).toFixed(2)}k` : `$${v.toFixed(2)}`
+const fmt$ = (v: number) => {
+  const trim = (n: string) => n.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')
+
+  if (v >= 1_000_000_000) return `$${trim((v / 1_000_000_000).toFixed(1))}b`
+  if (v >= 1_000_000) return `$${trim((v / 1_000_000).toFixed(1))}m`
+  if (v >= 10_000) return `$${trim((v / 1_000).toFixed(1))}k`
+  if (v >= 1_000) return `$${trim((v / 1_000).toFixed(2))}k`
+  return `$${v.toFixed(2)}`
+}
 
 const fmtFull$ = (v: number) =>
   `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -498,7 +505,16 @@ const StaffTab: React.FC<{ data: any }> = ({ data }) => {
     label: row.name.split(' ')[0],
     frontColor: colors.teal,
     topLabelComponent: () => (
-      <Text style={{ fontSize: 9, color: colors.label, marginBottom: 3 }}>{fmt$(row.revenue)}</Text>
+      <View style={{ width: 44, alignItems: 'center', marginBottom: 3 }}>
+        <Text
+          style={{ fontSize: 9, color: colors.label, fontWeight: '600' }}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        >
+          {fmt$(row.revenue)}
+        </Text>
+      </View>
     ),
   }))
 
