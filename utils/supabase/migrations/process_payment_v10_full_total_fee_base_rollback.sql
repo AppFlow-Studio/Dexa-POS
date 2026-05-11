@@ -1,0 +1,4 @@
+-- Rollback: process_payment_v10_full_total_fee_base
+-- Re-applies the previous body from process_payment_v10_processor_fee_pivot.sql.
+-- To roll back, run that file directly:
+--   psql -f utils/supabase/migrations/process_payment_v10_processor_fee_pivot.sql

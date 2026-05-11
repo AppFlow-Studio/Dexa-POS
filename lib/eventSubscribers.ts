@@ -33,20 +33,31 @@ export const initializeEventSubscribers = () => {
   // ================================================================
   eventBus.on<OrderPaidEvent>('order:paid', async event => {
     try {
-      const { useOrderStore } = await import('@/stores/useOrderStore')
-      const order = useOrderStore.getState().ordersById[event.orderId]
-
-      if (!order) return
-
-      // For takeout/delivery orders that are ready, archive after payment
       const isTakeoutOrDelivery =
         event.orderType === 'takeout' || event.orderType === 'delivery'
+      if (!isTakeoutOrDelivery) return
 
-      if (
-        isTakeoutOrDelivery &&
-        order.order_status === 'ready' &&
-        order.paid_status === 'Paid'
-      ) {
+      const { useStoreSettingsStore } = await import(
+        '@/stores/useStoreSettingsStore'
+      )
+      const completionMode =
+        useStoreSettingsStore.getState().orderCompletionMode
+      // Manual mode: user must explicitly press Mark Done. auto_on_payment is
+      // already handled by syncPaymentToBackend in useOrderStore. Only "auto"
+      // mode should auto-archive from this subscriber.
+      if (completionMode !== 'auto') return
+
+      const { useOrderStore } = await import('@/stores/useOrderStore')
+      const order = useOrderStore.getState().ordersById[event.orderId]
+      if (!order) return
+
+      const allItemsReady =
+        order.items.length > 0 &&
+        order.items.every(
+          i => i.kitchen_status === 'ready' || i.kitchen_status === 'served'
+        )
+
+      if (allItemsReady && order.paid_status === 'Paid') {
         console.log(
           `[EventSubscribers:Archive] Auto-archiving ${event.orderType} order ${event.orderId}`
         )
@@ -60,7 +71,7 @@ export const initializeEventSubscribers = () => {
         }, 500)
       } else {
         console.log(
-          `[EventSubscribers:Archive] Order ${event.orderId} does not need archiving (type: ${event.orderType}, status: ${order.order_status}, paid: ${order.paid_status})`
+          `[EventSubscribers:Archive] Order ${event.orderId} does not need archiving (type: ${event.orderType}, mode: ${completionMode}, allItemsReady: ${allItemsReady}, paid: ${order.paid_status})`
         )
       }
     } catch (error) {

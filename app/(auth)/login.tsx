@@ -3,6 +3,7 @@ import { useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
+import { signInWithGoogleNative } from "@/services/auth/googleNativeSignIn";
 import { Eye, EyeOff } from "lucide-react-native";
 import { useState } from "react";
 import {
@@ -75,9 +76,32 @@ const MerchantLoginScreen = () => {
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const signInWithGoogle = async () => {
+    if (!signIn || !setActive) return;
     setIsGoogleLoading(true);
     setError(null);
     try {
+      const native = await signInWithGoogleNative();
+
+      if (native.kind === "cancelled") {
+        return;
+      }
+
+      if (native.kind === "success") {
+        await signIn.create({
+          strategy: "google_one_tap",
+          token: native.idToken,
+        });
+        const createdSessionId = signIn.createdSessionId;
+        if (createdSessionId) {
+          await setActive({ session: createdSessionId });
+          router.replace("/store-select");
+        } else {
+          setError("Google sign-in failed — no session created.");
+        }
+        return;
+      }
+
+      // native.kind === "unavailable" — fall back to browser SSO flow
       const { createdSessionId, setActive: setActiveSession } =
         await startSSOFlow({
           strategy: "oauth_google",
@@ -478,7 +502,7 @@ const MerchantLoginScreen = () => {
             </View>
           )}
 
-          {/* Google button */}
+          {/* Google button — temporarily disabled
           <TouchableOpacity
             onPress={signInWithGoogle}
             disabled={isFormLoading}
@@ -514,6 +538,7 @@ const MerchantLoginScreen = () => {
               </>
             )}
           </TouchableOpacity>
+          */}
 
           {/* Divider */}
           <View
@@ -621,7 +646,10 @@ const MerchantLoginScreen = () => {
           </View>
 
           {/* Forgot password */}
-          <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 16 }}>
+          <TouchableOpacity
+            style={{ alignSelf: "flex-end", marginBottom: 16 }}
+            onPress={() => router.push("/forgot-password" as any)}
+          >
             <Text
               style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}
             >
@@ -656,26 +684,6 @@ const MerchantLoginScreen = () => {
             )}
           </TouchableOpacity>
 
-          {/* Sign up */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "center",
-              marginTop: 16,
-              gap: 4,
-            }}
-          >
-            <Text style={{ fontSize: 12, color: colors.muted }}>
-              Don't have an account?
-            </Text>
-            <TouchableOpacity onPress={() => router.push("/sign-up" as any)}>
-              <Text
-                style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}
-              >
-                Sign up
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

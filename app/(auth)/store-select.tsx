@@ -6,10 +6,10 @@ import {
   SelectedLocation,
   useStoreSettingsStore,
 } from "@/stores/useStoreSettingsStore";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth, useClerk } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { MapPin, Store } from "lucide-react-native";
+import { LogOut, MapPin, Store } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -118,7 +118,16 @@ const StoreSelectItem = ({ store, isSelected, onPress }: StoreSelectItemProps) =
 const StoreSelectScreen = () => {
   const router = useRouter();
   const { userId } = useAuth();
+  const { signOut } = useClerk();
   const supabase = useSupabaseClient();
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } finally {
+      router.replace("/login");
+    }
+  };
   const setSelectedStore = useStoreSettingsStore((state) => state.setSelectedStore);
   const setOrganizationLogoUrl = useStoreSettingsStore((state) => state.setOrganizationLogoUrl);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -225,6 +234,30 @@ const StoreSelectScreen = () => {
     router.replace("/station-select");
   };
 
+  const logoutButton = (
+    <TouchableOpacity
+      onPress={handleLogout}
+      style={{
+        marginTop: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        paddingVertical: 9,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.card,
+      }}
+    >
+      <LogOut size={13} color={colors.muted} />
+      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>
+        Log out
+      </Text>
+    </TouchableOpacity>
+  );
+
   if (isLoading) {
     return (
       <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
@@ -232,6 +265,7 @@ const StoreSelectScreen = () => {
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>
           Loading your locations...
         </Text>
+        {logoutButton}
       </View>
     );
   }
@@ -245,6 +279,7 @@ const StoreSelectScreen = () => {
         <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>
           {(error as Error).message || "Please try again later"}
         </Text>
+        {logoutButton}
       </View>
     );
   }
@@ -258,6 +293,7 @@ const StoreSelectScreen = () => {
         <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>
           Contact your administrator for access
         </Text>
+        {logoutButton}
       </View>
     );
   }
@@ -304,6 +340,8 @@ const StoreSelectScreen = () => {
           Continue
         </Text>
       </TouchableOpacity>
+
+      {logoutButton}
     </View>
   );
 };

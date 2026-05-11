@@ -29,7 +29,7 @@ interface VendorFormModalProps {
 }
 
 const inputStyle = {
-  backgroundColor: colors.screen,
+  backgroundColor: colors.background,
   borderWidth: 1,
   borderColor: colors.border,
   borderRadius: 8,

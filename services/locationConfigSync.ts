@@ -58,6 +58,13 @@ export function initLocationConfigSync(
 // INTERNAL
 // ============================================================================
 
+export async function refreshLocationConfig(
+  supabase: SupabaseClient,
+  locationId: string,
+) {
+  await _fetchAndHydrate(supabase, locationId)
+}
+
 async function _fetchAndHydrate(supabase: SupabaseClient, locationId: string) {
   try {
     const { data, error } = await supabase

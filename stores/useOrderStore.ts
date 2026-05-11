@@ -244,7 +244,8 @@ export function getItemEffectiveSubtotal(item: CartItem): number {
  * @returns The effective cash subtotal (cashPrice * quantity - discount)
  */
 export function getItemEffectiveCashSubtotal(item: CartItem): number {
-  const grossCashSubtotal = (item.cashPrice || item.price) * item.quantity;
+  const grossCashSubtotal =
+    calculateItemEffectiveCashPrice(item) * item.quantity;
   const discountAmount = item.discount_cash_amount ?? item.discount_amount ?? 0;
   return Math.max(0, round2(grossCashSubtotal - discountAmount));
 }
@@ -2610,9 +2611,9 @@ const syncPaymentToBackend = async (
       supabase,
       "process_payment",
       // Fallback (flag off): v9 — Cat-B idempotency, no platform fees.
-      // Primary  (flag on): v10 — adds dual_pricing_fee / tip_fee tracking.
+      // Primary  (flag on): v11 — adds acquirer + batch_number on top of v10's fee tracking.
       "process_payment_v9",
-      "process_payment_v10",
+      "process_payment_v11",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -5802,7 +5803,15 @@ export const useOrderStore = create<OrderState>()(
                 throw new Error("Supabase client not available");
               }
 
-              // Fetch active orders from our station
+              // Fetch active orders from our station.
+              // Bounded by a 48h recency cutoff + LIMIT to keep the row /
+              // nested-embed payload small enough to stay under the
+              // Supabase statement_timeout. Active orders older than 48h
+              // are either stuck or orphaned and won't be picked up by a
+              // simple orphan-recovery pass anyway.
+              const sinceIso = new Date(
+                Date.now() - 48 * 60 * 60 * 1000,
+              ).toISOString();
               const { data, error } = await supabase
                 .from("orders")
                 .select(
@@ -5818,7 +5827,9 @@ export const useOrderStore = create<OrderState>()(
                 .eq("location_id", locationId)
                 .eq("station_id", currentStationId)
                 .not("status", "in", '("completed","void","cancelled")')
-                .order("created_at", { ascending: false });
+                .gte("created_at", sinceIso)
+                .order("created_at", { ascending: false })
+                .limit(200);
 
               if (error) throw error;
 
@@ -10608,40 +10619,33 @@ export const useOrderStore = create<OrderState>()(
                   console.log(`[archiveOrder] Local inventory decremented`);
 
                 // 2. Sync to backend (non-blocking)
-                const supabase = getOrderStoreSupabaseClient();
-                const locationId =
-                  get().currentLocationId ??
-                  useStoreSettingsStore.getState().selectedStore?.id;
-
-                if (supabase && locationId) {
-                  syncArchivedOrderInventoryByLocation(
-                    supabase,
-                    locationId,
-                    order.items,
-                    inventorySnapshotBeforeDeduction,
-                  ).then((result) => {
-                    if (!result.success) {
-                      console.error(
-                        "[archiveOrder] Backend inventory deduction failed:",
-                        result.failures,
-                      );
-                    } else if (__DEV__) {
-                      console.log(
-                        "[archiveOrder] Backend inventory deduction successful",
-                      );
-                    }
-                  });
-                } else if (__DEV__) {
-                  console.warn(
-                    "[archiveOrder] Skipped backend inventory deduction due to missing supabase or location",
-                    {
-                      hasSupabase: Boolean(supabase),
-                      locationId,
-                    },
-                  );
+                if (order.db_order_id) {
+                  const supabase = getOrderStoreSupabaseClient();
+                  if (supabase) {
+                    supabase
+                      .rpc("process_order_inventory_deduction", {
+                        p_order_id: order.db_order_id,
+                      })
+                      .then(({ error }) => {
+                        if (error) {
+                          if (__DEV__)
+                            console.warn(
+                              "[archiveOrder] Backend inventory deduction skipped:",
+                              error?.message ?? error,
+                            );
+                          // Non-fatal: archive proceeds regardless (e.g. insufficient stock P0002)
+                        } else {
+                          if (__DEV__)
+                            console.log(
+                              "[archiveOrder] Backend inventory deduction successful",
+                            );
+                        }
+                      });
+                  }
                 }
               } catch (err) {
-                console.error("[archiveOrder] Inventory deduction error:", err);
+                if (__DEV__)
+                  console.warn("[archiveOrder] Inventory deduction error:", err);
                 // Continue archiving despite error
               }
             }
@@ -13624,10 +13628,9 @@ export const useOrderStore = create<OrderState>()(
                         // Required base prices (for recalculation)
                         // Use base_card_price/base_cash_price (without modifiers)
                         // so calculateItemEffective*Price can add modifiers correctly.
-                        // Falls back to unit_price/cash_price for older items that
-                        // lack the base columns — in that case modifiers will be
-                        // double-counted, but calculate_order_totals_fast on the
-                        // backend remains authoritative.
+                        // When the dedicated base column is missing, fall back to
+                        // unit_price (the true base) — never to cash_price/cash_unit_price,
+                        // which already include modifiers and would double-count.
                         baseCardPrice: dbItem.is_open_item
                           ? dbItem.open_item_price || 0
                           : ((dbItem as any).base_card_price ??
@@ -13635,12 +13638,9 @@ export const useOrderStore = create<OrderState>()(
                             0),
                         baseCashPrice:
                           (dbItem as any).base_cash_price ??
-                          (dbItem.cash_price ||
-                            dbItem.cash_unit_price ||
-                            (dbItem.is_open_item
-                              ? dbItem.open_item_price
-                              : dbItem.unit_price) ||
-                            0),
+                          (dbItem.is_open_item
+                            ? dbItem.open_item_price || 0
+                            : dbItem.unit_price ?? 0),
                       })) || [];
 
                   const allItems = [...syncedItems, ...newItemsFromDb];
