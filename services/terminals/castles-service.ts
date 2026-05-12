@@ -1464,7 +1464,7 @@ export class CastlesService {
 
         console.log(
           `[CastlesService] Chunk (${chunk.length} bytes):`,
-          chunk.slice(0, 200),
+          chunk,
         );
 
         for (let i = 0; i < chunk.length; i++) {

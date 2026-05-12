@@ -561,6 +561,166 @@ export default function CastlesTerminalTestScreen() {
     setIsRunning(false);
   }, [isRunning, addLog]);
 
+  // ── Empirical: Sale → recall via getData by same txnPosTxnId ──
+  //
+  // Goal: verify whether Castles getData (§3.1) can return per-transaction
+  // detail (RRN / auth / batch / STAN) when queried with the SAME txnPosTxnId
+  // used by a prior sale, or whether it always returns only terminal config.
+  // We send three getData probes after the sale and dump full raw responses:
+  //   (a) same txnPosTxnId as the sale  → does it act as a lookup?
+  //   (b) brand-new random txnPosTxnId  → control
+  //   (c) "000000"                       → the canonical "ping" id
+  // Diff (a) vs (b)/(c) tells us empirically if id-based recall exists.
+  const runSaleThenGetData = useCallback(async () => {
+    if (isRunning) return;
+    const amount = parseFloat(saleAmount);
+    if (isNaN(amount) || amount <= 0) {
+      addLog("Invalid sale amount", "error");
+      return;
+    }
+
+    setIsRunning(true);
+    setTerminalStatus(null);
+
+    const saleTxnPosId = String(Math.floor(Math.random() * 999999)).padStart(
+      6,
+      "0",
+    );
+
+    addLog("═══════════════════════════════════════", "info");
+    addLog("  Sale → getData recall probe", "info");
+    addLog("═══════════════════════════════════════", "info");
+    addLog(`Sale txnPosTxnId = ${saleTxnPosId}`, "data");
+    addLog(`Amount = $${amount.toFixed(2)}`, "data");
+    addLog("→ Present a card on the terminal when prompted", "warn");
+
+    const service = serviceRef.current;
+
+    // Step 1: sale
+    let saleRaw: Record<string, unknown> | undefined;
+    try {
+      const result = await service.processSale({
+        amount,
+        tipAmount: 0,
+        referenceId: saleTxnPosId,
+      });
+      setTerminalStatus(null);
+      saleRaw = result.raw as Record<string, unknown> | undefined;
+
+      if (result.success) {
+        addLog("SALE APPROVED", "success");
+      } else {
+        addLog(`Sale not approved: ${result.error ?? "unknown"}`, "warn");
+      }
+      addLog("── Full sale raw response ──", "info");
+      addLog(JSON.stringify(saleRaw ?? {}, null, 2), "data");
+    } catch (err) {
+      setTerminalStatus(null);
+      addLog(
+        `Sale EXCEPTION: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
+      setIsRunning(false);
+      return;
+    }
+
+    // Helper: run a getData probe and dump full raw response
+    const probe = async (label: string, posId: string) => {
+      addLog(`── getData probe (${label}) txnPosTxnId=${posId} ──`, "info");
+      try {
+        const res = await service.getTerminalData(posId);
+        if (res.success) {
+          addLog(`getData OK (${label})`, "success");
+        } else {
+          addLog(`getData failed (${label}): ${res.error}`, "error");
+        }
+        const data = (res.data ?? {}) as Record<string, unknown>;
+        // Enumerate keys explicitly so nothing is blamed on stringify / wrapping
+        const keys = Object.keys(data);
+        addLog(`keys (${keys.length}): ${keys.join(", ") || "(none)"}`, "data");
+        for (const k of keys) {
+          const v = data[k];
+          const rendered =
+            typeof v === "object" && v !== null
+              ? JSON.stringify(v)
+              : String(v);
+          addLog(`  ${k} = ${rendered}`, "data");
+        }
+        // Full JSON dump as a final sanity check
+        addLog(JSON.stringify(data, null, 2), "data");
+        const perTxnKeys = [
+          "txnRrn",
+          "txnStan",
+          "txnApprovalCode",
+          "txnBatchNum",
+          "txnBatchNo",
+          "txnMaskedCardNum",
+          "txnAmtTrans",
+          "txnAmtBase",
+          "txnEntryMode",
+          "txnCardBrand",
+        ];
+        const present = perTxnKeys.filter((k) => data[k] != null);
+        if (present.length > 0) {
+          addLog(
+            `  ★ per-txn fields present in getData (${label}): ${present.join(", ")}`,
+            "success",
+          );
+        } else {
+          addLog(
+            `  no per-txn fields returned by getData (${label}) — terminal info only`,
+            "warn",
+          );
+        }
+      } catch (err) {
+        addLog(
+          `getData EXCEPTION (${label}): ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+      }
+    };
+
+    // Terminal is busy right after sale (result screen + deferred return2Idle).
+    // Debounce before probing, and pause between probes so the device can settle.
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    const POST_SALE_DELAY_MS = 5_000;
+    const BETWEEN_PROBE_DELAY_MS = 1_500;
+
+    addLog(
+      `Waiting ${POST_SALE_DELAY_MS}ms for terminal to settle (return2Idle / result screen)...`,
+      "info",
+    );
+    await sleep(POST_SALE_DELAY_MS);
+
+    // Step 2a: getData with the SAME txnPosTxnId as the sale
+    await probe("same id as sale", saleTxnPosId);
+    await sleep(BETWEEN_PROBE_DELAY_MS);
+
+    // Step 2b: getData with a brand new random id
+    const randomId = String(Math.floor(Math.random() * 999999)).padStart(
+      6,
+      "0",
+    );
+    await probe("fresh random id", randomId);
+    await sleep(BETWEEN_PROBE_DELAY_MS);
+
+    // Step 2c: getData with the canonical "000000" id
+    await probe("000000", "000000");
+
+    addLog("═══════════════════════════════════════", "info");
+    addLog("  Probe complete — compare responses above", "info");
+    addLog(
+      "  If (a) contains txnRrn/txnStan/txnApprovalCode but (b)/(c) do not,",
+      "info",
+    );
+    addLog("  then getData supports per-id recall. Otherwise it does not.", "info");
+    addLog("═══════════════════════════════════════", "info");
+
+    setIsRunning(false);
+  }, [isRunning, saleAmount, addLog]);
+
   // ── Diagnose: test all delimiters automatically ──
 
   const runDiagnose = useCallback(async () => {
@@ -854,6 +1014,19 @@ export default function CastlesTerminalTestScreen() {
           disabled={isRunning}
         >
           <Text style={[styles.btnTextSecondary, { color: COLORS.green }]}>Raw getData</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.btn,
+            styles.btnSecondary,
+            { borderColor: COLORS.amber + "80" },
+            isRunning && styles.btnDisabled,
+          ]}
+          onPress={runSaleThenGetData}
+          disabled={isRunning}
+        >
+          <Text style={[styles.btnTextSecondary, { color: COLORS.amber }]}>Sale → recall via getData</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
