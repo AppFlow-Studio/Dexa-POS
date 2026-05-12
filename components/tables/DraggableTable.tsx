@@ -225,6 +225,7 @@ interface DraggableTableProps {
   canvasScale: SharedValue<number>
   onPress?: () => void
   index?: number // For staggered entry animation
+  enableEntryAnimation?: boolean
   sectionColor?: string
   onLongPress?: () => void
   disableLongPress?: boolean
@@ -240,6 +241,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   canvasScale,
   onPress,
   index = 0,
+  enableEntryAnimation = true,
   sectionColor,
   onLongPress,
   disableLongPress = false
@@ -472,13 +474,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Staggered entry animation on mount
   useEffect(() => {
+    if (!enableEntryAnimation) {
+      entryScale.value = 1
+      entryOpacity.value = 1
+      return
+    }
     const delay = index * 30 // 30ms stagger per table
     const timeout = setTimeout(() => {
       entryScale.value = withSpring(1, { damping: 15, stiffness: 200 })
       entryOpacity.value = withTiming(1, { duration: 200 })
     }, delay)
     return () => clearTimeout(timeout)
-  }, [index])
+  }, [enableEntryAnimation, index])
 
   // Pulse animation when session status changes
   useEffect(() => {

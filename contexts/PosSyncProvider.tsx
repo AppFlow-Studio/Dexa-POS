@@ -318,6 +318,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Load status if we have a floor plan
         if (defaultPlan?.id) {
           await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
+          void useFloorPlanStore.getState().prefetchFloorPlans(
+            (floorPlans || []).map((floorPlan) => floorPlan.id),
+          );
         }
 
         // Load waitlist and reservations

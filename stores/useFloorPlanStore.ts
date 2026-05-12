@@ -33,6 +33,7 @@ let _supabaseClient: SupabaseClient | null = null;
 // Dedup concurrent loadFloorPlanStatus calls (module-level to avoid re-renders)
 let _loadFloorPlanPromise: Promise<void> | null = null;
 let _loadFloorPlanId: string | null = null; // Track which plan is being loaded
+const _prefetchFloorPlanPromises = new Map<string, Promise<void>>();
 
 export const setFloorPlanSupabaseClient = (client: SupabaseClient | null) => {
   _supabaseClient = client;
@@ -67,6 +68,108 @@ function getSelectedTablesCapacity(
 
   return { totalCapacity, hasKnownCapacity };
 }
+
+type FloorPlanCacheEntry = {
+  tables: FloorPlanObject[];
+  sections: ServerSection[];
+  sectionsById: Record<string, ServerSection>;
+  lastSyncAt: string | null;
+};
+
+const buildSectionsById = (
+  sections: ServerSection[],
+): Record<string, ServerSection> =>
+  sections.reduce(
+    (acc, section) => {
+      acc[section.id] = section;
+      return acc;
+    },
+    {} as Record<string, ServerSection>,
+  );
+
+const fetchFloorPlanSnapshot = async (
+  floorPlanId: string,
+  currentTablesById: Record<string, FloorPlanObject> = {},
+): Promise<{ data: FloorPlanCacheEntry | null; error: Error | null }> => {
+  const supabase = getClient();
+
+  try {
+    const [objectsResult, sectionsResult] = await Promise.all([
+      FloorPlanService.getAllFloorPlanObjects(supabase, floorPlanId),
+      FloorPlanService.getServerSections(supabase, floorPlanId),
+    ]);
+
+    const { data: freshObjects, error } = objectsResult;
+    if (error) {
+      return { data: null, error };
+    }
+
+    const freshTables = freshObjects || [];
+
+    const mergedTables = freshTables.map((freshTable) => {
+      const currentTable = currentTablesById[freshTable.id];
+      const freshSessionIsInactive =
+        (
+          freshTable.session as unknown as
+            | { is_active?: boolean }
+            | undefined
+        )?.is_active === false;
+
+      if (
+        currentTable?.session &&
+        isLocalOnlyStatus(currentTable.session.status) &&
+        freshTable.session &&
+        currentTable.session.id === freshTable.session.id
+      ) {
+        return { ...freshTable, session: currentTable.session };
+      }
+
+      if (!currentTable?.session && freshSessionIsInactive) {
+        return { ...freshTable, session: undefined };
+      }
+
+      return freshTable;
+    });
+
+    const getUpcomingForTable =
+      getReservationStore().getState().getUpcomingForTable;
+    const enrichedTables = mergedTables.map((table) => {
+      const upcoming = getUpcomingForTable(table.id);
+      const next = upcoming[0];
+      if (!next) return { ...table, next_reservation: null };
+      return {
+        ...table,
+        next_reservation: {
+          id: next.id,
+          party_name: next.party_name,
+          party_size: next.party_size,
+          date: next.reservation_date,
+          time: next.reservation_time,
+          status: next.status,
+        },
+      };
+    });
+
+    const freshSections = sectionsResult.data || [];
+    return {
+      data: {
+        tables: enrichedTables,
+        sections: freshSections,
+        sectionsById: buildSectionsById(freshSections),
+        lastSyncAt: new Date().toISOString(),
+      },
+      error: null,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error:
+        error instanceof Error
+          ? error
+          : new Error("Failed to fetch floor plan snapshot"),
+    };
+  }
+};
 
 interface FloorPlanState {
   // Data
@@ -123,6 +226,8 @@ interface FloorPlanState {
 
   // Floor Plan Actions
   setActiveFloorPlan: (floorPlanId: string) => Promise<void>;
+  prefetchFloorPlan: (floorPlanId: string) => Promise<void>;
+  prefetchFloorPlans: (floorPlanIds?: string[]) => Promise<void>;
   createFloorPlan: (name: string, description?: string) => Promise<string>;
   updateFloorPlan: (id: string, updates: Partial<FloorPlan>) => Promise<void>;
   deleteFloorPlan: (id: string) => Promise<void>;
@@ -651,6 +756,59 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (get().activeFloorPlanId === floorPlanId) {
             set({ isLoading: false, loadingFloorPlanId: null });
           }
+          void get().prefetchFloorPlans();
+        },
+
+        prefetchFloorPlan: async (floorPlanId: string) => {
+          if (!floorPlanId) return;
+
+          const cached = get().floorPlanCache[floorPlanId];
+          if (cached) return;
+
+          const existingPromise = _prefetchFloorPlanPromises.get(floorPlanId);
+          if (existingPromise) {
+            return existingPromise;
+          }
+
+          const prefetchPromise = (async () => {
+            try {
+              const snapshot = await fetchFloorPlanSnapshot(floorPlanId);
+              if (!snapshot.data) {
+                if (snapshot.error) {
+                  console.warn(
+                    `[prefetchFloorPlan] Failed to prefetch ${floorPlanId}:`,
+                    snapshot.error,
+                  );
+                }
+                return;
+              }
+
+              set({
+                floorPlanCache: {
+                  ...get().floorPlanCache,
+                  [floorPlanId]: snapshot.data,
+                },
+              });
+            } finally {
+              _prefetchFloorPlanPromises.delete(floorPlanId);
+            }
+          })();
+
+          _prefetchFloorPlanPromises.set(floorPlanId, prefetchPromise);
+          return prefetchPromise;
+        },
+
+        prefetchFloorPlans: async (floorPlanIds?: string[]) => {
+          const activeFloorPlanId = get().activeFloorPlanId;
+          const ids =
+            floorPlanIds && floorPlanIds.length > 0
+              ? floorPlanIds
+              : get().floorPlans.map((floorPlan) => floorPlan.id);
+
+          for (const floorPlanId of ids) {
+            if (!floorPlanId || floorPlanId === activeFloorPlanId) continue;
+            await get().prefetchFloorPlan(floorPlanId);
+          }
         },
 
         loadFloorPlans: async () => {
@@ -748,9 +906,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         },
 
         loadFloorPlanStatus: async () => {
-          const supabase = getClient();
           const floorPlanId = get().activeFloorPlanId;
-          if (!floorPlanId || !supabase) return;
+          if (!floorPlanId || !getClient()) return;
 
           // Only reuse promise if loading same floor plan (avoid stale data on plan switch)
           if (_loadFloorPlanPromise && _loadFloorPlanId === floorPlanId) {
@@ -760,80 +917,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           _loadFloorPlanId = floorPlanId;
           const loadPromise = (async () => {
             try {
-              // Parallel fetch: all floor plan objects + sections
-              const [objectsResult, sectionsResult] = await Promise.all([
-                FloorPlanService.getAllFloorPlanObjects(supabase, floorPlanId),
-                FloorPlanService.getServerSections(supabase, floorPlanId),
-              ]);
+              const snapshot = await fetchFloorPlanSnapshot(
+                floorPlanId,
+                get().tablesById,
+              );
 
-              const { data: freshObjects, error } = objectsResult;
-
-              if (error) {
-                set({ error: error.message });
+              if (!snapshot.data) {
+                set({ error: snapshot.error?.message || "Unknown error" });
                 return;
               }
-              const freshTables = freshObjects || [];
-              const currentTablesById = get().tablesById;
-
-              // Preserve local-only states: if an object currently has a local-only
-              // status with the same session ID, keep the local session
-              // Also don't restore inactive sessions (is_active=false) that were just cleared
-              const mergedTables = freshTables.map((freshTable) => {
-                const currentTable = currentTablesById[freshTable.id];
-                const freshSessionIsInactive =
-                  (
-                    freshTable.session as unknown as
-                      | { is_active?: boolean }
-                      | undefined
-                  )?.is_active === false;
-
-                // Preserve local-only status if still same session
-                if (
-                  currentTable?.session &&
-                  isLocalOnlyStatus(currentTable.session.status) &&
-                  freshTable.session &&
-                  currentTable.session.id === freshTable.session.id
-                ) {
-                  return { ...freshTable, session: currentTable.session };
-                }
-
-                // Don't restore an inactive session (is_active=false) that was cleared locally
-                if (!currentTable?.session && freshSessionIsInactive) {
-                  return { ...freshTable, session: undefined };
-                }
-
-                return freshTable;
-              });
-
-              // Enrich next_reservation from reservation store
-              const getUpcomingForTable =
-                getReservationStore().getState().getUpcomingForTable;
-              const enrichedTables = mergedTables.map((table) => {
-                const upcoming = getUpcomingForTable(table.id);
-                const next = upcoming[0];
-                if (!next) return { ...table, next_reservation: null };
-                return {
-                  ...table,
-                  next_reservation: {
-                    id: next.id,
-                    party_name: next.party_name,
-                    party_size: next.party_size,
-                    date: next.reservation_date,
-                    time: next.reservation_time,
-                    status: next.status,
-                  },
-                };
-              });
-
-              // Build sectionsById map
-              const freshSections = sectionsResult.data || [];
-              const newSectionsById = freshSections.reduce(
-                (acc, section) => {
-                  acc[section.id] = section;
-                  return acc;
-                },
-                {} as Record<string, ServerSection>,
-              );
 
               // If the user switched floor plans while this request was in flight,
               // ignore the stale response so it can't paint the previous layout back in.
@@ -842,33 +934,28 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               }
 
               set({
-                tables: enrichedTables,
-                tablesById: buildTablesById(enrichedTables),
-                sections: freshSections,
-                sectionsById: newSectionsById,
-                lastSyncAt: new Date().toISOString(),
+                tables: snapshot.data.tables,
+                tablesById: buildTablesById(snapshot.data.tables),
+                sections: snapshot.data.sections,
+                sectionsById: snapshot.data.sectionsById,
+                lastSyncAt: snapshot.data.lastSyncAt,
                 error: null,
                 isLoading: false,
                 loadingFloorPlanId: null,
                 floorPlanCache: {
                   ...get().floorPlanCache,
-                  [floorPlanId]: {
-                    tables: enrichedTables,
-                    sections: freshSections,
-                    sectionsById: newSectionsById,
-                    lastSyncAt: new Date().toISOString(),
-                  },
+                  [floorPlanId]: snapshot.data,
                 },
               });
 
               // Hydrate session store from fresh table data
               getTableSessionStore()
                 .getState()
-                ._patchSessionsFromTables(enrichedTables);
+                ._patchSessionsFromTables(snapshot.data.tables);
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
-              if (_loadFloorPlanPromise === loadPromise) {
+              if (_loadFloorPlanId === floorPlanId) {
                 _loadFloorPlanPromise = null;
                 _loadFloorPlanId = null;
               }
@@ -925,7 +1012,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const supabase = getClient();
           const locationId = get().locationId;
           const floorPlanId = get().activeFloorPlanId;
-          if (!locationId || !supabase) return;
+          if (!locationId || !supabase || !floorPlanId) return;
 
           const { data, error } = await FloorPlanService.getLocationTableStatus(
             supabase,

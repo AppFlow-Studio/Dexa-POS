@@ -37,6 +37,7 @@ const GRID_MAJOR = 100;
 const DEFAULT_CANVAS_WORLD_WIDTH = 2400;
 const DEFAULT_CANVAS_WORLD_HEIGHT = 1600;
 const INITIAL_ZOOM_MULTIPLIER = 2.0;
+const ENTRY_ANIMATION_OBJECT_LIMIT = 40;
 
 const getMedian = (values: number[]) => {
   if (values.length === 0) return 0;
@@ -129,6 +130,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const sortedTables = useMemo(() => {
     return [...tables].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
   }, [tables]);
+
+  const enableEntryAnimation =
+    isEditMode && sortedTables.length <= ENTRY_ANIMATION_OBJECT_LIMIT;
 
   // Stable geometry key — only changes when position/size/section assignment changes,
   // not when session status/order changes. Prevents sectionOverlays from recomputing
@@ -809,6 +813,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 }
                 canvasScale={scale}
                 index={index}
+                enableEntryAnimation={enableEntryAnimation}
                 sectionColor={
                   table.section_id
                     ? sectionsById?.[table.section_id]?.color
