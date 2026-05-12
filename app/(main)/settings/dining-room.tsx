@@ -272,8 +272,8 @@ const DiningRoomScreen = () => {
                     {layout.table_count || 0} Tables configured
                   </Text>
                   <TouchableOpacity
-                    onPress={async () => {
-                      await setActiveFloorPlan(layout.id)
+                    onPress={() => {
+                      void setActiveFloorPlan(layout.id)
                       router.push({
                         pathname: '/tables/floor-plan',
                         params: { returnTo: '/settings/dining-room' }

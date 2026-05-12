@@ -290,8 +290,8 @@ const FloorPlanManagementScreen = () => {
             : item.table_count || 0
           return (
             <TouchableOpacity
-              onPress={async () => {
-                await setActiveFloorPlan(item.id)
+              onPress={() => {
+                void setActiveFloorPlan(item.id)
                 router.push(`/tables/edit-layout?layoutId=${item.id}` as Href)
               }}
               style={{

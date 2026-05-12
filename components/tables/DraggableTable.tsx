@@ -1,5 +1,10 @@
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
-import { TABLE_SHAPES } from '@/lib/table-shapes'
+import {
+  FREE_PLACEMENT_SHAPE_IDS,
+  RIGHT_ANGLE_ROTATION_SHAPE_IDS,
+  TABLE_SHAPES,
+  WALL_CORNER_SNAP_SHAPE_IDS
+} from '@/lib/table-shapes'
 import {
   registerTablePosition,
   unregisterTablePosition
@@ -20,10 +25,11 @@ import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { useFloorPlanEditorStore } from '@/stores/useFloorPlanEditorStore'
 import { useReservationStore } from '@/stores/useReservationStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
-import { BrushCleaning } from 'lucide-react-native'
+import { BrushCleaning, Lock } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo } from 'react'
 import { Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -241,7 +247,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const DRAG_HOLD_MS = 220
   const { isDarkColorScheme } = useColorScheme()
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
+  const updateTableGeometry = useFloorPlanStore(s => s.updateTableGeometry)
   const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
+  const isLocked = useFloorPlanEditorStore(s =>
+    s.lockedObjectIds.includes(table.id)
+  )
   const defaultSittingTimeMinutes = useLocationConfigStore(
     s => s.config.dining.defaultSittingTimeMinutes
   )
@@ -261,13 +271,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Type check: only table/booth categories are interactive in normal view
   const isTableType = table.category === 'table' || table.category === 'booth'
   const isWall = table.shape_id === 'wall-section'
+  const snapsToWallCorners = WALL_CORNER_SNAP_SHAPE_IDS.has(table.shape_id)
+  const hasFreePlacement = FREE_PLACEMENT_SHAPE_IDS.has(table.shape_id)
 
   // Stable key that changes whenever any wall's geometry changes — used to invalidate
   // edge flags without subscribing to a new array reference every render.
   const wallGeometryKey = useFloorPlanStore(s =>
-    isWall
+    snapsToWallCorners
       ? s.tables
-          .filter(t => t.shape_id === 'wall-section')
+          .filter(t => WALL_CORNER_SNAP_SHAPE_IDS.has(t.shape_id))
           .map(
             t => `${t.id}:${t.x},${t.y},${t.width},${t.height},${t.rotation}`
           )
@@ -291,9 +303,43 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isWall, wallGeometryKey])
 
+  const wallResizeWidth = useSharedValue(table.width ?? shapeDef?.width ?? 100)
+  const wallResizeHeight = useSharedValue(
+    table.height ?? shapeDef?.height ?? 100
+  )
+  const wallResizeStartWidth = useSharedValue(
+    table.width ?? shapeDef?.width ?? 100
+  )
+  const wallResizeStartX = useSharedValue(table.x)
+  const wallResizeStartY = useSharedValue(table.y)
+
+  useEffect(() => {
+    wallResizeWidth.value = table.width ?? shapeDef?.width ?? 100
+    wallResizeHeight.value = table.height ?? shapeDef?.height ?? 100
+    wallResizeStartWidth.value = table.width ?? shapeDef?.width ?? 100
+    wallResizeStartX.value = table.x
+    wallResizeStartY.value = table.y
+  }, [
+    table.width,
+    table.height,
+    table.x,
+    table.y,
+    shapeDef?.width,
+    shapeDef?.height,
+    wallResizeWidth,
+    wallResizeHeight,
+    wallResizeStartWidth,
+    wallResizeStartX,
+    wallResizeStartY
+  ])
+
   // --- COMPUTE EFFECTIVE DIMENSIONS ---
-  const effectiveWidth = table.width ?? shapeDef?.width ?? 100
-  const effectiveHeight = table.height ?? shapeDef?.height ?? 100
+  const effectiveWidth = isWall
+    ? wallResizeWidth.value
+    : table.width ?? shapeDef?.width ?? 100
+  const effectiveHeight = isWall
+    ? wallResizeHeight.value
+    : table.height ?? shapeDef?.height ?? 100
 
   const effectiveOrder = useOrderByAnyId(liveSession?.order_id) ?? undefined
 
@@ -470,6 +516,45 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   }, [table.id])
 
   const GRID_SIZE = 5
+  const MIN_WALL_LENGTH = 40
+
+  const projectResizeDelta = useCallback(
+    (translationX: number, translationY: number) => {
+      'worklet'
+      const angle = (rotation.value * Math.PI) / 180
+      return (
+        (translationX * Math.cos(angle) + translationY * Math.sin(angle)) /
+        canvasScale.value
+      )
+    },
+    [canvasScale, rotation]
+  )
+
+  const getAnchoredResizePosition = useCallback(
+    (
+      nextWidth: number,
+      anchor: 'start' | 'end'
+    ) => {
+      'worklet'
+      const delta = nextWidth - wallResizeStartWidth.value
+      const angle = (rotation.value * Math.PI) / 180
+      const cos = Math.cos(angle)
+      const sin = Math.sin(angle)
+
+      if (anchor === 'start') {
+        return {
+          x: wallResizeStartX.value + (delta * (cos - 1)) / 2,
+          y: wallResizeStartY.value + (delta * sin) / 2
+        }
+      }
+
+      return {
+        x: wallResizeStartX.value - (delta * (1 + cos)) / 2,
+        y: wallResizeStartY.value - (delta * sin) / 2
+      }
+    },
+    [rotation, wallResizeStartWidth, wallResizeStartX, wallResizeStartY]
+  )
 
   // Called on JS thread at drag end: resolve final snapped position and persist.
   const finalizeDrop = useCallback(
@@ -477,14 +562,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       let finalX: number
       let finalY: number
 
-      if (isWall) {
-        // Walls: try corner snap first, fall back to grid
+      if (hasFreePlacement) {
+        finalX = rawX
+        finalY = rawY
+      } else if (snapsToWallCorners) {
+        // Wall-like structural objects: try corner snap first, fall back to grid.
         const snap = findWallCornerSnap(
           rawX,
           rawY,
           effectiveWidth,
           effectiveHeight,
           rot,
+          table.shape_id,
           table.id
         )
         finalX = snap ? snap.x : Math.round(rawX / GRID_SIZE) * GRID_SIZE
@@ -499,11 +588,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       updateTablePosition(table.id, finalX, finalY, rot)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isWall, effectiveWidth, effectiveHeight, table.id]
+    [hasFreePlacement, snapsToWallCorners, effectiveWidth, effectiveHeight, table.id]
   )
 
   const dragGesture = Gesture.Pan()
-    .enabled(isEditMode)
+    .enabled(isEditMode && !isLocked)
     .activateAfterLongPress(DRAG_HOLD_MS)
     .minDistance(12)
     .activeOffsetX([-12, 12])
@@ -520,8 +609,105 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         dragContext.value.y + event.translationY / canvasScale.value
     })
     .onEnd(() => {
-      // Snap to grid (or wall corner for walls) only on release
+      // Snap to grid (or wall corner for wall-like structure objects) only on release
       runOnJS(finalizeDrop)(translateX.value, translateY.value, rotation.value)
+    })
+
+  const wallResizeRightGesture = Gesture.Pan()
+    .enabled(isEditMode && isSelected && isWall && !isLocked)
+    .onStart(() => {
+      runOnJS(saveSnapshot)()
+      wallResizeStartWidth.value = wallResizeWidth.value
+      wallResizeStartX.value = translateX.value
+      wallResizeStartY.value = translateY.value
+    })
+    .onUpdate(event => {
+      const projectedDelta = projectResizeDelta(
+        event.translationX,
+        event.translationY
+      )
+      const nextWidth = Math.max(
+        MIN_WALL_LENGTH,
+        wallResizeStartWidth.value + projectedDelta
+      )
+      const anchoredPosition = getAnchoredResizePosition(nextWidth, 'start')
+      wallResizeWidth.value = nextWidth
+      translateX.value = anchoredPosition.x
+      translateY.value = anchoredPosition.y
+    })
+    .onEnd(event => {
+      const projectedDelta = projectResizeDelta(
+        event.translationX,
+        event.translationY
+      )
+      const nextWidth = Math.max(
+        MIN_WALL_LENGTH,
+        wallResizeStartWidth.value + projectedDelta
+      )
+      const committedWidth = Math.round(nextWidth)
+      const anchoredPosition = getAnchoredResizePosition(
+        committedWidth,
+        'start'
+      )
+      wallResizeWidth.value = committedWidth
+      translateX.value = anchoredPosition.x
+      translateY.value = anchoredPosition.y
+      runOnJS(updateTableGeometry)(table.id, {
+        x: anchoredPosition.x,
+        y: anchoredPosition.y,
+        width: committedWidth,
+        height: wallResizeHeight.value,
+        rotation: rotation.value
+      })
+    })
+
+  const wallResizeLeftGesture = Gesture.Pan()
+    .enabled(isEditMode && isSelected && isWall && !isLocked)
+    .onStart(() => {
+      runOnJS(saveSnapshot)()
+      wallResizeStartWidth.value = wallResizeWidth.value
+      wallResizeStartX.value = translateX.value
+      wallResizeStartY.value = translateY.value
+    })
+    .onUpdate(event => {
+      const projectedDelta = projectResizeDelta(
+        event.translationX,
+        event.translationY
+      )
+      const nextWidth = Math.max(
+        MIN_WALL_LENGTH,
+        wallResizeStartWidth.value - projectedDelta
+      )
+      const anchoredPosition = getAnchoredResizePosition(nextWidth, 'end')
+      wallResizeWidth.value = nextWidth
+      translateX.value = anchoredPosition.x
+      translateY.value = anchoredPosition.y
+    })
+    .onEnd(event => {
+      const projectedDelta = projectResizeDelta(
+        event.translationX,
+        event.translationY
+      )
+      const nextWidth = Math.max(
+        MIN_WALL_LENGTH,
+        wallResizeStartWidth.value - projectedDelta
+      )
+      const committedWidth = Math.round(nextWidth)
+      const anchoredPosition = getAnchoredResizePosition(
+        committedWidth,
+        'end'
+      )
+
+      wallResizeWidth.value = committedWidth
+      translateX.value = anchoredPosition.x
+      translateY.value = anchoredPosition.y
+      runOnJS(updateTableGeometry)(table.id, {
+        x: anchoredPosition.x,
+        y: anchoredPosition.y,
+        width: committedWidth,
+        height: wallResizeHeight.value,
+        rotation: rotation.value
+      })
     })
 
   // Rotation gesture: disabled in favor of UI buttons in PropertiesPanel
@@ -535,7 +721,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       rotation.value = rotateContext.value + event.rotation
     })
     .onEnd(() => {
-      const snappedRotation = Math.round(rotation.value / 45) * 45
+      const snappedRotation = RIGHT_ANGLE_ROTATION_SHAPE_IDS.has(table.shape_id)
+        ? Math.round(rotation.value / 90) * 90
+        : Math.round(rotation.value / 45) * 45
       rotation.value = snappedRotation
       runOnJS(updateTablePosition)(
         table.id,
@@ -577,6 +765,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       { scale: entryScale.value * pulseScale.value }
     ],
     opacity: entryOpacity.value
+  }))
+
+  const sizeAnimatedStyle = useAnimatedStyle(() => ({
+    width: isWall ? wallResizeWidth.value : effectiveWidth,
+    height: isWall ? wallResizeHeight.value : effectiveHeight
   }))
 
   const orderTotals = useOrderTotals(effectiveOrder?.id ?? null)
@@ -748,7 +941,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   return (
     <GestureDetector gesture={composedGesture}>
       <Animated.View style={animatedStyle}>
-        <View style={{ width: effectiveWidth, height: effectiveHeight }}>
+        <Animated.View style={sizeAnimatedStyle}>
           {TableComponent ? (
             <TableComponent
               darkMode={isDarkColorScheme}
@@ -784,6 +977,85 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 borderRadius: 18
               }}
             />
+          )}
+
+          {isLocked && (
+            <View
+              pointerEvents='none'
+              style={{
+                position: 'absolute',
+                top: -8,
+                left: -8,
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Lock size={11} color={colors.label} />
+            </View>
+          )}
+
+          {isSelected && isEditMode && isWall && (
+            <GestureDetector gesture={wallResizeLeftGesture}>
+              <View
+                style={{
+                  position: 'absolute',
+                  left: -10,
+                  top: effectiveHeight / 2 - 12,
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: isLocked ? colors.muted : colors.info,
+                  borderWidth: 2,
+                  borderColor: colors.panel,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: colors.onSolid
+                  }}
+                />
+              </View>
+            </GestureDetector>
+          )}
+
+          {isSelected && isEditMode && isWall && (
+            <GestureDetector gesture={wallResizeRightGesture}>
+              <View
+                style={{
+                  position: 'absolute',
+                  right: -10,
+                  top: effectiveHeight / 2 - 12,
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: isLocked ? colors.muted : colors.info,
+                  borderWidth: 2,
+                  borderColor: colors.panel,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: colors.onSolid
+                  }}
+                />
+              </View>
+            </GestureDetector>
           )}
 
           <View
@@ -992,7 +1264,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               </Text>
             </View>
           )}
-        </View>
+        </Animated.View>
         <PulsingBorder
           active={newAttention}
           width={effectiveWidth}

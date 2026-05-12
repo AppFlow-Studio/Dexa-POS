@@ -17,6 +17,8 @@ import TableSquare2Chair from '@/components/tables/svg/TableSquare2Chair'
 import TableSquare4Chair from '@/components/tables/svg/TableSquare4Chair'
 import TableSquare8Chair from '@/components/tables/svg/TableSquare8Chair'
 import TextLabel from '@/components/tables/svg/TextLabel'
+import DoorDouble from '@/components/tables/svg/DoorDouble'
+import DoorSingle from '@/components/tables/svg/DoorSingle'
 import WallSection from '@/components/tables/svg/WallSection'
 import ZoneRectangle from '@/components/tables/svg/ZoneRectangle'
 
@@ -200,6 +202,26 @@ export const TABLE_SHAPES = {
     type: 'static-object' as const,
     category: 'structure'
   },
+  'door-single': {
+    id: 'door-single',
+    label: 'Single Door',
+    component: DoorSingle,
+    capacity: 0,
+    width: 55,
+    height: 55,
+    type: 'static-object' as const,
+    category: 'structure'
+  },
+  'door-double': {
+    id: 'door-double',
+    label: 'Double Door',
+    component: DoorDouble,
+    capacity: 0,
+    width: 110,
+    height: 55,
+    type: 'static-object' as const,
+    category: 'structure'
+  },
   pillar: {
     id: 'pillar',
     label: 'Pillar',
@@ -245,3 +267,17 @@ export const TABLE_SHAPES = {
 
 // We create the array from the object values directly since they now contain the ID
 export const SHAPE_OPTIONS = Object.values(TABLE_SHAPES)
+
+export const WALL_CORNER_SNAP_SHAPE_IDS = new Set([
+  'wall-section'
+])
+
+export const RIGHT_ANGLE_ROTATION_SHAPE_IDS = new Set([
+  'door-single',
+  'door-double'
+])
+
+export const FREE_PLACEMENT_SHAPE_IDS = new Set([
+  'door-single',
+  'door-double'
+])
