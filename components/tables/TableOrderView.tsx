@@ -601,10 +601,30 @@ const TableOrderView = React.forwardRef<
         return
       }
 
+      // Wave 4.2: single pass collects everything the kitchen send needs.
+      // Was five sequential filter/map passes (~5×O(n)) over `items`.
       const state = getForOrder(activeOrder.id)
-      const itemsInCourse = activeOrder.items.filter(
-        i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
-      )
+      const itemsInCourse: typeof activeOrder.items = []
+      const itemIds: string[] = []
+      const dbItemIds: string[] = []
+      const originalStatuses: {
+        id: string
+        item_status: typeof activeOrder.items[number]['item_status']
+        kitchen_status: typeof activeOrder.items[number]['kitchen_status']
+      }[] = []
+      for (const i of activeOrder.items) {
+        const itemCourse = i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1
+        if (itemCourse !== course) continue
+        itemsInCourse.push(i)
+        itemIds.push(i.id)
+        if (i.db_order_item_id) dbItemIds.push(i.db_order_item_id)
+        originalStatuses.push({
+          id: i.id,
+          item_status: i.item_status,
+          kitchen_status: i.kitchen_status,
+        })
+      }
+
       if (itemsInCourse.length === 0) {
         if (!silent)
           show({
@@ -615,27 +635,16 @@ const TableOrderView = React.forwardRef<
         return false
       }
 
-      const originalStatuses = itemsInCourse.map(i => ({
-        id: i.id,
-        item_status: i.item_status,
-        kitchen_status: i.kitchen_status
-      }))
-
-      useOrderStore.getState().batchUpdateItemKitchenStatus(
-        itemsInCourse.map(i => i.id),
-        getKitchenSentStatus()
-      )
+      useOrderStore
+        .getState()
+        .batchUpdateItemKitchenStatus(itemIds, getKitchenSentStatus())
       markCourseSent(activeOrder.id, course)
-
-      const dbItemIds = itemsInCourse
-        .map(i => i.db_order_item_id)
-        .filter((id): id is string => !!id)
 
       const result = await useTableSessionStore.getState().dispatchAction({
         type: 'SEND_TO_KITCHEN',
         tableId: currentTableId,
         courseNumber: course,
-        itemIds: itemsInCourse.map(i => i.id),
+        itemIds,
         dbItemIds,
         orderId: activeOrder.id,
         dbOrderId: activeOrder.db_order_id,
@@ -657,13 +666,18 @@ const TableOrderView = React.forwardRef<
             .autoPrintKitchenTickets
         const selectedStore = useStoreSettingsStore.getState().selectedStore
         if (autoPrintKitchenTickets && selectedStore) {
-          PrinterService.printKitchenTickets(
-            activeOrder,
-            itemsInCourse,
-            selectedStore
-          ).catch(e =>
-            console.warn('[TableView] Auto-print kitchen tickets failed:', e)
-          )
+          // Wave 2.2: defer the synchronous template-render phase of
+          // printKitchenTickets so this handler can return and any pending
+          // React commits / toasts can flush first.
+          queueMicrotask(() => {
+            PrinterService.printKitchenTickets(
+              activeOrder,
+              itemsInCourse,
+              selectedStore
+            ).catch(e =>
+              console.warn('[TableView] Auto-print kitchen tickets failed:', e)
+            )
+          })
         }
         if (!silent)
           show({

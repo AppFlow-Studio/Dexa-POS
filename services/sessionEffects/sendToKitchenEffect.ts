@@ -47,9 +47,14 @@ export async function sendToKitchenEffect (
   // Wait for any in-flight item syncs AND quantity updates to complete
   // before broadcasting to the kitchen (same logic as sendNewItemsToKitchen).
   // This covers Scenarios B, C, D — all pending promises resolve here.
-  // Capped at 2000ms on the hot path: on slow WiFi, we'd rather queue the
-  // send-to-kitchen op than freeze the UI for 15s. See lets-look-into-this-stateless-blossom.md.
-  await useOrderStore.getState().waitForPendingSyncs(orderId, { maxMs: 2000 })
+  //
+  // Wave 2.2: capped at 800ms (was 2000ms). Items already added > ~500ms ago
+  // are normally synced by now; anything still pending after 800ms is handled
+  // by `addItemToBackend`'s retroactive path (Scenario E) — it will send the
+  // straggler to the kitchen as soon as its db_order_item_id lands. Tightening
+  // the cap shortens the perceived kitchen-broadcast latency without risking
+  // dropped items.
+  await useOrderStore.getState().waitForPendingSyncs(orderId, { maxMs: 800 })
 
   // Re-read fresh state after the wait
   const freshOrder = useOrderStore.getState().ordersById[orderId]

@@ -33,17 +33,13 @@ import {
     ChevronUp,
     Clock,
     ExternalLink,
-    LayoutGrid,
-    ListChecks,
     LogOut,
     MapPin,
     Phone,
     RefreshCw,
-    ShoppingBag,
     Store,
     Sun,
     Trash2,
-    UtensilsCrossed,
     Wifi,
 } from "lucide-react-native";
 import React, { useCallback, useState } from "react";
@@ -308,113 +304,36 @@ const GeneralSettingsScreen = () => {
     }
   };
 
-  const handleSyncPOS = async () => {
-    setSyncingKey("pos");
-    try {
-      await syncNow();
-      await resyncFloorPlan();
+  const handleSyncAll = async () => {
+    if (!selectedStore?.id) return;
+    setSyncingKey("all");
+    const tasks: Promise<unknown>[] = [
+      syncNow(),
+      resyncFloorPlan(),
+      queryClient.invalidateQueries({
+        queryKey: ["active_orders", selectedStore.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["pos_sync", selectedStore.id],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["standalone_sync"] }),
+    ];
+    const results = await Promise.allSettled(tasks);
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed === 0) {
       toastService.show({
         title: "POS Synced",
-        message: "All pending operations have been flushed.",
+        message: "Orders, menus, settings, and floor plan are up to date.",
         type: "success",
       });
-    } catch {
+    } else {
       toastService.show({
-        title: "Sync Failed",
-        message: "Could not sync. Check your connection.",
+        title: failed === results.length ? "Sync Failed" : "Sync Partially Failed",
+        message: `${failed} of ${results.length} sync tasks failed. Check your connection and try again.`,
         type: "error",
       });
-    } finally {
-      setSyncingKey(null);
     }
-  };
-
-  const handleFetchFloorPlan = async () => {
-    if (!selectedStore?.id) return;
-    setSyncingKey("floorplan");
-    try {
-      await resyncFloorPlan();
-      toastService.show({
-        title: "Floor Plan Refreshed",
-        message: "Tables and sections have been re-fetched.",
-        type: "success",
-      });
-    } catch {
-      toastService.show({
-        title: "Failed",
-        message: "Could not fetch floor plan.",
-        type: "error",
-      });
-    } finally {
-      setSyncingKey(null);
-    }
-  };
-
-  const handleFetchOrders = async () => {
-    if (!selectedStore?.id) return;
-    setSyncingKey("orders");
-    try {
-      await queryClient.invalidateQueries({
-        queryKey: ["active_orders", selectedStore.id],
-      });
-      toastService.show({
-        title: "Orders Refreshed",
-        message: "Latest orders have been fetched.",
-        type: "success",
-      });
-    } catch {
-      toastService.show({
-        title: "Failed",
-        message: "Could not fetch orders.",
-        type: "error",
-      });
-    } finally {
-      setSyncingKey(null);
-    }
-  };
-
-  const handleFetchMenus = async () => {
-    if (!selectedStore?.id) return;
-    setSyncingKey("menus");
-    try {
-      await queryClient.invalidateQueries({
-        queryKey: ["pos_sync", selectedStore.id],
-      });
-      toastService.show({
-        title: "Menu Refreshed",
-        message: "Latest menu data has been fetched.",
-        type: "success",
-      });
-    } catch {
-      toastService.show({
-        title: "Failed",
-        message: "Could not fetch menus.",
-        type: "error",
-      });
-    } finally {
-      setSyncingKey(null);
-    }
-  };
-
-  const handleFetchSettings = async () => {
-    setSyncingKey("settings");
-    try {
-      await queryClient.invalidateQueries({ queryKey: ["pos_sync"] });
-      await queryClient.invalidateQueries({ queryKey: ["standalone_sync"] });
-      toastService.show({
-        title: "Settings Refreshed",
-        message: "Latest POS settings have been fetched.",
-        type: "success",
-      });
-    } catch {
-      toastService.show({
-        title: "Failed",
-        message: "Could not fetch settings.",
-        type: "error",
-      });
-    } finally {
-      setSyncingKey(null);
-    }
+    setSyncingKey(null);
   };
 
   // ── Speed test ──────────────────────────────────────────────────────────
@@ -1105,38 +1024,10 @@ const GeneralSettingsScreen = () => {
             <View style={{ padding: 12 }}>
               {renderSyncButton(
                 "Sync POS",
-                "Flush all pending operations to the server",
+                "Flush pending changes and re-fetch orders, menus, settings, and floor plan",
                 <RefreshCw size={16} color={colors.teal} />,
-                "pos",
-                handleSyncPOS,
-              )}
-              {renderSyncButton(
-                "Fetch Latest Orders",
-                "Re-download active orders from the server",
-                <ShoppingBag size={16} color={colors.teal} />,
-                "orders",
-                handleFetchOrders,
-              )}
-              {renderSyncButton(
-                "Fetch Latest Menus",
-                "Re-download current menu items and categories",
-                <UtensilsCrossed size={16} color={colors.teal} />,
-                "menus",
-                handleFetchMenus,
-              )}
-              {renderSyncButton(
-                "Fetch Latest POS Settings",
-                "Re-download all POS configurations",
-                <ListChecks size={16} color={colors.teal} />,
-                "settings",
-                handleFetchSettings,
-              )}
-              {renderSyncButton(
-                "Fetch Floor Plan",
-                "Re-download tables, sections, and layout",
-                <LayoutGrid size={16} color={colors.teal} />,
-                "floorplan",
-                handleFetchFloorPlan,
+                "all",
+                handleSyncAll,
               )}
             </View>
           )}

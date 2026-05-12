@@ -6,13 +6,14 @@ import {
   Award,
   BarChart3,
   ChefHat,
+  Cpu,
   History,
   LayoutGrid,
   Lock,
   Package,
   Settings,
   ShoppingCart,
-  UtensilsCrossed
+  UtensilsCrossed,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -311,6 +312,16 @@ const MainMenu: React.FC = () => {
     //   route: '/castlestest'
     // }
   ];
+
+  if (__DEV__) {
+    menuItems.push({
+      id: "castlestest",
+      icon: <Cpu color={colors.teal} size={20} />,
+      title: "Castles Test",
+      subtitle: "Castles device test",
+      route: "/castlestest",
+    });
+  }
 
   const regularItems = menuItems.filter((item) => !item.isLocked);
   const managementItems = menuItems.filter((item) => item.isLocked);

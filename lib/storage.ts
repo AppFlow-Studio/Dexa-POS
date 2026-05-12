@@ -115,10 +115,25 @@ export function flushPendingWrite(name: string): void {
  */
 const lazyWriters: Record<string, ReturnType<typeof debounce>> = {};
 
+/**
+ * Last persisted reference per key. If the next setItem call is the *same*
+ * object reference (Immer structural sharing means an unchanged slice keeps
+ * its identity), we can skip JSON.stringify entirely — the previous write
+ * already covered this value.
+ */
+const lastPersistedValue: Record<string, unknown> = {};
+
 /** When true, lazy writers skip setImmediate and write synchronously. */
 let isFlushing = false;
 
 function lazyDebouncedWrite(name: string, value: unknown): void {
+  // Reference-equality short-circuit: if the partialized slice is the exact
+  // same object as the last write, the stringified payload is identical too.
+  // Skip the stringify (50–150ms saved on hot mutations that don't touch
+  // persistable orders, e.g. payment-only flows).
+  if (lastPersistedValue[name] === value) return;
+  lastPersistedValue[name] = value;
+
   const delay = 300;
   if (!lazyWriters[name]) {
     lazyWriters[name] = debounce((v: unknown) => {
