@@ -148,6 +148,16 @@ interface FloorPlanState {
     y: number,
     rotation?: number,
   ) => Promise<void>;
+  updateTableGeometry: (
+    tableId: string,
+    updates: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rotation?: number;
+    },
+  ) => Promise<void>;
   updateTableName: (tableId: string, name: string) => Promise<void>; // Added
   updateTableSize: (
     tableId: string,
@@ -1134,6 +1144,46 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           if (error) {
             // Revert on error
+            await get().loadFloorPlanStatus();
+            throw error;
+          }
+        },
+
+        updateTableGeometry: async (tableId, updates) => {
+          const supabase = getClient();
+          set((state) => {
+            const existing = state.tablesById[tableId];
+            if (!existing) return state;
+            const updated = {
+              ...existing,
+              x: updates.x,
+              y: updates.y,
+              width: updates.width,
+              height: updates.height,
+              rotation: updates.rotation ?? existing.rotation,
+            };
+            const newTables = state.tables.map((t) =>
+              t.id === tableId ? updated : t,
+            );
+            return {
+              tables: newTables,
+              tablesById: { ...state.tablesById, [tableId]: updated },
+            };
+          });
+
+          const { error } = await FloorPlanService.updateFloorPlanObject(
+            supabase,
+            tableId,
+            {
+              x: updates.x,
+              y: updates.y,
+              width: updates.width,
+              height: updates.height,
+              rotation: updates.rotation,
+            },
+          );
+
+          if (error) {
             await get().loadFloorPlanStatus();
             throw error;
           }

@@ -247,7 +247,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const DRAG_HOLD_MS = 220
   const { isDarkColorScheme } = useColorScheme()
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
-  const updateTableSize = useFloorPlanStore(s => s.updateTableSize)
+  const updateTableGeometry = useFloorPlanStore(s => s.updateTableGeometry)
   const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
   const isLocked = useFloorPlanEditorStore(s =>
     s.lockedObjectIds.includes(table.id)
@@ -530,6 +530,32 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     [canvasScale, rotation]
   )
 
+  const getAnchoredResizePosition = useCallback(
+    (
+      nextWidth: number,
+      anchor: 'start' | 'end'
+    ) => {
+      'worklet'
+      const delta = nextWidth - wallResizeStartWidth.value
+      const angle = (rotation.value * Math.PI) / 180
+      const cos = Math.cos(angle)
+      const sin = Math.sin(angle)
+
+      if (anchor === 'start') {
+        return {
+          x: wallResizeStartX.value + (delta * (cos - 1)) / 2,
+          y: wallResizeStartY.value + (delta * sin) / 2
+        }
+      }
+
+      return {
+        x: wallResizeStartX.value - (delta * (1 + cos)) / 2,
+        y: wallResizeStartY.value - (delta * sin) / 2
+      }
+    },
+    [rotation, wallResizeStartWidth, wallResizeStartX, wallResizeStartY]
+  )
+
   // Called on JS thread at drag end: resolve final snapped position and persist.
   const finalizeDrop = useCallback(
     (rawX: number, rawY: number, rot: number) => {
@@ -600,10 +626,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         event.translationX,
         event.translationY
       )
-      wallResizeWidth.value = Math.max(
+      const nextWidth = Math.max(
         MIN_WALL_LENGTH,
         wallResizeStartWidth.value + projectedDelta
       )
+      const anchoredPosition = getAnchoredResizePosition(nextWidth, 'start')
+      wallResizeWidth.value = nextWidth
+      translateX.value = anchoredPosition.x
+      translateY.value = anchoredPosition.y
     })
     .onEnd(event => {
       const projectedDelta = projectResizeDelta(
@@ -615,12 +645,20 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         wallResizeStartWidth.value + projectedDelta
       )
       const committedWidth = Math.round(nextWidth)
-      wallResizeWidth.value = committedWidth
-      runOnJS(updateTableSize)(
-        table.id,
+      const anchoredPosition = getAnchoredResizePosition(
         committedWidth,
-        wallResizeHeight.value
+        'start'
       )
+      wallResizeWidth.value = committedWidth
+      translateX.value = anchoredPosition.x
+      translateY.value = anchoredPosition.y
+      runOnJS(updateTableGeometry)(table.id, {
+        x: anchoredPosition.x,
+        y: anchoredPosition.y,
+        width: committedWidth,
+        height: wallResizeHeight.value,
+        rotation: rotation.value
+      })
     })
 
   const wallResizeLeftGesture = Gesture.Pan()
@@ -640,13 +678,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         MIN_WALL_LENGTH,
         wallResizeStartWidth.value - projectedDelta
       )
-      const appliedDelta = wallResizeStartWidth.value - nextWidth
-      const angle = (rotation.value * Math.PI) / 180
+      const anchoredPosition = getAnchoredResizePosition(nextWidth, 'end')
       wallResizeWidth.value = nextWidth
-      translateX.value =
-        wallResizeStartX.value + appliedDelta * Math.cos(angle)
-      translateY.value =
-        wallResizeStartY.value + appliedDelta * Math.sin(angle)
+      translateX.value = anchoredPosition.x
+      translateY.value = anchoredPosition.y
     })
     .onEnd(event => {
       const projectedDelta = projectResizeDelta(
@@ -657,28 +692,22 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         MIN_WALL_LENGTH,
         wallResizeStartWidth.value - projectedDelta
       )
-      const appliedDelta = wallResizeStartWidth.value - nextWidth
-      const angle = (rotation.value * Math.PI) / 180
       const committedWidth = Math.round(nextWidth)
-      const committedX =
-        wallResizeStartX.value + appliedDelta * Math.cos(angle)
-      const committedY =
-        wallResizeStartY.value + appliedDelta * Math.sin(angle)
+      const anchoredPosition = getAnchoredResizePosition(
+        committedWidth,
+        'end'
+      )
 
       wallResizeWidth.value = committedWidth
-      translateX.value = committedX
-      translateY.value = committedY
-      runOnJS(updateTablePosition)(
-        table.id,
-        committedX,
-        committedY,
-        rotation.value
-      )
-      runOnJS(updateTableSize)(
-        table.id,
-        committedWidth,
-        wallResizeHeight.value
-      )
+      translateX.value = anchoredPosition.x
+      translateY.value = anchoredPosition.y
+      runOnJS(updateTableGeometry)(table.id, {
+        x: anchoredPosition.x,
+        y: anchoredPosition.y,
+        width: committedWidth,
+        height: wallResizeHeight.value,
+        rotation: rotation.value
+      })
     })
 
   // Rotation gesture: disabled in favor of UI buttons in PropertiesPanel
