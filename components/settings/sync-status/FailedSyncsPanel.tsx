@@ -12,9 +12,10 @@ import {
   retryDeadLetterOperation,
   type OfflineOperation
 } from '@/services/offlineSyncService'
-import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-react-native'
+import { AlertTriangle, RefreshCw, Trash2, Wrench } from 'lucide-react-native'
 import React, { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import { FailedSyncResolutionModal } from './FailedSyncResolutionModal'
 
 const OPERATION_LABELS: Record<string, string> = {
   create_order: 'Create Order',
@@ -73,6 +74,7 @@ function isPaymentOp (type: string): boolean {
 export function FailedSyncsPanel (): React.ReactElement {
   const [operations, setOperations] = useState<OfflineOperation[]>([])
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set())
+  const [resolveOpId, setResolveOpId] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
     setOperations(getDeadLetterOperations())
@@ -316,7 +318,33 @@ export function FailedSyncsPanel (): React.ReactElement {
                 </Text>
               </TouchableOpacity>
 
-              {!isPayment && (
+              {isPayment ? (
+                <TouchableOpacity
+                  onPress={() => setResolveOpId(op.id)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: colors.card,
+                    borderWidth: 1,
+                    borderColor: colors.border
+                  }}
+                >
+                  <Wrench size={12} color={colors.label} />
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '500',
+                      color: colors.label
+                    }}
+                  >
+                    Resolve manually
+                  </Text>
+                </TouchableOpacity>
+              ) : (
                 <TouchableOpacity
                   onPress={() => handleDiscard(op.id)}
                   style={{
@@ -356,11 +384,24 @@ export function FailedSyncsPanel (): React.ReactElement {
           }}
         >
           <Text style={{ fontSize: 12, color: colors.danger }}>
-            Payment operations cannot be discarded. They must be retried or
-            resolved manually.
+            Payment operations can&apos;t be auto-discarded. Tap{' '}
+            <Text style={{ fontWeight: '700' }}>Resolve manually</Text> to
+            compare local and server state, then mark resolved, retry, or
+            force re-sync.
           </Text>
         </View>
       )}
+
+      <FailedSyncResolutionModal
+        visible={resolveOpId !== null}
+        op={
+          resolveOpId
+            ? operations.find(o => o.id === resolveOpId) ?? null
+            : null
+        }
+        onClose={() => setResolveOpId(null)}
+        onResolved={refresh}
+      />
     </View>
   )
 }

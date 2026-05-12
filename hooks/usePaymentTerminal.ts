@@ -61,6 +61,7 @@ export function usePaymentTerminal() {
         stationId: t.station_id,
         lastConnectionTest: t.last_connection_test_at,
         lastConnectionStatus: t.last_connection_status,
+        serialNumber: t.serial_number,
       }));
 
       setTerminals(mappedTerminals);

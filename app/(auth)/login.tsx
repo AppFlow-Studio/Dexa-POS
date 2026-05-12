@@ -541,7 +541,7 @@ const MerchantLoginScreen = () => {
           */}
 
           {/* Divider */}
-          <View
+          {/* <View
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -556,7 +556,7 @@ const MerchantLoginScreen = () => {
             <View
               style={{ flex: 1, height: 1, backgroundColor: colors.border }}
             />
-          </View>
+          </View> */}
 
           {/* Email */}
           <View style={{ marginBottom: 10 }}>

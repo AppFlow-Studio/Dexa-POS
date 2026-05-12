@@ -64,6 +64,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Platform,
   ScrollView,
@@ -302,7 +303,7 @@ const DevicesConnectionsScreen = () => {
   const [showRegisterForm, setShowRegisterForm] = useState(false)
   const [registerFormType, setRegisterFormType] = useState<
     'dejavoo' | 'castles'
-  >('dejavoo')
+  >('castles')
   const [registerForm, setRegisterForm] = useState({
     name: '',
     tpn: '',
@@ -397,28 +398,34 @@ const DevicesConnectionsScreen = () => {
     }
   }, [selectedStore?.id])
 
-  // Hydrate station terminal with IP/port from full terminal record
+  // Hydrate station terminal with IP/port/serial from full terminal record
   useEffect(() => {
+    if (!currentTerminal || !terminals.length || !selectedStation) return
+    const needsHydration =
+      !currentTerminal.ip_address || !currentTerminal.serial_number
+    if (!needsHydration) return
+    const fullRecord = terminals.find(t => t.id === currentTerminal.id)
+    if (!fullRecord) return
+    const hydratedIp = currentTerminal.ip_address ?? fullRecord.ipAddress
+    const hydratedSerial =
+      currentTerminal.serial_number ?? fullRecord.serialNumber ?? null
     if (
-      !currentTerminal ||
-      currentTerminal.ip_address ||
-      !terminals.length ||
-      !selectedStation
+      hydratedIp === currentTerminal.ip_address &&
+      hydratedSerial === currentTerminal.serial_number
     )
       return
-    const fullRecord = terminals.find(t => t.id === currentTerminal.id)
-    if (fullRecord?.ipAddress) {
-      setSelectedStation({
-        ...selectedStation,
-        payment_terminal: {
-          ...currentTerminal,
-          ip_address: fullRecord.ipAddress,
-          port: fullRecord.port,
-          connection_type: fullRecord.connectionType
-        }
-      })
-    }
-  }, [terminals, currentTerminal?.id])
+    setSelectedStation({
+      ...selectedStation,
+      payment_terminal: {
+        ...currentTerminal,
+        ip_address: hydratedIp,
+        port: currentTerminal.port ?? fullRecord.port,
+        connection_type:
+          currentTerminal.connection_type ?? fullRecord.connectionType,
+        serial_number: hydratedSerial
+      }
+    })
+  }, [terminals, currentTerminal?.id, currentTerminal?.serial_number])
 
   // ---------------------------------------------------------------------------
   // DEVICE CAPABILITIES
@@ -1550,65 +1557,50 @@ const DevicesConnectionsScreen = () => {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Type selector */}
+                  {/* Castles-only header */}
                   <View
-                    style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                      marginBottom: 12,
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: colors.teal + '50',
+                      backgroundColor: colors.teal + '15'
+                    }}
                   >
-                    {(['castles', 'dejavoo'] as const).map(type => (
-                      <TouchableOpacity
-                        key={type}
-                        onPress={() => setRegisterFormType(type)}
+                    <Image
+                      source={require('@/assets/images/castles.jpg')}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 6
+                      }}
+                      resizeMode='cover'
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
                         style={{
-                          flex: 1,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          paddingVertical: 10,
-                          paddingHorizontal: 12,
-                          alignItems: 'center',
-                          backgroundColor:
-                            registerFormType === type
-                              ? colors.teal + '20'
-                              : 'transparent',
-                          borderColor:
-                            registerFormType === type
-                              ? colors.teal + '50'
-                              : colors.border
+                          fontSize: 13,
+                          fontWeight: '700',
+                          color: colors.teal
                         }}
                       >
-                        {type === 'castles' ? (
-                          <Wifi
-                            size={18}
-                            color={
-                              registerFormType === type
-                                ? colors.teal
-                                : colors.muted
-                            }
-                          />
-                        ) : (
-                          <CreditCard
-                            size={18}
-                            color={
-                              registerFormType === type
-                                ? colors.teal
-                                : colors.muted
-                            }
-                          />
-                        )}
-                        <Text
-                          style={{
-                            fontWeight: '700',
-                            fontSize: 12,
-                            marginTop: 6,
-                            color:
-                              registerFormType === type
-                                ? colors.teal
-                                : colors.muted
-                          }}
-                        >
-                          {type === 'castles' ? 'Castles' : 'Dejavoo'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                        Castles Terminal
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.muted,
+                          marginTop: 2
+                        }}
+                      >
+                        Network (TCP) payment terminal
+                      </Text>
+                    </View>
                   </View>
 
                   {registerFormType === 'castles' ? (
@@ -2008,6 +2000,92 @@ const DevicesConnectionsScreen = () => {
                                   </Text>
                                 )}
                               </View>
+                              {t.terminalType === 'castles' && (
+                                <View style={{ marginTop: 4, gap: 2 }}>
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        color: colors.muted,
+                                        fontWeight: '600',
+                                        width: 44
+                                      }}
+                                    >
+                                      S/N:
+                                    </Text>
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        color: colors.heading,
+                                        fontFamily: 'monospace'
+                                      }}
+                                      selectable
+                                    >
+                                      {t.serialNumber ?? '— not yet discovered —'}
+                                    </Text>
+                                  </View>
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        color: colors.muted,
+                                        fontWeight: '600',
+                                        width: 44
+                                      }}
+                                    >
+                                      Addr:
+                                    </Text>
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        color: colors.heading,
+                                        fontFamily: 'monospace'
+                                      }}
+                                      selectable
+                                    >
+                                      {t.ipAddress ?? '—'}
+                                      {t.port ? `:${t.port}` : ''}
+                                    </Text>
+                                  </View>
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        color: colors.muted,
+                                        fontWeight: '600',
+                                        width: 44
+                                      }}
+                                    >
+                                      ID:
+                                    </Text>
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        color: colors.heading,
+                                        fontFamily: 'monospace'
+                                      }}
+                                      selectable
+                                    >
+                                      {t.id.slice(0, 8)}
+                                    </Text>
+                                  </View>
+                                </View>
+                              )}
                             </View>
                           </View>
                           {isCurrent && (
@@ -2400,18 +2478,123 @@ const DevicesConnectionsScreen = () => {
                           </View>
                         </View>
                         <View style={{ marginTop: 4, gap: 2 }}>
-                          {currentTerminal.terminal_type === 'castles' &&
-                          currentTerminal.ip_address ? (
-                            <Text
-                              style={{
-                                color: colors.muted,
-                                fontSize: 9,
-                                fontFamily: 'monospace'
-                              }}
-                            >
-                              {currentTerminal.ip_address}:
-                              {currentTerminal.port || 8080}
-                            </Text>
+                          {currentTerminal.terminal_type === 'castles' ? (
+                            <>
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: 9,
+                                    fontWeight: '600',
+                                    width: 36
+                                  }}
+                                >
+                                  Addr:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: 9,
+                                    fontFamily: 'monospace'
+                                  }}
+                                  selectable
+                                >
+                                  {currentTerminal.ip_address ?? '—'}
+                                  {currentTerminal.ip_address
+                                    ? `:${currentTerminal.port || 8080}`
+                                    : ''}
+                                </Text>
+                              </View>
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: 9,
+                                    fontWeight: '600',
+                                    width: 36
+                                  }}
+                                >
+                                  S/N:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: 9,
+                                    fontFamily: 'monospace'
+                                  }}
+                                  selectable
+                                >
+                                  {currentTerminal.serial_number ??
+                                    '— not yet discovered —'}
+                                </Text>
+                              </View>
+                              {currentTerminal.terminal_model && (
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.muted,
+                                      fontSize: 9,
+                                      fontWeight: '600',
+                                      width: 36
+                                    }}
+                                  >
+                                    Model:
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      color: colors.heading,
+                                      fontSize: 9,
+                                      fontFamily: 'monospace'
+                                    }}
+                                    selectable
+                                  >
+                                    {currentTerminal.terminal_model}
+                                  </Text>
+                                </View>
+                              )}
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: 9,
+                                    fontWeight: '600',
+                                    width: 36
+                                  }}
+                                >
+                                  ID:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: 9,
+                                    fontFamily: 'monospace'
+                                  }}
+                                  selectable
+                                >
+                                  {currentTerminal.id.slice(0, 8)}
+                                </Text>
+                              </View>
+                            </>
                           ) : currentTerminal.register_id ? (
                             <Text style={{ color: colors.muted, fontSize: 9 }}>
                               TPN: {currentTerminal.register_id}

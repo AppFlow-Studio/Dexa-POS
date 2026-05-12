@@ -287,6 +287,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Stable key that changes whenever any wall's geometry changes — used to invalidate
   // edge flags without subscribing to a new array reference every render.
+  // Type check: only table/booth categories are interactive in normal view
+
+  // Stable key that changes whenever any wall's geometry changes — used to invalidate
+  // edge flags without subscribing to a new array reference every render.
 
   const wallResizeWidth = useSharedValue(table.width ?? shapeDef?.width ?? 100)
   const wallResizeHeight = useSharedValue(
