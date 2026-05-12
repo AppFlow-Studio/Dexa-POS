@@ -246,6 +246,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const DRAG_HOLD_MS = 220
   const { isDarkColorScheme } = useColorScheme()
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
+  const updateTableSize = useFloorPlanStore(s => s.updateTableSize)
   const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
   const defaultSittingTimeMinutes = useLocationConfigStore(
     s => s.config.dining.defaultSittingTimeMinutes
@@ -298,9 +299,35 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isWall, wallGeometryKey])
 
+  const wallResizeWidth = useSharedValue(table.width ?? shapeDef?.width ?? 100)
+  const wallResizeHeight = useSharedValue(
+    table.height ?? shapeDef?.height ?? 100
+  )
+  const wallResizeStartWidth = useSharedValue(
+    table.width ?? shapeDef?.width ?? 100
+  )
+
+  useEffect(() => {
+    wallResizeWidth.value = table.width ?? shapeDef?.width ?? 100
+    wallResizeHeight.value = table.height ?? shapeDef?.height ?? 100
+    wallResizeStartWidth.value = table.width ?? shapeDef?.width ?? 100
+  }, [
+    table.width,
+    table.height,
+    shapeDef?.width,
+    shapeDef?.height,
+    wallResizeWidth,
+    wallResizeHeight,
+    wallResizeStartWidth
+  ])
+
   // --- COMPUTE EFFECTIVE DIMENSIONS ---
-  const effectiveWidth = table.width ?? shapeDef?.width ?? 100
-  const effectiveHeight = table.height ?? shapeDef?.height ?? 100
+  const effectiveWidth = isWall
+    ? wallResizeWidth.value
+    : table.width ?? shapeDef?.width ?? 100
+  const effectiveHeight = isWall
+    ? wallResizeHeight.value
+    : table.height ?? shapeDef?.height ?? 100
 
   const effectiveOrder = useOrderByAnyId(liveSession?.order_id) ?? undefined
 
@@ -477,6 +504,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   }, [table.id])
 
   const GRID_SIZE = 5
+  const MIN_WALL_LENGTH = 40
 
   // Called on JS thread at drag end: resolve final snapped position and persist.
   const finalizeDrop = useCallback(
@@ -535,6 +563,42 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       runOnJS(finalizeDrop)(translateX.value, translateY.value, rotation.value)
     })
 
+  const wallResizeGesture = Gesture.Pan()
+    .enabled(isEditMode && isSelected && isWall)
+    .onStart(() => {
+      runOnJS(saveSnapshot)()
+      wallResizeStartWidth.value = wallResizeWidth.value
+    })
+    .onUpdate(event => {
+      const angle = (rotation.value * Math.PI) / 180
+      const projectedDelta =
+        (event.translationX * Math.cos(angle) +
+          event.translationY * Math.sin(angle)) /
+        canvasScale.value
+      wallResizeWidth.value = Math.max(
+        MIN_WALL_LENGTH,
+        wallResizeStartWidth.value + projectedDelta
+      )
+    })
+    .onEnd(event => {
+      const angle = (rotation.value * Math.PI) / 180
+      const projectedDelta =
+        (event.translationX * Math.cos(angle) +
+          event.translationY * Math.sin(angle)) /
+        canvasScale.value
+      const nextWidth = Math.max(
+        MIN_WALL_LENGTH,
+        wallResizeStartWidth.value + projectedDelta
+      )
+      const committedWidth = Math.round(nextWidth)
+      wallResizeWidth.value = committedWidth
+      runOnJS(updateTableSize)(
+        table.id,
+        committedWidth,
+        wallResizeHeight.value
+      )
+    })
+
   // Rotation gesture: disabled in favor of UI buttons in PropertiesPanel
   const rotateGesture = Gesture.Rotation()
     .enabled(false)
@@ -590,6 +654,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       { scale: entryScale.value * pulseScale.value }
     ],
     opacity: entryOpacity.value
+  }))
+
+  const sizeAnimatedStyle = useAnimatedStyle(() => ({
+    width: isWall ? wallResizeWidth.value : effectiveWidth,
+    height: isWall ? wallResizeHeight.value : effectiveHeight
   }))
 
   const orderTotals = useOrderTotals(effectiveOrder?.id ?? null)
@@ -761,7 +830,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   return (
     <GestureDetector gesture={composedGesture}>
       <Animated.View style={animatedStyle}>
-        <View style={{ width: effectiveWidth, height: effectiveHeight }}>
+        <Animated.View style={sizeAnimatedStyle}>
           {TableComponent ? (
             <TableComponent
               darkMode={isDarkColorScheme}
@@ -797,6 +866,35 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 borderRadius: 18
               }}
             />
+          )}
+
+          {isSelected && isEditMode && isWall && (
+            <GestureDetector gesture={wallResizeGesture}>
+              <View
+                style={{
+                  position: 'absolute',
+                  right: -10,
+                  top: effectiveHeight / 2 - 12,
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: colors.info,
+                  borderWidth: 2,
+                  borderColor: colors.panel,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: colors.onSolid
+                  }}
+                />
+              </View>
+            </GestureDetector>
           )}
 
           <View
@@ -1005,7 +1103,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               </Text>
             </View>
           )}
-        </View>
+        </Animated.View>
         <PulsingBorder
           active={newAttention}
           width={effectiveWidth}
