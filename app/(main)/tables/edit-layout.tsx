@@ -14,6 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Maximize2, Minus, Plus, Redo2, Undo2 } from 'lucide-react-native'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -150,7 +151,9 @@ const LayoutEditorScreenContent = () => {
     future,
     setActiveFloorPlan,
     activeFloorPlanId,
-    updateFloorPlan
+    updateFloorPlan,
+    isLoading,
+    loadingFloorPlanId
   } = useFloorPlanStore()
 
   // In edit mode: tapping an object selects only that object (single-select).
@@ -168,6 +171,10 @@ const LayoutEditorScreenContent = () => {
     [floorPlans, layoutId]
   )
   const tables = storeTables
+  const isOpeningLayout = !!layoutId && (
+    loadingFloorPlanId === layoutId ||
+    (isLoading && activeFloorPlanId === layoutId)
+  )
 
   useEffect(() => {
     if (
@@ -546,6 +553,59 @@ const LayoutEditorScreenContent = () => {
       }
     >
       {/* ── Top Bar ── */}
+      {isOpeningLayout && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 20,
+            backgroundColor: colors.screen + 'D9',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <View
+            style={{
+              minWidth: 200,
+              paddingHorizontal: 20,
+              paddingVertical: 18,
+              borderRadius: 16,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: 'center'
+            }}
+          >
+            <ActivityIndicator
+              size='large'
+              color={colors.teal}
+              style={{ marginBottom: 10 }}
+            />
+            <Text
+              style={{
+                color: colors.heading,
+                fontSize: 15,
+                fontWeight: '700'
+              }}
+            >
+              Opening layout...
+            </Text>
+            <Text
+              style={{
+                color: colors.muted,
+                fontSize: 12,
+                textAlign: 'center',
+                marginTop: 4
+              }}
+            >
+              Loading walls, tables, and sections
+            </Text>
+          </View>
+        </View>
+      )}
       <View
         style={{
           flexDirection: 'row',
