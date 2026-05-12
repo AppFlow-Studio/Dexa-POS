@@ -3,6 +3,7 @@
 import { storage } from "@/lib/storage";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
+import { getWallEdgeFlags, WallEdgeFlags } from "@/lib/wallCornerSnap";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { Lock, LockOpen, Minus, Plus } from "lucide-react-native";
@@ -38,6 +39,10 @@ const DEFAULT_CANVAS_WORLD_WIDTH = 2400;
 const DEFAULT_CANVAS_WORLD_HEIGHT = 1600;
 const INITIAL_ZOOM_MULTIPLIER = 2.0;
 const ENTRY_ANIMATION_OBJECT_LIMIT = 40;
+const PROGRESSIVE_RENDER_THRESHOLD = 80;
+const INITIAL_RENDER_BATCH = 24;
+const PROGRESSIVE_RENDER_BATCH = 18;
+const PROGRESSIVE_RENDER_DELAY_MS = 16;
 
 const getMedian = (values: number[]) => {
   if (values.length === 0) return 0;
@@ -196,6 +201,17 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableGeometryKey, sectionsById]);
 
+  const wallEdgeFlagsById = useMemo<Record<string, WallEdgeFlags>>(() => {
+    const walls = tables.filter((table) => table.shape_id === "wall-section");
+    if (walls.length === 0) return {};
+
+    const next: Record<string, WallEdgeFlags> = {};
+    for (const wall of walls) {
+      next[wall.id] = getWallEdgeFlags(wall, walls);
+    }
+    return next;
+  }, [tableGeometryKey, tables]);
+
   // Use the correct selection state:
   // - In selection mode: use global store (supports multi-select for merge)
   // - Otherwise: use global store or fall back to single selectedTableId prop
@@ -285,6 +301,72 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const selectedTableIdsSet = useMemo(
     () => new Set(selectedTableIds),
     [selectedTableIds],
+  );
+
+  const prioritizedTables = useMemo(() => {
+    if (sortedTables.length < PROGRESSIVE_RENDER_THRESHOLD) return sortedTables;
+
+    const scoreTable = (table: FloorPlanObject) => {
+      let score = 0;
+      if (selectedTableIdsSet.has(table.id)) score += 1000;
+      if (table.session?.needs_attention) score += 500;
+      if (table.session?.status) score += 250;
+      if (table.category === "table" || table.category === "booth") score += 50;
+      return score;
+    };
+
+    return [...sortedTables].sort((a, b) => {
+      const scoreDiff = scoreTable(b) - scoreTable(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return (a.z_index ?? 0) - (b.z_index ?? 0);
+    });
+  }, [selectedTableIdsSet, sortedTables]);
+
+  const [visibleObjectCount, setVisibleObjectCount] = useState(() =>
+    sortedTables.length >= PROGRESSIVE_RENDER_THRESHOLD
+      ? Math.min(INITIAL_RENDER_BATCH, sortedTables.length)
+      : sortedTables.length,
+  );
+
+  useEffect(() => {
+    if (prioritizedTables.length < PROGRESSIVE_RENDER_THRESHOLD) {
+      setVisibleObjectCount(prioritizedTables.length);
+      return;
+    }
+
+    setVisibleObjectCount(Math.min(INITIAL_RENDER_BATCH, prioritizedTables.length));
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const pump = () => {
+      timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        setVisibleObjectCount((current) => {
+          if (current >= prioritizedTables.length) return current;
+          return Math.min(current + PROGRESSIVE_RENDER_BATCH, prioritizedTables.length);
+        });
+        if (!cancelled) {
+          pump();
+        }
+      }, PROGRESSIVE_RENDER_DELAY_MS);
+    };
+
+    pump();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [layoutId, prioritizedTables]);
+
+  const visibleTables = useMemo(
+    () => prioritizedTables.slice(0, visibleObjectCount),
+    [prioritizedTables, visibleObjectCount],
+  );
+  const visibleTableIds = useMemo(
+    () => new Set(visibleTables.map((table) => table.id)),
+    [visibleTables],
   );
 
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
@@ -727,7 +809,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                     </SvgText>
                   </React.Fragment>
                 ))}
-                {sortedTables.map((table) => {
+                {visibleTables.map((table) => {
                   const mergedTableIds = table.session?.merged_tables;
                   if (mergedTableIds && mergedTableIds.length > 0) {
                     // Compute primary table center using actual dimensions
@@ -745,6 +827,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                     return mergedTableIds.map((mergedId) => {
                       // Only draw if this table ID is "less than" the other ID to avoid double drawing
                       if (table.id >= mergedId) return null;
+                      if (!visibleTableIds.has(mergedId)) return null;
 
                       const mergedTable = tablesById[mergedId];
                       if (!mergedTable) return null;
@@ -793,7 +876,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 })}
               </Svg>
             )}
-            {sortedTables.map((table, index) => (
+            {visibleTables.map((table, index) => (
               <DraggableTable
                 key={table.id}
                 table={table}
@@ -819,6 +902,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                     ? sectionsById?.[table.section_id]?.color
                     : undefined
                 }
+                wallEdgeFlags={wallEdgeFlagsById[table.id]}
                 disableLongPress={disableLongPress}
                 onLongPress={
                   onTableLongPress ? () => onTableLongPress(table) : undefined

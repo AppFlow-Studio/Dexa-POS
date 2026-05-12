@@ -14,7 +14,6 @@ import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import {
   findWallCornerSnap,
-  getWallEdgeFlags,
   WallEdgeFlags
 } from '@/lib/wallCornerSnap'
 import {
@@ -77,6 +76,7 @@ const compactTableName = (rawName: string): string => {
 const missingOrderSyncInFlight = new Set<string>()
 const missingOrderLastAttemptAt: Record<string, number> = {}
 const MISSING_ORDER_SYNC_THROTTLE_MS = 8000
+const EMPTY_MERGED_TABLE_NAMES: (string | null)[] = []
 
 const toLocalDateKey = (date: Date) => {
   const y = date.getFullYear()
@@ -227,6 +227,7 @@ interface DraggableTableProps {
   index?: number // For staggered entry animation
   enableEntryAnimation?: boolean
   sectionColor?: string
+  wallEdgeFlags?: WallEdgeFlags
   onLongPress?: () => void
   disableLongPress?: boolean
 }
@@ -243,10 +244,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   index = 0,
   enableEntryAnimation = true,
   sectionColor,
+  wallEdgeFlags,
   onLongPress,
   disableLongPress = false
 }) => {
   const DRAG_HOLD_MS = 220
+  const isTableType = table.category === 'table' || table.category === 'booth'
+  const isWall = table.shape_id === 'wall-section'
   const { isDarkColorScheme } = useColorScheme()
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
   const updateTableGeometry = useFloorPlanStore(s => s.updateTableGeometry)
@@ -255,13 +259,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     s.lockedObjectIds.includes(table.id)
   )
   const defaultSittingTimeMinutes = useLocationConfigStore(
-    s => s.config.dining.defaultSittingTimeMinutes
+    s => (isTableType ? s.config.dining.defaultSittingTimeMinutes : 0)
   )
-  const tick = useTableTimerTick()
 
   // Subscribe directly to live session so table color/status updates without needing
   // the floor plan store sync (matches how Sidebar's TableListItem works)
-  const sessionStoreSession = useTableSessionStore(s => s.sessions[table.id])
+  const sessionStoreSession = useTableSessionStore(s =>
+    isTableType ? s.sessions[table.id] : undefined
+  )
   const liveSession = sessionStoreSession ?? table.session
 
   // --- COMPONENT LOOKUP ---
@@ -270,40 +275,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     TABLE_SHAPES['square-4']
   const TableComponent = shapeDef?.component
 
-  // Type check: only table/booth categories are interactive in normal view
-  const isTableType = table.category === 'table' || table.category === 'booth'
-  const isWall = table.shape_id === 'wall-section'
   const snapsToWallCorners = WALL_CORNER_SNAP_SHAPE_IDS.has(table.shape_id)
   const hasFreePlacement = FREE_PLACEMENT_SHAPE_IDS.has(table.shape_id)
+  const tick = useTableTimerTick(isTableType)
+  const resolvedWallEdgeFlags: WallEdgeFlags = wallEdgeFlags ?? {
+    hideTop: false,
+    hideRight: false,
+    hideBottom: false,
+    hideLeft: false
+  }
 
   // Stable key that changes whenever any wall's geometry changes — used to invalidate
   // edge flags without subscribing to a new array reference every render.
-  const wallGeometryKey = useFloorPlanStore(s =>
-    snapsToWallCorners
-      ? s.tables
-          .filter(t => WALL_CORNER_SNAP_SHAPE_IDS.has(t.shape_id))
-          .map(
-            t => `${t.id}:${t.x},${t.y},${t.width},${t.height},${t.rotation}`
-          )
-          .join('|')
-      : ''
-  )
-
-  const wallEdgeFlags: WallEdgeFlags = useMemo(() => {
-    if (!isWall)
-      return {
-        hideTop: false,
-        hideRight: false,
-        hideBottom: false,
-        hideLeft: false
-      }
-    const allWalls = useFloorPlanStore
-      .getState()
-      .tables.filter(t => t.shape_id === 'wall-section')
-    return getWallEdgeFlags(table, allWalls)
-    // wallGeometryKey is a stable string that changes only when wall geometry changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isWall, wallGeometryKey])
 
   const wallResizeWidth = useSharedValue(table.width ?? shapeDef?.width ?? 100)
   const wallResizeHeight = useSharedValue(
@@ -343,7 +326,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ? wallResizeHeight.value
     : table.height ?? shapeDef?.height ?? 100
 
-  const effectiveOrder = useOrderByAnyId(liveSession?.order_id) ?? undefined
+  const effectiveOrder =
+    useOrderByAnyId(isTableType ? liveSession?.order_id : null) ?? undefined
 
   useEffect(() => {
     const id = liveSession?.order_id
@@ -434,16 +418,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // O(1) lookup from precomputed map — no per-table filter/sort on every reservation poll
   const liveNextReservation = useReservationStore(
-    s => s.nextReservationByTableId[table.id] ?? null
+    s => (isTableType ? s.nextReservationByTableId[table.id] ?? null : null)
   )
 
   // Subscribe only to the specific merged table names needed, not the entire tablesById map
   const mergedTableIds = liveSession?.merged_tables ?? []
   const mergedTableNames = useFloorPlanStore(
     useShallow(s =>
-      mergedTableIds
-        .filter(id => id !== table.id)
-        .map(id => s.tablesById[id]?.name ?? null)
+      isTableType
+        ? mergedTableIds
+            .filter(id => id !== table.id)
+            .map(id => s.tablesById[id]?.name ?? null)
+        : EMPTY_MERGED_TABLE_NAMES
     )
   )
 
@@ -779,7 +765,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     height: isWall ? wallResizeHeight.value : effectiveHeight
   }))
 
-  const orderTotals = useOrderTotals(effectiveOrder?.id ?? null)
+  const orderTotals = useOrderTotals(
+    isTableType ? effectiveOrder?.id ?? null : null
+  )
   const orderTotal = orderTotals?.total ?? 0
 
   const {
@@ -955,7 +943,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               color={isTableType ? tableColor : colors.label}
               {...(isTableType && { chairColor: tableColor })}
               {...(table.shape_id === 'label-text' && { label: table.name })}
-              {...(isWall && wallEdgeFlags)}
+              {...(isWall && resolvedWallEdgeFlags)}
               width={effectiveWidth}
               height={effectiveHeight}
             />
@@ -1303,6 +1291,14 @@ export default React.memo(DraggableTable, (prev, next) => {
     return false
   }
   if (prev.interactionMode !== next.interactionMode) {
+    return false
+  }
+  if (
+    prev.wallEdgeFlags?.hideTop !== next.wallEdgeFlags?.hideTop ||
+    prev.wallEdgeFlags?.hideRight !== next.wallEdgeFlags?.hideRight ||
+    prev.wallEdgeFlags?.hideBottom !== next.wallEdgeFlags?.hideBottom ||
+    prev.wallEdgeFlags?.hideLeft !== next.wallEdgeFlags?.hideLeft
+  ) {
     return false
   }
   // Re-render if session changed (status, party size, etc.)
