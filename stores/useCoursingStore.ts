@@ -199,15 +199,16 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
   },
 
   loadFromServer: async (orderId: string) => {
-    console.log(orderId)
     const supabase = _supabaseClient;
     const orderData = get().byOrderId[orderId];
     const dbOrderId = orderData?.dbOrderId;
-    
-   
 
     if (!supabase || !dbOrderId) {
-      console.log("No Supabase client or dbOrderId - skipping server sync");
+      if (__DEV__) {
+        console.log("[Coursing] skip server sync (no client or dbOrderId)", {
+          orderId,
+        });
+      }
       return;
     }
 

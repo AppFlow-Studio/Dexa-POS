@@ -436,23 +436,28 @@ const TablesScreen = () => {
     [selectedTableIds]
   )
 
-  // Analyze selected tables for merge actions
-  const selectedTables = useMemo(
-    () => tables.filter(t => selectedTableIdsSet.has(t.id)), // O(1) per check
-    [tables, selectedTableIdsSet]
-  )
-  const availableSelectedTables = useMemo(
-    () =>
-      selectedTables.filter(
-        t => !t.session || t.session.status === 'available'
-      ),
-    [selectedTables]
-  )
-  const inUseSelectedTables = useMemo(
-    () =>
-      selectedTables.filter(t => t.session && t.session.status !== 'available'),
-    [selectedTables]
-  )
+  // Wave 3.4: single-pass partition. Was three full-array filters per tap
+  // (tables.filter → .filter → .filter); now one walk producing all three.
+  const { selectedTables, availableSelectedTables, inUseSelectedTables } =
+    useMemo(() => {
+      const selected: FloorPlanObject[] = []
+      const available: FloorPlanObject[] = []
+      const inUse: FloorPlanObject[] = []
+      for (const t of tables) {
+        if (!selectedTableIdsSet.has(t.id)) continue
+        selected.push(t)
+        if (!t.session || t.session.status === 'available') {
+          available.push(t)
+        } else {
+          inUse.push(t)
+        }
+      }
+      return {
+        selectedTables: selected,
+        availableSelectedTables: available,
+        inUseSelectedTables: inUse,
+      }
+    }, [tables, selectedTableIdsSet])
 
   // Determine which merge action is valid
   const canMergeAndSeat =

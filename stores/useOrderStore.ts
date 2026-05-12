@@ -884,11 +884,13 @@ const ensureOrderCreated = async (
         useStoreSettingsStore.getState().selectedStation?.id || null,
     };
 
-    console.log(`[ensureOrderCreated] Queueing create_order operation...`);
-    console.log(
-      `[ensureOrderCreated] Params:`,
-      JSON.stringify(createOrderParams, null, 2),
-    );
+    if (__DEV__) {
+      console.log("[ensureOrderCreated] Queueing create_order", {
+        localId: order.id,
+        order_type: order.order_type,
+        location: createOrderParams.p_location_id,
+      });
+    }
 
     // Queue the create_order operation
     const operationId = await queueOperation({
@@ -1014,10 +1016,13 @@ const ensureOrderCreated = async (
           useStoreSettingsStore.getState().selectedStation?.id || null,
       };
 
-      console.log(
-        "[ensureOrderCreated] Creating order with params:",
-        JSON.stringify(createOrderParams, null, 2),
-      );
+      if (__DEV__) {
+        console.log("[ensureOrderCreated] Creating order", {
+          localId: order.id,
+          order_type: order.order_type,
+          location: createOrderParams.p_location_id,
+        });
+      }
 
       const { data: createResult, error: createError } =
         await OrderService.createOrder(supabase, createOrderParams);
@@ -1486,10 +1491,11 @@ const addItemToBackend = async (
       };
 
       if (__DEV__)
-        console.log(
-          "[addItemToBackend] add_open_item_v2 params:",
-          JSON.stringify(addOpenParams, null, 2),
-        );
+        console.log("[addItemToBackend] add_open_item_v2", {
+          orderId: addOpenParams.p_order_id,
+          name: addOpenParams.p_item_name,
+          qty: addOpenParams.p_quantity,
+        });
       const { data: addResult, error: addError } =
         await OrderService.addOpenItem(supabase, addOpenParams, {
           // Wave 2.7: stable per-tap key. Same item.id across retries → same
@@ -1623,8 +1629,8 @@ const addItemToBackend = async (
         // Phase 7D: Set sync status in dedicated store (not on item)
         useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
-        // Invalidate calculation cache after item sync
-        invalidateCalculationCache();
+        // Invalidate calculation cache after item sync (coalesced)
+        scheduleCalculationCacheInvalidation();
 
         // Apply any queued backend updates now that local sync is complete
         useOrderStore.getState().applyQueuedUpdates(resolveOrderKey());
@@ -1898,8 +1904,8 @@ const addItemToBackend = async (
       // No need to update ordersById here - quantity is already correct
       useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
-      // Invalidate calculation cache after item quantity update
-      invalidateCalculationCache();
+      // Invalidate calculation cache after item quantity update (coalesced)
+      scheduleCalculationCacheInvalidation();
 
       // Apply any queued backend updates now that local sync is complete
       useOrderStore.getState().applyQueuedUpdates(order.id);
@@ -2134,8 +2140,8 @@ const addItemToBackend = async (
       // Phase 7D: Set sync status in dedicated store (not on item)
       useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
-      // Invalidate calculation cache after new item added
-      invalidateCalculationCache();
+      // Invalidate calculation cache after new item added (coalesced)
+      scheduleCalculationCacheInvalidation();
 
       // Apply any queued backend updates now that local sync is complete
       useOrderStore.getState().applyQueuedUpdates(resolveOrderKey());
