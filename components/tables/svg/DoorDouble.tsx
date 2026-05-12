@@ -10,7 +10,6 @@ interface DoorDoubleProps {
 
 const DoorDouble = React.memo(function DoorDouble({
   darkMode = false,
-  color = '#94A3B8',
   width = 160,
   height = 20
 }: DoorDoubleProps) {
@@ -45,28 +44,37 @@ const DoorDouble = React.memo(function DoorDouble({
         fill={darkMode ? '#1E293B' : '#F8FAFC'}
       />
       <Path
-        d='M 80 70 L 80 6 A 64 64 0 0 0 16 70 Z'
+        d='M 6 70 L 6 6 A 74 74 0 0 1 80 70 Z'
         fill={wedgeFill}
         stroke={strokeColor}
         strokeWidth='1.25'
       />
       <Path
-        d='M 80 70 L 80 6 A 64 64 0 0 1 144 70 Z'
+        d='M 154 70 L 154 6 A 74 74 0 0 0 80 70 Z'
         fill={wedgeFill}
         stroke={strokeColor}
         strokeWidth='1.25'
       />
       <Line
-        x1='80'
+        x1='6'
         y1='70'
-        x2='80'
+        x2='6'
+        y2='6'
+        stroke={doorFill}
+        strokeWidth='4'
+        strokeLinecap='round'
+      />
+      <Line
+        x1='154'
+        y1='70'
+        x2='154'
         y2='6'
         stroke={doorFill}
         strokeWidth='4'
         strokeLinecap='round'
       />
       <Circle
-        cx='80'
+        cx='6'
         cy='70'
         r='4'
         fill={doorFill}
@@ -74,7 +82,21 @@ const DoorDouble = React.memo(function DoorDouble({
         strokeWidth='1.5'
       />
       <Circle
-        cx='80'
+        cx='6'
+        cy='70'
+        r='1.5'
+        fill={darkMode ? '#1E293B' : '#F8FAFC'}
+      />
+      <Circle
+        cx='154'
+        cy='70'
+        r='4'
+        fill={doorFill}
+        stroke={strokeColor}
+        strokeWidth='1.5'
+      />
+      <Circle
+        cx='154'
         cy='70'
         r='1.5'
         fill={darkMode ? '#1E293B' : '#F8FAFC'}
