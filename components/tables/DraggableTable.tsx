@@ -25,10 +25,11 @@ import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { useFloorPlanEditorStore } from '@/stores/useFloorPlanEditorStore'
 import { useReservationStore } from '@/stores/useReservationStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
-import { BrushCleaning } from 'lucide-react-native'
+import { BrushCleaning, Lock } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo } from 'react'
 import { Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -248,6 +249,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
   const updateTableSize = useFloorPlanStore(s => s.updateTableSize)
   const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
+  const isLocked = useFloorPlanEditorStore(s =>
+    s.lockedObjectIds.includes(table.id)
+  )
   const defaultSittingTimeMinutes = useLocationConfigStore(
     s => s.config.dining.defaultSittingTimeMinutes
   )
@@ -306,19 +310,27 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const wallResizeStartWidth = useSharedValue(
     table.width ?? shapeDef?.width ?? 100
   )
+  const wallResizeStartX = useSharedValue(table.x)
+  const wallResizeStartY = useSharedValue(table.y)
 
   useEffect(() => {
     wallResizeWidth.value = table.width ?? shapeDef?.width ?? 100
     wallResizeHeight.value = table.height ?? shapeDef?.height ?? 100
     wallResizeStartWidth.value = table.width ?? shapeDef?.width ?? 100
+    wallResizeStartX.value = table.x
+    wallResizeStartY.value = table.y
   }, [
     table.width,
     table.height,
+    table.x,
+    table.y,
     shapeDef?.width,
     shapeDef?.height,
     wallResizeWidth,
     wallResizeHeight,
-    wallResizeStartWidth
+    wallResizeStartWidth,
+    wallResizeStartX,
+    wallResizeStartY
   ])
 
   // --- COMPUTE EFFECTIVE DIMENSIONS ---
@@ -506,6 +518,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const GRID_SIZE = 5
   const MIN_WALL_LENGTH = 40
 
+  const projectResizeDelta = useCallback(
+    (translationX: number, translationY: number) => {
+      'worklet'
+      const angle = (rotation.value * Math.PI) / 180
+      return (
+        (translationX * Math.cos(angle) + translationY * Math.sin(angle)) /
+        canvasScale.value
+      )
+    },
+    [canvasScale, rotation]
+  )
+
   // Called on JS thread at drag end: resolve final snapped position and persist.
   const finalizeDrop = useCallback(
     (rawX: number, rawY: number, rot: number) => {
@@ -542,7 +566,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   )
 
   const dragGesture = Gesture.Pan()
-    .enabled(isEditMode)
+    .enabled(isEditMode && !isLocked)
     .activateAfterLongPress(DRAG_HOLD_MS)
     .minDistance(12)
     .activeOffsetX([-12, 12])
@@ -563,35 +587,93 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       runOnJS(finalizeDrop)(translateX.value, translateY.value, rotation.value)
     })
 
-  const wallResizeGesture = Gesture.Pan()
-    .enabled(isEditMode && isSelected && isWall)
+  const wallResizeRightGesture = Gesture.Pan()
+    .enabled(isEditMode && isSelected && isWall && !isLocked)
     .onStart(() => {
       runOnJS(saveSnapshot)()
       wallResizeStartWidth.value = wallResizeWidth.value
+      wallResizeStartX.value = translateX.value
+      wallResizeStartY.value = translateY.value
     })
     .onUpdate(event => {
-      const angle = (rotation.value * Math.PI) / 180
-      const projectedDelta =
-        (event.translationX * Math.cos(angle) +
-          event.translationY * Math.sin(angle)) /
-        canvasScale.value
+      const projectedDelta = projectResizeDelta(
+        event.translationX,
+        event.translationY
+      )
       wallResizeWidth.value = Math.max(
         MIN_WALL_LENGTH,
         wallResizeStartWidth.value + projectedDelta
       )
     })
     .onEnd(event => {
-      const angle = (rotation.value * Math.PI) / 180
-      const projectedDelta =
-        (event.translationX * Math.cos(angle) +
-          event.translationY * Math.sin(angle)) /
-        canvasScale.value
+      const projectedDelta = projectResizeDelta(
+        event.translationX,
+        event.translationY
+      )
       const nextWidth = Math.max(
         MIN_WALL_LENGTH,
         wallResizeStartWidth.value + projectedDelta
       )
       const committedWidth = Math.round(nextWidth)
       wallResizeWidth.value = committedWidth
+      runOnJS(updateTableSize)(
+        table.id,
+        committedWidth,
+        wallResizeHeight.value
+      )
+    })
+
+  const wallResizeLeftGesture = Gesture.Pan()
+    .enabled(isEditMode && isSelected && isWall && !isLocked)
+    .onStart(() => {
+      runOnJS(saveSnapshot)()
+      wallResizeStartWidth.value = wallResizeWidth.value
+      wallResizeStartX.value = translateX.value
+      wallResizeStartY.value = translateY.value
+    })
+    .onUpdate(event => {
+      const projectedDelta = projectResizeDelta(
+        event.translationX,
+        event.translationY
+      )
+      const nextWidth = Math.max(
+        MIN_WALL_LENGTH,
+        wallResizeStartWidth.value - projectedDelta
+      )
+      const appliedDelta = wallResizeStartWidth.value - nextWidth
+      const angle = (rotation.value * Math.PI) / 180
+      wallResizeWidth.value = nextWidth
+      translateX.value =
+        wallResizeStartX.value + appliedDelta * Math.cos(angle)
+      translateY.value =
+        wallResizeStartY.value + appliedDelta * Math.sin(angle)
+    })
+    .onEnd(event => {
+      const projectedDelta = projectResizeDelta(
+        event.translationX,
+        event.translationY
+      )
+      const nextWidth = Math.max(
+        MIN_WALL_LENGTH,
+        wallResizeStartWidth.value - projectedDelta
+      )
+      const appliedDelta = wallResizeStartWidth.value - nextWidth
+      const angle = (rotation.value * Math.PI) / 180
+      const committedWidth = Math.round(nextWidth)
+      const committedX =
+        wallResizeStartX.value + appliedDelta * Math.cos(angle)
+      const committedY =
+        wallResizeStartY.value + appliedDelta * Math.sin(angle)
+
+      wallResizeWidth.value = committedWidth
+      translateX.value = committedX
+      translateY.value = committedY
+      runOnJS(updateTablePosition)(
+        table.id,
+        committedX,
+        committedY,
+        rotation.value
+      )
       runOnJS(updateTableSize)(
         table.id,
         committedWidth,
@@ -868,8 +950,58 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             />
           )}
 
+          {isLocked && (
+            <View
+              pointerEvents='none'
+              style={{
+                position: 'absolute',
+                top: -8,
+                left: -8,
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Lock size={11} color={colors.label} />
+            </View>
+          )}
+
           {isSelected && isEditMode && isWall && (
-            <GestureDetector gesture={wallResizeGesture}>
+            <GestureDetector gesture={wallResizeLeftGesture}>
+              <View
+                style={{
+                  position: 'absolute',
+                  left: -10,
+                  top: effectiveHeight / 2 - 12,
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: isLocked ? colors.muted : colors.info,
+                  borderWidth: 2,
+                  borderColor: colors.panel,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: colors.onSolid
+                  }}
+                />
+              </View>
+            </GestureDetector>
+          )}
+
+          {isSelected && isEditMode && isWall && (
+            <GestureDetector gesture={wallResizeRightGesture}>
               <View
                 style={{
                   position: 'absolute',
@@ -878,7 +1010,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                   width: 24,
                   height: 24,
                   borderRadius: 12,
-                  backgroundColor: colors.info,
+                  backgroundColor: isLocked ? colors.muted : colors.info,
                   borderWidth: 2,
                   borderColor: colors.panel,
                   alignItems: 'center',

@@ -1,8 +1,16 @@
 import { RIGHT_ANGLE_ROTATION_SHAPE_IDS } from '@/lib/table-shapes'
 import { colors } from '@/lib/theme'
+import { useFloorPlanEditorStore } from '@/stores/useFloorPlanEditorStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
-import { RotateCcw, RotateCw, Trash2, X } from 'lucide-react-native'
+import {
+  Lock,
+  RotateCcw,
+  RotateCw,
+  Trash2,
+  Unlock,
+  X
+} from 'lucide-react-native'
 import React, { useEffect, useRef, useState } from 'react'
 import {
   KeyboardAvoidingView,
@@ -27,6 +35,11 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
     updateTablePosition,
     updateTableSize
   } = useFloorPlanStore()
+  const toggleObjectLock = useFloorPlanEditorStore(s => s.toggleObjectLock)
+  const setObjectLocked = useFloorPlanEditorStore(s => s.setObjectLocked)
+  const isLocked = useFloorPlanEditorStore(s =>
+    s.lockedObjectIds.includes(table.id)
+  )
   const [name, setName] = useState(table.name)
   const [width, setWidth] = useState(String(table.width || 100))
   const [height, setHeight] = useState(String(table.height || 100))
@@ -113,6 +126,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
   const handleDelete = () => {
     setShowDeleteConfirm(false)
     if (table.id) {
+      setObjectLocked(table.id, false)
       removeTable(table.id)
       clearSelection()
     }
@@ -204,6 +218,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                   editingSize.current = true
                   setWidth(v)
                 }}
+                editable={!isLocked}
                 onBlur={handleWidthBlur}
                 keyboardType='numeric'
                 placeholderTextColor={colors.muted}
@@ -218,6 +233,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                   editingSize.current = true
                   setHeight(v)
                 }}
+                editable={!isLocked}
                 onBlur={handleHeightBlur}
                 keyboardType='numeric'
                 placeholderTextColor={colors.muted}
@@ -231,6 +247,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
           <Text style={labelStyle}>Rotation</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity
+              disabled={isLocked}
               onPress={() => handleRotate('left')}
               style={{
                 flex: 1,
@@ -240,19 +257,21 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                 gap: 5,
                 paddingVertical: 8,
                 borderRadius: 8,
-                backgroundColor: colors.panel,
+                backgroundColor: isLocked ? colors.inset : colors.panel,
                 borderWidth: 1,
-                borderColor: colors.border
+                borderColor: colors.border,
+                opacity: isLocked ? 0.55 : 1
               }}
             >
               <RotateCcw size={13} color={colors.label} />
               <Text
                 style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}
               >
-                {`-${rotationStep}°`}
+                {`-${rotationStep} deg`}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
+              disabled={isLocked}
               onPress={() => handleRotate('right')}
               style={{
                 flex: 1,
@@ -262,19 +281,53 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                 gap: 5,
                 paddingVertical: 8,
                 borderRadius: 8,
-                backgroundColor: colors.panel,
+                backgroundColor: isLocked ? colors.inset : colors.panel,
                 borderWidth: 1,
-                borderColor: colors.border
+                borderColor: colors.border,
+                opacity: isLocked ? 0.55 : 1
               }}
             >
               <RotateCw size={13} color={colors.label} />
               <Text
                 style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}
               >
-                {`+${rotationStep}°`}
+                {`+${rotationStep} deg`}
               </Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View>
+          <Text style={labelStyle}>Lock</Text>
+          <TouchableOpacity
+            onPress={() => toggleObjectLock(table.id)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              paddingVertical: 9,
+              borderRadius: 8,
+              backgroundColor: isLocked ? colors.warning + '18' : colors.panel,
+              borderWidth: 1,
+              borderColor: isLocked ? colors.warning + '55' : colors.border
+            }}
+          >
+            {isLocked ? (
+              <Lock size={13} color={colors.warning} />
+            ) : (
+              <Unlock size={13} color={colors.label} />
+            )}
+            <Text
+              style={{
+                color: isLocked ? colors.warning : colors.label,
+                fontWeight: '700',
+                fontSize: 13
+              }}
+            >
+              {isLocked ? 'Locked' : 'Unlocked'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
