@@ -921,7 +921,7 @@ const TableOrderView = React.forwardRef<
   )
 
   const handlePressMore = useCallback(
-    () => moreOptionsSheetRef.current?.expand(),
+    () => moreOptionsSheetRef.current?.snapToIndex(0),
     []
   )
 
@@ -1300,6 +1300,7 @@ const TableOrderView = React.forwardRef<
         <>
           <MoreOptionsBottomSheet
             ref={moreOptionsSheetRef}
+            isTableOrdering
             onVoidSuccess={handleVoidSuccess}
             discountSheetRef={
               discountSheetRef as React.RefObject<BottomSheetMethods>

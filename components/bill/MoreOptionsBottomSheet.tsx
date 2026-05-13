@@ -63,6 +63,7 @@ interface MoreOptionsProps {
   onCloseSession?: () => void
   onNoSale?: () => void
   onSheetChange?: (index: number) => void
+  isTableOrdering?: boolean
 }
 
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
@@ -75,11 +76,15 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     onCloseCheck,
     onCloseSession,
     onNoSale,
-    onSheetChange
+    onSheetChange,
+    isTableOrdering = false
   },
   ref
 ) {
-  const snapPoints = useMemo(() => ['100%'], [])
+  const snapPoints = useMemo(
+    () => (isTableOrdering ? ['80%', '100%'] : ['100%']),
+    [isTableOrdering]
+  )
   const [orderNotes, setOrderNotes] = useState('')
   const [showManagerPin, setShowManagerPin] = useState(false)
   const [managerPin, setManagerPin] = useState('')
@@ -493,25 +498,29 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             >
               More Options
             </Text>
-            <TouchableOpacity
-              onPress={closeSheet}
-              style={{
-                padding: 6,
-                borderRadius: 10,
-                backgroundColor: colors.teal + '10',
-                borderWidth: 1,
-                borderColor: colors.teal + '30'
-              }}
-            >
-              <X size={16} color={colors.teal} />
-            </TouchableOpacity>
+            {isTableOrdering ? (
+              <View style={{ width: 28, height: 28 }} />
+            ) : (
+              <TouchableOpacity
+                onPress={closeSheet}
+                style={{
+                  padding: 6,
+                  borderRadius: 10,
+                  backgroundColor: colors.teal + '10',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '30'
+                }}
+              >
+                <X size={16} color={colors.teal} />
+              </TouchableOpacity>
+            )}
           </View>
 
           <BottomSheetScrollView
-            style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: 24 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps='handled'
+            nestedScrollEnabled
           >
 
           {/* ── Section label: Order ── */}
