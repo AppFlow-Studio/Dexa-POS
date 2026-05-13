@@ -19,6 +19,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useShallow } from "zustand/react/shallow";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import {
     BrushCleaning,
@@ -386,7 +387,16 @@ const ExpandedView: React.FC<{
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const getOrder = useOrderStore((s) => s.getOrder);
   const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
-  const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
+  const orderIds = tableData.orders.map((o) => o.id);
+  const itemCourseMapByOrderId = useCoursingStore(
+    useShallow((s) => {
+      const out: Record<string, Record<string, number>> = {};
+      for (const id of orderIds) {
+        out[id] = s.byOrderId[id]?.itemCourseMap ?? {};
+      }
+      return out;
+    }),
+  );
   const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [isReceiptOpen, setReceiptOpen] = useState(false);
@@ -431,7 +441,7 @@ const ExpandedView: React.FC<{
       { orderId: string; items: (typeof tableData.orders)[0]["items"] }
     > = {};
     tableData.orders.forEach((order) => {
-      const itemCourseMap = coursingByOrderId[order.id]?.itemCourseMap || {};
+      const itemCourseMap = itemCourseMapByOrderId[order.id] || {};
 
       order.items.forEach((item) => {
         const courseNumber = itemCourseMap[item.id] ?? item.courseNumber ?? 1;
@@ -441,7 +451,7 @@ const ExpandedView: React.FC<{
       });
     });
     return groups;
-  }, [tableData.orders, coursingByOrderId]);
+  }, [tableData.orders, itemCourseMapByOrderId]);
 
   const handleCloseTable = async () => {
     if (!tableData) return;
