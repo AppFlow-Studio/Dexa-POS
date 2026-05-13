@@ -26,7 +26,8 @@ import {
 
 const PurchaseOrderDetailScreen = () => {
   const router = useRouter()
-  const { poId } = useLocalSearchParams()
+  const { poId: rawPoId } = useLocalSearchParams()
+  const poId = Array.isArray(rawPoId) ? rawPoId[0] : rawPoId
   const {
     purchaseOrders,
     vendors,

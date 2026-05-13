@@ -21,6 +21,7 @@ import {
     forceSetLocalSequence,
     parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
+import { getHeaderHeight } from "@/lib/headerHeight";
 import { iosOnly } from "@/lib/safeAnimations";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { colors } from "@/lib/theme";
@@ -126,6 +127,8 @@ const OrderProcessing = () => {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
+  const measuredHeaderHeight = getHeaderHeight();
+  const overlayHeaderHeight = measuredHeaderHeight > 0 ? measuredHeaderHeight : 56;
   const customItemModalHeight = useMemo(() => {
     const screenHeight = Dimensions.get("screen").height;
     return Math.min(560, Math.max(420, screenHeight - 40));
@@ -1602,7 +1605,10 @@ const OrderProcessing = () => {
 
       {/* Stage 2: Mount bottom sheets in a dedicated overlay layer above BillSection controls */}
       {renderStage >= 2 && (
-        <View pointerEvents="box-none" style={styles.sheetOverlayLayer}>
+        <View
+          pointerEvents="box-none"
+          style={[styles.sheetOverlayLayer, { top: -overlayHeaderHeight }]}
+        >
           <MoreOptionsBottomSheet
             ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
             discountSheetRef={
@@ -1611,6 +1617,7 @@ const OrderProcessing = () => {
             onCloseCheck={handleCloseCheck}
             onCloseSession={handleCloseSession}
             onNoSale={handleNoSale}
+            onManageDrawer={() => setCashDrawerSheetOpen(true)}
           />
           <DiscountBottomSheet
             ref={discountSheetRef as React.RefObject<BottomSheetMethods>}

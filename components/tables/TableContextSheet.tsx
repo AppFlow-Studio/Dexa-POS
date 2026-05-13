@@ -1,5 +1,6 @@
 import { useSessionDuration } from '@/hooks/useSessionDuration'
 import { getEffectiveItemStatus } from '@/lib/kitchenStatusUtils'
+import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { bottomSheetTheme, colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { useOrderTotals } from '@/stores/selectors/orderSelectors'
@@ -52,6 +53,7 @@ type ActionItem = {
   icon: React.ReactNode
   onPress: () => void
   variant?: 'primary' | 'secondary' | 'danger'
+  disabled?: boolean
 }
 
 function getActionsForStatus (
@@ -257,12 +259,15 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const order = useOrderStore(s =>
     resolvedOrderId ? s.ordersById[resolvedOrderId] : null
   )
+  const currentStationId = useOrderStore(s => s.currentStationId)
   const totals = useOrderTotals(resolvedOrderId)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const upcomingReservation = useReservationStore(
     s => table ? (s.nextReservationByTableId[table.id] ?? null) : null
   )
   const isOccupied = !!order
+  const isForeignStationSession = isOrderReadOnly(order, currentStationId)
+  const foreignStationLabel = order?.station_name?.trim() || 'another station'
   const { minutes: minutesSeated } = useSessionDuration(table?.id ?? '')
 
   const kitchenSummary = useMemo(() => {
@@ -347,6 +352,17 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
       }
     }
 
+    if (isForeignStationSession) {
+      return baseActions.map(action =>
+        action.label === 'Close Table'
+          ? {
+              ...action,
+              disabled: true
+            }
+          : action
+      )
+    }
+
     return baseActions
   }, [
     table,
@@ -358,6 +374,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     finishCleaning,
     updateSessionStatus,
     order,
+    isForeignStationSession,
     selectedStore,
     liveSession,
     onTransferServer,
@@ -790,6 +807,40 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           </View>
         ) : null}
 
+        {isForeignStationSession ? (
+          <View
+            style={{
+              marginHorizontal: 12,
+              marginTop: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderRadius: 8,
+              borderWidth: 1,
+              backgroundColor: colors.warning + '12',
+              borderColor: colors.warning + '40'
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '700',
+                color: colors.warning
+              }}
+            >
+              Table locked by {foreignStationLabel}
+            </Text>
+            <Text
+              style={{
+                fontSize: 10,
+                color: colors.label,
+                marginTop: 2
+              }}
+            >
+              Close Table is disabled on this station.
+            </Text>
+          </View>
+        ) : null}
+
         {/* Server */}
         {order?.server_name ? (
           <Text
@@ -816,9 +867,11 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
               <TouchableOpacity
                 key={idx}
                 onPress={() => {
+                  if (action.disabled) return
                   action.onPress()
                   sheetRef.current?.dismiss()
                 }}
+                disabled={action.disabled}
                 activeOpacity={0.7}
                 style={{
                   flexDirection: 'row',
@@ -837,7 +890,8 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                     : isDanger
                     ? colors.danger + '40'
                     : colors.border,
-                  gap: 8
+                  gap: 8,
+                  opacity: action.disabled ? 0.45 : 1
                 }}
               >
                 {action.icon}

@@ -52,12 +52,13 @@ export function resumeTimerTick() {
  * Returns a tick counter that increments every second.
  * Multiple components share a single setInterval.
  */
-export function useTableTimerTick(): number {
+export function useTableTimerTick(enabled = true): number {
   const [tick, setTick] = useState(currentTick);
 
   useEffect(() => {
+    if (!enabled) return;
     return subscribe(() => setTick(currentTick));
-  }, []);
+  }, [enabled]);
 
   return tick;
 }

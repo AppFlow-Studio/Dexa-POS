@@ -240,8 +240,12 @@ const Header = () => {
         {showBackButton && (
           <TouchableOpacity
             onPress={handleBackPress}
-            className='p-2 rounded-lg'
-            style={{ backgroundColor: `${colors.teal}18` }}
+            className='rounded-lg items-center justify-center'
+            style={{
+              width: 35,
+              height: 35,
+              backgroundColor: `${colors.teal}18`
+            }}
           >
             <ArrowLeft color={colors.teal} size={19} />
           </TouchableOpacity>

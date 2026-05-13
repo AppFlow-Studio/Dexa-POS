@@ -187,6 +187,7 @@ export async function recordDrawerOperation(
     performedBy: string;
     orderId?: string;
     paymentId?: string;
+    vendorId?: string;
     reason?: string;
     approvedBy?: string;
     receiptPrinted?: boolean;
@@ -215,6 +216,7 @@ export async function recordDrawerOperation(
     performedAt,
     orderId: params.orderId,
     paymentId: params.paymentId,
+    vendorId: params.vendorId,
     reason: params.reason,
     approvedBy: params.approvedBy,
     receiptPrinted: params.receiptPrinted,
@@ -222,20 +224,39 @@ export async function recordDrawerOperation(
 
   // Persist to backend via RPC (handles balance calc, session update, and
   // audit_logs dual-logging for no-sale events atomically)
-  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+  const baseRpcParams = {
+    p_cash_drawer_id: params.cashDrawerId,
+    p_session_id: params.sessionId,
+    p_operation_type: params.operationType,
+    p_amount: params.amount,
+    p_performed_by: params.performedBy,
+    p_order_id: params.orderId || null,
+    p_payment_id: params.paymentId || null,
+    p_reason: params.reason || null,
+    p_approved_by: params.approvedBy || null,
+  };
+
+  let rpcResult: any = null;
+  let rpcError: any = null;
+
+  ({ data: rpcResult, error: rpcError } = await supabase.rpc(
     "record_cash_operation",
     {
-      p_cash_drawer_id: params.cashDrawerId,
-      p_session_id: params.sessionId,
-      p_operation_type: params.operationType,
-      p_amount: params.amount,
-      p_performed_by: params.performedBy,
-      p_order_id: params.orderId || null,
-      p_payment_id: params.paymentId || null,
-      p_reason: params.reason || null,
-      p_approved_by: params.approvedBy || null,
+      ...baseRpcParams,
+      p_vendor_id: params.vendorId || null,
     },
-  );
+  ));
+
+  const missingVendorRpcParam =
+    rpcError?.message?.includes("record_cash_operation") &&
+    rpcError?.message?.includes("p_vendor_id");
+
+  if (missingVendorRpcParam) {
+    ({ data: rpcResult, error: rpcError } = await supabase.rpc(
+      "record_cash_operation",
+      baseRpcParams,
+    ));
+  }
 
   if (rpcError || (rpcResult && !rpcResult.success)) {
     const errMsg = rpcError?.message || rpcResult?.error || "Unknown error";
@@ -258,6 +279,7 @@ export async function recordDrawerOperation(
           performed_at: performedAt,
           order_id: params.orderId || null,
           payment_id: params.paymentId || null,
+          vendor_id: params.vendorId || null,
           balance_after: balanceAfter,
           reason: params.reason || null,
           approved_by: params.approvedBy || null,
@@ -270,6 +292,21 @@ export async function recordDrawerOperation(
       );
     }
     return { success: false, error: errMsg };
+  }
+
+  if (params.vendorId) {
+    const { error: vendorPatchError } = await supabase
+      .from("cash_drawer_operations")
+      .update({ vendor_id: params.vendorId })
+      .eq("session_id", params.sessionId)
+      .eq("operation_type", params.operationType)
+      .eq("performed_by", params.performedBy)
+      .eq("amount", params.amount)
+      .eq("performed_at", performedAt);
+
+    if (vendorPatchError) {
+      console.warn("[CashDrawer] Failed to patch vendor_id:", vendorPatchError);
+    }
   }
 
   return { success: true };
@@ -288,7 +325,10 @@ export async function hydrateDrawerSession(
 
   // Find drawer for station
   const drawer = await findDrawerForStation(supabase, stationId, locationId);
-  if (!drawer) return false;
+  if (!drawer) {
+    store.clearDrawer();
+    return false;
+  }
 
   store.setDrawer(drawer.id, drawer.name);
 
@@ -302,7 +342,14 @@ export async function hydrateDrawerSession(
     .limit(1)
     .maybeSingle();
 
-  if (!session) return false;
+  if (!session) {
+    useCashDrawerStore.setState((state) => ({
+      ...state,
+      activeSession: null,
+      operations: [],
+    }));
+    return false;
+  }
 
   // Fetch operations for this session
   const { data: ops } = await supabase
@@ -337,9 +384,12 @@ export async function hydrateDrawerSession(
         performedAt: op.performed_at,
         orderId: op.order_id,
         paymentId: op.payment_id,
+        vendorId: op.vendor_id || undefined,
         reason: op.reason,
       })),
     );
+  } else {
+    store.setOperations([]);
   }
 
   return true;
