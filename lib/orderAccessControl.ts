@@ -1,4 +1,5 @@
 import type { OrderProfile } from '@/lib/types'
+import type { TableSession } from '@/types/db-floor-plan-types'
 
 /**
  * Cart-edit access control for cross-station orders.
@@ -21,6 +22,59 @@ export function isOrderReadOnly (
 ): boolean {
   if (!order || !currentStationId) return false
   return order.station_id != null && order.station_id !== currentStationId
+}
+
+export interface ReadOnlyTableAccess {
+  orderId: string
+  ownerStationId: string | null
+  ownerStationName: string | null
+}
+
+interface TableAccessOptions {
+  tableId: string
+  currentStationId: string | null
+  getSession: (tableId: string) => TableSession | null | undefined
+  getOrder: (orderId: string) => OrderProfile | null | undefined
+}
+
+/**
+ * Returns the first foreign-station order attached to this table session.
+ *
+ * We treat merged sessions as one access unit: if any linked order is owned by
+ * another station, the table detail UI should be blocked entirely.
+ */
+export function getReadOnlyTableAccess ({
+  tableId,
+  currentStationId,
+  getSession,
+  getOrder
+}: TableAccessOptions): ReadOnlyTableAccess | null {
+  if (!currentStationId) return null
+
+  const rootSession = getSession(tableId)
+  if (!rootSession) return null
+
+  const relatedTableIds =
+    rootSession.merged_tables && rootSession.merged_tables.length > 0
+      ? rootSession.merged_tables
+      : [tableId]
+
+  for (const relatedTableId of relatedTableIds) {
+    const session = getSession(relatedTableId)
+    const orderId = session?.order_id
+    if (!orderId) continue
+
+    const order = getOrder(orderId)
+    if (!isOrderReadOnly(order, currentStationId)) continue
+
+    return {
+      orderId,
+      ownerStationId: order?.station_id ?? null,
+      ownerStationName: order?.station_name?.trim() || null
+    }
+  }
+
+  return null
 }
 
 /**

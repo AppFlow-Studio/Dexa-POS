@@ -1,6 +1,10 @@
 import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { useToast } from "@/contexts/ToastContext";
 import { useTableDuration } from "@/hooks/useTableDuration";
+import {
+  getReadOnlyTableAccess,
+  isOrderReadOnly,
+} from "@/lib/orderAccessControl";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
@@ -379,11 +383,47 @@ const ExpandedView: React.FC<{
   const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const deleteOrder = useOrderStore((s) => s.deleteOrder);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+  const getOrder = useOrderStore((s) => s.getOrder);
+  const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
   const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
   const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [isReceiptOpen, setReceiptOpen] = useState(false);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const foreignOwnedOrder = useMemo(() => {
+    const directMatch =
+      tableData.orders.find((order) => isOrderReadOnly(order, currentStationId)) ??
+      null;
+    if (directMatch) return directMatch;
+
+    const liveSessions = useTableSessionStore.getState().sessions;
+    const tablesById = useFloorPlanStore.getState().tablesById;
+    const readOnlyAccess = getReadOnlyTableAccess({
+      tableId: tableData.primaryTableId,
+      currentStationId,
+      getSession: (id) => liveSessions[id] ?? tablesById[id]?.session,
+      getOrder: (orderId) => getOrder(orderId) ?? getOrderByDbId(orderId) ?? null,
+    });
+
+    if (!readOnlyAccess) return null;
+
+    return (
+      getOrder(readOnlyAccess.orderId) ??
+      getOrderByDbId(readOnlyAccess.orderId) ?? {
+        station_name: readOnlyAccess.ownerStationName,
+      }
+    );
+  }, [
+    currentStationId,
+    getOrder,
+    getOrderByDbId,
+    tableData.orders,
+    tableData.primaryTableId,
+  ]);
+  const isForeignStationSession = !!foreignOwnedOrder;
+  const foreignStationLabel =
+    foreignOwnedOrder?.station_name?.trim() || "another station";
 
   const groupedItems = useMemo(() => {
     const groups: Record<
@@ -405,6 +445,15 @@ const ExpandedView: React.FC<{
 
   const handleCloseTable = async () => {
     if (!tableData) return;
+
+    if (isForeignStationSession) {
+      show({
+        title: "Action Restricted",
+        message: `This table session is owned by ${foreignStationLabel}. Switch to that station to close it.`,
+        type: "error",
+      });
+      return;
+    }
 
     if (!table.session?.id) {
       show({
@@ -677,6 +726,7 @@ const ExpandedView: React.FC<{
           label="Close Table"
           onPress={handleCloseTable}
           variant="destructive"
+          disabled={isForeignStationSession}
         />
       </View>
 

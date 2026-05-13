@@ -3,6 +3,7 @@ import {
   findLatestReusableEmptyDraftId,
   getRefreshedReusableDraftNumbers
 } from '@/lib/reusableEmptyDraft'
+import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { toastService } from '@/lib/toastService'
 import {
   CartItem,
@@ -19,6 +20,7 @@ import { OrderService } from '@/services/orderService'
 import { trackCashPaymentInDrawer } from '@/services/paymentService'
 import { useConflictStore } from '@/stores/useConflictStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { DejavooSaleTransactionResponse } from '@/types/dejavoo-spin-api'
 import { create } from 'zustand'
 import {
@@ -358,6 +360,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const activeOrder = orderState.activeOrderId
       ? orderState.ordersById[orderState.activeOrderId]
       : null
+    if (isOrderReadOnly(activeOrder, orderState.currentStationId)) {
+      toastService.show({
+        title: 'Payment Blocked',
+        message: `This order is owned by ${activeOrder?.station_name?.trim() || 'another station'}. Switch stations to continue.`,
+        type: 'error'
+      })
+      return
+    }
     if (activeOrder?.check_status === 'Closed') {
       toastService.show({
         title: 'Check Closed',

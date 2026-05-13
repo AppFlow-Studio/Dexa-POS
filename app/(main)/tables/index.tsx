@@ -149,7 +149,7 @@ const TablesScreen = () => {
       if (pendingId) {
         router.push(('/tables/' + pendingId) as Href)
       }
-    }, [])
+    }, [router])
   )
 
   // Pause background timer ticks when screen loses focus

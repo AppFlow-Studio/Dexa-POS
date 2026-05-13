@@ -1,4 +1,5 @@
 import { useToast } from '@/contexts/ToastContext'
+import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
@@ -14,10 +15,13 @@ const PaymentActions = () => {
   const activeOrder = useOrderStore(state =>
     state.activeOrderId ? state.ordersById[state.activeOrderId] : null
   )
+  const currentStationId = useOrderStore(state => state.currentStationId)
   const pendingTableSelection = useOrderStore(
     state => state.pendingTableSelection
   )
   const { show } = useToast()
+  const isReadOnlyOrder = isOrderReadOnly(activeOrder, currentStationId)
+  const ownerStationLabel = activeOrder?.station_name?.trim() || 'another station'
 
   const paymentMethods = [
     { name: 'Card', icon: CreditCard },
@@ -26,6 +30,15 @@ const PaymentActions = () => {
   ]
 
   const handlePlaceOrder = () => {
+    if (isReadOnlyOrder) {
+      show({
+        title: 'Payment Blocked',
+        message: `This order is owned by ${ownerStationLabel}. Switch to that station to take payment.`,
+        type: 'error'
+      })
+      return
+    }
+
     const tableIdForOrder =
       activeOrder?.order_type === 'dine_in'
         ? pendingTableSelection
@@ -118,7 +131,7 @@ const PaymentActions = () => {
 
       {/* Final Action Buttons */}
       <TouchableOpacity
-        disabled={!activeOrder || activeOrder.items.length === 0}
+        disabled={!activeOrder || activeOrder.items.length === 0 || isReadOnlyOrder}
         style={{
           width: '100%',
           paddingVertical: 16,
@@ -126,7 +139,10 @@ const PaymentActions = () => {
           borderRadius: 12,
           marginTop: 16,
           alignItems: 'center',
-          opacity: !activeOrder || activeOrder.items.length === 0 ? 0.5 : 1
+          opacity:
+            !activeOrder || activeOrder.items.length === 0 || isReadOnlyOrder
+              ? 0.5
+              : 1
         }}
         onPress={handlePlaceOrder}
       >
