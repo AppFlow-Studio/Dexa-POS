@@ -415,7 +415,7 @@ const DiningRoomScreen = () => {
           </View>
 
           <View style={{ gap: 10 }}>
-            <View style={rowStyle}>
+            {/* <View style={rowStyle}>
               <View style={{ flex: 1, paddingRight: 12 }}>
                 <Text style={rowTitleStyle}>Per-Seat Ordering</Text>
                 <Text style={rowMetaStyle}>
@@ -428,7 +428,7 @@ const DiningRoomScreen = () => {
                   updateConfig('dining', { enablePerSeatOrdering: v })
                 }
               />
-            </View>
+            </View> */}
 
             <View style={rowStyle}>
               <View style={{ flex: 1, paddingRight: 12 }}>
