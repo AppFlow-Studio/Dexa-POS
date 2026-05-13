@@ -80,6 +80,7 @@ const VendorSidebar: React.FC<{
   onDelete,
   onCreatePO
 }) => {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<'po' | 'items'>('po')
   const initial = (vendor.name || '?')[0].toUpperCase()
   const slideAnim = useRef(new Animated.Value(-600)).current
@@ -667,7 +668,11 @@ const VendorSidebar: React.FC<{
                       { month: 'short', day: 'numeric', year: 'numeric' }
                     )
                     return (
-                      <View
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push(`/inventory/purchase-orders/${po.id}`)
+                        }
+                        activeOpacity={0.7}
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
@@ -729,7 +734,7 @@ const VendorSidebar: React.FC<{
                           ${poTotal.toFixed(2)}
                         </Text>
                         <View style={{ width: 30 }} />
-                      </View>
+                      </TouchableOpacity>
                     )
                   }}
                   ListEmptyComponent={
@@ -886,7 +891,18 @@ const VendorCard: React.FC<{
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <TouchableOpacity style={{ padding: 3 }}>
+            <TouchableOpacity
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 9,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
               <MoreHorizontal size={12} color={colors.muted} />
             </TouchableOpacity>
           </DropdownMenuTrigger>
@@ -894,23 +910,59 @@ const VendorCard: React.FC<{
           <DropdownMenuContent
             className='w-44'
             style={{
-              backgroundColor: colors.panel,
-              borderColor: colors.border
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: 14,
+              padding: 6,
+              shadowColor: '#000',
+              shadowOpacity: 0.18,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 12
             }}
           >
-            <DropdownMenuItem onPress={onEdit}>
+            <DropdownMenuItem
+              onPress={onEdit}
+              className='active:bg-transparent web:hover:bg-transparent web:focus:bg-transparent'
+              style={{
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: colors.card
+              }}
+            >
               <Edit size={14} color={colors.label} />
               <Text
-                style={{ fontSize: 13, color: colors.label, marginLeft: 8 }}
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  color: colors.heading,
+                  marginLeft: 8
+                }}
               >
                 Edit
               </Text>
             </DropdownMenuItem>
 
-            <DropdownMenuItem onPress={onDelete}>
+            <DropdownMenuItem
+              onPress={onDelete}
+              className='active:bg-transparent web:hover:bg-transparent web:focus:bg-transparent'
+              style={{
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: colors.card
+              }}
+            >
               <Trash2 size={14} color={colors.danger} />
               <Text
-                style={{ fontSize: 13, color: colors.danger, marginLeft: 8 }}
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  color: colors.danger,
+                  marginLeft: 8
+                }}
               >
                 Delete
               </Text>

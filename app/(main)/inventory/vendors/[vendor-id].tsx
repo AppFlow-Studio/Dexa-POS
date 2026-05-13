@@ -22,7 +22,7 @@ import {
   User
 } from 'lucide-react-native'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
 const StatCard = ({
   label,
@@ -153,6 +153,8 @@ const VendorDetailsScreen = () => {
   const [itemSearchText, setItemSearchText] = useState('')
   const [poStartDate, setPoStartDate] = useState('')
   const [poEndDate, setPoEndDate] = useState('')
+  const [isPoSearchOpen, setIsPoSearchOpen] = useState(false)
+  const [isItemSearchOpen, setIsItemSearchOpen] = useState(false)
   const [poModuleOpenSignal, setPoModuleOpenSignal] = useState(0)
   const snapPoints = useMemo(() => ['70%', '95%'], [])
 
@@ -195,6 +197,34 @@ const VendorDetailsScreen = () => {
       return name.includes(q) || category.includes(q)
     })
   }, [itemSearchText, associatedItems])
+
+  const buildPurchaseOrderHref = (poId: string) => ({
+    pathname: '/inventory/purchase-orders/[poId]' as const,
+    params: {
+      poId,
+      returnTo: `/inventory/vendors/${vendorId}`
+    }
+  })
+
+  const openPurchaseOrder = (poId: string) => {
+    router.push(buildPurchaseOrderHref(poId))
+  }
+
+  useEffect(() => {
+    if (isPoSearchOpen) {
+      requestAnimationFrame(() => {
+        poSearchRef.current?.snapToIndex?.(1)
+      })
+    }
+  }, [isPoSearchOpen])
+
+  useEffect(() => {
+    if (isItemSearchOpen) {
+      requestAnimationFrame(() => {
+        itemSearchRef.current?.snapToIndex?.(0)
+      })
+    }
+  }, [isItemSearchOpen])
 
   if (!vendor) {
     return (
@@ -457,7 +487,7 @@ const VendorDetailsScreen = () => {
                   style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}
                 >
                   <TouchableOpacity
-                    onPress={() => poSearchRef.current?.snapToIndex?.(1)}
+                    onPress={() => setIsPoSearchOpen(true)}
                     style={{
                       backgroundColor: colors.teal + '15',
                       borderRadius: 8,
@@ -513,22 +543,20 @@ const VendorDetailsScreen = () => {
                   )
                   const s = statusStyle(po.status)
                   return (
-                    <Link
+                    <Pressable
                       key={`${po.id}-${index}`}
-                      href={`/inventory/purchase-orders/${po.id}`}
-                      asChild
+                      onPress={() => openPurchaseOrder(po.id)}
+                      onStartShouldSetResponder={() => true}
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.border
+                      }}
                     >
-                      <TouchableOpacity
-                        style={{
-                          flexDirection: 'row',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          borderBottomWidth: 1,
-                          borderBottomColor: colors.border
-                        }}
-                      >
                         <View style={{ flex: 1, paddingRight: 10 }}>
                           <View
                             style={{
@@ -597,8 +625,7 @@ const VendorDetailsScreen = () => {
                             {itemsCount} lines · {qty} qty
                           </Text>
                         </View>
-                      </TouchableOpacity>
-                    </Link>
+                    </Pressable>
                   )
                 })
               )}
@@ -641,7 +668,7 @@ const VendorDetailsScreen = () => {
                   Associated Items
                 </Text>
                 <TouchableOpacity
-                  onPress={() => itemSearchRef.current?.snapToIndex?.(0)}
+                  onPress={() => setIsItemSearchOpen(true)}
                   style={{
                     backgroundColor: colors.teal + '15',
                     borderRadius: 8,
@@ -767,24 +794,26 @@ const VendorDetailsScreen = () => {
       </View>
 
       {/* PO Search Sheet */}
-      <BottomSheet
-        ref={poSearchRef as any}
-        index={-1}
-        snapPoints={snapPoints}
-        enablePanDownToClose
-        {...bottomSheetTheme}
-        backdropComponent={props => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
-        )}
-        keyboardBehavior='interactive'
-        keyboardBlurBehavior='restore'
-        android_keyboardInputMode='adjustResize'
-      >
+      {isPoSearchOpen && (
+        <BottomSheet
+          ref={poSearchRef as any}
+          index={-1}
+          snapPoints={snapPoints}
+          enablePanDownToClose
+          onClose={() => setIsPoSearchOpen(false)}
+          {...bottomSheetTheme}
+          backdropComponent={props => (
+            <BottomSheetBackdrop
+              {...props}
+              appearsOnIndex={0}
+              disappearsOnIndex={-1}
+              opacity={0.7}
+            />
+          )}
+          keyboardBehavior='interactive'
+          keyboardBlurBehavior='restore'
+          android_keyboardInputMode='adjustResize'
+        >
         <View
           style={{
             flexDirection: 'row',
@@ -821,6 +850,7 @@ const VendorDetailsScreen = () => {
             onPress={() => {
               setPoSearchText('')
               poSearchRef.current?.close()
+              setIsPoSearchOpen(false)
             }}
           >
             <Text
@@ -848,18 +878,19 @@ const VendorDetailsScreen = () => {
           data={filteredPOs}
           keyExtractor={(po, index) => `${po.id}-${index}`}
           renderItem={({ item: po }) => (
-            <Link href={`/inventory/purchase-orders/${po.id}`} asChild>
-              <TouchableOpacity
-                style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
+            <Pressable
+              onPress={() => openPurchaseOrder(po.id)}
+              onStartShouldSetResponder={() => true}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
@@ -893,8 +924,7 @@ const VendorDetailsScreen = () => {
                     .reduce((a, li) => a + li.quantity * li.cost, 0)
                     .toFixed(2)}
                 </Text>
-              </TouchableOpacity>
-            </Link>
+            </Pressable>
           )}
           ListEmptyComponent={
             <View
@@ -910,27 +940,30 @@ const VendorDetailsScreen = () => {
             </View>
           }
         />
-      </BottomSheet>
+        </BottomSheet>
+      )}
 
       {/* Associated Items Search Sheet */}
-      <BottomSheet
-        ref={itemSearchRef as any}
-        index={-1}
-        snapPoints={snapPoints}
-        enablePanDownToClose
-        {...bottomSheetTheme}
-        backdropComponent={props => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
-        )}
-        keyboardBehavior='interactive'
-        keyboardBlurBehavior='restore'
-        android_keyboardInputMode='adjustResize'
-      >
+      {isItemSearchOpen && (
+        <BottomSheet
+          ref={itemSearchRef as any}
+          index={-1}
+          snapPoints={snapPoints}
+          enablePanDownToClose
+          onClose={() => setIsItemSearchOpen(false)}
+          {...bottomSheetTheme}
+          backdropComponent={props => (
+            <BottomSheetBackdrop
+              {...props}
+              appearsOnIndex={0}
+              disappearsOnIndex={-1}
+              opacity={0.7}
+            />
+          )}
+          keyboardBehavior='interactive'
+          keyboardBlurBehavior='restore'
+          android_keyboardInputMode='adjustResize'
+        >
         <View
           style={{
             flexDirection: 'row',
@@ -967,6 +1000,7 @@ const VendorDetailsScreen = () => {
             onPress={() => {
               setItemSearchText('')
               itemSearchRef.current?.close()
+              setIsItemSearchOpen(false)
             }}
           >
             <Text
@@ -1035,7 +1069,8 @@ const VendorDetailsScreen = () => {
           }
           enableFooterMarginAdjustment
         />
-      </BottomSheet>
+        </BottomSheet>
+      )}
 
       <VendorCreatePOModule
         vendorId={vendorId!}
