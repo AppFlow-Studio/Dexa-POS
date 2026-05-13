@@ -41,6 +41,7 @@ export interface DrawerOperation {
   performedAt: string; // ISO timestamp
   orderId?: string;
   paymentId?: string;
+  vendorId?: string;
   reason?: string;
   approvedBy?: string; // staff_profile_id of manager who approved
   receiptPrinted?: boolean;

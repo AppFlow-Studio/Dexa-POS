@@ -1617,6 +1617,7 @@ const OrderProcessing = () => {
             onCloseCheck={handleCloseCheck}
             onCloseSession={handleCloseSession}
             onNoSale={handleNoSale}
+            onManageDrawer={() => setCashDrawerSheetOpen(true)}
           />
           <DiscountBottomSheet
             ref={discountSheetRef as React.RefObject<BottomSheetMethods>}

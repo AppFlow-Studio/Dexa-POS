@@ -7,6 +7,7 @@ import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
+import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -62,6 +63,7 @@ interface MoreOptionsProps {
   onCloseCheck?: () => void
   onCloseSession?: () => void
   onNoSale?: () => void
+  onManageDrawer?: () => void
   onSheetChange?: (index: number) => void
   isTableOrdering?: boolean
 }
@@ -76,6 +78,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     onCloseCheck,
     onCloseSession,
     onNoSale,
+    onManageDrawer,
     onSheetChange,
     isTableOrdering = false
   },
@@ -127,6 +130,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [isRushed, setIsRushed] = useState(false)
   const [isPrioritized, setIsPrioritized] = useState(false)
   const { openSheet } = useCustomerSheetStore()
+  const drawerId = useCashDrawerStore(s => s.drawerId)
+  const drawerName = useCashDrawerStore(s => s.drawerName)
   const activeOrderId = useOrderStore(state => state.activeOrderId)
   const clearCart = useOrderStore(state => state.clearCart)
   const voidOrder = useOrderStore(state => state.voidOrder)
@@ -177,6 +182,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     isDineInOrder &&
     activeOrder?.paid_status === 'Paid' &&
     !!activeOrder?.service_location_id
+  const canManageDrawer = !!drawerId && !!onManageDrawer
 
   const handleClearCart = () => {
     setClearCartConfirmOpen(true)
@@ -801,6 +807,49 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             </View>
             <ChevronRight size={14} color={colors.muted} />
           </TouchableOpacity>
+
+          {canManageDrawer && (
+            <TouchableOpacity
+              onPress={() => closeAndThen(() => onManageDrawer?.())}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 10
+              }}
+            >
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + '15',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}
+              >
+                <Lock size={14} color={colors.teal} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
+                  Manage Drawer
+                </Text>
+                <Text
+                  style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
+                >
+                  {drawerName || 'Open cash drawer controls'}
+                </Text>
+              </View>
+              <ChevronRight size={14} color={colors.muted} />
+            </TouchableOpacity>
+          )}
 
           {/* ── Section label: Print ── */}
           <View
