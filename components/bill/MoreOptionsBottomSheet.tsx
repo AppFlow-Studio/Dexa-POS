@@ -39,7 +39,12 @@ import React, {
   useRef,
   useState
 } from 'react'
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -57,16 +62,24 @@ interface MoreOptionsProps {
   onCloseCheck?: () => void
   onCloseSession?: () => void
   onNoSale?: () => void
+  onSheetChange?: (index: number) => void
 }
 
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   MoreOptionsProps
 > = function MoreOptionsComponent (
-  { discountSheetRef, onVoidSuccess, onCloseCheck, onCloseSession, onNoSale },
+  {
+    discountSheetRef,
+    onVoidSuccess,
+    onCloseCheck,
+    onCloseSession,
+    onNoSale,
+    onSheetChange
+  },
   ref
 ) {
-  const snapPoints = useMemo(() => ['75%'], [])
+  const snapPoints = useMemo(() => ['100%'], [])
   const [orderNotes, setOrderNotes] = useState('')
   const [showManagerPin, setShowManagerPin] = useState(false)
   const [managerPin, setManagerPin] = useState('')
@@ -88,7 +101,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       pendingActionRef.current = null
       action()
     }
-  }, [])
+    onSheetChange?.(index)
+  }, [onSheetChange])
 
   /** Close sheet, then execute `action` once the close animation completes. */
   const closeAndThen = useCallback(
@@ -107,6 +121,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [isTogglingPriority, setIsTogglingPriority] = useState(false)
   const [isRushed, setIsRushed] = useState(false)
   const [isPrioritized, setIsPrioritized] = useState(false)
+  const { openSheet } = useCustomerSheetStore()
+  const activeOrderId = useOrderStore(state => state.activeOrderId)
+  const clearCart = useOrderStore(state => state.clearCart)
+  const voidOrder = useOrderStore(state => state.voidOrder)
+  const activeOrder = useActiveOrder()
 
   // Reset rush/priority state when active order changes
   useEffect(() => {
@@ -116,13 +135,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0)
-
-  const { openSheet } = useCustomerSheetStore()
-
-  const activeOrderId = useOrderStore(state => state.activeOrderId)
-  const clearCart = useOrderStore(state => state.clearCart)
-  const voidOrder = useOrderStore(state => state.voidOrder)
-  const activeOrder = useActiveOrder()
 
   // Kitchen items for Rush/Prioritize (items already sent to kitchen)
   const kitchenItems = useMemo(() => {
@@ -453,15 +465,16 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         ref={ref}
         index={-1}
         snapPoints={snapPoints}
+        topInset={0}
+        bottomInset={0}
+        enableDynamicSizing={false}
         enablePanDownToClose={true}
         onChange={handleSheetChange}
         {...bottomSheetTheme}
         style={{ zIndex: 10000, elevation: 10000 }}
         backdropComponent={renderBackdrop}
       >
-        <BottomSheetScrollView
-          style={{ flex: 1, backgroundColor: colors.panel }}
-        >
+        <View style={{ flex: 1, backgroundColor: colors.panel }}>
           {/* ── Header ── */}
           <View
             style={{
@@ -493,6 +506,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               <X size={16} color={colors.teal} />
             </TouchableOpacity>
           </View>
+
+          <BottomSheetScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps='handled'
+          >
 
           {/* ── Section label: Order ── */}
           <View
@@ -1235,7 +1255,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           )}
 
           <View style={{ height: 24 }} />
-        </BottomSheetScrollView>
+          </BottomSheetScrollView>
+        </View>
       </BottomSheet>
 
       {/* Manager PIN dialog */}
