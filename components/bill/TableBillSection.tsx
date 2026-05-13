@@ -305,7 +305,6 @@ type SeatListRow =
       isCurrentCourse: boolean
       expanded: boolean
       status: AggregateKitchenStatus
-      sentAt?: number
     }
   | {
       id: string
@@ -510,8 +509,7 @@ const DenseSeatView = React.memo(
               isSent,
               isCurrentCourse,
               expanded: true, // set in visibility pass
-              status: deriveAggregateStatus(items),
-              sentAt: courseSentAtMap?.[course]
+              status: deriveAggregateStatus(items)
             })
 
             items.forEach(item => {
@@ -548,8 +546,7 @@ const DenseSeatView = React.memo(
       sortedSeatKeys,
       enableCoursing,
       sentCourses,
-      currentCourse,
-      courseSentAtMap
+      currentCourse
     ])
 
     // Memo 2: Visibility — cheap pass that sets expanded flags and filters collapsed children
@@ -610,7 +607,8 @@ const DenseSeatView = React.memo(
       toggleCourse,
       onSelectSeat,
       onDoubleTapCourse,
-      setActionCourse
+      setActionCourse,
+      courseSentAtMap
     })
     renderDataRef.current = {
       enableCoursing,
@@ -620,7 +618,8 @@ const DenseSeatView = React.memo(
       toggleCourse,
       onSelectSeat,
       onDoubleTapCourse,
-      setActionCourse
+      setActionCourse,
+      courseSentAtMap
     }
 
     // Stable renderRow — reads volatile data from ref, no deps to invalidate
@@ -669,7 +668,7 @@ const DenseSeatView = React.memo(
               isCurrentCourse={row.isCurrentCourse}
               expanded={row.expanded}
               status={row.status}
-              sentAt={row.sentAt}
+              sentAt={d.courseSentAtMap?.[row.course]}
               onPress={() => d.toggleCourse(row.seatKey, row.course)}
               onSend={
                 d.onDoubleTapCourse
