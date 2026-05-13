@@ -222,14 +222,16 @@ interface DraggableTableProps {
   isEditMode: boolean
   isSelected: boolean
   interactionMode: 'normal' | 'selection' | 'merge'
-  onSelect: () => void
+  // Callbacks receive the table so the parent can pass a single stable
+  // useCallback ref instead of allocating a fresh closure per table per render.
+  onSelect: (table: FloorPlanObject) => void
   canvasScale: SharedValue<number>
-  onPress?: () => void
+  onPress?: (table: FloorPlanObject) => void
   index?: number // For staggered entry animation
   enableEntryAnimation?: boolean
   sectionColor?: string
   wallEdgeFlags?: WallEdgeFlags
-  onLongPress?: () => void
+  onLongPress?: (table: FloorPlanObject) => void
   disableLongPress?: boolean
 }
 
@@ -730,19 +732,31 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       )
     })
 
+  // Bind incoming (table) => void callbacks to this row's table once, so
+  // runOnJS gets a stable nullary function instead of a per-render closure.
+  const handleSelect = useCallback(() => onSelect(table), [onSelect, table])
+  const handlePress = useCallback(
+    () => onPress?.(table),
+    [onPress, table],
+  )
+  const handleLongPress = useCallback(
+    () => onLongPress?.(table),
+    [onLongPress, table],
+  )
+
   // Long-press enabled on all tables in normal mode
   const longPressGesture = Gesture.LongPress()
     .minDuration(300)
     .enabled(!isEditMode && !disableLongPress && isTableType)
     .onStart(() => {
-      if (onLongPress) runOnJS(onLongPress)()
+      if (onLongPress) runOnJS(handleLongPress)()
     })
 
   const tapGesture = Gesture.Tap()
     .enabled(isEditMode || isTableType)
     .onEnd(() => {
-      if (isEditMode) runOnJS(onSelect)()
-      else if (onPress) runOnJS(onPress)()
+      if (isEditMode) runOnJS(handleSelect)()
+      else if (onPress) runOnJS(handlePress)()
     })
 
   const composedGesture = isEditMode

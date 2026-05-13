@@ -131,13 +131,13 @@ function getActionsForStatus (
         onPress: () => onNavigate(table.id),
         variant: 'primary'
       })
-      if (effectiveStatus === 'served' || effectiveStatus === 'ordered') {
-        actions.push({
-          label: 'Present Check',
-          icon: <ChevronUp size={16} color={colors.label} />,
-          onPress: () => updateSessionStatus(table.id, 'check_presented')
-        })
-      }
+      // if (effectiveStatus === 'served' || effectiveStatus === 'ordered') {
+      //   actions.push({
+      //     label: 'Present Check',
+      //     icon: <ChevronUp size={16} color={colors.label} />,
+      //     onPress: () => updateSessionStatus(table.id, 'check_presented')
+      //   })
+      // }
       break
 
     case 'check_presented':

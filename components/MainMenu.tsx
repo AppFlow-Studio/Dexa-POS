@@ -313,15 +313,15 @@ const MainMenu: React.FC = () => {
     // }
   ];
 
-  if (__DEV__) {
-    menuItems.push({
-      id: "castlestest",
-      icon: <Cpu color={colors.teal} size={20} />,
-      title: "Castles Test",
-      subtitle: "Castles device test",
-      route: "/castlestest",
-    });
-  }
+  // if (__DEV__) {
+  //   menuItems.push({
+  //     id: "castlestest",
+  //     icon: <Cpu color={colors.teal} size={20} />,
+  //     title: "Castles Test",
+  //     subtitle: "Castles device test",
+  //     route: "/castlestest",
+  //   });
+  // }
 
   const regularItems = menuItems.filter((item) => !item.isLocked);
   const managementItems = menuItems.filter((item) => item.isLocked);

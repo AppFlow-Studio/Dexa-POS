@@ -7,7 +7,6 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
-import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   ArrowLeft,
@@ -203,19 +202,25 @@ const SplitByItemView = () => {
       return;
     }
 
-    const enablePerSeatOrdering = useLocationConfigStore.getState().config.dining.enablePerSeatOrdering;
-
-    if (!enablePerSeatOrdering || !activeOrder?.service_location_id) {
-      addSplit("Guest 1");
-      return;
-    }
-
-    // Group items by seat
+    // Attempt seat-based grouping whenever the items themselves carry seat
+    // assignments — independent of the `enablePerSeatOrdering` location flag.
+    // Items can pick up seat numbers via per-item `seatNumber` (backend-synced)
+    // or via the local `itemSeatMap` in `useSeatingStore`. Either path is
+    // enough to group; we only fall back to a single "Guest 1" split when
+    // no per-item seat info is available anywhere.
     const orderId = activeOrderId;
-    const seatingState = orderId ? useSeatingStore.getState().getForOrder(orderId) : null;
-    const itemSeatMap = seatingState?.itemSeatMap;
+    const seatingState = orderId
+      ? useSeatingStore.getState().getForOrder(orderId)
+      : null;
+    const itemSeatMap = seatingState?.itemSeatMap ?? {};
 
-    if (!itemSeatMap || Object.keys(itemSeatMap).length === 0) {
+    const hasSeatInfo =
+      Object.keys(itemSeatMap).length > 0 ||
+      masterItems.some(
+        (item) => item.seatNumber !== undefined && item.seatNumber !== null,
+      );
+
+    if (!hasSeatInfo) {
       addSplit("Guest 1");
       return;
     }

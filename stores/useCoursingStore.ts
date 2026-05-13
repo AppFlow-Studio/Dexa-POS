@@ -77,6 +77,10 @@ type OrderCoursing = {
   itemCourseMap: Record<string, number>; // Maps both local IDs and DB IDs to course numbers
   dbIdToCourseMap: Record<string, number>; // Maps DB item IDs specifically for backend sync
   courses: Record<number, CourseInfo>;
+  // Course numbers optimistically created locally but whose `create_next_course`
+  // RPC hasn't completed yet. Used by loadFromServer to avoid wiping in-flight
+  // courses and to avoid downgrading workingCourse during the race window.
+  pendingCourseNumbers: Record<number, true>;
   syncing: boolean;
   lastSyncAt?: Date;
   dbOrderId?: string; // The database UUID for RPC calls
@@ -162,6 +166,7 @@ export const useCoursingStore = create<CoursingState>()(
           itemCourseMap: {},
           dbIdToCourseMap: {},
           courses: { 1: { courseNumber: 1, status: "open", itemCount: 0 } },
+          pendingCourseNumbers: {},
           syncing: false,
           dbOrderId,
         };
@@ -185,6 +190,7 @@ export const useCoursingStore = create<CoursingState>()(
           itemCourseMap: {},
           dbIdToCourseMap: {},
           courses: { 1: { courseNumber: 1, status: "open", itemCount: 0 } },
+          pendingCourseNumbers: {},
           syncing: false,
           dbOrderId,
         };
@@ -251,7 +257,27 @@ export const useCoursingStore = create<CoursingState>()(
         set((state) => {
           const o = state.byOrderId[orderId];
           if (!o) return;
-          o.workingCourse = workingCourse;
+
+          // Preserve optimistic local courses whose create_next_course RPC is
+          // still inflight. Without this, the race between a realtime sync
+          // and a pending RPC wipes the freshly-created course header.
+          const pending = o.pendingCourseNumbers || {};
+          const mergedCourses: Record<number, CourseInfo> = { ...courses };
+          for (const k of Object.keys(pending)) {
+            const n = Number(k);
+            if (!mergedCourses[n] && o.courses[n]) {
+              mergedCourses[n] = o.courses[n];
+            }
+          }
+
+          // Don't downgrade workingCourse while a local create is inflight —
+          // the server's working_course will be stale until the RPC commits.
+          const hasPending = Object.keys(pending).length > 0;
+          o.workingCourse =
+            hasPending && o.workingCourse > workingCourse
+              ? o.workingCourse
+              : workingCourse;
+
           // Preserve existing local item mappings (already on draft).
           // Merge: server is base, local overrides win.
           const merged: Record<string, number> = { ...dbIdToCourseMap };
@@ -259,7 +285,7 @@ export const useCoursingStore = create<CoursingState>()(
             merged[k] = v;
           }
           o.dbIdToCourseMap = merged;
-          o.courses = courses;
+          o.courses = mergedCourses;
           o.syncing = false;
           o.lastSyncAt = new Date();
           o.dbOrderId = dbOrderId;
@@ -564,9 +590,12 @@ export const useCoursingStore = create<CoursingState>()(
 
     createNextCourse: async (orderId: string) => {
       const orderData = get().byOrderId[orderId];
+      // Always allocate a new header at max(existing) + 1. The remove_course
+      // RPC now actually deletes empty courses server-side, so this can't
+      // escalate forever — the max shrinks when a course is removed.
       const currentMax = Math.max(
         ...Object.keys(orderData?.courses || { 1: true }).map(Number),
-        0
+        0,
       );
       const nextCourse = currentMax + 1;
 
@@ -581,6 +610,8 @@ export const useCoursingStore = create<CoursingState>()(
             itemCount: 0,
           };
         }
+        if (!o.pendingCourseNumbers) o.pendingCourseNumbers = {};
+        o.pendingCourseNumbers[nextCourse] = true;
       });
 
       const dbOrderId = orderData?.dbOrderId;
@@ -594,12 +625,14 @@ export const useCoursingStore = create<CoursingState>()(
           );
           if (error) throw error;
           const serverCourse = data?.course_number || nextCourse;
-          if (serverCourse !== nextCourse) {
-            set((state) => {
-              const o = state.byOrderId[orderId];
-              if (!o) return;
-              // Drop the optimistic slot the local guess created; the server
-              // is the source of truth on course numbering.
+          set((state) => {
+            const o = state.byOrderId[orderId];
+            if (!o) return;
+            if (o.pendingCourseNumbers) {
+              delete o.pendingCourseNumbers[nextCourse];
+              delete o.pendingCourseNumbers[serverCourse];
+            }
+            if (serverCourse !== nextCourse) {
               if (
                 o.courses[nextCourse] &&
                 o.courses[nextCourse].status === "open" &&
@@ -608,19 +641,34 @@ export const useCoursingStore = create<CoursingState>()(
                 delete o.courses[nextCourse];
               }
               o.workingCourse = serverCourse;
-              if (!o.courses[serverCourse]) {
-                o.courses[serverCourse] = {
-                  courseNumber: serverCourse,
-                  status: "open",
-                  itemCount: 0,
-                };
-              }
-            });
-            return serverCourse;
-          }
+            }
+            // Re-assert the confirmed course exists locally. Covers the case
+            // where a reconcile wiped the optimistic entry during the RPC.
+            if (!o.courses[serverCourse]) {
+              o.courses[serverCourse] = {
+                courseNumber: serverCourse,
+                status: "open",
+                itemCount: 0,
+              };
+            }
+          });
+          if (serverCourse !== nextCourse) return serverCourse;
         } catch (error) {
           console.error("Failed to create course on server:", error);
+          set((state) => {
+            const o = state.byOrderId[orderId];
+            if (o?.pendingCourseNumbers) {
+              delete o.pendingCourseNumbers[nextCourse];
+            }
+          });
         }
+      } else {
+        set((state) => {
+          const o = state.byOrderId[orderId];
+          if (o?.pendingCourseNumbers) {
+            delete o.pendingCourseNumbers[nextCourse];
+          }
+        });
       }
       return nextCourse;
     },
