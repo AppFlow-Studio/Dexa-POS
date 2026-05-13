@@ -196,7 +196,8 @@ const CourseSubHeader = React.memo(
     sentAt,
     onPress,
     onSend,
-    onLongPress
+    onLongPress,
+    onRemove
   }: {
     course: number
     itemCount: number
@@ -208,6 +209,7 @@ const CourseSubHeader = React.memo(
     onPress?: () => void
     onSend?: () => void
     onLongPress?: () => void
+    onRemove?: () => void
   }) => (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -242,6 +244,25 @@ const CourseSubHeader = React.memo(
         </Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        {!isSent && itemCount === 0 && course !== 1 && onRemove && (
+          <TouchableOpacity
+            onPress={e => {
+              e.stopPropagation()
+              onRemove()
+            }}
+            hitSlop={6}
+            style={{
+              width: 18,
+              height: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 4
+            }}
+            activeOpacity={0.5}
+          >
+            <X size={11} color={colors.muted} />
+          </TouchableOpacity>
+        )}
         {!isSent && itemCount > 0 && onSend && (
           <TouchableOpacity
             onPress={e => {
@@ -337,6 +358,7 @@ const DenseSeatView = React.memo(
     onRushCourse,
     onPrioritizeCourse,
     onResendCourse,
+    onRemoveCourse,
     enableCoursing = false,
     isOvertime,
     overtimeMinutes
@@ -356,6 +378,7 @@ const DenseSeatView = React.memo(
     onRushCourse?: (courseId: number) => void
     onPrioritizeCourse?: (courseId: number) => void
     onResendCourse?: (courseId: number) => void
+    onRemoveCourse?: (courseId: number) => void
     enableCoursing?: boolean
     isOvertime?: boolean
     overtimeMinutes?: number
@@ -608,7 +631,8 @@ const DenseSeatView = React.memo(
       onSelectSeat,
       onDoubleTapCourse,
       setActionCourse,
-      courseSentAtMap
+      courseSentAtMap,
+      onRemoveCourse
     })
     renderDataRef.current = {
       enableCoursing,
@@ -619,7 +643,8 @@ const DenseSeatView = React.memo(
       onSelectSeat,
       onDoubleTapCourse,
       setActionCourse,
-      courseSentAtMap
+      courseSentAtMap,
+      onRemoveCourse
     }
 
     // Stable renderRow — reads volatile data from ref, no deps to invalidate
@@ -677,6 +702,11 @@ const DenseSeatView = React.memo(
               }
               onLongPress={
                 row.isSent ? () => d.setActionCourse(row.course) : undefined
+              }
+              onRemove={
+                d.onRemoveCourse
+                  ? () => d.onRemoveCourse!(row.course)
+                  : undefined
               }
             />
           )
@@ -986,6 +1016,7 @@ const TableBillSection = ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
+  onRemoveCourse,
   onPressSendAllToKitchen,
   isOvertime,
   overtimeMinutes
@@ -1022,6 +1053,7 @@ const TableBillSection = ({
   onRushCourse?: (courseId: number) => void
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
+  onRemoveCourse?: (courseId: number) => void
   onPressSendAllToKitchen?: () => void
   isOvertime?: boolean
   overtimeMinutes?: number
@@ -1075,6 +1107,7 @@ const TableBillSection = ({
           onRushCourse={onRushCourse}
           onPrioritizeCourse={onPrioritizeCourse}
           onResendCourse={onResendCourse}
+          onRemoveCourse={onRemoveCourse}
           enableCoursing={enableCoursing}
           isOvertime={isOvertime}
           overtimeMinutes={overtimeMinutes}
@@ -1096,6 +1129,7 @@ const TableBillSection = ({
         onRushCourse={onRushCourse}
         onPrioritizeCourse={onPrioritizeCourse}
         onResendCourse={onResendCourse}
+        onRemoveCourse={onRemoveCourse}
         enableCoursing={enableCoursing}
         isOvertime={isOvertime}
         overtimeMinutes={overtimeMinutes}
@@ -1284,5 +1318,6 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prev.onOpenServerSheet !== next.onOpenServerSheet) return false
   if (prev.onPressSendAllToKitchen !== next.onPressSendAllToKitchen)
     return false
+  if (prev.onRemoveCourse !== next.onRemoveCourse) return false
   return true
 })

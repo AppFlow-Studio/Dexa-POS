@@ -72,7 +72,8 @@ const compactTableName = (rawName: string): string => {
   return name.slice(0, 4).toUpperCase()
 }
 
-// Prevent repeated network fetches for the same missing order during rapid rerenders.
+// Per-orderId throttle so the prefetch-subscriber and per-table fallback
+// don't double up, and so a transient failure can be retried.
 const missingOrderSyncInFlight = new Set<string>()
 const missingOrderLastAttemptAt: Record<string, number> = {}
 const MISSING_ORDER_SYNC_THROTTLE_MS = 8000
@@ -333,6 +334,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const effectiveOrder =
     useOrderByAnyId(isTableType ? liveSession?.order_id : null) ?? undefined
 
+  // Fallback fetch when the batched prefetch in services/tableOrderPrefetch.ts
+  // missed an order (e.g. transient network error, or the order_id appeared
+  // after the subscriber's last fire). Throttled per-orderId.
   useEffect(() => {
     const id = liveSession?.order_id
     if (!id || effectiveOrder) return
@@ -351,11 +355,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       .catch((err: unknown) => {
         console.warn(
           '[DraggableTable] Failed to sync missing order for table card:',
-          {
-            tableId: table.id,
-            orderId: id,
-            error: err
-          }
+          { tableId: table.id, orderId: id, error: err }
         )
       })
       .finally(() => {

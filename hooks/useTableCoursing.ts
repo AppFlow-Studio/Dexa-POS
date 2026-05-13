@@ -34,6 +34,8 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
   const unmarkCourseSent = useCoursingStore((s) => s.unmarkCourseSent);
   const markCourseServed = useCoursingStore((s) => s.markCourseServed);
   const finalizeCurrentCourse = useCoursingStore((s) => s.finalizeCurrentCourse);
+  const createNextCourse = useCoursingStore((s) => s.createNextCourse);
+  const removeCourse = useCoursingStore((s) => s.removeCourse);
 
   const [coursingInitialized, setCoursingInitialized] = useState(false);
   const prevItemIdsRef = useRef<string[]>([]);
@@ -235,6 +237,8 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
     markCourseServed,
     getForOrder,
     finalizeCurrentCourse,
+    createNextCourse,
+    removeCourse,
     setItemCourse,
   };
 }

@@ -383,7 +383,7 @@ const DiningRoomScreen = () => {
               />
             </View>
 
-            <View style={rowStyle}>
+            {/* <View style={rowStyle}>
               <View style={{ flex: 1, paddingRight: 12 }}>
                 <Text style={rowTitleStyle}>Allow Table Splitting</Text>
                 <Text style={rowMetaStyle}>Multiple checks per table</Text>
@@ -394,7 +394,7 @@ const DiningRoomScreen = () => {
                   updateConfig('dining', { allowTableSplitting: v })
                 }
               />
-            </View>
+            </View> */}
           </View>
         </View>
 

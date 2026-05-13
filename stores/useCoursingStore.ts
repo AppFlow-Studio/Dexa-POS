@@ -129,6 +129,7 @@ type CoursingState = {
   createNextCourse: (orderId: string) => Promise<number>;
   fireCourse: (orderId: string, courseNumber: number) => Promise<void>;
   markCourseServed: (orderId: string, courseNumber: number) => Promise<void>;
+  removeCourse: (orderId: string, courseNumber: number) => boolean;
 
   // Cleanup
   clearOrder: (orderId: string) => void;
@@ -597,6 +598,15 @@ export const useCoursingStore = create<CoursingState>()(
             set((state) => {
               const o = state.byOrderId[orderId];
               if (!o) return;
+              // Drop the optimistic slot the local guess created; the server
+              // is the source of truth on course numbering.
+              if (
+                o.courses[nextCourse] &&
+                o.courses[nextCourse].status === "open" &&
+                o.courses[nextCourse].itemCount === 0
+              ) {
+                delete o.courses[nextCourse];
+              }
               o.workingCourse = serverCourse;
               if (!o.courses[serverCourse]) {
                 o.courses[serverCourse] = {
@@ -749,6 +759,120 @@ export const useCoursingStore = create<CoursingState>()(
           get().loadFromServer(orderId);
         }
       }
+    },
+
+    removeCourse: (orderId: string, courseNumber: number): boolean => {
+      // Always keep course 1 — it's the implicit default for new items.
+      if (courseNumber <= 1) {
+        console.warn(
+          "[removeCourse] refused: course 1 is the implicit default",
+        );
+        return false;
+      }
+
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) {
+        console.warn("[removeCourse] refused: no order data", { orderId });
+        return false;
+      }
+
+      const course = orderData.courses[courseNumber];
+      if (!course) {
+        console.warn("[removeCourse] refused: course not found", {
+          orderId,
+          courseNumber,
+        });
+        return false;
+      }
+      if (course.status !== "open") {
+        console.warn("[removeCourse] refused: course already fired", {
+          orderId,
+          courseNumber,
+          status: course.status,
+        });
+        return false;
+      }
+      // itemCount is the source of truth. If it's 0, the course is empty even
+      // if itemCourseMap / dbIdToCourseMap still have stale entries (e.g. an
+      // item was removed but its mapping wasn't pruned). Prune those defensively.
+      if (course.itemCount > 0) {
+        console.warn("[removeCourse] refused: course has items", {
+          orderId,
+          courseNumber,
+          itemCount: course.itemCount,
+        });
+        return false;
+      }
+
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        // Defensive prune: drop any stale map entries that still reference
+        // this course, so we don't leave dangling pointers behind.
+        for (const k of Object.keys(o.itemCourseMap)) {
+          if (o.itemCourseMap[k] === courseNumber) delete o.itemCourseMap[k];
+        }
+        for (const k of Object.keys(o.dbIdToCourseMap)) {
+          if (o.dbIdToCourseMap[k] === courseNumber)
+            delete o.dbIdToCourseMap[k];
+        }
+        delete o.courses[courseNumber];
+        if (o.workingCourse === courseNumber) {
+          // Find the highest fired course number — workingCourse must stay
+          // strictly above it so new items don't land in / next to food
+          // that's already on its way out of the kitchen.
+          let maxFired = 0;
+          for (const c of Object.values(o.courses)) {
+            if (c.status !== "open" && c.courseNumber > maxFired) {
+              maxFired = c.courseNumber;
+            }
+          }
+          // Prefer the highest open course above all firings; otherwise spin
+          // up a fresh slot one above the highest fired course.
+          let fallback = 0;
+          for (const c of Object.values(o.courses)) {
+            if (
+              c.status === "open" &&
+              c.courseNumber > maxFired &&
+              c.courseNumber > fallback
+            ) {
+              fallback = c.courseNumber;
+            }
+          }
+          if (fallback === 0) {
+            fallback = maxFired + 1;
+            if (!o.courses[fallback]) {
+              o.courses[fallback] = {
+                courseNumber: fallback,
+                status: "open",
+                itemCount: 0,
+              };
+            }
+          }
+          o.workingCourse = fallback;
+        }
+      });
+
+      // Route through offline queue so the RPC is serialized after any
+      // pending course mutations on this order. The queue worker is a no-op
+      // until a `remove_course` RPC ships server-side — at that point the
+      // queued ops drain naturally.
+      const dbOrderId = orderData.dbOrderId;
+      if (dbOrderId) {
+        queueOperation({
+          type: "remove_course",
+          params: {
+            dbOrderId,
+            courseNumber,
+            localOrderId: orderId,
+          },
+          localOrderId: orderId,
+        }).catch((err) => {
+          console.error("Failed to queue remove_course:", err);
+        });
+      }
+
+      return true;
     },
 
     // ========================================================================

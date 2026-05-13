@@ -141,7 +141,8 @@ const TableOrderView = React.forwardRef<
     unmarkCourseSent,
     markCourseServed,
     getForOrder,
-    finalizeCurrentCourse: finalizeCourse
+    createNextCourse,
+    removeCourse
   } = useTableCoursing(activeOrder, enableCoursing)
   useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
 
@@ -560,7 +561,8 @@ const TableOrderView = React.forwardRef<
     }
   }, [closeDialog, showLoading, hideLoading, currentTableId, show])
 
-  const finalizeCurrentCourse = useCallback(() => {
+  const startingNewCourseRef = useRef(false)
+  const handleStartNewCourse = useCallback(async () => {
     if (!enableCoursing) {
       show({
         title: 'Coursing Disabled',
@@ -569,21 +571,40 @@ const TableOrderView = React.forwardRef<
       })
       return
     }
+    if (startingNewCourseRef.current) return
     const { activeOrderId: oid, ordersById } = useOrderStore.getState()
     const order = oid ? ordersById[oid] : null
     if (!order) return
-    const nextCourse = finalizeCourse(
-      order.id,
-      order.items.map(i => i.id)
-    )
-    show({
-      title: 'Course Finalized',
-      message: `Course ${
-        nextCourse - 1
-      } complete. New items added to Course ${nextCourse}.`,
-      type: 'success'
-    })
-  }, [enableCoursing, finalizeCourse, show])
+    startingNewCourseRef.current = true
+    try {
+      const nextCourse = await createNextCourse(order.id)
+      show({
+        title: `Course ${nextCourse} opened`,
+        message: 'Drop new items here. Previous courses stay open until you Send to Kitchen.',
+        type: 'success'
+      })
+    } finally {
+      startingNewCourseRef.current = false
+    }
+  }, [enableCoursing, createNextCourse, show])
+
+  const handleRemoveCourse = useCallback(
+    (courseNumber: number) => {
+      const { activeOrderId: oid, ordersById } = useOrderStore.getState()
+      const order = oid ? ordersById[oid] : null
+      if (!order) return
+      const ok = removeCourse(order.id, courseNumber)
+      if (!ok) {
+        show({
+          title: 'Cannot remove course',
+          message:
+            'Course must be empty and not yet sent to the kitchen.',
+          type: 'warning'
+        })
+      }
+    },
+    [removeCourse, show]
+  )
 
   const handleSendCourseToKitchen = useCallback(
     async (course: number, forceResend = false, silent = false) => {
@@ -1235,7 +1256,8 @@ const TableOrderView = React.forwardRef<
               }
               onClosePricingSheet={handleClosePricingSheet}
               onPressProceedToPayment={handleProceedToPayment}
-              onPressStartNewCourse={finalizeCurrentCourse}
+              onPressStartNewCourse={handleStartNewCourse}
+              onRemoveCourse={handleRemoveCourse}
               isFullyPaid={isFullyPaid}
               itemSeatMap={seatingHook.itemSeatMap}
               activeSeat={seatingHook.activeSeat}
@@ -1265,7 +1287,7 @@ const TableOrderView = React.forwardRef<
                     style={{ justifyContent: 'center', alignItems: 'center' }}
                   >
                     <TouchableOpacity
-                      onPress={finalizeCurrentCourse}
+                      onPress={handleStartNewCourse}
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',

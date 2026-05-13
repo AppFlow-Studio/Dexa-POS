@@ -41,6 +41,14 @@ import Animated, {
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 import { type PaymentStatus } from "./PaymentStatusBadge";
 
+// Stable empty-map sentinel so the coursing selector below returns shallow-equal
+// references across renders when an order has no coursing data. Using a fresh
+// `{}` literal in the selector defeats `useShallow` and causes an infinite
+// getSnapshot loop on the Tables panel.
+const EMPTY_ITEM_COURSE_MAP: Readonly<Record<string, number>> = Object.freeze(
+  {},
+);
+
 // --- Helper Functions ---
 const formatDuration = (milliseconds: number): string => {
   if (isNaN(milliseconds) || milliseconds < 0) return "0m";
@@ -392,7 +400,7 @@ const ExpandedView: React.FC<{
     useShallow((s) => {
       const out: Record<string, Record<string, number>> = {};
       for (const id of orderIds) {
-        out[id] = s.byOrderId[id]?.itemCourseMap ?? {};
+        out[id] = s.byOrderId[id]?.itemCourseMap ?? EMPTY_ITEM_COURSE_MAP;
       }
       return out;
     }),

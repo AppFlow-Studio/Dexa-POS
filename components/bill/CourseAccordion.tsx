@@ -11,7 +11,8 @@ import {
   ChevronRight,
   Flame,
   Plus,
-  Send
+  Send,
+  X
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -47,6 +48,7 @@ interface CourseAccordionProps {
   onRushCourse?: (courseId: number) => void
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
+  onRemoveCourse?: (courseId: number) => void
   enableCoursing?: boolean
   isOvertime?: boolean
   overtimeMinutes?: number
@@ -63,6 +65,7 @@ interface CourseGroupProps {
   onRushCourse?: (courseId: number) => void
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
+  onRemoveCourse?: (courseId: number) => void
 }
 
 // --- Helpers ---
@@ -107,7 +110,8 @@ function CourseGroupInner ({
   onDoubleTap,
   onRushCourse,
   onPrioritizeCourse,
-  onResendCourse
+  onResendCourse,
+  onRemoveCourse
 }: CourseGroupProps) {
   const scale = useSharedValue(1)
   const [showActions, setShowActions] = useState(false)
@@ -189,6 +193,22 @@ function CourseGroupInner ({
           </View>
 
           <View className='flex-row items-center gap-2'>
+            {!isSent && courseItemCount === 0 && courseId !== 1 && onRemoveCourse && (
+              <TouchableOpacity
+                onPress={() => onRemoveCourse(courseId)}
+                hitSlop={8}
+                style={{
+                  width: 24,
+                  height: 24,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 6
+                }}
+                activeOpacity={0.5}
+              >
+                <X size={14} color={colors.muted} />
+              </TouchableOpacity>
+            )}
             {isCurrent && !isSent && !aggregateStatus && courseItemCount > 0 && (
               <TouchableOpacity
                 onPress={() => runOnJS(onDoubleTap)(courseId)}
@@ -380,6 +400,7 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
   if (prev.onRushCourse !== next.onRushCourse) return false
   if (prev.onPrioritizeCourse !== next.onPrioritizeCourse) return false
   if (prev.onResendCourse !== next.onResendCourse) return false
+  if (prev.onRemoveCourse !== next.onRemoveCourse) return false
   if (prev.items.length !== next.items.length) return false
   for (let i = 0; i < prev.items.length; i++) {
     const p = prev.items[i]
@@ -409,6 +430,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
+  onRemoveCourse,
   enableCoursing = true,
   isOvertime,
   overtimeMinutes
@@ -724,6 +746,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                   onRushCourse={onRushCourse}
                   onPrioritizeCourse={onPrioritizeCourse}
                   onResendCourse={onResendCourse}
+                  onRemoveCourse={onRemoveCourse}
                 />
               ))
             ) : (
