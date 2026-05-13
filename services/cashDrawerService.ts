@@ -325,7 +325,10 @@ export async function hydrateDrawerSession(
 
   // Find drawer for station
   const drawer = await findDrawerForStation(supabase, stationId, locationId);
-  if (!drawer) return false;
+  if (!drawer) {
+    store.clearDrawer();
+    return false;
+  }
 
   store.setDrawer(drawer.id, drawer.name);
 
@@ -339,7 +342,14 @@ export async function hydrateDrawerSession(
     .limit(1)
     .maybeSingle();
 
-  if (!session) return false;
+  if (!session) {
+    useCashDrawerStore.setState((state) => ({
+      ...state,
+      activeSession: null,
+      operations: [],
+    }));
+    return false;
+  }
 
   // Fetch operations for this session
   const { data: ops } = await supabase
@@ -374,9 +384,12 @@ export async function hydrateDrawerSession(
         performedAt: op.performed_at,
         orderId: op.order_id,
         paymentId: op.payment_id,
+        vendorId: op.vendor_id || undefined,
         reason: op.reason,
       })),
     );
+  } else {
+    store.setOperations([]);
   }
 
   return true;

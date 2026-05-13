@@ -227,7 +227,20 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     onClose();
     if (!orderId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    void useOrderStore.getState().claimOrderById(orderId);
+    void (async () => {
+      const result = await useOrderStore.getState().claimOrderById(orderId);
+      if (!result.success) return;
+
+      const claimedOrder = useOrderStore.getState().ordersById[orderId];
+      const isEmptyDraft =
+        claimedOrder?.order_status === "draft" &&
+        (claimedOrder.items?.length ?? 0) === 0;
+
+      if (isEmptyDraft) {
+        useOrderStore.getState().setActiveOrder(orderId);
+        router.push("/order-processing");
+      }
+    })();
   };
 
   if (!order) return null;
