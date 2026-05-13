@@ -32,7 +32,11 @@ export function createStarPrinterInstance(
 
   const printer = new StarPrinter(settings);
   if (profile === "print") {
-    printer.openTimeout = 8000; // SDK default is 10s; 8s balances speed vs reliability
+    // Open timeout raised from 8s → 12s: weak restaurant Wi-Fi can stretch
+    // the TCP handshake past 8s, surfacing as a false "unavailable" on an
+    // otherwise idle Star printer. Keep probe profile short (5s) so periodic
+    // discovery / health checks stay snappy.
+    printer.openTimeout = 12000;
     printer.getStatusTimeout = 5000;
     printer.printTimeout = 30000;
   } else {

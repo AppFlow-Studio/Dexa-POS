@@ -10,6 +10,7 @@ import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { useToastStore } from "@/stores/useToastStore";
 import { getStarPrinterMutex } from "@/services/printing/starPrinterMutex";
+import { getLastStarSuccess } from "@/services/printing/starPrintActivity";
 import {
   createStarPrinterInstance,
   disposeQuietly,
@@ -27,6 +28,11 @@ const HEALTH_CHECK_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 const STAGGER_DELAY_MS = 2000; // 2s between printers
 const FAILURE_TOAST_THRESHOLD = 3;
 const PROBE_TIMEOUT_MS = 5000;
+// Skip the probe when a real SDK operation (print / status / drawer) on this
+// printer succeeded within this window — the printer is demonstrably healthy
+// and an extra `open()` risks colliding with a peer device on the printer's
+// small TCP backlog.
+const RECENT_SUCCESS_SKIP_MS = 60_000;
 
 // ============================================================================
 // SINGLETON STATE
@@ -404,6 +410,16 @@ async function performHealthCheckRound(): Promise<void> {
         console.log(
           `[StarPrinterHealthCheck] Skipped ${printer.printerName} (busy)`,
         );
+        continue;
+      }
+
+      // Skip if a real SDK op succeeded very recently — the probe would just
+      // duplicate work and risk a TCP-backlog collision against a peer device.
+      const sinceLastOk = Date.now() - getLastStarSuccess(printer.networkAddress!);
+      if (sinceLastOk < RECENT_SUCCESS_SKIP_MS) {
+        const state = getState(printer.id);
+        state.consecutiveFailures = 0;
+        state.lastCheckAt = Date.now();
         continue;
       }
 
