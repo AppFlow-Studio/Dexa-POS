@@ -3,6 +3,7 @@ import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { isValidUUID } from "@/utils/orderIdHelpers";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
 import { useEmployeeStore } from "./useEmployeeStore";
 
 // ============================================================================
@@ -118,8 +119,8 @@ type CoursingState = {
     orderId: string,
     itemId: string,
     courseNumber: number,
-    dbItemId?: string, // Optional: DB UUID for syncing
-    skipBackendSync?: boolean // Optional: Skip RPC call (for fired courses)
+    dbItemId?: string,
+    skipBackendSync?: boolean
   ) => void;
   assignItemsToWorkingCourse: (orderId: string, itemIds: string[]) => void;
   finalizeCurrentCourse: (orderId: string, itemIds: string[]) => number;
@@ -138,734 +139,639 @@ type CoursingState = {
 // STORE
 // ============================================================================
 
-export const useCoursingStore = create<CoursingState>((set, get) => ({
-  byOrderId: {},
+export const useCoursingStore = create<CoursingState>()(
+  immer((set, get) => ({
+    byOrderId: {},
 
-  // ========================================================================
-  // INITIALIZATION
-  // ========================================================================
+    // ========================================================================
+    // INITIALIZATION
+    // ========================================================================
 
-  initializeForOrder: (orderId: string, dbOrderId?: string) => {
-    const state = get();
-    if (state.byOrderId[orderId]) {
-      // Update dbOrderId if we now have it
-      if (dbOrderId && !state.byOrderId[orderId].dbOrderId) {
-        set((prev) => ({
-          byOrderId: {
-            ...prev.byOrderId,
-            [orderId]: { ...prev.byOrderId[orderId], dbOrderId },
-          },
-        }));
-      }
-      return;
-    }
+    initializeForOrder: (orderId: string, dbOrderId?: string) => {
+      const existed = !!get().byOrderId[orderId];
 
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
+      set((state) => {
+        const existing = state.byOrderId[orderId];
+        if (existing) {
+          if (dbOrderId && !existing.dbOrderId) existing.dbOrderId = dbOrderId;
+          return;
+        }
+        state.byOrderId[orderId] = {
           workingCourse: 1,
           itemCourseMap: {},
-          dbIdToCourseMap: {}, // Initialize the DB ID map
+          dbIdToCourseMap: {},
           courses: { 1: { courseNumber: 1, status: "open", itemCount: 0 } },
           syncing: false,
           dbOrderId,
-        },
-      },
-    }));
-
-    // Load from server if we have dbOrderId
-    if (_supabaseClient && dbOrderId) {
-      get().loadFromServer(orderId).catch(console.error);
-    }
-  },
-
-  setDbOrderId: (orderId: string, dbOrderId: string) => {
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
-          ...(prev.byOrderId[orderId] ?? {
-            workingCourse: 1,
-            itemCourseMap: {},
-            dbIdToCourseMap: {},
-            courses: { 1: { courseNumber: 1, status: "open", itemCount: 0 } },
-            syncing: false,
-          }),
-          dbOrderId,
-        },
-      },
-    }));
-  },
-
-  loadFromServer: async (orderId: string) => {
-    const supabase = _supabaseClient;
-    const orderData = get().byOrderId[orderId];
-    const dbOrderId = orderData?.dbOrderId;
-
-    if (!supabase || !dbOrderId) {
-      if (__DEV__) {
-        console.log("[Coursing] skip server sync (no client or dbOrderId)", {
-          orderId,
-        });
-      }
-      return;
-    }
-
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: { ...prev.byOrderId[orderId], syncing: true },
-      },
-    }));
-
-    try {
-      const { data, error } = await supabase.rpc("get_order_courses", {
-        p_order_id: dbOrderId,
-      });
-
-      if (error) throw error;
-      if (!data) return;
-
-      const courses: Record<number, CourseInfo> = {};
-      const dbIdToCourseMap: Record<string, number> = {}; // DB item ID -> course number
-
-      (data?.courses || []).forEach((course: any) => {
-        courses[course.course_number] = {
-          courseNumber: course.course_number,
-          status: course.status as CourseStatus,
-          firedAt: course.fired_at,
-          servedAt: course.served_at,
-          itemCount: course.item_count || 0,
-          items: course.items,
         };
-        // Store mapping by DB item ID (for later lookup when local items have db_order_item_id)
-        (course.items || []).forEach((item: any) => {
-          dbIdToCourseMap[item.id] = course.course_number;
-        });
       });
 
-      if (Object.keys(courses).length === 0) {
-        courses[1] = { courseNumber: 1, status: "open", itemCount: 0 };
+      // Only auto-load on fresh inits; callers manage re-fetch via lastSyncAt.
+      if (!existed && _supabaseClient && dbOrderId) {
+        get().loadFromServer(orderId).catch(console.error);
+      }
+    },
+
+    setDbOrderId: (orderId: string, dbOrderId: string) => {
+      set((state) => {
+        const existing = state.byOrderId[orderId];
+        if (existing) {
+          existing.dbOrderId = dbOrderId;
+          return;
+        }
+        state.byOrderId[orderId] = {
+          workingCourse: 1,
+          itemCourseMap: {},
+          dbIdToCourseMap: {},
+          courses: { 1: { courseNumber: 1, status: "open", itemCount: 0 } },
+          syncing: false,
+          dbOrderId,
+        };
+      });
+    },
+
+    loadFromServer: async (orderId: string) => {
+      const supabase = _supabaseClient;
+      const orderData = get().byOrderId[orderId];
+      const dbOrderId = orderData?.dbOrderId;
+
+      if (!supabase || !dbOrderId) {
+        if (__DEV__) {
+          console.log("[Coursing] skip server sync (no client or dbOrderId)", {
+            orderId,
+          });
+        }
+        return;
       }
 
-      const workingCourse =
-        data?.working_course ||
-        Math.max(
-          ...Object.keys(courses)
-            .map(Number)
-            .filter((n) => courses[n].status === "open"),
-          1
-        );
-
-      set((prev) => ({
-        byOrderId: {
-          ...prev.byOrderId,
-          [orderId]: {
-            workingCourse,
-            // Preserve existing local item mappings, merge with any existing
-            itemCourseMap: prev.byOrderId[orderId]?.itemCourseMap || {},
-            dbIdToCourseMap: {
-              ...dbIdToCourseMap,
-              ...(prev.byOrderId[orderId]?.dbIdToCourseMap || {}),
-            },
-            courses,
-            syncing: false,
-            lastSyncAt: new Date(),
-            dbOrderId,
-          },
-        },
-      }));
-    } catch (error) {
-      console.error("Failed to load courses:", error);
-      set((prev) => ({
-        byOrderId: {
-          ...prev.byOrderId,
-          [orderId]: { ...prev.byOrderId[orderId], syncing: false },
-        },
-      }));
-    }
-  },
-
-  // ========================================================================
-  // GETTERS
-  // ========================================================================
-
-  getForOrder: (orderId: string) => get().byOrderId[orderId],
-
-  getWorkingCourse: (orderId: string) =>
-    get().byOrderId[orderId]?.workingCourse ?? 1,
-
-  getCourseStatus: (orderId: string, courseNumber: number) => {
-    return get().byOrderId[orderId]?.courses[courseNumber]?.status ?? "open";
-  },
-
-  isCourseOpen: (orderId: string, courseNumber: number) => {
-    return get().getCourseStatus(orderId, courseNumber) === "open";
-  },
-
-  isCourseFired: (orderId: string, courseNumber: number) => {
-    return get().getCourseStatus(orderId, courseNumber) !== "open";
-  },
-
-  getOpenCourses: (orderId: string) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return [1];
-    return Object.values(orderData.courses)
-      .filter((c) => c.status === "open")
-      .map((c) => c.courseNumber)
-      .sort((a, b) => a - b);
-  },
-
-  getFiredCourses: (orderId: string) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return [];
-    return Object.values(orderData.courses)
-      .filter((c) => c.status !== "open")
-      .map((c) => c.courseNumber)
-      .sort((a, b) => a - b);
-  },
-
-  getItemCourse: (orderId: string, itemId: string, dbItemId?: string) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return 1;
-    
-    // First check local itemCourseMap by local ID
-    if (orderData.itemCourseMap[itemId] !== undefined) {
-      return orderData.itemCourseMap[itemId];
-    }
-    
-    // Then check dbIdToCourseMap by db_order_item_id (from backend)
-    if (dbItemId && orderData.dbIdToCourseMap?.[dbItemId] !== undefined) {
-      return orderData.dbIdToCourseMap[dbItemId];
-    }
-    
-    // Fall back to working course
-    return orderData.workingCourse ?? 1;
-  },
-
-  getItemCourseByDbId: (orderId: string, dbItemId: string) => {
-    const orderData = get().byOrderId[orderId];
-    return orderData?.dbIdToCourseMap?.[dbItemId];
-  },
-
-  canModifyItem: (orderId: string, itemId: string) => {
-    const courseNumber = get().getItemCourse(orderId, itemId);
-    return get().isCourseOpen(orderId, courseNumber);
-  },
-
-  // ========================================================================
-  // BACKWARD COMPATIBILITY
-  // ========================================================================
-
-  setCurrentCourse: (orderId: string, course: number) => {
-    get().setWorkingCourse(orderId, course);
-  },
-
-  isCourseSent: (orderId: string, course: number) => {
-    return get().isCourseFired(orderId, course);
-  },
-
-  getSentCourses: (orderId: string) => get().getFiredCourses(orderId),
-
-  getUnsentCourses: (orderId: string) => get().getOpenCourses(orderId),
-
-  markCourseSent: (orderId: string, course: number) => {
-    if (!get().byOrderId[orderId]) return;
-    get().fireCourse(orderId, course).catch(console.error);
-  },
-
-  unmarkCourseSent: (orderId: string, course: number) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return;
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
-          ...prev.byOrderId[orderId],
-          courses: {
-            ...prev.byOrderId[orderId].courses,
-            [course]: {
-              ...(prev.byOrderId[orderId].courses[course] ?? {
-                courseNumber: course,
-                itemCount: 0,
-              }),
-              status: "open",
-              firedAt: undefined,
-            },
-          },
-        },
-      },
-    }));
-  },
-
-  getAllCourseStatuses: (orderId: string) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return {};
-    const statuses: Record<number, "unsent" | "sent" | "in_progress"> = {};
-    Object.values(orderData.courses).forEach((c) => {
-      if (c.status === "open") statuses[c.courseNumber] = "unsent";
-      else if (c.status === "in_progress")
-        statuses[c.courseNumber] = "in_progress";
-      else statuses[c.courseNumber] = "sent";
-    });
-    return statuses;
-  },
-
-  // ========================================================================
-  // LOCAL ACTIONS
-  // ========================================================================
-
-  setWorkingCourse: (orderId: string, courseNumber: number) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return;
-
-    if (
-      orderData.courses[courseNumber]?.status !== "open" &&
-      orderData.courses[courseNumber]
-    ) {
-      console.warn(`Cannot set working course to fired course ${courseNumber}`);
-      return;
-    }
-
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
-          ...prev.byOrderId[orderId],
-          workingCourse: courseNumber,
-          courses: {
-            ...prev.byOrderId[orderId].courses,
-            [courseNumber]: prev.byOrderId[orderId].courses[courseNumber] ?? {
-              courseNumber,
-              status: "open",
-              itemCount: 0,
-            },
-          },
-        },
-      },
-    }));
-
-    // Sync to server if we have dbOrderId. Route through the per-order chain
-    // for the same TOCTOU reason as set_item_course — set_working_course also
-    // calls ensure_course_exists internally.
-    const dbOrderId = orderData.dbOrderId;
-    if (_supabaseClient && dbOrderId) {
-      const client = _supabaseClient;
-      chainCourseRpc(dbOrderId, async () => {
-        const { error } = await client.rpc("set_working_course", {
-          p_order_id: dbOrderId,
-          p_course_number: courseNumber,
-        });
-        if (error) {
-          if ((error as any)?.code === "23505") {
-            console.warn(
-              "[Coursing] set_working_course hit unique_order_course race",
-            );
-          } else {
-            console.error("Failed to sync working course:", error);
-          }
-        }
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (o) o.syncing = true;
       });
-    }
-  },
 
-  setItemCourse: (
-    orderId: string,
-    itemId: string,
-    courseNumber: number,
-    dbItemId?: string,
-    skipBackendSync?: boolean
-  ) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return;
-
-    // Guard: If course exists and is not open, skip state update (unless we're intentionally
-    // updating local map only via skipBackendSync for already-fired courses)
-    if (
-      orderData.courses[courseNumber]?.status !== "open" &&
-      orderData.courses[courseNumber] &&
-      !skipBackendSync
-    ) {
-      return;
-    }
-
-    // Update local state - always allow if skipBackendSync is true (for syncing fired course items)
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
-          ...prev.byOrderId[orderId],
-          itemCourseMap: {
-            ...prev.byOrderId[orderId].itemCourseMap,
-            [itemId]: courseNumber,
-          },
-          // Also update dbIdToCourseMap if we have a dbItemId
-          dbIdToCourseMap: dbItemId ? {
-            ...prev.byOrderId[orderId].dbIdToCourseMap,
-            [dbItemId]: courseNumber,
-          } : prev.byOrderId[orderId].dbIdToCourseMap,
-          courses: {
-            ...prev.byOrderId[orderId].courses,
-            [courseNumber]: prev.byOrderId[orderId].courses[courseNumber] ?? {
-              courseNumber,
-              status: "open",
-              itemCount: 0,
-            },
-          },
-        },
-      },
-    }));
-
-    // Sync to backend if we have a valid DB Item ID AND not explicitly skipped
-    // skipBackendSync is used when updating local map for items in already-fired courses
-    const dbOrderId = orderData.dbOrderId;
-    if (_supabaseClient && dbOrderId && dbItemId && isValidUUID(dbItemId) && !skipBackendSync) {
-      // Route through the per-order chain so concurrent calls serialize and
-      // avoid the ensure_course_exists TOCTOU race (see module top comment).
-      const client = _supabaseClient;
-      chainCourseRpc(dbOrderId, async () => {
-        const { error } = await client.rpc("set_item_course", {
-          p_order_item_id: dbItemId,
-          p_course_number: courseNumber,
-        });
-        if (error) {
-          // 23505 means another transaction already created the course row
-          // between our SELECT and INSERT. With chaining this should be
-          // rare, but keep a quiet log in case it slips through.
-          if ((error as any)?.code === "23505") {
-            console.warn(
-              "[Coursing] set_item_course hit unique_order_course race; item course may be stale",
-            );
-          } else {
-            console.error("Failed to sync item course:", error);
-          }
-        }
-      });
-    }
-  },
-
-  assignItemsToWorkingCourse: (orderId: string, itemIds: string[]) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return;
-
-    set((prev) => {
-      const newMap = { ...prev.byOrderId[orderId].itemCourseMap };
-      itemIds.forEach((id) => {
-        if (newMap[id] === undefined) newMap[id] = orderData.workingCourse;
-      });
-      return {
-        byOrderId: {
-          ...prev.byOrderId,
-          [orderId]: { ...prev.byOrderId[orderId], itemCourseMap: newMap },
-        },
-      };
-    });
-  },
-
-  finalizeCurrentCourse: (orderId: string, itemIds: string[]) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return 1;
-
-    const currentCourse = orderData.workingCourse;
-    const newItemCourseMap = { ...orderData.itemCourseMap };
-    itemIds.forEach((id) => {
-      if (newItemCourseMap[id] === undefined)
-        newItemCourseMap[id] = currentCourse;
-    });
-
-    const maxCourse = Math.max(
-      ...Object.values(newItemCourseMap),
-      currentCourse
-    );
-    const nextCourse = maxCourse + 1;
-
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
-          ...orderData,
-          itemCourseMap: newItemCourseMap,
-          workingCourse: nextCourse,
-          courses: {
-            ...orderData.courses,
-            [nextCourse]: {
-              courseNumber: nextCourse,
-              status: "open",
-              itemCount: 0,
-            },
-          },
-        },
-      },
-    }));
-
-    const dbOrderId = orderData.dbOrderId;
-    if (_supabaseClient && dbOrderId) {
-      _supabaseClient
-        .rpc("create_next_course", { p_order_id: dbOrderId })
-        .then(({ error }) => {
-          if (error) console.error("Failed to sync new course:", error);
-        });
-    }
-
-    return nextCourse;
-  },
-
-  // ========================================================================
-  // SERVER SYNCED ACTIONS
-  // ========================================================================
-
-  createNextCourse: async (orderId: string) => {
-    const orderData = get().byOrderId[orderId];
-    const currentMax = Math.max(
-      ...Object.keys(orderData?.courses || { 1: true }).map(Number),
-      0
-    );
-    const nextCourse = currentMax + 1;
-
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
-          ...prev.byOrderId[orderId],
-          workingCourse: nextCourse,
-          courses: {
-            ...prev.byOrderId[orderId].courses,
-            [nextCourse]: {
-              courseNumber: nextCourse,
-              status: "open",
-              itemCount: 0,
-            },
-          },
-        },
-      },
-    }));
-
-    const dbOrderId = orderData?.dbOrderId;
-    if (_supabaseClient && dbOrderId) {
       try {
-        const { data, error } = await _supabaseClient.rpc(
-          "create_next_course",
-          {
-            p_order_id: dbOrderId,
-          }
-        );
+        const { data, error } = await supabase.rpc("get_order_courses", {
+          p_order_id: dbOrderId,
+        });
+
         if (error) throw error;
-        const serverCourse = data?.course_number || nextCourse;
-        if (serverCourse !== nextCourse) {
-          set((prev) => ({
-            byOrderId: {
-              ...prev.byOrderId,
-              [orderId]: {
-                ...prev.byOrderId[orderId],
-                workingCourse: serverCourse,
-                courses: {
-                  ...prev.byOrderId[orderId].courses,
-                  [serverCourse]: {
-                    courseNumber: serverCourse,
-                    status: "open",
-                    itemCount: 0,
-                  },
-                },
-              },
-            },
-          }));
-          return serverCourse;
-        }
-      } catch (error) {
-        console.error("Failed to create course on server:", error);
-      }
-    }
-    return nextCourse;
-  },
+        if (!data) return;
 
-  fireCourse: async (orderId: string, courseNumber: number) => {
-    // SYNC BARRIER: Ensure all items are synced before firing course
-    // Lazy require — breaks circular dependency with useOrderStore
-    const { useOrderStore } = require('@/stores/useOrderStore') as typeof import('@/stores/useOrderStore');
-    const orderStore = useOrderStore.getState();
+        const courses: Record<number, CourseInfo> = {};
+        const dbIdToCourseMap: Record<string, number> = {};
 
-    if (orderStore.hasPendingSyncs(orderId)) {
-      console.log(
-        "[fireCourse] Waiting for pending syncs before firing course..."
-      );
-      await orderStore.waitForPendingSyncs(orderId);
-    }
-
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return; // Coursing disabled or order not initialized — skip
-
-    if (orderData.courses[courseNumber]?.status !== "open") {
-      throw new Error(`Course ${courseNumber} is already fired`);
-    }
-
-    // 1. ALWAYS update local state first (optimistic)
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
-          ...prev.byOrderId[orderId],
-          courses: {
-            ...prev.byOrderId[orderId].courses,
-            [courseNumber]: {
-              ...prev.byOrderId[orderId].courses[courseNumber],
-              status: "fired",
-              firedAt: new Date().toISOString(),
-            },
-          },
-          workingCourse:
-            prev.byOrderId[orderId].workingCourse === courseNumber
-              ? courseNumber + 1
-              : prev.byOrderId[orderId].workingCourse,
-        },
-      },
-    }));
-
-    // Try to resolve order ID from registry if it's a local ID
-    let dbOrderId = orderData.dbOrderId;
-    if (!dbOrderId && isLocalId(orderId)) {
-      dbOrderId = resolveToBackendId(orderId) || undefined;
-    }
-
-    const isOnline = getIsOnline();
-
-    // 2. Try backend if online and have a dbOrderId
-    if (isOnline && _supabaseClient && dbOrderId) {
-      try {
-        const p_staff_id =
-          useEmployeeStore.getState().loggedInEmployee?.profileId;
-        const { error } = await _supabaseClient.rpc("fire_course", {
-          p_order_id: dbOrderId,
-          p_course_number: courseNumber,
-          p_staff_id: p_staff_id,
+        (data?.courses || []).forEach((course: any) => {
+          courses[course.course_number] = {
+            courseNumber: course.course_number,
+            status: course.status as CourseStatus,
+            firedAt: course.fired_at,
+            servedAt: course.served_at,
+            itemCount: course.item_count || 0,
+            items: course.items,
+          };
+          (course.items || []).forEach((item: any) => {
+            dbIdToCourseMap[item.id] = course.course_number;
+          });
         });
-        console.log(
-          "Fired course on server:",
-          courseNumber,
-          "dbOrderId:",
-          dbOrderId
-        );
 
-        if (error) {
-          console.error(
-            "[fireCourse] Backend error, queuing for retry:",
-            error
+        if (Object.keys(courses).length === 0) {
+          courses[1] = { courseNumber: 1, status: "open", itemCount: 0 };
+        }
+
+        const workingCourse =
+          data?.working_course ||
+          Math.max(
+            ...Object.keys(courses)
+              .map(Number)
+              .filter((n) => courses[n].status === "open"),
+            1
           );
-          // OFFLINE-FIRST: Don't revert, queue for retry instead
+
+        set((state) => {
+          const o = state.byOrderId[orderId];
+          if (!o) return;
+          o.workingCourse = workingCourse;
+          // Preserve existing local item mappings (already on draft).
+          // Merge: server is base, local overrides win.
+          const merged: Record<string, number> = { ...dbIdToCourseMap };
+          for (const [k, v] of Object.entries(o.dbIdToCourseMap)) {
+            merged[k] = v;
+          }
+          o.dbIdToCourseMap = merged;
+          o.courses = courses;
+          o.syncing = false;
+          o.lastSyncAt = new Date();
+          o.dbOrderId = dbOrderId;
+        });
+      } catch (error) {
+        console.error("Failed to load courses:", error);
+        set((state) => {
+          const o = state.byOrderId[orderId];
+          if (o) o.syncing = false;
+        });
+      }
+    },
+
+    // ========================================================================
+    // GETTERS
+    // ========================================================================
+
+    getForOrder: (orderId: string) => get().byOrderId[orderId],
+
+    getWorkingCourse: (orderId: string) =>
+      get().byOrderId[orderId]?.workingCourse ?? 1,
+
+    getCourseStatus: (orderId: string, courseNumber: number) => {
+      return get().byOrderId[orderId]?.courses[courseNumber]?.status ?? "open";
+    },
+
+    isCourseOpen: (orderId: string, courseNumber: number) => {
+      return get().getCourseStatus(orderId, courseNumber) === "open";
+    },
+
+    isCourseFired: (orderId: string, courseNumber: number) => {
+      return get().getCourseStatus(orderId, courseNumber) !== "open";
+    },
+
+    getOpenCourses: (orderId: string) => {
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return [1];
+      return Object.values(orderData.courses)
+        .filter((c) => c.status === "open")
+        .map((c) => c.courseNumber)
+        .sort((a, b) => a - b);
+    },
+
+    getFiredCourses: (orderId: string) => {
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return [];
+      return Object.values(orderData.courses)
+        .filter((c) => c.status !== "open")
+        .map((c) => c.courseNumber)
+        .sort((a, b) => a - b);
+    },
+
+    getItemCourse: (orderId: string, itemId: string, dbItemId?: string) => {
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return 1;
+
+      if (orderData.itemCourseMap[itemId] !== undefined) {
+        return orderData.itemCourseMap[itemId];
+      }
+
+      if (dbItemId && orderData.dbIdToCourseMap?.[dbItemId] !== undefined) {
+        return orderData.dbIdToCourseMap[dbItemId];
+      }
+
+      return orderData.workingCourse ?? 1;
+    },
+
+    getItemCourseByDbId: (orderId: string, dbItemId: string) => {
+      const orderData = get().byOrderId[orderId];
+      return orderData?.dbIdToCourseMap?.[dbItemId];
+    },
+
+    canModifyItem: (orderId: string, itemId: string) => {
+      const courseNumber = get().getItemCourse(orderId, itemId);
+      return get().isCourseOpen(orderId, courseNumber);
+    },
+
+    // ========================================================================
+    // BACKWARD COMPATIBILITY
+    // ========================================================================
+
+    setCurrentCourse: (orderId: string, course: number) => {
+      get().setWorkingCourse(orderId, course);
+    },
+
+    isCourseSent: (orderId: string, course: number) => {
+      return get().isCourseFired(orderId, course);
+    },
+
+    getSentCourses: (orderId: string) => get().getFiredCourses(orderId),
+
+    getUnsentCourses: (orderId: string) => get().getOpenCourses(orderId),
+
+    markCourseSent: (orderId: string, course: number) => {
+      if (!get().byOrderId[orderId]) return;
+      get().fireCourse(orderId, course).catch(console.error);
+    },
+
+    unmarkCourseSent: (orderId: string, course: number) => {
+      if (!get().byOrderId[orderId]) return;
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        const existingCourse = o.courses[course];
+        if (existingCourse) {
+          existingCourse.status = "open";
+          existingCourse.firedAt = undefined;
+        } else {
+          o.courses[course] = {
+            courseNumber: course,
+            status: "open",
+            itemCount: 0,
+          };
+        }
+      });
+    },
+
+    getAllCourseStatuses: (orderId: string) => {
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return {};
+      const statuses: Record<number, "unsent" | "sent" | "in_progress"> = {};
+      Object.values(orderData.courses).forEach((c) => {
+        if (c.status === "open") statuses[c.courseNumber] = "unsent";
+        else if (c.status === "in_progress")
+          statuses[c.courseNumber] = "in_progress";
+        else statuses[c.courseNumber] = "sent";
+      });
+      return statuses;
+    },
+
+    // ========================================================================
+    // LOCAL ACTIONS
+    // ========================================================================
+
+    setWorkingCourse: (orderId: string, courseNumber: number) => {
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return;
+
+      if (
+        orderData.courses[courseNumber]?.status !== "open" &&
+        orderData.courses[courseNumber]
+      ) {
+        console.warn(`Cannot set working course to fired course ${courseNumber}`);
+        return;
+      }
+
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        o.workingCourse = courseNumber;
+        if (!o.courses[courseNumber]) {
+          o.courses[courseNumber] = {
+            courseNumber,
+            status: "open",
+            itemCount: 0,
+          };
+        }
+      });
+
+      // Sync to server if we have dbOrderId. Route through the per-order chain
+      // for the same TOCTOU reason as set_item_course — set_working_course also
+      // calls ensure_course_exists internally.
+      const dbOrderId = orderData.dbOrderId;
+      if (_supabaseClient && dbOrderId) {
+        const client = _supabaseClient;
+        chainCourseRpc(dbOrderId, async () => {
+          const { error } = await client.rpc("set_working_course", {
+            p_order_id: dbOrderId,
+            p_course_number: courseNumber,
+          });
+          if (error) {
+            if ((error as any)?.code === "23505") {
+              console.warn(
+                "[Coursing] set_working_course hit unique_order_course race",
+              );
+            } else {
+              console.error("Failed to sync working course:", error);
+            }
+          }
+        });
+      }
+    },
+
+    setItemCourse: (
+      orderId: string,
+      itemId: string,
+      courseNumber: number,
+      dbItemId?: string,
+      skipBackendSync?: boolean
+    ) => {
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return;
+
+      // Guard: If course exists and is not open, skip state update (unless we're intentionally
+      // updating local map only via skipBackendSync for already-fired courses)
+      if (
+        orderData.courses[courseNumber]?.status !== "open" &&
+        orderData.courses[courseNumber] &&
+        !skipBackendSync
+      ) {
+        return;
+      }
+
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        o.itemCourseMap[itemId] = courseNumber;
+        if (dbItemId) o.dbIdToCourseMap[dbItemId] = courseNumber;
+        if (!o.courses[courseNumber]) {
+          o.courses[courseNumber] = {
+            courseNumber,
+            status: "open",
+            itemCount: 0,
+          };
+        }
+      });
+
+      // Sync to backend if we have a valid DB Item ID AND not explicitly skipped
+      const dbOrderId = orderData.dbOrderId;
+      if (_supabaseClient && dbOrderId && dbItemId && isValidUUID(dbItemId) && !skipBackendSync) {
+        // Route through the per-order chain so concurrent calls serialize and
+        // avoid the ensure_course_exists TOCTOU race (see module top comment).
+        const client = _supabaseClient;
+        chainCourseRpc(dbOrderId, async () => {
+          const { error } = await client.rpc("set_item_course", {
+            p_order_item_id: dbItemId,
+            p_course_number: courseNumber,
+          });
+          if (error) {
+            if ((error as any)?.code === "23505") {
+              console.warn(
+                "[Coursing] set_item_course hit unique_order_course race; item course may be stale",
+              );
+            } else {
+              console.error("Failed to sync item course:", error);
+            }
+          }
+        });
+      }
+    },
+
+    assignItemsToWorkingCourse: (orderId: string, itemIds: string[]) => {
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        const workingCourse = o.workingCourse;
+        for (const id of itemIds) {
+          if (o.itemCourseMap[id] === undefined) {
+            o.itemCourseMap[id] = workingCourse;
+          }
+        }
+      });
+    },
+
+    finalizeCurrentCourse: (orderId: string, itemIds: string[]) => {
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return 1;
+
+      const currentCourse = orderData.workingCourse;
+
+      // nextCourse = max(existing item course values, currentCourse) + 1.
+      // Newly-assigned items take currentCourse, so they can't raise the max above it.
+      let maxCourse = currentCourse;
+      for (const v of Object.values(orderData.itemCourseMap)) {
+        if (v > maxCourse) maxCourse = v;
+      }
+      const nextCourse = maxCourse + 1;
+
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        for (const id of itemIds) {
+          if (o.itemCourseMap[id] === undefined) {
+            o.itemCourseMap[id] = currentCourse;
+          }
+        }
+        o.workingCourse = nextCourse;
+        if (!o.courses[nextCourse]) {
+          o.courses[nextCourse] = {
+            courseNumber: nextCourse,
+            status: "open",
+            itemCount: 0,
+          };
+        }
+      });
+
+      const dbOrderId = orderData.dbOrderId;
+      if (_supabaseClient && dbOrderId) {
+        _supabaseClient
+          .rpc("create_next_course", { p_order_id: dbOrderId })
+          .then(({ error }) => {
+            if (error) console.error("Failed to sync new course:", error);
+          });
+      }
+
+      return nextCourse;
+    },
+
+    // ========================================================================
+    // SERVER SYNCED ACTIONS
+    // ========================================================================
+
+    createNextCourse: async (orderId: string) => {
+      const orderData = get().byOrderId[orderId];
+      const currentMax = Math.max(
+        ...Object.keys(orderData?.courses || { 1: true }).map(Number),
+        0
+      );
+      const nextCourse = currentMax + 1;
+
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        o.workingCourse = nextCourse;
+        if (!o.courses[nextCourse]) {
+          o.courses[nextCourse] = {
+            courseNumber: nextCourse,
+            status: "open",
+            itemCount: 0,
+          };
+        }
+      });
+
+      const dbOrderId = orderData?.dbOrderId;
+      if (_supabaseClient && dbOrderId) {
+        try {
+          const { data, error } = await _supabaseClient.rpc(
+            "create_next_course",
+            {
+              p_order_id: dbOrderId,
+            }
+          );
+          if (error) throw error;
+          const serverCourse = data?.course_number || nextCourse;
+          if (serverCourse !== nextCourse) {
+            set((state) => {
+              const o = state.byOrderId[orderId];
+              if (!o) return;
+              o.workingCourse = serverCourse;
+              if (!o.courses[serverCourse]) {
+                o.courses[serverCourse] = {
+                  courseNumber: serverCourse,
+                  status: "open",
+                  itemCount: 0,
+                };
+              }
+            });
+            return serverCourse;
+          }
+        } catch (error) {
+          console.error("Failed to create course on server:", error);
+        }
+      }
+      return nextCourse;
+    },
+
+    fireCourse: async (orderId: string, courseNumber: number) => {
+      // SYNC BARRIER: Ensure all items are synced before firing course
+      // Lazy require — breaks circular dependency with useOrderStore
+      const { useOrderStore } = require('@/stores/useOrderStore') as typeof import('@/stores/useOrderStore');
+      const orderStore = useOrderStore.getState();
+
+      if (orderStore.hasPendingSyncs(orderId)) {
+        console.log(
+          "[fireCourse] Waiting for pending syncs before firing course..."
+        );
+        await orderStore.waitForPendingSyncs(orderId);
+      }
+
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return; // Coursing disabled or order not initialized — skip
+
+      if (orderData.courses[courseNumber]?.status !== "open") {
+        throw new Error(`Course ${courseNumber} is already fired`);
+      }
+
+      // 1. ALWAYS update local state first (optimistic)
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        const c = o.courses[courseNumber];
+        if (c) {
+          c.status = "fired";
+          c.firedAt = new Date().toISOString();
+        }
+        if (o.workingCourse === courseNumber) {
+          o.workingCourse = courseNumber + 1;
+        }
+      });
+
+      // Try to resolve order ID from registry if it's a local ID
+      let dbOrderId = orderData.dbOrderId;
+      if (!dbOrderId && isLocalId(orderId)) {
+        dbOrderId = resolveToBackendId(orderId) || undefined;
+      }
+
+      const isOnline = getIsOnline();
+
+      // 2. Try backend if online and have a dbOrderId
+      if (isOnline && _supabaseClient && dbOrderId) {
+        try {
+          const p_staff_id =
+            useEmployeeStore.getState().loggedInEmployee?.profileId;
+          const { error } = await _supabaseClient.rpc("fire_course", {
+            p_order_id: dbOrderId,
+            p_course_number: courseNumber,
+            p_staff_id: p_staff_id,
+          });
+          console.log(
+            "Fired course on server:",
+            courseNumber,
+            "dbOrderId:",
+            dbOrderId
+          );
+
+          if (error) {
+            console.error(
+              "[fireCourse] Backend error, queuing for retry:",
+              error
+            );
+            await queueOperation({
+              type: "fire_course",
+              params: {
+                dbOrderId,
+                courseNumber,
+                p_staff_id:
+                  useEmployeeStore.getState().loggedInEmployee?.profileId,
+                localOrderId: orderId,
+              },
+              localOrderId: orderId,
+            });
+          } else {
+            get().loadFromServer(orderId);
+          }
+        } catch (error) {
+          console.error("[fireCourse] Exception, queuing for retry:", error);
           await queueOperation({
             type: "fire_course",
             params: {
               dbOrderId,
               courseNumber,
-              p_staff_id:
-                useEmployeeStore.getState().loggedInEmployee?.profileId,
-              localOrderId: orderId, // Include for ID resolution during sync
+              p_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId,
+              localOrderId: orderId,
             },
             localOrderId: orderId,
           });
-        } else {
-          // Success - optionally load from server to sync
-          get().loadFromServer(orderId);
         }
-      } catch (error) {
-        console.error("[fireCourse] Exception, queuing for retry:", error);
-        // OFFLINE-FIRST: Don't revert, queue for retry instead
+      } else if (!isOnline || !dbOrderId) {
+        console.log("[fireCourse] Offline or no dbOrderId, queuing operation");
         await queueOperation({
           type: "fire_course",
           params: {
             dbOrderId,
             courseNumber,
             p_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId,
-            localOrderId: orderId, // Include for ID resolution during sync
+            localOrderId: orderId,
           },
           localOrderId: orderId,
         });
       }
-    } else if (!isOnline || !dbOrderId) {
-      // 3. Offline or no dbOrderId - queue for later sync
-      console.log("[fireCourse] Offline or no dbOrderId, queuing operation");
-      await queueOperation({
-        type: "fire_course",
-        params: {
-          dbOrderId,
-          courseNumber,
-          p_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId,
-          localOrderId: orderId, // Include for ID resolution during sync
-        },
-        localOrderId: orderId,
+    },
+
+    markCourseServed: async (orderId: string, courseNumber: number) => {
+      const orderData = get().byOrderId[orderId];
+      if (!orderData) return;
+
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        const c = o.courses[courseNumber];
+        if (c) {
+          c.status = "served";
+          c.servedAt = new Date().toISOString();
+        }
       });
-    }
-    // Note: We no longer revert on error - the course stays "fired" locally
-    // and will sync when the backend becomes available
-  },
 
-  markCourseServed: async (orderId: string, courseNumber: number) => {
-    const orderData = get().byOrderId[orderId];
-    if (!orderData) return;
-
-    set((prev) => {
-      if (!prev.byOrderId[orderId]) return prev;
-      return {
-        byOrderId: {
-          ...prev.byOrderId,
-          [orderId]: {
-            ...prev.byOrderId[orderId],
-            courses: {
-              ...prev.byOrderId[orderId].courses,
-              [courseNumber]: {
-                ...prev.byOrderId[orderId].courses[courseNumber],
-                status: "served",
-                servedAt: new Date().toISOString(),
-              },
-            },
-          },
-        },
-      };
-    });
-
-    const dbOrderId = get().byOrderId[orderId]?.dbOrderId;
-    if (_supabaseClient && dbOrderId) {
-      const p_staff_id =
-        useEmployeeStore.getState().loggedInEmployee?.profileId;
-      const { error } = await _supabaseClient.rpc("mark_course_served", {
-        p_order_id: dbOrderId,
-        p_course_number: courseNumber,
-        p_staff_id: p_staff_id,
-      });
-      if (error) {
-        console.error("Failed to mark course served:", error);
-        get().loadFromServer(orderId);
+      const dbOrderId = get().byOrderId[orderId]?.dbOrderId;
+      if (_supabaseClient && dbOrderId) {
+        const p_staff_id =
+          useEmployeeStore.getState().loggedInEmployee?.profileId;
+        const { error } = await _supabaseClient.rpc("mark_course_served", {
+          p_order_id: dbOrderId,
+          p_course_number: courseNumber,
+          p_staff_id: p_staff_id,
+        });
+        if (error) {
+          console.error("Failed to mark course served:", error);
+          get().loadFromServer(orderId);
+        }
       }
-    }
-  },
+    },
 
-  // ========================================================================
-  // CLEANUP
-  // ========================================================================
+    // ========================================================================
+    // CLEANUP
+    // ========================================================================
 
-  clearOrder: (orderId: string) => {
-    set((prev) => {
-      const { [orderId]: _, ...remaining } = prev.byOrderId;
-      return { byOrderId: remaining };
-    });
-  },
+    clearOrder: (orderId: string) => {
+      set((state) => {
+        delete state.byOrderId[orderId];
+      });
+    },
 
-  rekeyEntry: (oldOrderId: string, newOrderId: string) => {
-    const existing = get().byOrderId[oldOrderId];
-    if (!existing || oldOrderId === newOrderId) return;
-
-    set((prev) => {
-      const { [oldOrderId]: entry, ...remaining } = prev.byOrderId;
-      if (!entry) return prev;
-      return {
-        byOrderId: {
-          ...remaining,
-          [newOrderId]: { ...entry, dbOrderId: newOrderId },
-        },
-      };
-    });
-  },
-}));
+    rekeyEntry: (oldOrderId: string, newOrderId: string) => {
+      if (oldOrderId === newOrderId) return;
+      set((state) => {
+        const entry = state.byOrderId[oldOrderId];
+        if (!entry) return;
+        delete state.byOrderId[oldOrderId];
+        state.byOrderId[newOrderId] = { ...entry, dbOrderId: newOrderId };
+      });
+    },
+  })),
+);
 
 // ============================================================================
 // SELECTORS

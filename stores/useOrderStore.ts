@@ -10788,7 +10788,7 @@ export const useOrderStore = create<OrderState>()(
            * Removes draft orders inactive for > 30 minutes with no db_id
            */
           cleanupAbandonedDrafts: () => {
-            const { ordersById, orderIds } = get();
+            const { ordersById, orderIds, activeOrderId } = get();
             const now = Date.now();
             const idsToRemove: string[] = [];
 
@@ -10797,6 +10797,12 @@ export const useOrderStore = create<OrderState>()(
               if (!order) continue;
               // Only process draft orders without backend ID
               if (order.order_status !== "draft" || order.db_order_id) continue;
+
+              // Never reap the order the user is currently viewing. They're
+              // sitting in it — wiping it out from under them turns the
+              // header into "New Order" and silently blocks item-add. The
+              // order will become eligible again once they switch away.
+              if (id === activeOrderId) continue;
 
               // Calculate inactivity duration
               const lastActivity = order.last_activity_at
@@ -10825,6 +10831,13 @@ export const useOrderStore = create<OrderState>()(
                     delete state.dbOrderIdIndex[order.db_order_id];
                   }
                   delete state.ordersById[id];
+                  // Mirror removeOrder()'s surgical cleanup so we don't leak
+                  // dangling refs that downstream selectors / persistence rely on.
+                  state.workingSetOrderIds = state.workingSetOrderIds.filter(
+                    (wid) => wid !== id,
+                  );
+                  delete state._workingSetLookup[id];
+                  delete state.persistableOrderIds[id];
                 });
                 state.orderIds = state.orderIds.filter(
                   (id) => !idsToRemove.includes(id),
@@ -10832,6 +10845,21 @@ export const useOrderStore = create<OrderState>()(
                 state.tableOrderIdIndex = rebuildTableOrderIdIndex(
                   state.ordersById,
                 );
+                // Defensive: if somehow the active order ended up reaped
+                // (e.g. activeOrderId raced ahead of the guard above), clear
+                // the dangling pointer so the UI can recover via "+ New Order"
+                // instead of silently no-opping on item adds.
+                if (
+                  state.activeOrderId &&
+                  idsToRemove.includes(state.activeOrderId)
+                ) {
+                  state.activeOrderId = null;
+                }
+              });
+
+              // Module-level mutation tracker — also leaked previously.
+              idsToRemove.forEach((id) => {
+                delete lastLocalMutationAt[id];
               });
 
               console.log(
