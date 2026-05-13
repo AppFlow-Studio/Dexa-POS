@@ -7,6 +7,7 @@ import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
+import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -39,7 +40,12 @@ import React, {
   useRef,
   useState
 } from 'react'
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -57,16 +63,31 @@ interface MoreOptionsProps {
   onCloseCheck?: () => void
   onCloseSession?: () => void
   onNoSale?: () => void
+  onManageDrawer?: () => void
+  onSheetChange?: (index: number) => void
+  isTableOrdering?: boolean
 }
 
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   MoreOptionsProps
 > = function MoreOptionsComponent (
-  { discountSheetRef, onVoidSuccess, onCloseCheck, onCloseSession, onNoSale },
+  {
+    discountSheetRef,
+    onVoidSuccess,
+    onCloseCheck,
+    onCloseSession,
+    onNoSale,
+    onManageDrawer,
+    onSheetChange,
+    isTableOrdering = false
+  },
   ref
 ) {
-  const snapPoints = useMemo(() => ['75%'], [])
+  const snapPoints = useMemo(
+    () => (isTableOrdering ? ['80%', '100%'] : ['100%']),
+    [isTableOrdering]
+  )
   const [orderNotes, setOrderNotes] = useState('')
   const [showManagerPin, setShowManagerPin] = useState(false)
   const [managerPin, setManagerPin] = useState('')
@@ -88,7 +109,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       pendingActionRef.current = null
       action()
     }
-  }, [])
+    onSheetChange?.(index)
+  }, [onSheetChange])
 
   /** Close sheet, then execute `action` once the close animation completes. */
   const closeAndThen = useCallback(
@@ -107,6 +129,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [isTogglingPriority, setIsTogglingPriority] = useState(false)
   const [isRushed, setIsRushed] = useState(false)
   const [isPrioritized, setIsPrioritized] = useState(false)
+  const { openSheet } = useCustomerSheetStore()
+  const drawerId = useCashDrawerStore(s => s.drawerId)
+  const drawerName = useCashDrawerStore(s => s.drawerName)
+  const activeOrderId = useOrderStore(state => state.activeOrderId)
+  const clearCart = useOrderStore(state => state.clearCart)
+  const voidOrder = useOrderStore(state => state.voidOrder)
+  const activeOrder = useActiveOrder()
 
   // Reset rush/priority state when active order changes
   useEffect(() => {
@@ -116,13 +145,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0)
-
-  const { openSheet } = useCustomerSheetStore()
-
-  const activeOrderId = useOrderStore(state => state.activeOrderId)
-  const clearCart = useOrderStore(state => state.clearCart)
-  const voidOrder = useOrderStore(state => state.voidOrder)
-  const activeOrder = useActiveOrder()
 
   // Kitchen items for Rush/Prioritize (items already sent to kitchen)
   const kitchenItems = useMemo(() => {
@@ -160,6 +182,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     isDineInOrder &&
     activeOrder?.paid_status === 'Paid' &&
     !!activeOrder?.service_location_id
+  const canManageDrawer = !!drawerId && !!onManageDrawer
 
   const handleClearCart = () => {
     setClearCartConfirmOpen(true)
@@ -453,15 +476,16 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         ref={ref}
         index={-1}
         snapPoints={snapPoints}
+        topInset={0}
+        bottomInset={0}
+        enableDynamicSizing={false}
         enablePanDownToClose={true}
         onChange={handleSheetChange}
         {...bottomSheetTheme}
         style={{ zIndex: 10000, elevation: 10000 }}
         backdropComponent={renderBackdrop}
       >
-        <BottomSheetScrollView
-          style={{ flex: 1, backgroundColor: colors.panel }}
-        >
+        <View style={{ flex: 1, backgroundColor: colors.panel }}>
           {/* ── Header ── */}
           <View
             style={{
@@ -480,19 +504,30 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             >
               More Options
             </Text>
-            <TouchableOpacity
-              onPress={closeSheet}
-              style={{
-                padding: 6,
-                borderRadius: 10,
-                backgroundColor: colors.teal + '10',
-                borderWidth: 1,
-                borderColor: colors.teal + '30'
-              }}
-            >
-              <X size={16} color={colors.teal} />
-            </TouchableOpacity>
+            {isTableOrdering ? (
+              <View style={{ width: 28, height: 28 }} />
+            ) : (
+              <TouchableOpacity
+                onPress={closeSheet}
+                style={{
+                  padding: 6,
+                  borderRadius: 10,
+                  backgroundColor: colors.teal + '10',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '30'
+                }}
+              >
+                <X size={16} color={colors.teal} />
+              </TouchableOpacity>
+            )}
           </View>
+
+          <BottomSheetScrollView
+            contentContainerStyle={{ paddingBottom: 24 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps='handled'
+            nestedScrollEnabled
+          >
 
           {/* ── Section label: Order ── */}
           <View
@@ -772,6 +807,49 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             </View>
             <ChevronRight size={14} color={colors.muted} />
           </TouchableOpacity>
+
+          {canManageDrawer && (
+            <TouchableOpacity
+              onPress={() => closeAndThen(() => onManageDrawer?.())}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 10
+              }}
+            >
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + '15',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}
+              >
+                <Lock size={14} color={colors.teal} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
+                  Manage Drawer
+                </Text>
+                <Text
+                  style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
+                >
+                  {drawerName || 'Open cash drawer controls'}
+                </Text>
+              </View>
+              <ChevronRight size={14} color={colors.muted} />
+            </TouchableOpacity>
+          )}
 
           {/* ── Section label: Print ── */}
           <View
@@ -1235,7 +1313,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           )}
 
           <View style={{ height: 24 }} />
-        </BottomSheetScrollView>
+          </BottomSheetScrollView>
+        </View>
       </BottomSheet>
 
       {/* Manager PIN dialog */}

@@ -15,9 +15,10 @@ import { recordDrawerOperation } from '@/services/cashDrawerService'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import { useInventoryStore } from '@/stores/useInventoryStore'
 import { formatCurrency } from '@/utils/currency'
-import React, { useCallback, useState } from 'react'
-import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import React, { useCallback, useMemo, useState } from 'react'
+import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -74,17 +75,19 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
   const getRunningBalance = useCashDrawerStore(s => s.getRunningBalance)
 
   const loggedInEmployee = useEmployeeStore(s => s.loggedInEmployee)
+  const vendors = useInventoryStore(s => s.vendors)
 
   const [amount, setAmount] = useState('')
   const [selectedReason, setSelectedReason] = useState<string | null>(
     mode === 'cash_drop' ? 'Safe Drop' : null
   )
   const [customReason, setCustomReason] = useState('')
+  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
   const [pin, setPin] = useState('')
   const [approvedBy, setApprovedBy] = useState<string | null>(null)
   const [approvedByName, setApprovedByName] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [step, setStep] = useState<1 | 2>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
 
   const shakeX = useSharedValue(0)
   const shakeStyle = useAnimatedStyle(() => ({
@@ -96,6 +99,10 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
   const displayAmount = amount.length > 0 ? amount : '0.00'
   const reason = selectedReason === 'Other' ? customReason : selectedReason
   const hasReason = Boolean(reason && reason.trim().length > 0)
+  const requiresVendorSelection =
+    mode === 'pay_out' && selectedReason === 'Vendor Payment'
+  const selectedVendor =
+    vendors.find(v => v.id === selectedVendorId) ?? null
   const balance = getRunningBalance()
   const showBalanceWarning =
     (mode === 'pay_out' || mode === 'cash_drop') &&
@@ -103,6 +110,16 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
     parsedAmount > balance
 
   const canSubmit = isValidAmount && approvedBy && hasReason
+  const sortedVendors = useMemo(
+    () => [...vendors].sort((a, b) => a.name.localeCompare(b.name)),
+    [vendors]
+  )
+
+  React.useEffect(() => {
+    if (!requiresVendorSelection && selectedVendorId) {
+      setSelectedVendorId(null)
+    }
+  }, [requiresVendorSelection, selectedVendorId])
 
   const handlePinSubmit = useCallback(() => {
     const employee = useEmployeeStore.getState().findEmployeeByPin(pin)
@@ -142,6 +159,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
       amount: parsedAmount,
       performedBy: loggedInEmployee.profileId,
       reason: reason || undefined,
+      vendorId: selectedVendorId || undefined,
       approvedBy: approvedBy || undefined
     })
 
@@ -183,6 +201,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
     setAmount('')
     setSelectedReason(mode === 'cash_drop' ? 'Safe Drop' : null)
     setCustomReason('')
+    setSelectedVendorId(null)
     setPin('')
     setApprovedBy(null)
     setApprovedByName(null)
@@ -225,7 +244,15 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
   const modeSubtitle = MODE_SUBTITLES[mode]
   const actionLabel =
     mode === 'cash_drop' ? 'Record Drop' : `Record ${MODE_TITLES[mode]}`
-  const canContinueToPin = isValidAmount && hasReason
+  const canContinueToVendor = isValidAmount && hasReason
+  const totalSteps = requiresVendorSelection ? 3 : 2
+  const handlePrimaryContinue = () => {
+    if (requiresVendorSelection) {
+      setStep(2)
+      return
+    }
+    setStep(3)
+  }
 
   return (
     <Modal
@@ -285,7 +312,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                 {modeSubtitle}
               </Text>
               <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
-                Step {step} of 2
+                Step {step} of {totalSteps}
               </Text>
             </View>
 
@@ -502,17 +529,17 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                   )}
 
                   <TouchableOpacity
-                    onPress={() => setStep(2)}
-                    disabled={!canContinueToPin}
+                    onPress={handlePrimaryContinue}
+                    disabled={!canContinueToVendor}
                     style={{
                       marginTop: 4,
                       paddingVertical: 10,
                       borderRadius: 9,
                       alignItems: 'center',
-                      backgroundColor: canContinueToPin
+                      backgroundColor: canContinueToVendor
                         ? accentColor
                         : colors.muted,
-                      opacity: canContinueToPin ? 1 : 0.7
+                      opacity: canContinueToVendor ? 1 : 0.7
                     }}
                   >
                     <Text
@@ -522,9 +549,160 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                         color: colors.onSolid
                       }}
                     >
-                      Continue to Manager PIN
+                      {requiresVendorSelection
+                        ? 'Continue to Vendor'
+                        : 'Continue to Manager PIN'}
                     </Text>
                   </TouchableOpacity>
+                </View>
+              ) : step === 2 ? (
+                <View style={{ gap: 10 }}>
+                  <View
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 9,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      gap: 4
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, color: colors.muted }}>
+                      Select Vendor
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 15,
+                        fontWeight: '700',
+                        color: selectedVendor ? accentColor : colors.heading
+                      }}
+                    >
+                      {selectedVendor?.name || 'Choose a vendor for this payout'}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      maxHeight: 260,
+                      borderRadius: 10,
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <ScrollView
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps='handled'
+                      showsVerticalScrollIndicator={false}
+                    >
+                    <View style={{ gap: 8 }}>
+                    {sortedVendors.length > 0 ? (
+                      sortedVendors.map(vendor => {
+                        const isSelected = selectedVendorId === vendor.id
+                        return (
+                          <TouchableOpacity
+                            key={vendor.id}
+                            onPress={() => setSelectedVendorId(vendor.id)}
+                            style={{
+                              paddingHorizontal: 12,
+                              paddingVertical: 11,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: isSelected
+                                ? accentColor + '55'
+                                : colors.border,
+                              backgroundColor: isSelected
+                                ? accentColor + '18'
+                                : colors.screen
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                fontWeight: isSelected ? '700' : '600',
+                                color: isSelected ? accentColor : colors.heading
+                              }}
+                            >
+                              {vendor.name}
+                            </Text>
+                            {!!vendor.contactName && (
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  color: colors.muted,
+                                  marginTop: 2
+                                }}
+                              >
+                                {vendor.contactName}
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+                        )
+                      })
+                    ) : (
+                      <View
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 14,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.screen
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                          No vendors available.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                    </ScrollView>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => setStep(1)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.panel
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '600',
+                          color: colors.label
+                        }}
+                      >
+                        Back
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setStep(3)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        backgroundColor: accentColor
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '700',
+                          color: colors.onSolid
+                        }}
+                      >
+                        Continue to Manager PIN
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : (
                 <View style={{ gap: 10 }}>
@@ -554,6 +732,11 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                     <Text style={{ fontSize: 11, color: colors.muted }}>
                       Reason: {reason}
                     </Text>
+                    {selectedVendor && (
+                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                        Vendor: {selectedVendor.name}
+                      </Text>
+                    )}
                   </View>
 
                   {!approvedBy ? (
@@ -638,7 +821,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity
-                      onPress={() => setStep(1)}
+                      onPress={() => setStep(requiresVendorSelection ? 2 : 1)}
                       style={{
                         flex: 1,
                         paddingVertical: 10,

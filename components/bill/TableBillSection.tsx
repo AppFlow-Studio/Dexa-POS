@@ -1,3 +1,5 @@
+import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
+import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
 import { CartItem, OrderProfile } from '@/lib/types'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -1026,10 +1028,26 @@ const TableBillSection = ({
   overtimeMinutes?: number
 }) => {
   const removeCheckDiscount = useOrderStore(state => state.removeCheckDiscount)
+  const currentStationId = useOrderStore(s => s.currentStationId)
+  const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
+  const [isClaiming, setClaiming] = useState(false)
 
   const activeOrder = passedActiveOrder
   const appliedDiscount = activeOrder?.checkDiscount
+  const isReadOnly = isOrderReadOnly(activeOrder, currentStationId)
+  const sourceStationName =
+    activeOrder?.station_name ?? activeOrder?._sourceStationName ?? null
+
+  const handleTakeOver = useCallback(async () => {
+    if (isClaiming) return
+    setClaiming(true)
+    try {
+      await claimActiveOrder()
+    } finally {
+      setClaiming(false)
+    }
+  }, [claimActiveOrder, isClaiming])
 
   const handleRemoveDiscount = () => {
     if (activeOrder?.id) {
@@ -1092,6 +1110,14 @@ const TableBillSection = ({
         className='max-w-lg  flex-1 flex-col'
         style={{ backgroundColor: colors.panel }}
       >
+        {isReadOnly && (
+          <ReadOnlyBanner
+            sourceStationName={sourceStationName}
+            isClaiming={isClaiming}
+            onTakeOver={handleTakeOver}
+          />
+        )}
+
         {renderOrderView()}
 
         {/* --- INLINED ACTIVE DISCOUNT INDICATOR --- */}
@@ -1218,6 +1244,10 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prev.activeOrder?.paid_status !== next.activeOrder?.paid_status)
     return false
   if (prev.activeOrder?.check_status !== next.activeOrder?.check_status)
+    return false
+  if (prev.activeOrder?.station_id !== next.activeOrder?.station_id)
+    return false
+  if (prev.activeOrder?.station_name !== next.activeOrder?.station_name)
     return false
   if (prev.activeOrder?.checkDiscount !== next.activeOrder?.checkDiscount)
     return false

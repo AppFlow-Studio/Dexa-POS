@@ -1,4 +1,8 @@
 import { useToast } from "@/contexts/ToastContext";
+import {
+  getReadOnlyTableAccess,
+  isOrderReadOnly,
+} from "@/lib/orderAccessControl";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -207,16 +211,14 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     (s) => s.updateSessionStatus,
   );
   const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
-  const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const deleteOrder = useOrderStore((s) => s.deleteOrder);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+  const getOrder = useOrderStore((s) => s.getOrder);
+  const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
   const menuItemsById = useMenuStore((s) => s.menuItemsById);
   const { show } = useToast();
   const [isCloseConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
-
-  const handleNavigate = () => {
-    router.push(`/tables/${tableData.primaryTableId}`);
-  };
 
   const groupedItems = useMemo(() => {
     const groups: Record<
@@ -243,6 +245,43 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     () => tableData.orders.some((order) => order.items.length > 0),
     [tableData.orders],
   );
+  const foreignOwnedOrder = useMemo(() => {
+    const directMatch =
+      tableData.orders.find((order) => isOrderReadOnly(order, currentStationId)) ??
+      null;
+    if (directMatch) return directMatch;
+
+    const liveSessions = useTableSessionStore.getState().sessions;
+    const tablesById = useFloorPlanStore.getState().tablesById;
+    const readOnlyAccess = getReadOnlyTableAccess({
+      tableId: tableData.primaryTableId,
+      currentStationId,
+      getSession: (id) => liveSessions[id] ?? tablesById[id]?.session,
+      getOrder: (orderId) => getOrder(orderId) ?? getOrderByDbId(orderId) ?? null,
+    });
+
+    if (!readOnlyAccess) return null;
+
+    return (
+      getOrder(readOnlyAccess.orderId) ??
+      getOrderByDbId(readOnlyAccess.orderId) ?? {
+        station_name: readOnlyAccess.ownerStationName,
+      }
+    );
+  }, [
+    currentStationId,
+    getOrder,
+    getOrderByDbId,
+    tableData.orders,
+    tableData.primaryTableId,
+  ]);
+  const isForeignStationSession = !!foreignOwnedOrder;
+  const foreignStationLabel =
+    foreignOwnedOrder?.station_name?.trim() || "Another Station";
+
+  const handleNavigate = () => {
+    router.push(`/tables/${tableData.primaryTableId}`);
+  };
 
   const closeConfirmCopy = useMemo(() => {
     if (tableData.orders.length === 0) {
@@ -269,6 +308,15 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
   }, [allOrdersArePaid, tableData.displayName, tableData.orders.length]);
 
   const handleCloseTablePress = () => {
+    if (isForeignStationSession) {
+      show({
+        title: "Action Restricted",
+        message: `This table session is owned by ${foreignStationLabel}. Switch to that station to close it.`,
+        type: "error",
+      });
+      return;
+    }
+
     if (!allOrdersArePaid && groupHasAnyItems) {
       setVoidConfirmOpen(true);
       return;
@@ -413,6 +461,7 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
           label="Close Table"
           onPress={handleCloseTablePress}
           variant="destructive"
+          disabled={isForeignStationSession}
         />
       </View>
       <ConfirmationModal

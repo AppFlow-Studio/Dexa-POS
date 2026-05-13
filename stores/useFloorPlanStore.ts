@@ -33,6 +33,7 @@ let _supabaseClient: SupabaseClient | null = null;
 // Dedup concurrent loadFloorPlanStatus calls (module-level to avoid re-renders)
 let _loadFloorPlanPromise: Promise<void> | null = null;
 let _loadFloorPlanId: string | null = null; // Track which plan is being loaded
+const _prefetchFloorPlanPromises = new Map<string, Promise<void>>();
 
 export const setFloorPlanSupabaseClient = (client: SupabaseClient | null) => {
   _supabaseClient = client;
@@ -67,6 +68,120 @@ function getSelectedTablesCapacity(
 
   return { totalCapacity, hasKnownCapacity };
 }
+
+type FloorPlanCacheEntry = {
+  tables: FloorPlanObject[];
+  sections: ServerSection[];
+  sectionsById: Record<string, ServerSection>;
+  lastSyncAt: string | null;
+};
+
+const buildSectionsById = (
+  sections: ServerSection[],
+): Record<string, ServerSection> =>
+  sections.reduce(
+    (acc, section) => {
+      acc[section.id] = section;
+      return acc;
+    },
+    {} as Record<string, ServerSection>,
+  );
+
+const buildFloorPlanCacheEntry = (
+  tables: FloorPlanObject[],
+  sections: ServerSection[],
+  sectionsById: Record<string, ServerSection>,
+  lastSyncAt: string | null,
+): FloorPlanCacheEntry => ({
+  tables,
+  sections,
+  sectionsById,
+  lastSyncAt,
+});
+
+const fetchFloorPlanSnapshot = async (
+  floorPlanId: string,
+  currentTablesById: Record<string, FloorPlanObject> = {},
+): Promise<{ data: FloorPlanCacheEntry | null; error: Error | null }> => {
+  const supabase = getClient();
+
+  try {
+    const [objectsResult, sectionsResult] = await Promise.all([
+      FloorPlanService.getAllFloorPlanObjects(supabase, floorPlanId),
+      FloorPlanService.getServerSections(supabase, floorPlanId),
+    ]);
+
+    const { data: freshObjects, error } = objectsResult;
+    if (error) {
+      return { data: null, error };
+    }
+
+    const freshTables = freshObjects || [];
+
+    const mergedTables = freshTables.map((freshTable) => {
+      const currentTable = currentTablesById[freshTable.id];
+      const freshSessionIsInactive =
+        (
+          freshTable.session as unknown as
+            | { is_active?: boolean }
+            | undefined
+        )?.is_active === false;
+
+      if (
+        currentTable?.session &&
+        isLocalOnlyStatus(currentTable.session.status) &&
+        freshTable.session &&
+        currentTable.session.id === freshTable.session.id
+      ) {
+        return { ...freshTable, session: currentTable.session };
+      }
+
+      if (!currentTable?.session && freshSessionIsInactive) {
+        return { ...freshTable, session: undefined };
+      }
+
+      return freshTable;
+    });
+
+    const getUpcomingForTable =
+      getReservationStore().getState().getUpcomingForTable;
+    const enrichedTables = mergedTables.map((table) => {
+      const upcoming = getUpcomingForTable(table.id);
+      const next = upcoming[0];
+      if (!next) return { ...table, next_reservation: null };
+      return {
+        ...table,
+        next_reservation: {
+          id: next.id,
+          party_name: next.party_name,
+          party_size: next.party_size,
+          date: next.reservation_date,
+          time: next.reservation_time,
+          status: next.status,
+        },
+      };
+    });
+
+    const freshSections = sectionsResult.data || [];
+    return {
+      data: {
+        tables: enrichedTables,
+        sections: freshSections,
+        sectionsById: buildSectionsById(freshSections),
+        lastSyncAt: new Date().toISOString(),
+      },
+      error: null,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error:
+        error instanceof Error
+          ? error
+          : new Error("Failed to fetch floor plan snapshot"),
+    };
+  }
+};
 
 interface FloorPlanState {
   // Data
@@ -123,6 +238,8 @@ interface FloorPlanState {
 
   // Floor Plan Actions
   setActiveFloorPlan: (floorPlanId: string) => Promise<void>;
+  prefetchFloorPlan: (floorPlanId: string) => Promise<void>;
+  prefetchFloorPlans: (floorPlanIds?: string[]) => Promise<void>;
   createFloorPlan: (name: string, description?: string) => Promise<string>;
   updateFloorPlan: (id: string, updates: Partial<FloorPlan>) => Promise<void>;
   deleteFloorPlan: (id: string) => Promise<void>;
@@ -651,6 +768,59 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (get().activeFloorPlanId === floorPlanId) {
             set({ isLoading: false, loadingFloorPlanId: null });
           }
+          void get().prefetchFloorPlans();
+        },
+
+        prefetchFloorPlan: async (floorPlanId: string) => {
+          if (!floorPlanId) return;
+
+          const cached = get().floorPlanCache[floorPlanId];
+          if (cached) return;
+
+          const existingPromise = _prefetchFloorPlanPromises.get(floorPlanId);
+          if (existingPromise) {
+            return existingPromise;
+          }
+
+          const prefetchPromise = (async () => {
+            try {
+              const snapshot = await fetchFloorPlanSnapshot(floorPlanId);
+              if (!snapshot.data) {
+                if (snapshot.error) {
+                  console.warn(
+                    `[prefetchFloorPlan] Failed to prefetch ${floorPlanId}:`,
+                    snapshot.error,
+                  );
+                }
+                return;
+              }
+
+              set({
+                floorPlanCache: {
+                  ...get().floorPlanCache,
+                  [floorPlanId]: snapshot.data,
+                },
+              });
+            } finally {
+              _prefetchFloorPlanPromises.delete(floorPlanId);
+            }
+          })();
+
+          _prefetchFloorPlanPromises.set(floorPlanId, prefetchPromise);
+          return prefetchPromise;
+        },
+
+        prefetchFloorPlans: async (floorPlanIds?: string[]) => {
+          const activeFloorPlanId = get().activeFloorPlanId;
+          const ids =
+            floorPlanIds && floorPlanIds.length > 0
+              ? floorPlanIds
+              : get().floorPlans.map((floorPlan) => floorPlan.id);
+
+          for (const floorPlanId of ids) {
+            if (!floorPlanId || floorPlanId === activeFloorPlanId) continue;
+            await get().prefetchFloorPlan(floorPlanId);
+          }
         },
 
         loadFloorPlans: async () => {
@@ -727,12 +897,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           const newPlans = floorPlans || [];
           const isActive = get().activeFloorPlanId === id;
+          const nextCache = { ...get().floorPlanCache };
+          delete nextCache[id];
 
           set({
             floorPlans: newPlans,
             activeFloorPlanId: isActive
               ? newPlans[0]?.id || null
               : get().activeFloorPlanId,
+            floorPlanCache: nextCache,
           });
 
           if (isActive && newPlans.length > 0) {
@@ -748,9 +921,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         },
 
         loadFloorPlanStatus: async () => {
-          const supabase = getClient();
           const floorPlanId = get().activeFloorPlanId;
-          if (!floorPlanId || !supabase) return;
+          if (!floorPlanId || !getClient()) return;
 
           // Only reuse promise if loading same floor plan (avoid stale data on plan switch)
           if (_loadFloorPlanPromise && _loadFloorPlanId === floorPlanId) {
@@ -760,80 +932,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           _loadFloorPlanId = floorPlanId;
           const loadPromise = (async () => {
             try {
-              // Parallel fetch: all floor plan objects + sections
-              const [objectsResult, sectionsResult] = await Promise.all([
-                FloorPlanService.getAllFloorPlanObjects(supabase, floorPlanId),
-                FloorPlanService.getServerSections(supabase, floorPlanId),
-              ]);
+              const snapshot = await fetchFloorPlanSnapshot(
+                floorPlanId,
+                get().tablesById,
+              );
 
-              const { data: freshObjects, error } = objectsResult;
-
-              if (error) {
-                set({ error: error.message });
+              if (!snapshot.data) {
+                set({ error: snapshot.error?.message || "Unknown error" });
                 return;
               }
-              const freshTables = freshObjects || [];
-              const currentTablesById = get().tablesById;
-
-              // Preserve local-only states: if an object currently has a local-only
-              // status with the same session ID, keep the local session
-              // Also don't restore inactive sessions (is_active=false) that were just cleared
-              const mergedTables = freshTables.map((freshTable) => {
-                const currentTable = currentTablesById[freshTable.id];
-                const freshSessionIsInactive =
-                  (
-                    freshTable.session as unknown as
-                      | { is_active?: boolean }
-                      | undefined
-                  )?.is_active === false;
-
-                // Preserve local-only status if still same session
-                if (
-                  currentTable?.session &&
-                  isLocalOnlyStatus(currentTable.session.status) &&
-                  freshTable.session &&
-                  currentTable.session.id === freshTable.session.id
-                ) {
-                  return { ...freshTable, session: currentTable.session };
-                }
-
-                // Don't restore an inactive session (is_active=false) that was cleared locally
-                if (!currentTable?.session && freshSessionIsInactive) {
-                  return { ...freshTable, session: undefined };
-                }
-
-                return freshTable;
-              });
-
-              // Enrich next_reservation from reservation store
-              const getUpcomingForTable =
-                getReservationStore().getState().getUpcomingForTable;
-              const enrichedTables = mergedTables.map((table) => {
-                const upcoming = getUpcomingForTable(table.id);
-                const next = upcoming[0];
-                if (!next) return { ...table, next_reservation: null };
-                return {
-                  ...table,
-                  next_reservation: {
-                    id: next.id,
-                    party_name: next.party_name,
-                    party_size: next.party_size,
-                    date: next.reservation_date,
-                    time: next.reservation_time,
-                    status: next.status,
-                  },
-                };
-              });
-
-              // Build sectionsById map
-              const freshSections = sectionsResult.data || [];
-              const newSectionsById = freshSections.reduce(
-                (acc, section) => {
-                  acc[section.id] = section;
-                  return acc;
-                },
-                {} as Record<string, ServerSection>,
-              );
 
               // If the user switched floor plans while this request was in flight,
               // ignore the stale response so it can't paint the previous layout back in.
@@ -842,33 +949,28 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               }
 
               set({
-                tables: enrichedTables,
-                tablesById: buildTablesById(enrichedTables),
-                sections: freshSections,
-                sectionsById: newSectionsById,
-                lastSyncAt: new Date().toISOString(),
+                tables: snapshot.data.tables,
+                tablesById: buildTablesById(snapshot.data.tables),
+                sections: snapshot.data.sections,
+                sectionsById: snapshot.data.sectionsById,
+                lastSyncAt: snapshot.data.lastSyncAt,
                 error: null,
                 isLoading: false,
                 loadingFloorPlanId: null,
                 floorPlanCache: {
                   ...get().floorPlanCache,
-                  [floorPlanId]: {
-                    tables: enrichedTables,
-                    sections: freshSections,
-                    sectionsById: newSectionsById,
-                    lastSyncAt: new Date().toISOString(),
-                  },
+                  [floorPlanId]: snapshot.data,
                 },
               });
 
               // Hydrate session store from fresh table data
               getTableSessionStore()
                 .getState()
-                ._patchSessionsFromTables(enrichedTables);
+                ._patchSessionsFromTables(snapshot.data.tables);
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
-              if (_loadFloorPlanPromise === loadPromise) {
+              if (_loadFloorPlanId === floorPlanId) {
                 _loadFloorPlanPromise = null;
                 _loadFloorPlanId = null;
               }
@@ -925,7 +1027,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const supabase = getClient();
           const locationId = get().locationId;
           const floorPlanId = get().activeFloorPlanId;
-          if (!locationId || !supabase) return;
+          if (!locationId || !supabase || !floorPlanId) return;
 
           const { data, error } = await FloorPlanService.getLocationTableStatus(
             supabase,
@@ -1128,9 +1230,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newTables = state.tables.map((t) =>
               t.id === tableId ? updated : t,
             );
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               tables: newTables,
               tablesById: { ...state.tablesById, [tableId]: updated },
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      newTables,
+                      state.sections,
+                      state.sectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
 
@@ -1165,9 +1279,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newTables = state.tables.map((t) =>
               t.id === tableId ? updated : t,
             );
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               tables: newTables,
               tablesById: { ...state.tablesById, [tableId]: updated },
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      newTables,
+                      state.sections,
+                      state.sectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
 
@@ -1199,9 +1325,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newTables = state.tables.map((t) =>
               t.id === tableId ? updated : t,
             );
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               tables: newTables,
               tablesById: { ...state.tablesById, [tableId]: updated },
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      newTables,
+                      state.sections,
+                      state.sectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
 
@@ -1231,9 +1369,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newTables = state.tables.map((t) =>
               t.id === tableId ? updated : t,
             );
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               tables: newTables,
               tablesById: { ...state.tablesById, [tableId]: updated },
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      newTables,
+                      state.sections,
+                      state.sectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
 
@@ -1267,9 +1417,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                   }
                 : t;
             });
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               tables: newTables,
               tablesById: buildTablesById(newTables),
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      newTables,
+                      state.sections,
+                      state.sectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
 
@@ -1300,12 +1462,24 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           // Sync both tables array and tablesById map
           set((state) => {
             const newTables = state.tables.filter((t) => t.id !== tableId);
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               tables: newTables,
               tablesById: buildTablesById(newTables),
               selectedTableIds: state.selectedTableIds.filter(
                 (id) => id !== tableId,
               ),
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      newTables,
+                      state.sections,
+                      state.sectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
         },
@@ -1633,11 +1807,23 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             if (state.past.length === 0) return state;
             const previous = state.past[state.past.length - 1];
             const newPast = state.past.slice(0, -1);
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               tables: previous,
               tablesById: buildTablesById(previous),
               past: newPast,
               future: [state.tables, ...state.future],
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      previous,
+                      state.sections,
+                      state.sectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
         },
@@ -1647,11 +1833,23 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             if (state.future.length === 0) return state;
             const next = state.future[0];
             const newFuture = state.future.slice(1);
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               tables: next,
               tablesById: buildTablesById(next),
               past: [...state.past, state.tables],
               future: newFuture,
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      next,
+                      state.sections,
+                      state.sectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
         },
@@ -1685,9 +1883,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 assigned_staff_id: staffProfileId,
               };
             }
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               sections: updatedSections,
               sectionsById: updatedSectionsById,
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      state.tables,
+                      updatedSections,
+                      updatedSectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
 
@@ -1717,7 +1927,22 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                   assigned_staff_id: null,
                 };
               }
-              return { sections: reverted, sectionsById: revertedById };
+              const activeFloorPlanId = state.activeFloorPlanId;
+              return {
+                sections: reverted,
+                sectionsById: revertedById,
+                floorPlanCache: activeFloorPlanId
+                  ? {
+                      ...state.floorPlanCache,
+                      [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                        state.tables,
+                        reverted,
+                        revertedById,
+                        state.lastSyncAt,
+                      ),
+                    }
+                  : state.floorPlanCache,
+              };
             });
           }
         },
@@ -1741,9 +1966,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 assigned_staff_id: null,
               };
             }
+            const activeFloorPlanId = state.activeFloorPlanId;
             return {
               sections: updatedSections,
               sectionsById: updatedSectionsById,
+              floorPlanCache: activeFloorPlanId
+                ? {
+                    ...state.floorPlanCache,
+                    [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                      state.tables,
+                      updatedSections,
+                      updatedSectionsById,
+                      state.lastSyncAt,
+                    ),
+                  }
+                : state.floorPlanCache,
             };
           });
 
@@ -1775,7 +2012,22 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                     assigned_staff_id: previousStaffId,
                   };
                 }
-                return { sections: reverted, sectionsById: revertedById };
+                const activeFloorPlanId = state.activeFloorPlanId;
+                return {
+                  sections: reverted,
+                  sectionsById: revertedById,
+                  floorPlanCache: activeFloorPlanId
+                    ? {
+                        ...state.floorPlanCache,
+                        [activeFloorPlanId]: buildFloorPlanCacheEntry(
+                          state.tables,
+                          reverted,
+                          revertedById,
+                          state.lastSyncAt,
+                        ),
+                      }
+                    : state.floorPlanCache,
+                };
               });
             }
           }
@@ -1787,19 +2039,62 @@ export const useFloorPlanStore = create<FloorPlanState>()(
       {
         name: "floor-plan-db-storage",
         storage: createLazyPersistStorage(),
-        version: 1,
+        version: 2,
         migrate: (persistedState) => persistedState as any,
         partialize: (state) => ({
           floorPlans: state.floorPlans,
           activeFloorPlanId: state.activeFloorPlanId,
           tables: state.tables,
+          sections: state.sections,
+          sectionsById: state.sectionsById,
+          floorPlanCache: state.floorPlanCache,
           locationId: state.locationId,
           lastSyncAt: state.lastSyncAt,
         }),
         // Rebuild tablesById map after rehydrating from storage
         // Strip ephemeral session data to prevent stale sessions (e.g. 61h-old)
         onRehydrateStorage: () => (state) => {
-          if (state?.tables) {
+          if (!state) return;
+          const stripSessions = (tables: FloorPlanObject[]) =>
+            tables.map((t) => ({
+              ...t,
+              session: undefined,
+            }));
+
+          const sanitizedCache = Object.fromEntries(
+            Object.entries(state.floorPlanCache ?? {}).map(
+              ([floorPlanId, entry]) => [
+                floorPlanId,
+                buildFloorPlanCacheEntry(
+                  stripSessions(entry.tables ?? []),
+                  entry.sections ?? [],
+                  entry.sectionsById ??
+                    buildSectionsById(entry.sections ?? []),
+                  entry.lastSyncAt ?? null,
+                ),
+              ],
+            ),
+          ) as Record<string, FloorPlanCacheEntry>;
+
+          state.floorPlanCache = sanitizedCache;
+
+          const activeCached = state.activeFloorPlanId
+            ? sanitizedCache[state.activeFloorPlanId] ?? null
+            : null;
+
+          if (activeCached) {
+            state.tables = activeCached.tables;
+            state.sections = activeCached.sections;
+            state.sectionsById = activeCached.sectionsById;
+            state.lastSyncAt = activeCached.lastSyncAt;
+          } else if (state.tables) {
+            state.tables = stripSessions(state.tables);
+            state.lastSyncAt = null;
+          }
+
+          state.tablesById = buildTablesById(state.tables ?? []);
+          return;
+/*
             // Clear session from all rehydrated tables — session data is ephemeral
             // Table geometry (positions, shapes, names) stays cached
             state.tables = state.tables.map((t) => ({
@@ -1810,6 +2105,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             // Force immediate refresh by clearing lastSyncAt
             state.lastSyncAt = null;
           }
+*/
         },
       },
     ),
@@ -1818,8 +2114,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
 // After hydration finishes, fetch fresh session data
 useFloorPlanStore.persist.onFinishHydration(() => {
-  const { activeFloorPlanId, tables, locationId } =
-    useFloorPlanStore.getState();
+  const { activeFloorPlanId, locationId } = useFloorPlanStore.getState();
   if (!activeFloorPlanId) return;
 
   // Immediately bridge persisted sessions → floor plan (sync, no flicker)

@@ -11,6 +11,7 @@ export default function TableScreen () {
   const router = useRouter()
   const isClosingRef = useRef(false)
   const tableViewRef = useRef<TableOrderViewHandle>(null)
+  const resolvedTableId = typeof tableId === 'string' ? tableId : ''
 
   const doGoBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -54,7 +55,7 @@ export default function TableScreen () {
       >
         <TableOrderView
           ref={tableViewRef}
-          tableId={typeof tableId === 'string' ? tableId : ''}
+          tableId={resolvedTableId}
           onClose={handleClose}
         />
       </View>

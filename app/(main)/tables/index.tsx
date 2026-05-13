@@ -149,7 +149,7 @@ const TablesScreen = () => {
       if (pendingId) {
         router.push(('/tables/' + pendingId) as Href)
       }
-    }, [])
+    }, [router])
   )
 
   // Pause background timer ticks when screen loses focus
@@ -964,7 +964,6 @@ const TablesScreen = () => {
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
               <TableLayoutView
-                key={activeFloorPlanId || 'floor-plan'}
                 tables={filteredTables || []}
                 isSelectionMode={true}
                 onTableSelect={handleTablePress}

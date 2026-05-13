@@ -4305,11 +4305,25 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           return
         }
       }
-      await useOrderStore.getState().claimOrderById(localId)
+      const result = await useOrderStore.getState().claimOrderById(localId)
+      if (!result.success) return
+
+      const claimedOrder = useOrderStore.getState().ordersById[localId]
+      const isEmptyDraft =
+        claimedOrder?.order_status === 'draft' &&
+        (claimedOrder.items?.length ?? 0) === 0
+
+      if (isEmptyDraft) {
+        useOrderStore.getState().setActiveOrder(localId)
+        close()
+        if (!pathname.includes('order-processing')) {
+          router.push('/order-processing')
+        }
+      }
     } finally {
       setIsClaiming(false)
     }
-  }, [orderId, show])
+  }, [orderId, show, close, pathname, router])
 
   const handleIssueReceipt = useCallback(async () => {
     if (!order || !selectedStore) {
