@@ -303,6 +303,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   color: colors.heading,
                   fontSize: 13,
                   fontWeight: "bold",
+                  lineHeight: 13,
+                  includeFontPadding: false,
+                  textAlignVertical: "center",
                 }}
               >
                 {initials}
@@ -364,6 +367,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                       color: colors.heading,
                       fontSize: 15,
                       fontWeight: "bold",
+                      lineHeight: 15,
+                      includeFontPadding: false,
+                      textAlignVertical: "center",
                     }}
                   >
                     {initials}
@@ -640,7 +646,18 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               isOnBreak ? "bg-amber-500/70" : "bg-teal-500/40"
             }`}
           >
-            <Text className="text-white text-[10px] font-bold">{initials}</Text>
+            <Text
+              style={{
+                color: colors.onSolid,
+                fontSize: 10,
+                fontWeight: "bold",
+                lineHeight: 10,
+                includeFontPadding: false,
+                textAlignVertical: "center",
+              }}
+            >
+              {initials}
+            </Text>
           </View>
           {unreadCount > 0 && (
             <View className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
