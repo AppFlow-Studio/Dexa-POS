@@ -49,9 +49,26 @@ export type SignInOutcome =
 export async function sendKickBroadcast(
   supabase: ReturnType<typeof useSupabaseClient>,
   kickedDeviceId: string,
-  payload: { session_id: string; kicked_by: string; station_id: string },
+  payload: {
+    session_id: string;
+    kicked_by: string;
+    station_id: string;
+    source_device_id?: string;
+    target_session_id?: string | null;
+  },
 ) {
   try {
+    if (payload.source_device_id && kickedDeviceId === payload.source_device_id) {
+      if (__DEV__) {
+        console.log("[PinSignIn] Skipping self kick broadcast", {
+          kickedDeviceId,
+          sourceDeviceId: payload.source_device_id,
+          targetSessionId: payload.target_session_id,
+        });
+      }
+      return;
+    }
+
     const ch = supabase.channel(`station-kick:${kickedDeviceId}`);
     await ch.send({
       type: "broadcast",
@@ -115,6 +132,8 @@ async function handleBackgroundResult(
       session_id: response.session.session_id,
       kicked_by: response.staff?.display_name ?? "Unknown",
       station_id: selectedStation.id,
+      source_device_id: deviceId,
+      target_session_id: response.session.kicked_session_id,
     });
   }
 }

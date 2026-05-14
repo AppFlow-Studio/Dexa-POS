@@ -231,6 +231,7 @@ interface DraggableTableProps {
   enableEntryAnimation?: boolean
   sectionColor?: string
   wallEdgeFlags?: WallEdgeFlags
+
   onLongPress?: (table: FloorPlanObject) => void
   disableLongPress?: boolean
 }

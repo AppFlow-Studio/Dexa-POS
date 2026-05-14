@@ -253,6 +253,8 @@ const PinLoginScreen = () => {
           session_id: response.session.session_id,
           kicked_by: response.staff?.display_name || "Unknown",
           station_id: selectedStation.id,
+          source_device_id: deviceId,
+          target_session_id: response.session.kicked_session_id,
         });
       }
 
@@ -471,6 +473,8 @@ const PinLoginScreen = () => {
           session_id: response.session.session_id,
           kicked_by: response.staff?.display_name || "Unknown",
           station_id: selectedStation.id,
+          source_device_id: deviceId,
+          target_session_id: response.session.kicked_session_id,
         });
       }
 
