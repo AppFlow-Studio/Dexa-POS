@@ -174,6 +174,11 @@ export const useLocationConfigStore = create<LocationConfigState>()(
           if (fullConfig._updated_at != null) {
             state.config._updated_at = fullConfig._updated_at;
           }
+
+          // Temporary kill switch: per-seat ordering is force-disabled
+          // regardless of backend/persisted value while the feature is being
+          // stabilised. Remove this clamp to re-enable.
+          state.config.dining.enablePerSeatOrdering = false;
         });
       },
 
@@ -182,6 +187,16 @@ export const useLocationConfigStore = create<LocationConfigState>()(
         partialData: Partial<ConfigForNamespace<N>>,
       ) => {
         const locationId = get()._locationId;
+
+        // Temporary kill switch: ignore any attempt to flip per-seat ordering
+        // back on (settings toggle, broadcast, etc.) while the feature is
+        // being stabilised.
+        if (
+          namespace === "dining" &&
+          (partialData as any)?.enablePerSeatOrdering === true
+        ) {
+          (partialData as any).enablePerSeatOrdering = false;
+        }
 
         // 1. Optimistic local update
         set((state) => {
@@ -251,6 +266,12 @@ export const useLocationConfigStore = create<LocationConfigState>()(
         if (persistedState?.config?._updated_at != null) {
           mergedConfig._updated_at = persistedState.config._updated_at;
         }
+        // Temporary kill switch (mirrors hydrateConfig): force-disable per-seat
+        // ordering even if a previously-persisted blob has it on.
+        mergedConfig.dining = {
+          ...mergedConfig.dining,
+          enablePerSeatOrdering: false,
+        };
         return {
           ...currentState,
           ...persistedState,

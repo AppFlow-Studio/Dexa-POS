@@ -18,6 +18,44 @@ import {
 } from "react-native";
 import Animated, { Easing, Layout } from "react-native-reanimated";
 
+/**
+ * Wave 3.3: memoized row that binds parent's stable callbacks to the row's
+ * tableId. Keeps TableListItem's existing `() => void` API intact while
+ * giving the FlatList render path stable child references so the row's own
+ * React.memo can bail out on unrelated state changes.
+ */
+const TableListItemRow = React.memo(function TableListItemRow({
+  table,
+  isExpanded,
+  onToggleExpand,
+  onNavigateToOrder,
+  handleTablePress,
+}: {
+  table: FloorPlanObject;
+  isExpanded: boolean;
+  onToggleExpand: (id: string) => void;
+  onNavigateToOrder: (id: string) => void;
+  handleTablePress: (table: FloorPlanObject) => void;
+}) {
+  const toggle = useCallback(
+    () => onToggleExpand(table.id),
+    [onToggleExpand, table.id],
+  );
+  const navigate = useCallback(
+    () => onNavigateToOrder(table.id),
+    [onNavigateToOrder, table.id],
+  );
+  return (
+    <TableListItem
+      table={table}
+      isExpanded={isExpanded}
+      onToggleExpand={toggle}
+      onNavigateToOrder={navigate}
+      handleTablePress={handleTablePress}
+    />
+  );
+});
+
 interface SectionProps {
   title: string;
   isOpen: boolean;
@@ -384,14 +422,17 @@ const TablesPanel: React.FC = () => {
     },
     [router],
   );
+  // Wave 3.3: row wrapper memoized on stable props. Without this, the inline
+  // `() => toggleTableExpand(item.id)` arrow was a fresh function on every
+  // parent render, busting React.memo on TableListItem and re-rendering every
+  // row whenever any single row's expand state changed.
   const renderTableItem = useCallback(
     ({ item }: { item: FloorPlanObject }) => (
-      <TableListItem
-        key={item.id}
+      <TableListItemRow
         table={item}
-        isExpanded={expandedTableIds[item.id] || false}
-        onToggleExpand={() => toggleTableExpand(item.id)}
-        onNavigateToOrder={() => navigateToTableOrder(item.id)}
+        isExpanded={!!expandedTableIds[item.id]}
+        onToggleExpand={toggleTableExpand}
+        onNavigateToOrder={navigateToTableOrder}
         handleTablePress={noopFn}
       />
     ),
@@ -496,6 +537,7 @@ const TablesPanel: React.FC = () => {
               data={displayTables}
               keyExtractor={keyExtractor}
               renderItem={renderTableItem}
+              extraData={expandedTableIds}
               ListEmptyComponent={
                 <Text
                   style={{

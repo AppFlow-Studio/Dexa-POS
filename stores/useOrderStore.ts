@@ -884,11 +884,13 @@ const ensureOrderCreated = async (
         useStoreSettingsStore.getState().selectedStation?.id || null,
     };
 
-    console.log(`[ensureOrderCreated] Queueing create_order operation...`);
-    console.log(
-      `[ensureOrderCreated] Params:`,
-      JSON.stringify(createOrderParams, null, 2),
-    );
+    if (__DEV__) {
+      console.log("[ensureOrderCreated] Queueing create_order", {
+        localId: order.id,
+        order_type: order.order_type,
+        location: createOrderParams.p_location_id,
+      });
+    }
 
     // Queue the create_order operation
     const operationId = await queueOperation({
@@ -1014,10 +1016,13 @@ const ensureOrderCreated = async (
           useStoreSettingsStore.getState().selectedStation?.id || null,
       };
 
-      console.log(
-        "[ensureOrderCreated] Creating order with params:",
-        JSON.stringify(createOrderParams, null, 2),
-      );
+      if (__DEV__) {
+        console.log("[ensureOrderCreated] Creating order", {
+          localId: order.id,
+          order_type: order.order_type,
+          location: createOrderParams.p_location_id,
+        });
+      }
 
       const { data: createResult, error: createError } =
         await OrderService.createOrder(supabase, createOrderParams);
@@ -1486,10 +1491,11 @@ const addItemToBackend = async (
       };
 
       if (__DEV__)
-        console.log(
-          "[addItemToBackend] add_open_item_v2 params:",
-          JSON.stringify(addOpenParams, null, 2),
-        );
+        console.log("[addItemToBackend] add_open_item_v2", {
+          orderId: addOpenParams.p_order_id,
+          name: addOpenParams.p_item_name,
+          qty: addOpenParams.p_quantity,
+        });
       const { data: addResult, error: addError } =
         await OrderService.addOpenItem(supabase, addOpenParams, {
           // Wave 2.7: stable per-tap key. Same item.id across retries → same
@@ -1623,8 +1629,8 @@ const addItemToBackend = async (
         // Phase 7D: Set sync status in dedicated store (not on item)
         useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
-        // Invalidate calculation cache after item sync
-        invalidateCalculationCache();
+        // Invalidate calculation cache after item sync (coalesced)
+        scheduleCalculationCacheInvalidation();
 
         // Apply any queued backend updates now that local sync is complete
         useOrderStore.getState().applyQueuedUpdates(resolveOrderKey());
@@ -1898,8 +1904,8 @@ const addItemToBackend = async (
       // No need to update ordersById here - quantity is already correct
       useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
-      // Invalidate calculation cache after item quantity update
-      invalidateCalculationCache();
+      // Invalidate calculation cache after item quantity update (coalesced)
+      scheduleCalculationCacheInvalidation();
 
       // Apply any queued backend updates now that local sync is complete
       useOrderStore.getState().applyQueuedUpdates(order.id);
@@ -2134,8 +2140,8 @@ const addItemToBackend = async (
       // Phase 7D: Set sync status in dedicated store (not on item)
       useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
-      // Invalidate calculation cache after new item added
-      invalidateCalculationCache();
+      // Invalidate calculation cache after new item added (coalesced)
+      scheduleCalculationCacheInvalidation();
 
       // Apply any queued backend updates now that local sync is complete
       useOrderStore.getState().applyQueuedUpdates(resolveOrderKey());
@@ -10782,7 +10788,7 @@ export const useOrderStore = create<OrderState>()(
            * Removes draft orders inactive for > 30 minutes with no db_id
            */
           cleanupAbandonedDrafts: () => {
-            const { ordersById, orderIds } = get();
+            const { ordersById, orderIds, activeOrderId } = get();
             const now = Date.now();
             const idsToRemove: string[] = [];
 
@@ -10791,6 +10797,12 @@ export const useOrderStore = create<OrderState>()(
               if (!order) continue;
               // Only process draft orders without backend ID
               if (order.order_status !== "draft" || order.db_order_id) continue;
+
+              // Never reap the order the user is currently viewing. They're
+              // sitting in it — wiping it out from under them turns the
+              // header into "New Order" and silently blocks item-add. The
+              // order will become eligible again once they switch away.
+              if (id === activeOrderId) continue;
 
               // Calculate inactivity duration
               const lastActivity = order.last_activity_at
@@ -10819,6 +10831,13 @@ export const useOrderStore = create<OrderState>()(
                     delete state.dbOrderIdIndex[order.db_order_id];
                   }
                   delete state.ordersById[id];
+                  // Mirror removeOrder()'s surgical cleanup so we don't leak
+                  // dangling refs that downstream selectors / persistence rely on.
+                  state.workingSetOrderIds = state.workingSetOrderIds.filter(
+                    (wid) => wid !== id,
+                  );
+                  delete state._workingSetLookup[id];
+                  delete state.persistableOrderIds[id];
                 });
                 state.orderIds = state.orderIds.filter(
                   (id) => !idsToRemove.includes(id),
@@ -10826,6 +10845,21 @@ export const useOrderStore = create<OrderState>()(
                 state.tableOrderIdIndex = rebuildTableOrderIdIndex(
                   state.ordersById,
                 );
+                // Defensive: if somehow the active order ended up reaped
+                // (e.g. activeOrderId raced ahead of the guard above), clear
+                // the dangling pointer so the UI can recover via "+ New Order"
+                // instead of silently no-opping on item adds.
+                if (
+                  state.activeOrderId &&
+                  idsToRemove.includes(state.activeOrderId)
+                ) {
+                  state.activeOrderId = null;
+                }
+              });
+
+              // Module-level mutation tracker — also leaked previously.
+              idsToRemove.forEach((id) => {
+                delete lastLocalMutationAt[id];
               });
 
               console.log(

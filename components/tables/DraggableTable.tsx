@@ -72,7 +72,8 @@ const compactTableName = (rawName: string): string => {
   return name.slice(0, 4).toUpperCase()
 }
 
-// Prevent repeated network fetches for the same missing order during rapid rerenders.
+// Per-orderId throttle so the prefetch-subscriber and per-table fallback
+// don't double up, and so a transient failure can be retried.
 const missingOrderSyncInFlight = new Set<string>()
 const missingOrderLastAttemptAt: Record<string, number> = {}
 const MISSING_ORDER_SYNC_THROTTLE_MS = 8000
@@ -221,14 +222,17 @@ interface DraggableTableProps {
   isEditMode: boolean
   isSelected: boolean
   interactionMode: 'normal' | 'selection' | 'merge'
-  onSelect: () => void
+  // Callbacks receive the table so the parent can pass a single stable
+  // useCallback ref instead of allocating a fresh closure per table per render.
+  onSelect: (table: FloorPlanObject) => void
   canvasScale: SharedValue<number>
-  onPress?: () => void
+  onPress?: (table: FloorPlanObject) => void
   index?: number // For staggered entry animation
   enableEntryAnimation?: boolean
   sectionColor?: string
   wallEdgeFlags?: WallEdgeFlags
-  onLongPress?: () => void
+
+  onLongPress?: (table: FloorPlanObject) => void
   disableLongPress?: boolean
 }
 
@@ -333,6 +337,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const effectiveOrder =
     useOrderByAnyId(isTableType ? liveSession?.order_id : null) ?? undefined
 
+  // Fallback fetch when the batched prefetch in services/tableOrderPrefetch.ts
+  // missed an order (e.g. transient network error, or the order_id appeared
+  // after the subscriber's last fire). Throttled per-orderId.
   useEffect(() => {
     const id = liveSession?.order_id
     if (!id || effectiveOrder) return
@@ -351,11 +358,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       .catch((err: unknown) => {
         console.warn(
           '[DraggableTable] Failed to sync missing order for table card:',
-          {
-            tableId: table.id,
-            orderId: id,
-            error: err
-          }
+          { tableId: table.id, orderId: id, error: err }
         )
       })
       .finally(() => {
@@ -730,19 +733,31 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       )
     })
 
+  // Bind incoming (table) => void callbacks to this row's table once, so
+  // runOnJS gets a stable nullary function instead of a per-render closure.
+  const handleSelect = useCallback(() => onSelect(table), [onSelect, table])
+  const handlePress = useCallback(
+    () => onPress?.(table),
+    [onPress, table],
+  )
+  const handleLongPress = useCallback(
+    () => onLongPress?.(table),
+    [onLongPress, table],
+  )
+
   // Long-press enabled on all tables in normal mode
   const longPressGesture = Gesture.LongPress()
     .minDuration(300)
     .enabled(!isEditMode && !disableLongPress && isTableType)
     .onStart(() => {
-      if (onLongPress) runOnJS(onLongPress)()
+      if (onLongPress) runOnJS(handleLongPress)()
     })
 
   const tapGesture = Gesture.Tap()
     .enabled(isEditMode || isTableType)
     .onEnd(() => {
-      if (isEditMode) runOnJS(onSelect)()
-      else if (onPress) runOnJS(onPress)()
+      if (isEditMode) runOnJS(handleSelect)()
+      else if (onPress) runOnJS(handlePress)()
     })
 
   const composedGesture = isEditMode

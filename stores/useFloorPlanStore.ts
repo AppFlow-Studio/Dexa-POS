@@ -741,32 +741,50 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         setActiveFloorPlan: async (floorPlanId: string) => {
           const cached = get().floorPlanCache[floorPlanId];
-          set({
-            activeFloorPlanId: floorPlanId,
-            loadingFloorPlanId: floorPlanId,
-            isLoading: true,
-            error: null,
-          });
+          const FRESH_MS = 30_000;
+          const cachedSyncMs = cached?.lastSyncAt
+            ? Date.parse(cached.lastSyncAt)
+            : 0;
+          const isFresh =
+            !!cached &&
+            Number.isFinite(cachedSyncMs) &&
+            Date.now() - cachedSyncMs < FRESH_MS;
+
           if (cached) {
             set({
+              activeFloorPlanId: floorPlanId,
               tables: cached.tables,
               tablesById: buildTablesById(cached.tables),
               sections: cached.sections,
               sectionsById: cached.sectionsById,
               lastSyncAt: cached.lastSyncAt,
               isLoading: false,
+              loadingFloorPlanId: null,
+              error: null,
             });
           } else {
             set({
+              activeFloorPlanId: floorPlanId,
+              loadingFloorPlanId: floorPlanId,
+              isLoading: true,
               tables: [],
               tablesById: {},
               sections: [],
               sectionsById: {},
+              error: null,
             });
           }
-          await get().loadFloorPlanStatus();
-          if (get().activeFloorPlanId === floorPlanId) {
-            set({ isLoading: false, loadingFloorPlanId: null });
+
+          const refresh = get()
+            .loadFloorPlanStatus()
+            .finally(() => {
+              if (get().activeFloorPlanId === floorPlanId) {
+                set({ isLoading: false, loadingFloorPlanId: null });
+              }
+            });
+
+          if (!isFresh) {
+            await refresh;
           }
           void get().prefetchFloorPlans();
         },
@@ -817,10 +835,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               ? floorPlanIds
               : get().floorPlans.map((floorPlan) => floorPlan.id);
 
-          for (const floorPlanId of ids) {
-            if (!floorPlanId || floorPlanId === activeFloorPlanId) continue;
-            await get().prefetchFloorPlan(floorPlanId);
-          }
+          await Promise.allSettled(
+            ids
+              .filter((id) => !!id && id !== activeFloorPlanId)
+              .map((id) => get().prefetchFloorPlan(id)),
+          );
         },
 
         loadFloorPlans: async () => {
@@ -834,6 +853,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             return
           }
           set({ floorPlans: data || [] })
+          // Warm the cache for inactive plans in the background so subsequent
+          // switches are instant (cache-hit path in setActiveFloorPlan).
+          void get().prefetchFloorPlans()
         },
 
         createFloorPlan: async (name: string, description?: string) => {
@@ -948,20 +970,68 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 return;
               }
 
-              set({
-                tables: snapshot.data.tables,
-                tablesById: buildTablesById(snapshot.data.tables),
-                sections: snapshot.data.sections,
-                sectionsById: snapshot.data.sectionsById,
-                lastSyncAt: snapshot.data.lastSyncAt,
-                error: null,
-                isLoading: false,
-                loadingFloorPlanId: null,
-                floorPlanCache: {
-                  ...get().floorPlanCache,
-                  [floorPlanId]: snapshot.data,
-                },
-              });
+              const prev = get();
+              const prevTables = prev.tables;
+              const nextTables = snapshot.data.tables;
+              const prevSections = prev.sections;
+              const nextSections = snapshot.data.sections;
+
+              const tablesEqual =
+                prevTables.length === nextTables.length &&
+                prevTables.every((t, i) => {
+                  const n = nextTables[i];
+                  return (
+                    !!n &&
+                    t.id === n.id &&
+                    t.x === n.x &&
+                    t.y === n.y &&
+                    t.width === n.width &&
+                    t.height === n.height &&
+                    t.name === n.name &&
+                    (t.session?.id ?? null) === (n.session?.id ?? null) &&
+                    (t.session?.order_id ?? null) ===
+                      (n.session?.order_id ?? null) &&
+                    (t.session?.status ?? null) === (n.session?.status ?? null)
+                  );
+                });
+
+              const sectionsEqual =
+                prevSections.length === nextSections.length &&
+                prevSections.every((s, i) => s.id === nextSections[i]?.id);
+
+              if (tablesEqual && sectionsEqual) {
+                // Data unchanged — skip the commit so 100 DraggableTables don't
+                // re-render. Still update lastSyncAt + cache freshness.
+                set({
+                  lastSyncAt: snapshot.data.lastSyncAt,
+                  error: null,
+                  isLoading: false,
+                  loadingFloorPlanId: null,
+                  floorPlanCache: {
+                    ...prev.floorPlanCache,
+                    [floorPlanId]: snapshot.data,
+                  },
+                });
+              } else {
+                set({
+                  tables: tablesEqual ? prevTables : nextTables,
+                  tablesById: tablesEqual
+                    ? prev.tablesById
+                    : buildTablesById(nextTables),
+                  sections: sectionsEqual ? prevSections : nextSections,
+                  sectionsById: sectionsEqual
+                    ? prev.sectionsById
+                    : snapshot.data.sectionsById,
+                  lastSyncAt: snapshot.data.lastSyncAt,
+                  error: null,
+                  isLoading: false,
+                  loadingFloorPlanId: null,
+                  floorPlanCache: {
+                    ...prev.floorPlanCache,
+                    [floorPlanId]: snapshot.data,
+                  },
+                });
+              }
 
               // Hydrate session store from fresh table data
               getTableSessionStore()

@@ -2885,6 +2885,58 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         }
       }
 
+      case "remove_course": {
+        const { dbOrderId, courseNumber, localOrderId } = op.params;
+
+        let resolvedOrderId = dbOrderId;
+        if (!resolvedOrderId && localOrderId) {
+          resolvedOrderId = resolveOrderId(localOrderId);
+        }
+
+        if (!resolvedOrderId) {
+          console.log(
+            "[OfflineSync] remove_course: No dbOrderId, will retry later",
+          );
+          return false;
+        }
+
+        try {
+          const { error } = await _supabaseClient.rpc("remove_course", {
+            p_order_id: resolvedOrderId,
+            p_course_number: courseNumber,
+          });
+
+          if (error) {
+            // RPC not deployed yet — treat as no-op so the queue doesn't fill up.
+            // 42883: Postgres "function does not exist".
+            // PGRST202: PostgREST "function not in schema cache" (same root cause).
+            const errCode = (error as any)?.code;
+            if (errCode === "42883" || errCode === "PGRST202") {
+              console.log(
+                "[OfflineSync] remove_course RPC not deployed; dropping local-only removal",
+              );
+              return true;
+            }
+            // Idempotent success: course already gone server-side.
+            if (
+              isAlreadyDoneSyncError(error, [
+                "does not exist",
+                "not found",
+              ])
+            ) {
+              return true;
+            }
+            console.error("[OfflineSync] Failed to remove course:", error);
+            return false;
+          }
+
+          return true;
+        } catch (err) {
+          console.error("[OfflineSync] Error removing course:", err);
+          return false;
+        }
+      }
+
       case "set_item_seat": {
         const { dbItemId, seatNumber, localOrderId, localItemId } = op.params;
 

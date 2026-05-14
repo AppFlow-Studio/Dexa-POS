@@ -58,6 +58,7 @@ export type OperationType =
   | "reopen_check" // Reopen closed check
   // Coursing operations
   | "fire_course"
+  | "remove_course"
   // Seating operations
   | "set_item_seat"
   // Pre-auth operations (terminal call must be online; only backend sync queued)
@@ -101,6 +102,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
 
   // Coursing, seating, and kitchen after items
   fire_course: 4,
+  remove_course: 4,
   set_item_seat: 3,
   update_order_status: 4,
   send_to_kitchen: 4, // Kitchen send after items synced
@@ -1899,6 +1901,7 @@ async function enforceQueueSizeLimit(): Promise<void> {
   const nonCriticalTypes: OperationType[] = [
     "update_order_status",
     "fire_course",
+    "remove_course",
     "update_session_status",
   ];
 
@@ -1981,6 +1984,7 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
     "void_preauth",
     "update_order_status",
     "fire_course",
+    "remove_course",
     "send_to_kitchen",
   ];
 

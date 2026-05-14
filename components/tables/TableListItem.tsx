@@ -19,6 +19,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useShallow } from "zustand/react/shallow";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import {
     BrushCleaning,
@@ -39,6 +40,14 @@ import Animated, {
 } from "react-native-reanimated";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 import { type PaymentStatus } from "./PaymentStatusBadge";
+
+// Stable empty-map sentinel so the coursing selector below returns shallow-equal
+// references across renders when an order has no coursing data. Using a fresh
+// `{}` literal in the selector defeats `useShallow` and causes an infinite
+// getSnapshot loop on the Tables panel.
+const EMPTY_ITEM_COURSE_MAP: Readonly<Record<string, number>> = Object.freeze(
+  {},
+);
 
 // --- Helper Functions ---
 const formatDuration = (milliseconds: number): string => {
@@ -386,7 +395,16 @@ const ExpandedView: React.FC<{
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const getOrder = useOrderStore((s) => s.getOrder);
   const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
-  const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
+  const orderIds = tableData.orders.map((o) => o.id);
+  const itemCourseMapByOrderId = useCoursingStore(
+    useShallow((s) => {
+      const out: Record<string, Record<string, number>> = {};
+      for (const id of orderIds) {
+        out[id] = s.byOrderId[id]?.itemCourseMap ?? EMPTY_ITEM_COURSE_MAP;
+      }
+      return out;
+    }),
+  );
   const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [isReceiptOpen, setReceiptOpen] = useState(false);
@@ -431,7 +449,7 @@ const ExpandedView: React.FC<{
       { orderId: string; items: (typeof tableData.orders)[0]["items"] }
     > = {};
     tableData.orders.forEach((order) => {
-      const itemCourseMap = coursingByOrderId[order.id]?.itemCourseMap || {};
+      const itemCourseMap = itemCourseMapByOrderId[order.id] || {};
 
       order.items.forEach((item) => {
         const courseNumber = itemCourseMap[item.id] ?? item.courseNumber ?? 1;
@@ -441,7 +459,7 @@ const ExpandedView: React.FC<{
       });
     });
     return groups;
-  }, [tableData.orders, coursingByOrderId]);
+  }, [tableData.orders, itemCourseMapByOrderId]);
 
   const handleCloseTable = async () => {
     if (!tableData) return;

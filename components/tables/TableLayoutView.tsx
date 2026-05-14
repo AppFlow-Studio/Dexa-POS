@@ -7,7 +7,8 @@ import { getWallEdgeFlags, WallEdgeFlags } from "@/lib/wallCornerSnap";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { Lock, LockOpen, Minus, Plus } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   LayoutChangeEvent,
   StyleSheet,
@@ -117,8 +118,33 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   interactionMode = "normal",
 }) => {
   const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
-  const globallySelectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
-  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  // useShallow: both selectors return arrays. Without shallow equality, every
+  // mutation to useFloorPlanStore (even unrelated) returns a new array ref and
+  // re-renders the whole canvas. Shallow compare lets us re-render only when
+  // contents actually change.
+  const globallySelectedTableIds = useFloorPlanStore(
+    useShallow((s) => s.selectedTableIds),
+  );
+  const floorPlans = useFloorPlanStore(useShallow((s) => s.floorPlans));
+
+  // Stable handlers passed to every DraggableTable. Previously each table got
+  // a fresh inline arrow per render; with N tables that's N closure
+  // allocations per render even when the memo equality fn (in DraggableTable)
+  // ignores callback identity. Stable refs also future-proof against the
+  // equality fn being tightened to compare callbacks.
+  const handleTableSelect = useCallback(
+    (t: FloorPlanObject) => {
+      if (isSelectionMode) onTableSelect?.(t);
+      else toggleTableSelection(t.id);
+    },
+    [isSelectionMode, onTableSelect, toggleTableSelection],
+  );
+  const handleTableLongPress = useCallback(
+    (t: FloorPlanObject) => {
+      onTableLongPress?.(t);
+    },
+    [onTableLongPress],
+  );
 
   // Create O(1) lookup map for tables
   const tablesById = useMemo(() => {
@@ -884,16 +910,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 isEditMode={isEditMode}
                 isSelected={selectedTableIdsSet.has(table.id)}
                 interactionMode={interactionMode}
-                onSelect={
-                  isSelectionMode
-                    ? () => onTableSelect && onTableSelect(table)
-                    : () => toggleTableSelection(table.id)
-                }
-                onPress={
-                  isSelectionMode
-                    ? () => onTableSelect && onTableSelect(table)
-                    : () => toggleTableSelection(table.id)
-                }
+                onSelect={handleTableSelect}
+                onPress={handleTableSelect}
                 canvasScale={scale}
                 index={index}
                 enableEntryAnimation={enableEntryAnimation}
@@ -905,7 +923,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 wallEdgeFlags={wallEdgeFlagsById[table.id]}
                 disableLongPress={disableLongPress}
                 onLongPress={
-                  onTableLongPress ? () => onTableLongPress(table) : undefined
+                  onTableLongPress ? handleTableLongPress : undefined
                 }
               />
             ))}

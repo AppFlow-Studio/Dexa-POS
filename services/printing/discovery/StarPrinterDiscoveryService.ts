@@ -36,15 +36,29 @@ async function performDiscoveryRound(): Promise<void> {
   isScanning = true;
 
   try {
-    const discovered = await discoverStarPrinters(SCAN_TIMEOUT_MS);
-    if (discovered.length === 0) return;
-
     const store = usePrinterStore.getState();
     const starPrinters = store.printers.filter(
       (p) => p.printerType === "star_micronics" && p.isActive && p.networkAddress,
     );
 
     if (starPrinters.length === 0) return;
+
+    // Skip the periodic LAN scan when every known Star printer with a MAC is
+    // currently healthy at its stored IP. Discovery is only useful for DHCP
+    // recovery (printer moved to a new IP); if nothing is broken, scanning
+    // adds needless TCP traffic that can collide with the Star printer's
+    // small TCP backlog and surface as "device busy" on a peer device.
+    const candidates = starPrinters.filter(
+      (p) => !!(p.metadata as Record<string, unknown> | null)?.macAddress,
+    );
+    const allHealthy =
+      candidates.length > 0 && candidates.every((p) => p.isConnected);
+    if (allHealthy) {
+      return;
+    }
+
+    const discovered = await discoverStarPrinters(SCAN_TIMEOUT_MS);
+    if (discovered.length === 0) return;
 
     for (const printer of starPrinters) {
       const macAddress = (printer.metadata as Record<string, unknown> | null)?.macAddress as string | undefined;

@@ -4,6 +4,7 @@ import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import { useCoursingStore } from '@/stores/useCoursingStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import {
   ArrowUpToLine,
@@ -11,7 +12,8 @@ import {
   ChevronRight,
   Flame,
   Plus,
-  Send
+  Send,
+  X
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -47,6 +49,7 @@ interface CourseAccordionProps {
   onRushCourse?: (courseId: number) => void
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
+  onRemoveCourse?: (courseId: number) => void
   enableCoursing?: boolean
   isOvertime?: boolean
   overtimeMinutes?: number
@@ -59,10 +62,12 @@ interface CourseGroupProps {
   isSent: boolean
   isCurrent: boolean
   onToggle: (id: number) => void
+  onSelect: (id: number) => void
   onDoubleTap: (id: number) => void
   onRushCourse?: (courseId: number) => void
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
+  onRemoveCourse?: (courseId: number) => void
 }
 
 // --- Helpers ---
@@ -104,10 +109,12 @@ function CourseGroupInner ({
   isSent,
   isCurrent,
   onToggle,
+  onSelect,
   onDoubleTap,
   onRushCourse,
   onPrioritizeCourse,
-  onResendCourse
+  onResendCourse,
+  onRemoveCourse
 }: CourseGroupProps) {
   const scale = useSharedValue(1)
   const [showActions, setShowActions] = useState(false)
@@ -129,12 +136,14 @@ function CourseGroupInner ({
       runOnJS(onDoubleTap)(courseId)
     })
 
+  // Single tap on the body of the header → select as working course only.
+  // Expansion is controlled by the dedicated chevron pressable on the right.
   const singleTap = Gesture.Tap().onEnd(() => {
     scale.value = withSequence(
       withSpring(0.98, { damping: 15, stiffness: 300 }),
       withSpring(1)
     )
-    runOnJS(onToggle)(courseId)
+    runOnJS(onSelect)(courseId)
   })
 
   const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0)
@@ -154,13 +163,13 @@ function CourseGroupInner ({
 
   return (
     <Animated.View layout={LinearTransition.duration(200)} className='mb-1'>
-      {/* Header — clean minimal row */}
-      <GestureDetector gesture={composedGesture}>
-        <Animated.View
-          style={animatedHeaderStyle}
-          className='flex-row items-center justify-between py-3 px-2'
-        >
-          <View className='flex-row items-center flex-1'>
+      {/* Header — body selects working course; chevron toggles expansion. */}
+      <Animated.View
+        style={animatedHeaderStyle}
+        className='flex-row items-center justify-between py-3 px-2'
+      >
+        <GestureDetector gesture={composedGesture}>
+          <Animated.View className='flex-row items-center flex-1'>
             <View
               className='w-2 h-2 rounded-full mr-2.5'
               style={{
@@ -186,45 +195,74 @@ function CourseGroupInner ({
             <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 6 }}>
               {courseItemCount} item{courseItemCount !== 1 ? 's' : ''}
             </Text>
-          </View>
+          </Animated.View>
+        </GestureDetector>
 
-          <View className='flex-row items-center gap-2'>
-            {isCurrent && !isSent && !aggregateStatus && courseItemCount > 0 && (
-              <TouchableOpacity
-                onPress={() => runOnJS(onDoubleTap)(courseId)}
+        <View className='flex-row items-center gap-2'>
+          {!isSent && courseItemCount === 0 && courseId !== 1 && onRemoveCourse && (
+            <TouchableOpacity
+              onPress={() => onRemoveCourse(courseId)}
+              hitSlop={8}
+              style={{
+                width: 24,
+                height: 24,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 6
+              }}
+              activeOpacity={0.5}
+            >
+              <X size={14} color={colors.muted} />
+            </TouchableOpacity>
+          )}
+          {isCurrent && !isSent && !aggregateStatus && courseItemCount > 0 && (
+            <TouchableOpacity
+              onPress={() => onDoubleTap(courseId)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 9,
+                paddingVertical: 4,
+                borderRadius: 8,
+                backgroundColor: colors.teal + '18',
+                borderWidth: 1,
+                borderColor: colors.teal + '50'
+              }}
+              activeOpacity={0.6}
+            >
+              <Send size={13} color={colors.teal} />
+              <Text
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  paddingHorizontal: 9,
-                  paddingVertical: 4,
-                  borderRadius: 8,
-                  backgroundColor: colors.teal + '18',
-                  borderWidth: 1,
-                  borderColor: colors.teal + '50'
+                  color: colors.teal,
+                  fontSize: 12,
+                  fontWeight: '700'
                 }}
-                activeOpacity={0.6}
               >
-                <Send size={13} color={colors.teal} />
-                <Text
-                  style={{
-                    color: colors.teal,
-                    fontSize: 12,
-                    fontWeight: '700'
-                  }}
-                >
-                  Send to Kitchen
-                </Text>
-              </TouchableOpacity>
-            )}
+                Send to Kitchen
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={() => onToggle(courseId)}
+            hitSlop={8}
+            style={{
+              width: 28,
+              height: 28,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 6
+            }}
+            activeOpacity={0.5}
+          >
             {isExpanded ? (
               <ChevronDown size={18} color={colors.label} />
             ) : (
               <ChevronRight size={18} color={colors.label} />
             )}
-          </View>
-        </Animated.View>
-      </GestureDetector>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* Content — no enter/exit animations for instant expand */}
       {isExpanded && (
@@ -376,10 +414,12 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
   if (prev.isSent !== next.isSent) return false
   if (prev.isCurrent !== next.isCurrent) return false
   if (prev.onToggle !== next.onToggle) return false
+  if (prev.onSelect !== next.onSelect) return false
   if (prev.onDoubleTap !== next.onDoubleTap) return false
   if (prev.onRushCourse !== next.onRushCourse) return false
   if (prev.onPrioritizeCourse !== next.onPrioritizeCourse) return false
   if (prev.onResendCourse !== next.onResendCourse) return false
+  if (prev.onRemoveCourse !== next.onRemoveCourse) return false
   if (prev.items.length !== next.items.length) return false
   for (let i = 0; i < prev.items.length; i++) {
     const p = prev.items[i]
@@ -409,6 +449,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
+  onRemoveCourse,
   enableCoursing = true,
   isOvertime,
   overtimeMinutes
@@ -483,17 +524,33 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     return items
   }, [activeOrder?.items])
 
+  // All course numbers tracked in the coursing store (includes empty open
+  // courses created via "New Course" that don't yet have items). Without this,
+  // tapping a previous course to set it as working would drop empty headers
+  // from the visible set.
+  const storeCourseNumbers = useCoursingStore(
+    useShallow(s => {
+      const oid = activeOrder?.id
+      if (!oid) return [] as number[]
+      const o = s.byOrderId[oid]
+      if (!o) return [] as number[]
+      return Object.keys(o.courses).map(Number)
+    })
+  )
+
   // Sort course keys
   const sortedCourses = useMemo(() => {
     const coursesFromItems = Object.keys(groupedItems).map(Number)
-    const allCourses = new Set(coursesFromItems)
+    const allCourses = new Set<number>(coursesFromItems)
+
+    for (const n of storeCourseNumbers) allCourses.add(n)
 
     if (activeOrder && currentCourse !== undefined && currentCourse !== null) {
       allCourses.add(currentCourse)
     }
 
     return Array.from(allCourses).sort((a, b) => a - b)
-  }, [groupedItems, activeOrder, currentCourse])
+  }, [groupedItems, activeOrder, currentCourse, storeCourseNumbers])
 
   // Track previous values to prevent re-triggering
   const prevCurrentCourse = useRef<number | undefined>(currentCourse)
@@ -538,7 +595,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const onSelectCourseRef = useRef(onSelectCourse)
   onSelectCourseRef.current = onSelectCourse
 
-  // Toggle: explicitly close on tap, leave others open
+  // Toggle expansion only. Selecting a working course is now a separate
+  // action wired to handleSelectCourseTap (chevron taps don't change the
+  // working course).
   const handleToggleCourse = useCallback((courseId: number) => {
     setExpandedCourseIds(prev => {
       const next = new Set(prev)
@@ -547,12 +606,13 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       } else {
         next.add(courseId)
       }
-      // Defer onSelectCourse to avoid setState-during-render warning
-      queueMicrotask(() =>
-        onSelectCourseRef.current?.(next.has(courseId) ? courseId : null)
-      )
       return next
     })
+  }, [])
+
+  // Tap on the header body: select as working course without toggling expansion.
+  const handleSelectCourseTap = useCallback((courseId: number) => {
+    queueMicrotask(() => onSelectCourseRef.current?.(courseId))
   }, [])
 
   // Pre-warm modifier cache for ALL items regardless of accordion state.
@@ -720,10 +780,12 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                   isSent={!!sentCourses?.[courseId]}
                   isCurrent={currentCourse === courseId}
                   onToggle={handleToggleCourse}
+                  onSelect={handleSelectCourseTap}
                   onDoubleTap={onDoubleTapCourse}
                   onRushCourse={onRushCourse}
                   onPrioritizeCourse={onPrioritizeCourse}
                   onResendCourse={onResendCourse}
+                  onRemoveCourse={onRemoveCourse}
                 />
               ))
             ) : (

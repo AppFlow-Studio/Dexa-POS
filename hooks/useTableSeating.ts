@@ -20,9 +20,18 @@ export function useTableSeating(
 ) {
   const orderId = activeOrder?.id;
 
-  // Granular selectors
-  const orderSeating = useSeatingStore(
-    (s) => s.byOrderId[orderId || ""],
+  // Wave 4.4: split the fat OrderSeating subscription into the exact fields
+  // consumers care about. Previously any mutation to `syncing`, `lastSyncAt`,
+  // or `dbIdToSeatMap` bumped the whole orderSeating reference and re-rendered
+  // every screen that reads from useTableSeating.
+  const activeSeatRaw = useSeatingStore(
+    (s) => s.byOrderId[orderId || ""]?.activeSeat,
+  );
+  const itemSeatMap = useSeatingStore(
+    (s) => s.byOrderId[orderId || ""]?.itemSeatMap,
+  );
+  const seatCountRaw = useSeatingStore(
+    (s) => s.byOrderId[orderId || ""]?.seatCount,
   );
   const initializeForOrder = useSeatingStore((s) => s.initializeForOrder);
   const loadFromServer = useSeatingStore((s) => s.loadFromServer);
@@ -184,9 +193,8 @@ export function useTableSeating(
     });
   }, [orderId, dbItemIdsHash, seatingInitialized]);
 
-  const activeSeat = orderSeating?.activeSeat ?? null;
-  const itemSeatMap = orderSeating?.itemSeatMap;
-  const seatCount = orderSeating?.seatCount ?? partySize;
+  const activeSeat = activeSeatRaw ?? null;
+  const seatCount = seatCountRaw ?? partySize;
 
   return {
     activeSeat,

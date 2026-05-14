@@ -524,6 +524,56 @@ const extractCustomModifiers = (
 };
 
 // ============================================================================
+// SEAT PILL — Wave 4.5
+// ============================================================================
+// Memoized so flipping `seatOverride` only re-renders the two affected pills
+// (old selected + new selected) instead of the entire Array.from(...).map(...)
+// block on every tap. Inline styles are computed inside the memo'd child, so
+// React.memo's shallow compare on (seat, isSelected) is the only comparison
+// needed.
+
+const SEAT_PILL_BASE = {
+  paddingHorizontal: 14,
+  paddingVertical: 6,
+  borderRadius: 16,
+  borderWidth: 1,
+} as const;
+
+const SeatPill = memo(function SeatPill({
+  seat,
+  label,
+  isSelected,
+  onSelect,
+}: {
+  seat: number | null;
+  label: string;
+  isSelected: boolean;
+  onSelect: (seat: number | null) => void;
+}) {
+  const handlePress = useCallback(() => onSelect(seat), [seat, onSelect]);
+  return (
+    <TouchableOpacity
+      onPressIn={handlePress}
+      style={{
+        ...SEAT_PILL_BASE,
+        backgroundColor: isSelected ? colors.teal + "20" : "transparent",
+        borderColor: isSelected ? colors.teal : colors.border,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: "600",
+          color: isSelected ? colors.teal : colors.label,
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
@@ -1776,58 +1826,21 @@ const ModifierScreenContent = ({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 6 }}
             >
-              <TouchableOpacity
-                onPressIn={() => setSeatOverride(null)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 6,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  backgroundColor:
-                    seatOverride === null ? colors.teal + "20" : "transparent",
-                  borderColor:
-                    seatOverride === null ? colors.teal : colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "600",
-                    color: seatOverride === null ? colors.teal : colors.label,
-                  }}
-                >
-                  Shared
-                </Text>
-              </TouchableOpacity>
+              <SeatPill
+                seat={null}
+                label="Shared"
+                isSelected={seatOverride === null}
+                onSelect={setSeatOverride}
+              />
               {Array.from({ length: seatCount }, (_, i) => i + 1).map(
                 (seat) => (
-                  <TouchableOpacity
+                  <SeatPill
                     key={seat}
-                    onPressIn={() => setSeatOverride(seat)}
-                    style={{
-                      paddingHorizontal: 14,
-                      paddingVertical: 6,
-                      borderRadius: 16,
-                      borderWidth: 1,
-                      backgroundColor:
-                        seatOverride === seat
-                          ? colors.teal + "20"
-                          : "transparent",
-                      borderColor:
-                        seatOverride === seat ? colors.teal : colors.border,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "600",
-                        color:
-                          seatOverride === seat ? colors.teal : colors.label,
-                      }}
-                    >
-                      Seat {seat}
-                    </Text>
-                  </TouchableOpacity>
+                    seat={seat}
+                    label={`Seat ${seat}`}
+                    isSelected={seatOverride === seat}
+                    onSelect={setSeatOverride}
+                  />
                 ),
               )}
             </ScrollView>

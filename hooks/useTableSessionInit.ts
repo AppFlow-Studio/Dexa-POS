@@ -28,36 +28,53 @@ import { useTableSessionStore } from "@/stores/useTableSessionStore";
 
 const STUCK_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Wave 3.2: singleton guard. Multiple mounts of this hook (tab navigation,
+// route remounts, etc.) must not multiply the watchdog interval or stack
+// duplicate side-effect registrations.
+let _activeMounts = 0;
+let _stuckCheckInterval: ReturnType<typeof setInterval> | null = null;
+
 export function useTableSessionInit(options?: { skip?: boolean }): void {
   const skip = options?.skip ?? false;
 
   useEffect(() => {
     if (skip) return;
 
-    // 1. Register session side effects
-    registerAllSessionSideEffects();
+    _activeMounts++;
+    const isFirst = _activeMounts === 1;
 
-    // 2. Set up table order prefetch
-    setupTableOrderPrefetch();
+    if (isFirst) {
+      // 1. Register session side effects
+      registerAllSessionSideEffects();
 
-    // 3. If tables already loaded, patch session store immediately
-    const { tables } = useFloorPlanStore.getState();
-    if (tables.length > 0) {
-      useTableSessionStore.getState()._patchSessionsFromTables(tables);
+      // 2. Set up table order prefetch
+      setupTableOrderPrefetch();
+
+      // 3. If tables already loaded, patch session store immediately
+      const { tables } = useFloorPlanStore.getState();
+      if (tables.length > 0) {
+        useTableSessionStore.getState()._patchSessionsFromTables(tables);
+      }
+
+      // 4. Start stuck-session watchdog
+      _stuckCheckInterval = setInterval(() => {
+        resolveStuckSessions();
+      }, STUCK_CHECK_INTERVAL_MS);
+
+      // Also run once on mount (catches sessions stuck from previous app session)
+      resolveStuckSessions();
     }
 
-    // 4. Start stuck-session watchdog
-    const stuckCheckInterval = setInterval(() => {
-      resolveStuckSessions();
-    }, STUCK_CHECK_INTERVAL_MS);
-
-    // Also run once on mount (catches sessions stuck from previous app session)
-    resolveStuckSessions();
-
     return () => {
-      teardownAllSessionSideEffects();
-      teardownTableOrderPrefetch();
-      clearInterval(stuckCheckInterval);
+      _activeMounts--;
+      if (_activeMounts === 0) {
+        teardownAllSessionSideEffects();
+        teardownTableOrderPrefetch();
+        if (_stuckCheckInterval) {
+          clearInterval(_stuckCheckInterval);
+          _stuckCheckInterval = null;
+        }
+      }
     };
   }, [skip]);
 }

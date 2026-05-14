@@ -8,11 +8,15 @@ import {
   disposeQuietly,
 } from "../starPrinterFactory";
 import { getStarPrinterMutex } from "../starPrinterMutex";
+import { recordStarSuccess } from "../starPrintActivity";
 import { PrinterDriver } from "./PrinterDriver";
 
-// Brief delay before retrying after an InUseError (another connection still releasing)
-const IN_USE_RETRY_DELAY_MS = 1500;
-const IN_USE_MAX_RETRIES = 2;
+// Exponential-backoff retry schedule for StarIO10InUseError (printer is held
+// by another connection — same app, peer POS, or another vendor's POS). Total
+// wall clock at most ~13.5s before we give up. Restaurant peer prints often
+// last 5–10s; 2 retries / 1.5s gap (the old policy) gave up far too early.
+const IN_USE_BACKOFF_MS = [500, 1000, 2000, 4000, 6000];
+const IN_USE_JITTER_FRACTION = 0.2; // ±20%
 
 /** If no successful operation within this window, isConnected() returns false
  *  so PrinterService re-initializes on next job. */
@@ -20,6 +24,21 @@ const STALE_THRESHOLD_MS = 30_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function jitter(ms: number): number {
+  const delta = ms * IN_USE_JITTER_FRACTION;
+  return Math.max(0, Math.round(ms + (Math.random() * 2 - 1) * delta));
+}
+
+/** User-facing error thrown when retries are exhausted on InUseError. */
+export class StarPrinterBusyError extends Error {
+  constructor(label: string, address: string | null | undefined, totalWaitMs: number) {
+    super(
+      `Printer is in use by another device. The other terminal must finish its job before retrying. (operation=${label}, addr=${address ?? "?"}, waited ${Math.round(totalWaitMs / 1000)}s)`,
+    );
+    this.name = "StarPrinterBusyError";
+  }
 }
 
 /**
@@ -49,22 +68,37 @@ export class StarMicronicsDriver implements PrinterDriver {
     operation: () => Promise<T>,
     label: string,
   ): Promise<T> {
-    for (let attempt = 0; attempt <= IN_USE_MAX_RETRIES; attempt++) {
+    const addr = this.config?.networkAddress;
+    const startedAt = Date.now();
+    let lastInUse: any = null;
+    for (let attempt = 0; attempt <= IN_USE_BACKOFF_MS.length; attempt++) {
       try {
         return await operation();
       } catch (e: any) {
-        if (e instanceof StarIO10InUseError && attempt < IN_USE_MAX_RETRIES) {
+        if (
+          e instanceof StarIO10InUseError &&
+          attempt < IN_USE_BACKOFF_MS.length
+        ) {
+          lastInUse = e;
+          const delay = jitter(IN_USE_BACKOFF_MS[attempt]);
+          const elapsed = Date.now() - startedAt;
+          const sinceLastOk = this.lastSuccessAt
+            ? Date.now() - this.lastSuccessAt
+            : -1;
           console.warn(
-            `[StarMicronicsDriver] ${label}: printer in use, retry ${attempt + 1}/${IN_USE_MAX_RETRIES} after ${IN_USE_RETRY_DELAY_MS}ms`,
+            `[StarMicronicsDriver] ${label}: InUseError (addr=${addr}, attempt=${attempt + 1}/${IN_USE_BACKOFF_MS.length}, elapsed=${elapsed}ms, sinceLastOk=${sinceLastOk}ms) — backing off ${delay}ms`,
           );
-          await sleep(IN_USE_RETRY_DELAY_MS);
+          await sleep(delay);
           continue;
         }
         throw e;
       }
     }
-    // TypeScript: unreachable, but satisfies return type
-    throw new Error(`${label}: exhausted retries`);
+    const totalWait = Date.now() - startedAt;
+    console.warn(
+      `[StarMicronicsDriver] ${label}: InUseError retries exhausted (addr=${addr}, waited=${totalWait}ms)`,
+    );
+    throw new StarPrinterBusyError(label, addr, totalWait);
   }
 
   /** Check whether printer config has changed since last initialize(). */
@@ -101,6 +135,7 @@ export class StarMicronicsDriver implements PrinterDriver {
 
           this.connected = true;
           this.lastSuccessAt = Date.now();
+          recordStarSuccess(this.config!.networkAddress!);
         } catch (e: any) {
           this.connected = false;
           // Re-throw InUseError so withInUseRetry can handle it
@@ -134,6 +169,7 @@ export class StarMicronicsDriver implements PrinterDriver {
 
           this.connected = true;
           this.lastSuccessAt = Date.now();
+          recordStarSuccess(this.config!.networkAddress!);
 
           return {
             isOnline: !status.hasError,
@@ -199,6 +235,7 @@ export class StarMicronicsDriver implements PrinterDriver {
           await printer.close();
           this.connected = true;
           this.lastSuccessAt = Date.now();
+          recordStarSuccess(this.config!.networkAddress!);
         } catch (e: any) {
           this.connected = false;
           try { await printer.close(); } catch { /* ignore */ }
@@ -259,6 +296,7 @@ export class StarMicronicsDriver implements PrinterDriver {
           await printer.close();
           this.connected = true;
           this.lastSuccessAt = Date.now();
+          recordStarSuccess(this.config!.networkAddress!);
         } catch (e: any) {
           this.connected = false;
           try { await printer.close(); } catch { /* ignore */ }
