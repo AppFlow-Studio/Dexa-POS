@@ -87,6 +87,23 @@ const buildSectionsById = (
     {} as Record<string, ServerSection>,
   );
 
+const getNextAvailableTableNumber = (names: string[]) => {
+  const used = new Set(
+    names
+      .map((name) => {
+        const trimmed = name.trim();
+        if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+        const prefixedMatch = /^T-(\d+)$/.exec(trimmed);
+        return prefixedMatch ? parseInt(prefixedMatch[1], 10) : NaN;
+      })
+      .filter((n) => Number.isInteger(n) && n > 0),
+  );
+
+  let next = 1;
+  while (used.has(next)) next += 1;
+  return next;
+};
+
 const buildFloorPlanCacheEntry = (
   tables: FloorPlanObject[],
   sections: ServerSection[],
@@ -1260,7 +1277,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             supabase,
             {
               p_floor_plan_id: floorPlanId,
-              p_name: tableData.name || `Table ${get().tables.length + 1}`,
+              p_name:
+                tableData.name ||
+                String(
+                  getNextAvailableTableNumber(get().tables.map((table) => table.name)),
+                ),
               p_shape_id: tableData.shape_id || "square-4",
               p_category: (shape?.category as any) || "table",
               p_x: tableData.x ?? 100,

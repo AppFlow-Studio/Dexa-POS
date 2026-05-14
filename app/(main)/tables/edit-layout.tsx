@@ -55,6 +55,23 @@ const clamp = (value: number, min: number, max: number) => {
   return Math.min(Math.max(value, min), max)
 }
 
+const getNextAvailableTableNumber = (names: string[]) => {
+  const used = new Set(
+    names
+      .map(name => {
+        const trimmed = name.trim()
+        if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10)
+        const prefixedMatch = /^T-(\d+)$/.exec(trimmed)
+        return prefixedMatch ? parseInt(prefixedMatch[1], 10) : NaN
+      })
+      .filter(n => Number.isInteger(n) && n > 0)
+  )
+
+  let next = 1
+  while (used.has(next)) next += 1
+  return next
+}
+
 const clampCanvasTranslation = (
   tx: number,
   ty: number,
@@ -171,10 +188,15 @@ const LayoutEditorScreenContent = () => {
     [floorPlans, layoutId]
   )
   const tables = storeTables
+  const tablesRef = useRef(tables)
   const isOpeningLayout = !!layoutId && (
     loadingFloorPlanId === layoutId ||
     (isLoading && activeFloorPlanId === layoutId)
   )
+
+  useEffect(() => {
+    tablesRef.current = tables
+  }, [tables])
 
   useEffect(() => {
     if (
@@ -395,10 +417,17 @@ const LayoutEditorScreenContent = () => {
       Array.from({ length: item.quantity }, () => item.shapeId)
     )
 
+    const reservedNames = new Set(tables.map(table => table.name.trim()))
+
     const additions = allShapes.map((shapeId, index) => {
       const col = index % COLS
       const row = Math.floor(index / COLS)
+      const nextName = String(
+        getNextAvailableTableNumber(Array.from(reservedNames))
+      )
+      reservedNames.add(nextName)
       return addTable({
+        name: nextName,
         shape_id: shapeId as string,
         x: ORIGIN_X + col * CELL_W,
         y: ORIGIN_Y + row * CELL_H
@@ -451,14 +480,12 @@ const LayoutEditorScreenContent = () => {
 
     let defaultName = ''
     if (shapeDef.category === 'table') {
-      const nums = tables
-        .filter(t => t.name.startsWith('T-'))
-        .map(t => parseInt(t.name.split('-')[1], 10))
-        .filter(n => !isNaN(n))
-      defaultName = `T-${nums.length > 0 ? Math.max(...nums) + 1 : 1}`
+      defaultName = String(
+        getNextAvailableTableNumber(tablesRef.current.map(t => t.name))
+      )
     } else {
       const base = shapeDef.label
-      const existing = tables.filter(t => t.name.startsWith(base))
+      const existing = tablesRef.current.filter(t => t.name.startsWith(base))
       defaultName =
         existing.length === 0 ? base : `${base} ${existing.length + 1}`
     }
