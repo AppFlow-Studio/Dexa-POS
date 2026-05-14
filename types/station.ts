@@ -133,6 +133,8 @@ export interface PosStaffLoginResponse {
     kicked_previous: boolean;
     /** Device ID of the session that was kicked (only set when kicked_previous is true) */
     kicked_device_id?: string | null;
+    /** Session ID that was kicked, used so clients ignore stale/self kick broadcasts */
+    kicked_session_id?: string | null;
   };
   current_session?: StationCurrentSession;
   shift?: Record<string, unknown>;

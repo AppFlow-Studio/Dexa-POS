@@ -14,6 +14,8 @@ import { AppState, AppStateStatus } from "react-native";
 interface BroadcastKickPayload {
   device_id: string;
   session_id: string;
+  target_session_id?: string | null;
+  source_device_id?: string | null;
   kicked_by: string | null;
   reason: string | null;
   station_id: string;
@@ -166,6 +168,16 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
 
       const result = data as SessionCheckResult;
 
+      if (useStoreSettingsStore.getState().stationSessionId !== stationSessionId) {
+        if (__DEV__) {
+          console.log("[KickListener] Ignoring stale validation result", {
+            validatedSessionId: stationSessionId,
+            currentSessionId: useStoreSettingsStore.getState().stationSessionId,
+          });
+        }
+        return true;
+      }
+
       if (!result.is_valid) {
         console.log(
           `[KickListener] Session invalid via poll - status: ${result.status}`
@@ -235,9 +247,31 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
         const data = payload.payload as BroadcastKickPayload;
         if (__DEV__) console.log("[KickListener] Layer 1: Broadcast kick received:", data);
 
-        if (data.device_id === deviceId) {
-          triggerKick(data.kicked_by, data.reason);
+        if (data.device_id !== deviceId) {
+          return;
         }
+
+        if (data.source_device_id === deviceId && !data.target_session_id) {
+          if (__DEV__) {
+            console.log("[KickListener] Ignoring self-originated kick without target session");
+          }
+          return;
+        }
+
+        const currentSessionId =
+          useStoreSettingsStore.getState().stationSessionId;
+
+        if (data.target_session_id && data.target_session_id !== currentSessionId) {
+          if (__DEV__) {
+            console.log("[KickListener] Ignoring kick for different session", {
+              currentSessionId,
+              targetSessionId: data.target_session_id,
+            });
+          }
+          return;
+        }
+
+        triggerKick(data.kicked_by, data.reason);
       })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
