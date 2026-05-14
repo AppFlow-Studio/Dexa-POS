@@ -268,6 +268,64 @@ export const TABLE_SHAPES = {
 // We create the array from the object values directly since they now contain the ID
 export const SHAPE_OPTIONS = Object.values(TABLE_SHAPES)
 
+export const OBJECT_SIZE_PRESETS = [
+  { id: 'S', label: 'S', scale: 0.8 },
+  { id: 'M', label: 'M', scale: 1 },
+  { id: 'L', label: 'L', scale: 1.2 },
+  { id: 'XL', label: 'XL', scale: 1.4 }
+] as const
+
+export type ObjectSizePresetId = (typeof OBJECT_SIZE_PRESETS)[number]['id']
+
+export const getShapeBaseSize = (shapeId: string) => {
+  const shape = TABLE_SHAPES[shapeId as keyof typeof TABLE_SHAPES]
+  return {
+    width: shape?.width ?? 100,
+    height: shape?.height ?? 100
+  }
+}
+
+export const getDimensionsForSizePreset = (
+  shapeId: string,
+  presetId: ObjectSizePresetId
+) => {
+  const preset = OBJECT_SIZE_PRESETS.find(item => item.id === presetId)
+  const baseSize = getShapeBaseSize(shapeId)
+  const scale = preset?.scale ?? 1
+
+  return {
+    width: Math.round(baseSize.width * scale),
+    height: Math.round(baseSize.height * scale)
+  }
+}
+
+export const getClosestSizePreset = (
+  shapeId: string,
+  width?: number,
+  height?: number
+): ObjectSizePresetId => {
+  const baseSize = getShapeBaseSize(shapeId)
+  const currentWidth = width ?? baseSize.width
+  const currentHeight = height ?? baseSize.height
+
+  let closestPreset: ObjectSizePresetId = 'M'
+  let closestDistance = Number.POSITIVE_INFINITY
+
+  for (const preset of OBJECT_SIZE_PRESETS) {
+    const targetWidth = baseSize.width * preset.scale
+    const targetHeight = baseSize.height * preset.scale
+    const distance =
+      Math.abs(currentWidth - targetWidth) + Math.abs(currentHeight - targetHeight)
+
+    if (distance < closestDistance) {
+      closestDistance = distance
+      closestPreset = preset.id
+    }
+  }
+
+  return closestPreset
+}
+
 export const WALL_CORNER_SNAP_SHAPE_IDS = new Set([
   'wall-section'
 ])

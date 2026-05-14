@@ -1,4 +1,9 @@
-import { RIGHT_ANGLE_ROTATION_SHAPE_IDS } from '@/lib/table-shapes'
+import {
+  getClosestSizePreset,
+  getDimensionsForSizePreset,
+  OBJECT_SIZE_PRESETS,
+  RIGHT_ANGLE_ROTATION_SHAPE_IDS
+} from '@/lib/table-shapes'
 import { colors } from '@/lib/theme'
 import { useFloorPlanEditorStore } from '@/stores/useFloorPlanEditorStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -11,7 +16,7 @@ import {
   Unlock,
   X
 } from 'lucide-react-native'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,
   Modal,
@@ -41,23 +46,18 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
     s.lockedObjectIds.includes(table.id)
   )
   const [name, setName] = useState(table.name)
-  const [width, setWidth] = useState(String(table.width || 100))
-  const [height, setHeight] = useState(String(table.height || 100))
+  const [sizePreset, setSizePreset] = useState(
+    getClosestSizePreset(table.shape_id, table.width, table.height)
+  )
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-
-  // Track whether the user is actively editing size fields
-  const editingSize = useRef(false)
 
   useEffect(() => {
     setName(table.name)
   }, [table.name])
 
   useEffect(() => {
-    if (!editingSize.current) {
-      setWidth(String(table.width || 100))
-      setHeight(String(table.height || 100))
-    }
-  }, [table.width, table.height])
+    setSizePreset(getClosestSizePreset(table.shape_id, table.width, table.height))
+  }, [table.shape_id, table.width, table.height])
 
   const handleNameChange = (v: string) => {
     setName(v)
@@ -65,28 +65,6 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
 
   const handleNameBlur = () => {
     if (table.id && name.trim()) updateTableName(table.id, name.trim())
-  }
-
-  const handleWidthBlur = () => {
-    editingSize.current = false
-    const w = parseInt(width, 10)
-    const h = parseInt(height, 10)
-    if (!isNaN(w) && w > 0 && !isNaN(h) && h > 0) {
-      updateTableSize(table.id, w, h)
-    } else {
-      setWidth(String(table.width || 100))
-    }
-  }
-
-  const handleHeightBlur = () => {
-    editingSize.current = false
-    const w = parseInt(width, 10)
-    const h = parseInt(height, 10)
-    if (!isNaN(w) && w > 0 && !isNaN(h) && h > 0) {
-      updateTableSize(table.id, w, h)
-    } else {
-      setHeight(String(table.height || 100))
-    }
   }
 
   const rotationStep = RIGHT_ANGLE_ROTATION_SHAPE_IDS.has(table.shape_id)
@@ -130,6 +108,13 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
       removeTable(table.id)
       clearSelection()
     }
+  }
+
+  const handleSizePresetPress = (presetId: (typeof OBJECT_SIZE_PRESETS)[number]['id']) => {
+    if (isLocked) return
+    setSizePreset(presetId)
+    const { width, height } = getDimensionsForSizePreset(table.shape_id, presetId)
+    updateTableSize(table.id, width, height)
   }
 
   return (
@@ -210,37 +195,42 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
         <View>
           <Text style={labelStyle}>Size</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ ...labelStyle, marginBottom: 4 }}>W</Text>
-              <TextInput
-                value={width}
-                onChangeText={v => {
-                  editingSize.current = true
-                  setWidth(v)
-                }}
-                editable={!isLocked}
-                onBlur={handleWidthBlur}
-                keyboardType='numeric'
-                placeholderTextColor={colors.muted}
-                style={inputStyle}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ ...labelStyle, marginBottom: 4 }}>H</Text>
-              <TextInput
-                value={height}
-                onChangeText={v => {
-                  editingSize.current = true
-                  setHeight(v)
-                }}
-                editable={!isLocked}
-                onBlur={handleHeightBlur}
-                keyboardType='numeric'
-                placeholderTextColor={colors.muted}
-                style={inputStyle}
-              />
-            </View>
+            {OBJECT_SIZE_PRESETS.map(preset => {
+              const isActive = sizePreset === preset.id
+              return (
+                <TouchableOpacity
+                  key={preset.id}
+                  disabled={isLocked}
+                  onPress={() => handleSizePresetPress(preset.id)}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    backgroundColor: isActive
+                      ? colors.teal + '20'
+                      : isLocked
+                        ? colors.inset
+                        : colors.panel,
+                    borderWidth: 1,
+                    borderColor: isActive ? colors.teal + '65' : colors.border,
+                    opacity: isLocked ? 0.55 : 1
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: isActive ? colors.teal : colors.label,
+                      fontSize: 13,
+                      fontWeight: '700'
+                    }}
+                  >
+                    {preset.label}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
           </View>
+          
         </View>
 
         <View>
