@@ -1,6 +1,7 @@
 import {
   CartItem,
   ExternalExpense,
+  ExternalExpenseLineItem,
   InventoryItem,
   POLineItem,
   PurchaseOrder,
@@ -19,13 +20,13 @@ type InventoryTrackingMode = InventoryItem["stockTrackingMode"];
 const normalizeInventoryTrackingMode = (
   mode: string | null | undefined,
   currentStock?: number | null,
-  reorderPoint?: number | null
+  reorderPoint?: number | null,
 ): InventoryTrackingMode => {
   if (mode === "stock_tracking") return "quantity";
   if (
     mode === "in_stock" &&
-    (currentStock !== null && currentStock !== undefined ||
-      reorderPoint !== null && reorderPoint !== undefined)
+    ((currentStock !== null && currentStock !== undefined) ||
+      (reorderPoint !== null && reorderPoint !== undefined))
   ) {
     return "quantity";
   }
@@ -34,15 +35,13 @@ const normalizeInventoryTrackingMode = (
 };
 
 const toDbInventoryTrackingMode = (
-  mode: InventoryTrackingMode | undefined
+  mode: InventoryTrackingMode | undefined,
 ): "stock_tracking" | "in_stock" | "out_of_stock" => {
   if (mode === "in_stock" || mode === "out_of_stock") return mode;
   return "stock_tracking";
 };
 
-const purchaseOrderStatusToDb = (
-  status: PurchaseOrderStatus
-): string => {
+const purchaseOrderStatusToDb = (status: PurchaseOrderStatus): string => {
   switch (status) {
     case "Draft":
       return "draft";
@@ -59,7 +58,9 @@ const purchaseOrderStatusToDb = (
   }
 };
 
-const normalizePurchaseOrderStatus = (status: string | null | undefined): PurchaseOrderStatus => {
+const normalizePurchaseOrderStatus = (
+  status: string | null | undefined,
+): PurchaseOrderStatus => {
   const normalized = (status ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
   switch (normalized) {
     case "draft":
@@ -80,7 +81,7 @@ const normalizePurchaseOrderStatus = (status: string | null | undefined): Purcha
 };
 
 const normalizePaymentMethod = (
-  method: string | null | undefined
+  method: string | null | undefined,
 ): "Card" | "Cash" | undefined => {
   const normalized = (method ?? "").trim().toLowerCase();
   if (normalized === "card") return "Card";
@@ -89,7 +90,7 @@ const normalizePaymentMethod = (
 };
 
 const toDbPurchaseOrderPaymentMethod = (
-  method: "Card" | "Cash"
+  method: "Card" | "Cash",
 ): "card" | "cash" => {
   return method === "Card" ? "card" : "cash";
 };
@@ -102,7 +103,9 @@ const calculateExternalExpenseTotal = (items: ExternalExpenseLineItem[]) =>
 
 const EXPENSE_META_PREFIX = "DEXA_EXPENSE_META:";
 
-const buildExpenseNotes = (expense: Omit<ExternalExpense, "id" | "expenseNumber">) => {
+const buildExpenseNotes = (
+  expense: Omit<ExternalExpense, "id" | "expenseNumber">,
+) => {
   const metadata = {
     relatedPOId: expense.relatedPOId ?? null,
     relatedPONumber: expense.relatedPONumber ?? null,
@@ -129,7 +132,8 @@ const parseExpenseNotes = (value: string | null | undefined) => {
     newlineIndex === -1
       ? raw.slice(EXPENSE_META_PREFIX.length)
       : raw.slice(EXPENSE_META_PREFIX.length, newlineIndex);
-  const noteBody = newlineIndex === -1 ? "" : raw.slice(newlineIndex + 1).trim();
+  const noteBody =
+    newlineIndex === -1 ? "" : raw.slice(newlineIndex + 1).trim();
 
   try {
     const metadata = JSON.parse(metaRaw) as {
@@ -168,7 +172,8 @@ const getCurrentStoreContext = () => {
 
 const getActiveEmployeeContext = () => {
   const { activeEmployeeId, employees } = useEmployeeStore.getState();
-  const employee = employees.find((entry) => entry.id === activeEmployeeId) ?? null;
+  const employee =
+    employees.find((entry) => entry.id === activeEmployeeId) ?? null;
 
   return {
     userId: activeEmployeeId ?? "",
@@ -179,10 +184,11 @@ const getActiveEmployeeContext = () => {
 const mapPurchaseOrderFromDb = (po: any): PurchaseOrder => {
   const employeeStore = useEmployeeStore.getState();
   const createdByEmployee = po.created_by
-    ? employeeStore.employees.find((entry) => entry.id === po.created_by) ?? null
+    ? (employeeStore.employees.find((entry) => entry.id === po.created_by) ??
+      null)
     : null;
   const dbItems = (po.purchase_order_items ?? []).filter(
-    (item: any) => item.inventory_item_id
+    (item: any) => item.inventory_item_id,
   );
   const items: POLineItem[] = dbItems.map((item: any) => ({
     inventoryItemId: item.inventory_item_id,
@@ -190,20 +196,22 @@ const mapPurchaseOrderFromDb = (po: any): PurchaseOrder => {
     cost: item.unit_cost ?? 0,
   }));
 
-  const receivedItems: POLineItem[] | undefined =
-    dbItems.some((item: any) => item.quantity_received !== null && item.quantity_received !== undefined)
-      ? dbItems.map((item: any) => ({
-          inventoryItemId: item.inventory_item_id,
-          quantity: item.quantity_received ?? item.quantity_ordered ?? 0,
-          cost: item.unit_cost ?? 0,
-        }))
-      : undefined;
+  const receivedItems: POLineItem[] | undefined = dbItems.some(
+    (item: any) =>
+      item.quantity_received !== null && item.quantity_received !== undefined,
+  )
+    ? dbItems.map((item: any) => ({
+        inventoryItemId: item.inventory_item_id,
+        quantity: item.quantity_received ?? item.quantity_ordered ?? 0,
+        cost: item.unit_cost ?? 0,
+      }))
+    : undefined;
 
   const paymentRecord = Array.isArray(po.purchase_order_payments)
     ? po.purchase_order_payments[0]
     : null;
   const paymentMethod = normalizePaymentMethod(
-    paymentRecord?.payment_method ?? po.payment_method
+    paymentRecord?.payment_method ?? po.payment_method,
   );
 
   return {
@@ -227,8 +235,10 @@ const mapPurchaseOrderFromDb = (po: any): PurchaseOrder => {
             paymentRecord?.amount ??
             po.total_amount ??
             calculatePurchaseOrderTotal(items),
-          paidAt: paymentRecord?.paid_at ?? po.paid_at ?? new Date().toISOString(),
-          cardLast4: paymentRecord?.card_last_four ?? po.card_last_four ?? undefined,
+          paidAt:
+            paymentRecord?.paid_at ?? po.paid_at ?? new Date().toISOString(),
+          cardLast4:
+            paymentRecord?.card_last_four ?? po.card_last_four ?? undefined,
           paidToEmployee: paymentRecord?.paid_to ?? undefined,
         }
       : undefined,
@@ -238,7 +248,8 @@ const mapPurchaseOrderFromDb = (po: any): PurchaseOrder => {
 const mapExternalExpenseFromDb = (po: any): ExternalExpense => {
   const employeeStore = useEmployeeStore.getState();
   const createdByEmployee = po.created_by
-    ? employeeStore.employees.find((entry) => entry.id === po.created_by) ?? null
+    ? (employeeStore.employees.find((entry) => entry.id === po.created_by) ??
+      null)
     : null;
   const parsedNotes = parseExpenseNotes(po.expense_notes);
   const items: ExternalExpenseLineItem[] = (po.purchase_order_items ?? [])
@@ -274,50 +285,53 @@ const mapExternalExpenseFromDb = (po: any): ExternalExpense => {
 const getNextPurchaseOrderNumber = async (
   supabase: SupabaseClient,
   merchantId: string,
-  locationId: string
+  locationId: string,
 ) => {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const prefix = `PO-${yyyy}-${mm}-`;
-
+  // Count only POs (not expenses) for this merchant+location
   const { count, error } = await supabase
     .from("purchase_orders")
     .select("id", { count: "exact", head: true })
     .eq("merchant_id", merchantId)
     .eq("location_id", locationId)
-    .ilike("po_number", `${prefix}%`);
+    .or("is_adhoc_expense.is.null,is_adhoc_expense.eq.false");
 
   if (error) {
     throw error;
   }
 
-  return `${prefix}${String((count ?? 0) + 1).padStart(3, "0")}`;
+  const nextSeq = (count ?? 0) + 1;
+  // Pad to at least 4 digits; auto-extends to 5, 6, etc. as the counter grows
+  const padded = String(nextSeq).padStart(
+    Math.max(4, String(nextSeq).length),
+    "0",
+  );
+  return `PO-${padded}`;
 };
 
 const getNextExpenseNumber = async (
   supabase: SupabaseClient,
   merchantId: string,
-  locationId: string
+  locationId: string,
 ) => {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const prefix = `EXP-${yyyy}-${mm}-`;
-
+  // Count only expenses for this merchant+location
   const { count, error } = await supabase
     .from("purchase_orders")
     .select("id", { count: "exact", head: true })
     .eq("merchant_id", merchantId)
     .eq("location_id", locationId)
-    .eq("is_adhoc_expense", true)
-    .ilike("po_number", `${prefix}%`);
+    .eq("is_adhoc_expense", true);
 
   if (error) {
     throw error;
   }
 
-  return `${prefix}${String((count ?? 0) + 1).padStart(3, "0")}`;
+  const nextSeq = (count ?? 0) + 1;
+  // Pad to at least 4 digits; auto-extends to 5, 6, etc. as the counter grows
+  const padded = String(nextSeq).padStart(
+    Math.max(4, String(nextSeq).length),
+    "0",
+  );
+  return `EXP-${padded}`;
 };
 
 // --- STORE INTERFACE ---
@@ -343,31 +357,31 @@ interface InventoryState {
   addVendor: (
     vendorData: Omit<Vendor, "id">,
     merchantId: string,
-    locationId: string
+    locationId: string,
   ) => Promise<void>;
   updateVendor: (
     vendorId: string,
-    updates: Omit<Vendor, "id">
+    updates: Omit<Vendor, "id">,
   ) => Promise<void>;
   deleteVendor: (vendorId: string) => Promise<void>;
 
   addInventoryItem: (
     itemData: Omit<InventoryItem, "id">,
-    locationId: string
+    locationId: string,
   ) => Promise<void>;
   updateInventoryItem: (
     itemId: string,
     updates: Partial<InventoryItem>,
-    locationId: string
+    locationId: string,
   ) => Promise<void>;
   deleteInventoryItem: (itemId: string) => Promise<void>;
 
   createPurchaseOrder: (
-    po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt">
+    po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt">,
   ) => Promise<void>;
   updatePurchaseOrder: (
     poId: string,
-    updates: Partial<Omit<PurchaseOrder, "id">>
+    updates: Partial<Omit<PurchaseOrder, "id">>,
   ) => Promise<void>;
   deletePurchaseOrder: (poId: string) => Promise<void>;
   // New lifecycle actions
@@ -379,7 +393,7 @@ interface InventoryState {
       deliveredAt?: string;
       notes?: string;
       receivedItems: POLineItem[];
-    }
+    },
   ) => Promise<void>; // -> Awaiting Payment
   logPaymentForPO: (
     poId: string,
@@ -389,16 +403,16 @@ interface InventoryState {
       paidAt?: string;
       cardLast4?: string;
       paidToEmployee?: string;
-    }
+    },
   ) => Promise<void>; // -> Paid
   cancelPurchaseOrder: (poId: string) => Promise<void>; // -> Cancelled
   // External expense actions
   addExternalExpense: (
-    expense: Omit<ExternalExpense, "id" | "expenseNumber">
+    expense: Omit<ExternalExpense, "id" | "expenseNumber">,
   ) => Promise<void>;
   updateExternalExpense: (
     expenseId: string,
-    updates: Partial<Omit<ExternalExpense, "id" | "expenseNumber">>
+    updates: Partial<Omit<ExternalExpense, "id" | "expenseNumber">>,
   ) => void;
   removeExternalExpense: (expenseId: string) => Promise<void>;
   // --- NEW ACTIONS ---
@@ -429,12 +443,12 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const { supabase } = get();
     if (!supabase) return;
 
-    const { data, error } = await supabase.rpc('get_pos_inventory_sync', {
+    const { data, error } = await supabase.rpc("get_pos_inventory_sync", {
       p_location_id: locationId,
     });
 
     if (error) {
-      console.error('[InventoryStore] fetchInventoryItems error:', error);
+      console.error("[InventoryStore] fetchInventoryItems error:", error);
       return;
     }
 
@@ -442,44 +456,46 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const rows = (data as any[]) ?? [];
 
     const { data: itemRows } = await supabase
-      .from('inventory_items')
-      .select('id, name, category, current_stock, unit_type, reorder_point, cost_per_unit, vendor_id, stock_mode')
-      .eq('location_id', locationId)
-      .eq('is_active', true);
+      .from("inventory_items")
+      .select(
+        "id, name, category, current_stock, unit_type, reorder_point, cost_per_unit, vendor_id, stock_mode",
+      )
+      .eq("location_id", locationId)
+      .eq("is_active", true);
 
     const itemRowMap = new Map(
-      (itemRows ?? []).map((row: any) => [row.id, row])
+      (itemRows ?? []).map((row: any) => [row.id, row]),
     );
 
     const inventoryItems: InventoryItem[] = rows
       .filter((i: any) => itemRowMap.has(i.id))
       .map((i: any) => {
-      const directRow = itemRowMap.get(i.id);
-      return {
-        id: i.id,
-        name: directRow?.name ?? i.name,
-        category: directRow?.category ?? '',
-        description: null,
-        image: null,
-        stockQuantity: i.stock_quantity ?? directRow?.current_stock ?? 0,
-        unit: directRow?.unit_type ?? i.unit_type,
-        unitType: (directRow?.unit_type ?? i.unit_type),
-        reorderThreshold:
-          directRow?.reorder_point ??
-          i.effective_reorder_point ??
-          i.reorder_point ??
-          0,
-        cost: directRow?.cost_per_unit ?? i.effective_cost ?? 0,
-        vendorId: directRow?.vendor_id ?? null,
-        locationId,
-        isGlobal: false,
-        stockTrackingMode: normalizeInventoryTrackingMode(
-          directRow?.stock_mode,
-          directRow?.current_stock,
-          directRow?.reorder_point
-        ),
-      };
-    });
+        const directRow = itemRowMap.get(i.id);
+        return {
+          id: i.id,
+          name: directRow?.name ?? i.name,
+          category: directRow?.category ?? "",
+          description: null,
+          image: null,
+          stockQuantity: i.stock_quantity ?? directRow?.current_stock ?? 0,
+          unit: directRow?.unit_type ?? i.unit_type,
+          unitType: directRow?.unit_type ?? i.unit_type,
+          reorderThreshold:
+            directRow?.reorder_point ??
+            i.effective_reorder_point ??
+            i.reorder_point ??
+            0,
+          cost: directRow?.cost_per_unit ?? i.effective_cost ?? 0,
+          vendorId: directRow?.vendor_id ?? null,
+          locationId,
+          isGlobal: false,
+          stockTrackingMode: normalizeInventoryTrackingMode(
+            directRow?.stock_mode,
+            directRow?.current_stock,
+            directRow?.reorder_point,
+          ),
+        };
+      });
 
     const rpcItemIds = new Set(inventoryItems.map((item) => item.id));
     const missingDirectItems: InventoryItem[] = (itemRows ?? [])
@@ -487,7 +503,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       .map((row: any) => ({
         id: row.id,
         name: row.name,
-        category: row.category ?? '',
+        category: row.category ?? "",
         description: null,
         image: null,
         stockQuantity: row.current_stock ?? 0,
@@ -501,27 +517,30 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         stockTrackingMode: normalizeInventoryTrackingMode(
           row.stock_mode,
           row.current_stock,
-          row.reorder_point
+          row.reorder_point,
         ),
       }));
 
     const itemsWithVendor = [...inventoryItems, ...missingDirectItems];
 
     const { data: vendorsData } = await supabase
-      .from('vendors')
-      .select('id, name, contact_name, email, phone, address_line1, city, state, zip_code')
-      .eq('location_id', locationId)
-      .eq('is_active', true);
+      .from("vendors")
+      .select(
+        "id, name, contact_name, email, phone, address_line1, city, state, zip_code",
+      )
+      .eq("location_id", locationId)
+      .eq("is_active", true);
 
     const vendors: Vendor[] = (vendorsData ?? []).map((v: any) => ({
       id: v.id,
       name: v.name,
-      contactName: v.contact_name ?? '',
+      contactName: v.contact_name ?? "",
       email: v.email ?? null,
       phone: v.phone ?? null,
-      address: [v.address_line1, v.city, v.state].filter(Boolean).join(', ') || null,
+      address:
+        [v.address_line1, v.city, v.state].filter(Boolean).join(", ") || null,
       website: null,
-      description: '',
+      description: "",
     }));
 
     set({ inventoryItems: itemsWithVendor, vendors });
@@ -532,25 +551,28 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     if (!supabase || !locationId) return;
 
     const { data, error } = await supabase
-      .from('vendors')
-      .select('id, name, contact_name, email, phone, address_line1, city, state, zip_code')
-      .eq('location_id', locationId)
-      .eq('is_active', true);
+      .from("vendors")
+      .select(
+        "id, name, contact_name, email, phone, address_line1, city, state, zip_code",
+      )
+      .eq("location_id", locationId)
+      .eq("is_active", true);
 
     if (error) {
-      console.error('[InventoryStore] fetchVendors error:', error);
+      console.error("[InventoryStore] fetchVendors error:", error);
       return;
     }
 
     const vendors: Vendor[] = (data ?? []).map((v: any) => ({
       id: v.id,
       name: v.name,
-      contactName: v.contact_name ?? '',
+      contactName: v.contact_name ?? "",
       email: v.email ?? null,
       phone: v.phone ?? null,
-      address: [v.address_line1, v.city, v.state].filter(Boolean).join(', ') || null,
+      address:
+        [v.address_line1, v.city, v.state].filter(Boolean).join(", ") || null,
       website: null,
-      description: '',
+      description: "",
     }));
 
     set({ vendors });
@@ -560,12 +582,14 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const { supabase } = get();
     if (!supabase) return;
 
-    const locationId = locationIdArg ?? useStoreSettingsStore.getState().selectedStore?.id;
+    const locationId =
+      locationIdArg ?? useStoreSettingsStore.getState().selectedStore?.id;
     if (!locationId) return;
 
     const { data, error } = await supabase
       .from("purchase_orders")
-      .select(`
+      .select(
+        `
         id,
         po_number,
         vendor_id,
@@ -598,7 +622,8 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
           card_last_four,
           paid_to
         )
-      `)
+      `,
+      )
       .eq("location_id", locationId)
       .order("created_at", { ascending: false });
 
@@ -622,7 +647,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const { supabase } = get();
     if (!supabase || !merchantId) return;
 
-    const { error } = await supabase.from('vendors').insert({
+    const { error } = await supabase.from("vendors").insert({
       merchant_id: merchantId,
       location_id: locationId,
       name: vendorData.name,
@@ -634,7 +659,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     });
 
     if (error) {
-      console.error('[InventoryStore] addVendor error:', error);
+      console.error("[InventoryStore] addVendor error:", error);
       throw error;
     }
 
@@ -648,20 +673,23 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     // Optimistic update for instant UI feedback
     set((state) => ({
       vendors: state.vendors.map((v) =>
-        v.id === vendorId ? { ...v, ...updates } : v
+        v.id === vendorId ? { ...v, ...updates } : v,
       ),
     }));
 
-    const { error } = await supabase.from('vendors').update({
-      name: updates.name,
-      contact_name: updates.contactName || null,
-      email: updates.email || null,
-      phone: updates.phone || null,
-      address_line1: updates.address || null,
-    }).eq('id', vendorId);
+    const { error } = await supabase
+      .from("vendors")
+      .update({
+        name: updates.name,
+        contact_name: updates.contactName || null,
+        email: updates.email || null,
+        phone: updates.phone || null,
+        address_line1: updates.address || null,
+      })
+      .eq("id", vendorId);
 
     if (error) {
-      console.error('[InventoryStore] updateVendor error:', error);
+      console.error("[InventoryStore] updateVendor error:", error);
       throw error;
     }
   },
@@ -676,12 +704,12 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     }));
 
     const { error } = await supabase
-      .from('vendors')
+      .from("vendors")
       .update({ is_active: false })
-      .eq('id', vendorId);
+      .eq("id", vendorId);
 
     if (error) {
-      console.error('[InventoryStore] deleteVendor error:', error);
+      console.error("[InventoryStore] deleteVendor error:", error);
       set({ vendors }); // revert
       throw error;
     }
@@ -695,16 +723,16 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const newItem = await InventoryService.upsertInventoryItem(
       supabase,
       itemDetails as any,
-      locationId
+      locationId,
     );
 
     // The RPC doesn't support vendor_id — patch it directly after creation
     const newItemId = newItem?.id ?? newItem;
     if (newItemId && itemData.vendorId) {
       await supabase
-        .from('inventory_items')
+        .from("inventory_items")
         .update({ vendor_id: itemData.vendorId })
-        .eq('id', newItemId);
+        .eq("id", newItemId);
     }
 
     const directItemPatch: Record<string, unknown> = {
@@ -730,7 +758,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
           p_inventory_item_id: newItemId,
           p_location_id: locationId,
           p_quantity: stockQuantity,
-        }
+        },
       );
 
       if (stockError) {
@@ -741,8 +769,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     // Re-fetch to get the real item back with correct shape
     await get().fetchInventoryItems(locationId);
     // Invalidate TanStack query cache so PosSyncProvider also sees fresh data
-    const { queryClient } = require('@/contexts/TanstackProvider') as typeof import('@/contexts/TanstackProvider');
-    queryClient.invalidateQueries({ queryKey: ['inventory_sync', locationId] });
+    const { queryClient } =
+      require("@/contexts/TanstackProvider") as typeof import("@/contexts/TanstackProvider");
+    queryClient.invalidateQueries({ queryKey: ["inventory_sync", locationId] });
   },
 
   updateInventoryItem: async (itemId, updates, locationId) => {
@@ -756,7 +785,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     // Optimistic Update
     set((state) => ({
       inventoryItems: state.inventoryItems.map((i) =>
-        i.id === itemId ? { ...i, ...updates } : i
+        i.id === itemId ? { ...i, ...updates } : i,
       ),
     }));
 
@@ -781,18 +810,22 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
               updates.reorderThreshold !== item.reorderThreshold
                 ? updates.reorderThreshold
                 : undefined,
-          }
+          },
         );
       } else {
         if (Object.keys(otherUpdates).length > 0) {
           const merged = { ...item, ...otherUpdates };
-          await InventoryService.upsertInventoryItem(supabase, merged as any, locationId);
+          await InventoryService.upsertInventoryItem(
+            supabase,
+            merged as any,
+            locationId,
+          );
         }
 
         // Patch vendor_id directly since the RPC doesn't support it
         const directItemPatch: Record<string, unknown> = {};
 
-        if ('vendorId' in updates) {
+        if ("vendorId" in updates) {
           directItemPatch.vendor_id = updates.vendorId ?? null;
         }
 
@@ -801,7 +834,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         }
 
         if (updates.stockTrackingMode !== undefined) {
-          directItemPatch.stock_mode = toDbInventoryTrackingMode(updates.stockTrackingMode);
+          directItemPatch.stock_mode = toDbInventoryTrackingMode(
+            updates.stockTrackingMode,
+          );
         }
 
         if (Object.keys(directItemPatch).length > 0) {
@@ -812,14 +847,17 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
           if (directPatchError) throw directPatchError;
         }
 
-        if (stockQuantity !== undefined && stockQuantity !== item.stockQuantity) {
+        if (
+          stockQuantity !== undefined &&
+          stockQuantity !== item.stockQuantity
+        ) {
           const { error: stockError } = await supabase.rpc(
             "app_set_location_stock",
             {
               p_inventory_item_id: itemId,
               p_location_id: locationId,
               p_quantity: stockQuantity,
-            }
+            },
           );
           if (stockError) throw stockError;
         }
@@ -827,8 +865,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
       // Re-fetch to sync real state
       await get().fetchInventoryItems(locationId);
-      const { queryClient } = require('@/contexts/TanstackProvider') as typeof import('@/contexts/TanstackProvider');
-      queryClient.invalidateQueries({ queryKey: ['inventory_sync', locationId] });
+      const { queryClient } =
+        require("@/contexts/TanstackProvider") as typeof import("@/contexts/TanstackProvider");
+      queryClient.invalidateQueries({
+        queryKey: ["inventory_sync", locationId],
+      });
     } catch (e) {
       console.error(e);
       set({ inventoryItems: oldItems });
@@ -861,7 +902,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const { merchantId, locationId } = getCurrentStoreContext();
     const { userId } = getActiveEmployeeContext();
     const now = new Date().toISOString();
-    const poNumber = await getNextPurchaseOrderNumber(supabase, merchantId, locationId);
+    const poNumber = await getNextPurchaseOrderNumber(
+      supabase,
+      merchantId,
+      locationId,
+    );
     const totalAmount = calculatePurchaseOrderTotal(poData.items);
     const createdByUserId = poData.createdByEmployeeId ?? userId ?? null;
 
@@ -881,14 +926,17 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       .single();
 
     if (purchaseOrderError) {
-      console.error("[InventoryStore] createPurchaseOrder error:", purchaseOrderError);
+      console.error(
+        "[InventoryStore] createPurchaseOrder error:",
+        purchaseOrderError,
+      );
       throw purchaseOrderError;
     }
 
     const purchaseOrderId = purchaseOrderRow.id;
     const lineItems = poData.items.map((item) => {
       const inventoryItem = get().inventoryItems.find(
-        (entry) => entry.id === item.inventoryItemId
+        (entry) => entry.id === item.inventoryItemId,
       );
 
       return {
@@ -910,7 +958,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
     if (itemsError) {
       await supabase.from("purchase_orders").delete().eq("id", purchaseOrderId);
-      console.error("[InventoryStore] createPurchaseOrder items error:", itemsError);
+      console.error(
+        "[InventoryStore] createPurchaseOrder items error:",
+        itemsError,
+      );
       throw itemsError;
     }
 
@@ -950,13 +1001,16 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         .eq("purchase_order_id", poId);
 
       if (deleteItemsError) {
-        console.error("[InventoryStore] updatePurchaseOrder delete items error:", deleteItemsError);
+        console.error(
+          "[InventoryStore] updatePurchaseOrder delete items error:",
+          deleteItemsError,
+        );
         throw deleteItemsError;
       }
 
       const replacementItems = nextItems.map((item) => {
         const inventoryItem = get().inventoryItems.find(
-          (entry) => entry.id === item.inventoryItemId
+          (entry) => entry.id === item.inventoryItemId,
         );
 
         return {
@@ -967,7 +1021,8 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
           unit_cost: item.cost,
           item_name: inventoryItem?.name ?? null,
           item_category: inventoryItem?.category ?? null,
-          item_unit_type: inventoryItem?.unitType ?? inventoryItem?.unit ?? null,
+          item_unit_type:
+            inventoryItem?.unitType ?? inventoryItem?.unit ?? null,
           item_sku: null,
         };
       });
@@ -977,7 +1032,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         .insert(replacementItems);
 
       if (insertItemsError) {
-        console.error("[InventoryStore] updatePurchaseOrder insert items error:", insertItemsError);
+        console.error(
+          "[InventoryStore] updatePurchaseOrder insert items error:",
+          insertItemsError,
+        );
         throw insertItemsError;
       }
     }
@@ -1001,7 +1059,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       .eq("purchase_order_id", poId);
 
     if (deleteItemsError) {
-      console.error("[InventoryStore] deletePurchaseOrder items error:", deleteItemsError);
+      console.error(
+        "[InventoryStore] deletePurchaseOrder items error:",
+        deleteItemsError,
+      );
       throw deleteItemsError;
     }
 
@@ -1074,11 +1135,17 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     if (data.deliveredAt) {
       const { error: deliveredAtError } = await supabase
         .from("purchase_orders")
-        .update({ delivered_at: data.deliveredAt, received_at: data.deliveredAt })
+        .update({
+          delivered_at: data.deliveredAt,
+          received_at: data.deliveredAt,
+        })
         .eq("id", poId);
 
       if (deliveredAtError) {
-        console.error("[InventoryStore] logDeliveryForPO deliveredAt error:", deliveredAtError);
+        console.error(
+          "[InventoryStore] logDeliveryForPO deliveredAt error:",
+          deliveredAtError,
+        );
         throw deliveredAtError;
       }
     }
@@ -1116,7 +1183,8 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         paid_at: paidAt,
         vendor_id: po.vendorId || null,
         vendor_name:
-          get().vendors.find((vendor) => vendor.id === po.vendorId)?.name ?? null,
+          get().vendors.find((vendor) => vendor.id === po.vendorId)?.name ??
+          null,
       });
 
     if (paymentInsertError) {
@@ -1172,7 +1240,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const expenseNumber = await getNextExpenseNumber(
       supabase,
       merchantId,
-      locationId
+      locationId,
     );
     const purchasedAt = expense.purchasedAt || new Date().toISOString();
 
@@ -1223,7 +1291,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
     if (itemsError) {
       await supabase.from("purchase_orders").delete().eq("id", expenseRow.id);
-      console.error("[InventoryStore] addExternalExpense items error:", itemsError);
+      console.error(
+        "[InventoryStore] addExternalExpense items error:",
+        itemsError,
+      );
       throw itemsError;
     }
 
@@ -1233,7 +1304,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       .eq("id", expenseRow.id);
 
     if (error) {
-      console.error("[InventoryStore] addExternalExpense finalize error:", error);
+      console.error(
+        "[InventoryStore] addExternalExpense finalize error:",
+        error,
+      );
       throw error;
     }
 
@@ -1243,7 +1317,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   updateExternalExpense: (expenseId, updates) => {
     set((state) => ({
       externalExpenses: state.externalExpenses.map((expense) =>
-        expense.id === expenseId ? { ...expense, ...updates } : expense
+        expense.id === expenseId ? { ...expense, ...updates } : expense,
       ),
     }));
   },
@@ -1323,11 +1397,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         if (menuItem && menuItem.stockQuantity !== undefined) {
           const newStockQuantity = Math.max(
             0,
-            menuItem.stockQuantity - quantityToDecrement
+            menuItem.stockQuantity - quantityToDecrement,
           );
           updateMenuItem(menuItemId, { stockQuantity: newStockQuantity });
         }
-      }
+      },
     );
 
     set({ inventoryItems: updatedInventory });
@@ -1360,7 +1434,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
             ...invItem,
             stockQuantity: Math.max(
               0,
-              invItem.stockQuantity - totalToDecrement
+              invItem.stockQuantity - totalToDecrement,
             ),
           };
         }
@@ -1375,7 +1449,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       // Simple item depletion: deplete the menu item's own stock
       const newStockQuantity = Math.max(
         0,
-        menuItem.stockQuantity - cartItem.quantity
+        menuItem.stockQuantity - cartItem.quantity,
       );
       updateMenuItem(menuItem.id, { stockQuantity: newStockQuantity });
     }
@@ -1385,7 +1459,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   // --- Selector for low stock items ---
   getLowStockItems: () => {
     return get().inventoryItems.filter(
-      (item) => item.stockQuantity <= item.reorderThreshold
+      (item) => item.stockQuantity <= item.reorderThreshold,
     );
   },
 }));

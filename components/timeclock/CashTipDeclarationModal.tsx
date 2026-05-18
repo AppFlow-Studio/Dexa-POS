@@ -11,8 +11,8 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getBusinessDayBounds, getCurrentBusinessDay } from "@/lib/businessDay";
 import { colors } from "@/lib/theme";
 import {
-    fetchShiftTipSummary,
-    ShiftTipSummary,
+  fetchShiftTipSummary,
+  ShiftTipSummary,
 } from "@/services/cashTipDeclarationService";
 import { getIsOnline } from "@/services/offlineSyncService";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -20,21 +20,21 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { computeEmployeeTipData } from "@/utils/computeEmployeeTipData";
 import { formatCurrency } from "@/utils/currency";
 import {
-    AlertTriangle,
-    ArrowRight,
-    ChevronLeft,
-    Clock,
-    DollarSign,
-    TrendingUp,
+  AlertTriangle,
+  ArrowRight,
+  ChevronLeft,
+  Clock,
+  DollarSign,
+  TrendingUp,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -425,14 +425,14 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
             flex: 1,
             paddingVertical: 13,
             borderRadius: 10,
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.card,
+            borderWidth: 1.5,
+            borderColor: colors.danger + "50",
+            backgroundColor: colors.danger + "10",
             alignItems: "center",
           }}
         >
           <Text
-            style={{ fontSize: 13, fontWeight: "600", color: colors.label }}
+            style={{ fontSize: 13, fontWeight: "700", color: colors.danger }}
           >
             Declare $0
           </Text>
