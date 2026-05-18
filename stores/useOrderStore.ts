@@ -67,6 +67,7 @@ import {
 } from "@/lib/localOrderSequence";
 import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 import { DEADLINES } from "@/lib/network/deadlines";
+import { withDeadline } from "@/lib/network/withDeadline";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
   rpcWithIdempotency,
@@ -13438,32 +13439,35 @@ export const useOrderStore = create<OrderState>()(
               );
 
               try {
-                // Fetch order, items, payments, and item payments in parallel
-                const [
-                  orderResult,
-                  itemsResult,
-                  paymentsResult,
-                  itemPaymentsResult,
-                ] = await Promise.all([
-                  supabase
-                    .from("orders")
-                    .select("*")
-                    .eq("id", dbOrderId)
-                    .single(),
-                  supabase
-                    .from("order_items")
-                    .select("*, order_item_modifiers (*)")
-                    .eq("order_id", dbOrderId)
-                    .eq("is_voided", false),
-                  supabase
-                    .from("order_payments")
-                    .select("*")
-                    .eq("order_id", dbOrderId),
-                  supabase
-                    .from("order_item_payments")
-                    .select("*")
-                    .eq("order_id", dbOrderId),
-                ]);
+                // Fetch order, items, payments, and item payments in parallel.
+                // Deadline-wrapped: previously, missing indexes caused Postgres
+                // statement timeouts (~30s) that froze the UI. Fail fast at
+                // DEADLINES.read so the store can recover.
+                const [orderResult, itemsResult, paymentsResult] =
+                  await withDeadline(
+                    (signal) =>
+                      Promise.all([
+                        supabase
+                          .from("orders")
+                          .select("*")
+                          .eq("id", dbOrderId)
+                          .abortSignal(signal)
+                          .single(),
+                        supabase
+                          .from("order_items")
+                          .select("*, order_item_modifiers (*)")
+                          .eq("order_id", dbOrderId)
+                          .eq("is_voided", false)
+                          .abortSignal(signal),
+                        supabase
+                          .from("order_payments")
+                          .select("*")
+                          .eq("order_id", dbOrderId)
+                          .abortSignal(signal),
+                      ]),
+                    DEADLINES.read,
+                    "syncOrderFromDatabase",
+                  );
 
                 if (orderResult.error) {
                   console.error(
@@ -13488,7 +13492,6 @@ export const useOrderStore = create<OrderState>()(
 
                 const dbItems = itemsResult.data;
                 const dbPayments = paymentsResult.data;
-                const dbItemPayments = itemPaymentsResult.data;
 
                 if (paymentsResult.error) {
                   console.error(

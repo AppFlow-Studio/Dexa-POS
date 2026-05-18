@@ -11,6 +11,8 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 
+const PREFETCH_CONCURRENCY = 2;
+
 let _unsubscribe: (() => void) | null = null;
 const _inFlightOrderIds = new Set<string>();
 
@@ -42,12 +44,26 @@ async function prefetchUncachedOrders(orderIds: string[]) {
     `[prefetch] Fetching ${uncachedOrderIds.length} uncached orders`,
   );
   for (const id of uncachedOrderIds) _inFlightOrderIds.add(id);
-  await Promise.allSettled(
-    uncachedOrderIds.map((id) =>
-      orderState.syncOrderFromDatabase(id).finally(() => {
+  // Cap concurrency: prior Promise.allSettled fired N parallel fetches and each
+  // syncOrderFromDatabase issues 4 inner queries, so a station switch with 3
+  // occupied tables produced 12 concurrent Postgres queries and triggered
+  // statement timeouts (57014). Limit to PREFETCH_CONCURRENCY at a time.
+  const queue = [...uncachedOrderIds];
+  const runWorker = async () => {
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (!id) return;
+      try {
+        await orderState.syncOrderFromDatabase(id);
+      } catch (err) {
+        if (__DEV__) console.warn(`[prefetch] ${id} failed:`, err);
+      } finally {
         _inFlightOrderIds.delete(id);
-      }),
-    ),
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(PREFETCH_CONCURRENCY, uncachedOrderIds.length) }, runWorker),
   );
   if (__DEV__) console.log(
     `[prefetch] Finished fetching ${uncachedOrderIds.length} orders`,

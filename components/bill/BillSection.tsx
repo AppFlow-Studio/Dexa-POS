@@ -1358,6 +1358,7 @@ const BillSectionContent = ({
       ordersById,
       orderIds,
       currentActiveOrderId,
+      selectedStation?.id ?? null,
     );
 
     if (reusableEmptyDraftId) {
@@ -1472,6 +1473,8 @@ const BillSectionContent = ({
                   const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
                     ordersById,
                     orderIds,
+                    null,
+                    selectedStation?.id ?? null,
                   );
 
                   if (reusableEmptyDraftId) {

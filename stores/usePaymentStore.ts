@@ -479,6 +479,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         ordersById,
         orderIds,
         activeOrderId,
+        useStoreSettingsStore.getState().selectedStation?.id ?? null,
       );
 
       if (reusableEmptyDraftId) {

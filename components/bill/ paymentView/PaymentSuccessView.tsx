@@ -110,6 +110,7 @@ const PaymentSuccessView = () => {
         ordersById,
         orderIds,
         activeOrderId,
+        useStoreSettingsStore.getState().selectedStation?.id ?? null,
       );
 
       if (reusableEmptyDraftId) {

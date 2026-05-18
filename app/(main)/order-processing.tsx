@@ -326,7 +326,8 @@ const OrderProcessing = () => {
     const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
       state.ordersById,
       state.orderIds,
-      currentActiveOrder?.id,
+      null,
+      useStoreSettingsStore.getState().selectedStation?.id ?? null,
     );
 
     if (reusableEmptyDraftId) {

@@ -856,6 +856,7 @@ export class OrderService {
     statuses: OrderStatus[] | null = null,
     startTs?: string | null,
     endTs?: string | null,
+    signal?: AbortSignal,
   ): Promise<{ data: any[] | null; error: any }> {
     let query = client
       .from("orders")
@@ -882,6 +883,8 @@ export class OrderService {
     if (statuses && statuses.length > 0) {
       query = query.in("status", statuses);
     }
+
+    if (signal) query = query.abortSignal(signal);
 
     const { data, error } = await query;
     return { data, error };
