@@ -7,8 +7,20 @@ import {
 
 export function isReusableEmptyDraftOrder(
   order: OrderProfile | null | undefined,
-): boolean {
+  currentStationId?: string | null,
+): order is OrderProfile {
   if (!order) return false;
+
+  // Drafts owned by another station are read-only here; reusing one would
+  // leave the user stuck on a locked order (the "New Order button does
+  // nothing after switching stations" bug).
+  if (
+    currentStationId &&
+    order.station_id != null &&
+    order.station_id !== currentStationId
+  ) {
+    return false;
+  }
 
   const hasNonVoidedPayments =
     order.payments?.some((payment) => !payment.isVoided) ?? false;
@@ -40,12 +52,13 @@ export function findLatestReusableEmptyDraftId(
   ordersById: Record<string, OrderProfile | undefined>,
   orderIds: string[],
   excludeOrderId?: string | null,
+  currentStationId?: string | null,
 ): string | null {
   const reusableId = [...orderIds]
     .reverse()
     .find((orderId) => {
       if (excludeOrderId && orderId === excludeOrderId) return false;
-      return isReusableEmptyDraftOrder(ordersById[orderId]);
+      return isReusableEmptyDraftOrder(ordersById[orderId], currentStationId);
     });
 
   return reusableId ?? null;

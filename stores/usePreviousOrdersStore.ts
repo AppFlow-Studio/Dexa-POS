@@ -9,6 +9,8 @@ import {
   derivePaymentRefundState,
 } from "@/lib/paymentStatus";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { withDeadline } from "@/lib/network/withDeadline";
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
 import { projectToSummary, todayOrdersCache } from "@/stores/todayOrdersCache";
@@ -635,19 +637,31 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             },
           });
 
-          // Step 2: Fetch orders within the business day window
-          const { data: fetchedOrders, error } =
-            await OrderService.getHistoryOrders(
-              client,
-              locationId,
-              INITIAL_FETCH_SIZE,
-              null,
-              startTs,
-              endTs,
+          // Step 2: Fetch orders within the business day window.
+          // Deadline-wrapped so server-side statement timeouts (~30s) fail fast.
+          let fetchedOrders: any[] | null = null;
+          try {
+            const result = await withDeadline(
+              (signal) =>
+                OrderService.getHistoryOrders(
+                  client,
+                  locationId,
+                  INITIAL_FETCH_SIZE,
+                  null,
+                  startTs,
+                  endTs,
+                  signal,
+                ),
+              DEADLINES.read,
+              "getHistoryOrders",
             );
-
-          if (error) {
-            console.error("Failed to fetch previous orders:", error);
+            if (result.error) {
+              console.error("Failed to fetch previous orders:", result.error);
+              return;
+            }
+            fetchedOrders = result.data;
+          } catch (err) {
+            console.error("Failed to fetch previous orders:", err);
             return;
           }
 
