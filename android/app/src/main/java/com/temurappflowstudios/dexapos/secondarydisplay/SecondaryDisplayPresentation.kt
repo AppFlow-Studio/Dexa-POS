@@ -2,6 +2,7 @@ package com.temurappflowstudios.dexapos.secondarydisplay
 
 import android.app.Presentation
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
 import android.view.Display
@@ -34,14 +35,24 @@ class SecondaryDisplayPresentation(context: Context, display: Display) :
             }
         }
 
-        val app = context.applicationContext as? MainApplication
+        val displayContext = context.createDisplayContext(display)
+        val displayConfig = Configuration(displayContext.resources.configuration).apply {
+            // Keep the CFD presentation independent from the POS tablet's
+            // accessibility font scale. On some secondary displays Android
+            // measures text with one scaled density and draws it with another,
+            // clipping every Text node horizontally.
+            fontScale = 1.0f
+        }
+        val reactContext = displayContext.createConfigurationContext(displayConfig)
+
+        val app = reactContext.applicationContext as? MainApplication
         if (app == null) {
             Log.e(TAG, "Could not get MainApplication")
             return
         }
 
         try {
-            val surface = app.reactHost.createSurface(context, RN_COMPONENT_NAME, null)
+            val surface = app.reactHost.createSurface(reactContext, RN_COMPONENT_NAME, null)
             reactSurface = surface
 
             val surfaceView = surface.view

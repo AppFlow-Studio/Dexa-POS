@@ -82,8 +82,18 @@ function installBridge() {
   // POS -> WebView: state updates
   window.__cfdRecv = (payload) => {
     try {
+      // ── loyalty_prompt is handled natively ──
+      // The loyalty phone keypad is rendered natively outside the
+      // WebView (see CFDBuiltinDisplay). If the host pushes
+      // `screenState: 'loyalty_prompt'`, we strip the field so the
+      // WebView store preserves its current state. The WebView
+      // stays on the approved screen underneath the native overlay.
+      const stripped =
+        payload.screenState === "loyalty_prompt"
+          ? { ...payload, screenState: undefined }
+          : payload;
       const prevTheme = useCFDWebDisplayStore.getState().themeMode;
-      useCFDWebDisplayStore.getState().applyPayload(payload);
+      useCFDWebDisplayStore.getState().applyPayload(stripped);
       const nextTheme = useCFDWebDisplayStore.getState().themeMode;
       if (prevTheme !== nextTheme) {
         applyTheme(nextTheme);
@@ -180,39 +190,23 @@ function CFDWebApp() {
   };
 
   const handleLoyaltyJoin = () => {
-    // Diagnostic timing — three timestamps so we can see exactly where
-    // any visible delay between tap and keypad lives:
-    //   T0: handler entered (Pressable onPress fired — touch-release)
-    //   T1: optimistic setScreenState completed (store updated)
-    //   T2: postToHost completed (message dispatched to host)
-    // The "tap → keypad" lag visible to the customer is the gap from
-    // T0 to the next paint after T1.
-    const t0 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
-    try {
-      useCFDWebDisplayStore.getState().setScreenState("loyalty_prompt");
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[CFDWebView] optimistic loyalty_prompt failed", err);
-    }
-    const t1 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
+    // The loyalty phone prompt is now rendered NATIVELY (outside the
+    // WebView) by CFDBuiltinDisplay. We do NOT optimistically set
+    // screenState to "loyalty_prompt" here. Instead, we just post
+    // the message to the host. The host transitions the shared store
+    // to "loyalty_prompt", which triggers:
+    //   1. The native overlay in CFDBuiltinDisplay to appear
+    //   2. A payload push to this WebView (which we ignore via
+    //      __cfdRecv's loyalty_prompt filtering above)
     postToHost({ type: "loyalty_join", timestamp: Date.now() });
     triggerCFDLoyaltyJoin();
-    const t2 =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
-    // eslint-disable-next-line no-console
-    console.log(
-      `[CFDWebView] handleLoyaltyJoin: setScreenState=${(t1 - t0).toFixed(
-        1,
-      )}ms, postToHost=${(t2 - t1).toFixed(1)}ms`,
-    );
   };
 
   return (
     <View style={rootStyles.root}>
       <CFDWebDisplayProvider>
         <CFDScreenRouter
+          nativeLoyaltyPrompt
           onTipSelected={handleTipSelected}
           onPhoneSubmitted={handlePhoneSubmitted}
           onLoyaltySkip={handleLoyaltySkip}
