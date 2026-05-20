@@ -2,7 +2,7 @@
 import { useCFDDisplayField } from "@/contexts/CFDDisplayDataContext.base";
 import { colors } from "@/lib/theme";
 import { Delete, Gift } from "lucide-react-native";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -44,7 +44,7 @@ function formatEnteredPhone(digits: string): string {
 // (lightStyles / darkStyles) and select between them in the render path
 // with a ternary — the reference per theme stays stable that way too.
 // ---------------------------------------------------------------------------
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.screen,
@@ -192,6 +192,8 @@ const styles = StyleSheet.create({
   },
 });
 
+type LoyaltyPromptStyles = ReturnType<typeof createStyles>;
+
 // ---------------------------------------------------------------------------
 // Keypad
 //
@@ -218,6 +220,7 @@ interface KeyButtonProps {
   isAction?: boolean;
   iconSlot?: React.ReactNode;
   onPress: (key: string) => void;
+  styles: LoyaltyPromptStyles;
 }
 
 const KeyButton = memo(function KeyButton({
@@ -226,6 +229,7 @@ const KeyButton = memo(function KeyButton({
   isAction = false,
   iconSlot,
   onPress,
+  styles,
 }: KeyButtonProps) {
   const handlePress = useCallback(() => {
     const t0 = performance.now();
@@ -256,12 +260,13 @@ const KeyButton = memo(function KeyButton({
 
 interface KeypadProps {
   onPress: (key: string) => void;
+  styles: LoyaltyPromptStyles;
 }
 
 // Keypad no longer receives `styles` as a prop — it references the module-
 // level constant directly. This removes the last prop that could change
 // between renders and keeps React.memo's shallow-equal check trivially fast.
-const Keypad = memo(function Keypad({ onPress }: KeypadProps) {
+const Keypad = memo(function Keypad({ onPress, styles }: KeypadProps) {
   return (
     <View style={styles.keypad}>
       {[
@@ -271,19 +276,32 @@ const Keypad = memo(function Keypad({ onPress }: KeypadProps) {
       ].map((row, ri) => (
         <View key={ri} style={styles.numpadRow}>
           {row.map((key) => (
-            <KeyButton key={key} label={key} digit={key} onPress={onPress} />
+            <KeyButton
+              key={key}
+              label={key}
+              digit={key}
+              onPress={onPress}
+              styles={styles}
+            />
           ))}
         </View>
       ))}
       <View style={styles.numpadRow}>
-        <KeyButton label="clear" digit="clear" isAction onPress={onPress} />
-        <KeyButton label="0" digit="0" onPress={onPress} />
+        <KeyButton
+          label="clear"
+          digit="clear"
+          isAction
+          onPress={onPress}
+          styles={styles}
+        />
+        <KeyButton label="0" digit="0" onPress={onPress} styles={styles} />
         <KeyButton
           label={null}
           digit="backspace"
           isAction
           onPress={onPress}
           iconSlot={<Delete size={16} color={colors.heading} />}
+          styles={styles}
         />
       </View>
     </View>
@@ -304,7 +322,8 @@ export function LoyaltyPromptScreen({
   // (the stylesheet is static above), but we keep the subscription so the
   // component re-renders and picks up the new `colors` values if the theme
   // actually changes while the screen is visible.
-  useCFDDisplayField("themeMode");
+  const themeMode = useCFDDisplayField("themeMode");
+  const styles = useMemo(() => createStyles(), [themeMode]);
 
   // ---------------------------------------------------------------------------
   // Phone digits — stored in a ref to avoid triggering a React render on
@@ -419,7 +438,7 @@ export function LoyaltyPromptScreen({
 
         {/* Keypad only receives a stable callback — never re-renders after
             first mount thanks to React.memo + [] deps on handleKey. */}
-        <Keypad onPress={handleKey} />
+        <Keypad onPress={handleKey} styles={styles} />
 
         <View style={styles.footerInner}>
           <TouchableOpacity
