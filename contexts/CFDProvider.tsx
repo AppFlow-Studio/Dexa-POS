@@ -820,10 +820,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             if (controllerRef.current !== ctrl) return
             clearLoyaltyTimer()
             frozenTotalsRef.current = null
+            activeScreenStateRef.current = null
             setActiveScreenState(null)
             setBaseAmountOverride(null)
             setCurrentTip({ amount: 0, percentage: null })
-            ctrl.showIdle()
+            ctrl.resumeOrderDisplay()
           },
           onLoyaltyJoin: () => {
             if (controllerRef.current !== ctrl) return
@@ -3167,10 +3168,22 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     if (!ctrl) return
     clearLoyaltyTimer()
     frozenTotalsRef.current = null
+    activeScreenStateRef.current = null
     setActiveScreenState(null)
     setBaseAmountOverride(null)
     setCurrentTip({ amount: 0, percentage: null })
-    ctrl.showIdle()
+    ctrl.resumeOrderDisplay()
+    const builtinState = useCFDBuiltinStore.getState()
+    const nextScreenState: CFDScreenState =
+      builtinState.items.length > 0 || activeOrderRef.current
+        ? 'ordering'
+        : 'idle'
+    useCFDBuiltinStore.getState().update({
+      screenState: nextScreenState,
+      loyaltyPrompt: null,
+      loyaltyResult: null
+    })
+    lastBuiltinScreenStateRef.current = nextScreenState
   }, [clearLoyaltyTimer])
 
   useEffect(() => {

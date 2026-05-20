@@ -43,6 +43,7 @@ declare global {
   interface Window {
     __cfdRecv?: (payload: Partial<CFDPayload>) => void;
     __cfdReady?: () => void;
+    __CFD_INITIAL_SNAPSHOT__?: Partial<CFDPayload>;
     ReactNativeWebView?: {
       postMessage: (data: string) => void;
     };
@@ -79,6 +80,19 @@ function applyTheme(mode: "light" | "dark") {
 }
 
 function installBridge() {
+  const initialSnapshot = window.__CFD_INITIAL_SNAPSHOT__;
+  if (initialSnapshot) {
+    try {
+      useCFDWebDisplayStore.getState().applyPayload(initialSnapshot);
+      if (initialSnapshot.themeMode) {
+        applyTheme(initialSnapshot.themeMode);
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[CFDWebView] initial snapshot failed", err);
+    }
+  }
+
   // POS -> WebView: state updates
   window.__cfdRecv = (payload) => {
     try {
@@ -176,15 +190,6 @@ function CFDWebApp() {
   };
 
   const handleLoyaltySkip = () => {
-    // Optimistic local transition so the screen flips immediately.
-    // Used by both the loyalty phone-prompt Skip and the Approved
-    // screen Skip / Done button.
-    try {
-      useCFDWebDisplayStore.getState().setScreenState("idle");
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[CFDWebView] optimistic idle on skip failed", err);
-    }
     postToHost({ type: "loyalty_skip", timestamp: Date.now() });
     triggerCFDLoyaltySkip();
   };

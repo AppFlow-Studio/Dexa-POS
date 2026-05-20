@@ -410,6 +410,28 @@ export class CFDController {
   }
 
   /**
+   * Clear transient overlays (loyalty prompt/confirmation) and return to the
+   * current order payload instead of briefly broadcasting an empty idle state.
+   */
+  resumeOrderDisplay (): void {
+    const nextScreenState: CFDScreenState =
+      (this.lastPayload.items?.length ?? 0) > 0 ? 'ordering' : 'idle'
+
+    if (nextScreenState === 'idle') {
+      this.showIdle()
+      return
+    }
+
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      screenState: nextScreenState,
+      loyaltyPrompt: undefined,
+      loyaltyResult: undefined,
+      timestamp: Date.now()
+    })
+  }
+
+  /**
    * Show loyalty phone entry screen
    */
   showLoyaltyPrompt (merchantName: string): void {

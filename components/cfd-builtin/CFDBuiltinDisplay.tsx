@@ -29,11 +29,12 @@ import {
   setWebView,
 } from "@/services/cfd/CFDWebViewBridge";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { AppRegistry, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { useShallow } from "zustand/react/shallow";
 import type {
   WebViewErrorEvent,
   WebViewHttpErrorEvent,
@@ -105,6 +106,49 @@ function CFDWebViewHost() {
   const webViewRef = useRef<WebView>(null);
   const reloadTimestampsRef = useRef<number[]>([]);
   const pendingReloadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialSnapshot = useCFDBuiltinStore(
+    useShallow((s) => ({
+      screenState: s.screenState,
+      serverName: s.serverName,
+      customerName: s.customerName,
+      customerPhone: s.customerPhone,
+      orderNumber: s.orderNumber,
+      orderType: s.orderType,
+      tableName: s.tableName,
+      guestCount: s.guestCount,
+      items: s.items,
+      subtotal: s.subtotal,
+      subtotalCash: s.subtotalCash,
+      subtotalCard: s.subtotalCard,
+      discountAmount: s.discountAmount,
+      taxAmount: s.taxAmount,
+      taxCash: s.taxCash,
+      taxCard: s.taxCard,
+      tipAmount: s.tipAmount,
+      tipPercentage: s.tipPercentage,
+      total: s.total,
+      totalCash: s.totalCash,
+      totalCard: s.totalCard,
+      savingsAmount: s.savingsAmount,
+      outstandingTotal: s.outstandingTotal,
+      amountPaid: s.amountPaid,
+      branding: s.branding,
+      layout: s.layout,
+      orderingPanelImages: s.orderingPanelImages,
+      tipConfig: s.tipConfig,
+      carouselImages: s.carouselImages,
+      loyaltyPrompt: s.loyaltyPrompt,
+      loyaltyResult: s.loyaltyResult,
+      paymentMethod: s.paymentMethod,
+      merchantHasLoyalty: s.merchantHasLoyalty,
+      themeMode: s.themeMode,
+    })),
+  );
+  const initialSnapshotScript = useMemo(() => {
+    return `window.__CFD_INITIAL_SNAPSHOT__=${JSON.stringify(
+      initialSnapshot,
+    )}; true;`;
+  }, [initialSnapshot]);
 
   // ── Native loyalty phone-prompt overlay ──
   // When the host transitions to `loyalty_prompt`, we COMPLETELY
@@ -291,6 +335,7 @@ function CFDWebViewHost() {
           ref={webViewRef}
           originWhitelist={["*"]}
           source={{ uri: CFD_BUNDLE_URI }}
+          injectedJavaScriptBeforeContentLoaded={initialSnapshotScript}
           onLoadStart={handleLoadStart}
           onLoadEnd={handleLoadEnd}
           onMessage={handleMessage}
