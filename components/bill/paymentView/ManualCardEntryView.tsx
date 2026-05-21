@@ -431,106 +431,111 @@ const ManualCardEntryView = () => {
                   ${totalToPay.toFixed(2)}
                 </Text>
 
-                <Text
-                  style={{
-                    color: colors.muted,
-                    fontSize: 11,
-                    fontWeight: '700',
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.8,
-                    marginBottom: 6,
-                    alignSelf: 'flex-start'
-                  }}
-                >
-                  Add Tip
-                </Text>
-                {/* Preset Tip Buttons */}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    gap: 6,
-                    width: '100%',
-                    marginBottom: 10
-                  }}
-                >
-                  {TIP_PRESETS.map(percent => {
-                    const isActive = selectedTipPreset === percent
-                    return (
-                      <TouchableOpacity
-                        key={percent}
-                        onPress={() => handleTipPreset(percent)}
+                {/* Merchant-side tip options hidden — tip is captured via CFD / post-capture flow */}
+                {false && (
+                  <>
+                    <Text
+                      style={{
+                        color: colors.muted,
+                        fontSize: 11,
+                        fontWeight: '700',
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.8,
+                        marginBottom: 6,
+                        alignSelf: 'flex-start'
+                      }}
+                    >
+                      Add Tip
+                    </Text>
+                    {/* Preset Tip Buttons */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        gap: 6,
+                        width: '100%',
+                        marginBottom: 10
+                      }}
+                    >
+                      {TIP_PRESETS.map(percent => {
+                        const isActive = selectedTipPreset === percent
+                        return (
+                          <TouchableOpacity
+                            key={percent}
+                            onPress={() => handleTipPreset(percent)}
+                            style={{
+                              flex: 1,
+                              paddingVertical: 8,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              backgroundColor: isActive
+                                ? `${colors.teal}15`
+                                : colors.panel,
+                              borderColor: isActive ? colors.teal : colors.border,
+                              alignItems: 'center'
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 13,
+                                fontWeight: '700',
+                                color: isActive ? colors.heading : colors.muted
+                              }}
+                            >
+                              {percent}%
+                            </Text>
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                marginTop: 1,
+                                color: isActive ? colors.teal : colors.muted
+                              }}
+                            >
+                              ${((percent / 100) * totalToPay).toFixed(2)}
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      })}
+                    </View>
+                    {/* Custom Tip Input */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: colors.panel,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        height: 44,
+                        width: '100%',
+                        marginBottom: 16
+                      }}
+                    >
+                      <Text
                         style={{
-                          flex: 1,
-                          paddingVertical: 8,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          backgroundColor: isActive
-                            ? `${colors.teal}15`
-                            : colors.panel,
-                          borderColor: isActive ? colors.teal : colors.border,
-                          alignItems: 'center'
+                          color: colors.muted,
+                          fontSize: 15,
+                          marginRight: 4
                         }}
                       >
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            fontWeight: '700',
-                            color: isActive ? colors.heading : colors.muted
-                          }}
-                        >
-                          {percent}%
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            marginTop: 1,
-                            color: isActive ? colors.teal : colors.muted
-                          }}
-                        >
-                          ${((percent / 100) * totalToPay).toFixed(2)}
-                        </Text>
-                      </TouchableOpacity>
-                    )
-                  })}
-                </View>
-                {/* Custom Tip Input */}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.panel,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    height: 44,
-                    width: '100%',
-                    marginBottom: 16
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.muted,
-                      fontSize: 15,
-                      marginRight: 4
-                    }}
-                  >
-                    $
-                  </Text>
-                  <TextInput
-                    value={tipInput}
-                    onChangeText={handleTipInputChange}
-                    placeholder='0.00'
-                    keyboardType='numeric'
-                    placeholderTextColor={colors.muted}
-                    style={{
-                      flex: 1,
-                      fontSize: 16,
-                      fontWeight: '700',
-                      color: colors.heading
-                    }}
-                  />
-                </View>
+                        $
+                      </Text>
+                      <TextInput
+                        value={tipInput}
+                        onChangeText={handleTipInputChange}
+                        placeholder='0.00'
+                        keyboardType='numeric'
+                        placeholderTextColor={colors.muted}
+                        style={{
+                          flex: 1,
+                          fontSize: 16,
+                          fontWeight: '700',
+                          color: colors.heading
+                        }}
+                      />
+                    </View>
+                  </>
+                )}
 
                 <View
                   style={{
