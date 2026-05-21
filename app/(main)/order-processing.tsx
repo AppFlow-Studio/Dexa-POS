@@ -236,8 +236,8 @@ const OrderProcessing = () => {
     const currentActiveOrder = state.activeOrderId
       ? state.ordersById[state.activeOrderId]
       : null;
-    if (currentActiveOrder) {
-      if (isReusableEmptyDraftOrder(currentActiveOrder) && selectedStore) {
+    if (currentActiveOrder && isReusableEmptyDraftOrder(currentActiveOrder)) {
+      if (selectedStore) {
         const refreshedNumbers = getRefreshedReusableDraftNumbers({
           draftId: currentActiveOrder.id,
           ordersById: state.ordersById,

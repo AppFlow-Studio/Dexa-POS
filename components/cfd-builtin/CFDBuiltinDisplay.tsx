@@ -14,19 +14,27 @@
 // (WebView->POS). Same `CFDPayload` JSON contract as the off-device WS CFD.
 import "@/global.css";
 
+import { NativeLoyaltyConfirmationScreen } from "@/components/cfd-builtin/NativeLoyaltyConfirmationScreen";
+import { NativeLoyaltyPromptScreen } from "@/components/cfd-builtin/NativeLoyaltyPromptScreen";
 import { CFDScreenRouter } from "@/components/cfd-client/CFDScreenRouter";
 import { CFDBuiltinDisplayProvider } from "@/contexts/CFDDisplayDataContext";
+import {
+  triggerCFDLoyaltySkip,
+  triggerCFDPhoneSubmit,
+} from "@/lib/cfdLoyaltyTriggers";
 import {
   dispatchMessage,
   markNotReady,
   markReady,
   setWebView,
 } from "@/services/cfd/CFDWebViewBridge";
-import React, { useCallback, useEffect, useRef } from "react";
+import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { AppRegistry, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { useShallow } from "zustand/react/shallow";
 import type {
   WebViewErrorEvent,
   WebViewHttpErrorEvent,
@@ -98,14 +106,85 @@ function CFDWebViewHost() {
   const webViewRef = useRef<WebView>(null);
   const reloadTimestampsRef = useRef<number[]>([]);
   const pendingReloadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialSnapshot = useCFDBuiltinStore(
+    useShallow((s) => ({
+      screenState: s.screenState,
+      serverName: s.serverName,
+      customerName: s.customerName,
+      customerPhone: s.customerPhone,
+      orderNumber: s.orderNumber,
+      orderType: s.orderType,
+      tableName: s.tableName,
+      guestCount: s.guestCount,
+      items: s.items,
+      subtotal: s.subtotal,
+      subtotalCash: s.subtotalCash,
+      subtotalCard: s.subtotalCard,
+      discountAmount: s.discountAmount,
+      taxAmount: s.taxAmount,
+      taxCash: s.taxCash,
+      taxCard: s.taxCard,
+      tipAmount: s.tipAmount,
+      tipPercentage: s.tipPercentage,
+      total: s.total,
+      totalCash: s.totalCash,
+      totalCard: s.totalCard,
+      savingsAmount: s.savingsAmount,
+      outstandingTotal: s.outstandingTotal,
+      amountPaid: s.amountPaid,
+      branding: s.branding,
+      layout: s.layout,
+      orderingPanelImages: s.orderingPanelImages,
+      tipConfig: s.tipConfig,
+      carouselImages: s.carouselImages,
+      loyaltyPrompt: s.loyaltyPrompt,
+      loyaltyResult: s.loyaltyResult,
+      paymentMethod: s.paymentMethod,
+      merchantHasLoyalty: s.merchantHasLoyalty,
+      themeMode: s.themeMode,
+    })),
+  );
+  const initialSnapshotScript = useMemo(() => {
+    return `window.__CFD_INITIAL_SNAPSHOT__=${JSON.stringify(
+      initialSnapshot,
+    )}; true;`;
+  }, [initialSnapshot]);
 
+  // ── Native loyalty phone-prompt overlay ──
+  // When the host transitions to `loyalty_prompt`, we COMPLETELY
+  // UNMOUNT the WebView and render NativeLoyaltyPromptScreen in its
+  // place. This avoids Android hardware-layer compositing conflicts
+  // (WebView with androidLayerType="hardware" renders in a separate
+  // window plane above React Native views). The native keypad uses
+  // plain TouchableOpacity on the Hermes thread with zero V8 touch
+  // corruption.
+  //
+  // When the customer submits/skips, the host flips screenState to
+  // `loyalty_confirmation` or `idle`. The WebView remounts, boots,
+  // and receives the new state via the bridge's snapshot flush.
+  const nativeLoyaltyScreen = useCFDBuiltinStore((s) =>
+    s.screenState === "loyalty_prompt" ||
+    s.screenState === "loyalty_confirmation"
+      ? s.screenState
+      : null,
+  );
+
+  // Bridge registration tied to WebView mount status.
+  // When the WebView unmounts (native overlay active), we unregister
+  // so stray injectJavaScript calls are no-ops. When it remounts,
+  // we re-register with the new WebView instance.
+  const webViewMounted = nativeLoyaltyScreen == null;
   useEffect(() => {
-    console.log(
-      "[CFDWebViewHost] mounted — USE_WEBVIEW=true, registering webViewRef",
-    );
+    if (!webViewMounted) {
+      console.log("[CFDWebViewHost] WebView unmounted — clearing bridge");
+      markNotReady();
+      setWebView(null);
+      return;
+    }
+    console.log("[CFDWebViewHost] WebView mounted — registering bridge");
     setWebView(webViewRef);
     return () => {
-      console.log("[CFDWebViewHost] unmounted — clearing webViewRef");
+      console.log("[CFDWebViewHost] WebView unmounting — clearing bridge");
       if (pendingReloadRef.current) {
         clearTimeout(pendingReloadRef.current);
         pendingReloadRef.current = null;
@@ -114,7 +193,7 @@ function CFDWebViewHost() {
       markNotReady();
       setWebView(null);
     };
-  }, []);
+  }, [webViewMounted]);
 
   const handleLoadEnd = useCallback(() => {
     console.log("[CFDWebViewHost] onLoadEnd — scheduling markReady via rAF");
@@ -228,31 +307,57 @@ function CFDWebViewHost() {
 
   return (
     <View style={styles.root}>
-      <WebView
-        ref={webViewRef}
-        originWhitelist={["*"]}
-        source={{ uri: CFD_BUNDLE_URI }}
-        onLoadStart={handleLoadStart}
-        onLoadEnd={handleLoadEnd}
-        onMessage={handleMessage}
-        onRenderProcessGone={handleRenderProcessGone}
-        onContentProcessDidTerminate={handleContentProcessDidTerminate}
-        onError={handleError}
-        onHttpError={handleHttpError}
-        javaScriptEnabled
-        domStorageEnabled
-        allowFileAccess
-        allowFileAccessFromFileURLs
-        allowUniversalAccessFromFileURLs
-        mixedContentMode="always"
-        setSupportMultipleWindows={false}
-        androidLayerType="hardware"
-        overScrollMode="never"
-        scrollEnabled={false}
-        bounces={false}
-        cacheEnabled
-        style={styles.webview}
-      />
+      {nativeLoyaltyScreen ? (
+        // ── Native phone-entry overlay ──
+        // WebView is completely unmounted to avoid Android
+        // hardware-layer compositing conflicts. NativeLoyalty
+        // uses plain TouchableOpacity + React state (no
+        // setNativeProps — removed in RN 0.76+).
+        <View style={styles.root}>
+          <CFDBuiltinDisplayProvider>
+            {nativeLoyaltyScreen === "loyalty_prompt" ? (
+              <NativeLoyaltyPromptScreen
+                onPhoneSubmitted={triggerCFDPhoneSubmit}
+                onSkip={triggerCFDLoyaltySkip}
+              />
+            ) : (
+              <NativeLoyaltyConfirmationScreen />
+            )}
+          </CFDBuiltinDisplayProvider>
+        </View>
+      ) : (
+        // ── WebView for all non-loyalty-prompt screens ──
+        // Boots fresh after native overlay dismisses. Bridge's
+        // snapshot push (fired on markReady) supplies current
+        // screenState so WebView transitions directly to the
+        // right screen.
+        <WebView
+          ref={webViewRef}
+          originWhitelist={["*"]}
+          source={{ uri: CFD_BUNDLE_URI }}
+          injectedJavaScriptBeforeContentLoaded={initialSnapshotScript}
+          onLoadStart={handleLoadStart}
+          onLoadEnd={handleLoadEnd}
+          onMessage={handleMessage}
+          onRenderProcessGone={handleRenderProcessGone}
+          onContentProcessDidTerminate={handleContentProcessDidTerminate}
+          onError={handleError}
+          onHttpError={handleHttpError}
+          javaScriptEnabled
+          domStorageEnabled
+          allowFileAccess
+          allowFileAccessFromFileURLs
+          allowUniversalAccessFromFileURLs
+          mixedContentMode="always"
+          setSupportMultipleWindows={false}
+          androidLayerType="hardware"
+          overScrollMode="never"
+          scrollEnabled={false}
+          bounces={false}
+          cacheEnabled
+          style={styles.webview}
+        />
+      )}
     </View>
   );
 }
