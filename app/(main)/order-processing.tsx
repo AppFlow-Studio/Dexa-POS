@@ -9,6 +9,7 @@ import BulkCompleteModal from "@/components/order/BulkCompleteModal";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
 import OrderLineMinimalCard from "@/components/order/OrderLineMinimalCard";
+import { useCFD } from "@/contexts/CFDProvider";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
@@ -127,6 +128,7 @@ const OrderProcessing = () => {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
+  const { markOrderProcessingActivity } = useCFD();
   const measuredHeaderHeight = getHeaderHeight();
   const overlayHeaderHeight = measuredHeaderHeight > 0 ? measuredHeaderHeight : 56;
   const customItemModalHeight = useMemo(() => {
@@ -1132,6 +1134,7 @@ const OrderProcessing = () => {
     <View
       key={colorScheme}
       className="flex-1 flex-col px-2 py-1"
+      onTouchStart={markOrderProcessingActivity}
       style={{ backgroundColor: colors.screen }}
     >
       {/* <CashDrawerStatusBar

@@ -17,7 +17,7 @@
 import { useCFDDisplayField } from "@/contexts/CFDDisplayDataContext.base";
 import { colors } from "@/lib/theme";
 import { Delete, Gift } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -56,13 +56,18 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
 
   const [phoneDigits, setPhoneDigits] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitStartedRef = useRef(false);
 
   const canSubmit = phoneDigits.length === PHONE_DIGITS;
 
-  // Safety: clear submitting state after 12s if host never resolves.
+  // Diagnostic timeout only. The host owns the transition to confirmation or
+  // fallback; clearing locally invites duplicate submits while lookup is still
+  // in flight.
   useEffect(() => {
     if (!isSubmitting) return;
-    const t = setTimeout(() => setIsSubmitting(false), 12_000);
+    const t = setTimeout(() => {
+      console.warn("[NativeLoyaltyPromptScreen] phone lookup still pending after 45s");
+    }, 45_000);
     return () => clearTimeout(t);
   }, [isSubmitting]);
 
@@ -77,13 +82,17 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
   }, []);
 
   const handleSubmit = useCallback(() => {
+    if (submitStartedRef.current) return;
     if (phoneDigits.length === PHONE_DIGITS) {
+      submitStartedRef.current = true;
       setIsSubmitting(true);
       onPhoneSubmitted(phoneDigits);
     }
   }, [phoneDigits, onPhoneSubmitted]);
 
   const handleSkipPress = useCallback(() => {
+    if (submitStartedRef.current) return;
+    submitStartedRef.current = true;
     setIsSubmitting(true);
     onSkip();
   }, [onSkip]);
