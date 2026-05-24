@@ -65,6 +65,7 @@ import React, {
 } from 'react'
 
 const DEBUG = __DEV__
+const ORDER_PROCESSING_IDLE_MS = 60 * 1000
 
 // Re-export the loyalty trigger helpers so any existing importer of
 // `@/contexts/CFDProvider` keeps working. Real implementation lives in
@@ -129,10 +130,29 @@ interface CFDContextType {
   disconnectClient: (clientId: string) => void
   refreshCarouselImages: () => Promise<void>
   refreshOrderingPanelImages: () => Promise<void>
+  markOrderProcessingActivity: () => void
   activeScreenState: CFDScreenState | null
 }
 
 const CFDContext = createContext<CFDContextType | null>(null)
+
+function areStringArraysEqual (a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+function areOrderingPanelImagesEqual (
+  a: NonNullable<CFDPayload['orderingPanelImages']>,
+  b: NonNullable<CFDPayload['orderingPanelImages']>
+): boolean {
+  return (
+    areStringArraysEqual(a.primary, b.primary) &&
+    areStringArraysEqual(a.secondary, b.secondary)
+  )
+}
 
 const noopCFDValue: CFDContextType = {
   serverStatus: 'disabled',
@@ -166,6 +186,7 @@ const noopCFDValue: CFDContextType = {
   disconnectClient: () => {},
   refreshCarouselImages: async () => {},
   refreshOrderingPanelImages: async () => {},
+  markOrderProcessingActivity: () => {},
   activeScreenState: null
 }
 
@@ -259,7 +280,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const resultAutoIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
+  const orderProcessingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
   const loyaltyFlowRequestIdRef = useRef(0)
+  const merchantClosedDuringLoyaltyRef = useRef(false)
   const queuedLoyaltyOrderIdsRef = useRef<Set<string>>(new Set())
   // Dedupe via cheap structural fingerprints — replaces a per-flush
   // JSON.stringify of the entire cart. The fingerprint is checked at flush
@@ -290,6 +315,22 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // screen-state transitions (idle ↔ ordering ↔ payment) so transitions feel
   // instant; cart-edit churn within the same screenState still gets batched.
   const lastBuiltinScreenStateRef = useRef<string>('')
+  const [isOrderProcessingIdle, setIsOrderProcessingIdle] = useState(false)
+  const isOrderProcessingIdleRef = useRef(false)
+  const pathnameRef = useRef(pathname)
+  const [lastOrderProcessingActivityAt, setLastOrderProcessingActivityAt] =
+    useState(() => Date.now())
+
+  const clearOrderProcessingIdleTimer = useCallback(() => {
+    if (!orderProcessingIdleTimerRef.current) return
+    clearTimeout(orderProcessingIdleTimerRef.current)
+    orderProcessingIdleTimerRef.current = null
+  }, [])
+
+  const markOrderProcessingActivity = useCallback(() => {
+    setLastOrderProcessingActivityAt(Date.now())
+    setIsOrderProcessingIdle(false)
+  }, [])
 
   // Store settings
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
@@ -434,6 +475,54 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     activeScreenStateRef.current = activeScreenState
   }, [activeScreenState])
+
+  useEffect(() => {
+    pathnameRef.current = pathname
+  }, [pathname])
+
+  useEffect(() => {
+    isOrderProcessingIdleRef.current = isOrderProcessingIdle
+  }, [isOrderProcessingIdle])
+
+  useEffect(() => {
+    clearOrderProcessingIdleTimer()
+
+    const onOrderProcessing = pathname.includes('order-processing')
+    const hasCustomerFlow =
+      activeScreenState === 'payment' ||
+      activeScreenState === 'processing' ||
+      activeScreenState === 'approved' ||
+      activeScreenState === 'declined' ||
+      activeScreenState === 'tip_selection' ||
+      activeScreenState === 'loyalty_prompt' ||
+      activeScreenState === 'loyalty_confirmation'
+    const activeOrderItemCount = activeOrder?.items?.length ?? 0
+    const isEmptyOrder = activeOrderItemCount === 0
+
+    if (!onOrderProcessing || hasCustomerFlow || !activeOrder || !isEmptyOrder) {
+      setIsOrderProcessingIdle(false)
+      return
+    }
+
+    if (isOrderProcessingIdle) return
+
+    const elapsed = Date.now() - lastOrderProcessingActivityAt
+    const delay = Math.max(0, ORDER_PROCESSING_IDLE_MS - elapsed)
+    orderProcessingIdleTimerRef.current = setTimeout(() => {
+      orderProcessingIdleTimerRef.current = null
+      setIsOrderProcessingIdle(true)
+    }, delay)
+
+    return clearOrderProcessingIdleTimer
+  }, [
+    pathname,
+    activeScreenState,
+    activeOrder,
+    isOrderProcessingIdle,
+    lastOrderProcessingActivityAt,
+    clearOrderProcessingIdleTimer
+  ])
+
   const activeOrderSubtotal = useOrderStore(s => s.activeOrderSubtotal)
   const activeOrderTax = useOrderStore(s => s.activeOrderTax)
   const activeOrderTotal = useOrderStore(s => s.activeOrderTotal)
@@ -819,12 +908,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           onLoyaltySkip: () => {
             if (controllerRef.current !== ctrl) return
             clearLoyaltyTimer()
-            frozenTotalsRef.current = null
-            activeScreenStateRef.current = null
-            setActiveScreenState(null)
-            setBaseAmountOverride(null)
-            setCurrentTip({ amount: 0, percentage: null })
-            ctrl.resumeOrderDisplay()
+            finishLoyaltyFlow('external-loyalty-skip')
           },
           onLoyaltyJoin: () => {
             if (controllerRef.current !== ctrl) return
@@ -899,6 +983,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         clearTimeout(builtinIdleTimerRef.current)
         builtinIdleTimerRef.current = null
       }
+      if (orderProcessingIdleTimerRef.current) {
+        clearTimeout(orderProcessingIdleTimerRef.current)
+        orderProcessingIdleTimerRef.current = null
+      }
       if (loyaltyTimerRef.current) {
         clearTimeout(loyaltyTimerRef.current)
         loyaltyTimerRef.current = null
@@ -950,6 +1038,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             (url: unknown): url is string =>
               typeof url === 'string' && url.length > 0
           )
+        const currentImages = useCFDBuiltinStore.getState().carouselImages
+        if (areStringArraysEqual(currentImages, imageUrls)) {
+          if (__DEV__) console.log('[CFD] Carousel images unchanged')
+          return
+        }
         console.log('[CFD] Updating carousel images:', imageUrls.length)
         // Optional-chain — controller may have stopped (station change, logout)
         // between the early-return check above and this point on the await.
@@ -993,6 +1086,18 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       })
 
       // Optional-chain — same race as fetchCarouselImages.
+      const currentOrderingPanelImages =
+        useCFDBuiltinStore.getState().orderingPanelImages
+      if (
+        areOrderingPanelImagesEqual(
+          currentOrderingPanelImages,
+          orderingPanelImages
+        )
+      ) {
+        if (__DEV__) console.log('[CFD] Ordering panel images unchanged')
+        return
+      }
+
       controllerRef.current?.updateOrderingPanelImages(orderingPanelImages)
       useCFDBuiltinStore.getState().update({ orderingPanelImages })
     } catch (err) {
@@ -1062,7 +1167,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     // 1. We are in an active transaction state (Tip Selection, Payment, etc.)
     // 2. We are on the Sales screen and have an active order.
     const shouldShowOrderData =
-      !!activeScreenState || (isSalesScreen && !!activeOrder)
+      !!activeScreenState ||
+      (isSalesScreen && !!activeOrder && !isOrderProcessingIdle)
 
     const frozen = frozenTotalsRef.current
     const displayItems = frozen?.items ?? cfdItems
@@ -1315,6 +1421,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isConnected,
+    isOrderProcessingIdle,
     activeOrderCustomerName,
     activeOrderCustomerPhone,
     activeOrderDisplayNumber,
@@ -1406,7 +1513,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       // edit-layout / clean-table are NOT sales context.
       const isSalesScreen = isCFDSalesPathname(pathname)
       const shouldShowOrderData =
-        !!activeScreenState || (isSalesScreen && !!activeOrder)
+        !!activeScreenState ||
+        (isSalesScreen && !!activeOrder && !isOrderProcessingIdle)
 
       if (!shouldShowOrderData) {
         // Build the idle payload once — used by both the immediate-dispatch
@@ -1687,6 +1795,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     hasBuiltinCfd,
+    isOrderProcessingIdle,
     activeOrderCustomerName,
     activeOrderCustomerPhone,
     activeOrderDisplayNumber,
@@ -2041,6 +2150,52 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       })
     }
   }, [])
+
+  const finishLoyaltyFlow = useCallback(
+    (source: string) => {
+      const currentPathname = pathnameRef.current
+      const currentlyOrderProcessingIdle = isOrderProcessingIdleRef.current
+      const shouldFinishToIdle =
+        !isCFDSalesPathname(currentPathname) ||
+        !activeOrderRef.current ||
+        currentlyOrderProcessingIdle
+
+      merchantClosedDuringLoyaltyRef.current = false
+      frozenTotalsRef.current = null
+      activeScreenStateRef.current = null
+      setActiveScreenState(null)
+      setActivePaymentMethod(null)
+      setBaseAmountOverride(null)
+      setCurrentTip({ amount: 0, percentage: null })
+
+      logLoyaltyTrace(`${source}:finish`, {
+        to: shouldFinishToIdle ? 'idle' : 'order',
+        pathname: currentPathname,
+        hasActiveOrder: !!activeOrderRef.current,
+        isOrderProcessingIdle: currentlyOrderProcessingIdle
+      })
+
+      if (shouldFinishToIdle) {
+        showIdle()
+        return
+      }
+
+      controllerRef.current?.resumeOrderDisplay()
+
+      const builtinState = useCFDBuiltinStore.getState()
+      const nextScreenState: CFDScreenState =
+        activeOrderRef.current || builtinState.items.length > 0
+          ? 'ordering'
+          : 'idle'
+      useCFDBuiltinStore.getState().update({
+        screenState: nextScreenState,
+        loyaltyPrompt: null,
+        loyaltyResult: null
+      })
+      lastBuiltinScreenStateRef.current = nextScreenState
+    },
+    [showIdle]
+  )
 
   const clearLoyaltyTimer = useCallback(() => {
     if (!loyaltyTimerRef.current) return
@@ -2473,10 +2628,16 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // The function is kept (rather than removing all callers) so existing
   // call sites remain valid; it just clears any stale timer and exits.
   const scheduleLoyaltyReturnToIdle = useCallback(
-    (_requestId: number, _traceStage: string, _timeoutMs = 6000) => {
+    (requestId: number, traceStage: string, timeoutMs = 3000) => {
       clearLoyaltyTimer()
+      loyaltyTimerRef.current = setTimeout(() => {
+        if (requestId !== loyaltyFlowRequestIdRef.current) return
+        loyaltyTimerRef.current = null
+        logLoyaltyTrace(`${traceStage}:auto-idle`)
+        finishLoyaltyFlow(traceStage)
+      }, timeoutMs)
     },
-    [clearLoyaltyTimer]
+    [clearLoyaltyTimer, finishLoyaltyFlow]
   )
 
   const earnLoyaltyWithReadiness = useCallback(
@@ -3167,24 +3328,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     const ctrl = controllerRef.current
     if (!ctrl) return
     clearLoyaltyTimer()
-    frozenTotalsRef.current = null
-    activeScreenStateRef.current = null
-    setActiveScreenState(null)
-    setBaseAmountOverride(null)
-    setCurrentTip({ amount: 0, percentage: null })
-    ctrl.resumeOrderDisplay()
-    const builtinState = useCFDBuiltinStore.getState()
-    const nextScreenState: CFDScreenState =
-      builtinState.items.length > 0 || activeOrderRef.current
-        ? 'ordering'
-        : 'idle'
-    useCFDBuiltinStore.getState().update({
-      screenState: nextScreenState,
-      loyaltyPrompt: null,
-      loyaltyResult: null
-    })
-    lastBuiltinScreenStateRef.current = nextScreenState
-  }, [clearLoyaltyTimer])
+    finishLoyaltyFlow('builtin-loyalty-skip')
+  }, [clearLoyaltyTimer, finishLoyaltyFlow])
 
   useEffect(() => {
     setCFDLoyaltyHandlers({
@@ -3259,13 +3404,13 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     if (!onLoyaltyScreen) return
     if (!orderChanged && !successDismissed) return
 
-    console.log('[CFD] operator transitioned away during loyalty', {
+    merchantClosedDuringLoyaltyRef.current = true
+    console.log('[CFD] merchant moved on while customer is in loyalty', {
       orderChanged,
       successDismissed,
       from: activeScreenStateRef.current
     })
-    showIdle()
-  }, [activeOrderId, completedPaymentInfo, showIdle])
+  }, [activeOrderId, completedPaymentInfo])
 
   // Auto-return to idle after payment result display.
   //
@@ -3280,14 +3425,19 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     clearResultAutoIdleTimer()
 
-    if (activeScreenState === 'declined') {
+    if (activeScreenState === 'approved') {
+      resultAutoIdleTimerRef.current = setTimeout(
+        () => finishLoyaltyFlow('approved-timeout'),
+        8000
+      )
+    } else if (activeScreenState === 'declined') {
       resultAutoIdleTimerRef.current = setTimeout(() => showIdle(), 1500)
     }
 
     return () => {
       clearResultAutoIdleTimer()
     }
-  }, [activeScreenState, clearResultAutoIdleTimer, showIdle])
+  }, [activeScreenState, clearResultAutoIdleTimer, finishLoyaltyFlow, showIdle])
 
   const disconnectClient = useCallback((clientId: string) => {
     controllerRef.current?.unpairClient(clientId)
@@ -3324,6 +3474,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     disconnectClient,
     refreshCarouselImages: fetchCarouselImages,
     refreshOrderingPanelImages: fetchOrderingPanelImages,
+    markOrderProcessingActivity,
     // Exposed so payment views can defer their own auto-idle timers when the
     // loyalty flow takes over the CFD (otherwise their setTimeout(showIdle)
     // races and dismisses the prompt while the customer is mid-input).

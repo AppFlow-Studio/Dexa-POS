@@ -337,15 +337,20 @@ export function LoyaltyPromptScreen({
   // ---------------------------------------------------------------------------
   const phoneDigitsRef = useRef("");
   const phoneDisplayRef = useRef<Text>(null);
+  const submitStartedRef = useRef(false);
 
   const [phoneDisplay, setPhoneDisplay] = useState(formatEnteredPhone(""));
   const [canSubmit, setCanSubmit] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Safety timeout — clears the submitting overlay if the host never resolves.
+  // Diagnostic timeout only. The host owns the transition to confirmation or
+  // fallback; clearing locally invites duplicate submits while lookup is still
+  // in flight.
   useEffect(() => {
     if (!isSubmitting) return;
-    const t = setTimeout(() => setIsSubmitting(false), 12_000);
+    const t = setTimeout(() => {
+      console.warn("[LoyaltyPromptScreen] phone lookup still pending after 45s");
+    }, 45_000);
     return () => clearTimeout(t);
   }, [isSubmitting]);
 
@@ -363,6 +368,7 @@ export function LoyaltyPromptScreen({
       } catch {}
       setPhoneDisplay(formatEnteredPhone(""));
       setCanSubmit(false);
+      submitStartedRef.current = false;
       setIsSubmitting(false);
     }
   }, [visible]);
@@ -406,13 +412,17 @@ export function LoyaltyPromptScreen({
   }, []);
 
   const handleSubmit = useCallback(() => {
+    if (submitStartedRef.current) return;
     if (phoneDigitsRef.current.length === PHONE_DIGITS) {
+      submitStartedRef.current = true;
       setIsSubmitting(true);
       onPhoneSubmitted(phoneDigitsRef.current);
     }
   }, [onPhoneSubmitted]);
 
   const handleSkipPress = useCallback(() => {
+    if (submitStartedRef.current) return;
+    submitStartedRef.current = true;
     setIsSubmitting(true);
     onSkip();
   }, [onSkip]);

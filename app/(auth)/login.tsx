@@ -5,7 +5,7 @@ import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { signInWithGoogleNative } from "@/services/auth/googleNativeSignIn";
 import { Eye, EyeOff } from "lucide-react-native";
-import { useState } from "react";
+import { type RefObject, useRef, useState } from "react";
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -47,6 +47,7 @@ const GoogleIcon = ({ size = 18 }: { size?: number }) => (
 );
 
 const ANDROID_KEYBOARD_LIFT_OFFSET = 20;
+const KEYBOARD_SCROLL_PADDING = Platform.OS === "android" ? 96 : 16;
 
 const MerchantLoginScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
@@ -63,6 +64,8 @@ const MerchantLoginScreen = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const loginScrollRef = useRef<ScrollView>(null);
+  const secondFactorScrollRef = useRef<ScrollView>(null);
 
   // Second factor state
   const [needsSecondFactor, setNeedsSecondFactor] = useState(false);
@@ -306,20 +309,24 @@ const MerchantLoginScreen = () => {
   const isFormLoading = isLoading || isGoogleLoading;
   const canSubmit = !!emailAddress && !!password && !isFormLoading;
   const canSubmitCode = !!secondFactorCode.trim() && !isFormLoading;
+  const scrollFocusedFieldIntoView = (ref: RefObject<ScrollView | null>) => {
+    setTimeout(() => ref.current?.scrollToEnd({ animated: true }), 120);
+  };
 
   // ==================== SECOND FACTOR VERIFICATION UI ====================
   if (needsSecondFactor) {
     return (
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "position"}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={
           Platform.OS === "ios" ? 24 : ANDROID_KEYBOARD_LIFT_OFFSET
         }
-        style={{ width: "100%" }}
+        style={{ width: "100%", maxHeight: "100%" }}
       >
         <ScrollView
+          ref={secondFactorScrollRef}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 16 }}
+          contentContainerStyle={{ paddingBottom: KEYBOARD_SCROLL_PADDING }}
           showsVerticalScrollIndicator={false}
         >
           <View style={{ width: "100%" }}>
@@ -396,6 +403,7 @@ const MerchantLoginScreen = () => {
               autoFocus
               value={secondFactorCode}
               onChangeText={setSecondFactorCode}
+              onFocus={() => scrollFocusedFieldIntoView(secondFactorScrollRef)}
               editable={!isFormLoading}
               maxLength={secondFactorStrategy === "backup_code" ? 20 : 6}
             />
@@ -450,15 +458,16 @@ const MerchantLoginScreen = () => {
   // ==================== LOGIN FORM UI ====================
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "position"}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={
         Platform.OS === "ios" ? 24 : ANDROID_KEYBOARD_LIFT_OFFSET
       }
-      style={{ width: "100%" }}
+      style={{ width: "100%", maxHeight: "100%" }}
     >
       <ScrollView
+        ref={loginScrollRef}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: 16 }}
+        contentContainerStyle={{ paddingBottom: KEYBOARD_SCROLL_PADDING }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: "100%" }}>
@@ -623,6 +632,7 @@ const MerchantLoginScreen = () => {
                 secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
+                onFocus={() => scrollFocusedFieldIntoView(loginScrollRef)}
                 editable={!isFormLoading}
               />
               <TouchableOpacity

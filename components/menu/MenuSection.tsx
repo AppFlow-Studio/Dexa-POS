@@ -78,6 +78,7 @@ interface MenuSectionProps {
 import { colors } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { useSearchStore } from "@/stores/searchStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { StyleSheet, ViewStyle } from "react-native";
 
@@ -155,9 +156,16 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
   const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
+  const menuNavigationMode = useSettingsStore(
+    (s) => s.posMenuNavigationMode ?? "popup",
+  );
+  const usePopupMenuNavigation = menuNavigationMode === "popup";
 
   const { requestPinOverride, isUnlocked } = usePinOverrideStore();
   const addTemporaryMenuAccess = useMenuStore((s) => s.addTemporaryMenuAccess);
+  const addTemporaryCategoryAccess = useMenuStore(
+    (s) => s.addTemporaryCategoryAccess,
+  );
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const hiddenMenuMap = useMenuVisibilityStore(
     (s) => s.hiddenMenuIdsByLocation,
@@ -407,6 +415,60 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       requestPinOverride({ type: "select_menu", payload: { menuName } });
     }
   };
+
+  const handleMenuCategorySelect = useCallback(
+    (menuName: string, categoryName: string) => {
+      const menu = menusByName.get(menuName);
+      if (!menu) return;
+
+      const isAvailable =
+        isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name);
+
+      if (!isAvailable) {
+        if (!isUnlocked()) {
+          requestPinOverride({ type: "select_menu", payload: { menuName } });
+          return;
+        }
+        addTemporaryMenuAccess(menuName);
+      }
+
+      const category = menu.categories.find(
+        (entry) => entry.name === categoryName,
+      );
+      const categoryKey = category?.id ?? categoryName;
+      const isCategoryAvailable =
+        isCategoryAvailableNow(categoryName) &&
+        useMenuStore.getState().isCategoryActiveForMenu(menu.id, categoryKey);
+
+      if (!isCategoryAvailable) {
+        if (!isUnlocked()) {
+          requestPinOverride({
+            type: "select_category",
+            payload: { categoryName },
+          });
+          return;
+        }
+        addTemporaryCategoryAccess(categoryName);
+      }
+
+      setActiveTab("Menu");
+      setActiveMeal(menuName);
+      setActiveCategory(categoryName);
+      setLastSelectedMenuId(menu.id);
+      setIsMenuDialogOpen(false);
+    },
+    [
+      addTemporaryCategoryAccess,
+      addTemporaryMenuAccess,
+      isCategoryAvailableNow,
+      isMenuAvailableNow,
+      isUnlocked,
+      menusByName,
+      requestPinOverride,
+      setLastSelectedMenuId,
+      temporaryActiveMenuSet,
+    ],
+  );
 
   const filteredMenuItems = useMemo(() => {
     if (!activeCategoryEntry?.items || !activeCategory) return [];
@@ -798,23 +860,46 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                 typeof category === "string"
                                   ? category
                                   : category?.name || "Category";
+                              const isSelectedCategory =
+                                isSelected && activeCategory === categoryLabel;
 
                               return (
-                                <View
+                                <TouchableOpacity
                                   key={`${categoryLabel}-${index}`}
+                                  onPress={() =>
+                                    handleMenuCategorySelect(
+                                      menu.name,
+                                      categoryLabel,
+                                    )
+                                  }
                                   style={{
                                     paddingHorizontal: 10,
                                     paddingVertical: 4,
                                     borderRadius: 12,
-                                    backgroundColor: colors.screen,
+                                    backgroundColor: isSelectedCategory
+                                      ? colors.teal + "20"
+                                      : colors.screen,
                                     borderWidth: 1,
-                                    borderColor: colors.border,
+                                    borderColor: isSelectedCategory
+                                      ? colors.teal + "70"
+                                      : colors.border,
                                   }}
+                                  activeOpacity={0.78}
                                 >
-                                  <Text style={{ fontSize: 12, color: colors.label }}>
+                                  <Text
+                                    style={{
+                                      fontSize: 12,
+                                      color: isSelectedCategory
+                                        ? colors.teal
+                                        : colors.label,
+                                      fontWeight: isSelectedCategory
+                                        ? "700"
+                                        : "500",
+                                    }}
+                                  >
                                     {categoryLabel}
                                   </Text>
-                                </View>
+                                </TouchableOpacity>
                               );
                             })}
                           </View>
@@ -838,11 +923,14 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
             <View className={`${isTableOrder ? "px-3" : ""} pb-3`}>
               <MenuControls
                 activeMeal={activeMeal}
+                menuOptions={visibleMenus}
+                showMenuButtons={usePopupMenuNavigation}
                 onMealChange={handleMealChange}
                 activeCategory={activeCategory || ""}
                 onCategoryChange={setActiveCategory}
+                onMenuCategoryChange={handleMenuCategorySelect}
                 rightSlot={
-                  placeMenuSelectorInMenuRow ? (
+                  !usePopupMenuNavigation && placeMenuSelectorInMenuRow ? (
                     <TouchableOpacity
                       onPress={() => setIsMenuDialogOpen(true)}
                       className="flex-row items-center rounded-lg px-3 py-2.5 gap-2"

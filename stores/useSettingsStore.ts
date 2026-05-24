@@ -121,6 +121,8 @@ export interface OrderLineSettings {
   minimalModeRows: 2 | 3;
 }
 
+export type PosMenuNavigationMode = "popup" | "classic";
+
 interface SettingsState extends DiningRoomSettings, DeliverySettings {
   defaultSittingTimeMinutes: number;
 
@@ -152,6 +154,8 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   setShowMenuItemPrices: (show: boolean) => void;
   showMenuImages: boolean;
   setShowMenuImages: (show: boolean) => void;
+  posMenuNavigationMode: PosMenuNavigationMode;
+  setPosMenuNavigationMode: (mode: PosMenuNavigationMode) => void;
 
   // Actions
   setDefaultSittingTimeMinutes: (minutes: number) => void;
@@ -475,6 +479,8 @@ export const useSettingsStore = create<SettingsState>()(
       setShowMenuItemPrices: (show) => set({ showMenuItemPrices: show }),
       showMenuImages: true,
       setShowMenuImages: (show) => set({ showMenuImages: show }),
+      posMenuNavigationMode: "popup",
+      setPosMenuNavigationMode: (mode) => set({ posMenuNavigationMode: mode }),
 
       setDefaultSittingTimeMinutes: (minutes) =>
         set({ defaultSittingTimeMinutes: minutes }),
@@ -566,6 +572,7 @@ export const useSettingsStore = create<SettingsState>()(
         // Menu Display
         showMenuItemPrices: state.showMenuItemPrices,
         showMenuImages: state.showMenuImages,
+        posMenuNavigationMode: state.posMenuNavigationMode,
         // Order Line
         orderLineSettings: state.orderLineSettings,
         // Printer Assignment

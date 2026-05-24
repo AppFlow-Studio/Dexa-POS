@@ -13,6 +13,14 @@ import Animated, {
 const ROTATION_MS = 8000;
 const FADE_MS = 700;
 
+function areStringArraysEqual(a: readonly string[], b: readonly string[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export function IdleScreen() {
   const { branding, carouselImages, latency, connectionStatus } =
     useCFDDisplayData();
@@ -22,10 +30,18 @@ export function IdleScreen() {
   const [overlayUri, setOverlayUri] = useState<string | null>(null);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
   const isTransitioningRef = useRef(false);
+  const stableCarouselImagesRef = useRef<string[] | undefined>(undefined);
   const fadeOpacity = useSharedValue(0);
 
+  const currentImages = carouselImages ?? [];
+  const stableImages = stableCarouselImagesRef.current ?? [];
+  if (!areStringArraysEqual(stableImages, currentImages)) {
+    stableCarouselImagesRef.current = carouselImages;
+  }
+  const stableCarouselImages = stableCarouselImagesRef.current;
+
   useEffect(() => {
-    if (!carouselImages || carouselImages.length === 0) {
+    if (!stableCarouselImages || stableCarouselImages.length === 0) {
       setCurrentIndex(0);
       setBaseUri(null);
       setOverlayUri(null);
@@ -35,8 +51,8 @@ export function IdleScreen() {
       return;
     }
 
-    const safeIndex = Math.min(currentIndex, carouselImages.length - 1);
-    const safeUri = carouselImages[safeIndex] ?? null;
+    const safeIndex = Math.min(currentIndex, stableCarouselImages.length - 1);
+    const safeUri = stableCarouselImages[safeIndex] ?? null;
 
     setCurrentIndex(safeIndex);
     setBaseUri((prev) => prev ?? safeUri);
@@ -45,16 +61,16 @@ export function IdleScreen() {
     isTransitioningRef.current = false;
     cancelAnimation(fadeOpacity);
     fadeOpacity.value = 0;
-  }, [carouselImages]);
+  }, [stableCarouselImages]);
 
   useEffect(() => {
-    if (!carouselImages || carouselImages.length <= 1 || !baseUri) return;
+    if (!stableCarouselImages || stableCarouselImages.length <= 1 || !baseUri) return;
 
     const interval = setInterval(() => {
       if (isTransitioningRef.current) return;
 
-      const nextIndex = (currentIndex + 1) % carouselImages.length;
-      const nextUri = carouselImages[nextIndex];
+      const nextIndex = (currentIndex + 1) % stableCarouselImages.length;
+      const nextUri = stableCarouselImages[nextIndex];
       if (!nextUri || nextUri === baseUri) return;
 
       isTransitioningRef.current = true;
@@ -67,7 +83,7 @@ export function IdleScreen() {
       clearInterval(interval);
       cancelAnimation(fadeOpacity);
     };
-  }, [baseUri, carouselImages, currentIndex, fadeOpacity]);
+  }, [baseUri, stableCarouselImages, currentIndex, fadeOpacity]);
 
   const completeTransition = (nextIndex: number, nextUri: string) => {
     setBaseUri(nextUri);
@@ -100,7 +116,7 @@ export function IdleScreen() {
     opacity: fadeOpacity.value,
   }));
 
-  const hasImages = !!carouselImages && carouselImages.length > 0;
+  const hasImages = !!stableCarouselImages && stableCarouselImages.length > 0;
 
   return (
     <View style={styles.container}>

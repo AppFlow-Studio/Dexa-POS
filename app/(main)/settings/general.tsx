@@ -226,6 +226,12 @@ const GeneralSettingsScreen = () => {
 
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
   const setShowMenuImages = useSettingsStore((s) => s.setShowMenuImages);
+  const posMenuNavigationMode = useSettingsStore(
+    (s) => s.posMenuNavigationMode ?? "popup",
+  );
+  const setPosMenuNavigationMode = useSettingsStore(
+    (s) => s.setPosMenuNavigationMode,
+  );
   const { colorScheme, setColorScheme } = useColorScheme();
 
   // ── Derived display values ──────────────────────────────────────────────
@@ -875,6 +881,97 @@ const GeneralSettingsScreen = () => {
           )}
           {expandedSections.display && (
             <View style={{ padding: 12, gap: 2 }}>
+              {/* POS Menu Navigation */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: colors.heading,
+                      fontWeight: "500",
+                    }}
+                  >
+                    POS Menu Navigation
+                  </Text>
+                  <Text
+                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                  >
+                    Choose between menu category popups and the compact selector
+                  </Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => setPosMenuNavigationMode("popup")}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      backgroundColor:
+                        posMenuNavigationMode === "popup"
+                          ? colors.teal + "20"
+                          : "transparent",
+                      borderWidth: 1,
+                      borderColor:
+                        posMenuNavigationMode === "popup"
+                          ? colors.teal + "50"
+                          : colors.border,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color:
+                          posMenuNavigationMode === "popup"
+                            ? colors.teal
+                            : colors.label,
+                        fontWeight: "500",
+                      }}
+                    >
+                      Popup
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setPosMenuNavigationMode("classic")}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      backgroundColor:
+                        posMenuNavigationMode === "classic"
+                          ? colors.teal + "20"
+                          : "transparent",
+                      borderWidth: 1,
+                      borderColor:
+                        posMenuNavigationMode === "classic"
+                          ? colors.teal + "50"
+                          : colors.border,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color:
+                          posMenuNavigationMode === "classic"
+                            ? colors.teal
+                            : colors.label,
+                        fontWeight: "500",
+                      }}
+                    >
+                      Classic
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               {/* Show Menu Item Images */}
               <View
                 style={{
