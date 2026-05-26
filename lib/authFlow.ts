@@ -4,8 +4,10 @@ export function getPinPromptLabel(pinLength: number): string {
 
 export function resolvePostLoginRoute(
   stationType?: string | null,
-): "home" | "kds" {
-  return stationType === "kds" ? "kds" : "home";
+): "home" | "kds" | "kiosk" {
+  if (stationType === "kds") return "kds";
+  if (stationType === "kiosk") return "kiosk";
+  return "home";
 }
 
 function isInactiveAccountError(code?: string | null, message?: string | null) {

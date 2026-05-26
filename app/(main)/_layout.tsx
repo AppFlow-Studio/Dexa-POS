@@ -50,6 +50,8 @@ export default function MainLayout () {
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const isKDS = selectedStation?.station_type === 'kds'
+  const isKiosk = selectedStation?.station_type === 'kiosk'
+  const isFullScreenStation = isKDS || isKiosk
   const disableKeyboardAvoiding =
     pathname === '/order-processing' || pathname.endsWith('/order-processing')
 
@@ -60,10 +62,10 @@ export default function MainLayout () {
   const { setSearchSheetRef } = useMenuManagementSearchStore()
 
   useEffect(() => {
-    if (!isKDS) {
+    if (!isFullScreenStation) {
       setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>)
     }
-  }, [setSheetRef, isKDS])
+  }, [setSheetRef, isFullScreenStation])
 
   useEffect(() => {
     setSearchSheetRef(menuSearchSheetRef as React.RefObject<BottomSheetMethods>)
@@ -71,7 +73,7 @@ export default function MainLayout () {
 
   // DEBUG: Verify station context is initialized before broadcasts arrive (Step 4)
   useEffect(() => {
-    if (__DEV__ && !isKDS) {
+    if (__DEV__ && !isFullScreenStation) {
       const orderStore = useOrderStore.getState()
       console.log('🔧 [MainLayout Init] Station context:', {
         hasStation: !!orderStore.currentStation,
@@ -81,24 +83,24 @@ export default function MainLayout () {
         timestamp: new Date().toISOString()
       })
     }
-  }, [isKDS])
+  }, [isFullScreenStation])
 
   // Register PaymentDetailBottomSheet ref with store
   useEffect(() => {
-    if (!isKDS) {
+    if (!isFullScreenStation) {
       usePaymentDetailSheetStore
         .getState()
         .setBottomSheetRef(
           paymentDetailSheetRef as React.RefObject<BottomSheetMethods>
         )
     }
-  }, [paymentDetailSheetRef, isKDS])
+  }, [paymentDetailSheetRef, isFullScreenStation])
 
   // --- POS Sound Notifications for external orders ---
   const soundServiceRef = useRef<KDSSoundService | null>(null)
 
   useEffect(() => {
-    if (isKDS) return
+    if (isFullScreenStation) return
     const service = new KDSSoundService()
     soundServiceRef.current = service
     service.init()
@@ -106,12 +108,12 @@ export default function MainLayout () {
       service.dispose()
       soundServiceRef.current = null
     }
-  }, [isKDS])
+  }, [isFullScreenStation])
 
   // Sync sound config from location config store
   const notifConfig = useLocationConfigStore(s => s.config.notifications)
   useEffect(() => {
-    if (isKDS || !soundServiceRef.current) return
+    if (isFullScreenStation || !soundServiceRef.current) return
     soundServiceRef.current.updateConfig({
       enabled: notifConfig.soundEnabled,
       online: notifConfig.onlineOrderSound,
@@ -120,15 +122,15 @@ export default function MainLayout () {
       pos: 'none',
       default: notifConfig.thirdPartyOrderSound // unknown external sources use third-party sound
     })
-  }, [isKDS, notifConfig])
+  }, [isFullScreenStation, notifConfig])
 
   // Initialize table order prefetch subscriber and session side effects (POS mode only)
-  useTableSessionInit({ skip: isKDS })
+  useTableSessionInit({ skip: isFullScreenStation })
 
   // Hydrate cash drawer session on startup (POS mode only)
   // If no active session found and a drawer exists, prompt user to open it
   useEffect(() => {
-    if (isKDS || !selectedStation || !selectedStore) return
+    if (isFullScreenStation || !selectedStation || !selectedStore) return
     const supabase = getOrderStoreSupabaseClient()
     if (!supabase) return
     hydrateDrawerSession(supabase, selectedStation.id, selectedStore.id)
@@ -142,7 +144,7 @@ export default function MainLayout () {
       .catch(err => {
         console.warn('[MainLayout] Cash drawer hydration failed:', err)
       })
-  }, [isKDS, selectedStation?.id, selectedStore?.id])
+  }, [isFullScreenStation, selectedStation?.id, selectedStore?.id])
 
   // KDS-only broadcast handler — only feeds useKDSStore, skips useOrderStore
   const handleOrderChangeKDS = useCallback((payload: OrderPayload) => {
@@ -219,8 +221,8 @@ export default function MainLayout () {
     return <Redirect href='/login' />
   }
 
-  // KDS stations get a minimal layout — no Header, no Payment sheets
-  if (isKDS) {
+  // Full-screen station surfaces get a minimal layout: no Header or POS sheets.
+  if (isFullScreenStation) {
     return (
       <LocationRealtimeProvider
         locationId={selectedStore?.id}

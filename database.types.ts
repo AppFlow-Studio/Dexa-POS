@@ -10957,6 +10957,206 @@ export type Database = {
           },
         ]
       }
+      kiosk_pickup_sequences: {
+        Row: {
+          business_date: string
+          current_value: number
+          location_id: string
+          updated_at: string
+        }
+        Insert: {
+          business_date: string
+          current_value?: number
+          location_id: string
+          updated_at?: string
+        }
+        Update: {
+          business_date?: string
+          current_value?: number
+          location_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kiosk_pickup_sequences_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "location_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kiosk_pickup_sequences_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kiosk_pickup_sequences_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "v_location_menu_items"
+            referencedColumns: ["location_id"]
+          },
+        ]
+      }
+      kiosk_profiles: {
+        Row: {
+          accent_color: string | null
+          admin_pin_hash: string | null
+          attract_image_urls: Json
+          attract_video_url: string | null
+          auto_print_receipt: boolean
+          background_color: string
+          cart_reset_timeout_seconds: number
+          created_at: string
+          font_family: string | null
+          header_text_color: string | null
+          hero_image_url: string | null
+          id: string
+          idle_timeout_seconds: number
+          is_active: boolean
+          location_id: string
+          logo_url: string | null
+          loyalty_enrollment_enabled: boolean
+          merchant_id: string
+          orientation: string
+          payment_terminal_id: string | null
+          pickup_number_prefix: string | null
+          primary_color: string
+          profile_name: string
+          published_at: string | null
+          receipt_email_prompt: boolean
+          receipt_sms_prompt: boolean
+          secondary_color: string | null
+          show_allergens: boolean
+          show_calorie_info: boolean
+          template_id: string
+          text_color: string
+          tip_presets: Json
+          tip_screen_enabled: boolean
+          updated_at: string
+          welcome_message: string | null
+        }
+        Insert: {
+          accent_color?: string | null
+          admin_pin_hash?: string | null
+          attract_image_urls?: Json
+          attract_video_url?: string | null
+          auto_print_receipt?: boolean
+          background_color?: string
+          cart_reset_timeout_seconds?: number
+          created_at?: string
+          font_family?: string | null
+          header_text_color?: string | null
+          hero_image_url?: string | null
+          id?: string
+          idle_timeout_seconds?: number
+          is_active?: boolean
+          location_id: string
+          logo_url?: string | null
+          loyalty_enrollment_enabled?: boolean
+          merchant_id: string
+          orientation?: string
+          payment_terminal_id?: string | null
+          pickup_number_prefix?: string | null
+          primary_color?: string
+          profile_name?: string
+          published_at?: string | null
+          receipt_email_prompt?: boolean
+          receipt_sms_prompt?: boolean
+          secondary_color?: string | null
+          show_allergens?: boolean
+          show_calorie_info?: boolean
+          template_id?: string
+          text_color?: string
+          tip_presets?: Json
+          tip_screen_enabled?: boolean
+          updated_at?: string
+          welcome_message?: string | null
+        }
+        Update: {
+          accent_color?: string | null
+          admin_pin_hash?: string | null
+          attract_image_urls?: Json
+          attract_video_url?: string | null
+          auto_print_receipt?: boolean
+          background_color?: string
+          cart_reset_timeout_seconds?: number
+          created_at?: string
+          font_family?: string | null
+          header_text_color?: string | null
+          hero_image_url?: string | null
+          id?: string
+          idle_timeout_seconds?: number
+          is_active?: boolean
+          location_id?: string
+          logo_url?: string | null
+          loyalty_enrollment_enabled?: boolean
+          merchant_id?: string
+          orientation?: string
+          payment_terminal_id?: string | null
+          pickup_number_prefix?: string | null
+          primary_color?: string
+          profile_name?: string
+          published_at?: string | null
+          receipt_email_prompt?: boolean
+          receipt_sms_prompt?: boolean
+          secondary_color?: string | null
+          show_allergens?: boolean
+          show_calorie_info?: boolean
+          template_id?: string
+          text_color?: string
+          tip_presets?: Json
+          tip_screen_enabled?: boolean
+          updated_at?: string
+          welcome_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kiosk_profiles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "location_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kiosk_profiles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kiosk_profiles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "v_location_menu_items"
+            referencedColumns: ["location_id"]
+          },
+          {
+            foreignKeyName: "kiosk_profiles_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "admin_merchant_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kiosk_profiles_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kiosk_profiles_payment_terminal_id_fkey"
+            columns: ["payment_terminal_id"]
+            isOneToOne: false
+            referencedRelation: "payment_terminals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_terminals: {
         Row: {
           api_base_url: string | null
@@ -14198,6 +14398,7 @@ export type Database = {
           ip_address: unknown
           is_active: boolean | null
           is_online: boolean | null
+          kiosk_profile_id: string | null
           last_heartbeat_at: string | null
           last_sync_at: string | null
           local_ip_address: unknown
@@ -14245,6 +14446,7 @@ export type Database = {
           ip_address?: unknown
           is_active?: boolean | null
           is_online?: boolean | null
+          kiosk_profile_id?: string | null
           last_heartbeat_at?: string | null
           last_sync_at?: string | null
           local_ip_address?: unknown
@@ -14292,6 +14494,7 @@ export type Database = {
           ip_address?: unknown
           is_active?: boolean | null
           is_online?: boolean | null
+          kiosk_profile_id?: string | null
           last_heartbeat_at?: string | null
           last_sync_at?: string | null
           local_ip_address?: unknown
@@ -14320,6 +14523,13 @@ export type Database = {
             columns: ["deactivated_by"]
             isOneToOne: false
             referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stations_kiosk_profile_id_fkey"
+            columns: ["kiosk_profile_id"]
+            isOneToOne: false
+            referencedRelation: "kiosk_profiles"
             referencedColumns: ["id"]
           },
           {
@@ -20758,6 +20968,7 @@ export type Database = {
         | "grubhub"
         | "website"
         | "app"
+        | "kiosk"
         | "other"
       order_channel: "pickup" | "dine_in" | "delivery"
       order_status:
