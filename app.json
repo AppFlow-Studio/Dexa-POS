@@ -3,7 +3,7 @@
     "name": "Dexa-POS",
     "slug": "dexa-pos",
     "version": "2.0.1",
-    "orientation": "landscape",
+    "orientation": "default",
     "icon": "./assets/images/dexalogo.png",
     "scheme": "dexapos",
     "userInterfaceStyle": "automatic",

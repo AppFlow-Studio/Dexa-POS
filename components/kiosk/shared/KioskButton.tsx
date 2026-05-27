@@ -1,18 +1,21 @@
 import { useKioskScale } from "@/contexts/kiosk/KioskScaleProvider";
 import { useKioskTheme } from "@/contexts/kiosk/KioskThemeProvider";
+import type { LucideIcon } from "lucide-react-native";
 import React, { useMemo } from "react";
-import { StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export function KioskButton({
   label,
   onPress,
   variant = "primary",
   disabled = false,
+  icon: Icon,
 }: {
   label: string;
   onPress: () => void;
   variant?: "primary" | "secondary" | "ghost";
   disabled?: boolean;
+  icon?: LucideIcon;
 }) {
   const theme = useKioskTheme();
   const { scale } = useKioskScale();
@@ -26,6 +29,7 @@ export function KioskButton({
       : variant === "secondary"
         ? styles.secondaryText
         : styles.ghostText;
+  const iconColor = getButtonTextColor(theme, variant);
 
   return (
     <TouchableOpacity
@@ -34,6 +38,11 @@ export function KioskButton({
       activeOpacity={0.72}
       style={[styles.base, styles[variant], disabled ? styles.disabled : null]}
     >
+      {Icon ? (
+        <View style={styles.iconWrap}>
+          <Icon color={iconColor} size={20 * Math.max(0.8, scale)} />
+        </View>
+      ) : null}
       <Text style={[styles.text, textStyle]} numberOfLines={2}>
         {label}
       </Text>
@@ -57,6 +66,20 @@ function getReadableTextColor(background: string): "#FFFFFF" | "#111827" {
   return luminance > 0.56 ? "#111827" : "#FFFFFF";
 }
 
+function getButtonTextColor(
+  theme: ReturnType<typeof useKioskTheme>,
+  variant: "primary" | "secondary" | "ghost",
+): string {
+  const primaryColor = normalizeHex(theme.primaryColor) ?? "#0C4FD1";
+  const backgroundColor = normalizeHex(theme.backgroundColor) ?? "#FFFFFF";
+  const textColor = normalizeHex(theme.textColor) ?? "#111827";
+  const accentColor = normalizeHex(theme.accentColor) ?? "#111827";
+
+  if (variant === "primary") return getReadableTextColor(primaryColor);
+  if (variant === "secondary") return primaryColor;
+  return accentColor === backgroundColor ? textColor : accentColor;
+}
+
 function makeStyles(theme: ReturnType<typeof useKioskTheme>, scale: number) {
   const primaryColor = normalizeHex(theme.primaryColor) ?? "#0C4FD1";
   const backgroundColor = normalizeHex(theme.backgroundColor) ?? "#FFFFFF";
@@ -70,6 +93,8 @@ function makeStyles(theme: ReturnType<typeof useKioskTheme>, scale: number) {
       borderRadius: 8,
       alignItems: "center",
       justifyContent: "center",
+      flexDirection: "row",
+      gap: 8,
       paddingHorizontal: 24 * scale,
       paddingVertical: 12 * scale,
       borderWidth: 1,
@@ -100,6 +125,12 @@ function makeStyles(theme: ReturnType<typeof useKioskTheme>, scale: number) {
       fontSize: 16 * scale,
       fontWeight: "900",
       textAlign: "center",
+    },
+    iconWrap: {
+      width: 22 * scale,
+      height: 22 * scale,
+      alignItems: "center",
+      justifyContent: "center",
     },
     primaryText: {
       color: primaryTextColor,

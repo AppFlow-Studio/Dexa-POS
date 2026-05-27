@@ -65,7 +65,10 @@ function readCachedProfile(stationId: string): KioskStationProfile | undefined {
   }
 }
 
-function persistCachedProfile(stationId: string, value: KioskStationProfile): void {
+function persistCachedProfile(
+  stationId: string,
+  value: KioskStationProfile,
+): void {
   storage.set(cacheKey(stationId), JSON.stringify(value));
 }
 
@@ -85,7 +88,9 @@ export function useKioskProfile(stationId: string | null | undefined) {
 
       const { data: station, error: stationError } = await supabase
         .from("stations")
-        .select("id, station_name, station_type, station_number, kiosk_profile_id")
+        .select(
+          "id, station_name, station_type, station_number, kiosk_profile_id",
+        )
         .eq("id", stationId)
         .single();
 
@@ -132,7 +137,9 @@ export function useKioskProfile(stationId: string | null | undefined) {
           filter: `id=eq.${profileId}`,
         },
         () => {
-          void client.invalidateQueries({ queryKey: ["kiosk-profile", stationId] });
+          void client.invalidateQueries({
+            queryKey: ["kiosk-profile", stationId],
+          });
         },
       )
       .subscribe();

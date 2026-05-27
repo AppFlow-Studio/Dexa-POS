@@ -92,7 +92,11 @@ export interface KioskFlowContextValue {
   setSelectedCategoryId: (categoryId: string | null) => void;
   openItem: (item: KioskMenuItem) => void;
   closeItem: () => void;
-  addCartItem: (item: KioskMenuItem, quantity: number, modifiers: KioskCartModifier[]) => void;
+  addCartItem: (
+    item: KioskMenuItem,
+    quantity: number,
+    modifiers: KioskCartModifier[],
+  ) => void;
   removeCartItem: (cartItemId: string) => void;
   updateCartItemQuantity: (cartItemId: string, quantity: number) => void;
   clearCart: () => void;
@@ -101,4 +105,5 @@ export interface KioskFlowContextValue {
   setEmail: (email: string) => void;
   resetFlow: () => void;
   cycleTemplate: () => void;
+  setTemplateId: (templateId: KioskProfile["template_id"]) => void;
 }

@@ -2,8 +2,8 @@ import { formatMoney, getCartItemSubtotal } from "@/components/kiosk/cartMath";
 import { AttractLoop } from "@/components/kiosk/shared/AttractLoop";
 import { ItemDetailSheet } from "@/components/kiosk/shared/ItemDetailSheet";
 import { ItemTile } from "@/components/kiosk/shared/ItemTile";
-import { KeypadEntry } from "@/components/kiosk/shared/KeypadEntry";
 import { KioskButton } from "@/components/kiosk/shared/KioskButton";
+import { KioskLoyaltyPromptScreen } from "@/components/kiosk/shared/KioskLoyaltyPromptScreen";
 import { MoneyDisplay } from "@/components/kiosk/shared/MoneyDisplay";
 import { QuantityStepper } from "@/components/kiosk/shared/QuantityStepper";
 import { TimedReset } from "@/components/kiosk/shared/TimedReset";
@@ -17,6 +17,7 @@ import type { KioskProfile } from "@/hooks/kiosk/useKioskProfile";
 import {
   CreditCard,
   PackageCheck,
+  ShoppingCart,
   ShoppingBag,
   Store,
 } from "lucide-react-native";
@@ -38,53 +39,6 @@ function getCategoryItems(menu: KioskMenuData, categoryId: string) {
   if (category.itemIds.length === 0) return [];
   const visibleIds = new Set(category.itemIds);
   return menu.items.filter((item) => visibleIds.has(item.id));
-}
-
-function KioskHeader({
-  title,
-  onAdmin,
-}: {
-  title: string;
-  onAdmin: () => void;
-}) {
-  const theme = useKioskTheme();
-  const flow = useKioskFlow();
-  return (
-    <View
-      style={{
-        minHeight: 72,
-        paddingHorizontal: 22,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        borderBottomWidth: 1,
-        borderBottomColor: `${theme.textColor}10`,
-        backgroundColor: `${theme.backgroundColor}F2`,
-      }}
-    >
-      <Text
-        numberOfLines={1}
-        style={{ color: theme.textColor, fontSize: 24, fontWeight: "900" }}
-      >
-        {title}
-      </Text>
-      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-        {__DEV__ ? (
-          <KioskButton
-            label={`${kioskStrings.templateSwitcher}: ${flow.templateId.replace("template_", "").toUpperCase()}`}
-            variant="secondary"
-            onPress={flow.cycleTemplate}
-          />
-        ) : null}
-        <KioskButton
-          label={kioskStrings.cart}
-          variant="secondary"
-          onPress={() => flow.setScreen("cart")}
-        />
-        <KioskButton label="Admin" variant="ghost" onPress={onAdmin} />
-      </View>
-    </View>
-  );
 }
 
 function OrderTypeScreen() {
@@ -173,6 +127,7 @@ function MenuScreen({ variant }: { variant: KioskTemplateVariant }) {
   const flow = useKioskFlow();
   const scale = useKioskScale();
   const theme = useKioskTheme();
+  const isChat = variant === "chat";
   const scrollRef = useRef<ScrollView>(null);
   const [sectionOffsets, setSectionOffsets] = useState<Record<string, number>>(
     {},
@@ -189,7 +144,9 @@ function MenuScreen({ variant }: { variant: KioskTemplateVariant }) {
       })),
     [menu],
   );
-  const categoryRailWidth = Math.min(300, Math.max(228, scale.vw * 0.22));
+  const categoryRailWidth = isChat
+    ? 0
+    : Math.min(300, Math.max(228, scale.vw * 0.22));
   const gridGap = 14;
   const gridHorizontalPadding = 32;
   const gridWidth = Math.max(
@@ -215,7 +172,12 @@ function MenuScreen({ variant }: { variant: KioskTemplateVariant }) {
   return (
     <View style={{ flex: 1 }}>
       <View
-        style={{ paddingHorizontal: 22, paddingTop: 18, paddingBottom: 14 }}
+        style={{
+          paddingHorizontal: 22,
+          paddingTop: isChat ? 22 : 18,
+          paddingBottom: isChat ? 10 : 14,
+          backgroundColor: isChat ? `${theme.primaryColor}08` : "transparent",
+        }}
       >
         <Text
           style={{
@@ -227,18 +189,21 @@ function MenuScreen({ variant }: { variant: KioskTemplateVariant }) {
           {variant === "chat" ? "What sounds good?" : kioskStrings.browseMenu}
         </Text>
       </View>
-      <View style={{ flex: 1, flexDirection: "row" }}>
+      {isChat ? (
         <ScrollView
+          horizontal
           style={{
-            width: categoryRailWidth,
-            maxWidth: categoryRailWidth,
-            flexShrink: 0,
-            borderRightWidth: 1,
-            borderRightColor: `${theme.textColor}10`,
-            backgroundColor: `${theme.textColor}04`,
+            flexGrow: 0,
+            borderBottomWidth: 1,
+            borderBottomColor: `${theme.textColor}10`,
+            backgroundColor: `${theme.primaryColor}08`,
           }}
-          contentContainerStyle={{ padding: 14, gap: 10, paddingBottom: 130 }}
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: 22,
+            paddingBottom: 14,
+            gap: 10,
+          }}
+          showsHorizontalScrollIndicator={false}
         >
           {menu.categories.map((category) => {
             const active = category.id === selectedCategoryId;
@@ -248,9 +213,11 @@ function MenuScreen({ variant }: { variant: KioskTemplateVariant }) {
                 activeOpacity={0.72}
                 onPress={() => scrollToCategory(category.id)}
                 style={{
-                  minHeight: 62,
+                  minHeight: 48,
+                  minWidth: 126,
                   borderRadius: 8,
-                  paddingHorizontal: 14,
+                  paddingHorizontal: 16,
+                  alignItems: "center",
                   justifyContent: "center",
                   backgroundColor: active
                     ? theme.primaryColor
@@ -259,14 +226,13 @@ function MenuScreen({ variant }: { variant: KioskTemplateVariant }) {
                   borderColor: active
                     ? theme.primaryColor
                     : `${theme.textColor}12`,
-                  elevation: active ? 2 : 0,
                 }}
               >
                 <Text
-                  numberOfLines={2}
+                  numberOfLines={1}
                   style={{
                     color: active ? "#FFFFFF" : theme.textColor,
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: "900",
                   }}
                 >
@@ -276,11 +242,67 @@ function MenuScreen({ variant }: { variant: KioskTemplateVariant }) {
             );
           })}
         </ScrollView>
+      ) : null}
+      <View style={{ flex: 1, flexDirection: "row" }}>
+        {!isChat ? (
+          <ScrollView
+            style={{
+              width: categoryRailWidth,
+              maxWidth: categoryRailWidth,
+              flexShrink: 0,
+              borderRightWidth: 1,
+              borderRightColor: `${theme.textColor}10`,
+              backgroundColor: `${theme.textColor}04`,
+            }}
+            contentContainerStyle={{ padding: 14, gap: 10, paddingBottom: 130 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {menu.categories.map((category) => {
+              const active = category.id === selectedCategoryId;
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  activeOpacity={0.72}
+                  onPress={() => scrollToCategory(category.id)}
+                  style={{
+                    minHeight: 62,
+                    borderRadius: 8,
+                    paddingHorizontal: 14,
+                    justifyContent: "center",
+                    backgroundColor: active
+                      ? theme.primaryColor
+                      : theme.backgroundColor,
+                    borderWidth: 1,
+                    borderColor: active
+                      ? theme.primaryColor
+                      : `${theme.textColor}12`,
+                    elevation: active ? 2 : 0,
+                  }}
+                >
+                  <Text
+                    numberOfLines={2}
+                    style={{
+                      color: active ? "#FFFFFF" : theme.textColor,
+                      fontSize: 15,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : null}
         <ScrollView
           ref={scrollRef}
-          style={{ flex: 1 }}
+          style={{
+            flex: 1,
+            backgroundColor: isChat ? `${theme.primaryColor}04` : "transparent",
+          }}
           contentContainerStyle={{
-            paddingHorizontal: 16,
+            paddingHorizontal: isChat ? 22 : 16,
+            paddingTop: isChat ? 18 : 0,
             paddingBottom: 130,
             gap: 28,
           }}
@@ -302,7 +324,7 @@ function MenuScreen({ variant }: { variant: KioskTemplateVariant }) {
               <Text
                 style={{
                   color: theme.textColor,
-                  fontSize: 24,
+                  fontSize: isChat ? 26 : 24,
                   fontWeight: "900",
                 }}
               >
@@ -360,38 +382,71 @@ function CartBar() {
   const flow = useKioskFlow();
   const theme = useKioskTheme();
   if (flow.cartItems.length === 0) return null;
+  const itemCountLabel = `${flow.cartItems.length} item${
+    flow.cartItems.length === 1 ? "" : "s"
+  }`;
+
   return (
     <View
       style={{
         position: "absolute",
-        left: 16,
-        right: 16,
-        bottom: 16,
-        minHeight: 76,
-        borderRadius: 8,
+        left: 18,
+        right: 18,
+        bottom: 18,
+        minHeight: 88,
+        borderRadius: 14,
         backgroundColor: theme.backgroundColor,
         borderWidth: 1,
         borderColor: `${theme.textColor}12`,
-        padding: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: 12,
+        gap: 16,
         elevation: 10,
         shadowColor: "#000000",
         shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.14,
-        shadowRadius: 24,
+        shadowOpacity: 0.16,
+        shadowRadius: 26,
       }}
     >
-      <Text style={{ color: theme.textColor, fontSize: 16, fontWeight: "900" }}>
-        {flow.cartItems.length} item{flow.cartItems.length === 1 ? "" : "s"}
-      </Text>
-      <MoneyDisplay value={flow.totals.total} />
-      <KioskButton
-        label={kioskStrings.checkout}
-        onPress={() => flow.setScreen("cart")}
-      />
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <Text
+          style={{
+            color: `${theme.textColor}AA`,
+            fontSize: 13,
+            fontWeight: "900",
+          }}
+        >
+          Current order
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={{ color: theme.textColor, fontSize: 18, fontWeight: "900" }}
+        >
+          {itemCountLabel}
+        </Text>
+      </View>
+      <View style={{ alignItems: "flex-end", gap: 3 }}>
+        <Text
+          style={{
+            color: `${theme.textColor}AA`,
+            fontSize: 12,
+            fontWeight: "900",
+          }}
+        >
+          Total
+        </Text>
+        <MoneyDisplay value={flow.totals.total} size="lg" />
+      </View>
+      <View style={{ minWidth: 190 }}>
+        <KioskButton
+          label={kioskStrings.checkout}
+          icon={ShoppingCart}
+          onPress={() => flow.setScreen("cart")}
+        />
+      </View>
     </View>
   );
 }
@@ -737,13 +792,10 @@ export function KioskTemplateShell({
             logoUrl={profile?.logo_url ?? null}
             message={profile?.welcome_message ?? kioskStrings.startOrder}
             onStart={() => flow.setScreen("orderType")}
+            onSettingsLongPress={openAdminPin}
           />
         ) : (
           <>
-            <KioskHeader
-              title={profile?.profile_name ?? "Kiosk"}
-              onAdmin={openAdminPin}
-            />
             {flow.screen === "orderType" ? <OrderTypeScreen /> : null}
             {flow.screen === "menu" ? <MenuScreen variant={variant} /> : null}
             {flow.screen === "itemDetail" && flow.selectedItem ? (
@@ -751,10 +803,8 @@ export function KioskTemplateShell({
             ) : null}
             {flow.screen === "cart" ? <CartScreen /> : null}
             {flow.screen === "loyalty" ? (
-              <KeypadEntry
-                title={kioskStrings.loyaltyPrompt}
+              <KioskLoyaltyPromptScreen
                 value={flow.phone}
-                maxLength={10}
                 onChange={flow.setPhone}
                 onContinue={() => flow.setScreen("tip")}
                 onSkip={() => flow.setScreen("tip")}

@@ -8,7 +8,13 @@ import type {
   KioskScreen,
 } from "@/components/kiosk/types";
 import type { KioskProfile } from "@/hooks/kiosk/useKioskProfile";
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 
 const KioskFlowContext = createContext<KioskFlowContextValue | null>(null);
 
@@ -17,6 +23,13 @@ const TEMPLATE_SEQUENCE: KioskProfile["template_id"][] = [
   "template_b",
   "template_c",
 ];
+
+function normalizeTemplateId(
+  templateId: KioskProfile["template_id"] | string | null | undefined,
+): KioskProfile["template_id"] {
+  if (templateId === "template_c") return "template_c";
+  return templateId === "template_b" ? "template_b" : "template_a";
+}
 
 function createCartItemId(
   item: KioskMenuItem,
@@ -38,17 +51,23 @@ export function KioskFlowProvider({
 }) {
   const [screen, setScreen] = useState<KioskScreen>("attract");
   const [orderType, setOrderTypeState] = useState<KioskOrderType | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    null,
+  );
   const [selectedItem, setSelectedItem] = useState<KioskMenuItem | null>(null);
   const [cartItems, setCartItems] = useState<KioskCartItem[]>([]);
   const [tipPercent, setTipPercent] = useState(0);
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [templateOverride, setTemplateOverride] =
-    useState<KioskProfile["template_id"] | null>(null);
+  const [templateOverride, setTemplateOverride] = useState<
+    KioskProfile["template_id"] | null
+  >(null);
 
-  const templateId = templateOverride ?? profileTemplateId ?? "template_a";
-  const totals = useMemo(() => getCartTotals(cartItems, tipPercent), [cartItems, tipPercent]);
+  const templateId = normalizeTemplateId(templateOverride ?? profileTemplateId);
+  const totals = useMemo(
+    () => getCartTotals(cartItems, tipPercent),
+    [cartItems, tipPercent],
+  );
 
   const setOrderType = useCallback((nextOrderType: KioskOrderType) => {
     setOrderTypeState(nextOrderType);
@@ -69,7 +88,9 @@ export function KioskFlowProvider({
     (item: KioskMenuItem, quantity: number, modifiers: KioskCartModifier[]) => {
       const cartItemId = createCartItemId(item, modifiers);
       setCartItems((currentItems) => {
-        const existingItem = currentItems.find((cartItem) => cartItem.id === cartItemId);
+        const existingItem = currentItems.find(
+          (cartItem) => cartItem.id === cartItemId,
+        );
         if (existingItem) {
           return currentItems.map((cartItem) =>
             cartItem.id === cartItemId
@@ -97,18 +118,23 @@ export function KioskFlowProvider({
   );
 
   const removeCartItem = useCallback((cartItemId: string) => {
-    setCartItems((currentItems) => currentItems.filter((cartItem) => cartItem.id !== cartItemId));
-  }, []);
-
-  const updateCartItemQuantity = useCallback((cartItemId: string, quantity: number) => {
     setCartItems((currentItems) =>
-      quantity <= 0
-        ? currentItems.filter((cartItem) => cartItem.id !== cartItemId)
-        : currentItems.map((cartItem) =>
-            cartItem.id === cartItemId ? { ...cartItem, quantity } : cartItem,
-          ),
+      currentItems.filter((cartItem) => cartItem.id !== cartItemId),
     );
   }, []);
+
+  const updateCartItemQuantity = useCallback(
+    (cartItemId: string, quantity: number) => {
+      setCartItems((currentItems) =>
+        quantity <= 0
+          ? currentItems.filter((cartItem) => cartItem.id !== cartItemId)
+          : currentItems.map((cartItem) =>
+              cartItem.id === cartItemId ? { ...cartItem, quantity } : cartItem,
+            ),
+      );
+    },
+    [],
+  );
 
   const clearCart = useCallback(() => {
     setCartItems([]);
@@ -128,9 +154,17 @@ export function KioskFlowProvider({
 
   const cycleTemplate = useCallback(() => {
     const currentIndex = TEMPLATE_SEQUENCE.indexOf(templateId);
-    const nextTemplate = TEMPLATE_SEQUENCE[(currentIndex + 1) % TEMPLATE_SEQUENCE.length];
+    const nextTemplate =
+      TEMPLATE_SEQUENCE[(currentIndex + 1) % TEMPLATE_SEQUENCE.length];
     setTemplateOverride(nextTemplate);
   }, [templateId]);
+
+  const setTemplateId = useCallback(
+    (nextTemplateId: KioskProfile["template_id"]) => {
+      setTemplateOverride(normalizeTemplateId(nextTemplateId));
+    },
+    [],
+  );
 
   const value = useMemo<KioskFlowContextValue>(
     () => ({
@@ -158,6 +192,7 @@ export function KioskFlowProvider({
       setEmail,
       resetFlow,
       cycleTemplate,
+      setTemplateId,
     }),
     [
       addCartItem,
@@ -174,6 +209,7 @@ export function KioskFlowProvider({
       screen,
       selectedCategoryId,
       selectedItem,
+      setTemplateId,
       setOrderType,
       templateId,
       tipPercent,
@@ -182,7 +218,11 @@ export function KioskFlowProvider({
     ],
   );
 
-  return <KioskFlowContext.Provider value={value}>{children}</KioskFlowContext.Provider>;
+  return (
+    <KioskFlowContext.Provider value={value}>
+      {children}
+    </KioskFlowContext.Provider>
+  );
 }
 
 export function useKioskFlow(): KioskFlowContextValue {
