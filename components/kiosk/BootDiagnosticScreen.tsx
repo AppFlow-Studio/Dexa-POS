@@ -38,6 +38,8 @@ export function BootDiagnosticScreen({
   const pixelRatio = PixelRatio.get();
   const physicalWidth = Math.round(scale.vw * pixelRatio);
   const physicalHeight = Math.round(scale.vh * pixelRatio);
+  const stationTerminalId =
+    station && "payment_terminal" in station ? station.payment_terminal?.id : null;
 
   const rows = [
     ["Station", station?.station_name ?? "Not loaded"],
@@ -47,9 +49,10 @@ export function BootDiagnosticScreen({
     ["Profile ID", data?.profile?.id ?? "None"],
     ["Profile Fetch", profileError ?? profileStatus],
     ["Network", network],
-    ["Terminal", data?.profile?.payment_terminal_id ?? station?.payment_terminal?.id ?? "None"],
+    ["Terminal", data?.profile?.payment_terminal_id ?? stationTerminalId ?? "None"],
     ["App Version", Application.nativeApplicationVersion ?? "Unknown"],
     ["Build", Application.nativeBuildVersion ?? "Unknown"],
+    ["Orientation", scale.orientation],
     ["Viewport DP", `${Math.round(scale.vw)} x ${Math.round(scale.vh)} @ scale ${scale.scale.toFixed(3)}`],
     ["Physical PX", `${physicalWidth} x ${physicalHeight} @ ${pixelRatio}x density`],
   ];
