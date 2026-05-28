@@ -68,9 +68,15 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         route: '/settings/devices-connections'
       },
       {
-        id: 'printers-kitchen',
-        label: 'Print & KDS Config',
+        id: 'printer-settings',
+        label: 'Printer Settings',
         icon: Printer,
+        route: '/settings/printer-settings'
+      },
+      {
+        id: 'printers-kitchen',
+        label: 'Kitchen Display Settings',
+        icon: Monitor,
         route: '/settings/printers-kitchen'
       },
       {
