@@ -129,6 +129,7 @@ interface KDSState {
   prioritizeTicket: (ticketId: string) => void;
   toggleRush: (ticketId: string) => void;
   markItemDone: (ticketId: string, itemId: string) => void;
+  acknowledgeNoticeItem: (ticketId: string, itemId: string) => void;
   isTicketRecalled: (ticketId: string) => boolean;
 
   // Done tickets
@@ -386,6 +387,25 @@ function getTicketMutationVersion(ticketId: string): number {
 const _recalledTicketIds = new Set<string>();
 const _recalledCycleTicketIds = new Set<string>();
 
+/** Track order item IDs whose void/refund notice has been acknowledged locally.
+ *  Persisted to MMKV so acknowledgements survive app restarts when there is no
+ *  kdsDisplayId for server-side filtering. */
+const _acknowledgedNoticeItemIds = new Set<string>();
+const KDS_ACK_STORAGE_KEY = "kds-acknowledged-notice-items";
+
+function persistAcknowledgedNoticeItems(): void {
+  setJSON(KDS_ACK_STORAGE_KEY, Array.from(_acknowledgedNoticeItemIds));
+}
+
+function restoreAcknowledgedNoticeItems(): void {
+  const persisted = getJSON<string[]>(KDS_ACK_STORAGE_KEY);
+  if (Array.isArray(persisted)) {
+    for (const id of persisted) _acknowledgedNoticeItemIds.add(id);
+  }
+}
+
+restoreAcknowledgedNoticeItems();
+
 /** Track new order IDs filtered out by routing rules — sound fires when server refetch adds them */
 const _pendingNewOrderSounds = new Set<string>();
 
@@ -589,10 +609,21 @@ function sortKdsTicketsStable(tickets: KDSTicket[]): KDSTicket[] {
 
 function normalizeKdsTicket(ticket: KDSTicket): KDSTicket {
   const items = Array.isArray(ticket.items)
-    ? ticket.items.map((item) => ({
-        ...item,
-        modifiers: Array.isArray(item.modifiers) ? item.modifiers : [],
-      }))
+    ? ticket.items.map((item) => {
+        const isNotice = Boolean(item.is_voided) || (item.refunded_quantity ?? 0) > 0;
+        // Sync server-acknowledged state into local set
+        if (item.acknowledged && isNotice) {
+          _acknowledgedNoticeItemIds.add(item.id);
+        }
+        // Always overlay local set — catches items the server returns as unacknowledged
+        // but we've already tapped (e.g. RPC not persisted yet, or no kdsDisplayId)
+        const acknowledged = item.acknowledged || (isNotice && _acknowledgedNoticeItemIds.has(item.id));
+        return {
+          ...item,
+          acknowledged,
+          modifiers: Array.isArray(item.modifiers) ? item.modifiers : [],
+        };
+      })
     : [];
 
   return {
@@ -660,8 +691,9 @@ function isRecallableKitchenItem(
 }
 
 function isKitchenNoticeItem(
-  item: Pick<KDSTicketItem, "is_voided" | "refunded_quantity">,
+  item: Pick<KDSTicketItem, "is_voided" | "refunded_quantity" | "acknowledged">,
 ): boolean {
+  if (item.acknowledged) return false;
   return Boolean(item.is_voided) || (item.refunded_quantity ?? 0) > 0;
 }
 
@@ -915,6 +947,7 @@ function ticketDeepEqual(a: KDSTicket, b: KDSTicket): boolean {
     if (ai.is_refunded !== bi.is_refunded) return false;
     if (ai.refunded_quantity !== bi.refunded_quantity) return false;
     if (Boolean(ai.recalled) !== Boolean(bi.recalled)) return false;
+    if (Boolean(ai.acknowledged) !== Boolean(bi.acknowledged)) return false;
   }
   return true;
 }
@@ -995,11 +1028,16 @@ function stabilizeTicketsByLogicalSignature(
       ticket_id: existing.ticket_id,
       start_time: existing.start_time,
       start_time_epoch: existing.start_time_epoch,
-      items: (nextTicket.items ?? []).map((item) =>
-        recalledIds.has(item.id) && !item.recalled
-          ? { ...item, recalled: true }
-          : item,
-      ),
+      items: (nextTicket.items ?? []).map((item) => {
+        const withRecall =
+          recalledIds.has(item.id) && !item.recalled
+            ? { ...item, recalled: true }
+            : item;
+        if (_acknowledgedNoticeItemIds.has(item.id) && !withRecall.acknowledged) {
+          return { ...withRecall, acknowledged: true };
+        }
+        return withRecall;
+      }),
     };
   });
 }
@@ -1359,7 +1397,7 @@ export const useKDSStore = create<KDSState>()(
         });
         try {
           const params: Record<string, any> = { p_location_id: locationId };
-          if (shouldUseDisplayFilter(kdsDisplayId, routingMode, cachedRules)) {
+          if (kdsDisplayId) {
             params.p_kds_display_id = kdsDisplayId;
           }
 
@@ -1401,7 +1439,20 @@ export const useKDSStore = create<KDSState>()(
                     : t,
                 )
               : processed;
-          const visibleRemapped = remapped.filter(ticketShouldRemainVisible);
+          // Final pass: overlay local acknowledged Set onto all items before visibility check.
+          // This catches items where mergeTickets returned prev (old unacknowledged reference).
+          const withAckOverlay = remapped.map((t) => {
+            if (!t.items.some(i => _acknowledgedNoticeItemIds.has(i.id))) return t;
+            return {
+              ...t,
+              items: t.items.map(i =>
+                _acknowledgedNoticeItemIds.has(i.id) && !i.acknowledged
+                  ? { ...i, acknowledged: true }
+                  : i,
+              ),
+            };
+          });
+          const visibleRemapped = withAckOverlay.filter(ticketShouldRemainVisible);
           const dedupedRemapped = dedupeTicketsById(visibleRemapped);
           const sorted = sortKdsTicketsStable(dedupedRemapped);
           const { merged, mergedById, changed } = mergeTickets(
@@ -1470,7 +1521,7 @@ export const useKDSStore = create<KDSState>()(
         set({ isFetching: true, _lastLocationId: locationId });
         try {
           const params: Record<string, any> = { p_location_id: locationId };
-          if (shouldUseDisplayFilter(kdsDisplayId, routingMode, cachedRules)) {
+          if (kdsDisplayId) {
             params.p_kds_display_id = kdsDisplayId;
           }
 
@@ -1521,7 +1572,18 @@ export const useKDSStore = create<KDSState>()(
                     : t,
                 )
               : processed;
-          const visibleRemapped = remapped.filter(ticketShouldRemainVisible);
+          const withAckOverlay = remapped.map((t) => {
+            if (!t.items.some(i => _acknowledgedNoticeItemIds.has(i.id))) return t;
+            return {
+              ...t,
+              items: t.items.map(i =>
+                _acknowledgedNoticeItemIds.has(i.id) && !i.acknowledged
+                  ? { ...i, acknowledged: true }
+                  : i,
+              ),
+            };
+          });
+          const visibleRemapped = withAckOverlay.filter(ticketShouldRemainVisible);
           const dedupedRemapped = dedupeTicketsById(visibleRemapped);
           const sorted = sortKdsTicketsStable(dedupedRemapped);
           if (__DEV__) {
@@ -2298,11 +2360,16 @@ export const useKDSStore = create<KDSState>()(
               ticket_id: existing.ticket_id,
               start_time_epoch: existing.start_time_epoch,
               start_time: existing.start_time,
-              items: newT.items.map((item) =>
-                recalledIds.has(item.id) && !item.recalled
-                  ? { ...item, recalled: true }
-                  : item,
-              ),
+              items: newT.items.map((item) => {
+                const withRecall =
+                  recalledIds.has(item.id) && !item.recalled
+                    ? { ...item, recalled: true }
+                    : item;
+                if (_acknowledgedNoticeItemIds.has(item.id) && !withRecall.acknowledged) {
+                  return { ...withRecall, acknowledged: true };
+                }
+                return withRecall;
+              }),
             };
           });
         }
@@ -2830,6 +2897,72 @@ export const useKDSStore = create<KDSState>()(
         }
       },
 
+      acknowledgeNoticeItem: (ticketId: string, itemId: string) => {
+        const { tickets, _ticketsById, kdsDisplayId } = get();
+        const ticket = _ticketsById[ticketId];
+        if (!ticket) return;
+
+        // Always track locally — prevents reappearance from server refetch/broadcast
+        // regardless of whether the display has a kdsDisplayId for server-side filtering
+        _acknowledgedNoticeItemIds.add(itemId);
+        persistAcknowledgedNoticeItems();
+
+        // Optimistic: mark item acknowledged locally
+        const updatedItems = ticket.items.map((i) =>
+          i.id === itemId ? { ...i, acknowledged: true } : i,
+        );
+
+        // If all notice items (voided/refunded) are now acknowledged and there
+        // are no active items left, remove the ticket from the active lists
+        const hasActiveItems = updatedItems.some((i) => isActionableKitchenItem(i));
+        const hasUnacknowledgedNotices = updatedItems.some((i) => isKitchenNoticeItem(i));
+
+        let updatedTickets: KDSTicket[];
+        let updatedById: Record<string, KDSTicket>;
+
+        if (!hasActiveItems && !hasUnacknowledgedNotices) {
+          // All done — remove ticket from active lists
+          updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
+          updatedById = { ..._ticketsById };
+          delete updatedById[ticketId];
+        } else {
+          const updatedTicket = { ...ticket, items: updatedItems };
+          updatedTickets = tickets.map((t) =>
+            t.ticket_id === ticketId ? updatedTicket : t,
+          );
+          updatedById = { ..._ticketsById, [ticketId]: updatedTicket };
+        }
+
+        const bucketed = smartBucketTickets(
+          updatedTickets,
+          get().ticketsByStatus,
+          get().prioritizedTicketIds,
+          get().newOrderPosition,
+        );
+        set({ tickets: updatedTickets, _ticketsById: updatedById, ...bucketed });
+
+        // Backend: persist acknowledgement server-side.
+        // kds_display_id is now nullable so this works even without a display configured.
+        const client = getClient();
+        if (client) {
+          const params: Record<string, unknown> = { p_order_item_id: itemId };
+          if (kdsDisplayId) params.p_kds_display_id = kdsDisplayId;
+          scheduleRetry(
+            `ack_notice_${ticketId}_${itemId}`,
+            () => client.rpc("acknowledge_kds_notice", params),
+            0,
+            () => {
+              const lastLoc = get()._lastLocationId;
+              if (lastLoc) get().scheduleRefetch(lastLoc);
+            },
+            () => {
+              const lastLoc = get()._lastLocationId;
+              if (lastLoc) get().scheduleRefetch(lastLoc);
+            },
+          );
+        }
+      },
+
       // ─── Done Ticket Actions ────────────────────────────────────────
 
       recallDoneTicket: (ticketId: string) => {
@@ -3348,6 +3481,8 @@ export const useKDSStore = create<KDSState>()(
         _pendingActions.clear();
         _queuedAdvanceActions.clear();
         _pendingNewOrderSounds.clear();
+        _acknowledgedNoticeItemIds.clear();
+        persistAcknowledgedNoticeItems();
         if (_refetchTimeout) {
           clearTimeout(_refetchTimeout);
           _refetchTimeout = null;
