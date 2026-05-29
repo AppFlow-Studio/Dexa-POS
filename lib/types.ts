@@ -865,6 +865,15 @@ export interface OrderProfilePayment {
   dual_pricing_percentage_snapshot?: number
   tip_surcharge_percentage_snapshot?: number
 
+  // Service-charge tracking (process_payment_v13 onward).
+  // service_charge: snapshot of this payment's share of orders.service_charge
+  //   captured at insert time (last split-portion snaps to gross).
+  // service_charge_refunded: cumulative SC portion reversed by
+  //   apply_refund_to_payment_v4 (LEAST-clamped, full-refund snap).
+  // Pre-v13 rows default to 0.
+  service_charge?: number
+  service_charge_refunded?: number
+
   // Settlement tracking
   is_settled?: boolean
   settled_at?: string
