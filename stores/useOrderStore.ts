@@ -14858,6 +14858,13 @@ export const useOrderStore = create<OrderState>()(
                     // owns snapshot-freeze semantics (rule_id pin) and may
                     // disagree with our local best-guess if a concurrent
                     // station pinned a different rule_id first.
+                    //
+                    // The server now also returns the post-recalc totals
+                    // (calculate_order_totals_fast ran inside the RPC).
+                    // Sync those back too — but only when the response's
+                    // sync_version is newer than what we already hold, to
+                    // avoid clobbering a later local mutation that already
+                    // bumped sync_version.
                     set((state) => {
                       const o2 = state.ordersById[orderId];
                       if (!o2) return;
@@ -14870,6 +14877,16 @@ export const useOrderStore = create<OrderState>()(
                         data.service_charge_applies_on ?? null;
                       o2.service_charge_name =
                         data.service_charge_name ?? null;
+
+                      const localSv = o2.sync_version ?? 0;
+                      const serverSv = data.sync_version ?? 0;
+                      if (serverSv > localSv) {
+                        o2.total_amount = data.total_amount;
+                        o2.total_cash_amount = data.cash_total;
+                        o2.amount_due = data.amount_due;
+                        o2.cash_amount_due = data.cash_amount_due;
+                        o2.sync_version = serverSv;
+                      }
                     });
                   })
                   .catch((err) => {

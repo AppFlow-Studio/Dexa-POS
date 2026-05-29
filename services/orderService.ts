@@ -74,10 +74,10 @@ export type UpdateOpenItemResult = {
 export type ApplyServiceChargeParams = {
   p_order_id: string;
   /**
-   * Eligibility mode: pass the table session's party_size. Refresh mode:
-   * pass null — the server trusts the existing pinned snapshot and
-   * recomputes only the $ amount against current items. See
-   * apply_service_charge_v1.sql §5 for the two-mode contract.
+   * Optional override for the live UI seating count. When null, the
+   * server resolves party_size from orders.session_id → table_sessions.
+   * Pass a number to lead the table_sessions realtime by a few hundred
+   * ms during seat selection. See apply_service_charge_v1.sql §4.
    */
   p_party_size: number | null;
   p_station_id?: string | null;
@@ -94,8 +94,13 @@ export type ApplyServiceChargeResult = {
   cash_subtotal: number;
   card_total: number;
   cash_total: number;
+  total_amount: number;
+  amount_due: number;
+  cash_amount_due: number;
+  sync_version: number;
   eligible: boolean;
   old_service_charge: number;
+  party_size_used?: number | null;
   skipped?: "manual_override";
 };
 
