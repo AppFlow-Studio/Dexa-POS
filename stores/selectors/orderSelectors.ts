@@ -117,9 +117,11 @@ export interface ActiveOrderTotals {
   cashSubtotal: number;
   cashTax: number;
   cashTotal: number;
-  // Service charge (folded into total / cashTotal)
+  // Service charge (folded into total / cashTotal). Snapshot rate is preferred
+  // (so live rule edits don't shift open orders); falls back to live rule.
   serviceCharge: number;
   serviceChargeName: string;
+  serviceChargeRate: number | null;
 }
 
 /**
@@ -257,6 +259,10 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       cashTotal: totals.cash_total_amount,
       serviceCharge: totals.service_charge,
       serviceChargeName: totals.service_charge_name,
+      serviceChargeRate:
+        activeOrder.service_charge_rate ??
+        serviceChargeRule?.rate_percent ??
+        null,
     };
   }, [
     activeOrderId,
@@ -373,6 +379,8 @@ export function useOrderTotals(
       cashTotal: totals.cash_total_amount,
       serviceCharge: totals.service_charge,
       serviceChargeName: totals.service_charge_name,
+      serviceChargeRate:
+        order.service_charge_rate ?? serviceChargeRule?.rate_percent ?? null,
     };
   }, [orderId, order, taxRatesMap, serviceChargeRule, sessionPartySize, seatCount]);
 }

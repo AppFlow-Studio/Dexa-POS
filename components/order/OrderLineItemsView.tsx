@@ -1,5 +1,5 @@
 import { colors, PAYMENT_STATUS_COLORS } from '@/lib/theme'
-import { useOrder } from '@/stores/selectors/orderSelectors'
+import { useOrder, useOrderTotals } from '@/stores/selectors/orderSelectors'
 import { Banknote, CheckCircle2, CreditCard, X } from 'lucide-react-native'
 import { useMemo } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
@@ -44,6 +44,10 @@ const OrderLineItemsView = ({
 }: OrderLineItemsViewProps) => {
   const orderToView = useOrder(orderId)
   const items = orderToView?.items || []
+  // Live SC from the totals selector — reactive to seatCount + rule.
+  // Bypasses the deferred `_scheduleTotalsRecompute` write to
+  // order.service_charge so the SC line renders on the very first paint.
+  const liveTotals = useOrderTotals(orderId)
 
   const {
     subtotal,
@@ -81,9 +85,16 @@ const OrderLineItemsView = ({
         ? localSubtotal * orderToView.checkDiscount.value
         : 0)
     const finalTax = orderToView.total_tax ?? 0
-    const finalServiceCharge = orderToView.service_charge ?? 0
+    // Prefer live selector SC over order snapshot — selector reflects the
+    // calculator output the instant items + seatCount + rule converge,
+    // while order.service_charge waits for the deferred recalc + possible
+    // broadcast wipe.
+    const finalServiceCharge =
+      liveTotals?.serviceCharge ?? orderToView.service_charge ?? 0
     const finalServiceChargeName =
-      orderToView.service_charge_name ?? 'Service Charge'
+      liveTotals?.serviceChargeName ||
+      orderToView.service_charge_name ||
+      'Service Charge'
     const finalTotal =
       orderToView.total_amount ??
       localSubtotal - disc + finalTax + finalServiceCharge
@@ -109,7 +120,7 @@ const OrderLineItemsView = ({
       cashTotal: finalCashTotal,
       cashSavings: finalCashSavings
     }
-  }, [orderToView])
+  }, [orderToView, liveTotals?.serviceCharge, liveTotals?.serviceChargeName])
 
   if (!orderToView) return null
 

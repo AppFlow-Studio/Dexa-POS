@@ -1,4 +1,5 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -42,6 +43,14 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   const activeOrder = useOrderStore((s) =>
     s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined,
   );
+  // Live SC from the selector — reactive to seatCount + rule, so the row
+  // appears the moment the calculator returns > 0 instead of waiting for
+  // the deferred `_scheduleTotalsRecompute` to write `order.service_charge`,
+  // which can race with rekey/broadcast hydration on a fresh seat.
+  const liveTotals = useActiveOrderTotals();
+  const liveServiceCharge = liveTotals?.serviceCharge ?? 0;
+  const liveServiceChargeName = liveTotals?.serviceChargeName ?? "Service Charge";
+  const liveServiceChargeRate = liveTotals?.serviceChargeRate ?? null;
 
   const hasPayments =
     hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
@@ -175,7 +184,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
           )}
 
           {/* Service Charge */}
-          {(activeOrder?.service_charge ?? 0) > 0.001 && (
+          {liveServiceCharge > 0.001 && (
             <View
               style={{
                 flexDirection: "row",
@@ -185,13 +194,13 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               }}
             >
               <Text style={{ fontSize: 13, color: colors.label }}>
-                {activeOrder?.service_charge_name || "Service Charge"}
-                {activeOrder?.service_charge_rate
-                  ? ` (${Number(activeOrder.service_charge_rate).toFixed(2)}%)`
+                {liveServiceChargeName}
+                {liveServiceChargeRate != null
+                  ? ` (${Number(liveServiceChargeRate).toFixed(2)}%)`
                   : ""}
               </Text>
               <Text style={{ fontSize: 13, color: colors.heading }}>
-                ${(activeOrder?.service_charge ?? 0).toFixed(2)}
+                ${liveServiceCharge.toFixed(2)}
               </Text>
             </View>
           )}

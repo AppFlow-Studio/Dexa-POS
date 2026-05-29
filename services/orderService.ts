@@ -935,15 +935,15 @@ export class OrderService {
     endTs?: string | null,
     signal?: AbortSignal,
   ): Promise<{ data: any[] | null; error: any }> {
+    // Modifiers intentionally omitted — Previous Orders grid doesn't render
+    // them inline; the detail screen lazy-loads via get_order_details RPC.
+    // `order_items.is_voided=false` engages idx_order_items_order_active.
     let query = client
       .from("orders")
       .select(
         `
         *,
-        order_items (
-          *,
-          order_item_modifiers (*)
-        ),
+        order_items (*),
         order_payments (*),
         order_discounts (*),
         stations (station_name),
@@ -951,6 +951,7 @@ export class OrderService {
       `,
       )
       .eq("location_id", locationId)
+      .eq("order_items.is_voided", false)
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -970,6 +971,8 @@ export class OrderService {
   /**
    * Fetch orders with pagination (offset-based) for infinite scroll history.
    * Same query as getHistoryOrders but uses .range() instead of .limit().
+   * Prefer `getHistoryOrdersByCursor` for new code — keyset pagination is
+   * constant-time vs offset which gets progressively slower.
    */
   static async getHistoryOrdersPaginated(
     client: SupabaseClient,
@@ -985,10 +988,7 @@ export class OrderService {
       .select(
         `
         *,
-        order_items (
-          *,
-          order_item_modifiers (*)
-        ),
+        order_items (*),
         order_payments (*),
         order_discounts (*),
         stations (station_name),
@@ -996,6 +996,7 @@ export class OrderService {
       `,
       )
       .eq("location_id", locationId)
+      .eq("order_items.is_voided", false)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -1008,6 +1009,59 @@ export class OrderService {
 
     const { data, error } = await query;
     return { data, error, hasMore: (data?.length ?? 0) === limit };
+  }
+
+  /**
+   * Keyset-paginated history fetch. Uses `created_at < cursor` so the
+   * planner does a constant-time index range scan instead of offset+skip.
+   * Prefer this over `getHistoryOrdersPaginated` for "load more" infinite
+   * scroll. Cursor is the `created_at` of the last item in the previous page.
+   * On the first page pass `cursor=null` to start from the most recent.
+   */
+  static async getHistoryOrdersByCursor(
+    client: SupabaseClient,
+    locationId: string,
+    limit: number,
+    cursor: string | null,
+    statuses: OrderStatus[] | null = null,
+    startTs?: string | null,
+    endTs?: string | null,
+    signal?: AbortSignal,
+  ): Promise<{ data: any[] | null; error: any; hasMore: boolean; nextCursor: string | null }> {
+    let query = client
+      .from("orders")
+      .select(
+        `
+        *,
+        order_items (*),
+        order_payments (*),
+        order_discounts (*),
+        stations (station_name),
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
+      `,
+      )
+      .eq("location_id", locationId)
+      .eq("order_items.is_voided", false)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (cursor) query = query.lt("created_at", cursor);
+    if (startTs) query = query.gte("created_at", startTs);
+    if (endTs) query = query.lt("created_at", endTs);
+
+    if (statuses && statuses.length > 0) {
+      query = query.in("status", statuses);
+    }
+
+    if (signal) query = query.abortSignal(signal);
+
+    const { data, error } = await query;
+    const rows = data ?? [];
+    const hasMore = rows.length === limit;
+    const nextCursor = hasMore
+      ? (rows[rows.length - 1] as { created_at?: string })?.created_at ?? null
+      : null;
+    return { data, error, hasMore, nextCursor };
   }
 
   /**

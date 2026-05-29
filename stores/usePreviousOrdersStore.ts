@@ -46,7 +46,7 @@ function resolveHistoryLocationId(): string | null {
 }
 
 /** Resolve the BusinessDayConfig from the current location settings. */
-function resolveBusinessDayConfig(): BusinessDayConfig | null {
+export function resolveBusinessDayConfig(): BusinessDayConfig | null {
   const store = useStoreSettingsStore.getState().selectedStore;
   if (!store?.timezone) return null;
   return {
@@ -196,9 +196,12 @@ interface PreviousOrdersState {
   dateWindow: DateWindow;
 
   // Pagination state
-  _currentOffset: number;
+  _currentOffset: number; // Legacy offset cursor — kept for compat with refresh accounting
   _hasMore: boolean;
   _isLoadingMore: boolean;
+  // Keyset cursor: `created_at` of the oldest order currently loaded. loadMore
+  // requests rows older than this — constant-time vs offset-based skip.
+  _oldestCursor: string | null;
 
   // Actions
   addOrderToHistory: (order: OrderProfile) => void;
@@ -323,6 +326,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     _currentOffset: 0,
     _hasMore: false,
     _isLoadingMore: false,
+    _oldestCursor: null,
 
     setDateWindow: (window) => {
       set({
@@ -336,6 +340,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         _currentOffset: 0,
         _hasMore: false, // Block loadMore until refresh resolves bounds + sets _hasMore
         _isLoadingMore: false,
+        _oldestCursor: null,
         newOrdersCount: 0,
       });
       // Trailing-edge debounce: rapid pill taps (Today → Yesterday → Last 7
@@ -722,6 +727,14 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
           const newLookup = buildOrderLookupMap(mergedPreviousOrders);
           const now = Date.now();
+          // Seed keyset cursor from the raw fetched rows (the DB created_at)
+          // rather than the transformed `timestamp` field — opened_at and
+          // created_at usually agree but the DB column is the source of truth
+          // for ORDER BY created_at DESC.
+          const lastFetchedRow = fetchedOrders[fetchedOrders.length - 1] as
+            | { created_at?: string }
+            | undefined;
+          const _oldestCursor = lastFetchedRow?.created_at ?? null;
           set({
             previousOrders: mergedPreviousOrders,
             newOrdersCount: 0,
@@ -732,6 +745,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             _currentOffset: mergedPreviousOrders.length,
             _hasMore: fetchedOrders.length === INITIAL_FETCH_SIZE,
             _isLoadingMore: false,
+            _oldestCursor,
           });
           if (__DEV__)
             console.log(
@@ -838,7 +852,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     },
 
     loadMoreOrders: async () => {
-      const { _isLoadingMore, _hasMore, _currentOffset } = get();
+      const { _isLoadingMore, _hasMore, _currentOffset, _oldestCursor } = get();
       if (_isLoadingMore || !_hasMore) return;
 
       // Cooldown: prevent onEndReached cascade
@@ -864,12 +878,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       set({ _isLoadingMore: true });
 
       try {
-        const { data, error, hasMore } =
-          await OrderService.getHistoryOrdersPaginated(
+        const { data, error, hasMore, nextCursor } =
+          await OrderService.getHistoryOrdersByCursor(
             client,
             locationId,
             LOAD_MORE_PAGE_SIZE,
-            _currentOffset,
+            _oldestCursor,
             null,
             _resolvedStartTs,
             _resolvedEndTs,
@@ -900,6 +914,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           set({
             _hasMore: hasMore,
             _currentOffset: _currentOffset + data.length,
+            _oldestCursor: nextCursor ?? _oldestCursor,
             _isLoadingMore: false,
           });
           return;
@@ -924,6 +939,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             _orderLookup: buildOrderLookupMap(merged),
             _currentOffset: _currentOffset + data.length,
             _hasMore: hasMore,
+            _oldestCursor: nextCursor ?? state._oldestCursor,
           };
         });
       } catch (err) {

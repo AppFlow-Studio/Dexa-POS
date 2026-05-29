@@ -186,18 +186,18 @@ const TotalsComponent: React.FC = () => {
         </Text>
       </View>
 
-      {(activeOrder?.service_charge ?? 0) > 0.001 && (
+      {totals.serviceCharge > 0.001 && (
         <View className='flex-row justify-between items-center mb-1.5'>
           <Text style={{ color: colors.label, fontSize: 11 }}>
-            {activeOrder?.service_charge_name || 'Service Charge'}
-            {activeOrder?.service_charge_rate
-              ? ` (${Number(activeOrder.service_charge_rate).toFixed(2)}%)`
+            {totals.serviceChargeName || 'Service Charge'}
+            {totals.serviceChargeRate != null
+              ? ` (${Number(totals.serviceChargeRate).toFixed(2)}%)`
               : ''}
           </Text>
           <Text
             style={{ color: colors.label, fontSize: 11, fontWeight: '600' }}
           >
-            ${(activeOrder?.service_charge ?? 0).toFixed(2)}
+            ${totals.serviceCharge.toFixed(2)}
           </Text>
         </View>
       )}
