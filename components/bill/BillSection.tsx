@@ -23,6 +23,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -416,6 +417,7 @@ const BillSectionContent = ({
     setActiveOrder,
     retryFailedSyncs,
     clearCart,
+    voidOrder,
     updateActiveOrderDetails,
   } = useOrderStore(
     useShallow((s) => ({
@@ -425,6 +427,7 @@ const BillSectionContent = ({
       setActiveOrder: s.setActiveOrder,
       retryFailedSyncs: s.retryFailedSyncs,
       clearCart: s.clearCart,
+      voidOrder: s.voidOrder,
       updateActiveOrderDetails: s.updateActiveOrderDetails,
     })),
   );
@@ -461,6 +464,15 @@ const BillSectionContent = ({
   const cart = useMemo(() => activeOrderItems || [], [activeOrderItems]);
   const hasDraftItems = useMemo(
     () => cart.some((item) => item.isDraft),
+    [cart],
+  );
+  const hasNonDraftItems = useMemo(
+    () =>
+      cart.some((item) =>
+        ["sent", "preparing", "ready", "served"].includes(
+          item.kitchen_status ?? "",
+        ),
+      ),
     [cart],
   );
   const newItemsCount = useMemo(
@@ -608,6 +620,9 @@ const BillSectionContent = ({
   );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
   const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false);
+  const [clearCartDialogMode, setClearCartDialogMode] = useState<
+    "clear" | "voidNonDraft"
+  >("clear");
   const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false);
   const [selectorPartySize, setSelectorPartySize] = useState(1);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
@@ -1206,21 +1221,65 @@ const BillSectionContent = ({
 
   const handleClearCart = useCallback(() => {
     if (!activeOrderId || !activeOrder) return;
+    setClearCartDialogMode(hasNonDraftItems ? "voidNonDraft" : "clear");
     setIsVoidConfirmOpen(true);
-  }, [activeOrder, activeOrderId]);
+  }, [activeOrder, activeOrderId, hasNonDraftItems]);
+
+  const handleConfirmVoidOrder = useCallback(async () => {
+    if (!activeOrderId || !activeOrder) return;
+
+    const sessionStore = useTableSessionStore.getState();
+    const sessionId = activeOrder.session_id;
+    const tableId = sessionId
+      ? sessionStore.sessionTableIndex[sessionId]?.[0] ??
+        sessionStore.getSessionBySessionId(sessionId)?.tableId ??
+        ""
+      : "";
+
+    if (tableId) {
+      await sessionStore.dispatchAction({
+        type: "VOID_ORDER",
+        tableId,
+        orderId: activeOrder.id,
+        dbOrderId: activeOrder.db_order_id,
+      });
+      if (activeOrder.session_id) {
+        await useReservationStore
+          .getState()
+          .completeReservationForSession(activeOrder.session_id);
+      }
+    } else {
+      voidOrder(activeOrderId);
+    }
+
+    setIsVoidConfirmOpen(false);
+    setClearCartDialogMode("clear");
+    show({
+      title: "Order Voided",
+      message: "The current order has been successfully voided.",
+      type: "success",
+    });
+  }, [activeOrder, activeOrderId, show, voidOrder]);
 
   const handleConfirmClearCart = useCallback(async () => {
     if (!activeOrderId || !activeOrder) return;
 
+    if (clearCartDialogMode === "voidNonDraft") {
+      await handleConfirmVoidOrder();
+      return;
+    }
+
     clearCart();
 
     setIsVoidConfirmOpen(false);
-    show({
-      title: "Cart Cleared",
-      message: "All items have been removed from the cart.",
-      type: "success",
-    });
-  }, [activeOrder, activeOrderId, clearCart, show]);
+    setClearCartDialogMode("clear");
+  }, [
+    activeOrder,
+    activeOrderId,
+    clearCart,
+    clearCartDialogMode,
+    handleConfirmVoidOrder,
+  ]);
 
   const handlePayClick = () => {
     // Safety guard: Prevent payment if button should be disabled
@@ -1621,8 +1680,13 @@ const BillSectionContent = ({
 
             <TouchableOpacity
               onPress={handleClearCart}
+              disabled={!activeOrderId || cart.length === 0 || isReadOnly}
               className="h-8 w-8 rounded-lg items-center justify-center"
-              style={{ backgroundColor: "#F87171" }}
+              style={{
+                backgroundColor: "#F87171",
+                opacity:
+                  !activeOrderId || cart.length === 0 || isReadOnly ? 0.45 : 1,
+              }}
             >
               <Trash2 color={colors.screen} size={13} />
             </TouchableOpacity>
@@ -2271,7 +2335,13 @@ const BillSectionContent = ({
         onConfirm={handleConfirmClaim}
         onCancel={handleCancelClaim}
       />
-      <Dialog open={isVoidConfirmOpen} onOpenChange={setIsVoidConfirmOpen}>
+      <Dialog
+        open={isVoidConfirmOpen}
+        onOpenChange={(open) => {
+          setIsVoidConfirmOpen(open);
+          if (!open) setClearCartDialogMode("clear");
+        }}
+      >
         <DialogContent
           className="w-[420px] rounded-2xl p-0 overflow-hidden"
           style={{
@@ -2292,7 +2362,9 @@ const BillSectionContent = ({
                   color: colors.heading,
                 }}
               >
-                Clear Cart
+                {clearCartDialogMode === "voidNonDraft"
+                  ? "Void Order Instead?"
+                  : "Clear Cart"}
               </DialogTitle>
             </DialogHeader>
             <Text
@@ -2303,8 +2375,9 @@ const BillSectionContent = ({
                 lineHeight: 20,
               }}
             >
-              Are you sure you want to clear this cart? This action cannot be
-              undone.
+              {clearCartDialogMode === "voidNonDraft"
+                ? "The current order has non-draft items. Clear Cart can only remove draft items safely. Do you want to void the order instead?"
+                : "Are you sure you want to clear this cart? This action cannot be undone."}
             </Text>
           </View>
 
@@ -2340,7 +2413,9 @@ const BillSectionContent = ({
                   fontWeight: "700",
                 }}
               >
-                Clear Cart
+                {clearCartDialogMode === "voidNonDraft"
+                  ? "Void Order"
+                  : "Clear Cart"}
               </Text>
             </TouchableOpacity>
           </DialogFooter>

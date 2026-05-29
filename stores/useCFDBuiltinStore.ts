@@ -53,6 +53,7 @@ interface CFDBuiltinState {
   loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
   loyaltyResult: CFDPayload['loyaltyResult'] | null
   merchantHasLoyalty: boolean
+  pricingDisplayMode: 'dual' | 'card_only' | 'cash_only'
   themeMode: 'light' | 'dark'
 
   // Actions
@@ -94,6 +95,7 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   loyaltyPrompt: null,
   loyaltyResult: null,
   merchantHasLoyalty: false,
+  pricingDisplayMode: 'dual',
   themeMode: 'dark'
 }
 

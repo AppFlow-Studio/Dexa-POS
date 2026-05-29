@@ -207,7 +207,15 @@ function SectionHeader ({
 // MAIN COMPONENT
 // ---------------------------------------------------------------------------
 
-const DevicesConnectionsScreen = () => {
+type DevicesConnectionsScreenProps = {
+  mode?: 'all' | 'printers'
+  afterPrinters?: React.ReactNode
+}
+
+const DevicesConnectionsScreen = ({
+  mode = 'all',
+  afterPrinters
+}: DevicesConnectionsScreenProps) => {
   const supabase = useSupabaseClient()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
@@ -245,10 +253,10 @@ const DevicesConnectionsScreen = () => {
 
   // Section expansion state
   const [expandedSections, setExpandedSections] = useState({
-    station: true,
-    terminal: true,
+    station: mode === 'all',
+    terminal: mode === 'all',
     printers: true,
-    discovered: false,
+    discovered: mode === 'printers',
     appUpdates: false
   })
 
@@ -1324,10 +1332,12 @@ const DevicesConnectionsScreen = () => {
         <Text
           style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
         >
-          Devices & Connections
+          {mode === 'printers' ? 'Printer Settings' : 'Devices & Connections'}
         </Text>
         <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
-          Station hardware, terminal, and printer management.
+          {mode === 'printers'
+            ? 'Printer connection, receipt printing, and order printing.'
+            : 'Station hardware, terminal, and printer management.'}
         </Text>
       </View>
       <View
@@ -1338,6 +1348,7 @@ const DevicesConnectionsScreen = () => {
         {/* ================================================================ */}
         {/* SECTION 1 — THIS STATION */}
         {/* ================================================================ */}
+        {mode === 'all' && (
         <View
           style={{
             backgroundColor: colors.panel,
@@ -1495,10 +1506,12 @@ const DevicesConnectionsScreen = () => {
             </View>
           )}
         </View>
+        )}
 
         {/* ================================================================ */}
         {/* SECTION 2 — PAYMENT TERMINAL */}
         {/* ================================================================ */}
+        {mode === 'all' && (
         <View
           style={{
             backgroundColor: colors.panel,
@@ -2983,6 +2996,7 @@ const DevicesConnectionsScreen = () => {
             </View>
           )}
         </View>
+        )}
 
         {/* ================================================================ */}
         {/* SECTION 3 — PRINTER CONFIGURATION */}
@@ -3887,6 +3901,8 @@ const DevicesConnectionsScreen = () => {
           )}
         </View>
 
+        {afterPrinters}
+
         {/* ================================================================ */}
         {/* SECTION 4 — DISCOVERED DEVICES */}
         {/* ================================================================ */}
@@ -4451,7 +4467,7 @@ const DevicesConnectionsScreen = () => {
         {/* ------------------------------------------------------------------ */}
         {/* APP UPDATES SECTION                                                 */}
         {/* ------------------------------------------------------------------ */}
-        {Platform.OS === 'android' && (
+        {mode === 'all' && Platform.OS === 'android' && (
           <View
             style={{
               marginTop: 16,

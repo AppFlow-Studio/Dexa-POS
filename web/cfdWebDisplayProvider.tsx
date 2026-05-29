@@ -65,6 +65,7 @@ const initialState: CFDDisplayData = {
   loyaltyResult: null,
   paymentMethod: null,
   merchantHasLoyalty: false,
+  pricingDisplayMode: "dual",
   themeMode: "dark",
 };
 
@@ -136,6 +137,8 @@ export const useCFDWebDisplayStore = create<CFDWebDisplayStore>()((set) => ({
       paymentMethod: payload.paymentMethod ?? current.paymentMethod,
       merchantHasLoyalty:
         payload.merchantHasLoyalty ?? current.merchantHasLoyalty,
+      pricingDisplayMode:
+        payload.pricingDisplayMode ?? current.pricingDisplayMode,
       themeMode: payload.themeMode ?? current.themeMode,
     }));
   },
@@ -194,6 +197,7 @@ export function CFDWebDisplayProvider({
       loyaltyResult: s.loyaltyResult,
       paymentMethod: s.paymentMethod,
       merchantHasLoyalty: s.merchantHasLoyalty,
+      pricingDisplayMode: s.pricingDisplayMode,
       themeMode: s.themeMode,
     })),
   );

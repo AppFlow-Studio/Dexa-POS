@@ -198,12 +198,12 @@ const CustomerSheet: React.FC = () => {
   };
 
   const handlePhoneChange = (text: string) => {
-    const cleaned = text.replace(/\D/g, "");
+    const cleaned = text.replace(/\D/g, "").slice(0, 10);
     let formatted = cleaned;
     if (cleaned.length > 6) {
-      formatted = `(${cleaned.slice(0, 3)}) - ${cleaned.slice(3, 6)} - ${cleaned.slice(6, 10)}`;
+      formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
     } else if (cleaned.length > 3) {
-      formatted = `(${cleaned.slice(0, 3)}) - ${cleaned.slice(3)}`;
+      formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
     } else if (cleaned.length > 0) {
       formatted = `(${cleaned}`;
     }
@@ -283,12 +283,12 @@ const CustomerSheet: React.FC = () => {
     setNewName(customer.name || "");
 
     // Format phone for read-only display
-    const rawPhone = (customer.phone ?? customer.phoneNumber ?? "").replace(/\D/g, "");
+    const rawPhone = (customer.phone ?? customer.phoneNumber ?? "").replace(/\D/g, "").slice(0, 10);
     let formatted = rawPhone;
     if (rawPhone.length > 6) {
-      formatted = `(${rawPhone.slice(0, 3)}) - ${rawPhone.slice(3, 6)} - ${rawPhone.slice(6, 10)}`;
+      formatted = `(${rawPhone.slice(0, 3)}) ${rawPhone.slice(3, 6)}-${rawPhone.slice(6)}`;
     } else if (rawPhone.length > 3) {
-      formatted = `(${rawPhone.slice(0, 3)}) - ${rawPhone.slice(3)}`;
+      formatted = `(${rawPhone.slice(0, 3)}) ${rawPhone.slice(3)}`;
     } else if (rawPhone.length > 0) {
       formatted = `(${rawPhone}`;
     }
@@ -522,8 +522,8 @@ const CustomerSheet: React.FC = () => {
                         value={newPhone}
                         onChangeText={viewMode === "edit" ? undefined : handlePhoneChange}
                         editable={viewMode !== "edit"}
-                        placeholder="(555) - 555 - 5555"
-                        maxLength={20}
+                        placeholder="(555) 555-5555"
+                        maxLength={14}
                         keyboardType="phone-pad"
                         placeholderTextColor={colors.muted}
                         style={{

@@ -32,7 +32,7 @@ import { Switch } from "~/components/ui/switch";
 // LOCAL TYPES
 // ---------------------------------------------------------------------------
 
-type PrinterTab = "receipt" | "order" | "kds";
+type PrinterTab = "printer" | "kds";
 
 interface ReceiptSettings {
   showLogo: boolean;
@@ -120,9 +120,7 @@ function ToggleRow({
 // ---------------------------------------------------------------------------
 
 const TABS: { key: PrinterTab; label: string }[] = [
-  { key: "receipt", label: "Receipt Settings" },
-  { key: "order", label: "Order Settings" },
-  { key: "kds", label: "KDS & Routing" },
+  { key: "kds", label: "Kitchen Display Settings" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -131,9 +129,8 @@ const TABS: { key: PrinterTab; label: string }[] = [
 
 const PrintersKitchenScreen = () => {
   const supabase = useSupabaseClient();
-
   // Tab state
-  const [activeTab, setActiveTab] = useState<PrinterTab>("receipt");
+  const [activeTab, setActiveTab] = useState<PrinterTab>("kds");
 
   // KDS + Printing settings from unified config
   const kdsConfig = useLocationConfigStore((s) => s.config.kds);
@@ -191,6 +188,7 @@ const PrintersKitchenScreen = () => {
 
   // Throttling & KDS store
   const { throttling, setThrottling } = useSettingsStore();
+  const defaultReceiptPrinterId = useSettingsStore((s) => s.defaultReceiptPrinterId);
   const kdsCount = useKDSStore((s) => s.counts);
 
   // Routing modal state
@@ -231,6 +229,10 @@ const PrintersKitchenScreen = () => {
   const kitchenPrinters = storedPrinters.filter(
     (p) => p.isActive && (p.printerRole === "kitchen" || p.printerRole === "bar" || p.isDefaultKitchen),
   );
+  const activePrinters = storedPrinters.filter((p) => p.isActive);
+  const receiptPrinter = defaultReceiptPrinterId
+    ? activePrinters.find((p) => p.id === defaultReceiptPrinterId)
+    : activePrinters.find((p) => p.isDefaultReceipt);
 
   // Receipt settings state
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>({
@@ -302,10 +304,47 @@ const PrintersKitchenScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* ============================================================== */}
-        {/* RECEIPT SETTINGS TAB                                            */}
+        {/* PRINTER SETTINGS TAB                                            */}
         {/* ============================================================== */}
-        {activeTab === "receipt" && (
+        {activeTab === "printer" && (
           <View>
+            <SectionHeader title="Printer Connection" />
+            <View style={{
+              backgroundColor: colors.card,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 14,
+              marginBottom: 4,
+            }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginBottom: 4 }}>
+                    {receiptPrinter ? receiptPrinter.printerName : "No receipt printer assigned"}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>
+                    {activePrinters.length} active printer{activePrinters.length === 1 ? "" : "s"} configured
+                    {kitchenPrinters.length > 0 ? `, ${kitchenPrinters.length} kitchen/order printer${kitchenPrinters.length === 1 ? "" : "s"}` : ""}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {}}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: colors.teal + "15",
+                    borderWidth: 1,
+                    borderColor: colors.teal + "40",
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
+                    Manage
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <SectionHeader title="Copy Settings" />
             <ToggleRow
               label="Print Merchant Copy"
@@ -355,14 +394,7 @@ const PrintersKitchenScreen = () => {
                 placeholderTextColor={colors.muted}
               />
             </View>
-          </View>
-        )}
 
-        {/* ============================================================== */}
-        {/* ORDER SETTINGS TAB                                              */}
-        {/* ============================================================== */}
-        {activeTab === "order" && (
-          <View>
             <SectionHeader title="Auto-Print" />
             <ToggleRow
               label="Auto-Print Kitchen Tickets"
@@ -374,8 +406,15 @@ const PrintersKitchenScreen = () => {
               value={autoPrintReceipt}
               onToggle={(v) => updateField("autoPrintReceipt", v)}
             />
+          </View>
+        )}
 
-            <SectionHeader title="Kitchen Ticket" />
+        {/* ============================================================== */}
+        {/* KDS & ROUTING TAB                                               */}
+        {/* ============================================================== */}
+        {activeTab === "kds" && (
+          <View>
+            <SectionHeader title="Kitchen Ticket Settings" />
             <ToggleRow
               label="Auto-Fire Tickets"
               value={kitchenSettings.autoFire}
@@ -507,14 +546,7 @@ const PrintersKitchenScreen = () => {
                 </View>
               </>
             )}
-          </View>
-        )}
 
-        {/* ============================================================== */}
-        {/* KDS & ROUTING TAB                                               */}
-        {/* ============================================================== */}
-        {activeTab === "kds" && (
-          <View>
             <SectionHeader title="KDS Workflow Mode" />
             <View style={{
               backgroundColor: colors.card,
