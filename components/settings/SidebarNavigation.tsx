@@ -48,6 +48,7 @@ interface SidebarItem {
   label: string
   icon: React.ElementType
   route: string
+  exact?: boolean
 }
 
 interface SidebarSection {
@@ -68,9 +69,15 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         route: '/settings/devices-connections'
       },
       {
-        id: 'printers-kitchen',
-        label: 'Print & KDS Config',
+        id: 'printer-settings',
+        label: 'Printer Settings',
         icon: Printer,
+        route: '/settings/printer-settings'
+      },
+      {
+        id: 'printers-kitchen',
+        label: 'Kitchen Display Settings',
+        icon: Monitor,
         route: '/settings/printers-kitchen'
       },
       {
@@ -102,6 +109,13 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         label: 'Dining Room',
         icon: LayoutGrid,
         route: '/settings/dining-room'
+      },
+      {
+        id: 'stations',
+        label: 'Stations',
+        icon: Smartphone,
+        route: '/settings/stations',
+        exact: true
       },
       {
         id: 'stations-devices',
@@ -213,6 +227,9 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
     : [])
 ]
 
+const itemMatches = (item: SidebarItem, pathname: string) =>
+  item.exact ? pathname === item.route : pathname.startsWith(item.route)
+
 const SidebarNavigation = () => {
   const router = useRouter()
   const pathname = usePathname()
@@ -234,14 +251,14 @@ const SidebarNavigation = () => {
     Record<string, boolean>
   >(() => {
     const activeSection = SETTINGS_SECTIONS.find(section =>
-      section.items.some(item => pathname.startsWith(item.route))
+      section.items.some(item => itemMatches(item, pathname))
     )
     return activeSection ? { [activeSection.id]: true } : {}
   })
 
   useEffect(() => {
     const activeSection = SETTINGS_SECTIONS.find(section =>
-      section.items.some(item => pathname.startsWith(item.route))
+      section.items.some(item => itemMatches(item, pathname))
     )
     if (activeSection && !expandedSections[activeSection.id]) {
       setExpandedSections(prev => ({ ...prev, [activeSection.id]: true }))
@@ -385,7 +402,7 @@ const SidebarNavigation = () => {
                 {isExpanded && (
                   <View style={{ marginTop: 2 }}>
                     {section.items.map(item => {
-                      const isActive = pathname.startsWith(item.route)
+                      const isActive = itemMatches(item, pathname)
                       const Icon = item.icon
 
                       return (

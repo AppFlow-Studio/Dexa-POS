@@ -59,6 +59,7 @@ interface CFDClientStore {
   paymentMethod: 'cash' | 'card' | 'manual' | null
   themeMode: 'light' | 'dark'
   merchantHasLoyalty: boolean
+  pricingDisplayMode: 'dual' | 'card_only' | 'cash_only'
 
   // Actions
   setPairing: (data: CFDPairingData) => void;
@@ -120,6 +121,7 @@ export const useCFDClientStore = create<CFDClientStore>()(
       paymentMethod: null,
       themeMode: 'dark',
       merchantHasLoyalty: false,
+      pricingDisplayMode: 'dual',
 
       // Actions
       setPairing: (data) => {
@@ -196,7 +198,9 @@ export const useCFDClientStore = create<CFDClientStore>()(
           // Carry forward when payload omits — POS includes this on every
           // update once cached, but defensive in case of partial payloads.
           merchantHasLoyalty:
-            payload.merchantHasLoyalty ?? get().merchantHasLoyalty
+            payload.merchantHasLoyalty ?? get().merchantHasLoyalty,
+          pricingDisplayMode:
+            payload.pricingDisplayMode ?? get().pricingDisplayMode
         })
     }),
     {

@@ -93,6 +93,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [managerPin, setManagerPin] = useState('')
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false)
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false)
+  const [isVoidPromptFromClearCart, setVoidPromptFromClearCart] =
+    useState(false)
   const [showRefundedDiscountDialog, setShowRefundedDiscountDialog] =
     useState(false)
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false)
@@ -158,6 +160,15 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
   // Calculate if balance is zero for Close Check option
   const hasItems = (activeOrder?.items?.length ?? 0) > 0
+  const hasNonDraftItems = useMemo(
+    () =>
+      (activeOrder?.items ?? []).some(item =>
+        ['sent', 'preparing', 'ready', 'served'].includes(
+          item.kitchen_status ?? ''
+        )
+      ),
+    [activeOrder?.items]
+  )
   const balance = activeOrder?.amount_due ?? 0
   const isBalanceZero = hasItems && balance <= 0
 
@@ -185,6 +196,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const canManageDrawer = !!drawerId && !!onManageDrawer
 
   const handleClearCart = () => {
+    if (hasNonDraftItems) {
+      closeAndThen(() => {
+        setVoidPromptFromClearCart(true)
+        setVoidConfirmOpen(true)
+      })
+      return
+    }
+
     setClearCartConfirmOpen(true)
   }
 
@@ -194,15 +213,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     if (ref && 'current' in ref && ref.current) {
       ref.current.close()
     }
-    show({
-      title: 'Cart Cleared',
-      message: 'All items have been removed from the cart.',
-      type: 'success'
-    })
   }
 
   const handleVoidOrderClick = () => {
-    closeAndThen(() => setVoidConfirmOpen(true))
+    closeAndThen(() => {
+      setVoidPromptFromClearCart(false)
+      setVoidConfirmOpen(true)
+    })
   }
 
   const onConfirmVoid = async () => {
@@ -237,6 +254,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       }
 
       setVoidConfirmOpen(false)
+      setVoidPromptFromClearCart(false)
       show({
         title: 'Order Voided',
         message: 'The current order has been successfully voided.',
@@ -1192,13 +1210,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           {/* Clear Cart row */}
           <TouchableOpacity
             onPress={handleClearCart}
-            disabled={isCheckClosed}
+            disabled={isCheckClosed || isReadOnlyForStation}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
               paddingHorizontal: 16,
               paddingVertical: 10,
-              opacity: isCheckClosed ? 0.45 : 1
+              opacity: isCheckClosed || isReadOnlyForStation ? 0.45 : 1
             }}
           >
             <View
@@ -1401,10 +1419,19 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       />
       <ConfirmationModal
         isOpen={isVoidConfirmOpen}
-        onClose={() => setVoidConfirmOpen(false)}
+        onClose={() => {
+          setVoidConfirmOpen(false)
+          setVoidPromptFromClearCart(false)
+        }}
         onConfirm={onConfirmVoid}
-        title='Void This Order?'
-        description='Are you sure you want to void this entire order? All items will be cancelled. This action cannot be undone.'
+        title={
+          isVoidPromptFromClearCart ? 'Void Order Instead?' : 'Void This Order?'
+        }
+        description={
+          isVoidPromptFromClearCart
+            ? 'The current order has non-draft items. Clear Cart can only remove draft items safely. Do you want to void the order instead?'
+            : 'Are you sure you want to void this entire order? All items will be cancelled. This action cannot be undone.'
+        }
         confirmText='Yes, Void Order'
         variant='destructive'
       />

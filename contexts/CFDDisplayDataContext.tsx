@@ -63,6 +63,7 @@ export function CFDExternalDisplayProvider ({
     loyaltyResult: s.loyaltyResult,
     paymentMethod: s.paymentMethod,
     merchantHasLoyalty: s.merchantHasLoyalty,
+    pricingDisplayMode: s.pricingDisplayMode,
     themeMode: s.themeMode
   })))
 
@@ -102,6 +103,7 @@ export function CFDExternalDisplayProvider ({
     loyaltyResult: store.loyaltyResult ?? null,
     paymentMethod: store.paymentMethod ?? null,
     merchantHasLoyalty: store.merchantHasLoyalty,
+    pricingDisplayMode: store.pricingDisplayMode ?? 'dual',
     themeMode: store.themeMode
   }), [store])
 
@@ -152,6 +154,7 @@ export function CFDBuiltinDisplayProvider ({
     loyaltyResult: s.loyaltyResult,
     paymentMethod: s.paymentMethod,
     merchantHasLoyalty: s.merchantHasLoyalty,
+    pricingDisplayMode: s.pricingDisplayMode,
     themeMode: s.themeMode
   })))
 
@@ -191,6 +194,7 @@ export function CFDBuiltinDisplayProvider ({
     loyaltyResult: store.loyaltyResult ?? null,
     paymentMethod: store.paymentMethod ?? null,
     merchantHasLoyalty: store.merchantHasLoyalty,
+    pricingDisplayMode: store.pricingDisplayMode ?? 'dual',
     themeMode: store.themeMode
   }), [store])
 
