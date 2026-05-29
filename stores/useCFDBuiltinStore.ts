@@ -32,6 +32,9 @@ interface CFDBuiltinState {
   subtotalCash: number
   subtotalCard: number
   discountAmount: number
+  serviceCharge: number
+  serviceChargeName: string | null
+  serviceChargeRate: number | null
   taxAmount: number
   taxCash: number
   taxCard: number
@@ -75,6 +78,9 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   subtotalCash: 0,
   subtotalCard: 0,
   discountAmount: 0,
+  serviceCharge: 0,
+  serviceChargeName: null,
+  serviceChargeRate: null,
   taxAmount: 0,
   taxCash: 0,
   taxCard: 0,

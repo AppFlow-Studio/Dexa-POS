@@ -383,6 +383,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         subtotalCash: s.subtotalCash,
         subtotalCard: s.subtotalCard,
         discountAmount: s.discountAmount,
+        serviceCharge: s.serviceCharge,
+        serviceChargeName: s.serviceChargeName,
+        serviceChargeRate: s.serviceChargeRate,
         taxAmount: s.taxAmount,
         taxCash: s.taxCash,
         taxCard: s.taxCard,
@@ -1244,8 +1247,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     let cashTax =
       frozen?.taxCash ??
       Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
+    // Prefer the live calculator's totals over the legacy
+    // `activeOrderTotal` store field. The legacy field is written by
+    // recalculateOrder / _ensureTotalsFresh / applyBackendItemData and
+    // lags by one render relative to `useActiveOrderTotals()` — which
+    // means the CFD's TOTAL can show the pre-SC value while the SC line
+    // (sourced from orderTotals.serviceCharge below) reflects the fresh
+    // SC. They then disagree by ~SC's worth (the CFD-vs-POS-total bug).
+    // Both POS panes (PricingBreakdownSheet / Totals.tsx) already use
+    // orderTotals exclusively; CFD should too.
     const liveCardTotal = Math.round(
-      (activeOrderTotal + currentTip.amount) * 100
+      ((orderTotals?.total ?? activeOrderTotal) + currentTip.amount) * 100
     )
     const liveCashTotal = Math.round(
       ((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100
@@ -1350,6 +1362,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       subtotalCash: cashSubtotal,
       subtotalCard: cardSubtotal,
       discountAmount: displayDiscountAmount,
+      serviceCharge: Math.round((orderTotals?.serviceCharge ?? 0) * 100),
+      serviceChargeName: orderTotals?.serviceChargeName ?? null,
+      serviceChargeRate: orderTotals?.serviceChargeRate ?? null,
       taxAmount: cardTax,
       taxCash: cashTax,
       taxCard: cardTax,
@@ -1390,7 +1405,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         displayGuestCount ?? ''
       }|` +
       `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|${cardTotal}|${cashTotal}|` +
-      `${displayDiscountAmount}|${displayTipAmount}|${
+      `${displayDiscountAmount}|${orderTotals?.serviceCharge ?? 0}|${displayTipAmount}|${
         currentTip.percentage ?? ''
       }|` +
       `${displayOutstandingTotal}|${displayAmountPaid}|${savingsAmount}|` +
@@ -1629,8 +1644,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       )
       let cardTax = Math.round(activeOrderTax * 100)
       let cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
+      // Same SC-vs-total divergence fix as the primary path above —
+      // prefer orderTotals.total (live calc, SC-inclusive in the same
+      // pass as orderTotals.serviceCharge) over the legacy
+      // activeOrderTotal store field which lags by one render.
       const liveCardTotal = Math.round(
-        (activeOrderTotal + currentTip.amount) * 100
+        ((orderTotals?.total ?? activeOrderTotal) + currentTip.amount) * 100
       )
       const liveCashTotal = Math.round(
         ((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100
@@ -1724,7 +1743,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         `${activeOrderOrderType ?? ''}|${builtinTableName ?? ''}|` +
         `${activeOrderGuestCount ?? ''}|` +
         `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|` +
-        `${cardTotal}|${cashTotal}|${displayDiscountAmount}|${displayTipAmount}|` +
+        `${cardTotal}|${cashTotal}|${displayDiscountAmount}|${orderTotals?.serviceCharge ?? 0}|${displayTipAmount}|` +
         `${currentTip.percentage ?? ''}|${displayOutstandingTotal}|` +
         `${displayAmountPaid}|${savingsAmount}|` +
         `${selectedStore?.name ?? ''}|${selectedStore?.code ?? ''}|` +
@@ -1749,6 +1768,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         subtotalCash: cashSubtotal,
         subtotalCard: cardSubtotal,
         discountAmount: displayDiscountAmount,
+        serviceCharge: Math.round((orderTotals?.serviceCharge ?? 0) * 100),
+        serviceChargeName: orderTotals?.serviceChargeName ?? null,
+        serviceChargeRate: orderTotals?.serviceChargeRate ?? null,
         taxAmount: cardTax,
         taxCash: cashTax,
         taxCard: cardTax,
@@ -2283,6 +2305,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       console.log('[CFD tip-adjust] settling 1.5s before terminal command')
       await new Promise<void>(resolve => setTimeout(resolve, 1500))
 
+      let terminalTipAdjustSucceeded = false
       try {
         if (captured.terminalType === 'castles') {
           const service = getSharedCastlesService()
@@ -2331,6 +2354,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
                 message: result.error || 'Terminal rejected tip adjustment.'
               })
             } else {
+              terminalTipAdjustSucceeded = true
               console.log('[CFD tip-adjust] Castles tip adjust ok')
             }
           }
@@ -2349,8 +2373,20 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
               result.error
             )
           } else {
+            terminalTipAdjustSucceeded = true
             console.log('[CFD tip-adjust] Dejavoo tip adjust ok')
           }
+        }
+
+        // Terminal didn't accept the tip — skip DB write, optimistic patch,
+        // and totals update so the system doesn't show a tip that was never
+        // actually adjusted on the terminal. `finally` still runs to show
+        // the approved screen and clear the in-flight flag.
+        if (!terminalTipAdjustSucceeded) {
+          console.warn(
+            '[CFD tip-adjust] terminal adjust did not succeed — skipping persist/patch'
+          )
+          return
         }
 
         // ─── Resolve target order from the captured snapshot ───

@@ -492,6 +492,11 @@ export interface PreviousOrder {
   type: OrderType
   total: number
   tax?: number // Tax amount for bill display
+  // Service charge snapshot — pinned when SC was applied on the live order
+  // so the historical receipt shows the same SC line the customer paid.
+  service_charge?: number
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
   items: CartItem[] // The detailed list of items for the notes modal
   notes?: string // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile['payments'] // Add payments array

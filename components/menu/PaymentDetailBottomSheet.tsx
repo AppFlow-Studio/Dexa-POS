@@ -318,6 +318,9 @@ interface LeftPaneProps {
   subtotal: number
   discount: number
   tax: number
+  serviceCharge: number
+  serviceChargeName: string
+  serviceChargeRate: number | null
   total: number
 }
 
@@ -326,6 +329,9 @@ const LeftPane: React.FC<LeftPaneProps> = ({
   subtotal,
   discount,
   tax,
+  serviceCharge,
+  serviceChargeName,
+  serviceChargeRate,
   total
 }) => {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
@@ -685,10 +691,23 @@ const LeftPane: React.FC<LeftPaneProps> = ({
             <Text style={{ fontSize: 13, color: colors.success }}>-${discount?.toFixed(2)}</Text>
           </View>
         )}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: serviceCharge > 0.001 ? 4 : 8 }}>
           <Text style={{ fontSize: 13, color: colors.label }}>Tax</Text>
           <Text style={{ fontSize: 13, color: colors.heading }}>${tax?.toFixed(2)}</Text>
         </View>
+        {/* Service Charge — snapshotted at billing time; rate shown in label
+            so the customer/staff can verify the gratuity policy applied. */}
+        {serviceCharge > 0.001 && (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, color: colors.label }}>
+              {serviceChargeName}
+              {serviceChargeRate != null
+                ? ` (${Number(serviceChargeRate).toFixed(2)}%)`
+                : ''}
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.heading }}>${serviceCharge.toFixed(2)}</Text>
+          </View>
+        )}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>Total</Text>
           <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>${total?.toFixed(2)}</Text>
@@ -4086,7 +4105,16 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   // Calculate order totals for left pane
   // Use cash pricing when all non-voided payments are cash-priced
   const orderTotals = useMemo(() => {
-    if (!order) return { subtotal: 0, discount: 0, tax: 0, total: 0 }
+    if (!order)
+      return {
+        subtotal: 0,
+        discount: 0,
+        tax: 0,
+        serviceCharge: 0,
+        serviceChargeName: 'Service Charge',
+        serviceChargeRate: null as number | null,
+        total: 0,
+      }
 
     const nonVoidedPayments = (order.payments || []).filter(
       (p: any) => !p.isVoided
@@ -4109,12 +4137,25 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     )
     const discount = order.total_discount || 0
     const tax = order.total_tax || 0
+    const serviceCharge = order.service_charge || 0
+    const serviceChargeName: string =
+      order.service_charge_name || 'Service Charge'
+    const serviceChargeRate: number | null =
+      order.service_charge_rate != null ? Number(order.service_charge_rate) : null
     const total =
       wasCashPaid && order.total_cash_amount != null
         ? order.total_cash_amount
         : order.total_amount || 0
 
-    return { subtotal, discount, tax, total }
+    return {
+      subtotal,
+      discount,
+      tax,
+      serviceCharge,
+      serviceChargeName,
+      serviceChargeRate,
+      total,
+    }
   }, [order])
 
   // Handlers
@@ -4657,6 +4698,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   subtotal={orderTotals.subtotal}
                   discount={orderTotals.discount}
                   tax={orderTotals.tax}
+                  serviceCharge={orderTotals.serviceCharge}
+                  serviceChargeName={orderTotals.serviceChargeName}
+                  serviceChargeRate={orderTotals.serviceChargeRate}
                   total={orderTotals.total}
                 />
 

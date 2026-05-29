@@ -285,6 +285,9 @@ function _transformFetchedOrder(
     type: (profile.order_type || "Dine In") as any,
     total: profile.total_amount || 0,
     tax: profile.total_tax || 0,
+    service_charge: profile.service_charge ?? 0,
+    service_charge_name: profile.service_charge_name ?? null,
+    service_charge_rate: profile.service_charge_rate ?? null,
     items: profile.items,
     notes: profile.notes,
     voided: profile.order_status === "void",
@@ -441,6 +444,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         cash_amount_due: order.cash_amount_due || 0,
         type: orderType,
         total: finalTotal,
+        service_charge: order.service_charge ?? 0,
+        service_charge_name: order.service_charge_name ?? null,
+        service_charge_rate: order.service_charge_rate ?? null,
         items: order.items,
         notes: order.notes, // Order-level notes (customer requests, special instructions)
         // Additional fields for refund tracking
