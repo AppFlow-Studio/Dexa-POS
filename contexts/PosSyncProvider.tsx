@@ -1,5 +1,6 @@
 import { queryClient } from "@/contexts/TanstackProvider";
 import { useInventorySync } from "@/hooks/pos/useInventorySync";
+import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
@@ -443,6 +444,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // without adding standaloneData as a dependency (which would cause extra runs)
   const standaloneDataRef = useRef(standaloneData);
   standaloneDataRef.current = standaloneData;
+
+  // --- SERVICE CHARGE RULES SYNC --- (skip for KDS)
+  useServiceChargeRulesSync({
+    merchantId: isKDS ? null : (selectedStore?.merchant_id ?? null),
+    locationId: isKDS ? null : (selectedStore?.id ?? null),
+  });
 
   // --- INVENTORY SYNC --- (skip for KDS)
   const { data: inventoryData } = useInventorySync(

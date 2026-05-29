@@ -1357,6 +1357,7 @@ export const useKDSStore = create<KDSState>()(
             showOrderNotes: display.show_order_notes ?? null,
             showServerName: display.show_server_name ?? null,
             fontScale: display.font_scale ?? null,
+            showAllItems: display.show_all_items ?? null,
           };
 
           set({

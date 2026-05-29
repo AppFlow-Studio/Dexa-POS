@@ -695,6 +695,13 @@ export function transformBroadcastToOrder (
     customer_id: backendOrder.customer_id || undefined,
     delivery_address: backendOrder.delivery_address || undefined,
 
+    // Party size: broadcasts don't carry guest_count (it lives on
+    // table_sessions.party_size, not orders), so preserve whatever the local
+    // store already had. Without this, every broadcast wipes guest_count back
+    // to undefined → header falls through to session.party_size or default,
+    // which breaks service-charge eligibility on the next recalc.
+    guest_count: existingOrder?.guest_count,
+
     // Financial - use card pricing as default
     total_amount: backendOrder.card_total || backendOrder.total_amount,
     total_cash_amount:
@@ -703,6 +710,16 @@ export function transformBroadcastToOrder (
       backendOrder.total_amount,
     total_tax: backendOrder.card_tax_amount || backendOrder.tax_amount,
     total_discount: backendOrder.discount_amount,
+
+    // Service charge snapshot — round-tripped so post-payment edits + future
+    // refund reconciliation (Part 3) can see what was billed.
+    service_charge: backendOrder.service_charge ?? 0,
+    service_charge_name: backendOrder.service_charge_name ?? null,
+    service_charge_rate: backendOrder.service_charge_rate ?? null,
+    service_charge_applies_on:
+      backendOrder.service_charge_applies_on ?? null,
+    service_charge_rule_id: backendOrder.service_charge_rule_id ?? null,
+    service_charge_is_manual: backendOrder.service_charge_is_manual ?? false,
 
     // Eagerly restore discount metadata when order_discounts are present (from query joins)
     ...(backendOrder.order_discounts && backendOrder.order_discounts.length > 0
@@ -803,6 +820,11 @@ export interface FetchedOrderData {
   tip_amount?: number | null
   discount_amount?: number | null
   service_charge?: number | null
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
+  service_charge_applies_on?: string | null
+  service_charge_rule_id?: string | null
+  service_charge_is_manual?: boolean | null
   total_amount?: number | null
   card_subtotal?: number | null
   card_tax_amount?: number | null
@@ -1211,6 +1233,15 @@ export function normalizeFetchedOrder (
     tip_amount: fetchedOrder.tip_amount ?? 0,
     discount_amount: fetchedOrder.discount_amount ?? 0,
     service_charge: fetchedOrder.service_charge ?? 0,
+    service_charge_name: fetchedOrder.service_charge_name ?? null,
+    service_charge_rate: fetchedOrder.service_charge_rate ?? null,
+    service_charge_applies_on:
+      (fetchedOrder.service_charge_applies_on as
+        | 'pre_discount'
+        | 'post_discount'
+        | null) ?? null,
+    service_charge_rule_id: fetchedOrder.service_charge_rule_id ?? null,
+    service_charge_is_manual: fetchedOrder.service_charge_is_manual ?? false,
     total_amount: fetchedOrder.total_amount ?? 0,
     card_subtotal: fetchedOrder.card_subtotal ?? 0,
     card_tax_amount: fetchedOrder.card_tax_amount ?? 0,

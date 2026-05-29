@@ -1063,6 +1063,25 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               orderId: localOrderId,
             });
             useOrderStore.getState().setActiveOrder(localOrderId);
+          } else if (params.localOrderId) {
+            // Caller supplied an existing local order (Path A — normal seat flow
+            // from tables/index.tsx, or BillSection's "assign existing order to
+            // table"). Force-pin guest_count to the modal's partySize so the
+            // order matches the session and downstream consumers (service
+            // charge eligibility, header banner, seat selector default) all
+            // see the same number. Prior behavior left guest_count stale,
+            // which broke SC eligibility when the original order was started
+            // with party=1 / undefined.
+            const { useOrderStore } = require("@/stores/useOrderStore");
+            const existing =
+              useOrderStore.getState().ordersById[params.localOrderId];
+            if (existing && existing.guest_count !== params.partySize) {
+              useOrderStore
+                .getState()
+                .patchOrder(params.localOrderId, {
+                  guest_count: params.partySize,
+                });
+            }
           }
 
           // Clear selection on floor plan store

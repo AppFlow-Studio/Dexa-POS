@@ -5,7 +5,9 @@ import {
     withIdempotency,
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline as _runWithDeadline } from "@/lib/network/runWithDeadline";
+import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { v4 as uuidv4 } from "uuid";
 import {
     AddOrderItemParams,
     AddOrderItemResult,
@@ -67,6 +69,34 @@ export type UpdateOpenItemResult = {
   quantity: number;
   unit_price: number;
   subtotal: number;
+};
+
+export type ApplyServiceChargeParams = {
+  p_order_id: string;
+  /**
+   * Eligibility mode: pass the table session's party_size. Refresh mode:
+   * pass null — the server trusts the existing pinned snapshot and
+   * recomputes only the $ amount against current items. See
+   * apply_service_charge_v1.sql §5 for the two-mode contract.
+   */
+  p_party_size: number | null;
+  p_station_id?: string | null;
+};
+
+export type ApplyServiceChargeResult = {
+  success: boolean;
+  service_charge: number;
+  service_charge_rule_id: string | null;
+  service_charge_rate: number | null;
+  service_charge_applies_on: "pre_discount" | "post_discount" | null;
+  service_charge_name: string | null;
+  card_subtotal: number;
+  cash_subtotal: number;
+  card_total: number;
+  cash_total: number;
+  eligible: boolean;
+  old_service_charge: number;
+  skipped?: "manual_override";
 };
 
 export class OrderService {
@@ -275,6 +305,53 @@ export class OrderService {
       .select()
       .single();
     return { data, error };
+  }
+
+  /**
+   * Apply service charge server-authoritatively (Wave C).
+   *
+   * Wraps apply_service_charge_v1 with the standard hot-mutation deadline.
+   * Server re-resolves the merchant's active service_charge_rule, runs
+   * eligibility against the passed party_size + order's order_type, and
+   * persists service_charge + snapshot fields + card_total / cash_total
+   * onto orders. See lib/order-calculator.ts §SERVICE CHARGE for the
+   * matching client-side formula.
+   *
+   * No idempotency-flag gating: this RPC is brand new in Wave C (no v1
+   * legacy to fall back to). Fresh uuidv4 per call by default; pass
+   * `keyOverride` for retry-stable invocations (offline queue replay).
+   *
+   * Kill switch: when EXPO_PUBLIC_SERVICE_CHARGE_ENABLED=0, returns
+   * { data: null, error: null } without firing. Server-side gate is the
+   * service_charge_rules.is_active flag, set via the website admin.
+   */
+  static async applyServiceCharge(
+    client: SupabaseClient,
+    params: ApplyServiceChargeParams,
+    opts?: { keyOverride?: string },
+  ): Promise<{ data: ApplyServiceChargeResult | null; error: any }> {
+    if (!isServiceChargeEnabled) {
+      return { data: null, error: null };
+    }
+
+    const p_idempotency_key = opts?.keyOverride ?? uuidv4();
+
+    return _runWithDeadline<ApplyServiceChargeResult>(
+      "apply_service_charge",
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("apply_service_charge_v1", {
+            ...params,
+            p_idempotency_key,
+          })
+          .abortSignal(signal);
+        return {
+          data: data as ApplyServiceChargeResult | null,
+          error,
+        };
+      },
+    );
   }
 
   /**

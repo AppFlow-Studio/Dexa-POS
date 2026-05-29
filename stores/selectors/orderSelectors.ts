@@ -14,8 +14,11 @@ import type { OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useOrderStore } from "../useOrderStore";
+import { useSeatingStore } from "../useSeatingStore";
+import { useServiceChargeRulesStore } from "../useServiceChargeRulesStore";
 import { useSettingsStore } from "../useSettingsStore";
 import { useStoreSettingsStore } from "../useStoreSettingsStore";
+import { useTableSessionStore } from "../useTableSessionStore";
 
 /**
  * Shallow-compare two arrays of order IDs (string[]).
@@ -114,6 +117,9 @@ export interface ActiveOrderTotals {
   cashSubtotal: number;
   cashTax: number;
   cashTotal: number;
+  // Service charge (folded into total / cashTotal)
+  serviceCharge: number;
+  serviceChargeName: string;
 }
 
 /**
@@ -144,10 +150,36 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
     enabled ? s.taxRatesMap : EMPTY_TAX_RATES_MAP,
   );
 
+  // Service charge: rule (location-scoped) + party_size (session-scoped).
+  // Subscribed so the totals re-derive when staff bumps the seat stepper or
+  // the rules sync hook receives a fresh payload.
+  const scLocationId = useStoreSettingsStore((s) =>
+    enabled ? (s.selectedStore?.id ?? null) : null,
+  );
+  const serviceChargeRule = useServiceChargeRulesStore((s) =>
+    enabled ? s.resolveRule(scLocationId) : null,
+  );
+  const sessionPartySize = useTableSessionStore((s) => {
+    const sessionId = activeOrder?.session_id;
+    if (!enabled || !sessionId) return null;
+    for (const sess of Object.values(s.sessions)) {
+      if (sess.id === sessionId) return sess.party_size ?? null;
+    }
+    return null;
+  });
+  // seatCount is the local UI truth (SeatSelector stepper), session.party_size
+  // is the backend-authoritative fallback. order.guest_count intentionally not
+  // read — it's a write-only mirror and gets wiped by broadcast hydration.
+  const seatCount = useSeatingStore((s) =>
+    enabled && activeOrderId ? (s.byOrderId[activeOrderId]?.seatCount ?? null) : null,
+  );
+
   return useMemo(() => {
     if (!activeOrderId || !activeOrder) return null;
 
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
+
+    const partySize = seatCount ?? sessionPartySize ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -155,6 +187,12 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       checkDiscount: activeOrder.checkDiscount ?? null,
       taxRatesMap,
       payments: activeOrder.payments ?? [],
+      serviceChargeRule,
+      partySize,
+      orderType: activeOrder.order_type ?? null,
+      snapshottedRate: activeOrder.service_charge_rate ?? null,
+      snapshottedAppliesOn: activeOrder.service_charge_applies_on ?? null,
+      snapshottedName: activeOrder.service_charge_name ?? null,
     });
 
     // Get tip from payments array (sum of all non-voided payment tips)
@@ -217,8 +255,17 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       outstandingTax: totals.outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
+      serviceCharge: totals.service_charge,
+      serviceChargeName: totals.service_charge_name,
     };
-  }, [activeOrderId, activeOrder, taxRatesMap]);
+  }, [
+    activeOrderId,
+    activeOrder,
+    taxRatesMap,
+    serviceChargeRule,
+    sessionPartySize,
+    seatCount,
+  ]);
 }
 
 /**
@@ -239,10 +286,30 @@ export function useOrderTotals(
   const order = useOrderStore((s) => (orderId ? s.ordersById[orderId] : null));
   const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
 
+  const scLocationId = useStoreSettingsStore(
+    (s) => s.selectedStore?.id ?? null,
+  );
+  const serviceChargeRule = useServiceChargeRulesStore((s) =>
+    s.resolveRule(scLocationId),
+  );
+  const sessionPartySize = useTableSessionStore((s) => {
+    const sessionId = order?.session_id;
+    if (!sessionId) return null;
+    for (const sess of Object.values(s.sessions)) {
+      if (sess.id === sessionId) return sess.party_size ?? null;
+    }
+    return null;
+  });
+  const seatCount = useSeatingStore((s) =>
+    orderId ? (s.byOrderId[orderId]?.seatCount ?? null) : null,
+  );
+
   return useMemo(() => {
     if (!orderId || !order) return null;
 
     const activeItems = order.items.filter((item) => !item.is_voided);
+
+    const partySize = seatCount ?? sessionPartySize ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -250,6 +317,12 @@ export function useOrderTotals(
       checkDiscount: order.checkDiscount ?? null,
       taxRatesMap,
       payments: order.payments ?? [],
+      serviceChargeRule,
+      partySize,
+      orderType: order.order_type ?? null,
+      snapshottedRate: order.service_charge_rate ?? null,
+      snapshottedAppliesOn: order.service_charge_applies_on ?? null,
+      snapshottedName: order.service_charge_name ?? null,
     });
 
     // Get tip from payments array (sum of all non-voided payment tips)
@@ -298,8 +371,10 @@ export function useOrderTotals(
       outstandingTax: totals.outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
+      serviceCharge: totals.service_charge,
+      serviceChargeName: totals.service_charge_name,
     };
-  }, [orderId, order, taxRatesMap]);
+  }, [orderId, order, taxRatesMap, serviceChargeRule, sessionPartySize, seatCount]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

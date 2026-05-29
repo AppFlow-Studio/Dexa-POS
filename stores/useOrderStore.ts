@@ -52,6 +52,7 @@ import { useEmployeeStore } from "./useEmployeeStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePaymentDetailSheetStore } from "./usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
+import { useSeatingStore } from "./useSeatingStore";
 import { useTableSessionStore } from "./useTableSessionStore";
 // import {
 //   mapLocalToBackend,
@@ -129,6 +130,8 @@ import {
   BroadcastOrderData,
   OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
+import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
+import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
@@ -252,8 +255,65 @@ export function getItemEffectiveCashSubtotal(item: CartItem): number {
 }
 
 /**
+ * Build the service-charge inputs for the calculator from an order.
+ * Resolves the active rule (location-specific, then global) and the
+ * party_size from the table session. Returns undefined fields when SC
+ * can't be derived — the calculator then treats SC as inert.
+ */
+function buildServiceChargeInputForOrder(
+  order: OrderProfile | null | undefined,
+): Pick<
+  Parameters<typeof calculateOrderTotalsFromModule>[0],
+  | "serviceChargeRule"
+  | "partySize"
+  | "orderType"
+  | "snapshottedRate"
+  | "snapshottedAppliesOn"
+  | "snapshottedName"
+> {
+  if (!order) return {};
+
+  const locationId =
+    useStoreSettingsStore.getState().selectedStore?.id ?? null;
+  const rule =
+    useServiceChargeRulesStore.getState().resolveRule(locationId) ?? null;
+
+  // Source-of-truth order for party size:
+  // 1. useSeatingStore.byOrderId[order.id].seatCount — local UI truth, updated
+  //    instantly by the SeatSelector stepper before any backend round-trip.
+  // 2. table_sessions.party_size — backend-authoritative, propagated to other
+  //    stations via realtime.
+  // order.guest_count is intentionally NOT read here — it's a write-only
+  // mirror for backend sync, and reading it caused stale party_size after
+  // broadcast hydration wiped guest_count.
+  let partySize: number | null = null;
+  const seatCount =
+    useSeatingStore.getState().byOrderId[order.id]?.seatCount ?? null;
+  if (typeof seatCount === "number") {
+    partySize = seatCount;
+  }
+  if (partySize == null && order.session_id) {
+    const found = useTableSessionStore
+      .getState()
+      .getSessionBySessionId(order.session_id);
+    partySize = found?.session?.party_size ?? null;
+  }
+
+  return {
+    serviceChargeRule: rule,
+    partySize,
+    orderType: order.order_type ?? null,
+    snapshottedRate: order.service_charge_rate ?? null,
+    snapshottedAppliesOn: order.service_charge_applies_on ?? null,
+    snapshottedName: order.service_charge_name ?? null,
+  };
+}
+
+/**
  * Calculate all order totals - PURE FUNCTION, SYNCHRONOUS
  * This is a wrapper around the module function for backward compatibility.
+ * Pass `order` to get service-charge folded in; omit it for legacy callers
+ * that don't have an order in scope.
  * @see @/lib/order-calculator.ts for implementation
  */
 function calculateOrderTotals(
@@ -268,12 +328,14 @@ function calculateOrderTotals(
     isPreAuth?: boolean;
   }[],
   taxRatesMap: TaxRatesMap,
+  order?: OrderProfile | null,
 ): OrderTotals {
   return calculateOrderTotalsFromModule({
     items,
     checkDiscount: checkDiscount ?? null,
     taxRatesMap,
     payments,
+    ...buildServiceChargeInputForOrder(order),
   });
 }
 
@@ -4134,6 +4196,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
             // Redistribute discount across items if active. Uses the same
             // helper as the synchronous path so item-level discount fields
@@ -5619,6 +5682,31 @@ export const useOrderStore = create<OrderState>()(
               ) {
                 orderProfile.order_refund_items = existing.order_refund_items;
               }
+
+              // Preserve service charge snapshot when broadcast carries
+              // null/0 but local already has a calculated value. Guards the
+              // fresh-seat race: recalculateOrder writes SC locally before
+              // db_order_id is set, so its applyServiceCharge RPC doesn't
+              // fire. The first broadcast back from create_order then carries
+              // service_charge=null, which transformBroadcastToOrder maps to
+              // 0 and would wipe the row out of the bill / Pricing Breakdown.
+              const broadcastHasSc =
+                typeof backendOrder.service_charge === "number" &&
+                backendOrder.service_charge > 0.001;
+              const localHasSc =
+                typeof existing.service_charge === "number" &&
+                existing.service_charge > 0.001;
+              if (!broadcastHasSc && localHasSc) {
+                orderProfile.service_charge = existing.service_charge;
+                orderProfile.service_charge_name = existing.service_charge_name;
+                orderProfile.service_charge_rate = existing.service_charge_rate;
+                orderProfile.service_charge_applies_on =
+                  existing.service_charge_applies_on;
+                orderProfile.service_charge_rule_id =
+                  existing.service_charge_rule_id;
+                orderProfile.service_charge_is_manual =
+                  existing.service_charge_is_manual;
+              }
             }
 
             // Set broadcast item count for display
@@ -7075,6 +7163,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
             const itemsForState =
               order.checkDiscount && totals.discount_amount > 0
@@ -7883,6 +7972,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
 
             // Single atomic state update
@@ -8188,6 +8278,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
 
             // SINGLE ATOMIC UPDATE (instant UI)
@@ -8696,6 +8787,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
 
             set((state) => {
@@ -9093,6 +9185,7 @@ export const useOrderStore = create<OrderState>()(
               normalizedDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
 
             // Build applied discount metadata for syncing
@@ -9496,6 +9589,7 @@ export const useOrderStore = create<OrderState>()(
               null,
               order.payments || [],
               taxRatesMap,
+              order,
             );
 
             // Clear item-level discounts optimistically (mirrors applyDiscountToCheck)
@@ -9676,6 +9770,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
 
             set((state) => {
@@ -9720,6 +9815,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
 
             set((state) => {
@@ -10064,6 +10160,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               useStoreSettingsStore.getState().taxRatesMap,
+              order,
             );
             const outstandingBeforePayment =
               method === "Cash" && !forceCardPricing
@@ -10118,6 +10215,7 @@ export const useOrderStore = create<OrderState>()(
                 order.checkDiscount,
                 order.payments || [],
                 taxRatesMapForSavings,
+                order,
               );
               const cardOutstanding = prePmtTotals.outstanding_total;
               const cashOutstanding = prePmtTotals.cash_outstanding_total;
@@ -10385,6 +10483,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               newPayments,
               taxRatesMap,
+              order,
             );
 
             // Determine if order is fully paid based on outstanding amount
@@ -10553,6 +10652,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               order.payments || [],
               taxRatesMap,
+              order,
             );
 
             set((state) => {
@@ -12619,6 +12719,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               updatedPayments,
               taxRatesMap,
+              order,
             );
 
             // Calculate new amounts
@@ -12857,6 +12958,7 @@ export const useOrderStore = create<OrderState>()(
               order.checkDiscount,
               updatedPayments,
               taxRatesMap,
+              order,
             );
             const newAmountPaid = updatedPayments.reduce(
               (acc, p) => acc + p.amount + (p.tip_amount || 0),
@@ -12956,6 +13058,29 @@ export const useOrderStore = create<OrderState>()(
             rekeyLinkedStores(tempId, dbUuid);
 
             console.log(`[rekeyOrder] Rekeyed order ${tempId} -> ${dbUuid}`);
+
+            // Service-charge backend pin: db_order_id just became available,
+            // so retrigger recalculate. Its fire-and-forget applyServiceCharge
+            // path (recalculateOrder lines ~14754-14807) gates on _hasDbOrder
+            // which was false the first time around. Without this, the first
+            // local SC snapshot never reaches the backend and the next
+            // broadcast can wipe it. Wrapped in queueMicrotask so the rekey
+            // commit settles before recalc reads from state.
+            queueMicrotask(() => {
+              const order = get().ordersById[dbUuid];
+              if (order?.db_order_id) {
+                try {
+                  get().recalculateOrder(dbUuid);
+                } catch (err) {
+                  if (__DEV__) {
+                    console.warn(
+                      "[rekeyOrder] post-rekey recalculate failed:",
+                      err,
+                    );
+                  }
+                }
+              }
+            });
           },
 
           // Legacy: Update local order with DB order ID (for backward compatibility)
@@ -12999,6 +13124,26 @@ export const useOrderStore = create<OrderState>()(
             console.log(
               `[updateOrderDbId] Updated order ${localOrderId} with db_order_id: ${dbOrderId}`,
             );
+
+            // Service-charge backend pin (same rationale as rekeyOrder above).
+            // The rekey branch routes through rekeyOrder which handles its
+            // own retrigger; this branch updates db_order_id in place, so we
+            // need the equivalent here.
+            queueMicrotask(() => {
+              const order = get().ordersById[localOrderId];
+              if (order?.db_order_id) {
+                try {
+                  get().recalculateOrder(localOrderId);
+                } catch (err) {
+                  if (__DEV__) {
+                    console.warn(
+                      "[updateOrderDbId] post-update recalculate failed:",
+                      err,
+                    );
+                  }
+                }
+              }
+            });
           },
 
           /**
@@ -14566,16 +14711,41 @@ export const useOrderStore = create<OrderState>()(
                 cash_outstanding_subtotal: 0,
                 cash_outstanding_tax: 0,
                 cash_outstanding_total: 0,
+                service_charge: 0,
+                cash_service_charge: 0,
+                service_charge_name: "",
               };
             }
 
+            const previousServiceCharge = order.service_charge ?? 0;
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               order.items,
               order.checkDiscount ?? null,
               order.payments ?? [],
               taxRatesMap,
+              order,
             );
+
+            // Post-payment edit guardrail: if SC drifted after a captured
+            // payment exists, surface it via toast so staff knows there's a
+            // new outstanding (or refund) to reconcile.
+            const hasCapturedPayment = (order.payments ?? []).some(
+              (p) =>
+                !p.isVoided &&
+                !p.isPreAuth &&
+                (p.status === undefined || p.status === "captured"),
+            );
+            const scDelta = Math.abs(
+              totals.service_charge - previousServiceCharge,
+            );
+            if (hasCapturedPayment && scDelta >= 0.01) {
+              toastService.show({
+                title: `${totals.service_charge_name || "Service Charge"} updated to $${totals.service_charge.toFixed(2)}`,
+                message: `Outstanding $${Math.max(0, totals.outstanding_total).toFixed(2)} will need to be settled or refunded.`,
+                type: "warning",
+              });
+            }
 
             // PRIORITY: If order has backend-synced amount_due, use it as authoritative
             // This is crucial after payments have been processed
@@ -14609,6 +14779,29 @@ export const useOrderStore = create<OrderState>()(
               o.amount_due = finalOutstandingTotal;
               o.cash_amount_due = finalCashOutstandingTotal;
 
+              // ---- Service Charge snapshot write-back ----
+              // Update the live SC amount on every recompute. Snapshot the rate
+              // / applies_on / name / rule_id the FIRST time SC applies so live
+              // rule changes don't retroactively shift open orders.
+              o.service_charge = totals.service_charge;
+              if (totals.service_charge > 0) {
+                if (o.service_charge_rate == null) {
+                  const rule = useServiceChargeRulesStore
+                    .getState()
+                    .resolveRule(
+                      useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                    );
+                  if (rule) {
+                    o.service_charge_rule_id = rule.id;
+                    o.service_charge_rate = rule.rate_percent;
+                    o.service_charge_applies_on = rule.applies_on;
+                  }
+                }
+                if (!o.service_charge_name) {
+                  o.service_charge_name = totals.service_charge_name;
+                }
+              }
+
               // Update active order derived state if this is the active order
               if (orderId === state.activeOrderId) {
                 state.activeOrderSubtotal = totals.subtotal;
@@ -14625,6 +14818,70 @@ export const useOrderStore = create<OrderState>()(
                 state.activeOrderOutstandingCash = finalCashOutstandingTotal;
               }
             });
+
+            // ---- Wave C: server-authoritative SC sync ----
+            // Fire-and-forget after the local snapshot write. Only call when
+            // SC drift is real AND the order has been promoted to the backend
+            // (db_order_id set) — local-only drafts get a fresh apply once
+            // they're created via createOrder. Errors here don't block UI;
+            // process_payment_v12 runs a defensive refresh before payment
+            // math as a server-side safety net.
+            const _scChanged = scDelta >= 0.01;
+            const _hasDbOrder = !!order.db_order_id;
+            if (
+              isServiceChargeEnabled &&
+              _scChanged &&
+              _hasDbOrder &&
+              _supabaseClient
+            ) {
+              const _scInput = buildServiceChargeInputForOrder(order);
+              const _dbId = order.db_order_id!;
+              const _client = _supabaseClient;
+              queueMicrotask(() => {
+                OrderService.applyServiceCharge(_client, {
+                  p_order_id: _dbId,
+                  p_party_size: _scInput.partySize ?? null,
+                  p_station_id: null,
+                })
+                  .then(({ data, error }) => {
+                    if (error) {
+                      if (__DEV__) {
+                        console.warn(
+                          "[recalculateOrder] applyServiceCharge failed:",
+                          error,
+                        );
+                      }
+                      return;
+                    }
+                    if (!data) return; // Kill switch off
+                    // Sync server's authoritative snapshot back. The server
+                    // owns snapshot-freeze semantics (rule_id pin) and may
+                    // disagree with our local best-guess if a concurrent
+                    // station pinned a different rule_id first.
+                    set((state) => {
+                      const o2 = state.ordersById[orderId];
+                      if (!o2) return;
+                      o2.service_charge = data.service_charge;
+                      o2.service_charge_rule_id =
+                        data.service_charge_rule_id ?? null;
+                      o2.service_charge_rate =
+                        data.service_charge_rate ?? null;
+                      o2.service_charge_applies_on =
+                        data.service_charge_applies_on ?? null;
+                      o2.service_charge_name =
+                        data.service_charge_name ?? null;
+                    });
+                  })
+                  .catch((err) => {
+                    if (__DEV__) {
+                      console.warn(
+                        "[recalculateOrder] applyServiceCharge threw:",
+                        err,
+                      );
+                    }
+                  });
+              });
+            }
 
             // Auto-manage paid_status from payments
             const hasItems = (order.items?.length || 0) > 0;

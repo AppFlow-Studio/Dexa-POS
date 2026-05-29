@@ -60,6 +60,11 @@ export interface Order {
   tip_amount: number;
   discount_amount: number;
   service_charge: number;
+  service_charge_name?: string | null;
+  service_charge_rate?: number | null;
+  service_charge_applies_on?: "pre_discount" | "post_discount" | null;
+  service_charge_rule_id?: string | null;
+  service_charge_is_manual?: boolean;
   total_amount: number;
   payment_status: PaymentStatus;
   amount_paid: number;

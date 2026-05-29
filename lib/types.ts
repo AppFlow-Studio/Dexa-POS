@@ -936,6 +936,18 @@ export interface OrderProfile {
   total_tax?: number
   total_discount?: number
 
+  // === SERVICE CHARGE ===
+  // Flat $ folded into both card and cash total_amount, matching
+  // calculate_order_totals_fast. Snapshot fields lock the rate/label/applies_on
+  // at first apply so mid-shift rule changes don't retroactively shift open orders.
+  service_charge?: number
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
+  service_charge_applies_on?: 'pre_discount' | 'post_discount' | null
+  service_charge_rule_id?: string | null
+  /** Set true by the manager-PIN override flow (Part 3); Wave B never writes true. */
+  service_charge_is_manual?: boolean
+
   // Payment tracking - synced from backend
   amount_paid?: number // Total amount paid so far
   amount_due?: number // Remaining amount due (CARD price - source of truth)

@@ -512,7 +512,14 @@ export function useTableSession (
               activeOrd2?.service_location_id === tableId
                 ? activeOrd2
                 : undefined
-            const partySize = existingLocalOrder?.guest_count || 1
+            // Auto-create-session path: no seat data exists yet, no session
+            // exists. Default party_size = 1 (the seating modal flow goes
+            // through tables/index.tsx → seatGuests with the user-entered
+            // value; this branch only fires for accidental auto-creates).
+            // order.guest_count intentionally not read — see useOrderStore
+            // buildServiceChargeInputForOrder for the source-of-truth chain.
+            const partySize = 1
+            void existingLocalOrder // (kept in scope for future logging)
 
             const { sessionId, orderId } = await useTableSessionStore
               .getState()

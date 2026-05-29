@@ -49,6 +49,8 @@ const OrderLineItemsView = ({
     subtotal,
     discount,
     tax,
+    serviceCharge,
+    serviceChargeName,
     total,
     amountPaid,
     amountDue,
@@ -60,6 +62,8 @@ const OrderLineItemsView = ({
         subtotal: 0,
         discount: 0,
         tax: 0,
+        serviceCharge: 0,
+        serviceChargeName: '',
         total: 0,
         amountPaid: 0,
         amountDue: 0,
@@ -77,9 +81,14 @@ const OrderLineItemsView = ({
         ? localSubtotal * orderToView.checkDiscount.value
         : 0)
     const finalTax = orderToView.total_tax ?? 0
+    const finalServiceCharge = orderToView.service_charge ?? 0
+    const finalServiceChargeName =
+      orderToView.service_charge_name ?? 'Service Charge'
     const finalTotal =
-      orderToView.total_amount ?? localSubtotal - disc + finalTax
-    const finalSubtotal = finalTotal - finalTax
+      orderToView.total_amount ??
+      localSubtotal - disc + finalTax + finalServiceCharge
+    // Subtotal = total - tax - service_charge (the displayed subtotal pre-tax pre-SC).
+    const finalSubtotal = finalTotal - finalTax - finalServiceCharge
     const finalAmountPaid = orderToView.amount_paid ?? 0
     const finalAmountDue = orderToView.amount_due ?? finalTotal
     const finalCashTotal = orderToView.total_cash_amount ?? 0
@@ -92,6 +101,8 @@ const OrderLineItemsView = ({
       subtotal: finalSubtotal > 0 ? finalSubtotal : localSubtotal,
       discount: disc,
       tax: finalTax,
+      serviceCharge: finalServiceCharge,
+      serviceChargeName: finalServiceChargeName,
       total: finalTotal,
       amountPaid: finalAmountPaid,
       amountDue: finalAmountDue,
@@ -294,6 +305,27 @@ const OrderLineItemsView = ({
             ${tax.toFixed(2)}
           </Text>
         </View>
+
+        {/* Service Charge */}
+        {serviceCharge > 0 && (
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+            testID='service-charge-line'
+          >
+            <Text style={{ fontSize: 13, color: colors.muted }}>
+              {serviceChargeName}
+            </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                color: colors.label,
+                fontVariant: ['tabular-nums']
+              }}
+            >
+              ${serviceCharge.toFixed(2)}
+            </Text>
+          </View>
+        )}
 
         {/* Amount paid (partial) */}
         {isPartiallyPaid && (
