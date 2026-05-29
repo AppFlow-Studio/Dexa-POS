@@ -947,6 +947,17 @@ export interface OrderProfile {
   service_charge_rule_id?: string | null
   /** Set true by the manager-PIN override flow (Part 3); Wave B never writes true. */
   service_charge_is_manual?: boolean
+  /**
+   * Last `service_charge` value confirmed by the server via the
+   * apply_service_charge_v1 RPC sync-back. The drift gate in
+   * recalculateOrder compares computed SC against this (NOT the locally
+   * cached `service_charge`), so a freshly-pinned client-side SC still
+   * fires the RPC even when the locally-computed value matches the
+   * prior local cache. Also seeded from server broadcasts / hydration
+   * so the next recalc detects server drift. Transient — not persisted
+   * to MMKV, not part of broadcast payload.
+   */
+  _serverConfirmedServiceCharge?: number
 
   // Payment tracking - synced from backend
   amount_paid?: number // Total amount paid so far

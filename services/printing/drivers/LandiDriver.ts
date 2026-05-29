@@ -82,8 +82,10 @@ export class LandiDriver implements PrinterDriver {
     if (!this.connected) {
       throw new Error("Landi printer not initialized");
     }
-    // Built-in thermal printer: no cutter, no image, no barcode support.
-    // Filter unsupported nodes and add trailing feed for tear-off gap.
+    // Built-in thermal printer: no image, no barcode support. The C20Pro
+    // does have a hardware cutter — `cut` nodes are honored by the native
+    // module (LandiPrinterModule.kt defers `simplePrinter.cutPaper()` to
+    // post-print on the vector path).
     const filtered: PrintNode[] = doc.nodes.filter(
       (n) => !UNSUPPORTED_LANDI_NODES.has(n.type),
     );
@@ -109,7 +111,12 @@ export class LandiDriver implements PrinterDriver {
       return node;
     });
 
-    calibrated.push({ type: "feed", lines: 4 });
+    // Trailing feed before the deferred `cutPaper()`. Sized to clear the
+    // C20Pro cutter-blade offset (~10–15 mm above the print head) so the
+    // blade lands below the printed content with a visible bottom margin.
+    // With less feed the cut lands inside the content and the bottom of
+    // the ticket stays attached to the roll, reading as "didn't cut".
+    calibrated.push({ type: "feed", lines: 10 });
     await printLandiDocument(JSON.stringify({ ...doc, nodes: calibrated }));
   }
 

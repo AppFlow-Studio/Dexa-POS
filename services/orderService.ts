@@ -522,10 +522,14 @@ export class OrderService {
     const { data, error } = await rpcWithIdempotency<ProcessPaymentResult>(
       client,
       "process_payment",
-      // Fallback (flag off): v9 — Cat-B idempotency without platform fees.
-      // Primary  (flag on): v11 — adds acquirer + batch_number on top of v10's fee tracking.
-      "process_payment_v9",
+      // Fallback (flag off): v11 — adds acquirer + batch_number on top of
+      //                            v10's platform-fee tracking.
+      // Primary  (flag on): v12 — forks v11 with a defensive
+      //                            apply_service_charge_v1(NULL,...) refresh
+      //                            after the FOR UPDATE lock, so payment-time
+      //                            totals always reflect the latest SC.
       "process_payment_v11",
+      "process_payment_v12",
       params,
       {
         deadline: DEADLINES.paymentRpc,
