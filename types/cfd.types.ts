@@ -143,6 +143,12 @@ export interface CFDPayload {
   // a button that would lead nowhere.
   merchantHasLoyalty?: boolean
 
+  // Controls which price totals the CFD ordering screen displays.
+  // 'dual' = show both card and cash totals (default)
+  // 'card_only' = show only card total
+  // 'cash_only' = show only cash total
+  pricingDisplayMode?: 'dual' | 'card_only' | 'cash_only'
+
   // Theme
   themeMode?: 'light' | 'dark'
 

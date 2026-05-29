@@ -339,6 +339,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const showCFDOrderingRightPanel = useStoreSettingsStore(
     s => s.showCFDOrderingRightPanel
   )
+  const cfdPricingDisplayMode = useStoreSettingsStore(
+    s => (s.selectedStore?.cfd_pricing_display_mode ?? 'dual') as 'dual' | 'card_only' | 'cash_only'
+  )
   const cfdOrderingRightPanelMode = useStoreSettingsStore(
     s => s.cfdOrderingRightPanelMode
   )
@@ -400,6 +403,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         loyaltyResult: s.loyaltyResult,
         paymentMethod: s.paymentMethod,
         merchantHasLoyalty: s.merchantHasLoyalty,
+        pricingDisplayMode: s.pricingDisplayMode,
         themeMode: s.themeMode
       }
     })
@@ -454,6 +458,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     )
     useCFDBuiltinStore.getState().update({ merchantHasLoyalty })
   }, [merchantHasLoyalty])
+
+  // Mirror pricingDisplayMode into useCFDBuiltinStore so the built-in WebView
+  // picks up the location setting on every load.
+  useEffect(() => {
+    useCFDBuiltinStore.getState().update({ pricingDisplayMode: cfdPricingDisplayMode })
+  }, [cfdPricingDisplayMode])
 
   // Order store selectors - Individual selectors for stability
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -1363,6 +1373,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           ? useCFDBuiltinStore.getState().loyaltyResult
           : null,
       merchantHasLoyalty,
+      pricingDisplayMode: cfdPricingDisplayMode,
       themeMode: colorScheme
     }
 
@@ -1385,7 +1396,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       `${displayOutstandingTotal}|${displayAmountPaid}|${savingsAmount}|` +
       `${showCFDOrderingRightPanel ? 1 : 0}|${cfdOrderingRightPanelMode}|${
         merchantHasLoyalty ? 1 : 0
-      }`
+      }|${cfdPricingDisplayMode}`
 
     if (wsFingerprint === lastPayloadHashRef.current) {
       return () => {
@@ -1446,7 +1457,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     cfdOrderingRightPanelMode,
     paymentActiveSplit,
     colorScheme,
-    merchantHasLoyalty
+    merchantHasLoyalty,
+    cfdPricingDisplayMode
   ])
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
