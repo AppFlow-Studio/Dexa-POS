@@ -39,6 +39,9 @@ export interface CFDDisplayData {
   subtotalCash: number;
   subtotalCard: number;
   discountAmount: number;
+  serviceCharge: number;
+  serviceChargeName: string | null;
+  serviceChargeRate: number | null;
   taxAmount: number;
   taxCash: number;
   taxCard: number;

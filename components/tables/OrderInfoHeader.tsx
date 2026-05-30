@@ -3,6 +3,7 @@ import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useSeatingStore } from "@/stores/useSeatingStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -33,7 +34,16 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, on
     return tablesById[activeOrder.service_location_id] || null;
   }, [tablesById, tableId, activeOrder?.service_location_id]);
 
-  const guestCount = activeOrder?.guest_count || table?.session?.party_size || 1;
+  // Read seat count from useSeatingStore (canonical UI truth, updated by the
+  // SeatSelector stepper). Fall back to session.party_size when seating store
+  // hasn't initialized for this order yet (e.g. brief gap on mount).
+  // order.guest_count intentionally not read — it's a write-only mirror and
+  // gets wiped to undefined by broadcast hydration in upsertOrder.
+  const seatCount = useSeatingStore((s) =>
+    activeOrder?.id ? s.byOrderId[activeOrder.id]?.seatCount : undefined,
+  );
+  const guestCount = seatCount ?? table?.session?.party_size ?? 1;
+  const setSeatCount = useSeatingStore((s) => s.setSeatCount);
 
   useEffect(() => {
     setNumberOfGuests(guestCount);
@@ -43,9 +53,13 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, on
     const count = Math.max(1, newCount);
     setNumberOfGuests(count);
     if (activeOrder) {
+      // Pin all three: seatCount (instant UI), session.party_size (cross-station
+      // realtime), order.guest_count (backend persistence). Writes stay; only
+      // reads of guest_count were removed.
+      if (activeOrder.id) {
+        setSeatCount(activeOrder.id, count);
+      }
       updateActiveOrderDetails({ guest_count: count });
-      // Sync to session store so SeatSelector / useTableSeating pick up the
-      // new seat count without waiting for a backend round-trip.
       const tableId = activeOrder.service_location_id;
       if (tableId) {
         useTableSessionStore.getState().dispatch(tableId, {

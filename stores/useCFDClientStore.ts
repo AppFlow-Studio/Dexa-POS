@@ -34,6 +34,10 @@ interface CFDClientStore {
 
   discountAmount: number;
 
+  serviceCharge: number;
+  serviceChargeName: string | null;
+  serviceChargeRate: number | null;
+
   taxAmount: number;
   taxCash: number;
   taxCard: number;
@@ -95,6 +99,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
       subtotalCard: 0,
 
       discountAmount: 0,
+
+      serviceCharge: 0,
+      serviceChargeName: null,
+      serviceChargeRate: null,
 
       taxAmount: 0,
       taxCash: 0,
@@ -169,6 +177,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
           subtotalCard: payload.subtotalCard,
 
           discountAmount: payload.discountAmount,
+
+          serviceCharge: payload.serviceCharge,
+          serviceChargeName: payload.serviceChargeName,
+          serviceChargeRate: payload.serviceChargeRate,
 
           taxAmount: payload.taxAmount,
           taxCash: payload.taxCash,

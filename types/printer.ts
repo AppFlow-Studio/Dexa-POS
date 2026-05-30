@@ -217,6 +217,12 @@ export interface ReceiptTemplateData {
   tip: number;
   total: number;
 
+  // Service charge (already included in `total` from the backend; rendered
+  // as its own line between Tax and Tip when > 0).
+  serviceCharge?: number;
+  cashServiceCharge?: number;
+  serviceChargeName?: string;
+
   // Cash pricing (optional)
   cashSubtotal?: number;
   cashTax?: number;

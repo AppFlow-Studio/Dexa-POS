@@ -80,11 +80,14 @@ export default function PaymentVerifyingOverlay() {
   return (
     <View
       style={{
+        // No `justifyContent: center` — when this renders inside a flex-1
+        // ScrollView child, vertical-centering pushes the card past the
+        // visible viewport ("below the sheet"). Top-anchor instead so the
+        // card sits right under the progress-strip header.
         minHeight: 500,
         padding: 24,
         backgroundColor: colors.panel,
         alignItems: "center",
-        justifyContent: "center",
       }}
     >
       <View

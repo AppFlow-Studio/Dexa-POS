@@ -5,6 +5,11 @@ import { withDeadline } from "@/lib/network/withDeadline";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { resolveBusinessDayConfig } from "@/stores/usePreviousOrdersStore";
+import {
+  getBusinessDayBounds,
+  getCurrentBusinessDay,
+} from "@/lib/businessDay";
 import { maybeFireTakeoverToast } from "@/lib/takeoverToast";
 import { OrderProfile } from "@/lib/types";
 import {
@@ -14,6 +19,22 @@ import {
 } from "@/utils/orderTransformers";
 import { useEffect, useRef } from "react";
 import { queryClient } from "@/contexts/TanstackProvider";
+
+// Crash-mitigation cap on the active-orders fetch. A POS legitimately can't
+// have hundreds of orders open at once; if it does, something's stuck and we
+// don't want a 30MB+ response triggering OOM in okhttp's response materialization.
+const ACTIVE_ORDERS_HARD_LIMIT = 200;
+
+function resolveBusinessDayStartUtc(): string | null {
+  const config = resolveBusinessDayConfig();
+  if (!config) return null;
+  try {
+    const today = getCurrentBusinessDay(config);
+    return getBusinessDayBounds(today, config).startUtc;
+  } catch {
+    return null;
+  }
+}
 
 // `active(locationId)` is intentionally a *prefix*. The full queryKey used by
 // useOrdersQuery is [...active(locationId), stationId ?? ''], so a station
@@ -45,8 +66,37 @@ export function useOrdersQuery({
     queryFn: async (): Promise<OrderProfile[]> => {
       if (!locationId) throw new Error("No location ID");
       // Deadline-wrapped: bad WiFi falls back to TanStack offlineFirst cache.
+      const businessDayStartUtc = resolveBusinessDayStartUtc();
+      const stationFilterUuid =
+        stationId && STATION_ID_RE.test(stationId) ? stationId : null;
+
       const { data, error } = await withDeadline(
         async (signal) => {
+          // Preferred path: server-shaped RPC. One round-trip, planner sees a
+          // tight query, payload is bounded by p_limit + business-day floor.
+          // Falls back to the PostgREST embed if the function isn't deployed
+          // (PGRST202) — migrations stop at staging per repo convention.
+          const rpcRes = await supabase
+            .rpc("get_active_orders_v1", {
+              p_location_id: locationId,
+              p_station_id: stationFilterUuid,
+              p_business_day_start: businessDayStartUtc,
+              p_limit: ACTIVE_ORDERS_HARD_LIMIT,
+            })
+            .abortSignal(signal);
+
+          if (!rpcRes.error) {
+            return { data: rpcRes.data ?? [], error: null };
+          }
+
+          const code = (rpcRes.error as { code?: string }).code;
+          const isMissingFn = code === "PGRST202" || code === "42883";
+          if (!isMissingFn) {
+            // Real error — surface it.
+            return { data: null, error: rpcRes.error };
+          }
+
+          // Legacy fallback: PostgREST embed. Same filter semantics.
           let q = supabase
             .from("orders")
             .select(
@@ -56,28 +106,30 @@ export function useOrdersQuery({
                created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)`,
             )
             .eq("location_id", locationId)
+            .eq("order_items.is_voided", false)
             .in("status", ["draft", "pending", "sent_to_kitchen", "preparing", "ready"]);
 
-          // Drop other-stations' drafts at the source. station_id IS NULL keeps
-          // external/online drafts (no POS station). UUID guard: stationId is
-          // string-interpolated into a PostgREST filter and supabase-js does not
-          // sanitize .or() — fall back to unfiltered query if the value is not a
-          // UUID. The selector + realtime guard still hide remote drafts client-side.
-          if (stationId && STATION_ID_RE.test(stationId)) {
+          if (stationFilterUuid) {
             q = q.or(
-              `status.neq.draft,station_id.is.null,station_id.eq.${stationId}`,
+              `status.neq.draft,station_id.is.null,station_id.eq.${stationFilterUuid}`,
             );
+          }
+
+          if (businessDayStartUtc) {
+            q = q.gte("created_at", businessDayStartUtc);
           }
 
           return await q
             .order("created_at", { ascending: false })
+            .limit(ACTIVE_ORDERS_HARD_LIMIT)
             .abortSignal(signal);
         },
         DEADLINES.read,
         "orders_query",
       );
       if (error) throw error;
-      return (data ?? []).map((o) => {
+      const rows = (data ?? []) as unknown[];
+      return rows.map((o) => {
         const normalized = normalizeFetchedOrder(o as FetchedOrderData);
         return transformBroadcastToOrder(normalized);
       });

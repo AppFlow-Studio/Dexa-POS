@@ -698,6 +698,13 @@ const ModifierScreenContent = ({
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // Tracks whether the user has touched the modifier-screen qty stepper this
+  // session. When false, external cart-side qty changes (e.g. swipe-right
+  // increments on the cart row while modifier is open) sync into state.quantity
+  // so a subsequent save doesn't clobber the cart's latest qty with the
+  // modifier screen's stale opened-at value. When true, the modifier's qty
+  // wins. Reset on session change (new item or new cart entry).
+  const userTouchedQtyRef = useRef(false);
   const [visibleOptionCount, setVisibleOptionCount] = useState(8);
   const [showSecondarySections, setShowSecondarySections] = useState(false);
   const [hasInteractedSinceOpen, setHasInteractedSinceOpen] = useState(false);
@@ -732,6 +739,7 @@ const ModifierScreenContent = ({
     actionHandledRef.current = false;
     draftItemIdRef.current = null;
     lastDraftMenuItemIdRef.current = null;
+    userTouchedQtyRef.current = false;
     const selections = storeInitialSelections ?? {};
     dispatch({
       type: "INITIALIZE",
@@ -761,6 +769,24 @@ const ModifierScreenContent = ({
     setShowSecondarySections(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // Sync external qty mutations into the modifier screen state. Without this,
+  // swiping the cart row to increment qty while the modifier screen is open
+  // leaves state.quantity stale at the modifier-open value; saving would then
+  // overwrite the cart's latest qty with the stale modifier value. Skipped
+  // when the user has actively touched the modifier qty stepper this session
+  // — in that case the modifier's intent wins. Reset by the session-init
+  // effect above when the user opens a different item.
+  useEffect(() => {
+    if (!sessionId) return;
+    if (userTouchedQtyRef.current) return;
+    const externalQty = cartItem?.quantity;
+    if (externalQty == null) return;
+    const { state: currentState } = latestStateRef.current;
+    if (currentState.quantity === externalQty) return;
+    dispatch({ type: "SET_QUANTITY", payload: externalQty });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, cartItem?.quantity]);
 
   useEffect(() => {
     if (!isOpen || showSecondarySections) return;
@@ -1173,8 +1199,10 @@ const ModifierScreenContent = ({
   const handleQuantitySubmit = useCallback(() => {
     const { state } = latestStateRef.current;
     const newQuantity = parseInt(state.quantityInput, 10);
-    if (newQuantity && newQuantity > 0)
+    if (newQuantity && newQuantity > 0) {
+      userTouchedQtyRef.current = true;
       dispatch({ type: "SET_QUANTITY", payload: newQuantity });
+    }
     dispatch({ type: "CLOSE_QUANTITY_MODAL" });
   }, []);
 
@@ -1192,6 +1220,7 @@ const ModifierScreenContent = ({
 
   const handleQuantityDecrement = useCallback(() => {
     const { state: currentState } = latestStateRef.current;
+    userTouchedQtyRef.current = true;
     dispatch({
       type: "SET_QUANTITY",
       payload: Math.max(1, currentState.quantity - 1),
@@ -1200,6 +1229,7 @@ const ModifierScreenContent = ({
 
   const handleQuantityIncrement = useCallback(() => {
     const { state: currentState } = latestStateRef.current;
+    userTouchedQtyRef.current = true;
     dispatch({ type: "SET_QUANTITY", payload: currentState.quantity + 1 });
   }, []);
 

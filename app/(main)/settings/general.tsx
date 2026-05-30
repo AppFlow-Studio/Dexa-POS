@@ -227,7 +227,7 @@ const GeneralSettingsScreen = () => {
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
   const setShowMenuImages = useSettingsStore((s) => s.setShowMenuImages);
   const posMenuNavigationMode = useSettingsStore(
-    (s) => s.posMenuNavigationMode ?? "popup",
+    (s) => s.posMenuNavigationMode ?? "classic",
   );
   const setPosMenuNavigationMode = useSettingsStore(
     (s) => s.setPosMenuNavigationMode,

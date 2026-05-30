@@ -33,8 +33,24 @@ export function toIdempotencyKey (localId: string): string {
  * pattern (uuidv5(itemId)) — that works for immutable creates only;
  * for updates, rapid changes (qty 3 → 5) would mis-cache to qty 3.
  */
-export function toUpdateQuantityKey (orderItemId: string, quantity: number): string {
-  return uuidv5(`update_qty:${orderItemId}:${quantity}`, PHASE2_NAMESPACE)
+export function toUpdateQuantityKey (
+  orderItemId: string,
+  quantity: number,
+  generation?: number
+): string {
+  // Including a per-item generation counter is critical for oscillating
+  // updates (qty 1→4→1→4). Without it, the second qty=4 call reuses the
+  // first call's idempotency key — the server returns the cached success
+  // without re-applying, leaving server qty stuck at 1 while the client
+  // believes qty=4 succeeded. Generation is monotonic per item per
+  // session (see quantitySyncGenerations in useOrderStore), so retries of
+  // the *same* user intent dedupe correctly while new intents do not.
+  // Omitted generation falls back to the legacy (itemId, quantity) key
+  // for compatibility with non-oscillation paths (queue replays).
+  const seed = generation != null
+    ? `update_qty:${orderItemId}:${quantity}:${generation}`
+    : `update_qty:${orderItemId}:${quantity}`
+  return uuidv5(seed, PHASE2_NAMESPACE)
 }
 
 /**

@@ -63,6 +63,7 @@ export interface KDSDisplayConfig {
   showOrderNotes: boolean | null
   showServerName: boolean | null
   fontScale: number | null
+  showAllItems: boolean | null
 }
 
 export interface KDSRoutingRule {

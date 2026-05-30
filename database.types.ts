@@ -9395,6 +9395,8 @@ export type Database = {
           returned_at: string | null
           returned_by: string | null
           rrn: string | null
+          service_charge: number
+          service_charge_refunded: number
           settled_at: string | null
           settlement_batch_id: string | null
           split_count: number | null
@@ -9499,6 +9501,8 @@ export type Database = {
           returned_at?: string | null
           returned_by?: string | null
           rrn?: string | null
+          service_charge?: number
+          service_charge_refunded?: number
           settled_at?: string | null
           settlement_batch_id?: string | null
           split_count?: number | null
@@ -9603,6 +9607,8 @@ export type Database = {
           returned_at?: string | null
           returned_by?: string | null
           rrn?: string | null
+          service_charge?: number
+          service_charge_refunded?: number
           settled_at?: string | null
           settlement_batch_id?: string | null
           split_count?: number | null

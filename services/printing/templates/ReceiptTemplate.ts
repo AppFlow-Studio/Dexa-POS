@@ -118,6 +118,10 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   if (data.discount > 0) {
     b.twoColumnRow("Discount", `-${formatCurrency(data.discount)}`, w);
   }
+  if ((data.serviceCharge ?? 0) > 0) {
+    const scLabel = data.serviceChargeName?.trim() || "Service Charge";
+    b.twoColumnRow(scLabel, formatCurrency(data.serviceCharge!), w);
+  }
   if (data.tip > 0) {
     const tipPct = data.subtotal > 0
       ? ` (${((data.tip / data.subtotal) * 100).toFixed(1)}%)`

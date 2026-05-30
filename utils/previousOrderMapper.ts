@@ -58,6 +58,9 @@ export function previousOrderToOrderProfile(
     amount_paid: order.amount_paid,
     amount_due: order.amount_due,
     cash_amount_due: order.cash_amount_due,
+    service_charge: order.service_charge ?? 0,
+    service_charge_name: order.service_charge_name ?? null,
+    service_charge_rate: order.service_charge_rate ?? null,
     customer_name: order.customer,
     server_name: order.server,
     payments: order.payments,
@@ -108,6 +111,12 @@ export function computeOrderTotals(order: PreviousOrder) {
     cashSubtotal,
     cashTaxAmount,
     cashDiscountAmount,
+    // Service charge snapshot — passed through unchanged so the historical
+    // receipt shows the same SC line (label + rate + amount) the customer
+    // paid at the time of capture, even after rule edits.
+    serviceCharge: order.service_charge ?? 0,
+    serviceChargeName: order.service_charge_name ?? "Service Charge",
+    serviceChargeRate: order.service_charge_rate ?? null,
     total: order.total,
     totalPaid,
     totalRefunded,

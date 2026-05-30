@@ -377,6 +377,29 @@ const PayForItemsView: React.FC = () => {
     [selectedArray, taxRatesMap]
   )
 
+  // Items+tax totals for ALL unpaid items (no SC) — denominator for proportional
+  // SC scaling. `selectedCardTotals`/`selectedCashTotals` exclude SC; scaling by
+  // (full_remaining / items_only_remaining) makes each partial payment carry its
+  // share of the SC residual. When no SC exists the ratio is 1 (no-op).
+  const allUnpaidArray = useMemo(
+    () =>
+      unpaidItems.map(item => ({
+        item,
+        quantityToPay: item.quantity - (item.paidQuantity || 0)
+      })),
+    [unpaidItems]
+  )
+
+  const allUnpaidCardTotals = useMemo(
+    () => calculateSelectedTax(allUnpaidArray, taxRatesMap),
+    [allUnpaidArray, taxRatesMap]
+  )
+
+  const allUnpaidCashTotals = useMemo(
+    () => calculateSelectedCashTax(allUnpaidArray, taxRatesMap),
+    [allUnpaidArray, taxRatesMap]
+  )
+
   const cashSavings = Math.max(
     0,
     selectedCardTotals.total - selectedCashTotals.total
@@ -457,6 +480,18 @@ const PayForItemsView: React.FC = () => {
     // Store selected items in the first split
     addSplit('Selected Items')
 
+    // Proportional SC residual: scale the items-only totals so the split charges
+    // its share of the SC residual. Falls back to 1 when nothing's unpaid yet
+    // (avoids div-by-zero) — selected totals are already 0 in that case.
+    const cardScale =
+      allUnpaidCardTotals.total > 0
+        ? remainingAmount / allUnpaidCardTotals.total
+        : 1
+    const cashScale =
+      allUnpaidCashTotals.total > 0
+        ? remainingCashAmount / allUnpaidCashTotals.total
+        : 1
+
     // Now use the payment store's mechanism for single split
     // Set both card (amount) and cash (cashAmount) pricing for dual-price support
     // The actual payment method determines which price is used at checkout time
@@ -465,8 +500,8 @@ const PayForItemsView: React.FC = () => {
         {
           ...state.splits[0],
           items: selectedItemsArray,
-          amount: selectedCardTotals.total, // Card/default pricing
-          cashAmount: selectedCashTotals.total // Cash pricing
+          amount: round2(selectedCardTotals.total * cardScale), // Card/default pricing
+          cashAmount: round2(selectedCashTotals.total * cashScale) // Cash pricing
         }
       ],
       activeSplitId: state.splits[0]?.id,
@@ -478,6 +513,10 @@ const PayForItemsView: React.FC = () => {
     selectedItems,
     selectedCardTotals,
     selectedCashTotals,
+    allUnpaidCardTotals,
+    allUnpaidCashTotals,
+    remainingAmount,
+    remainingCashAmount,
     resetSplits,
     addSplit,
     setView

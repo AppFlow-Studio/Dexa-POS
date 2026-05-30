@@ -157,7 +157,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
   const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
   const menuNavigationMode = useSettingsStore(
-    (s) => s.posMenuNavigationMode ?? "popup",
+    (s) => s.posMenuNavigationMode ?? "classic",
   );
   const usePopupMenuNavigation = menuNavigationMode === "popup";
 

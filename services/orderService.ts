@@ -5,7 +5,9 @@ import {
     withIdempotency,
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline as _runWithDeadline } from "@/lib/network/runWithDeadline";
+import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { v4 as uuidv4 } from "uuid";
 import {
     AddOrderItemParams,
     AddOrderItemResult,
@@ -67,6 +69,39 @@ export type UpdateOpenItemResult = {
   quantity: number;
   unit_price: number;
   subtotal: number;
+};
+
+export type ApplyServiceChargeParams = {
+  p_order_id: string;
+  /**
+   * Optional override for the live UI seating count. When null, the
+   * server resolves party_size from orders.session_id → table_sessions.
+   * Pass a number to lead the table_sessions realtime by a few hundred
+   * ms during seat selection. See apply_service_charge_v1.sql §4.
+   */
+  p_party_size: number | null;
+  p_station_id?: string | null;
+};
+
+export type ApplyServiceChargeResult = {
+  success: boolean;
+  service_charge: number;
+  service_charge_rule_id: string | null;
+  service_charge_rate: number | null;
+  service_charge_applies_on: "pre_discount" | "post_discount" | null;
+  service_charge_name: string | null;
+  card_subtotal: number;
+  cash_subtotal: number;
+  card_total: number;
+  cash_total: number;
+  total_amount: number;
+  amount_due: number;
+  cash_amount_due: number;
+  sync_version: number;
+  eligible: boolean;
+  old_service_charge: number;
+  party_size_used?: number | null;
+  skipped?: "manual_override";
 };
 
 export class OrderService {
@@ -278,6 +313,53 @@ export class OrderService {
   }
 
   /**
+   * Apply service charge server-authoritatively (Wave C).
+   *
+   * Wraps apply_service_charge_v1 with the standard hot-mutation deadline.
+   * Server re-resolves the merchant's active service_charge_rule, runs
+   * eligibility against the passed party_size + order's order_type, and
+   * persists service_charge + snapshot fields + card_total / cash_total
+   * onto orders. See lib/order-calculator.ts §SERVICE CHARGE for the
+   * matching client-side formula.
+   *
+   * No idempotency-flag gating: this RPC is brand new in Wave C (no v1
+   * legacy to fall back to). Fresh uuidv4 per call by default; pass
+   * `keyOverride` for retry-stable invocations (offline queue replay).
+   *
+   * Kill switch: when EXPO_PUBLIC_SERVICE_CHARGE_ENABLED=0, returns
+   * { data: null, error: null } without firing. Server-side gate is the
+   * service_charge_rules.is_active flag, set via the website admin.
+   */
+  static async applyServiceCharge(
+    client: SupabaseClient,
+    params: ApplyServiceChargeParams,
+    opts?: { keyOverride?: string },
+  ): Promise<{ data: ApplyServiceChargeResult | null; error: any }> {
+    if (!isServiceChargeEnabled) {
+      return { data: null, error: null };
+    }
+
+    const p_idempotency_key = opts?.keyOverride ?? uuidv4();
+
+    return _runWithDeadline<ApplyServiceChargeResult>(
+      "apply_service_charge",
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("apply_service_charge_v1", {
+            ...params,
+            p_idempotency_key,
+          })
+          .abortSignal(signal);
+        return {
+          data: data as ApplyServiceChargeResult | null,
+          error,
+        };
+      },
+    );
+  }
+
+  /**
    * Add an item to an order
    */
   static async addOrderItem(
@@ -440,10 +522,14 @@ export class OrderService {
     const { data, error } = await rpcWithIdempotency<ProcessPaymentResult>(
       client,
       "process_payment",
-      // Fallback (flag off): v9 — Cat-B idempotency without platform fees.
-      // Primary  (flag on): v11 — adds acquirer + batch_number on top of v10's fee tracking.
-      "process_payment_v9",
+      // Fallback (flag off): v11 — adds acquirer + batch_number on top of
+      //                            v10's platform-fee tracking.
+      // Primary  (flag on): v12 — forks v11 with a defensive
+      //                            apply_service_charge_v1(NULL,...) refresh
+      //                            after the FOR UPDATE lock, so payment-time
+      //                            totals always reflect the latest SC.
       "process_payment_v11",
+      "process_payment_v12",
       params,
       {
         deadline: DEADLINES.paymentRpc,
@@ -858,15 +944,15 @@ export class OrderService {
     endTs?: string | null,
     signal?: AbortSignal,
   ): Promise<{ data: any[] | null; error: any }> {
+    // Modifiers intentionally omitted — Previous Orders grid doesn't render
+    // them inline; the detail screen lazy-loads via get_order_details RPC.
+    // `order_items.is_voided=false` engages idx_order_items_order_active.
     let query = client
       .from("orders")
       .select(
         `
         *,
-        order_items (
-          *,
-          order_item_modifiers (*)
-        ),
+        order_items (*),
         order_payments (*),
         order_discounts (*),
         stations (station_name),
@@ -874,6 +960,7 @@ export class OrderService {
       `,
       )
       .eq("location_id", locationId)
+      .eq("order_items.is_voided", false)
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -893,6 +980,8 @@ export class OrderService {
   /**
    * Fetch orders with pagination (offset-based) for infinite scroll history.
    * Same query as getHistoryOrders but uses .range() instead of .limit().
+   * Prefer `getHistoryOrdersByCursor` for new code — keyset pagination is
+   * constant-time vs offset which gets progressively slower.
    */
   static async getHistoryOrdersPaginated(
     client: SupabaseClient,
@@ -908,10 +997,7 @@ export class OrderService {
       .select(
         `
         *,
-        order_items (
-          *,
-          order_item_modifiers (*)
-        ),
+        order_items (*),
         order_payments (*),
         order_discounts (*),
         stations (station_name),
@@ -919,6 +1005,7 @@ export class OrderService {
       `,
       )
       .eq("location_id", locationId)
+      .eq("order_items.is_voided", false)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -931,6 +1018,59 @@ export class OrderService {
 
     const { data, error } = await query;
     return { data, error, hasMore: (data?.length ?? 0) === limit };
+  }
+
+  /**
+   * Keyset-paginated history fetch. Uses `created_at < cursor` so the
+   * planner does a constant-time index range scan instead of offset+skip.
+   * Prefer this over `getHistoryOrdersPaginated` for "load more" infinite
+   * scroll. Cursor is the `created_at` of the last item in the previous page.
+   * On the first page pass `cursor=null` to start from the most recent.
+   */
+  static async getHistoryOrdersByCursor(
+    client: SupabaseClient,
+    locationId: string,
+    limit: number,
+    cursor: string | null,
+    statuses: OrderStatus[] | null = null,
+    startTs?: string | null,
+    endTs?: string | null,
+    signal?: AbortSignal,
+  ): Promise<{ data: any[] | null; error: any; hasMore: boolean; nextCursor: string | null }> {
+    let query = client
+      .from("orders")
+      .select(
+        `
+        *,
+        order_items (*),
+        order_payments (*),
+        order_discounts (*),
+        stations (station_name),
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
+      `,
+      )
+      .eq("location_id", locationId)
+      .eq("order_items.is_voided", false)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (cursor) query = query.lt("created_at", cursor);
+    if (startTs) query = query.gte("created_at", startTs);
+    if (endTs) query = query.lt("created_at", endTs);
+
+    if (statuses && statuses.length > 0) {
+      query = query.in("status", statuses);
+    }
+
+    if (signal) query = query.abortSignal(signal);
+
+    const { data, error } = await query;
+    const rows = data ?? [];
+    const hasMore = rows.length === limit;
+    const nextCursor = hasMore
+      ? (rows[rows.length - 1] as { created_at?: string })?.created_at ?? null
+      : null;
+    return { data, error, hasMore, nextCursor };
   }
 
   /**

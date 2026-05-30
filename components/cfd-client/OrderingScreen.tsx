@@ -34,6 +34,8 @@ export function OrderingScreen () {
     subtotalCash,
     subtotalCard,
     discountAmount,
+    serviceCharge,
+    serviceChargeName,
     taxAmount,
     taxCash,
     taxCard,
@@ -298,6 +300,35 @@ export function OrderingScreen () {
                   {formatCurrency(displaySubtotalCard)}
                 </Text>
               </View>
+
+              {serviceCharge > 0 && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 11,
+                      fontWeight: '500'
+                    }}
+                  >
+                    {serviceChargeName ?? 'Service Charge'}
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 11,
+                      fontWeight: '500'
+                    }}
+                  >
+                    {formatCurrency(serviceCharge)}
+                  </Text>
+                </View>
+              )}
 
               {discountAmount > 0 && (
                 <View

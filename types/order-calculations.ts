@@ -12,6 +12,7 @@
 
 import { CartItem, Discount } from "@/lib/types";
 import { TaxRatesMap } from "@/types/menu";
+import type { ServiceChargeRule } from "@/stores/useServiceChargeRulesStore";
 
 // ============================================================================
 // CORE CALCULATION TYPES
@@ -27,6 +28,21 @@ export interface OrderCalculationInput {
   payments?: { amount: number; isVoided?: boolean; refundedAmount?: number; isCashPriced?: boolean; cashSavings?: number; isPreAuth?: boolean }[];
   /** Optional cash discount rate for dual pricing (default uses store settings) */
   cashDiscountRate?: number;
+
+  // ---- Service Charge inputs ----
+  /** Resolved active rule for the current location (null = no auto-grat). */
+  serviceChargeRule?: ServiceChargeRule | null;
+  /** Party size from the table session (null = no dine-in session). */
+  partySize?: number | null;
+  /** Order type — only `dine_in` qualifies for auto-apply in v1. */
+  orderType?: string | null;
+  /**
+   * Rate snapshotted on the order at first apply. When set, drives recompute
+   * for the order's lifetime — live rule changes won't retroactively alter rate.
+   */
+  snapshottedRate?: number | null;
+  snapshottedAppliesOn?: "pre_discount" | "post_discount" | null;
+  snapshottedName?: string | null;
 }
 
 /**
@@ -54,6 +70,13 @@ export interface OrderTotals {
   cash_outstanding_subtotal: number;
   cash_outstanding_tax: number;
   cash_outstanding_total: number;
+
+  // ---- Service Charge ----
+  /** Flat $ added to both card and cash totals (same value, matching backend math). */
+  service_charge: number;
+  cash_service_charge: number;
+  /** Snapshot label for display ("" when no SC applies). */
+  service_charge_name: string;
 }
 
 /**

@@ -72,6 +72,11 @@ export interface CFDPayload {
 
   discountAmount: number
 
+  // Service charge folded into total_amount (cents). 0 when not applicable.
+  serviceCharge: number
+  serviceChargeName: string | null
+  serviceChargeRate: number | null
+
   taxAmount: number // Default/Card tax
   taxCash: number
   taxCard: number

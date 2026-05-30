@@ -481,6 +481,17 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
+  if ((validated.serviceCharge ?? 0) > 0) {
+    const scLabel = validated.serviceChargeName?.trim() || "Service Charge";
+    nodes.push({
+      type: "two_column",
+      left: scLabel,
+      right: safeCurrency(validated.serviceCharge!),
+      lineWidth: w,
+      labelAlign: "mid",
+    });
+  }
+
   if ((validated.tip ?? 0) > 0) {
     const tipPct = validated.subtotal > 0
       ? ` (${((validated.tip / validated.subtotal) * 100).toFixed(1)}%)`

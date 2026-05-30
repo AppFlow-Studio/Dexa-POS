@@ -186,6 +186,22 @@ const TotalsComponent: React.FC = () => {
         </Text>
       </View>
 
+      {totals.serviceCharge > 0.001 && (
+        <View className='flex-row justify-between items-center mb-1.5'>
+          <Text style={{ color: colors.label, fontSize: 11 }}>
+            {totals.serviceChargeName || 'Service Charge'}
+            {totals.serviceChargeRate != null
+              ? ` (${Number(totals.serviceChargeRate).toFixed(2)}%)`
+              : ''}
+          </Text>
+          <Text
+            style={{ color: colors.label, fontSize: 11, fontWeight: '600' }}
+          >
+            ${totals.serviceCharge.toFixed(2)}
+          </Text>
+        </View>
+      )}
+
       {paymentInfo.isPaymentsLoading ? (
         <View className='flex-row justify-between items-end mt-1.5'>
           <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>

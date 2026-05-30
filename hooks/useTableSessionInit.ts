@@ -4,6 +4,10 @@ import {
   teardownAllSessionSideEffects,
 } from "@/services/sessionEffects";
 import {
+  setupServiceChargeSubscriber,
+  teardownServiceChargeSubscriber,
+} from "@/services/serviceChargeSubscriber";
+import {
   setupTableOrderPrefetch,
   teardownTableOrderPrefetch,
 } from "@/services/tableOrderPrefetch";
@@ -50,6 +54,9 @@ export function useTableSessionInit(options?: { skip?: boolean }): void {
       // 2. Set up table order prefetch
       setupTableOrderPrefetch();
 
+      // 2b. Set up service-charge recalculation on party_size change
+      setupServiceChargeSubscriber();
+
       // 3. If tables already loaded, patch session store immediately
       const { tables } = useFloorPlanStore.getState();
       if (tables.length > 0) {
@@ -70,6 +77,7 @@ export function useTableSessionInit(options?: { skip?: boolean }): void {
       if (_activeMounts === 0) {
         teardownAllSessionSideEffects();
         teardownTableOrderPrefetch();
+        teardownServiceChargeSubscriber();
         if (_stuckCheckInterval) {
           clearInterval(_stuckCheckInterval);
           _stuckCheckInterval = null;

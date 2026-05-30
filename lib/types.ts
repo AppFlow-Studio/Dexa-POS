@@ -492,6 +492,11 @@ export interface PreviousOrder {
   type: OrderType
   total: number
   tax?: number // Tax amount for bill display
+  // Service charge snapshot — pinned when SC was applied on the live order
+  // so the historical receipt shows the same SC line the customer paid.
+  service_charge?: number
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
   items: CartItem[] // The detailed list of items for the notes modal
   notes?: string // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile['payments'] // Add payments array
@@ -860,6 +865,15 @@ export interface OrderProfilePayment {
   dual_pricing_percentage_snapshot?: number
   tip_surcharge_percentage_snapshot?: number
 
+  // Service-charge tracking (process_payment_v13 onward).
+  // service_charge: snapshot of this payment's share of orders.service_charge
+  //   captured at insert time (last split-portion snaps to gross).
+  // service_charge_refunded: cumulative SC portion reversed by
+  //   apply_refund_to_payment_v4 (LEAST-clamped, full-refund snap).
+  // Pre-v13 rows default to 0.
+  service_charge?: number
+  service_charge_refunded?: number
+
   // Settlement tracking
   is_settled?: boolean
   settled_at?: string
@@ -935,6 +949,29 @@ export interface OrderProfile {
   total_cash_amount?: number
   total_tax?: number
   total_discount?: number
+
+  // === SERVICE CHARGE ===
+  // Flat $ folded into both card and cash total_amount, matching
+  // calculate_order_totals_fast. Snapshot fields lock the rate/label/applies_on
+  // at first apply so mid-shift rule changes don't retroactively shift open orders.
+  service_charge?: number
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
+  service_charge_applies_on?: 'pre_discount' | 'post_discount' | null
+  service_charge_rule_id?: string | null
+  /** Set true by the manager-PIN override flow (Part 3); Wave B never writes true. */
+  service_charge_is_manual?: boolean
+  /**
+   * Last `service_charge` value confirmed by the server via the
+   * apply_service_charge_v1 RPC sync-back. The drift gate in
+   * recalculateOrder compares computed SC against this (NOT the locally
+   * cached `service_charge`), so a freshly-pinned client-side SC still
+   * fires the RPC even when the locally-computed value matches the
+   * prior local cache. Also seeded from server broadcasts / hydration
+   * so the next recalc detects server drift. Transient — not persisted
+   * to MMKV, not part of broadcast payload.
+   */
+  _serverConfirmedServiceCharge?: number
 
   // Payment tracking - synced from backend
   amount_paid?: number // Total amount paid so far

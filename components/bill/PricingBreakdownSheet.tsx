@@ -1,4 +1,5 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -20,32 +21,58 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PricingBreakdownSheetProps
 > = function PricingBreakdownSheetComponent(
-  { onClose, onPressProceedToPayment, totalDisplayAmount, hasPayments: hasPaymentsProp },
-  ref
+  {
+    onClose,
+    onPressProceedToPayment,
+    totalDisplayAmount,
+    hasPayments: hasPaymentsProp,
+  },
+  ref,
 ) {
   const snapPoints = useMemo(() => ["45%"], []);
 
   const activeOrderSubtotal = useOrderStore((s) => s.activeOrderSubtotal);
   const activeOrderTax = useOrderStore((s) => s.activeOrderTax);
   const activeOrderDiscount = useOrderStore((s) => s.activeOrderDiscount);
-  const activeOrderOutstandingSubtotal = useOrderStore((s) => s.activeOrderOutstandingSubtotal);
-  const activeOrderOutstandingTax = useOrderStore((s) => s.activeOrderOutstandingTax);
-  const activeOrder = useOrderStore((s) =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
+  const activeOrderOutstandingSubtotal = useOrderStore(
+    (s) => s.activeOrderOutstandingSubtotal,
   );
+  const activeOrderOutstandingTax = useOrderStore(
+    (s) => s.activeOrderOutstandingTax,
+  );
+  const activeOrder = useOrderStore((s) =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined,
+  );
+  // Live SC from the selector — reactive to seatCount + rule, so the row
+  // appears the moment the calculator returns > 0 instead of waiting for
+  // the deferred `_scheduleTotalsRecompute` to write `order.service_charge`,
+  // which can race with rekey/broadcast hydration on a fresh seat.
+  const liveTotals = useActiveOrderTotals();
+  const liveServiceCharge = liveTotals?.serviceCharge ?? 0;
+  const liveServiceChargeName = liveTotals?.serviceChargeName ?? "Service Charge";
+  const liveServiceChargeRate = liveTotals?.serviceChargeRate ?? null;
 
-  const hasPayments = hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
-  const paidAmount = activeOrder?.payments?.reduce((acc, p) => acc + p.amount, 0) ?? 0;
+  const hasPayments =
+    hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
+  const paidAmount =
+    activeOrder?.payments?.reduce((acc, p) => acc + p.amount, 0) ?? 0;
   const displayDiscount = hasPayments ? 0 : activeOrderDiscount;
-  const displaySubtotal = hasPayments ? activeOrderOutstandingSubtotal : activeOrderSubtotal;
+  const displaySubtotal = hasPayments
+    ? activeOrderOutstandingSubtotal
+    : activeOrderSubtotal;
   const displayTax = hasPayments ? activeOrderOutstandingTax : activeOrderTax;
   const displayTotal = totalDisplayAmount;
 
   const renderBackdrop = useMemo(
     () => (props: any) => (
-      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
     ),
-    []
+    [],
   );
 
   return (
@@ -72,7 +99,9 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
             borderBottomColor: colors.border,
           }}
         >
-          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+          <Text
+            style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}
+          >
             Pricing Breakdown
           </Text>
           <TouchableOpacity
@@ -91,7 +120,6 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
 
         {/* Rows */}
         <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 2 }}>
-
           {/* Paid amount */}
           {hasPayments && paidAmount > 0 && (
             <View
@@ -107,7 +135,13 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               }}
             >
               <Text style={{ fontSize: 13, color: colors.success }}>Paid</Text>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.success }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "600",
+                  color: colors.success,
+                }}
+              >
                 ${paidAmount.toFixed(2)}
               </Text>
             </View>
@@ -140,9 +174,33 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 paddingVertical: 9,
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.success }}>Discount</Text>
+              <Text style={{ fontSize: 13, color: colors.success }}>
+                Discount
+              </Text>
               <Text style={{ fontSize: 13, color: colors.success }}>
                 −${displayDiscount.toFixed(2)}
+              </Text>
+            </View>
+          )}
+
+          {/* Service Charge */}
+          {liveServiceCharge > 0.001 && (
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingVertical: 9,
+              }}
+            >
+              <Text style={{ fontSize: 13, color: colors.label }}>
+                {liveServiceChargeName}
+                {liveServiceChargeRate != null
+                  ? ` (${Number(liveServiceChargeRate).toFixed(2)}%)`
+                  : ""}
+              </Text>
+              <Text style={{ fontSize: 13, color: colors.heading }}>
+                ${liveServiceCharge.toFixed(2)}
               </Text>
             </View>
           )}
@@ -165,7 +223,13 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
           </View>
 
           {/* Divider */}
-          <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+          <View
+            style={{
+              height: 1,
+              backgroundColor: colors.border,
+              marginVertical: 6,
+            }}
+          />
 
           {/* Total */}
           <View
@@ -176,7 +240,9 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               paddingVertical: 6,
             }}
           >
-            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+            <Text
+              style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}
+            >
               {hasPayments ? "Balance Due" : "Total"}
             </Text>
             <Text
@@ -205,7 +271,9 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               backgroundColor: colors.teal,
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>
+            <Text
+              style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}
+            >
               Proceed to Payment
             </Text>
             <ArrowRight size={15} color={colors.onSolid} />
