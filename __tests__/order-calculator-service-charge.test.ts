@@ -213,15 +213,15 @@ describe("Service Charge — outstanding proportion", () => {
 });
 
 describe("Service Charge — dual pricing", () => {
-  it("same flat $ on card and cash totals", () => {
+  it("cash SC uses cash subtotal as base, card SC uses card subtotal", () => {
     const cardCashItem = item(50);
     (cardCashItem as any).baseCashPrice = 48; // 4% cash discount
     const r = calculateOrderTotals(baseInput({ items: [cardCashItem] }));
-    // Card subtotal 50, card SC 9 (18% of 50).
-    // Cash subtotal 48 but SC stays flat $9 (matches backend math).
+    // Card subtotal 50, card SC = 18% of 50 = 9.
+    // Cash subtotal 48, cash SC = 18% of 48 = 8.64.
     expect(r.service_charge).toBe(9);
-    expect(r.cash_service_charge).toBe(9);
-    expect(r.cash_total_amount).toBe(57); // 48 + 9
+    expect(r.cash_service_charge).toBe(8.64);
+    expect(r.cash_total_amount).toBe(56.64); // 48 + 8.64
   });
 });
 

@@ -653,6 +653,7 @@ export function calculateOrderTotals (
   // =========================================================================
 
   let serviceCharge = new Decimal(0)
+  let cashServiceCharge = new Decimal(0)
   let serviceChargeName = ''
 
   const effectiveRate =
@@ -674,12 +675,22 @@ export function calculateOrderTotals (
     partySize >= serviceChargeRule.min_party_size
 
   if (ruleEligible) {
-    const base =
+    const cardBase =
       effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
-    serviceCharge = base
+    serviceCharge = cardBase
       .times(effectiveRate)
       .dividedBy(100)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
+    // Cash service charge uses the cash subtotal as the base so the SC
+    // reflects the lower cash prices rather than card prices.
+    const cashBase =
+      effectiveAppliesOn === 'pre_discount' ? grossCashSubtotal : netCashSubtotal
+    cashServiceCharge = cashBase
+      .times(effectiveRate)
+      .dividedBy(100)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
     serviceChargeName = effectiveName
 
     if (__DEV__ && partySize != null && partySize < serviceChargeRule!.min_party_size) {
@@ -693,15 +704,44 @@ export function calculateOrderTotals (
   }
 
   // =========================================================================
+  // SERVICE CHARGE TAX (when is_taxable = true)
+  // Tax is applied to the SC amount using the weighted effective tax rate.
+  // =========================================================================
+
+  let serviceChargeTax = new Decimal(0)
+  let cashServiceChargeTax = new Decimal(0)
+
+  if (ruleEligible && serviceChargeRule!.is_taxable) {
+    // Resolve the SC tax rate: prefer 'standard', fall back to the first non-zero
+    // rate in the map (handles locations where the category key differs from 'standard').
+    const rawScTaxRate =
+      taxRatesMap['standard'] ??
+      Object.values(taxRatesMap).find((r) => r > 0) ??
+      0
+    const scTaxRate = new Decimal(rawScTaxRate)
+    if (scTaxRate.gt(0)) {
+      serviceChargeTax = serviceCharge
+        .times(scTaxRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      cashServiceChargeTax = cashServiceCharge
+        .times(scTaxRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      totalCardTax = totalCardTax.plus(serviceChargeTax)
+      totalCashTax = totalCashTax.plus(cashServiceChargeTax)
+    }
+  }
+
+  // =========================================================================
   // FINAL TOTALS
   // =========================================================================
 
   const cardTotal = netCardSubtotal.plus(totalCardTax).plus(serviceCharge)
-  const cashTotal = netCashSubtotal.plus(totalCashTax).plus(serviceCharge)
+  const cashTotal = netCashSubtotal.plus(totalCashTax).plus(cashServiceCharge)
 
-  // Outstanding SC: proportional to the unpaid portion of the net card subtotal.
-  // When nothing has been paid yet, outstandingCardSubtotal ~= netCardSubtotal,
-  // so the full SC is outstanding. As items get paid, the unpaid SC shrinks.
+  // Outstanding SC: proportional to the unpaid portion of the net subtotal.
+  // When nothing has been paid yet, outstanding ~= net, so full SC is outstanding.
   const scUnpaidProportion = netCardSubtotal.gt(0)
     ? Decimal.min(outstandingCardSubtotal.div(netCardSubtotal), new Decimal(1))
     : new Decimal(activeItems.length > 0 ? 1 : 0)
@@ -709,12 +749,27 @@ export function calculateOrderTotals (
     .times(scUnpaidProportion)
     .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
 
+  const cashScUnpaidProportion = netCashSubtotal.gt(0)
+    ? Decimal.min(outstandingCashSubtotal.div(netCashSubtotal), new Decimal(1))
+    : new Decimal(activeItems.length > 0 ? 1 : 0)
+  const outstandingCashServiceCharge = cashServiceCharge
+    .times(cashScUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  const outstandingCashServiceChargeTax = cashServiceChargeTax
+    .times(cashScUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  const outstandingServiceChargeTax = serviceChargeTax
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
   let outstandingCardTotal = outstandingCardSubtotal
     .plus(outstandingCardTax)
     .plus(outstandingServiceCharge)
+    .plus(outstandingServiceChargeTax)
   let outstandingCashTotal = outstandingCashSubtotal
     .plus(outstandingCashTax)
-    .plus(outstandingServiceCharge)
+    .plus(outstandingCashServiceCharge)
+    .plus(outstandingCashServiceChargeTax)
 
   // =========================================================================
   // PAYMENT-LEVEL REFUND HANDLING
@@ -805,7 +860,7 @@ export function calculateOrderTotals (
 
     // Service Charge
     service_charge: serviceCharge.toNumber(),
-    cash_service_charge: serviceCharge.toNumber(),
+    cash_service_charge: cashServiceCharge.toNumber(),
     service_charge_name: serviceChargeName
   }
 
@@ -1256,6 +1311,7 @@ export function hashCalculationInput (input: OrderCalculationInput): string {
       minParty: input.serviceChargeRule?.min_party_size ?? null,
       active: input.serviceChargeRule?.is_active ?? null,
       auto: input.serviceChargeRule?.auto_apply ?? null,
+      taxable: input.serviceChargeRule?.is_taxable ?? null,
       partySize: input.partySize ?? null,
       orderType: input.orderType ?? null,
       snapRate: input.snapshottedRate ?? null,
