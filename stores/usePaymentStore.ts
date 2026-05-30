@@ -571,7 +571,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
   unassignItemFromSplit: (splitId, itemId) => {
     set((state) => {
-      let updatedSplits = state.splits.map((s) => {
+      const updatedSplits = state.splits.map((s) => {
         if (s.id !== splitId) return s;
 
         const existingItemIndex = s.items.findIndex((i) => i.id === itemId);
@@ -593,27 +593,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
       });
 
-      // Auto-remove empty guests (but keep at least one guest)
-      if (updatedSplits.length > 1) {
-        updatedSplits = updatedSplits.filter(
-          (s) =>
-            s.items.length > 0 ||
-            updatedSplits.filter((sp) => sp.items.length > 0).length === 0,
-        );
-      }
-
-      // If active split was removed, switch to first available
-      const currentActiveSplitId = state.activeSplitId;
-      const activeStillExists = updatedSplits.some(
-        (s) => s.id === currentActiveSplitId,
-      );
-      const newActiveSplitId = activeStillExists
-        ? currentActiveSplitId
-        : updatedSplits[0]?.id || null;
-
       return {
         splits: updatedSplits,
-        activeSplitId: newActiveSplitId,
         isDirty: true,
       };
     });
@@ -682,7 +663,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const { splits } = get();
 
     // Get order and tax rates for tax calculation
-    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const {
+      activeOrderId,
+      ordersById,
+      activeOrderOutstandingTotal,
+      activeOrderOutstandingCash,
+    } = useOrderStore.getState();
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     const taxRatesMap =
@@ -805,7 +791,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     };
 
     // 1. Recalculate amounts if needed (Split by Item logic - now includes tax for both card and cash)
-    const updatedSplits = splits.map((split) => {
+    let updatedSplits = splits.map((split) => {
       // If we have items but 0 amount, calculate price from items (with tax) for both card and cash
       if (split.items.length > 0 && split.amount === 0) {
         const cardAmount = calculateSplitCardAmount(split.items);
@@ -814,6 +800,56 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
       return split;
     });
+
+    if (source === "split-by-item") {
+      const itemSplitIndexes = updatedSplits
+        .map((split, index) => (split.items.length > 0 ? index : -1))
+        .filter((index) => index >= 0);
+      const itemsOnlyCardTotal = itemSplitIndexes.reduce(
+        (sum, index) => sum + updatedSplits[index].amount,
+        0,
+      );
+      const itemsOnlyCashTotal = itemSplitIndexes.reduce(
+        (sum, index) => sum + (updatedSplits[index].cashAmount ?? 0),
+        0,
+      );
+      const cardRemainder = Math.max(
+        0,
+        activeOrderOutstandingTotal - itemsOnlyCardTotal,
+      );
+      const cashRemainder = Math.max(
+        0,
+        activeOrderOutstandingCash - itemsOnlyCashTotal,
+      );
+      let distributedCardRemainder = 0;
+      let distributedCashRemainder = 0;
+
+      updatedSplits = updatedSplits.map((split, index) => {
+        if (!itemSplitIndexes.includes(index)) return split;
+        const isLast = index === itemSplitIndexes[itemSplitIndexes.length - 1];
+        const cardShare = isLast
+          ? round2(cardRemainder - distributedCardRemainder)
+          : round2(
+              cardRemainder *
+                (itemsOnlyCardTotal > 0 ? split.amount / itemsOnlyCardTotal : 0),
+            );
+        const cashShare = isLast
+          ? round2(cashRemainder - distributedCashRemainder)
+          : round2(
+              cashRemainder *
+                (itemsOnlyCashTotal > 0
+                  ? (split.cashAmount ?? 0) / itemsOnlyCashTotal
+                  : 0),
+            );
+        distributedCardRemainder = round2(distributedCardRemainder + cardShare);
+        distributedCashRemainder = round2(distributedCashRemainder + cashShare);
+        return {
+          ...split,
+          amount: round2(split.amount + cardShare),
+          cashAmount: round2((split.cashAmount ?? 0) + cashShare),
+        };
+      });
+    }
 
     set({ splits: updatedSplits });
 

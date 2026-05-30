@@ -82,6 +82,7 @@ DECLARE
     v_covered_items uuid[] := '{}';
     v_covered_items_json jsonb := '[]'::jsonb;
     v_unpaid_items_count integer := 0;
+    v_pre_unpaid_quantity integer := 0;
     v_unpaid_card_total numeric := 0;
     v_unpaid_cash_total numeric := 0;
     v_pre_unpaid_card_total numeric := 0;
@@ -119,6 +120,7 @@ DECLARE
     v_tip_fee numeric := 0;
     v_cash_equivalent_subtotal_portion numeric := 0;
     v_items_cash_subtotal numeric := 0;
+    v_items_quantity integer := 0;
     v_acquirer text;
     v_batch_number text;
     v_sc_result jsonb;
@@ -167,6 +169,7 @@ BEGIN
 
     SELECT
         COUNT(*),
+        COALESCE(SUM(oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)), 0),
         COALESCE(SUM(
             ((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.unit_price)
             - ROUND(COALESCE(oi.discount_amount, 0) * (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0), 2)
@@ -177,7 +180,7 @@ BEGIN
             - ROUND(COALESCE(ROUND(COALESCE(oi.discount_amount, 0) * COALESCE(oi.cash_price, oi.unit_price) / NULLIF(oi.unit_price, 0), 2), 0) * (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0), 2)
             + ROUND((((oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) * oi.cash_price) - ROUND(COALESCE(ROUND(COALESCE(oi.discount_amount, 0) * COALESCE(oi.cash_price, oi.unit_price) / NULLIF(oi.unit_price, 0), 2), 0) * (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))::numeric / NULLIF(oi.quantity, 0), 2)) * COALESCE(oi.tax_rate, 0) / 100, 2)
         ), 0)
-    INTO v_unpaid_items_count, v_pre_unpaid_card_total, v_pre_unpaid_cash_total
+    INTO v_unpaid_items_count, v_pre_unpaid_quantity, v_pre_unpaid_card_total, v_pre_unpaid_cash_total
     FROM public.order_items oi
     WHERE oi.order_id = p_order_id
       AND oi.is_voided = false
@@ -274,8 +277,9 @@ BEGIN
             COALESCE(SUM(CASE WHEN v_is_cash THEN (pc.qty_paying * pc.cash_price) - pc.prorated_cash_discount ELSE (pc.qty_paying * pc.unit_price) - pc.prorated_discount END), 0),
             COALESCE(SUM(ROUND((CASE WHEN v_is_cash THEN (pc.qty_paying * pc.cash_price) - pc.prorated_cash_discount ELSE (pc.qty_paying * pc.unit_price) - pc.prorated_discount END) * COALESCE(pc.tax_rate, 0) / 100, 2)), 0),
             COALESCE(SUM((pc.qty_paying * pc.cash_price) - pc.prorated_cash_discount), 0),
+            COALESCE(SUM(pc.qty_paying), 0),
             array_agg(pc.id)
-        INTO v_items_subtotal, v_items_tax, v_items_cash_subtotal, v_covered_items
+        INTO v_items_subtotal, v_items_tax, v_items_cash_subtotal, v_items_quantity, v_covered_items
         FROM payment_calc pc;
 
         v_payment_total := v_items_subtotal + v_items_tax;
@@ -286,7 +290,7 @@ BEGIN
         -- When this item payment covers every remaining item, collect the
         -- complete outstanding balance too. Service charge is order-level,
         -- so item sums alone omit it and leave a second residual payment.
-        IF COALESCE(array_length(v_covered_items, 1), 0) = v_unpaid_items_count THEN
+        IF v_items_quantity = v_pre_unpaid_quantity THEN
             v_payment_total := CASE
                 WHEN v_use_cash_pricing THEN v_pre_unpaid_cash_total
                 ELSE v_pre_unpaid_card_total
