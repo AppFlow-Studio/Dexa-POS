@@ -1,3 +1,4 @@
+import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors, PAYMENT_STATUS_COLORS } from '@/lib/theme'
 import { useOrder, useOrderTotals } from '@/stores/selectors/orderSelectors'
 import { Banknote, CheckCircle2, CreditCard, X } from 'lucide-react-native'
@@ -130,7 +131,8 @@ const OrderLineItemsView = ({
   const timeLabel = formatTime(orderToView.opened_at)
   const paidStatusColor =
     PAYMENT_STATUS_COLORS[orderToView.paid_status] || colors.muted
-  const isPaid = orderToView.paid_status === 'Paid'
+  const effectivePaidStatus = deriveEffectivePaidStatus(orderToView) ?? orderToView.paid_status
+  const isPaid = effectivePaidStatus === 'Paid'
   const displayId =
     orderToView.display_number || orderToView.order_number || '—'
   const isPartiallyPaid = (orderToView.amount_paid ?? 0) > 0 && !isPaid
