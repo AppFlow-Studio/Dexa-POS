@@ -26,6 +26,7 @@ import {
   Flame,
   Lock,
   Printer,
+  Receipt,
   Star,
   Tag,
   Trash2,
@@ -59,6 +60,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
 
 interface MoreOptionsProps {
   discountSheetRef?: React.RefObject<BottomSheetMethods>
+  serviceChargeSheetRef?: React.RefObject<BottomSheetMethods>
   onVoidSuccess?: () => void
   onCloseCheck?: () => void
   onCloseSession?: () => void
@@ -74,6 +76,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 > = function MoreOptionsComponent (
   {
     discountSheetRef,
+    serviceChargeSheetRef,
     onVoidSuccess,
     onCloseCheck,
     onCloseSession,
@@ -194,6 +197,28 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     activeOrder?.paid_status === 'Paid' &&
     !!activeOrder?.service_location_id
   const canManageDrawer = !!drawerId && !!onManageDrawer
+
+  // Wave D — Edit Service Charge entry. Server refuses when any non-voided
+  // captured / refunded payment exists; mirror that here so the row is greyed
+  // out instead of getting a backend rejection.
+  const hasBlockingPaymentForSC = useMemo(() => {
+    const payments = activeOrder?.payments ?? []
+    return payments.some(
+      p =>
+        !p.isVoided && (p.status === 'captured' || p.status === 'refunded')
+    )
+  }, [activeOrder?.payments])
+  const canEditServiceCharge =
+    !!activeOrder?.db_order_id &&
+    !isCheckClosed &&
+    !isReadOnlyForStation &&
+    !hasBlockingPaymentForSC &&
+    !!serviceChargeSheetRef
+
+  const handleOpenServiceCharge = () => {
+    if (!canEditServiceCharge) return
+    closeAndThen(() => serviceChargeSheetRef?.current?.expand())
+  }
 
   const handleClearCart = () => {
     if (hasNonDraftItems) {
@@ -541,8 +566,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           </View>
 
           <BottomSheetScrollView
-            contentContainerStyle={{ paddingBottom: 24 }}
-            showsVerticalScrollIndicator={false}
+            // Explicit flex:1 so the scrollview fills the remaining height
+            // below the header; without it the action list grows to its
+            // intrinsic content height and the tail rows (Edit Service
+            // Charge / Rush / Priority / etc.) get clipped instead of
+            // scrolling.
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 48 }}
+            showsVerticalScrollIndicator
             keyboardShouldPersistTaps='handled'
             nestedScrollEnabled
           >
@@ -779,6 +810,60 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             </View>
             <ChevronRight size={14} color={colors.muted} />
           </TouchableOpacity>
+
+          {/* Wave D — Edit Service Charge row (manager-PIN gated) */}
+          {serviceChargeSheetRef ? (
+            <TouchableOpacity
+              onPress={handleOpenServiceCharge}
+              disabled={!canEditServiceCharge}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                opacity: canEditServiceCharge ? 1 : 0.45
+              }}
+            >
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + '15',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}
+              >
+                <Receipt size={14} color={colors.teal} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
+                  Edit Service Charge
+                </Text>
+                {!canEditServiceCharge ? (
+                  <Text
+                    style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
+                  >
+                    {hasBlockingPaymentForSC
+                      ? 'Void or refund payments first'
+                      : isReadOnlyForStation
+                      ? 'Owned by another station'
+                      : isCheckClosed
+                      ? 'Check is closed'
+                      : 'Unavailable'}
+                  </Text>
+                ) : null}
+              </View>
+              <ChevronRight size={14} color={colors.muted} />
+            </TouchableOpacity>
+          ) : null}
 
           {/* Add Customer row */}
           <TouchableOpacity

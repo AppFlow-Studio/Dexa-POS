@@ -33,6 +33,10 @@ import { queueOperation } from '@/services/offlineSyncService'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter'
 import { adjustTips, type TipAdjustment } from '@/services/tipAdjustService'
+import {
+  getOrderTypeDisplay,
+  resolveTableDisplayName
+} from '@/lib/orderDisplay'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useCFDBuiltinStore } from '@/stores/useCFDBuiltinStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -1192,12 +1196,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       activeOrder?.display_number ??
       activeOrder?.order_number ??
       null
-    const displayOrderType =
-      frozen?.orderType ?? activeOrder?.order_type ?? null
+    const rawOrderType = frozen?.orderType ?? activeOrder?.order_type ?? null
+    const displayOrderType = rawOrderType
+      ? getOrderTypeDisplay(rawOrderType)
+      : null
     const liveTableName = activeOrder?.order_type
       ?.toLowerCase()
       .includes('dine')
-      ? activeOrder?.service_location_id ?? null
+      ? resolveTableDisplayName(
+          activeOrder?.service_location_id,
+          activeOrder?.service_location_name
+        )
       : null
     const displayTableName = frozen?.tableName ?? liveTableName
     const displayGuestCount =
@@ -1714,11 +1723,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         displayDiscountAmount = stable.discountAmount
       }
 
-      // For dine-in orders, get table ID
+      // For dine-in orders, resolve the table's display name (not its UUID).
       const builtinTableName = activeOrder?.order_type
         ?.toLowerCase()
         .includes('dine')
-        ? activeOrder?.service_location_id ?? null
+        ? resolveTableDisplayName(
+            activeOrder?.service_location_id,
+            activeOrder?.service_location_name
+          )
         : null
 
       const computedOrderNumber =
@@ -1760,7 +1772,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         customerName: activeOrder?.customer_name ?? null,
         customerPhone: activeOrder?.customer_phone ?? null,
         orderNumber: computedOrderNumber,
-        orderType: activeOrder?.order_type ?? null,
+        orderType: activeOrder?.order_type
+          ? getOrderTypeDisplay(activeOrder.order_type)
+          : null,
         tableName: builtinTableName,
         guestCount: activeOrder?.guest_count ?? null,
         items: cfdItems,
@@ -2054,9 +2068,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         customerName: activeOrder?.customer_name ?? null,
         orderNumber:
           activeOrder?.display_number ?? activeOrder?.order_number ?? null,
-        orderType: activeOrder?.order_type ?? null,
+        orderType: activeOrder?.order_type
+          ? getOrderTypeDisplay(activeOrder.order_type)
+          : null,
         tableName: activeOrder?.order_type?.toLowerCase().includes('dine')
-          ? activeOrder?.service_location_id ?? null
+          ? resolveTableDisplayName(
+              activeOrder?.service_location_id,
+              activeOrder?.service_location_name
+            )
           : null,
         guestCount: activeOrder?.guest_count ?? null,
         items: cfdItems

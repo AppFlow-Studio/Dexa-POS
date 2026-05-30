@@ -804,15 +804,69 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       return round2(subtotal + tax);
     };
 
-    // 1. Recalculate amounts if needed (Split by Item logic - now includes tax for both card and cash)
-    const updatedSplits = splits.map((split) => {
-      // If we have items but 0 amount, calculate price from items (with tax) for both card and cash
-      if (split.items.length > 0 && split.amount === 0) {
-        const cardAmount = calculateSplitCardAmount(split.items);
-        const cashAmount = calculateSplitCashAmount(split.items);
-        return { ...split, amount: cardAmount, cashAmount: cashAmount };
+    // 1. Recalculate amounts if needed (Split by Item logic — now includes tax
+    //    AND proportional service-charge share for both card and cash).
+    //
+    // Wave D: split-by-item used to compute items+tax only, silently dropping
+    // any SC residual on every non-final split. process_payment_v13's residual
+    // guard would then leave the order `partial` after the cashier thought it
+    // was paid. Scale each split's items+tax by (orderDue / itemsOnlySum) so
+    // every split carries its proportional share of SC; the LAST non-zero
+    // split absorbs the rounding residual so SUM exactly equals the order
+    // total (mirrors splitEvenly and process_payment_v13 last-portion logic).
+    const splitItemTotals = splits.map((split) =>
+      split.items.length > 0
+        ? {
+            card: calculateSplitCardAmount(split.items),
+            cash: calculateSplitCashAmount(split.items),
+          }
+        : { card: 0, cash: 0 },
+    );
+    const itemsCardSum = splitItemTotals.reduce((s, t) => s + t.card, 0);
+    const itemsCashSum = splitItemTotals.reduce((s, t) => s + t.cash, 0);
+    // order.amount_due / cash_amount_due are SC-inclusive per
+    // useActiveOrderTotals (orderSelectors lines 213–219) and v12's residual
+    // guard. Fall back to the items-only sum on draft orders that haven't
+    // synced yet — scale factor collapses to 1 and behavior matches pre-D.
+    // Treat a literal 0 as "no authoritative due" (fully paid / pre-sync)
+    // and fall back to items — `??` would let 0 through and zero every split.
+    const orderCardDue =
+      typeof activeOrder?.amount_due === "number" && activeOrder.amount_due > 0
+        ? activeOrder.amount_due
+        : itemsCardSum;
+    const orderCashDue =
+      typeof activeOrder?.cash_amount_due === "number" &&
+      activeOrder.cash_amount_due > 0
+        ? activeOrder.cash_amount_due
+        : itemsCashSum;
+
+    // Find the index of the LAST split with items — it gets the residual.
+    let lastItemSplitIdx = -1;
+    for (let i = splits.length - 1; i >= 0; i--) {
+      if (splits[i].items.length > 0 && splits[i].amount === 0) {
+        lastItemSplitIdx = i;
+        break;
       }
-      return split;
+    }
+
+    let scaledCardRunningSum = 0;
+    let scaledCashRunningSum = 0;
+    const updatedSplits = splits.map((split, idx) => {
+      if (split.items.length === 0 || split.amount !== 0) return split;
+      const t = splitItemTotals[idx];
+      if (idx === lastItemSplitIdx) {
+        // Last split absorbs residual: SUM across all splits = orderDue.
+        const card = round2(Math.max(0, orderCardDue - scaledCardRunningSum));
+        const cash = round2(Math.max(0, orderCashDue - scaledCashRunningSum));
+        return { ...split, amount: card, cashAmount: cash };
+      }
+      const cardScale = itemsCardSum > 0 ? orderCardDue / itemsCardSum : 1;
+      const cashScale = itemsCashSum > 0 ? orderCashDue / itemsCashSum : 1;
+      const card = round2(t.card * cardScale);
+      const cash = round2(t.cash * cashScale);
+      scaledCardRunningSum += card;
+      scaledCashRunningSum += cash;
+      return { ...split, amount: card, cashAmount: cash };
     });
 
     set({ splits: updatedSplits });

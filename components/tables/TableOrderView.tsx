@@ -1,5 +1,6 @@
 import DiscountBottomSheet from '@/components/bill/DiscountBottomSheet'
 import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
+import { ServiceChargeOverrideSheet } from '@/components/bill/ServiceChargeOverrideSheet'
 import TableBillSection from '@/components/bill/TableBillSection'
 import MenuSection from '@/components/menu/MenuSection'
 import SeatSelector from '@/components/tables/SeatSelector'
@@ -190,6 +191,7 @@ const TableOrderView = React.forwardRef<
   const pricingSheetRef = useRef<BottomSheetMethods>(null)
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
+  const serviceChargeSheetRef = useRef<BottomSheetMethods>(null)
 
   const prepareClose = useCallback(() => {
     if (__DEV__) {
@@ -1342,12 +1344,20 @@ const TableOrderView = React.forwardRef<
             discountSheetRef={
               discountSheetRef as React.RefObject<BottomSheetMethods>
             }
+            serviceChargeSheetRef={
+              serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
+            }
             onCloseCheck={handleCloseCheck}
           />
 
           <DiscountBottomSheet
             ref={discountSheetRef}
             onClose={handleCloseDiscountSheet}
+          />
+
+          <ServiceChargeOverrideSheet
+            ref={serviceChargeSheetRef}
+            onClose={() => serviceChargeSheetRef.current?.close()}
           />
         </>
       )}

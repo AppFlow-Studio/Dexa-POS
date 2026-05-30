@@ -1,7 +1,11 @@
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
+import { toastService } from '@/lib/toastService'
 import type { MerchantRole } from '@/lib/types'
+import { OrderService } from '@/services/orderService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useMenuStore } from '@/stores/useMenuStore'
+import { useOrderStore } from '@/stores/useOrderStore'
 import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { Delete, Lock, X } from 'lucide-react-native'
@@ -98,13 +102,19 @@ const ManagerPinModal = () => {
   const addTemporaryMenuAccess = useMenuStore(s => s.addTemporaryMenuAccess)
   const addTemporaryCategoryAccess = useMenuStore(s => s.addTemporaryCategoryAccess)
   const timeoutMinutes = useStoreSettingsStore(s => s.managerOverrideTimeoutMinutes)
+  const supabase = useSupabaseClient()
 
   const [pin, setPin] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const shakeX = useSharedValue(0)
   // ref to avoid stale closure inside auto-submit effect
   const pinRef = useRef(pin)
   pinRef.current = pin
+  // Track open state synchronously so post-RPC effects (toast / setUnlocked /
+  // closePinModal) can bail when the cashier cancelled mid-request.
+  const isOpenRef = useRef(isPinModalOpen)
+  isOpenRef.current = isPinModalOpen
 
   // Reset state whenever modal opens
   useEffect(() => {
@@ -114,30 +124,21 @@ const ManagerPinModal = () => {
     }
   }, [isPinModalOpen])
 
-  // Auto-submit when PIN_LENGTH digits are entered
+  // Auto-submit when PIN_LENGTH digits are entered. isSubmitting must be in
+  // deps AND the guard so a digit that lands while an earlier submit is still
+  // in flight doesn't double-fire.
   useEffect(() => {
-    if (pin.length === PIN_LENGTH) {
+    if (pin.length === PIN_LENGTH && !isSubmitting) {
       submitPin(pin)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pin])
+  }, [pin, isSubmitting])
 
-  const submitPin = (currentPin: string) => {
+  const submitPin = async (currentPin: string) => {
     const employee = useEmployeeStore.getState().findEmployeeByPin(currentPin)
     const isManager = employee && MANAGER_ROLES.includes(employee.role)
 
-    if (isManager) {
-      // Grant access
-      if (actionToPerform?.type === 'select_menu') {
-        addTemporaryMenuAccess(actionToPerform.payload.menuName)
-      } else if (actionToPerform?.type === 'select_category') {
-        addTemporaryCategoryAccess(actionToPerform.payload.categoryName)
-      }
-      // Start unlock session if timeout > 0
-      setUnlocked(timeoutMinutes)
-      closePinModal()
-    } else {
-      // Shake + show error
+    if (!isManager) {
       shakeX.value = withSequence(
         withTiming(-12, { duration: 70 }),
         withTiming(12, { duration: 70 }),
@@ -151,7 +152,106 @@ const ManagerPinModal = () => {
           : 'Incorrect PIN. Please try again.'
       )
       setPin('')
+      return
     }
+
+    // PIN accepted. Dispatch the action. Async actions (RPC-backed) hold the
+    // modal open until the server responds so failures keep the cashier here
+    // with a toast instead of dumping them back to the floor unsure if it
+    // worked.
+    if (actionToPerform?.type === 'select_menu') {
+      addTemporaryMenuAccess(actionToPerform.payload.menuName)
+      setUnlocked(timeoutMinutes)
+      closePinModal()
+      return
+    }
+    if (actionToPerform?.type === 'select_category') {
+      addTemporaryCategoryAccess(actionToPerform.payload.categoryName)
+      setUnlocked(timeoutMinutes)
+      closePinModal()
+      return
+    }
+    if (
+      actionToPerform?.type === 'edit_service_charge' ||
+      actionToPerform?.type === 'remove_service_charge'
+    ) {
+      const localOrderId = actionToPerform.payload.orderId
+      const order = useOrderStore.getState().ordersById[localOrderId]
+      const dbOrderId = order?.db_order_id
+      if (!dbOrderId) {
+        // Order hasn't synced yet — block the override; this is an unrealistic
+        // case (the sheet would be opened on a draft) but worth a clean error.
+        toastService.show({
+          title: 'Cannot override yet',
+          message: 'Order has not synced to the server.',
+          type: 'error',
+        })
+        return
+      }
+      const newAmount =
+        actionToPerform.type === 'edit_service_charge'
+          ? actionToPerform.payload.newAmount
+          : 0
+      const stationId =
+        useStoreSettingsStore.getState().selectedStation?.id ?? null
+      setIsSubmitting(true)
+      const { data, error } = await OrderService.overrideServiceCharge(
+        supabase,
+        {
+          p_order_id: dbOrderId,
+          p_amount: newAmount,
+          p_manager_id: employee!.id,
+          p_reason: actionToPerform.payload.reason ?? null,
+          p_station_id: stationId,
+        },
+      )
+      setIsSubmitting(false)
+      // Cashier may have tapped X mid-RPC. Bail before toast/unlock/close so a
+      // cancelled request can't grant a manager-session unlock after the user
+      // already walked away.
+      if (!isOpenRef.current) return
+      if (error || !data?.success) {
+        setErrorMsg(
+          error?.message ??
+            'Failed to update service charge. Please try again.'
+        )
+        toastService.show({
+          title: 'Service charge override failed',
+          message:
+            error?.message ??
+            'The server rejected the override (likely a payment exists on this order).',
+          type: 'error',
+        })
+        setPin('')
+        return
+      }
+      // Server is authoritative; fetch fresh order so amount_due / SC fields
+      // in the local store match what the server just wrote. Uses the local
+      // store key per useOrderStore convention.
+      useOrderStore
+        .getState()
+        .syncOrderFromBackendComplete(localOrderId)
+        .catch(() => {})
+      toastService.show({
+        title:
+          actionToPerform.type === 'edit_service_charge'
+            ? 'Service charge updated'
+            : 'Service charge removed',
+        message:
+          actionToPerform.type === 'edit_service_charge'
+            ? `New amount: $${newAmount.toFixed(2)}`
+            : 'Service charge cleared from this order.',
+        type: 'success',
+      })
+      setUnlocked(timeoutMinutes)
+      closePinModal()
+      return
+    }
+
+    // Unknown / unhandled action — still close (preserves prior behavior for
+    // the generic "Manager Override" entry point).
+    setUnlocked(timeoutMinutes)
+    closePinModal()
   }
 
   const handleKey = (digit: string) => {
@@ -177,6 +277,10 @@ const ManagerPinModal = () => {
       ? `Unlock "${actionToPerform.payload.menuName}"`
       : actionToPerform?.type === 'select_category'
       ? `Unlock "${actionToPerform.payload.categoryName}" Category`
+      : actionToPerform?.type === 'edit_service_charge'
+      ? `Edit Service Charge — $${actionToPerform.payload.newAmount.toFixed(2)}`
+      : actionToPerform?.type === 'remove_service_charge'
+      ? 'Remove Service Charge'
       : 'Manager Override'
 
   const rows = [

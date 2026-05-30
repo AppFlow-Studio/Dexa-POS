@@ -43,6 +43,24 @@ export interface OrderCalculationInput {
   snapshottedRate?: number | null;
   snapshottedAppliesOn?: "pre_discount" | "post_discount" | null;
   snapshottedName?: string | null;
+  /**
+   * Wave D — when the order has orders.service_charge_is_manual = true, the
+   * server is authoritative for SC. Pass the override amount here so totals
+   * (total_amount / outstanding_total / cash equivalents) include the manual
+   * value instead of recomputing from the rule. Bypasses rule eligibility.
+   */
+  manualServiceCharge?: number | null;
+  /**
+   * Wave D follow-up — server-confirmed SC fallback. Used when local rule
+   * eligibility fails (rules store not loaded, partySize unresolvable) but
+   * the server has already applied a rule-derived SC to the order. Without
+   * this, outstanding-cash drops SC entirely on the cashier prompt — the
+   * customer sees $7.43 on CFD but cashier collects $5.72 (under-collection
+   * surfaced by Latte / Table T-1 / order S6-0015 on staging 2026-05-29).
+   * Unlike manualServiceCharge, this is a *fallback*: rule eligibility
+   * still wins when it succeeds locally.
+   */
+  serverConfirmedServiceCharge?: number | null;
 }
 
 /**

@@ -3,6 +3,14 @@ import { create } from "zustand";
 type OverrideAction =
   | { type: "select_menu"; payload: { menuName: string } }
   | { type: "select_category"; payload: { categoryName: string } }
+  | {
+      type: "edit_service_charge";
+      payload: { orderId: string; newAmount: number; reason?: string };
+    }
+  | {
+      type: "remove_service_charge";
+      payload: { orderId: string; reason?: string };
+    }
   | null;
 
 interface PinOverrideState {

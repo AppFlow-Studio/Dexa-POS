@@ -270,6 +270,8 @@ function buildServiceChargeInputForOrder(
   | "snapshottedRate"
   | "snapshottedAppliesOn"
   | "snapshottedName"
+  | "manualServiceCharge"
+  | "serverConfirmedServiceCharge"
 > {
   if (!order) return {};
 
@@ -299,6 +301,35 @@ function buildServiceChargeInputForOrder(
     partySize = found?.session?.party_size ?? null;
   }
 
+  // Wave D — when the server has marked SC as manually overridden, pass the
+  // override amount through so the calculator snaps SC to it instead of
+  // re-deriving from the rule. Otherwise total_amount briefly reflects
+  // rule-SC after recompute and before the next backend sync.
+  const manualServiceCharge =
+    order.service_charge_is_manual === true
+      ? order.service_charge ?? 0
+      : null;
+
+  // Wave D follow-up — server-confirmed SC fallback. When the server has
+  // already applied a rule-derived SC to this order (snapshotted as
+  // service_charge_rule_id + service_charge_rate on orders) but the local
+  // calculator can't reproduce it (rules store not hydrated on this
+  // station, partySize unresolvable because useSeatingStore /
+  // useTableSessionStore haven't caught up), the calculator's eligibility
+  // check returns SC=0 and outstanding-cash drops SC. Prefer the
+  // _serverConfirmedServiceCharge ref if we have it; otherwise trust the
+  // order's stored service_charge whenever a rule_id is snapshotted
+  // (proves the server has touched SC at least once).
+  const serverConfirmedServiceCharge: number | null =
+    typeof order._serverConfirmedServiceCharge === "number" &&
+    order._serverConfirmedServiceCharge > 0
+      ? order._serverConfirmedServiceCharge
+      : order.service_charge_rule_id != null &&
+          typeof order.service_charge === "number" &&
+          order.service_charge > 0
+        ? order.service_charge
+        : null;
+
   return {
     serviceChargeRule: rule,
     partySize,
@@ -306,6 +337,8 @@ function buildServiceChargeInputForOrder(
     snapshottedRate: order.service_charge_rate ?? null,
     snapshottedAppliesOn: order.service_charge_applies_on ?? null,
     snapshottedName: order.service_charge_name ?? null,
+    manualServiceCharge,
+    serverConfirmedServiceCharge,
   };
 }
 
@@ -4232,22 +4265,31 @@ export const useOrderStore = create<OrderState>()(
               // o.service_charge stale relative to o.total_amount. Without
               // this, the SC line on the bill shows the old amount while
               // the total reflects the new SC.
-              o.service_charge = totals.service_charge;
-              if (totals.service_charge > 0) {
-                if (o.service_charge_rate == null) {
-                  const rule = useServiceChargeRulesStore
-                    .getState()
-                    .resolveRule(
-                      useStoreSettingsStore.getState().selectedStore?.id ?? null,
-                    );
-                  if (rule) {
-                    o.service_charge_rule_id = rule.id;
-                    o.service_charge_rate = rule.rate_percent;
-                    o.service_charge_applies_on = rule.applies_on;
+              //
+              // EXCEPTION: when a manager has manually overridden SC
+              // (service_charge_is_manual === true), preserve the
+              // authoritative server value. Otherwise the recompute path
+              // would briefly overwrite it with rule-derived SC until the
+              // post-override sync catches up — and rebuild total_amount
+              // against the wrong SC in that window.
+              if (!o.service_charge_is_manual) {
+                o.service_charge = totals.service_charge;
+                if (totals.service_charge > 0) {
+                  if (o.service_charge_rate == null) {
+                    const rule = useServiceChargeRulesStore
+                      .getState()
+                      .resolveRule(
+                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                      );
+                    if (rule) {
+                      o.service_charge_rule_id = rule.id;
+                      o.service_charge_rate = rule.rate_percent;
+                      o.service_charge_applies_on = rule.applies_on;
+                    }
                   }
-                }
-                if (!o.service_charge_name) {
-                  o.service_charge_name = totals.service_charge_name;
+                  if (!o.service_charge_name) {
+                    o.service_charge_name = totals.service_charge_name;
+                  }
                 }
               }
 
@@ -4301,7 +4343,12 @@ export const useOrderStore = create<OrderState>()(
               isServiceChargeEnabled &&
               _scChanged &&
               order.db_order_id &&
-              _supabaseClient
+              _supabaseClient &&
+              // Wave D — when service_charge_is_manual = true,
+              // apply_service_charge_v1 short-circuits server-side and returns
+              // the existing (manual) value. Skip the RPC entirely to avoid
+              // the wasted round-trip and the brief recompute race window.
+              !order.service_charge_is_manual
             ) {
               const _scInput = buildServiceChargeInputForOrder(order);
               const _dbId = order.db_order_id;

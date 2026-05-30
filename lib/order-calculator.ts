@@ -408,7 +408,9 @@ export function calculateOrderTotals (
     orderType,
     snapshottedRate,
     snapshottedAppliesOn,
-    snapshottedName
+    snapshottedName,
+    manualServiceCharge,
+    serverConfirmedServiceCharge
   } = input
   const activeItems = items.filter(item => !item.is_voided && !item.isDraft)
 
@@ -663,32 +665,52 @@ export function calculateOrderTotals (
     snapshottedAppliesOn ?? serviceChargeRule?.applies_on ?? 'pre_discount'
   const effectiveName = snapshottedName ?? serviceChargeRule?.name ?? ''
 
-  const ruleEligible =
-    isServiceChargeEnabled &&
-    serviceChargeRule != null &&
-    serviceChargeRule.is_active &&
-    serviceChargeRule.auto_apply &&
-    effectiveRate > 0 &&
-    serviceChargeRule.applies_to_order_types.includes(orderType ?? '') &&
-    partySize != null &&
-    partySize >= serviceChargeRule.min_party_size
+  // Wave D — manual override wins. When the order is marked
+  // service_charge_is_manual on the server, the caller passes
+  // manualServiceCharge here and we snap SC to it, bypassing rule eligibility.
+  // Mirrors apply_service_charge_v1's short-circuit on the server.
+  if (manualServiceCharge != null) {
+    serviceCharge = new Decimal(manualServiceCharge)
+    serviceChargeName = effectiveName || 'Service Charge'
+  } else {
+    const ruleEligible =
+      isServiceChargeEnabled &&
+      serviceChargeRule != null &&
+      serviceChargeRule.is_active &&
+      serviceChargeRule.auto_apply &&
+      effectiveRate > 0 &&
+      serviceChargeRule.applies_to_order_types.includes(orderType ?? '') &&
+      partySize != null &&
+      partySize >= serviceChargeRule.min_party_size
 
-  if (ruleEligible) {
-    const base =
-      effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
-    serviceCharge = base
-      .times(effectiveRate)
-      .dividedBy(100)
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-    serviceChargeName = effectiveName
+    if (ruleEligible) {
+      const base =
+        effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
+      serviceCharge = base
+        .times(effectiveRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      serviceChargeName = effectiveName
 
-    if (__DEV__ && partySize != null && partySize < serviceChargeRule!.min_party_size) {
-      // Invariant: should never reach here per the eligibility check above.
-      // Logged in case the eligibility branch is later refactored unsafely.
-      console.warn(
-        '[service_charge] applied below threshold',
-        { partySize, threshold: serviceChargeRule!.min_party_size }
-      )
+      if (__DEV__ && partySize != null && partySize < serviceChargeRule!.min_party_size) {
+        // Invariant: should never reach here per the eligibility check above.
+        // Logged in case the eligibility branch is later refactored unsafely.
+        console.warn(
+          '[service_charge] applied below threshold',
+          { partySize, threshold: serviceChargeRule!.min_party_size }
+        )
+      }
+    } else if (
+      serverConfirmedServiceCharge != null &&
+      serverConfirmedServiceCharge > 0
+    ) {
+      // Local rule eligibility failed (rule store not loaded, partySize
+      // unresolvable, etc.) but the server has already applied SC to this
+      // order. Trust the server-confirmed value so outstanding-cash
+      // includes SC — otherwise the cashier prompt collects items+tax
+      // only while the CFD shows the correct (SC-inclusive) total.
+      serviceCharge = new Decimal(serverConfirmedServiceCharge)
+      serviceChargeName = effectiveName || 'Service Charge'
     }
   }
 
@@ -1260,7 +1282,9 @@ export function hashCalculationInput (input: OrderCalculationInput): string {
       orderType: input.orderType ?? null,
       snapRate: input.snapshottedRate ?? null,
       snapAppliesOn: input.snapshottedAppliesOn ?? null,
-      snapName: input.snapshottedName ?? null
+      snapName: input.snapshottedName ?? null,
+      manual: input.manualServiceCharge ?? null,
+      serverConfirmed: input.serverConfirmedServiceCharge ?? null
     }
     // Don't include taxRatesMap in hash - it rarely changes
   }

@@ -104,6 +104,33 @@ export type ApplyServiceChargeResult = {
   skipped?: "manual_override";
 };
 
+export type OverrideServiceChargeParams = {
+  p_order_id: string;
+  /** New SC amount. 0 = REMOVE, >0 = EDIT. */
+  p_amount: number;
+  p_manager_id: string;
+  p_reason?: string | null;
+  p_station_id?: string | null;
+};
+
+export type OverrideServiceChargeResult = {
+  success: boolean;
+  order_id: string;
+  manager_id: string;
+  reason: string | null;
+  old_service_charge: number;
+  new_service_charge: number;
+  service_charge_is_manual: true;
+  card_subtotal: number;
+  cash_subtotal: number;
+  card_total: number;
+  cash_total: number;
+  total_amount: number;
+  amount_due: number;
+  cash_amount_due: number;
+  sync_version: number;
+};
+
 export class OrderService {
   /**
    * Validates that the current station session is still active.
@@ -522,14 +549,15 @@ export class OrderService {
     const { data, error } = await rpcWithIdempotency<ProcessPaymentResult>(
       client,
       "process_payment",
-      // Fallback (flag off): v11 — adds acquirer + batch_number on top of
-      //                            v10's platform-fee tracking.
-      // Primary  (flag on): v12 — forks v11 with a defensive
-      //                            apply_service_charge_v1(NULL,...) refresh
-      //                            after the FOR UPDATE lock, so payment-time
-      //                            totals always reflect the latest SC.
-      "process_payment_v11",
-      "process_payment_v12",
+      // Both fallback and primary point at v14 — this is a money-correctness
+      // fix (v13 under-collected SC on cash item-payments because change_given
+      // was computed against items+tax only), not a typical rollout. Leaving
+      // v13 as the fallback would let stations with the idempotency flag off
+      // continue under-collecting, which is worse than the flag's normal job
+      // of buying us a fast rollback. Apply the v14 migration before this
+      // ships; verified on staging order S6-0011 / S6-0015.
+      "process_payment_v14",
+      "process_payment_v14",
       params,
       {
         deadline: DEADLINES.paymentRpc,
@@ -654,10 +682,11 @@ export class OrderService {
     const { data, error } = await rpcWithIdempotency(
       client,
       "apply_refund_to_payment",
-      // Fallback: v2 (no platform-fee fields).
-      // Primary:  v3 (proportional refunded_dual_pricing_fee / refunded_tip_fee).
-      "apply_refund_to_payment_v2",
+      // Fallback: v3 (proportional refunded_dual_pricing_fee / refunded_tip_fee).
+      // Primary:  v4 (Wave D — also reverses service_charge snapshot
+      //               proportionally; same LEAST clamp + full-refund snap pattern).
       "apply_refund_to_payment_v3",
+      "apply_refund_to_payment_v4",
       {
         p_payment_id: paymentId,
         p_refund_amount: refundAmount,
@@ -1757,5 +1786,53 @@ export class OrderService {
     }
 
     return result;
+  }
+
+  /**
+   * Wave D — manager-PIN override of orders.service_charge. Pass amount = 0
+   * for REMOVE, > 0 for EDIT. Server flips service_charge_is_manual = true
+   * (which apply_service_charge_v1 short-circuits on) and recomputes totals.
+   * Refuses when non-voided captured/partially_refunded/refunded payments
+   * exist on the order — the caller (ServiceChargeOverrideSheet) gates the
+   * button to match.
+   */
+  static async overrideServiceCharge(
+    client: SupabaseClient,
+    params: OverrideServiceChargeParams,
+    opts?: { keyOverride?: string },
+  ): Promise<{ data: OverrideServiceChargeResult | null; error: any }> {
+    const { data, error } = await rpcWithIdempotency<OverrideServiceChargeResult>(
+      client,
+      "override_service_charge",
+      // Fallback (flag off): v1 — no server-side manager auth, no audit log,
+      //                            stale snapshot fields (rate/name/applies_on
+      //                            survive override).
+      // Primary  (flag on): v2 — validates p_manager_id resolves to a
+      //                           manager-role employee at the order's
+      //                           location, persists a
+      //                           service_charge_override row in payment_events
+      //                           via log_payment_event, and clears the rule
+      //                           snapshot columns so receipts don't print
+      //                           "Auto-Gratuity 18% — $5.00" when 18% no
+      //                           longer equals $5.00.
+      "override_service_charge_v1",
+      "override_service_charge_v2",
+      {
+        p_order_id: params.p_order_id,
+        p_amount: params.p_amount,
+        p_manager_id: params.p_manager_id,
+        p_reason: params.p_reason ?? null,
+        // p_station_id is declared DEFAULT NULL on v1 / v2; safe to pass when
+        // the idempotency flag strips v-next-only params upstream
+        // (idempotencyKey.ts V_NEXT_ONLY_PARAMS).
+        p_station_id: params.p_station_id ?? null,
+      },
+      // Writes use hotMutation (matches processPayment / sendToKitchen tier),
+      // not the read tier. Under degraded WiFi, override gets the same
+      // deadline budget as other money-affecting writes.
+      { deadline: DEADLINES.hotMutation, keyOverride: opts?.keyOverride },
+    );
+    if (__DEV__) console.log("[OrderService:overrideServiceCharge]", data, error);
+    return { data, error };
   }
 }

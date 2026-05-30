@@ -212,7 +212,7 @@ export function OrderingScreen () {
                     color: colors.label
                   }}
                 >
-                  {orderType?.toUpperCase()}
+                  {orderType}
                   {tableName
                     ? ` · Table ${tableName}`
                     : serverName
