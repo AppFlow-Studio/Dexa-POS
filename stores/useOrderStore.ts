@@ -15502,6 +15502,15 @@ export const useOrderStore = create<OrderState>()(
                       amountTendered: payment.amount_tendered,
                       changeGiven: payment.change_given || 0,
                       isCashPriced: payment.is_cash_priced || false,
+                      cashSavings: deriveCashSavings(
+                        {
+                          is_cash_priced: payment.is_cash_priced,
+                          original_amount: payment.original_amount,
+                          amount: payment.amount || 0,
+                        },
+                        orderData.card_total ?? orderData.total_amount,
+                        orderData.cash_total,
+                      ),
 
                       // Portions
                       subtotal_portion: payment.subtotal_portion,

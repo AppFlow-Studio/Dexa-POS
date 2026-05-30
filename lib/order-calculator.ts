@@ -682,14 +682,9 @@ export function calculateOrderTotals (
       .dividedBy(100)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
 
-    // Cash service charge uses the cash subtotal as the base so the SC
-    // reflects the lower cash prices rather than card prices.
-    const cashBase =
-      effectiveAppliesOn === 'pre_discount' ? grossCashSubtotal : netCashSubtotal
-    cashServiceCharge = cashBase
-      .times(effectiveRate)
-      .dividedBy(100)
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    // The SC dollar amount is identical for cash and card. Cash pricing only
+    // changes the item subtotal; taxable SC is added before the cash tax total.
+    cashServiceCharge = serviceCharge
 
     serviceChargeName = effectiveName
 
@@ -804,14 +799,9 @@ export function calculateOrderTotals (
       new Decimal(0)
     )
     outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance)
-    // customRefundBalance is in card-equivalent terms; scale to cash-equivalent
-    // using order-level ratio (not current outstanding, which can be 0 when items are paid)
-    const cashToCardRatio = cardTotal.gt(0)
-      ? cashTotal.div(cardTotal)
-      : new Decimal(1)
-    outstandingCashTotal = outstandingCashTotal.plus(
-      customRefundBalance.times(cashToCardRatio)
-    )
+    // This balance is the shared order-level SC (and its tax). Cash and card
+    // carry the same flat remainder, so do not dual-price it.
+    outstandingCashTotal = outstandingCashTotal.plus(customRefundBalance)
 
     // Clamping: when payments exceed item-level tracking (e.g., split-evenly doesn't mark items),
     // clamp outstanding down to payment-based remaining (matches SQL §10 lines 796-803)

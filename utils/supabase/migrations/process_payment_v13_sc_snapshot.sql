@@ -283,6 +283,17 @@ BEGIN
         v_tax_portion := v_items_tax;
         v_cash_equivalent_subtotal_portion := v_items_cash_subtotal;
 
+        -- When this item payment covers every remaining item, collect the
+        -- complete outstanding balance too. Service charge is order-level,
+        -- so item sums alone omit it and leave a second residual payment.
+        IF COALESCE(array_length(v_covered_items, 1), 0) = v_unpaid_items_count THEN
+            v_payment_total := CASE
+                WHEN v_use_cash_pricing THEN v_pre_unpaid_cash_total
+                ELSE v_pre_unpaid_card_total
+            END;
+            v_tax_portion := v_payment_total - v_subtotal_portion;
+        END IF;
+
         WITH payment_calc AS (
             SELECT oi.id, oi.item_name, oi.quantity AS original_qty, oi.unit_price, oi.cash_price, oi.tax_rate,
                 LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),

@@ -1,4 +1,4 @@
--- Fix: cash_total should use cash subtotal as SC base, not card subtotal.
+-- Fix: cash_total should add the same flat service charge as card_total.
 -- Also: when service_charge_rules.is_taxable = true, add SC tax to cash_tax_amount.
 -- Does not touch any existing data — only changes the function definition.
 -- Safe to deploy with CREATE OR REPLACE (same signature, drop-in replacement).
@@ -59,13 +59,9 @@ FROM public.orders WHERE id = p_order_id;
 v_service_charge := COALESCE(v_order.service_charge, 0);
 v_amount_paid    := COALESCE(v_order.amount_paid, 0);
 
--- Cash SC uses cash subtotal as base (mirrors frontend order-calculator.ts fix).
--- Card SC stays as-is (already computed by apply_service_charge_v1).
-IF v_service_charge > 0 AND v_card_subtotal > 0 AND COALESCE(v_order.service_charge_rate, 0) > 0 THEN
-    v_cash_service_charge := ROUND(v_cash_subtotal * v_order.service_charge_rate / 100.0, 2);
-ELSE
-    v_cash_service_charge := v_service_charge;
-END IF;
+-- Cash and card use the same flat SC. Cash pricing only changes the item
+-- subtotal; when taxable, the shared SC is taxed below before totals are built.
+v_cash_service_charge := v_service_charge;
 
 -- When SC is taxable, add SC tax on top using the effective item tax rate.
 SELECT COALESCE(r.is_taxable, false)
@@ -130,10 +126,9 @@ IF v_order.payment_status = 'paid' AND v_payment_refunded = 0 AND v_payment_void
     v_unpaid_cash_total := 0;
 ELSE
     v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
-    v_unpaid_cash_total := v_unpaid_cash_total +
-      CASE WHEN v_card_total_calc > 0
-      THEN ROUND(v_custom_refund_balance * v_cash_total_calc / v_card_total_calc, 2)
-      ELSE v_custom_refund_balance END;
+    -- The residual is the order-level SC (and its tax), which is a shared
+    -- flat dollar amount for card and cash. Do not dual-price this remainder.
+    v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
 END IF;
 
 UPDATE public.orders SET
