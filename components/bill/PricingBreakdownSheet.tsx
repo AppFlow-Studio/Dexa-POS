@@ -140,7 +140,14 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   const paidAmount =
     activeOrder?.payments
       ?.filter((p) => !p.isVoided)
-      .reduce((acc, p) => acc + p.amount, 0) ?? 0;
+      .reduce((acc, p) => {
+        // For cash-priced payments p.amount is the card-equivalent stored by the backend.
+        // Subtract cashSavings to recover the actual cash amount collected.
+        const actual = p.isCashPriced && p.cashSavings
+          ? p.amount - p.cashSavings
+          : p.amount;
+        return acc + actual;
+      }, 0) ?? 0;
 
   const displayDiscount = hasPayments ? 0 : activeOrderDiscount;
   const displaySubtotal = hasPayments
