@@ -3,10 +3,10 @@ import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetView,
+  BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { ArrowRight, X } from "lucide-react-native";
+import { ArrowRight, CreditCard, Banknote, X } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -17,20 +17,103 @@ interface PricingBreakdownSheetProps {
   hasPayments?: boolean;
 }
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function fmt(n: number) {
+  return `$${n.toFixed(2)}`;
+}
+
+function Row({
+  label,
+  card,
+  cash,
+  labelColor,
+  valueColor,
+  bold,
+  large,
+  negate,
+}: {
+  label: string;
+  card: number;
+  cash: number;
+  labelColor?: string;
+  valueColor?: string;
+  bold?: boolean;
+  large?: boolean;
+  negate?: boolean;
+}) {
+  const lc = labelColor ?? colors.label;
+  const vc = valueColor ?? colors.heading;
+  const fs = large ? 15 : 13;
+  const fw = bold ? "700" : "500";
+  const prefix = negate ? "−" : "";
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 7,
+      }}
+    >
+      <Text style={{ flex: 1, fontSize: fs, fontWeight: fw, color: lc }}>
+        {label}
+      </Text>
+      {/* card column */}
+      <Text
+        style={{
+          width: 90,
+          textAlign: "right",
+          fontSize: fs,
+          fontWeight: fw,
+          color: vc,
+        }}
+      >
+        {prefix}
+        {fmt(card)}
+      </Text>
+      {/* cash column */}
+      <Text
+        style={{
+          width: 90,
+          textAlign: "right",
+          fontSize: fs,
+          fontWeight: fw,
+          color: cash !== card ? colors.success : vc,
+        }}
+      >
+        {prefix}
+        {fmt(cash)}
+      </Text>
+    </View>
+  );
+}
+
+function Divider({ dim }: { dim?: boolean }) {
+  return (
+    <View
+      style={{
+        height: 1,
+        backgroundColor: dim ? colors.border + "60" : colors.border,
+        marginVertical: 4,
+      }}
+    />
+  );
+}
+
+// ── component ─────────────────────────────────────────────────────────────────
+
 const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PricingBreakdownSheetProps
 > = function PricingBreakdownSheetComponent(
-  {
-    onClose,
-    onPressProceedToPayment,
-    totalDisplayAmount,
-    hasPayments: hasPaymentsProp,
-  },
+  { onClose, onPressProceedToPayment, totalDisplayAmount, hasPayments: hasPaymentsProp },
   ref,
 ) {
-  const snapPoints = useMemo(() => ["45%"], []);
+  const snapPoints = useMemo(() => ["48%"], []);
 
+  const activeOrder = useOrderStore((s) =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined,
+  );
   const activeOrderSubtotal = useOrderStore((s) => s.activeOrderSubtotal);
   const activeOrderTax = useOrderStore((s) => s.activeOrderTax);
   const activeOrderDiscount = useOrderStore((s) => s.activeOrderDiscount);
@@ -40,28 +123,42 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   const activeOrderOutstandingTax = useOrderStore(
     (s) => s.activeOrderOutstandingTax,
   );
-  const activeOrder = useOrderStore((s) =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined,
-  );
-  // Live SC from the selector — reactive to seatCount + rule, so the row
-  // appears the moment the calculator returns > 0 instead of waiting for
-  // the deferred `_scheduleTotalsRecompute` to write `order.service_charge`,
-  // which can race with rekey/broadcast hydration on a fresh seat.
+
   const liveTotals = useActiveOrderTotals();
   const liveServiceCharge = liveTotals?.serviceCharge ?? 0;
   const liveServiceChargeName = liveTotals?.serviceChargeName ?? "Service Charge";
   const liveServiceChargeRate = liveTotals?.serviceChargeRate ?? null;
+  const cashSubtotal = liveTotals?.cashSubtotal ?? 0;
+  const cashTax = liveTotals?.cashTax ?? 0;
+  const cashTotal = liveTotals?.cashTotal ?? 0;
+  const cashAmountDue = liveTotals?.cashAmountDue ?? 0;
+  // cash service charge from live totals (uses cash subtotal as base)
+  const cashServiceCharge = liveTotals?.cashServiceCharge ?? liveServiceCharge;
 
   const hasPayments =
     hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
   const paidAmount =
-    activeOrder?.payments?.reduce((acc, p) => acc + p.amount, 0) ?? 0;
+    activeOrder?.payments
+      ?.filter((p) => !p.isVoided)
+      .reduce((acc, p) => acc + p.amount, 0) ?? 0;
+
   const displayDiscount = hasPayments ? 0 : activeOrderDiscount;
   const displaySubtotal = hasPayments
     ? activeOrderOutstandingSubtotal
     : activeOrderSubtotal;
+  const displayCashSubtotal = hasPayments
+    ? (cashAmountDue - cashTax - cashServiceCharge)
+    : cashSubtotal;
   const displayTax = hasPayments ? activeOrderOutstandingTax : activeOrderTax;
-  const displayTotal = totalDisplayAmount;
+  const displayCashTax = cashTax;
+  const cardTotal = totalDisplayAmount;
+
+  const hasDualPricing = Math.abs(cashSubtotal - activeOrderSubtotal) > 0.005;
+  const scLabel =
+    liveServiceChargeName +
+    (liveServiceChargeRate != null
+      ? ` (${Number(liveServiceChargeRate).toFixed(0)}%)`
+      : "");
 
   const renderBackdrop = useMemo(
     () => (props: any) => (
@@ -80,13 +177,16 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
       ref={ref}
       index={-1}
       snapPoints={snapPoints}
-      enablePanDownToClose={true}
+      enablePanDownToClose
       onClose={onClose}
       {...bottomSheetTheme}
       backdropComponent={renderBackdrop}
     >
-      <BottomSheetView style={{ flex: 1, backgroundColor: colors.panel }}>
-        {/* Header */}
+      <BottomSheetScrollView
+        style={{ flex: 1, backgroundColor: colors.panel }}
+        contentContainerStyle={{ paddingBottom: 24 }}
+      >
+        {/* ── Header ─────────────────────────────────────────────── */}
         <View
           style={{
             flexDirection: "row",
@@ -99,17 +199,15 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
             borderBottomColor: colors.border,
           }}
         >
-          <Text
-            style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}
-          >
-            Pricing Breakdown
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+            Order Breakdown
           </Text>
           <TouchableOpacity
             onPress={onClose}
             style={{
               padding: 6,
               borderRadius: 10,
-              backgroundColor: colors.teal + "10",
+              backgroundColor: colors.teal + "15",
               borderWidth: 1,
               borderColor: colors.teal + "30",
             }}
@@ -118,9 +216,52 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
           </TouchableOpacity>
         </View>
 
-        {/* Rows */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 2 }}>
-          {/* Paid amount */}
+        {/* ── Column headers ─────────────────────────────────────── */}
+        {hasDualPricing && (
+          <View
+            style={{
+              flexDirection: "row",
+              paddingHorizontal: 16,
+              paddingTop: 10,
+              paddingBottom: 6,
+            }}
+          >
+            <View style={{ flex: 1 }} />
+            {/* Card header */}
+            <View
+              style={{
+                width: 90,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: 4,
+              }}
+            >
+              <CreditCard size={12} color={colors.info} />
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.info }}>
+                CARD
+              </Text>
+            </View>
+            {/* Cash header */}
+            <View
+              style={{
+                width: 90,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: 4,
+              }}
+            >
+              <Banknote size={12} color={colors.success} />
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.success }}>
+                CASH
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <View style={{ paddingHorizontal: 16, paddingTop: hasDualPricing ? 0 : 10 }}>
+          {/* ── Paid badge ─────────────────────────────────────── */}
           {hasPayments && paidAmount > 0 && (
             <View
               style={{
@@ -130,134 +271,165 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 paddingVertical: 8,
                 paddingHorizontal: 12,
                 borderRadius: 8,
-                backgroundColor: colors.success + "10",
-                marginBottom: 4,
+                backgroundColor: colors.success + "15",
+                borderWidth: 1,
+                borderColor: colors.success + "40",
+                marginBottom: 8,
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.success }}>Paid</Text>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "600",
-                  color: colors.success,
-                }}
-              >
-                ${paidAmount.toFixed(2)}
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.success }}>
+                Amount Paid
+              </Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.success }}>
+                {fmt(paidAmount)}
               </Text>
             </View>
           )}
 
-          {/* Subtotal */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              paddingVertical: 9,
-            }}
-          >
-            <Text style={{ fontSize: 13, color: colors.label }}>
-              {hasPayments ? "Remaining Subtotal" : "Subtotal"}
-            </Text>
-            <Text style={{ fontSize: 13, color: colors.heading }}>
-              ${displaySubtotal.toFixed(2)}
-            </Text>
-          </View>
-
-          {/* Discount */}
-          {displayDiscount > 0 && (
+          {/* ── Subtotal ───────────────────────────────────────── */}
+          {hasDualPricing ? (
+            <Row
+              label={hasPayments ? "Remaining Subtotal" : "Subtotal"}
+              card={displaySubtotal}
+              cash={displayCashSubtotal}
+            />
+          ) : (
             <View
               style={{
                 flexDirection: "row",
                 justifyContent: "space-between",
                 alignItems: "center",
-                paddingVertical: 9,
-              }}
-            >
-              <Text style={{ fontSize: 13, color: colors.success }}>
-                Discount
-              </Text>
-              <Text style={{ fontSize: 13, color: colors.success }}>
-                −${displayDiscount.toFixed(2)}
-              </Text>
-            </View>
-          )}
-
-          {/* Service Charge */}
-          {liveServiceCharge > 0.001 && (
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                paddingVertical: 9,
+                paddingVertical: 7,
               }}
             >
               <Text style={{ fontSize: 13, color: colors.label }}>
-                {liveServiceChargeName}
-                {liveServiceChargeRate != null
-                  ? ` (${Number(liveServiceChargeRate).toFixed(2)}%)`
-                  : ""}
+                {hasPayments ? "Remaining Subtotal" : "Subtotal"}
               </Text>
               <Text style={{ fontSize: 13, color: colors.heading }}>
-                ${liveServiceCharge.toFixed(2)}
+                {fmt(displaySubtotal)}
               </Text>
             </View>
           )}
 
-          {/* Tax */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              paddingVertical: 9,
-            }}
-          >
-            <Text style={{ fontSize: 13, color: colors.label }}>
-              {hasPayments ? "Remaining Tax" : "Tax"}
-            </Text>
-            <Text style={{ fontSize: 13, color: colors.heading }}>
-              ${displayTax.toFixed(2)}
-            </Text>
-          </View>
+          {/* ── Discount ───────────────────────────────────────── */}
+          {displayDiscount > 0 && (
+            hasDualPricing ? (
+              <Row
+                label="Discount"
+                card={displayDiscount}
+                cash={displayDiscount}
+                labelColor={colors.success}
+                valueColor={colors.success}
+                negate
+              />
+            ) : (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  paddingVertical: 7,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: colors.success }}>Discount</Text>
+                <Text style={{ fontSize: 13, color: colors.success }}>
+                  −{fmt(displayDiscount)}
+                </Text>
+              </View>
+            )
+          )}
 
-          {/* Divider */}
-          <View
-            style={{
-              height: 1,
-              backgroundColor: colors.border,
-              marginVertical: 6,
-            }}
-          />
+          {/* ── Service Charge ─────────────────────────────────── */}
+          {liveServiceCharge > 0.001 && (
+            hasDualPricing ? (
+              <Row
+                label={scLabel}
+                card={liveServiceCharge}
+                cash={cashServiceCharge}
+              />
+            ) : (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  paddingVertical: 7,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: colors.label }}>{scLabel}</Text>
+                <Text style={{ fontSize: 13, color: colors.heading }}>
+                  {fmt(liveServiceCharge)}
+                </Text>
+              </View>
+            )
+          )}
 
-          {/* Total */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              paddingVertical: 6,
-            }}
-          >
-            <Text
-              style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}
-            >
-              {hasPayments ? "Balance Due" : "Total"}
-            </Text>
-            <Text
+          {/* ── Tax ────────────────────────────────────────────── */}
+          {hasDualPricing ? (
+            <Row
+              label={hasPayments ? "Remaining Tax" : "Tax"}
+              card={displayTax}
+              cash={displayCashTax}
+            />
+          ) : (
+            <View
               style={{
-                fontSize: 18,
-                fontWeight: "700",
-                color: hasPayments ? colors.warning : colors.heading,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingVertical: 7,
               }}
             >
-              ${displayTotal.toFixed(2)}
-            </Text>
-          </View>
+              <Text style={{ fontSize: 13, color: colors.label }}>
+                {hasPayments ? "Remaining Tax" : "Tax"}
+              </Text>
+              <Text style={{ fontSize: 13, color: colors.heading }}>
+                {fmt(displayTax)}
+              </Text>
+            </View>
+          )}
+
+          <Divider />
+
+          {/* ── Total ──────────────────────────────────────────── */}
+          {hasDualPricing ? (
+            <Row
+              label={hasPayments ? "Balance Due" : "Total"}
+              card={cardTotal}
+              cash={hasPayments ? cashAmountDue : cashTotal}
+              bold
+              large
+              valueColor={hasPayments ? colors.warning : colors.heading}
+            />
+          ) : (
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+                {hasPayments ? "Balance Due" : "Total"}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "700",
+                  color: hasPayments ? colors.warning : colors.heading,
+                }}
+              >
+                {fmt(cardTotal)}
+              </Text>
+            </View>
+          )}
+
+          
+          
         </View>
 
-        {/* Proceed button */}
+        {/* ── Proceed button ─────────────────────────────────────── */}
         <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
           <TouchableOpacity
             onPress={onPressProceedToPayment}
@@ -266,20 +438,18 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               alignItems: "center",
               justifyContent: "center",
               gap: 6,
-              paddingVertical: 11,
+              paddingVertical: 13,
               borderRadius: 10,
               backgroundColor: colors.teal,
             }}
           >
-            <Text
-              style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}
-            >
+            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.onSolid }}>
               Proceed to Payment
             </Text>
             <ArrowRight size={15} color={colors.onSolid} />
           </TouchableOpacity>
         </View>
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 };
