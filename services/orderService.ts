@@ -528,7 +528,7 @@ export class OrderService {
       //                            apply_service_charge_v1(NULL,...) refresh
       //                            after the FOR UPDATE lock, so payment-time
       //                            totals always reflect the latest SC.
-      "process_payment_v11",
+      "process_payment_v12",
       "process_payment_v12",
       params,
       {

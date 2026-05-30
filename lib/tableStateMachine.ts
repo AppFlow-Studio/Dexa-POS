@@ -216,6 +216,7 @@ const TRANSITIONS: Partial<
     RECEIVE_PAYMENT: "paid",
     FULL_PAYMENT: "paid",
     VOID_ORDER: "cleaning",
+    CLEAR_TABLE: "cleaning",
     REOPEN_CHECK: "check_presented",
     BEGIN_PAYING: "paying",
     BEGIN_CLOSING: "closing",

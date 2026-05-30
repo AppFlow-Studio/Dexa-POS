@@ -213,15 +213,45 @@ describe("Service Charge — outstanding proportion", () => {
 });
 
 describe("Service Charge — dual pricing", () => {
-  it("same flat $ on card and cash totals", () => {
+  it("uses the same flat SC for card and cash", () => {
     const cardCashItem = item(50);
     (cardCashItem as any).baseCashPrice = 48; // 4% cash discount
     const r = calculateOrderTotals(baseInput({ items: [cardCashItem] }));
-    // Card subtotal 50, card SC 9 (18% of 50).
-    // Cash subtotal 48 but SC stays flat $9 (matches backend math).
+    // Card subtotal 50, card SC = 18% of 50 = 9.
+    // Cash subtotal stays 48, but cash adds the same flat $9 SC.
     expect(r.service_charge).toBe(9);
     expect(r.cash_service_charge).toBe(9);
-    expect(r.cash_total_amount).toBe(57); // 48 + 9
+    expect(r.cash_total_amount).toBe(57); // 48 + shared flat $9 SC
+  });
+
+  it("taxes the shared SC for cash when the rule is taxable", () => {
+    const cardCashItem = item(50);
+    (cardCashItem as any).baseCashPrice = 48;
+    const r = calculateOrderTotals(
+      baseInput({
+        items: [cardCashItem],
+        taxRatesMap: { standard: 10, alcohol: 0, exempt: 0 },
+        serviceChargeRule: rule({ is_taxable: true }),
+      }),
+    );
+    // Cash total = cash subtotal + shared SC + tax on both: 48 + 9 + 4.8 + 0.9.
+    expect(r.cash_service_charge).toBe(9);
+    expect(r.cash_tax_amount).toBe(5.7);
+    expect(r.cash_total_amount).toBe(62.7);
+  });
+
+  it("keeps the full shared SC due after cash-priced items are paid", () => {
+    const cardCashItem = item(50);
+    (cardCashItem as any).baseCashPrice = 48;
+    cardCashItem.paidQuantity = 1;
+    const r = calculateOrderTotals(
+      baseInput({
+        items: [cardCashItem],
+        payments: [{ amount: 48, isCashPriced: true, cashSavings: 2 }],
+      }),
+    );
+    expect(r.outstanding_total).toBe(9);
+    expect(r.cash_outstanding_total).toBe(9);
   });
 });
 

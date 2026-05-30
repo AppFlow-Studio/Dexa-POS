@@ -120,6 +120,7 @@ export interface ActiveOrderTotals {
   // Service charge (folded into total / cashTotal). Snapshot rate is preferred
   // (so live rule edits don't shift open orders); falls back to live rule.
   serviceCharge: number;
+  cashServiceCharge: number;
   serviceChargeName: string;
   serviceChargeRate: number | null;
 }
@@ -258,6 +259,7 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
       serviceCharge: totals.service_charge,
+      cashServiceCharge: totals.cash_service_charge,
       serviceChargeName: totals.service_charge_name,
       serviceChargeRate:
         activeOrder.service_charge_rate ??
@@ -378,6 +380,7 @@ export function useOrderTotals(
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
       serviceCharge: totals.service_charge,
+      cashServiceCharge: totals.cash_service_charge,
       serviceChargeName: totals.service_charge_name,
       serviceChargeRate:
         order.service_charge_rate ?? serviceChargeRule?.rate_percent ?? null,

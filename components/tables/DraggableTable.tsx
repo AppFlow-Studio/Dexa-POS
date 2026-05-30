@@ -267,11 +267,16 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   )
 
   // Subscribe directly to live session so table color/status updates without needing
-  // the floor plan store sync (matches how Sidebar's TableListItem works)
+  // the floor plan store sync (matches how Sidebar's TableListItem works).
+  // Once isInitialized, the store is authoritative — don't fall back to the stale
+  // table.session prop (TableLayoutView.memo blocks it from updating on session changes).
   const sessionStoreSession = useTableSessionStore(s =>
     isTableType ? s.sessions[table.id] : undefined
   )
-  const liveSession = sessionStoreSession ?? table.session
+  const sessionStoreInitialized = useTableSessionStore(s => s.isInitialized)
+  const liveSession = sessionStoreInitialized
+    ? sessionStoreSession
+    : (sessionStoreSession ?? table.session)
 
   // --- COMPONENT LOOKUP ---
   const shapeDef =

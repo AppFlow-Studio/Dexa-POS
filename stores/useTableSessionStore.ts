@@ -269,6 +269,8 @@ interface TableSessionStoreState {
   sessions: Record<string, TableSession>;
   /** sessionId → tableId[] (for merged tables) */
   sessionTableIndex: Record<string, string[]>;
+  /** true once the store has been populated from the backend at least once */
+  isInitialized: boolean;
   // ---- Dispatch API ----
 
   dispatch: (tableId: string, action: SessionAction) => boolean;
@@ -295,7 +297,7 @@ interface TableSessionStoreState {
     device_id?: string;
     localOrderId?: string;
     serverId?: string;
-  }) => Promise<{ sessionId: string; orderId?: string }>;
+  }) => Promise<{ sessionId: string; orderId?: string | null }>;
 
   updateSessionStatus: (
     sessionId: string,
@@ -370,6 +372,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       immer((set, get) => ({
         sessions: {},
         sessionTableIndex: {},
+        isInitialized: false,
 
         // ------------------------------------------------------------------
         // dispatch — single table action
@@ -667,6 +670,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             get().batchDispatch(actions);
           }
 
+          // Mark store as initialized — DraggableTable uses this to know the
+          // session store is authoritative and should not fall back to stale
+          // table.session props that TableLayoutView.memo blocks from updating.
+          set((state) => { state.isInitialized = true; });
+
           console.log(
             `[hydrateFromBackend] Synced ${
               incomingTableIds.size
@@ -713,6 +721,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           if (actions.length > 0) {
             get().batchDispatch(actions);
           }
+          set((state) => { state.isInitialized = true; });
         },
 
         // ------------------------------------------------------------------
@@ -1741,7 +1750,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           const session = get().sessions[tableId];
           const sessionId = session?.id;
 
-          // 1. Optimistic local transition to available
+          // 1. Optimistic local transition: clear the session immediately.
+          // FINISH_CLEANING → "available" means the table is free — remove it
+          // from the store now rather than waiting for the realtime broadcast,
+          // which can be slow or missed entirely, leaving the table stuck.
           const transitioned = get().dispatch(tableId, {
             type: "FINISH_CLEANING",
           });
@@ -1751,6 +1763,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             );
             return;
           }
+          // Immediately clear the session from the store so DraggableTable
+          // reverts to green without waiting for the realtime update.
+          get().dispatch(tableId, { type: "CLEAR" });
 
           // 2. Try backend if online and session exists
           if (isOnline && supabase && sessionId) {
@@ -1851,6 +1866,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 // ---------------------------------------------------------------------------
 useTableSessionStore.persist.onFinishHydration(() => {
   const sessions = useTableSessionStore.getState().sessions;
+  if (Object.keys(sessions).length > 0) {
+    useTableSessionStore.setState((s) => { s.isInitialized = true; });
+  }
   if (Object.keys(sessions).length === 0) return;
 
   // Lazy-require to avoid circular deps at module init time
