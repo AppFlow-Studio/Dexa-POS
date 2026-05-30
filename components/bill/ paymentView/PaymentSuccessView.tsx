@@ -233,15 +233,18 @@ const PaymentSuccessView = () => {
             // (shouldn't happen, but provides safety)
             let totalPaid = completedPaymentInfo?.totalPaid ?? 0;
             let totalTips = completedPaymentInfo?.totalTips ?? 0;
-            console.log('completedPaymentInfo', completedPaymentInfo);
             if (!completedPaymentInfo) {
               // Fallback: calculate from live payments (original behavior)
-              // Calculate effective total paid (subtract refunded amounts)
+              // For cash-priced payments, p.amount is the card-equivalent stored by the
+              // backend. Subtract cashSavings to recover the actual cash amount collected.
               const payments = activeOrder?.payments || [];
-              totalPaid = payments.reduce(
-                (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
-                0
-              );
+              totalPaid = payments.reduce((sum, p) => {
+                const gross = (p.amount || 0) - (p.refundedAmount || 0);
+                const actual = p.isCashPriced && p.cashSavings
+                  ? gross - p.cashSavings
+                  : gross;
+                return sum + actual;
+              }, 0);
               totalTips = payments.reduce((sum, p) => {
                 const tip = (p as any)?.tipAmount || p?.tip_amount || 0;
                 return sum + tip;
@@ -250,13 +253,6 @@ const PaymentSuccessView = () => {
                 "[PaymentSuccessView] completedPaymentInfo not set, using fallback calculation"
               );
             }
-
-            console.log(
-              "[PaymentSuccessView] totalPaid:",
-              totalPaid,
-              "from completedPaymentInfo:",
-              !!completedPaymentInfo
-            );
 
             const grandTotal = totalPaid + totalTips;
 

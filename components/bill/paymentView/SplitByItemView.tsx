@@ -179,6 +179,12 @@ function calculateSplitCashTax(
 const SplitByItemView = () => {
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const ordersById = useOrderStore((state) => state.ordersById);
+  const activeOrderOutstandingTotal = useOrderStore(
+    (state) => state.activeOrderOutstandingTotal,
+  );
+  const activeOrderOutstandingCash = useOrderStore(
+    (state) => state.activeOrderOutstandingCash,
+  );
   const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
   const splits = usePaymentStore((s) => s.splits);
@@ -327,33 +333,85 @@ const SplitByItemView = () => {
 
   // Calculate split totals with tax (CARD pricing)
   // Uses hybrid approach: DB values for full quantities, proportional for partial
-  const activeSplitTotals = activeSplit
+  const allItemsCardTotals = calculateSplitTax(
+    masterItems,
+    taxRatesMap,
+    masterItems,
+  );
+  const allItemsCashTotals = calculateSplitCashTax(
+    masterItems,
+    taxRatesMap,
+    masterItems,
+  );
+  const cardRemainder = Math.max(
+    0,
+    activeOrderOutstandingTotal - allItemsCardTotals.total,
+  );
+  const cashRemainder = Math.max(
+    0,
+    activeOrderOutstandingCash - allItemsCashTotals.total,
+  );
+  const activeSplitItemTotals = activeSplit
     ? calculateSplitTax(
         activeSplit.items,
         taxRatesMap,
         masterItems, // Pass master items to look up original quantities/discounts
       )
     : { subtotal: 0, tax: 0, total: 0 };
+  const activeSplitTotals = {
+    ...activeSplitItemTotals,
+    total: round2(
+      activeSplitItemTotals.total +
+        cardRemainder *
+          (allItemsCardTotals.total > 0
+            ? activeSplitItemTotals.total / allItemsCardTotals.total
+            : 0),
+    ),
+  };
 
   // Calculate split totals with tax (CASH pricing)
   // Uses hybrid approach: DB values for full quantities, proportional for partial
-  const activeSplitCashTotals = activeSplit
+  const activeSplitCashItemTotals = activeSplit
     ? calculateSplitCashTax(
         activeSplit.items,
         taxRatesMap,
         masterItems, // Pass master items to look up original quantities/discounts
       )
     : { subtotal: 0, tax: 0, total: 0 };
+  const activeSplitCashTotals = {
+    ...activeSplitCashItemTotals,
+    total: round2(
+      activeSplitCashItemTotals.total +
+        cashRemainder *
+          (allItemsCashTotals.total > 0
+            ? activeSplitCashItemTotals.total / allItemsCashTotals.total
+            : 0),
+    ),
+  };
 
   // Per-split totals for guest cards in left panel
   const splitTotalsMap = useMemo(() => {
     const map: Record<string, { total: number }> = {};
     for (const split of splits) {
       const { total } = calculateSplitTax(split.items, taxRatesMap, masterItems);
-      map[split.id] = { total };
+      map[split.id] = {
+        total: round2(
+          total +
+            cardRemainder *
+              (allItemsCardTotals.total > 0
+                ? total / allItemsCardTotals.total
+                : 0),
+        ),
+      };
     }
     return map;
-  }, [splits, taxRatesMap, masterItems]);
+  }, [
+    splits,
+    taxRatesMap,
+    masterItems,
+    cardRemainder,
+    allItemsCardTotals.total,
+  ]);
 
   // Calculate savings when paying cash vs card
   const cashSavings = Math.max(

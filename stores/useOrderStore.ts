@@ -2718,7 +2718,7 @@ const syncPaymentToBackend = async (
       //                            apply_service_charge_v1(NULL,...) refresh
       //                            after the FOR UPDATE lock, so payment-time
       //                            totals always reflect the latest SC.
-      "process_payment_v11",
+      "process_payment_v12",
       "process_payment_v12",
       {
         p_order_id: order.db_order_id,
@@ -2752,13 +2752,14 @@ const syncPaymentToBackend = async (
       );
 
       const errMessage = (error as any)?.message?.toLowerCase?.() || "";
-      const isNoUnpaidItemsError =
+      const isAlreadyPaidError =
         (error as any)?.code === "P0001" &&
-        errMessage.includes("no unpaid items remaining");
+        (errMessage.includes("no unpaid items remaining") ||
+          errMessage.includes("order is already fully paid"));
 
-      if (isNoUnpaidItemsError) {
+      if (isAlreadyPaidError) {
         console.warn(
-          "[syncPaymentToBackend] No unpaid items remaining; treating as idempotent and reconciling state",
+          "[syncPaymentToBackend] Order already paid; treating as idempotent and reconciling state",
         );
 
         if (rollbackState) {
@@ -15549,6 +15550,15 @@ export const useOrderStore = create<OrderState>()(
                       amountTendered: payment.amount_tendered,
                       changeGiven: payment.change_given || 0,
                       isCashPriced: payment.is_cash_priced || false,
+                      cashSavings: deriveCashSavings(
+                        {
+                          is_cash_priced: payment.is_cash_priced,
+                          original_amount: payment.original_amount,
+                          amount: payment.amount || 0,
+                        },
+                        orderData.card_total ?? orderData.total_amount,
+                        orderData.cash_total,
+                      ),
 
                       // Portions
                       subtotal_portion: payment.subtotal_portion,

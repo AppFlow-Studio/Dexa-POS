@@ -395,6 +395,7 @@ const PreviousOrdersScreen = () => {
             total_amount: po.total,
             amount_paid: po.amount_paid,
             amount_due: po.amount_due,
+            cash_amount_due: po.cash_amount_due,
             opened_at: po.timestamp || po.opened_at,
             created_at: po.timestamp,
             closed_at: po.closed_at,

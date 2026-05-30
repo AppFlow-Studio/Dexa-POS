@@ -1,3 +1,4 @@
+import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import {
     derivePaymentRefundState,
     getCashPricedOrderTotal,
@@ -138,7 +139,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const displayTotal =
     getCashPricedOrderTotal(order) ?? order.total_amount ?? 0;
 
-  const status = order.paid_status || "Unpaid";
+  const status = deriveEffectivePaidStatus(order) ?? order.paid_status ?? "Unpaid";
   const statusConfig = statusColorMap[status] ?? {
     color: colors.label,
     bgOpacity: "15",
@@ -152,7 +153,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const TypeIcon = typeConfig.icon;
   const displayType = displayTypeLabels[orderType] || orderType;
 
-  const needsAttention = order.paid_status === "Pending";
+  const needsAttention = status === "Pending";
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -443,7 +444,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               elevation: 20,
             }}
           >
-            {order.paid_status === "Paid" &&
+            {status === "Paid" &&
               order.check_status !== "Closed" &&
               onCloseCheck && (
                 <MenuRow
