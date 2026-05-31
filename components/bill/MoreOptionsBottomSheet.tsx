@@ -87,7 +87,10 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   },
   ref
 ) {
-  const snapPoints = useMemo(() => ['100%'], [])
+  const snapPoints = useMemo(
+    () => (isTableOrdering ? ['100%'] : ['90%']),
+    [isTableOrdering]
+  )
   const [orderNotes, setOrderNotes] = useState('')
   const [showManagerPin, setShowManagerPin] = useState(false)
   const [managerPin, setManagerPin] = useState('')
