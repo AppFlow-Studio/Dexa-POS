@@ -787,6 +787,11 @@ export interface OrderProfilePayment {
   localId?: string // Local ID for offline/sync tracking
 
   // Payment basics
+  /** Captured payment amount in the pricing mode the payment was taken in.
+   *  Cash terms when isCashPriced=true (matches order_payments.amount on
+   *  the server post-process_payment_v14); card terms otherwise. Do NOT
+   *  subtract cashSavings to "recover the cash amount" — this value is
+   *  already the cash amount when isCashPriced. */
   amount: number
   method: PaymentType
   tip_amount: number
@@ -800,7 +805,10 @@ export interface OrderProfilePayment {
   amountTendered?: number
   changeGiven?: number
   isCashPriced?: boolean
-  cashSavings?: number // original_amount - amount (discount received)
+  /** Discount the customer received by paying cash (= original_amount −
+   *  amount). Informational only — used for receipt "you saved $X" lines.
+   *  amount is already cash-side; do not subtract cashSavings from it. */
+  cashSavings?: number
 
   // Portions (for detailed breakdown)
   subtotal_portion?: number

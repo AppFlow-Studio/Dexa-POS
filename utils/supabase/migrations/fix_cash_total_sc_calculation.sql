@@ -2,6 +2,15 @@
 -- Also: when service_charge_rules.is_taxable = true, add SC tax to cash_tax_amount.
 -- Does not touch any existing data — only changes the function definition.
 -- Safe to deploy with CREATE OR REPLACE (same signature, drop-in replacement).
+--
+-- 2026-05-30 follow-up (S6-0010 Mocha repro): the previous body added
+-- v_custom_refund_balance to items-derived totals on both sides equally —
+-- but when v_custom_refund_balance was 0 (because items-derived
+-- v_unpaid_card_total already exceeded payment_based_due), the function
+-- left items-only totals on cash_amount_due, stripping the SC residual.
+-- Replaced the clamp with a direct payment-based-due read for each
+-- pricing mode (each side derives from its own total − paid, preserving
+-- SC residual implicitly through the order totals).
 
 CREATE OR REPLACE FUNCTION calculate_order_totals_fast(p_order_id uuid)
 RETURNS jsonb
@@ -26,6 +35,8 @@ v_payment_voided numeric;
 v_card_total_calc numeric;
 v_cash_total_calc numeric;
 v_payment_based_due numeric;
+v_cash_based_due numeric;
+v_effective_cash_paid numeric;
 v_custom_refund_balance numeric;
 v_order record;
 v_cash_service_charge numeric;
@@ -115,20 +126,44 @@ FROM public.order_payments
 WHERE order_id = p_order_id
   AND (status = 'void' OR is_voided = true);
 
+-- Cash-side equivalent of v_effective_paid. Cash payments contribute their
+-- amount directly (already in cash terms post-process_payment_v14); card
+-- payments scale to cash-equivalent via the order's cash:card ratio.
+SELECT COALESCE(SUM(
+    CASE WHEN is_cash_priced THEN
+        amount - COALESCE(refunded_amount, 0)
+    ELSE
+        CASE WHEN COALESCE(v_order.card_total, 0) > 0
+             THEN ROUND((amount - COALESCE(refunded_amount, 0)) * v_order.cash_total / v_order.card_total, 2)
+             ELSE amount - COALESCE(refunded_amount, 0)
+        END
+    END
+), 0)
+INTO v_effective_cash_paid
+FROM public.order_payments
+WHERE order_id = p_order_id
+    AND status IN ('captured', 'partially_refunded', 'refunded')
+    AND is_voided = false;
+
 v_card_total_calc := v_card_subtotal + v_card_tax + v_service_charge;
 v_cash_total_calc := v_cash_subtotal + v_cash_tax + v_cash_service_charge;
 
 v_payment_based_due := GREATEST(v_card_total_calc - v_effective_paid, 0);
+v_cash_based_due    := GREATEST(v_cash_total_calc - v_effective_cash_paid, 0);
 v_custom_refund_balance := GREATEST(v_payment_based_due - v_unpaid_card_total, 0);
 
 IF v_order.payment_status = 'paid' AND v_payment_refunded = 0 AND v_payment_voided = 0 THEN
     v_unpaid_card_total := 0;
     v_unpaid_cash_total := 0;
 ELSE
-    v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
-    -- The residual is the order-level SC (and its tax), which is a shared
-    -- flat dollar amount for card and cash. Do not dual-price this remainder.
-    v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
+    -- 2026-05-30: use payment-based-due per pricing mode so each side
+    -- preserves its own SC residual. The earlier formulation added
+    -- v_custom_refund_balance to items-derived totals; when that balance
+    -- was 0 (items-derived already ≥ payment_based_due, common when SC
+    -- slice was attributed to a prior payment), the cash side silently
+    -- retained items-only totals and dropped the SC residual.
+    v_unpaid_card_total := v_payment_based_due;
+    v_unpaid_cash_total := v_cash_based_due;
 END IF;
 
 UPDATE public.orders SET

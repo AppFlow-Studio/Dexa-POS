@@ -85,7 +85,9 @@ DECLARE
     v_pre_unpaid_card_total numeric := 0;
     v_pre_unpaid_cash_total numeric := 0;
     v_effective_paid numeric := 0;
+    v_effective_cash_paid numeric := 0;
     v_payment_based_due numeric := 0;
+    v_cash_based_due numeric := 0;
     v_custom_refund_balance numeric := 0;
     v_total_cash_paid numeric := 0;
     v_total_card_paid numeric := 0;
@@ -288,9 +290,28 @@ BEGIN
         INTO v_items_subtotal, v_items_tax, v_items_cash_subtotal, v_covered_items
         FROM payment_calc pc;
 
-        v_payment_total := v_items_subtotal + v_items_tax;
+        -- 2026-05-30 (S6-0010 follow-up): trust the client-provided p_amount
+        -- so the recorded payment matches the cash drawer total exactly.
+        -- Client (PayForItemsView.tsx ~line 410, usePaymentStore.ts ~line 838)
+        -- distributes SC + tax-on-SC via items-ratio, preserving cash ≤ card
+        -- per-item; v14's previous payment-fraction formula produced a slightly
+        -- different value (Mocha cash: $7.75 client vs $7.82 server). Clamp
+        -- to remaining outstanding for defence, and floor at items+tax so a
+        -- buggy/missing p_amount can't undercharge.
+        IF p_amount IS NOT NULL AND p_amount > 0 THEN
+            v_payment_total := LEAST(
+                p_amount,
+                CASE WHEN v_use_cash_pricing
+                     THEN v_pre_unpaid_cash_total
+                     ELSE v_pre_unpaid_card_total
+                END
+            );
+            v_payment_total := GREATEST(v_payment_total, v_items_subtotal + v_items_tax);
+        ELSE
+            v_payment_total := v_items_subtotal + v_items_tax;
+        END IF;
         v_subtotal_portion := v_items_subtotal;
-        v_tax_portion := v_items_tax;
+        v_tax_portion := v_payment_total - v_subtotal_portion;
         v_cash_equivalent_subtotal_portion := v_items_cash_subtotal;
 
         WITH payment_calc AS (
@@ -548,10 +569,24 @@ BEGIN
     -- here would double-count. Item-payment path is the only one that
     -- needs this correction.
     IF v_is_item_payment AND v_service_charge_share > 0 THEN
-        v_payment_total := v_payment_total + v_service_charge_share;
-        -- tax_portion absorbs SC (matches non-item branch convention where
-        -- v_tax_portion = v_payment_total − v_subtotal_portion lumps SC in).
-        v_tax_portion := v_tax_portion + v_service_charge_share;
+        IF p_amount IS NOT NULL AND p_amount > 0 THEN
+            -- 2026-05-30 trust-p_amount path: v_payment_total already equals
+            -- the client's items+tax+SC slice. Don't bake in again. Re-derive
+            -- v_service_charge_share from the delta so op.service_charge
+            -- records the client's items-ratio slice (rather than v14's
+            -- payment-fraction slice). LEAST clamp against v_remaining_sc as
+            -- drift insurance against an over-allocating client.
+            v_service_charge_share := LEAST(
+                v_remaining_sc,
+                GREATEST(v_payment_total - (v_items_subtotal + v_items_tax), 0)
+            );
+        ELSE
+            -- Legacy / null-p_amount path: server-side bake-in (v14 original).
+            v_payment_total := v_payment_total + v_service_charge_share;
+            -- tax_portion absorbs SC (matches non-item branch convention where
+            -- v_tax_portion = v_payment_total − v_subtotal_portion lumps SC in).
+            v_tax_portion := v_tax_portion + v_service_charge_share;
+        END IF;
     END IF;
 
     -- Compute change_given AFTER the SC bake-in so cash payments reflect
@@ -667,17 +702,38 @@ BEGIN
     INTO v_effective_paid FROM public.order_payments
     WHERE order_id = p_order_id AND status IN ('captured', 'partially_refunded', 'refunded') AND is_voided = false;
 
-    v_payment_based_due := GREATEST(v_order.card_total - v_effective_paid, 0);
-    v_custom_refund_balance := GREATEST(v_payment_based_due - v_unpaid_card_total, 0);
-    v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
-    v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
+    -- 2026-05-30 (S6-0010 Mocha repro): cash-side equivalent of effective_paid.
+    -- Cash payments contribute their amount directly (cash terms post-v14
+    -- bake-in); card payments scale to cash-equivalent via the order's
+    -- cash:card ratio. Used to derive cash_amount_due in its own pricing
+    -- mode so the SC residual isn't stripped by a card-side ratio clamp.
+    SELECT COALESCE(SUM(
+        CASE WHEN is_cash_priced THEN
+            amount - COALESCE(refunded_amount, 0)
+        ELSE
+            CASE WHEN COALESCE(v_order.card_total, 0) > 0
+                 THEN ROUND((amount - COALESCE(refunded_amount, 0)) * v_order.cash_total / v_order.card_total, 2)
+                 ELSE amount - COALESCE(refunded_amount, 0)
+            END
+        END
+    ), 0)
+    INTO v_effective_cash_paid FROM public.order_payments
+    WHERE order_id = p_order_id AND status IN ('captured', 'partially_refunded', 'refunded') AND is_voided = false;
 
-    IF v_payment_based_due < v_unpaid_card_total THEN
-        IF v_unpaid_card_total > 0 THEN
-            v_unpaid_cash_total := ROUND(v_unpaid_cash_total * v_payment_based_due / v_unpaid_card_total, 2);
-        END IF;
-        v_unpaid_card_total := v_payment_based_due;
-    END IF;
+    v_payment_based_due := GREATEST(v_order.card_total - v_effective_paid, 0);
+    v_cash_based_due    := GREATEST(v_order.cash_total - v_effective_cash_paid, 0);
+    v_custom_refund_balance := GREATEST(v_payment_based_due - v_unpaid_card_total, 0);
+
+    -- Replaces the old card-ratio clamp. Each pricing mode now derives its
+    -- outstanding directly from `<mode>_total − <mode>_effective_paid`, which
+    -- preserves the SC residual implicitly on both sides (the order totals
+    -- already include SC and per-payment SC slices are reflected via
+    -- op.amount / op.original_amount). The S6-0010 cash_amount_due bug
+    -- ($4.99 instead of $7.44) was the card-ratio scaling stripping the
+    -- residual from the cash side when items-derived totals exceeded
+    -- payment_based_due.
+    v_unpaid_card_total := v_payment_based_due;
+    v_unpaid_cash_total := v_cash_based_due;
 
     -- ====== SC RESIDUAL GUARD — fully-paid determination (verbatim from v13) ======
     IF v_is_item_payment THEN

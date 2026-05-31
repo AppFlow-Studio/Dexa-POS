@@ -824,23 +824,22 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       let distributedCardRemainder = 0;
       let distributedCashRemainder = 0;
 
+      // Single items-ratio (card items+tax share) applied to BOTH the card
+      // and the cash SC residual. Keeps cash ≤ card per-split when the
+      // order has a cash discount; the previous design used separate
+      // card-/cash-share ratios, which inverted that inequality at the
+      // per-split level (Bug 2 from 2026-05-30 trace).
       updatedSplits = updatedSplits.map((split, index) => {
         if (!itemSplitIndexes.includes(index)) return split;
         const isLast = index === itemSplitIndexes[itemSplitIndexes.length - 1];
+        const splitRatio =
+          itemsOnlyCardTotal > 0 ? split.amount / itemsOnlyCardTotal : 0;
         const cardShare = isLast
           ? round2(cardRemainder - distributedCardRemainder)
-          : round2(
-              cardRemainder *
-                (itemsOnlyCardTotal > 0 ? split.amount / itemsOnlyCardTotal : 0),
-            );
+          : round2(cardRemainder * splitRatio);
         const cashShare = isLast
           ? round2(cashRemainder - distributedCashRemainder)
-          : round2(
-              cashRemainder *
-                (itemsOnlyCashTotal > 0
-                  ? (split.cashAmount ?? 0) / itemsOnlyCashTotal
-                  : 0),
-            );
+          : round2(cashRemainder * splitRatio);
         distributedCardRemainder = round2(distributedCardRemainder + cardShare);
         distributedCashRemainder = round2(distributedCashRemainder + cashShare);
         return {
@@ -1065,10 +1064,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // Emit order:paid event ONLY if order is actually fully paid
         // Custom amount splits may not cover the full bill
         // ================================================================
+        // Guard: a stale `amount_due === 0` left over from a prior
+        // payment-then-refund cycle is not enough on its own. We also require
+        // local payment evidence (sum minus refunds > 0) so an empty/refunded
+        // payments[] can never be misread as "paid".
         const isOrderFullyPaid =
           finalOrder?.paid_status === "Paid" ||
           (finalOrder?.amount_due !== undefined &&
-            finalOrder.amount_due <= 0.01);
+            finalOrder.amount_due <= 0.01 &&
+            paymentsTotal > 0);
 
         if (isOrderFullyPaid) {
           const eventPayload: OrderPaidEvent = {
@@ -1203,6 +1207,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Subscribers handle: archiving takeout orders, updating table status,
       // analytics, inventory deduction, etc.
       // Kitchen send is fire-and-forget inline (parallelized with payment RPC).
+      // Standard flow pays the entire outstanding amount, so emission is
+      // unconditional here. The split-payment branch above has its own
+      // fully-paid guard for partial splits. The eventSubscribers.ts:Table
+      // handler also guards against re-dispatching FULL_PAYMENT when the
+      // session is already paid.
       const orderPaymentsTotal = (finalOrder?.payments || []).reduce(
         (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
         0,

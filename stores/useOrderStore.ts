@@ -2712,14 +2712,22 @@ const syncPaymentToBackend = async (
     const { data, error } = await rpcWithIdempotency<any>(
       supabase,
       "process_payment",
-      // Fallback (flag off): v11 — adds acquirer + batch_number on top of
-      //                            v10's platform-fee tracking.
-      // Primary  (flag on): v12 — forks v11 with a defensive
-      //                            apply_service_charge_v1(NULL,...) refresh
-      //                            after the FOR UPDATE lock, so payment-time
-      //                            totals always reflect the latest SC.
+      // Fallback (flag off): v12 — defensive apply_service_charge_v1(NULL,...)
+      //                            refresh + SC residual guard for item
+      //                            payments.
+      // Primary  (flag on): v14 — bakes v_service_charge_share into
+      //                            v_payment_total for item payments so
+      //                            change_given reflects items+tax+SC at the
+      //                            cash drawer; populates per-payment
+      //                            order_payments.service_charge for
+      //                            apply_refund_to_payment_v4 reversal; snaps
+      //                            residual SC onto the closing item payment.
+      //                            Assumes the cashier-tendered amount is
+      //                            SC-inclusive (split-by-item and
+      //                            pay-for-items client paths already scale
+      //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      "process_payment_v12",
+      "process_payment_v14",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -3672,7 +3680,10 @@ interface OrderState {
   // Sync order from database (manual refresh)
   syncOrderFromDatabase: (orderId: string) => Promise<string | null>;
   // Sync order from database complete ( manual refresh )
-  syncOrderFromBackendComplete: (orderId: string) => Promise<void>;
+  syncOrderFromBackendComplete: (
+    orderId: string,
+    options?: { force?: boolean },
+  ) => Promise<void>;
 
   // Initialize orders - fetch all active orders on login (replaces prefetchOrders)
   initializeOrders: (
@@ -3874,6 +3885,15 @@ function mergePayments(
     }
     // Broadcast is same or more advanced — but preserve terminal details from local
     if (lp) {
+      // Refunds don't always advance `status` (apply_refund_to_payment can
+      // leave status='captured' while bumping refunded_amount + is_returned).
+      // A stale broadcast snapshot taken before the refund commit therefore
+      // races our post-refund force-sync and would otherwise reset the
+      // refunded chip back to zero. Refund amounts are monotonic, so take
+      // the max and carry forward refund metadata from whichever side has it.
+      const lpRefunded = lp.refundedAmount ?? 0;
+      const bpRefunded = bp.refundedAmount ?? 0;
+      const localHasMoreRefund = lpRefunded > bpRefunded;
       return {
         ...bp,
         last4: bp.last4 ?? lp.last4,
@@ -3883,6 +3903,23 @@ function mergePayments(
         transactionDetails: mergeTransactionDetails(
           lp.transactionDetails,
           bp.transactionDetails,
+        ),
+        refundedAmount: Math.max(lpRefunded, bpRefunded),
+        refundedAt: localHasMoreRefund
+          ? (lp.refundedAt ?? bp.refundedAt)
+          : (bp.refundedAt ?? lp.refundedAt),
+        isReturned: localHasMoreRefund
+          ? (lp.isReturned ?? bp.isReturned)
+          : (bp.isReturned ?? lp.isReturned),
+        returnedAt: localHasMoreRefund
+          ? (lp.returnedAt ?? bp.returnedAt)
+          : (bp.returnedAt ?? lp.returnedAt),
+        returnedBy: localHasMoreRefund
+          ? (lp.returnedBy ?? bp.returnedBy)
+          : (bp.returnedBy ?? lp.returnedBy),
+        returnAmount: Math.max(
+          lp.returnAmount ?? 0,
+          bp.returnAmount ?? 0,
         ),
       };
     }
@@ -5098,9 +5135,29 @@ export const useOrderStore = create<OrderState>()(
                       const isRefundTransition =
                         broadcastPaidStatus === "Refunded" ||
                         existingOrder.paid_status === "Refunded";
+                      // Partial-refund staleness: when amount still owes after
+                      // a refund, backend reports paid_status='Partial', not
+                      // 'Refunded', so isRefundTransition doesn't catch it. If
+                      // local has refund evidence (refundedAmount > 0) that
+                      // the broadcast lacks, this broadcast is a pre-refund
+                      // snapshot and must not advance the order header.
+                      const localRefundTotal = (
+                        existingOrder.payments ?? []
+                      ).reduce((s, p) => s + (p.refundedAmount ?? 0), 0);
+                      const broadcastRefundTotal = (
+                        backendOrder.order_payments ?? []
+                      ).reduce(
+                        (s: number, p: any) =>
+                          s + (Number(p?.refunded_amount) || 0),
+                        0,
+                      );
+                      const isStalePreRefundBroadcast =
+                        localRefundTotal > 0 &&
+                        broadcastRefundTotal < localRefundTotal - 0.001;
                       const isPaymentLocallyAhead =
-                        !isRefundTransition &&
-                        localPaidRank > broadcastPaidRank;
+                        isStalePreRefundBroadcast ||
+                        (!isRefundTransition &&
+                          localPaidRank > broadcastPaidRank);
 
                       // Build updated order
                       const updatedOrder: OrderProfile = {
@@ -15347,6 +15404,7 @@ export const useOrderStore = create<OrderState>()(
            */
           syncOrderFromBackendComplete: async (
             orderId: string,
+            options?: { force?: boolean },
           ): Promise<void> => {
             // O(1) order resolution via direct key or dbOrderIdIndex
             const storeKey = get().dbOrderIdIndex[orderId] ?? orderId;
@@ -15368,6 +15426,9 @@ export const useOrderStore = create<OrderState>()(
             }
 
             const detailSyncKey = order.db_order_id;
+            if (options?.force) {
+              lastOrderDetailSyncAt.delete(detailSyncKey);
+            }
             const lastSyncedAt = lastOrderDetailSyncAt.get(detailSyncKey);
             if (
               lastSyncedAt &&

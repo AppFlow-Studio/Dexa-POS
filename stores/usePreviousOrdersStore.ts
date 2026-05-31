@@ -8,6 +8,7 @@ import {
   derivePaidStatus,
   derivePaymentRefundState,
 } from "@/lib/paymentStatus";
+import { applyRefundRecovery } from "@/lib/refundRecovery";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
@@ -998,6 +999,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           return result;
         }
 
+        // Sync local order state + reopen table session if applicable.
+        // Refund just rewrote payments[].refunded_amount + amount_due in DB;
+        // without this, useOrderStore stays at the pre-refund snapshot and
+        // the table stays at status='paid' from the original order:paid emit.
+        await applyRefundRecovery({
+          orderId,
+          tableId: order.service_location_id,
+        });
+
         // Audit log for fraud-flagged refunds
         if (metadata?.fraudFlags?.includes("same_cashier_refund")) {
           _supabaseClient
@@ -1171,6 +1181,11 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         if (result.kind === "verifying") {
           return result;
         }
+
+        await applyRefundRecovery({
+          orderId,
+          tableId: order.service_location_id,
+        });
 
         // Audit log for fraud-flagged refunds
         if (metadata?.fraudFlags?.includes("same_cashier_refund")) {
