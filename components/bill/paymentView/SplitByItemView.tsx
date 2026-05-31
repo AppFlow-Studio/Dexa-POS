@@ -57,20 +57,6 @@ function getItemDiscountedValues(
     ? (originalItem?.discount_cash_amount ?? 0)
     : (originalItem?.discount_amount ?? 0);
 
-  // If split quantity equals original quantity and we have a pre-calculated DB subtotal with discount, use it
-  // Only use cashSubtotal/subtotal if they are valid numbers (not undefined/NaN)
-  if (splitQuantity === originalQuantity && originalDiscount > 0) {
-    const preCalculatedSubtotal = isCash
-      ? splitItem.cashSubtotal
-      : splitItem.subtotal;
-    if (preCalculatedSubtotal !== undefined && !isNaN(preCalculatedSubtotal)) {
-      return {
-        subtotal: preCalculatedSubtotal,
-        discountAmount: originalDiscount,
-      };
-    }
-  }
-
   // Calculate subtotal dynamically
   const grossSubtotal = unitPrice * splitQuantity;
 
@@ -107,7 +93,7 @@ function calculateSplitTax(
 
   for (const item of items) {
     const originalItem = originalItemsMap.get(item.id);
-    const { subtotal: itemSubtotal, discountAmount } = getItemDiscountedValues(
+    const { subtotal: itemSubtotal } = getItemDiscountedValues(
       item,
       originalItem,
       false,
