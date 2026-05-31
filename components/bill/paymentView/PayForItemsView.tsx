@@ -291,9 +291,9 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(
               -${refundedAmount.toFixed(2)}
             </Text>
           )}
-          {payment.tip_amount && payment.tip_amount > 0 && !showRefundState && (
+          {(payment.tip_amount ?? 0) > 0 && !showRefundState && (
             <Text style={{ color: colors.success, fontSize: 10 }}>
-              +${payment.tip_amount.toFixed(2)}
+              +${(payment.tip_amount ?? 0).toFixed(2)}
             </Text>
           )}
         </View>

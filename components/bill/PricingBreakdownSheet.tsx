@@ -137,10 +137,6 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
 
   const hasPayments =
     hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
-  const paidAmount =
-    activeOrder?.payments
-      ?.filter((p) => !p.isVoided)
-      .reduce((acc, p) => acc + p.amount, 0) ?? 0;
   // p.amount is stored by the server in the pricing mode the payment was
   // taken in (cash terms when isCashPriced=true, card terms otherwise) per
   // process_payment_v14; original_amount holds the card-equivalent for
@@ -148,6 +144,19 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   // assumption that p.amount was always card-equivalent — that became a
   // double-deduction once v14 began writing cash-terms p.amount directly
   // (S6-0010 Mocha repro on 2026-05-30: $7.82 displayed as $4.61).
+  //
+  // Refund handling: refunded_amount is stored in the payment's own currency,
+  // so for a fully-refunded cash payment we must subtract the full amount (it
+  // already matches because we're in cash terms). For partial refunds, the
+  // subtraction is direct. A separate void-with-is_returned cancellation also
+  // counts as a refund per MEMORY project_voided_payment_refunded_amount.
+  const paidAmount =
+    activeOrder?.payments
+      ?.filter((p) => !p.isVoided || p.isReturned === true)
+      .reduce((acc, p) => {
+        const refunded = (p as any).refundedAmount ?? 0;
+        return acc + Math.max(0, p.amount - refunded);
+      }, 0) ?? 0;
 
   const displayDiscount = hasPayments ? 0 : activeOrderDiscount;
   const displaySubtotal = hasPayments

@@ -342,6 +342,8 @@ export interface PaymentForCalculation {
   isVoided?: boolean;
   isCashPriced?: boolean;
   cashSavings?: number;
+  /** Amount refunded against this payment, in the payment's own currency. */
+  refundedAmount?: number;
 }
 
 /**

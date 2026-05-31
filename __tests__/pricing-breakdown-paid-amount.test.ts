@@ -27,18 +27,30 @@ type PaymentLike = {
   isVoided?: boolean;
   isCashPriced?: boolean;
   cashSavings?: number;
+  refundedAmount?: number;
+  isReturned?: boolean;
 };
 
 /**
- * Mirror of `PricingBreakdownSheet.tsx:140-143` (post-fix shape).
+ * Mirror of `PricingBreakdownSheet.tsx:paidAmount` (post-refund-fix shape).
  *
  *   const paidAmount = payments
- *     ?.filter((p) => !p.isVoided)
- *     .reduce((acc, p) => acc + p.amount, 0) ?? 0;
+ *     ?.filter((p) => !p.isVoided || p.isReturned === true)
+ *     .reduce((acc, p) => acc + Math.max(0, p.amount - (p.refundedAmount ?? 0)), 0) ?? 0;
+ *
+ * Refund subtraction is in the payment's own currency (matches refunded_amount
+ * column). A refund-via-void (status='void' AND is_returned=true) participates
+ * in the reduce so its refunded_amount cancels the original amount → $0 net.
+ * A true cancellation (void without is_returned) is filtered out entirely.
  */
 function paidAmount(payments: PaymentLike[] | undefined): number {
   return round2(
-    payments?.filter((p) => !p.isVoided).reduce((acc, p) => acc + p.amount, 0) ?? 0,
+    payments
+      ?.filter((p) => !p.isVoided || p.isReturned === true)
+      .reduce(
+        (acc, p) => acc + Math.max(0, p.amount - (p.refundedAmount ?? 0)),
+        0,
+      ) ?? 0,
   );
 }
 
@@ -84,5 +96,55 @@ describe("PricingBreakdownSheet — Amount Paid reduction", () => {
   test("empty / undefined payments collapse to 0", () => {
     expect(paidAmount(undefined)).toBe(0);
     expect(paidAmount([])).toBe(0);
+  });
+
+  test("refunded cash payment + fresh repay = only fresh amount paid", () => {
+    // 2026-05-30 repro: cash $7.75 refunded, then $7.75 paid again.
+    // Order Breakdown was reading $15.50 ($7.75 + $7.75) and treating the
+    // bill as overpaid. Correct: $7.75 (only the new payment net of refund).
+    expect(
+      paidAmount([
+        {
+          amount: 7.75,
+          isCashPriced: true,
+          cashSavings: 3.18,
+          refundedAmount: 7.75,
+        },
+        {
+          amount: 7.75,
+          isCashPriced: true,
+          cashSavings: 3.18,
+          refundedAmount: 0,
+        },
+      ]),
+    ).toBeCloseTo(7.75, 2);
+  });
+
+  test("partial refund subtracts the refunded portion only", () => {
+    expect(
+      paidAmount([{ amount: 10, refundedAmount: 4 }]),
+    ).toBeCloseTo(6, 2);
+  });
+
+  test("refund-via-void (status='void', is_returned=true) contributes 0, not amount", () => {
+    // Refund routes that take the void path leave is_voided=true AND set
+    // refunded_amount = amount. Filter passes the row through (because
+    // isReturned=true), then the per-row math zeros it out.
+    expect(
+      paidAmount([
+        { amount: 7.75, isVoided: true, isReturned: true, refundedAmount: 7.75 },
+        { amount: 5, refundedAmount: 0 },
+      ]),
+    ).toBeCloseTo(5, 2);
+  });
+
+  test("true void cancellation (no is_returned) still filtered out entirely", () => {
+    // Old behavior preserved: voids that are NOT refunds drop out before reduce.
+    expect(
+      paidAmount([
+        { amount: 7.75, isVoided: true, isReturned: false },
+        { amount: 5 },
+      ]),
+    ).toBeCloseTo(5, 2);
   });
 });
