@@ -87,10 +87,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   },
   ref
 ) {
-  const snapPoints = useMemo(
-    () => (isTableOrdering ? ['80%', '100%'] : ['100%']),
-    [isTableOrdering]
-  )
+  const snapPoints = useMemo(() => ['100%'], [])
   const [orderNotes, setOrderNotes] = useState('')
   const [showManagerPin, setShowManagerPin] = useState(false)
   const [managerPin, setManagerPin] = useState('')
@@ -523,7 +520,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         bottomInset={0}
         enableDynamicSizing={false}
         enablePanDownToClose={true}
-        enableContentPanningGesture={!isTableOrdering}
         onChange={handleSheetChange}
         {...bottomSheetTheme}
         style={{ zIndex: 10000, elevation: 10000 }}
@@ -573,9 +569,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             // Charge / Rush / Priority / etc.) get clipped instead of
             // scrolling.
             style={{ flex: 1 }}
-            contentContainerStyle={{
-              paddingBottom: isTableOrdering ? 144 : 48
-            }}
+            contentContainerStyle={{ paddingBottom: 48 }}
             showsVerticalScrollIndicator
             keyboardShouldPersistTaps='handled'
             nestedScrollEnabled
@@ -1418,7 +1412,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             </TouchableOpacity>
           )}
 
-          <View style={{ height: 24 }} />
+          <View style={{ height: isTableOrdering ? 144 : 24 }} />
           </BottomSheetScrollView>
         </View>
       </BottomSheet>
