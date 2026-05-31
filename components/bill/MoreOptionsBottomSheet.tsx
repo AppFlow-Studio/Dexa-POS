@@ -88,7 +88,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   ref
 ) {
   const snapPoints = useMemo(
-    () => (isTableOrdering ? ['80%', '100%'] : ['100%']),
+    () => (isTableOrdering ? ['100%'] : ['90%']),
     [isTableOrdering]
   )
   const [orderNotes, setOrderNotes] = useState('')
@@ -1415,7 +1415,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             </TouchableOpacity>
           )}
 
-          <View style={{ height: 24 }} />
+          <View style={{ height: isTableOrdering ? 144 : 24 }} />
           </BottomSheetScrollView>
         </View>
       </BottomSheet>

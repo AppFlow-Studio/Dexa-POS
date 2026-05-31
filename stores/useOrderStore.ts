@@ -2524,6 +2524,7 @@ const syncPaymentToBackend = async (
     paymentTimestamp?: string; // Timestamp for fallback matching
     dejavooTransaction?: DejavooSaleTransactionResponse;
     forceCardPricing?: boolean; // Force card pricing for custom amount payments
+    forceExplicitAmount?: boolean; // Preserve p_amount for allocation-free partial payments
     paymentJournal?: { id: string; idempotencyKey: string };
   },
   rollbackState?: PaymentRollbackState, // Previous state for reversion on failure
@@ -2630,7 +2631,8 @@ const syncPaymentToBackend = async (
     const isFullRemainingPayment =
       !paymentDetails.itemAllocations?.length &&
       !paymentDetails.splitCount &&
-      !paymentDetails.forceCardPricing;
+      !paymentDetails.forceCardPricing &&
+      !paymentDetails.forceExplicitAmount;
 
     // Build payment params for process_payment_v8 (will be resolved when order syncs)
     const paymentParams = {
@@ -2705,7 +2707,8 @@ const syncPaymentToBackend = async (
     const isFullRemainingPayment =
       !paymentDetails.itemAllocations?.length &&
       !paymentDetails.splitCount &&
-      !paymentDetails.forceCardPricing;
+      !paymentDetails.forceCardPricing &&
+      !paymentDetails.forceExplicitAmount;
 
     const stationIdForRpc =
       useStoreSettingsStore.getState().selectedStation?.id ?? null;
@@ -2936,7 +2939,8 @@ const syncPaymentToBackend = async (
       const isFullRemainingPaymentRetry =
         !paymentDetails.itemAllocations?.length &&
         !paymentDetails.splitCount &&
-        !paymentDetails.forceCardPricing;
+        !paymentDetails.forceCardPricing &&
+        !paymentDetails.forceExplicitAmount;
 
       // Build item allocations for retry
       const itemAllocationsRetry =
@@ -3584,6 +3588,7 @@ interface OrderState {
     splitCount?: number; // Optional: split count for split payments
     splitPortionIndex?: number; // Optional: split portion index for split payments
     forceCardPricing?: boolean; // Force card pricing for custom amount payments (no cash discount)
+    forceExplicitAmount?: boolean; // Preserve p_amount for allocation-free partial payments
   }) => Promise<boolean>; // Returns true if sync succeeded, false if failed (state reverted)
   setOrders: (orders: OrderProfile[]) => void;
 
@@ -9828,7 +9833,11 @@ export const useOrderStore = create<OrderState>()(
                           return {
                             ...item,
                             discount_amount: affected.discount_amount,
-                            discount_cash_amount: affected.discount_amount, // Use same for now, backend doesn't return separate cash
+                            discount_cash_amount: round2(
+                              calculateItemEffectiveCashPrice(item) *
+                                item.quantity -
+                                affected.cash_subtotal,
+                            ),
                             subtotal: affected.subtotal,
                             cashSubtotal: affected.cash_subtotal,
                             taxAmount: affected.tax_amount,
@@ -10156,8 +10165,11 @@ export const useOrderStore = create<OrderState>()(
                                 return {
                                   ...item,
                                   discount_amount: affected.discount_amount,
-                                  discount_cash_amount:
-                                    affected.discount_amount,
+                                  discount_cash_amount: round2(
+                                    calculateItemEffectiveCashPrice(item) *
+                                      item.quantity -
+                                      affected.cash_subtotal,
+                                  ),
                                   subtotal: affected.subtotal,
                                   cashSubtotal: affected.cash_subtotal,
                                   taxAmount: affected.tax_amount,
@@ -10623,6 +10635,7 @@ export const useOrderStore = create<OrderState>()(
             splitCount, // Optional: split count for split payments
             splitPortionIndex, // Optional: split portion index for split payments
             forceCardPricing, // Force card pricing for custom amount payments
+            forceExplicitAmount,
           }) => {
             // ================================================================
             // OFFLINE-FIRST: Process payment locally, sync in background
@@ -10849,7 +10862,7 @@ export const useOrderStore = create<OrderState>()(
               })
               .filter((c): c is OrderPaymentItemCoverage => c !== null);
 
-            if (itemsCovered.length === 0) {
+            if (itemsCovered.length === 0 && !forceExplicitAmount) {
               toastService.show({
                 title: "No Unpaid Items",
                 message: "Select unpaid items or adjust payment amount.",
@@ -11104,6 +11117,7 @@ export const useOrderStore = create<OrderState>()(
                 paymentTimestamp, // Timestamp for fallback matching
                 dejavooTransaction,
                 forceCardPricing, // Force card pricing for custom amount payments
+                forceExplicitAmount,
                 paymentJournal: {
                   id: paymentJournalId,
                   idempotencyKey: paymentJournalKey,

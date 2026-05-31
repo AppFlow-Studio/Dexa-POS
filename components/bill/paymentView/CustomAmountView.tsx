@@ -5,7 +5,9 @@ import { usePaymentStore } from '@/stores/usePaymentStore'
 import {
   ArrowLeft,
   ArrowRight,
+  Banknote,
   Check,
+  CreditCard,
   Plus,
   Trash2,
   User
@@ -23,6 +25,7 @@ import NumericPad from './NumericPad'
 
 const CustomAmountView = () => {
   const [focusedSplitId, setFocusedSplitId] = useState<string | null>(null)
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({})
   const inputRefs = useRef<Record<string, TextInput | null>>({})
   const splits = usePaymentStore(s => s.splits)
   const updateSplitAmount = usePaymentStore(s => s.updateSplitAmount)
@@ -33,6 +36,8 @@ const CustomAmountView = () => {
   const orderTotals = useActiveOrderTotals()
   const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0
   const activeOrderTotal = orderTotals?.total ?? 0
+  const activeOrderOutstandingCash = orderTotals?.cashAmountDue ?? 0
+  const activeOrderCashTotal = orderTotals?.cashTotal ?? 0
 
   // Check if order already has payments (for effectiveTotal fallback)
   const activeOrder = useOrderStore(s =>
@@ -48,6 +53,13 @@ const CustomAmountView = () => {
       : hasPayments
       ? 0
       : activeOrderTotal
+  const effectiveCashTotal =
+    activeOrderOutstandingCash > 0
+      ? activeOrderOutstandingCash
+      : hasPayments
+      ? 0
+      : activeOrderCashTotal
+  const cashRatio = effectiveTotal > 0 ? effectiveCashTotal / effectiveTotal : 1
 
   // --- MATH LOGIC ---
   const totalAllocated = useMemo(() => {
@@ -55,18 +67,14 @@ const CustomAmountView = () => {
   }, [splits])
 
   const remaining = effectiveTotal - totalAllocated
+  const totalCashAllocated = totalAllocated * cashRatio
+  const remainingCash = effectiveCashTotal - totalCashAllocated
 
   // Logic to determine status color
   const isPerfect = Math.abs(remaining) < 0.01
   const isOver = remaining < -0.01
   // Allow proceeding with any positive allocation that doesn't exceed total
   const canProceed = totalAllocated > 0.01 && !isOver
-
-  const statusColor = isPerfect
-    ? 'text-green-400'
-    : isOver
-    ? 'text-red-400'
-    : 'text-white'
 
   const handleAddGuest = () => {
     addSplit(`Guest ${splits.length + 1}`)
@@ -75,11 +83,17 @@ const CustomAmountView = () => {
   const handleFillRemaining = (splitId: string) => {
     if (remaining > 0) {
       const currentAmount = splits.find(s => s.id === splitId)?.amount || 0
-      updateSplitAmount(
-        splitId,
-        parseFloat((currentAmount + remaining).toFixed(2))
-      )
+      const nextAmount = (currentAmount + remaining).toFixed(2)
+      setAmountDrafts(drafts => ({ ...drafts, [splitId]: nextAmount }))
+      updateSplitAmount(splitId, parseFloat(nextAmount))
     }
+  }
+
+  const updateAmountDraft = (splitId: string, text: string) => {
+    if (!/^\d*\.?\d{0,2}$/.test(text)) return
+    setAmountDrafts(drafts => ({ ...drafts, [splitId]: text }))
+    const amount = parseFloat(text)
+    updateSplitAmount(splitId, Number.isNaN(amount) ? 0 : amount)
   }
 
   const handleProceed = () => {
@@ -176,6 +190,20 @@ const CustomAmountView = () => {
                 ${effectiveTotal.toFixed(2)}
               </Text>
             </View>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                marginBottom: 10
+              }}
+            >
+              <Text style={{ color: colors.muted, fontSize: 12 }}>
+                Cash Total
+              </Text>
+              <Text style={{ color: colors.success, fontSize: 12 }}>
+                ${effectiveCashTotal.toFixed(2)}
+              </Text>
+            </View>
 
             <View
               style={{
@@ -215,6 +243,11 @@ const CustomAmountView = () => {
                 }}
               >
                 ${Math.abs(remaining).toFixed(2)}
+              </Text>
+              <Text
+                style={{ color: colors.success, fontSize: 11, marginTop: 4 }}
+              >
+                Cash remaining ${Math.max(0, remainingCash).toFixed(2)}
               </Text>
               {isOver && (
                 <Text
@@ -471,12 +504,11 @@ const CustomAmountView = () => {
                         textAlign: 'right',
                         height: '100%'
                       }}
-                      value={split.amount > 0 ? split.amount.toString() : ''}
-                      onChangeText={text => {
-                        if ((text.match(/\./g) || []).length > 1) return
-                        const amount = parseFloat(text)
-                        updateSplitAmount(split.id, isNaN(amount) ? 0 : amount)
-                      }}
+                      value={
+                        amountDrafts[split.id] ??
+                        (split.amount > 0 ? split.amount.toString() : '')
+                      }
+                      onChangeText={text => updateAmountDraft(split.id, text)}
                       onFocus={() => setFocusedSplitId(split.id)}
                       onBlur={() => setFocusedSplitId(null)}
                       placeholder='0.00'
@@ -485,6 +517,35 @@ const CustomAmountView = () => {
                       selectTextOnFocus
                     />
                   </View>
+
+                  {split.amount > 0 && (
+                    <View style={{ width: 78, gap: 2 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 3
+                        }}
+                      >
+                        <CreditCard size={11} color={colors.teal} />
+                        <Text style={{ color: colors.teal, fontSize: 11 }}>
+                          ${split.amount.toFixed(2)}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 3
+                        }}
+                      >
+                        <Banknote size={11} color={colors.success} />
+                        <Text style={{ color: colors.success, fontSize: 11 }}>
+                          ${(split.amount * cashRatio).toFixed(2)}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
 
                   <TouchableOpacity
                     onPress={() => removeSplit(split.id)}
@@ -549,14 +610,9 @@ const CustomAmountView = () => {
                   const split = splits.find(s => s.id === focusedSplitId)
                   if (split) {
                     const currentValue =
-                      split.amount > 0 ? split.amount.toString() : ''
-                    const newValue = currentValue + value
-                    if ((newValue.match(/\./g) || []).length > 1) return
-                    const amount = parseFloat(newValue)
-                    updateSplitAmount(
-                      focusedSplitId,
-                      isNaN(amount) ? 0 : amount
-                    )
+                      amountDrafts[focusedSplitId] ??
+                      (split.amount > 0 ? split.amount.toString() : '')
+                    updateAmountDraft(focusedSplitId, currentValue + value)
                   }
                 }
               }}
@@ -565,13 +621,10 @@ const CustomAmountView = () => {
                   const split = splits.find(s => s.id === focusedSplitId)
                   if (split) {
                     const currentValue =
-                      split.amount > 0 ? split.amount.toString() : ''
+                      amountDrafts[focusedSplitId] ??
+                      (split.amount > 0 ? split.amount.toString() : '')
                     const newValue = currentValue.slice(0, -1)
-                    const amount = parseFloat(newValue)
-                    updateSplitAmount(
-                      focusedSplitId,
-                      newValue === '' ? 0 : isNaN(amount) ? 0 : amount
-                    )
+                    updateAmountDraft(focusedSplitId, newValue)
                   }
                 }
               }}

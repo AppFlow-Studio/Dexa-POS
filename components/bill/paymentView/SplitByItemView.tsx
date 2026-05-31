@@ -57,20 +57,6 @@ function getItemDiscountedValues(
     ? (originalItem?.discount_cash_amount ?? 0)
     : (originalItem?.discount_amount ?? 0);
 
-  // If split quantity equals original quantity and we have a pre-calculated DB subtotal with discount, use it
-  // Only use cashSubtotal/subtotal if they are valid numbers (not undefined/NaN)
-  if (splitQuantity === originalQuantity && originalDiscount > 0) {
-    const preCalculatedSubtotal = isCash
-      ? splitItem.cashSubtotal
-      : splitItem.subtotal;
-    if (preCalculatedSubtotal !== undefined && !isNaN(preCalculatedSubtotal)) {
-      return {
-        subtotal: preCalculatedSubtotal,
-        discountAmount: originalDiscount,
-      };
-    }
-  }
-
   // Calculate subtotal dynamically
   const grossSubtotal = unitPrice * splitQuantity;
 
@@ -107,7 +93,7 @@ function calculateSplitTax(
 
   for (const item of items) {
     const originalItem = originalItemsMap.get(item.id);
-    const { subtotal: itemSubtotal, discountAmount } = getItemDiscountedValues(
+    const { subtotal: itemSubtotal } = getItemDiscountedValues(
       item,
       originalItem,
       false,
@@ -358,7 +344,6 @@ const SplitByItemView = () => {
         masterItems, // Pass master items to look up original quantities/discounts
       )
     : { subtotal: 0, tax: 0, total: 0 };
-
   // Calculate split totals with tax (CASH pricing)
   // Uses hybrid approach: DB values for full quantities, proportional for partial
   const activeSplitCashItemTotals = activeSplit
@@ -368,7 +353,6 @@ const SplitByItemView = () => {
         masterItems, // Pass master items to look up original quantities/discounts
       )
     : { subtotal: 0, tax: 0, total: 0 };
-
   // Single shared items-ratio (card-side items+tax fraction) used for both
   // card and cash SC residual distribution. Keeps cash ≤ card per-guest on
   // the bottom strip; the earlier formulation used a separate cash-side

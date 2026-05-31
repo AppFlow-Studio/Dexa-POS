@@ -54,6 +54,7 @@ import { Portal as Teleport } from 'react-native-teleport'
 // Stable empty array to avoid new reference on every render
 const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] =
   []
+const PAID_BALANCE_TOLERANCE = 0.01
 
 const nowMs = () =>
   typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -284,15 +285,15 @@ const TableOrderView = React.forwardRef<
 
   // --- 8. Final Derived UI State ---
   const isFullyPaid = useMemo(() => {
-    if (activeOrder?.check_status === 'Opened') return false
     // Only consider balance <= 0 as fully paid when we have real totals data
     // (guard against transient null totals showing $0 and blocking item additions)
     return (
       activeOrder?.paid_status === 'Paid' ||
-      (hasPayments && totals !== null && displayBalanceDue <= 0)
+      (hasPayments &&
+        totals !== null &&
+        displayBalanceDue <= PAID_BALANCE_TOLERANCE)
     )
   }, [
-    activeOrder?.check_status,
     activeOrder?.paid_status,
     hasPayments,
     totals,
@@ -964,8 +965,11 @@ const TableOrderView = React.forwardRef<
   )
 
   const handlePressTotal = useCallback(
-    () => pricingSheetRef.current?.expand(),
-    []
+    () => {
+      if (isFullyPaid || displayBalanceDue <= PAID_BALANCE_TOLERANCE) return
+      pricingSheetRef.current?.expand()
+    },
+    [isFullyPaid, displayBalanceDue]
   )
 
   const handleClosePricingSheet = useCallback(

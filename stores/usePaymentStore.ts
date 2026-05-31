@@ -22,6 +22,7 @@ import { useConflictStore } from "@/stores/useConflictStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
+import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
 import { create } from "zustand";
 import {
   calculateItemEffectiveCashPrice,
@@ -681,49 +682,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       (item) => !item.is_voided,
     );
 
-    // Card pricing subtotal
-    const orderSubtotal = masterItems.reduce(
-      (acc, item) => acc + item.price * item.quantity,
-      0,
-    );
-
-    // Cash pricing subtotal - uses calculateItemEffectiveCashPrice to include modifiers and add-ons
-    const orderCashSubtotal = masterItems.reduce(
-      (acc, item) =>
-        acc + calculateItemEffectiveCashPrice(item) * item.quantity,
-      0,
-    );
-
-    const itemDiscountsTotal = masterItems.reduce((acc, item) => {
-      if (item.appliedDiscount) {
-        return (
-          acc + item.originalPrice * item.appliedDiscount.value * item.quantity
-        );
-      }
-      return acc;
-    }, 0);
-    const subtotalAfterItemDiscounts = Math.max(
-      0,
-      orderSubtotal - itemDiscountsTotal,
-    );
-    let checkDiscountAmount = 0;
-    if (activeOrder?.checkDiscount) {
-      const discountValue = Number(activeOrder.checkDiscount.value);
-      if (Number.isFinite(discountValue) && discountValue > 0) {
-        if (activeOrder.checkDiscount.type === "fixed") {
-          checkDiscountAmount = Math.min(
-            discountValue,
-            subtotalAfterItemDiscounts,
-          );
-        } else {
-          checkDiscountAmount = subtotalAfterItemDiscounts * discountValue;
-        }
-      }
-    }
-    const orderDiscountAmount = Math.min(
-      orderSubtotal,
-      itemDiscountsTotal + checkDiscountAmount,
-    );
+    const originalItemsMap = new Map(masterItems.map((item) => [item.id, item]));
 
     // Helper function to calculate tax for split items using CARD pricing
     const calculateSplitCardAmount = (items: typeof masterItems): number => {
@@ -731,7 +690,16 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       let tax = 0;
 
       for (const item of items) {
-        const itemSubtotal = item.price * item.quantity;
+        const originalItem = originalItemsMap.get(item.id);
+        const originalQuantity = originalItem?.quantity ?? item.quantity;
+        const discountAmount =
+          originalQuantity > 0
+            ? round2(
+                ((originalItem?.discount_amount ?? 0) * item.quantity) /
+                  originalQuantity,
+              )
+            : 0;
+        const itemSubtotal = round2(item.price * item.quantity - discountAmount);
         subtotal += itemSubtotal;
 
         // Skip tax-exempt items
@@ -742,14 +710,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
         const taxRateDecimal = taxRatePercent / 100;
 
-        // Apply proportional discount to this item
-        const itemDiscountProportion =
-          orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
         // Calculate tax for this item
-        tax += itemTaxableAmount * taxRateDecimal;
+        tax += itemSubtotal * taxRateDecimal;
       }
 
       // Round to 2 decimal places
@@ -763,9 +725,20 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       let tax = 0;
 
       for (const item of items) {
+        const originalItem = originalItemsMap.get(item.id);
+        const originalQuantity = originalItem?.quantity ?? item.quantity;
         // Use the full effective cash price including modifiers and add-ons
         const itemCashPrice = calculateItemEffectiveCashPrice(item);
-        const itemSubtotal = itemCashPrice * item.quantity;
+        const discountAmount =
+          originalQuantity > 0
+            ? round2(
+                ((originalItem?.discount_cash_amount ?? 0) * item.quantity) /
+                  originalQuantity,
+              )
+            : 0;
+        const itemSubtotal = round2(
+          itemCashPrice * item.quantity - discountAmount,
+        );
         subtotal += itemSubtotal;
 
         // Skip tax-exempt items
@@ -776,14 +749,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
         const taxRateDecimal = taxRatePercent / 100;
 
-        // Apply proportional discount to this item (based on cash subtotal)
-        const itemDiscountProportion =
-          orderCashSubtotal > 0 ? itemSubtotal / orderCashSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
         // Calculate tax for this item
-        tax += itemTaxableAmount * taxRateDecimal;
+        tax += itemSubtotal * taxRateDecimal;
       }
 
       // Round to 2 decimal places
@@ -848,6 +815,17 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           cashAmount: round2((split.cashAmount ?? 0) + cashShare),
         };
       });
+    }
+
+    if (source === "split-custom-amount") {
+      updatedSplits = updatedSplits.map((split) => ({
+        ...split,
+        cashAmount: calculateCustomSplitCashAmount(
+          split.amount,
+          activeOrderOutstandingTotal,
+          activeOrderOutstandingCash,
+        ),
+      }));
     }
 
     set({ splits: updatedSplits });
@@ -964,7 +942,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         transactionDetails: detailsWithSplitLabel,
         dejavooTransaction,
         itemAllocations, // Pass item allocations with quantities for per-item payment tracking
-        forceCardPricing: splitSourceView === "split-custom-amount", // Custom amounts always use card pricing
+        forceCardPricing: false,
+        // Even and custom splits are amount-based. A valid portion can be
+        // smaller than the next whole item, especially after a discount.
+        forceExplicitAmount:
+          splitSourceView === "split-custom-amount" ||
+          splitSourceView === "split-evenly",
         // Only pass split count/index for even splits - NOT for per-item or custom-amount payments
         // Per-item payments use itemAllocations to track what was paid
         // Custom-amount payments use p_amount through the FULL/PARTIAL SQL path
