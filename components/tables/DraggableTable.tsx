@@ -229,6 +229,7 @@ interface DraggableTableProps {
   onPress?: (table: FloorPlanObject) => void
   index?: number // For staggered entry animation
   enableEntryAnimation?: boolean
+  disableEntryAnimation?: boolean
   sectionColor?: string
   wallEdgeFlags?: WallEdgeFlags
 
@@ -247,6 +248,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   onPress,
   index = 0,
   enableEntryAnimation = true,
+  disableEntryAnimation = false,
   sectionColor,
   wallEdgeFlags,
   onLongPress,
@@ -459,8 +461,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const rotateContext = useSharedValue(0)
 
   // Entry animation shared values
-  const entryScale = useSharedValue(0.8)
-  const entryOpacity = useSharedValue(0)
+  const entryScale = useSharedValue(disableEntryAnimation ? 1 : 0.8)
+  const entryOpacity = useSharedValue(disableEntryAnimation ? 1 : 0)
 
   // Pulse animation for realtime updates
   const pulseScale = useSharedValue(1)
@@ -470,18 +472,24 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Staggered entry animation on mount
   useEffect(() => {
-    if (!enableEntryAnimation) {
+    if (!enableEntryAnimation || disableEntryAnimation) {
       entryScale.value = 1
       entryOpacity.value = 1
       return
     }
-    const delay = index * 30 // 30ms stagger per table
+    const delay = Math.min(index, 8) * 25
     const timeout = setTimeout(() => {
       entryScale.value = withSpring(1, { damping: 15, stiffness: 200 })
       entryOpacity.value = withTiming(1, { duration: 200 })
     }, delay)
     return () => clearTimeout(timeout)
-  }, [enableEntryAnimation, index])
+  }, [
+    disableEntryAnimation,
+    enableEntryAnimation,
+    entryOpacity,
+    entryScale,
+    index
+  ])
 
   // Pulse animation when session status changes
   useEffect(() => {
@@ -1316,6 +1324,9 @@ export default React.memo(DraggableTable, (prev, next) => {
     return false
   }
   if (prev.interactionMode !== next.interactionMode) {
+    return false
+  }
+  if (prev.disableEntryAnimation !== next.disableEntryAnimation) {
     return false
   }
   if (

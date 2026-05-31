@@ -915,6 +915,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 canvasScale={scale}
                 index={index}
                 enableEntryAnimation={enableEntryAnimation}
+                disableEntryAnimation={prioritizedTables.length > 20}
                 sectionColor={
                   table.section_id
                     ? sectionsById?.[table.section_id]?.color
