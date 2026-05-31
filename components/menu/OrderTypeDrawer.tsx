@@ -8,7 +8,7 @@ import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useShallow } from 'zustand/react/shallow'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
-import { formatAddress } from '@/utils/addressUtils'
+import { formatAddress, serializeDeliveryAddress } from '@/utils/addressUtils'
 import { useRouter } from 'expo-router'
 import { ChevronDown, Edit3, Plus, User } from 'lucide-react-native'
 import React, { useMemo, useState } from 'react'
@@ -380,7 +380,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                     onChangeText={text => {
                       if (activeOrderId)
                         updateActiveOrderDetails({
-                          delivery_address: JSON.stringify({
+                          delivery_address: serializeDeliveryAddress({
                             street: text,
                             city: '',
                             state: '',
@@ -391,7 +391,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                     onAddressSelected={addr => {
                       if (activeOrderId)
                         updateActiveOrderDetails({
-                          delivery_address: JSON.stringify(addr)
+                          delivery_address: serializeDeliveryAddress(addr)
                         })
                     }}
                     placeholder='Enter delivery address'

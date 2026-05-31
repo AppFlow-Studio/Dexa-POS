@@ -249,8 +249,9 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
             borderWidth: 1,
             borderColor: colors.border,
             borderRadius: 8,
-            height: 38,
-            paddingHorizontal: 12
+            minHeight: 44,
+            paddingHorizontal: 12,
+            paddingVertical: 7
           },
           inputStyle
         ]}
@@ -262,13 +263,18 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           onBlur={handleBlur}
           placeholder={placeholder}
           placeholderTextColor={colors.heading}
+          multiline
+          numberOfLines={2}
+          scrollEnabled={false}
           style={{
             flex: 1,
             color: colors.heading,
             fontSize: 13,
             padding: 0,
             includeFontPadding: false,
-            textAlignVertical: 'center'
+            lineHeight: 17,
+            maxHeight: 54,
+            textAlignVertical: inputValue ? 'top' : 'center'
           }}
         />
         {loading && (

@@ -5,7 +5,7 @@ import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import type { OrderProfile } from '@/lib/types'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useOrderStore } from '@/stores/useOrderStore'
-import { formatAddress } from '@/utils/addressUtils'
+import { formatAddress, serializeDeliveryAddress } from '@/utils/addressUtils'
 import { Edit3, MapPin, User } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import {
@@ -427,7 +427,7 @@ const OrderDetailsComponent: React.FC<{
                   onChangeText={text => {
                     if (activeOrderId)
                       updateActiveOrderDetails({
-                        delivery_address: JSON.stringify({
+                        delivery_address: serializeDeliveryAddress({
                           street: text,
                           city: '',
                           state: '',
@@ -438,7 +438,7 @@ const OrderDetailsComponent: React.FC<{
                   onAddressSelected={addr => {
                     if (activeOrderId)
                       updateActiveOrderDetails({
-                        delivery_address: JSON.stringify(addr)
+                        delivery_address: serializeDeliveryAddress(addr)
                       })
                   }}
                   placeholder='Enter address'
@@ -446,9 +446,7 @@ const OrderDetailsComponent: React.FC<{
                     backgroundColor: 'transparent',
                     borderWidth: 0,
                     borderRadius: 0,
-                    height: 46,
-                    minHeight: 46,
-                    maxHeight: 46,
+                    minHeight: 54,
                     paddingHorizontal: 0,
                     fontWeight: '600',
                     fontSize: 12,
