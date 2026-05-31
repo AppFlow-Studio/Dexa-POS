@@ -4,6 +4,7 @@ import {
     rpcWithIdempotency,
     withIdempotency,
 } from "@/lib/network/idempotencyKey";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { runWithDeadline as _runWithDeadline } from "@/lib/network/runWithDeadline";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -522,14 +523,22 @@ export class OrderService {
     const { data, error } = await rpcWithIdempotency<ProcessPaymentResult>(
       client,
       "process_payment",
-      // Fallback (flag off): v11 — adds acquirer + batch_number on top of
-      //                            v10's platform-fee tracking.
-      // Primary  (flag on): v12 — forks v11 with a defensive
-      //                            apply_service_charge_v1(NULL,...) refresh
-      //                            after the FOR UPDATE lock, so payment-time
-      //                            totals always reflect the latest SC.
+      // Fallback (flag off): v12 — defensive apply_service_charge_v1(NULL,...)
+      //                            refresh + SC residual guard for item
+      //                            payments.
+      // Primary  (flag on): v14 — forks v13 with a residual-snap branch so
+      //                            split-by-item / custom-amount payments
+      //                            allocate the leftover SC to the closing
+      //                            payment (instead of leaving it as an
+      //                            uncollected order-level residual). Also
+      //                            bakes SC into v_payment_total for item
+      //                            payments so change_given reflects
+      //                            items+tax+SC at the cash drawer, and
+      //                            records service_charge per order_payments
+      //                            row (consumed by apply_refund_to_payment_v4
+      //                            for proportional SC reversal).
       "process_payment_v12",
-      "process_payment_v12",
+      "process_payment_v14",
       params,
       {
         deadline: DEADLINES.paymentRpc,
@@ -654,10 +663,14 @@ export class OrderService {
     const { data, error } = await rpcWithIdempotency(
       client,
       "apply_refund_to_payment",
-      // Fallback: v2 (no platform-fee fields).
-      // Primary:  v3 (proportional refunded_dual_pricing_fee / refunded_tip_fee).
-      "apply_refund_to_payment_v2",
+      // Fallback: v3 (proportional refunded_dual_pricing_fee / refunded_tip_fee).
+      // Primary:  v4 (Wave D — also reverses the per-payment service_charge
+      //               snapshot proportionally; same LEAST clamp + full-refund
+      //               snap pattern v3 uses for dpf / tip_fee. Pairs with
+      //               process_payment_v14, which populates the per-payment
+      //               service_charge column v4 reads.).
       "apply_refund_to_payment_v3",
+      "apply_refund_to_payment_v4",
       {
         p_payment_id: paymentId,
         p_refund_amount: refundAmount,

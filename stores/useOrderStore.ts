@@ -270,6 +270,8 @@ function buildServiceChargeInputForOrder(
   | "snapshottedRate"
   | "snapshottedAppliesOn"
   | "snapshottedName"
+  | "manualServiceCharge"
+  | "serverConfirmedServiceCharge"
 > {
   if (!order) return {};
 
@@ -299,6 +301,35 @@ function buildServiceChargeInputForOrder(
     partySize = found?.session?.party_size ?? null;
   }
 
+  // Wave D — when the server has marked SC as manually overridden, pass the
+  // override amount through so the calculator snaps SC to it instead of
+  // re-deriving from the rule. Otherwise total_amount briefly reflects
+  // rule-SC after recompute and before the next backend sync.
+  const manualServiceCharge =
+    order.service_charge_is_manual === true
+      ? order.service_charge ?? 0
+      : null;
+
+  // Wave D follow-up — server-confirmed SC fallback. When the server has
+  // already applied a rule-derived SC to this order (snapshotted as
+  // service_charge_rule_id + service_charge_rate on orders) but the local
+  // calculator can't reproduce it (rules store not hydrated on this
+  // station, partySize unresolvable because useSeatingStore /
+  // useTableSessionStore haven't caught up), the calculator's eligibility
+  // check returns SC=0 and outstanding-cash drops SC. Prefer the
+  // _serverConfirmedServiceCharge ref if we have it; otherwise trust the
+  // order's stored service_charge whenever a rule_id is snapshotted
+  // (proves the server has touched SC at least once).
+  const serverConfirmedServiceCharge: number | null =
+    typeof order._serverConfirmedServiceCharge === "number" &&
+    order._serverConfirmedServiceCharge > 0
+      ? order._serverConfirmedServiceCharge
+      : order.service_charge_rule_id != null &&
+          typeof order.service_charge === "number" &&
+          order.service_charge > 0
+        ? order.service_charge
+        : null;
+
   return {
     serviceChargeRule: rule,
     partySize,
@@ -306,6 +337,8 @@ function buildServiceChargeInputForOrder(
     snapshottedRate: order.service_charge_rate ?? null,
     snapshottedAppliesOn: order.service_charge_applies_on ?? null,
     snapshottedName: order.service_charge_name ?? null,
+    manualServiceCharge,
+    serverConfirmedServiceCharge,
   };
 }
 
@@ -2679,14 +2712,22 @@ const syncPaymentToBackend = async (
     const { data, error } = await rpcWithIdempotency<any>(
       supabase,
       "process_payment",
-      // Fallback (flag off): v11 — adds acquirer + batch_number on top of
-      //                            v10's platform-fee tracking.
-      // Primary  (flag on): v12 — forks v11 with a defensive
-      //                            apply_service_charge_v1(NULL,...) refresh
-      //                            after the FOR UPDATE lock, so payment-time
-      //                            totals always reflect the latest SC.
+      // Fallback (flag off): v12 — defensive apply_service_charge_v1(NULL,...)
+      //                            refresh + SC residual guard for item
+      //                            payments.
+      // Primary  (flag on): v14 — bakes v_service_charge_share into
+      //                            v_payment_total for item payments so
+      //                            change_given reflects items+tax+SC at the
+      //                            cash drawer; populates per-payment
+      //                            order_payments.service_charge for
+      //                            apply_refund_to_payment_v4 reversal; snaps
+      //                            residual SC onto the closing item payment.
+      //                            Assumes the cashier-tendered amount is
+      //                            SC-inclusive (split-by-item and
+      //                            pay-for-items client paths already scale
+      //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      "process_payment_v12",
+      "process_payment_v14",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -3639,7 +3680,10 @@ interface OrderState {
   // Sync order from database (manual refresh)
   syncOrderFromDatabase: (orderId: string) => Promise<string | null>;
   // Sync order from database complete ( manual refresh )
-  syncOrderFromBackendComplete: (orderId: string) => Promise<void>;
+  syncOrderFromBackendComplete: (
+    orderId: string,
+    options?: { force?: boolean },
+  ) => Promise<void>;
 
   // Initialize orders - fetch all active orders on login (replaces prefetchOrders)
   initializeOrders: (
@@ -3841,6 +3885,15 @@ function mergePayments(
     }
     // Broadcast is same or more advanced — but preserve terminal details from local
     if (lp) {
+      // Refunds don't always advance `status` (apply_refund_to_payment can
+      // leave status='captured' while bumping refunded_amount + is_returned).
+      // A stale broadcast snapshot taken before the refund commit therefore
+      // races our post-refund force-sync and would otherwise reset the
+      // refunded chip back to zero. Refund amounts are monotonic, so take
+      // the max and carry forward refund metadata from whichever side has it.
+      const lpRefunded = lp.refundedAmount ?? 0;
+      const bpRefunded = bp.refundedAmount ?? 0;
+      const localHasMoreRefund = lpRefunded > bpRefunded;
       return {
         ...bp,
         last4: bp.last4 ?? lp.last4,
@@ -3850,6 +3903,23 @@ function mergePayments(
         transactionDetails: mergeTransactionDetails(
           lp.transactionDetails,
           bp.transactionDetails,
+        ),
+        refundedAmount: Math.max(lpRefunded, bpRefunded),
+        refundedAt: localHasMoreRefund
+          ? (lp.refundedAt ?? bp.refundedAt)
+          : (bp.refundedAt ?? lp.refundedAt),
+        isReturned: localHasMoreRefund
+          ? (lp.isReturned ?? bp.isReturned)
+          : (bp.isReturned ?? lp.isReturned),
+        returnedAt: localHasMoreRefund
+          ? (lp.returnedAt ?? bp.returnedAt)
+          : (bp.returnedAt ?? lp.returnedAt),
+        returnedBy: localHasMoreRefund
+          ? (lp.returnedBy ?? bp.returnedBy)
+          : (bp.returnedBy ?? lp.returnedBy),
+        returnAmount: Math.max(
+          lp.returnAmount ?? 0,
+          bp.returnAmount ?? 0,
         ),
       };
     }
@@ -4233,22 +4303,31 @@ export const useOrderStore = create<OrderState>()(
               // o.service_charge stale relative to o.total_amount. Without
               // this, the SC line on the bill shows the old amount while
               // the total reflects the new SC.
-              o.service_charge = totals.service_charge;
-              if (totals.service_charge > 0) {
-                if (o.service_charge_rate == null) {
-                  const rule = useServiceChargeRulesStore
-                    .getState()
-                    .resolveRule(
-                      useStoreSettingsStore.getState().selectedStore?.id ?? null,
-                    );
-                  if (rule) {
-                    o.service_charge_rule_id = rule.id;
-                    o.service_charge_rate = rule.rate_percent;
-                    o.service_charge_applies_on = rule.applies_on;
+              //
+              // EXCEPTION: when a manager has manually overridden SC
+              // (service_charge_is_manual === true), preserve the
+              // authoritative server value. Otherwise the recompute path
+              // would briefly overwrite it with rule-derived SC until the
+              // post-override sync catches up — and rebuild total_amount
+              // against the wrong SC in that window.
+              if (!o.service_charge_is_manual) {
+                o.service_charge = totals.service_charge;
+                if (totals.service_charge > 0) {
+                  if (o.service_charge_rate == null) {
+                    const rule = useServiceChargeRulesStore
+                      .getState()
+                      .resolveRule(
+                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                      );
+                    if (rule) {
+                      o.service_charge_rule_id = rule.id;
+                      o.service_charge_rate = rule.rate_percent;
+                      o.service_charge_applies_on = rule.applies_on;
+                    }
                   }
-                }
-                if (!o.service_charge_name) {
-                  o.service_charge_name = totals.service_charge_name;
+                  if (!o.service_charge_name) {
+                    o.service_charge_name = totals.service_charge_name;
+                  }
                 }
               }
 
@@ -4302,7 +4381,12 @@ export const useOrderStore = create<OrderState>()(
               isServiceChargeEnabled &&
               _scChanged &&
               order.db_order_id &&
-              _supabaseClient
+              _supabaseClient &&
+              // Wave D — when service_charge_is_manual = true,
+              // apply_service_charge_v1 short-circuits server-side and returns
+              // the existing (manual) value. Skip the RPC entirely to avoid
+              // the wasted round-trip and the brief recompute race window.
+              !order.service_charge_is_manual
             ) {
               const _scInput = buildServiceChargeInputForOrder(order);
               const _dbId = order.db_order_id;
@@ -5051,9 +5135,29 @@ export const useOrderStore = create<OrderState>()(
                       const isRefundTransition =
                         broadcastPaidStatus === "Refunded" ||
                         existingOrder.paid_status === "Refunded";
+                      // Partial-refund staleness: when amount still owes after
+                      // a refund, backend reports paid_status='Partial', not
+                      // 'Refunded', so isRefundTransition doesn't catch it. If
+                      // local has refund evidence (refundedAmount > 0) that
+                      // the broadcast lacks, this broadcast is a pre-refund
+                      // snapshot and must not advance the order header.
+                      const localRefundTotal = (
+                        existingOrder.payments ?? []
+                      ).reduce((s, p) => s + (p.refundedAmount ?? 0), 0);
+                      const broadcastRefundTotal = (
+                        backendOrder.order_payments ?? []
+                      ).reduce(
+                        (s: number, p: any) =>
+                          s + (Number(p?.refunded_amount) || 0),
+                        0,
+                      );
+                      const isStalePreRefundBroadcast =
+                        localRefundTotal > 0 &&
+                        broadcastRefundTotal < localRefundTotal - 0.001;
                       const isPaymentLocallyAhead =
-                        !isRefundTransition &&
-                        localPaidRank > broadcastPaidRank;
+                        isStalePreRefundBroadcast ||
+                        (!isRefundTransition &&
+                          localPaidRank > broadcastPaidRank);
 
                       // Build updated order
                       const updatedOrder: OrderProfile = {
@@ -5777,12 +5881,25 @@ export const useOrderStore = create<OrderState>()(
                 orderProfile.payments = existing.payments;
               } else if (
                 backendOrder.order_payments &&
-                backendOrder.order_payments.length > 0 &&
-                existing.items.length > 0
+                backendOrder.order_payments.length > 0
               ) {
-                // Payment broadcast without items: resolve "Unknown Item" names from existing items
-                orderProfile.payments = (orderProfile.payments || []).map(
-                  (p) => ({
+                // Broadcast carries payments — merge with existing local so
+                // refund metadata (refundedAmount, isReturned, returnedAt)
+                // and per-payment terminal details survive a stale
+                // pre-refund broadcast snapshot. Without this, the merge in
+                // _handleOrderBroadcast handles the broadcast→fetch path,
+                // but upsertOrder (called from orphan recovery + other
+                // direct broadcast handlers) reverts the chip back to
+                // "Paid" the moment a delayed snapshot lands.
+                orderProfile.payments = mergePayments(
+                  existing.payments ?? [],
+                  orderProfile.payments ?? [],
+                );
+
+                // Then resolve "Unknown Item" coverage names from existing
+                // items so the per-payment item list still reads cleanly.
+                if (existing.items.length > 0) {
+                  orderProfile.payments = orderProfile.payments.map((p) => ({
                     ...p,
                     itemsCovered: (p.itemsCovered || []).map((c) => {
                       if (c.itemName !== "Unknown Item") return c;
@@ -5791,8 +5908,8 @@ export const useOrderStore = create<OrderState>()(
                       );
                       return local ? { ...c, itemName: local.name } : c;
                     }),
-                  }),
-                );
+                  }));
+                }
               }
 
               // Preserve reversals/refund_items when not in broadcast
@@ -9749,6 +9866,35 @@ export const useOrderStore = create<OrderState>()(
                       }, 1000);
                     }
 
+                    // Wave A belt-and-suspenders: fire-and-forget
+                    // apply_service_charge_v1 follow-up. manage_order_discount_v3
+                    // already calls apply_service_charge_v1 internally, so this
+                    // is redundant on the v3 happy path. It exists for the
+                    // v2-fallback window (rpcWithIdempotency may resolve to v2
+                    // if the per-RPC idempotency flag is off, or if v3 was
+                    // rolled back). Removes the bug window where v2's SC-blind
+                    // totals broadcast to other stations before the next
+                    // recalculateOrder fires. Safe to remove once v3 has soaked
+                    // and metrics confirm sync_version matches.
+                    if (dbOrderId && isServiceChargeEnabled) {
+                      const _client = supabase;
+                      const _dbId = dbOrderId;
+                      queueMicrotask(() => {
+                        OrderService.applyServiceCharge(_client, {
+                          p_order_id: _dbId,
+                          p_party_size: null,
+                          p_station_id: null,
+                        }).catch((err) => {
+                          if (__DEV__) {
+                            console.warn(
+                              "[applyDiscountToCheck] belt-and-suspenders applyServiceCharge threw:",
+                              err,
+                            );
+                          }
+                        });
+                      });
+                    }
+
                     // Check if discount was removed while apply was in flight
                     const currentOrder =
                       useOrderStore.getState().ordersById[orderId];
@@ -10032,6 +10178,29 @@ export const useOrderStore = create<OrderState>()(
                               .getState()
                               .syncOrderFromBackendComplete(orderId);
                           }, 1000);
+                        }
+
+                        // Wave A belt-and-suspenders: see applyDiscountToCheck
+                        // for rationale. v3 already calls apply_service_charge_v1
+                        // internally; this handles the v2-fallback window where
+                        // SC would otherwise stay stale until next recalculate.
+                        if (dbOrderId && isServiceChargeEnabled) {
+                          const _client = supabase;
+                          const _dbId = dbOrderId;
+                          queueMicrotask(() => {
+                            OrderService.applyServiceCharge(_client, {
+                              p_order_id: _dbId,
+                              p_party_size: null,
+                              p_station_id: null,
+                            }).catch((err) => {
+                              if (__DEV__) {
+                                console.warn(
+                                  "[removeCheckDiscount] belt-and-suspenders applyServiceCharge threw:",
+                                  err,
+                                );
+                              }
+                            });
+                          });
                         }
                       }
                     })
@@ -14144,6 +14313,18 @@ export const useOrderStore = create<OrderState>()(
                   const allItems = [...syncedItems, ...newItemsFromDb];
 
                   // Map payments from database
+                  // Build a lookup of local payments so we can preserve any
+                  // local refund evidence that races a fresh fetch (refunds
+                  // are monotonic — Math.max is safe).
+                  const localPaymentsByDbId = new Map<
+                    string,
+                    OrderProfilePayment
+                  >();
+                  for (const lp of localOrder?.payments ?? []) {
+                    if (lp.db_payment_id)
+                      localPaymentsByDbId.set(lp.db_payment_id, lp);
+                  }
+
                   const syncedPayments: OrderProfilePayment[] =
                     dbPayments?.map((p) => {
                       // Proper status mapping — preserve authorized for pre-auth
@@ -14166,6 +14347,18 @@ export const useOrderStore = create<OrderState>()(
                         terminalResponse?.castles_transaction as
                           | Record<string, any>
                           | undefined;
+
+                      // Refund evidence: take max across DB + local. Apply
+                      // refund didn't always advance `status`, so we have to
+                      // carry refunded_amount + is_returned explicitly.
+                      const localPmt = localPaymentsByDbId.get(p.id);
+                      const dbRefunded = Number((p as any).refunded_amount) || 0;
+                      const localRefunded = localPmt?.refundedAmount ?? 0;
+                      const localHasMoreRefund = localRefunded > dbRefunded;
+                      const mergedRefundedAmount = Math.max(
+                        dbRefunded,
+                        localRefunded,
+                      );
 
                       return {
                         id: p.id,
@@ -14202,6 +14395,26 @@ export const useOrderStore = create<OrderState>()(
                           },
                           dbOrder.card_total ?? dbOrder.total_amount,
                           dbOrder.cash_total,
+                        ),
+                        // Refund / return tracking — preserve via monotonic merge
+                        // so a stale fetch right after apply_refund_to_payment
+                        // can't clobber the chip back to "Paid".
+                        refundedAmount: mergedRefundedAmount,
+                        refundedAt: localHasMoreRefund
+                          ? (localPmt?.refundedAt ?? (p as any).refunded_at)
+                          : ((p as any).refunded_at ?? localPmt?.refundedAt),
+                        isReturned: localHasMoreRefund
+                          ? (localPmt?.isReturned ?? (p as any).is_returned)
+                          : ((p as any).is_returned ?? localPmt?.isReturned),
+                        returnedAt: localHasMoreRefund
+                          ? (localPmt?.returnedAt ?? (p as any).returned_at)
+                          : ((p as any).returned_at ?? localPmt?.returnedAt),
+                        returnedBy: localHasMoreRefund
+                          ? (localPmt?.returnedBy ?? (p as any).returned_by)
+                          : ((p as any).returned_by ?? localPmt?.returnedBy),
+                        returnAmount: Math.max(
+                          Number((p as any).return_amount) || 0,
+                          localPmt?.returnAmount ?? 0,
                         ),
                         // Pre-auth fields
                         isPreAuth,
@@ -15300,6 +15513,7 @@ export const useOrderStore = create<OrderState>()(
            */
           syncOrderFromBackendComplete: async (
             orderId: string,
+            options?: { force?: boolean },
           ): Promise<void> => {
             // O(1) order resolution via direct key or dbOrderIdIndex
             const storeKey = get().dbOrderIdIndex[orderId] ?? orderId;
@@ -15321,6 +15535,9 @@ export const useOrderStore = create<OrderState>()(
             }
 
             const detailSyncKey = order.db_order_id;
+            if (options?.force) {
+              lastOrderDetailSyncAt.delete(detailSyncKey);
+            }
             const lastSyncedAt = lastOrderDetailSyncAt.get(detailSyncKey);
             if (
               lastSyncedAt &&
@@ -15916,6 +16133,36 @@ export const useOrderStore = create<OrderState>()(
                       ) {
                         hasLocalAdvancedPayments = true;
                         return localPmt;
+                      }
+                      // Refunds are monotonic and don't always advance
+                      // payment.status. If the get_order_details RPC raced
+                      // a just-committed refund and returned refunded_amount=0
+                      // while local has it set, preserve the local refund
+                      // evidence so the chip doesn't flash off.
+                      if (localPmt) {
+                        const lpRefunded = localPmt.refundedAmount ?? 0;
+                        const spRefunded = serverPmt.refundedAmount ?? 0;
+                        const localHasMoreRefund = lpRefunded > spRefunded;
+                        return {
+                          ...serverPmt,
+                          refundedAmount: Math.max(lpRefunded, spRefunded),
+                          refundedAt: localHasMoreRefund
+                            ? (localPmt.refundedAt ?? serverPmt.refundedAt)
+                            : (serverPmt.refundedAt ?? localPmt.refundedAt),
+                          isReturned: localHasMoreRefund
+                            ? (localPmt.isReturned ?? serverPmt.isReturned)
+                            : (serverPmt.isReturned ?? localPmt.isReturned),
+                          returnedAt: localHasMoreRefund
+                            ? (localPmt.returnedAt ?? serverPmt.returnedAt)
+                            : (serverPmt.returnedAt ?? localPmt.returnedAt),
+                          returnedBy: localHasMoreRefund
+                            ? (localPmt.returnedBy ?? serverPmt.returnedBy)
+                            : (serverPmt.returnedBy ?? localPmt.returnedBy),
+                          returnAmount: Math.max(
+                            localPmt.returnAmount ?? 0,
+                            serverPmt.returnAmount ?? 0,
+                          ),
+                        };
                       }
                       return serverPmt;
                     },

@@ -109,6 +109,11 @@ export interface PaymentRefundContext {
   paymentMethod: PaymentMethod;
   batchNumber: string;
   isVoidable: boolean;
+  // Wave R-SC: per-payment SC share baked into `amount` by process_payment_v14.
+  // Used by buildItemRefundAllocation to prorate the SC slice into item refunds
+  // so the customer is refunded what they actually paid (items + tax + SC),
+  // not just (items + tax). Pre-v13 payments default to 0 — no-op.
+  serviceCharge: number;
   terminalId?: string | null;
   terminalConfig?: StationPaymentTerminal; // resolved from payment_terminals at gather time
 }
@@ -143,6 +148,10 @@ export interface PaymentItemAllocation {
   unitPrice: number;
   subtotal: number;
   tax: number;
+  // Wave R-SC: prorated SC slice from the parent payment's service_charge.
+  // Already folded into `total` for downstream callers; surfaced separately
+  // for observability + tests.
+  scShare?: number;
   total: number;
 }
 

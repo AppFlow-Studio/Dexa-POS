@@ -4,8 +4,8 @@ import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react-native";
 import { useState } from "react";
 import {
     ActivityIndicator,
-    Modal,
     ScrollView,
+    StyleSheet,
     Text,
     TouchableOpacity,
     View,
@@ -38,7 +38,7 @@ export function PaymentTerminalReconciliationModal({
 }: PaymentTerminalReconciliationModalProps) {
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
-  if (!verification) return null;
+  if (!verification || !visible) return null;
 
   const amountDollars = (verification.amountCents / 100).toFixed(2);
   const tipDollars =
@@ -57,31 +57,19 @@ export function PaymentTerminalReconciliationModal({
         : `${ageMinutes} minutes ago`;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+    <View style={{ width: "100%", alignItems: "center" }}>
       <View
         style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.78)",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
+          backgroundColor: colors.panel,
+          borderRadius: 16,
+          width: "100%",
+          maxWidth: 480,
+          borderWidth: 1,
+          borderColor: colors.warning + "60",
+          overflow: "hidden",
         }}
       >
-        <View
-          style={{
-            backgroundColor: colors.panel,
-            borderRadius: 16,
-            width: "100%",
-            maxWidth: 480,
-            borderWidth: 1,
-            borderColor: colors.warning + "60",
-            overflow: "hidden",
-          }}
-        >
-          <ScrollView
-            contentContainerStyle={{ padding: 22 }}
-            showsVerticalScrollIndicator={false}
-          >
+        <View style={{ padding: 22 }}>
             {/* Icon + title */}
             <View style={{ alignItems: "center", marginBottom: 14 }}>
               <View
@@ -226,32 +214,35 @@ export function PaymentTerminalReconciliationModal({
               </TouchableOpacity>
             </View>
 
-            <Text
-              style={{
-                fontSize: 11,
-                color: colors.muted,
-                textAlign: "center",
-                marginTop: 12,
-                lineHeight: 16,
-              }}
-            >
-              The same payment is safe to record twice — the server
-              de-duplicates by transaction key.
-            </Text>
-          </ScrollView>
+          <Text
+            style={{
+              fontSize: 11,
+              color: colors.muted,
+              textAlign: "center",
+              marginTop: 12,
+              lineHeight: 16,
+            }}
+          >
+            The same payment is safe to record twice — the server
+            de-duplicates by transaction key.
+          </Text>
         </View>
       </View>
 
-      {/* Double-tap confirm for discard (destructive) */}
-      <DiscardConfirmModal
-        visible={discardConfirmOpen}
-        onConfirm={() => {
-          setDiscardConfirmOpen(false);
-          onConfirmNotCharged();
-        }}
-        onCancel={() => setDiscardConfirmOpen(false)}
-      />
-    </Modal>
+      {/* Double-tap confirm for discard (destructive).
+          Rendered as an absoluteFill overlay (not a nested RN <Modal>) because
+          this whole tree is already inside PaymentBottomSheet's <Modal> — a
+          second nested <Modal> renders behind the parent on Android. */}
+      {discardConfirmOpen && (
+        <DiscardConfirmOverlay
+          onConfirm={() => {
+            setDiscardConfirmOpen(false);
+            onConfirmNotCharged();
+          }}
+          onCancel={() => setDiscardConfirmOpen(false)}
+        />
+      )}
+    </View>
   );
 }
 
@@ -285,28 +276,27 @@ function DetailRow({
   );
 }
 
-interface DiscardConfirmModalProps {
-  visible: boolean;
+interface DiscardConfirmOverlayProps {
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-function DiscardConfirmModal({
-  visible,
+function DiscardConfirmOverlay({
   onConfirm,
   onCancel,
-}: DiscardConfirmModalProps) {
+}: DiscardConfirmOverlayProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
-      <View
-        style={{
-          flex: 1,
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        {
           backgroundColor: "rgba(0,0,0,0.85)",
           alignItems: "center",
           justifyContent: "center",
           padding: 24,
-        }}
-      >
+        },
+      ]}
+    >
         <View
           style={{
             backgroundColor: colors.panel,
@@ -387,7 +377,6 @@ function DiscardConfirmModal({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
-    </Modal>
+    </View>
   );
 }

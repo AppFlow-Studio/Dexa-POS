@@ -168,6 +168,9 @@ interface PaymentRowProps {
     cardBrand?: string
     last4?: string
     timestamp?: string
+    refundedAmount?: number
+    isReturned?: boolean
+    status?: string
     itemsCovered?: {
       itemId: string
       quantity: number
@@ -186,6 +189,33 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(
         ? `${payment.cardBrand} ****${payment.last4}`
         : payment.method
 
+    // Discriminate (per MEMORY project_voided_payment_refunded_amount):
+    //   status='void' AND is_returned=true   → refund-via-void (counts as refund)
+    //   status='void' AND is_returned=false  → true cancellation
+    //   refundedAmount > 0                   → partial or full refund
+    const refundedAmount = payment.refundedAmount || 0
+    const isVoidCancellation =
+      payment.status === 'void' && payment.isReturned !== true
+    const isFullyRefunded =
+      refundedAmount >= payment.amount - 0.001 && refundedAmount > 0
+    const isPartiallyRefunded =
+      refundedAmount > 0 && !isFullyRefunded
+    const showRefundState =
+      isFullyRefunded || isPartiallyRefunded || isVoidCancellation
+
+    const badgeColor = isVoidCancellation
+      ? colors.muted
+      : showRefundState
+      ? colors.danger
+      : colors.success
+    const badgeLabel = isVoidCancellation
+      ? 'Voided'
+      : isFullyRefunded
+      ? 'Refunded'
+      : isPartiallyRefunded
+      ? 'Partial Refund'
+      : 'Paid'
+
     return (
       <View
         style={{
@@ -198,7 +228,8 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(
           borderRadius: 10,
           marginBottom: 8,
           borderWidth: 1,
-          borderColor: colors.border
+          borderColor: colors.border,
+          opacity: showRefundState ? 0.7 : 1
         }}
       >
         <View
@@ -211,18 +242,18 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(
         >
           <View
             style={{
-              backgroundColor: colors.success + '20',
+              backgroundColor: badgeColor + '20',
               paddingHorizontal: 7,
               paddingVertical: 3,
               borderRadius: 6,
               borderWidth: 1,
-              borderColor: colors.success + '40'
+              borderColor: badgeColor + '40'
             }}
           >
             <Text
-              style={{ color: colors.success, fontSize: 10, fontWeight: '700' }}
+              style={{ color: badgeColor, fontSize: 10, fontWeight: '700' }}
             >
-              Paid
+              {badgeLabel}
             </Text>
           </View>
           <View>
@@ -244,13 +275,25 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(
 
         <View style={{ alignItems: 'flex-end', marginHorizontal: 8 }}>
           <Text
-            style={{ color: colors.heading, fontWeight: '700', fontSize: 13 }}
+            style={{
+              color: colors.heading,
+              fontWeight: '700',
+              fontSize: 13,
+              textDecorationLine: isFullyRefunded || isVoidCancellation
+                ? 'line-through'
+                : 'none'
+            }}
           >
             ${payment.amount.toFixed(2)}
           </Text>
-          {payment.tip_amount && payment.tip_amount > 0 && (
+          {refundedAmount > 0 && (
+            <Text style={{ color: colors.danger, fontSize: 10 }}>
+              -${refundedAmount.toFixed(2)}
+            </Text>
+          )}
+          {(payment.tip_amount ?? 0) > 0 && !showRefundState && (
             <Text style={{ color: colors.success, fontSize: 10 }}>
-              +${payment.tip_amount.toFixed(2)}
+              +${(payment.tip_amount ?? 0).toFixed(2)}
             </Text>
           )}
         </View>
@@ -314,10 +357,23 @@ const PayForItemsView: React.FC = () => {
 
   // Calculate collected amount and remaining
   // Priority: Use backend's amount_due (authoritative) > calculate from payments
+  // Refunded amounts are subtracted so partial/full refunds correctly reduce
+  // "Collected"; without this, a refunded payment still inflates the total.
   const collectedAmount = payments.reduce(
-    (sum, p) => sum + p.amount + (p.tip_amount || 0),
+    (sum, p) =>
+      sum +
+      p.amount +
+      (p.tip_amount || 0) -
+      ((p as any).refundedAmount || 0),
     0
   )
+
+  // Refunded payment rows still appear in PAYMENTS but visually as "Refunded".
+  // The header count shows the active (non-refunded) entries so the cashier
+  // sees how many real collections cover the bill.
+  const activePaymentsCount = payments.filter(
+    p => ((p as any).refundedAmount || 0) < (p.amount || 0) - 0.001
+  ).length
 
   // Card remaining (default pricing)
   const remainingAmount =
@@ -400,9 +456,36 @@ const PayForItemsView: React.FC = () => {
     [allUnpaidArray, taxRatesMap]
   )
 
+  // SC-inclusive totals for the cashier-facing "Selected for Payment"
+  // strip and "Pay $X" button label. Uses a SINGLE items-ratio (card
+  // items+tax share of the all-unpaid items+tax) applied to BOTH sides'
+  // SC residual. Using one shared ratio keeps cash ≤ card per-item
+  // (preserves the cash-discount inequality at the item level) while
+  // still summing to remainingAmount / remainingCashAmount across all
+  // unpaid items. The previous design used separate cardScale/cashScale,
+  // which inverted the inequality when cash items+tax was a smaller
+  // fraction of cash outstanding than card items+tax was of card
+  // outstanding (Bug 2 from the 2026-05-30 trace — see screenshot
+  // showing Cash $8.32 > Card $8.02 for single Mocha).
+  const selectedItemsRatio =
+    allUnpaidCardTotals.total > 0
+      ? selectedCardTotals.total / allUnpaidCardTotals.total
+      : 0
+  const cardScResidual = Math.max(0, remainingAmount - allUnpaidCardTotals.total)
+  const cashScResidual = Math.max(
+    0,
+    remainingCashAmount - allUnpaidCashTotals.total
+  )
+  const selectedCardTotalScaled = round2(
+    selectedCardTotals.total + cardScResidual * selectedItemsRatio
+  )
+  const selectedCashTotalScaled = round2(
+    selectedCashTotals.total + cashScResidual * selectedItemsRatio
+  )
+
   const cashSavings = Math.max(
     0,
-    selectedCardTotals.total - selectedCashTotals.total
+    selectedCardTotalScaled - selectedCashTotalScaled
   )
 
   // --- HANDLERS ---
@@ -480,28 +563,16 @@ const PayForItemsView: React.FC = () => {
     // Store selected items in the first split
     addSplit('Selected Items')
 
-    // Proportional SC residual: scale the items-only totals so the split charges
-    // its share of the SC residual. Falls back to 1 when nothing's unpaid yet
-    // (avoids div-by-zero) — selected totals are already 0 in that case.
-    const cardScale =
-      allUnpaidCardTotals.total > 0
-        ? remainingAmount / allUnpaidCardTotals.total
-        : 1
-    const cashScale =
-      allUnpaidCashTotals.total > 0
-        ? remainingCashAmount / allUnpaidCashTotals.total
-        : 1
-
-    // Now use the payment store's mechanism for single split
-    // Set both card (amount) and cash (cashAmount) pricing for dual-price support
-    // The actual payment method determines which price is used at checkout time
+    // Use the SC-inclusive scaled totals computed above (line ~417). Same
+    // values drive the strip + button label, so the cash sheet that opens
+    // next charges the exact dollar amount the cashier saw.
     usePaymentStore.setState(state => ({
       splits: [
         {
           ...state.splits[0],
           items: selectedItemsArray,
-          amount: round2(selectedCardTotals.total * cardScale), // Card/default pricing
-          cashAmount: round2(selectedCashTotals.total * cashScale) // Cash pricing
+          amount: selectedCardTotalScaled, // Card/default pricing
+          cashAmount: selectedCashTotalScaled // Cash pricing
         }
       ],
       activeSplitId: state.splits[0]?.id,
@@ -511,12 +582,8 @@ const PayForItemsView: React.FC = () => {
     setView('payment-method-selection')
   }, [
     selectedItems,
-    selectedCardTotals,
-    selectedCashTotals,
-    allUnpaidCardTotals,
-    allUnpaidCashTotals,
-    remainingAmount,
-    remainingCashAmount,
+    selectedCardTotalScaled,
+    selectedCashTotalScaled,
     resetSplits,
     addSplit,
     setView
@@ -895,7 +962,7 @@ const PayForItemsView: React.FC = () => {
                 marginBottom: 12
               }}
             >
-              Payments ({payments.length})
+              Payments ({activePaymentsCount})
             </Text>
             <ScrollView
               style={{ flex: 1 }}
@@ -986,7 +1053,7 @@ const PayForItemsView: React.FC = () => {
                           fontSize: 13
                         }}
                       >
-                        ${selectedCardTotals.total.toFixed(2)}
+                        ${selectedCardTotalScaled.toFixed(2)}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -1053,7 +1120,7 @@ const PayForItemsView: React.FC = () => {
                           fontSize: 13
                         }}
                       >
-                        ${selectedCashTotals.total.toFixed(2)}
+                        ${selectedCashTotalScaled.toFixed(2)}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -1124,8 +1191,8 @@ const PayForItemsView: React.FC = () => {
                     {selectedItems.size > 0
                       ? `Pay $${
                           paymentMethod === 'cash'
-                            ? selectedCashTotals.total.toFixed(2)
-                            : selectedCardTotals.total.toFixed(2)
+                            ? selectedCashTotalScaled.toFixed(2)
+                            : selectedCardTotalScaled.toFixed(2)
                         }`
                       : 'Select Items'}
                   </Text>

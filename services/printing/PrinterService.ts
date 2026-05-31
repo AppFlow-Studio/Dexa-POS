@@ -11,6 +11,12 @@ import { usePrintQueueStore } from '@/stores/usePrintQueueStore'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useReceiptTemplateStore } from '@/stores/useReceiptTemplateStore'
 import { useSeatingStore } from '@/stores/useSeatingStore'
+import { useServiceChargeRulesStore } from '@/stores/useServiceChargeRulesStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import {
+  getOrderTypeDisplay as displayOrderType,
+  resolveTableDisplayName
+} from '@/lib/orderDisplay'
 import {
   SelectedLocation,
   useStoreSettingsStore
@@ -1064,11 +1070,35 @@ function buildReceiptTemplateData (
   // This avoids fragile recomputation (e.g., weighted tax rate from item.taxRate which
   // can be 0 on backend-synced items from another station).
   const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap
+
+  // Service-charge inputs — mirrors useOrderTotals selector. Without these the
+  // calculator returns service_charge=0 and the receipt SC row is suppressed.
+  const serviceChargeRule = useServiceChargeRulesStore
+    .getState()
+    .resolveRule(location.id)
+  const sessionPartySize = order.session_id
+    ? (Object.values(
+        useTableSessionStore.getState().sessions
+      ).find((s) => s.id === order.session_id)?.party_size ?? null)
+    : null
+  const seatCount =
+    useSeatingStore.getState().byOrderId[order.id]?.seatCount ?? null
+  const partySize = seatCount ?? sessionPartySize ?? null
+
   const orderTotals = calculateOrderTotals({
     items: order.items,
     checkDiscount: order.checkDiscount ?? null,
     taxRatesMap,
-    payments: order.payments ?? []
+    payments: order.payments ?? [],
+    serviceChargeRule,
+    partySize,
+    orderType: order.order_type ?? null,
+    snapshottedRate: order.service_charge_rate ?? null,
+    snapshottedAppliesOn: order.service_charge_applies_on ?? null,
+    snapshottedName: order.service_charge_name ?? null,
+    manualServiceCharge: order.service_charge_is_manual
+      ? order.service_charge
+      : undefined
   })
 
   const subtotal = orderTotals.subtotal
@@ -1340,44 +1370,16 @@ function buildKitchenTicketData (
 }
 
 function resolvePrintableTableName (order: OrderProfile): string | undefined {
-  const rawName = order.service_location_name?.trim()
-  const rawId = order.service_location_id?.trim()
-
-  // Guard against printing UUID values as table labels.
-  const isUuid = (value?: string | null) =>
-    !!value &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value
-    )
-
-  if (rawName && !isUuid(rawName)) {
-    return rawName
-  }
-
-  if (rawId) {
-    const table = useFloorPlanStore.getState().tablesById[rawId]
-    const tableName = table?.name?.trim()
-    if (tableName) {
-      return tableName
-    }
-  }
-
-  // Last resort: only use the raw name if it is not UUID-like.
-  return rawName && !isUuid(rawName) ? rawName : undefined
+  return (
+    resolveTableDisplayName(
+      order.service_location_id,
+      order.service_location_name
+    ) ?? undefined
+  )
 }
 
-function getOrderTypeDisplay (orderType: string | undefined): string {
-  if (!orderType) return 'Dine In'
-  const types: Record<string, string> = {
-    'Dine In': 'Dine In',
-    dine_in: 'Dine In',
-    Takeaway: 'Takeaway',
-    takeout: 'Takeaway',
-    Delivery: 'Delivery',
-    delivery: 'Delivery'
-  }
-  return types[orderType] || orderType.replace('_', ' ')
-}
+const getOrderTypeDisplay = (orderType: string | undefined): string =>
+  displayOrderType(orderType ?? null)
 
 function getPaymentMethodName (method: string | undefined): string {
   if (!method) return 'Cash'

@@ -258,7 +258,17 @@ export function calculatePaidStatus (
       p.isCashPriced && p.cashSavings
         ? (p.amount ?? 0) + p.cashSavings
         : p.amount ?? 0
-    return sum + cardEquivalent
+    // Refund subtraction must scale by the cash↔card ratio: refundedAmount is
+    // stored in the payment's own currency, so for a fully-refunded cash
+    // payment we have to remove the entire card-equivalent (cash + savings),
+    // not just the cash portion — otherwise the cashSavings residue is left
+    // counted as "paid" and the order misreads as fully settled. Mirrors the
+    // proportional refund handling in calculateOrderTotals.
+    const refunded = p.refundedAmount ?? 0
+    const amount = p.amount ?? 0
+    const cardEquivalentRefunded =
+      amount > 0 ? (cardEquivalent * refunded) / amount : refunded
+    return sum + (cardEquivalent - cardEquivalentRefunded)
   }, 0)
 
   // No payments or zero total paid
@@ -775,6 +785,14 @@ export function calculateOrderTotals (
     // Calculate effective paid using card-equivalent amounts (matches SQL §10)
     // For cash-priced payments, amount is cash price but cashSavings = original_amount - amount
     // So amount + cashSavings = original_amount = card equivalent
+    //
+    // Refund subtraction must scale by the same card↔cash ratio: order_payments
+    // stores refunded_amount in the payment's own currency (cash for a
+    // cash-priced payment). Subtracting that raw cash amount from
+    // cardEquivalent leaves the cashSavings residue counted as "paid", which
+    // diverges from the backend (it removes the refunded payment's full
+    // card-equivalent share). Proportional refund: cardEquiv × (refunded /
+    // amount), so a full refund zeros the contribution exactly.
     const effectivePaid = payments
       .filter(p => !p.isVoided && !p.isPreAuth)
       .reduce((sum, p) => {
@@ -784,7 +802,13 @@ export function calculateOrderTotals (
           p.isCashPriced && p.cashSavings
             ? new Decimal(p.amount).plus(p.cashSavings)
             : new Decimal(p.amount)
-        return sum.plus(cardEquivalentAmount.minus(refunded))
+        const cardEquivalentRefunded =
+          p.amount > 0
+            ? cardEquivalentAmount
+                .times(refunded)
+                .div(p.amount)
+            : new Decimal(refunded)
+        return sum.plus(cardEquivalentAmount.minus(cardEquivalentRefunded))
       }, new Decimal(0))
 
     // Payment-based outstanding = total - effective_paid

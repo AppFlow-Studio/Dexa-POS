@@ -149,6 +149,64 @@ describe("Service Charge — pre vs post discount base", () => {
     );
     expect(r.service_charge).toBe(8.1); // 18% of $45
   });
+
+  // Wave A: card_total / cash_total must INCLUDE service_charge after a
+  // discount is applied. Server-side this invariant was broken by
+  // manage_order_discount_v2 (wrote card_total = subtotal+tax with no SC);
+  // Wave A's manage_order_discount_v3 fork hands off totals to
+  // apply_service_charge_v1 + calculate_order_totals_fast so it now holds
+  // both client and server side. These two tests lock in the client-side
+  // half of the invariant.
+  it("pre_discount: card_total = (subtotal − discount) + tax + service_charge", () => {
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: discount,
+        serviceChargeRule: rule({ applies_on: "pre_discount" }),
+      }),
+    );
+    // $50 − 10% = $45 net; SC = 18% × $50 = $9 (gross-based); total = 54
+    expect(r.discount_amount).toBe(5);
+    expect(r.service_charge).toBe(9);
+    expect(r.total_amount).toBe(54);
+    expect(r.total_amount).toBe(
+      r.subtotal - r.discount_amount + r.tax_amount + r.service_charge,
+    );
+    expect(r.cash_total_amount).toBe(
+      r.cash_subtotal -
+        r.cash_discount_amount +
+        r.cash_tax_amount +
+        r.cash_service_charge,
+    );
+  });
+
+  it("post_discount: card_total = (subtotal − discount) + tax + service_charge (SC dropped)", () => {
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: discount,
+        serviceChargeRule: rule({ applies_on: "post_discount" }),
+      }),
+    );
+    // $50 − 10% = $45 net; SC = 18% × $45 = $8.10 (net-based); total = 53.10
+    expect(r.discount_amount).toBe(5);
+    expect(r.service_charge).toBe(8.1);
+    expect(r.total_amount).toBe(53.1);
+    expect(r.total_amount).toBe(
+      r.subtotal - r.discount_amount + r.tax_amount + r.service_charge,
+    );
+  });
+
+  it("void/no-discount: totals return to gross baseline with full SC", () => {
+    // Same setup, but checkDiscount=null (simulates voiding the discount).
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: null,
+        serviceChargeRule: rule({ applies_on: "post_discount" }),
+      }),
+    );
+    expect(r.discount_amount).toBe(0);
+    expect(r.service_charge).toBe(9); // 18% × $50 gross
+    expect(r.total_amount).toBe(59);
+  });
 });
 
 describe("Service Charge — snapshot durability", () => {

@@ -465,6 +465,8 @@ function transformBroadcastPaymentToProfile (
     subtotal_portion: payment.subtotal_portion,
     tax_portion: payment.tax_portion,
     discount_portion: payment.discount_portion ?? undefined,
+    service_charge: payment.service_charge ?? 0,
+    service_charge_refunded: payment.service_charge_refunded ?? 0,
     voidedAt: payment.voided_at ?? undefined,
     splitInfo,
     itemsCovered,
@@ -967,6 +969,10 @@ export interface FetchedOrderPayment {
   refunded_amount: number | null
   refunded_at: string | null
 
+  // Service-charge per-payment snapshot (process_payment_v13+ / apply_refund_to_payment_v4)
+  service_charge: number | null
+  service_charge_refunded: number | null
+
   // Return/refund tracking fields
   is_returned: boolean | null
   returned_at: string | null
@@ -1120,6 +1126,8 @@ function normalizeFetchedPayment (
     subtotal_portion: payment.subtotal_portion ?? 0,
     tax_portion: payment.tax_portion ?? 0,
     discount_portion: payment.discount_portion ?? 0,
+    service_charge: payment.service_charge ?? 0,
+    service_charge_refunded: payment.service_charge_refunded ?? 0,
     voided_at: payment.voided_at ?? null,
     amount_tendered: payment.amount_tendered,
     change_given: payment.change_given ?? 0,

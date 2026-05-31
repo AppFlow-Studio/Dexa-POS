@@ -197,7 +197,7 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
               {branding?.restaurantName ?? 'Restaurant'}
             </Text>
             <Text style={styles.headerSubtitle}>
-              {orderType?.toUpperCase()}
+              {orderType}
               {tableName
                 ? ` · Table ${tableName}`
                 : serverName

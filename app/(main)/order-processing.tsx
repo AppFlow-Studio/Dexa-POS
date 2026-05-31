@@ -1,6 +1,7 @@
 import BillSection from "@/components/bill/BillSection";
 import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
+import { ServiceChargeOverrideSheet } from "@/components/bill/ServiceChargeOverrideSheet";
 import CashDrawerSheet from "@/components/cash-drawer/CashDrawerSheet";
 import NoSaleModal from "@/components/cash-drawer/NoSaleModal";
 import MenuSection from "@/components/menu/MenuSection";
@@ -184,6 +185,7 @@ const OrderProcessing = () => {
     useState(false);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
+  const serviceChargeSheetRef = useRef<BottomSheetMethods>(null);
   const orderBadgeListRef = useRef<Animated.FlatList<OrderProfile>>(null);
   const orderBadgeScrollXRef = useRef(0);
   const orderBadgeViewportWidthRef = useRef(0);
@@ -1619,6 +1621,9 @@ const OrderProcessing = () => {
             discountSheetRef={
               discountSheetRef as React.RefObject<BottomSheetMethods>
             }
+            serviceChargeSheetRef={
+              serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
+            }
             onCloseCheck={handleCloseCheck}
             onCloseSession={handleCloseSession}
             onNoSale={handleNoSale}
@@ -1627,6 +1632,10 @@ const OrderProcessing = () => {
           <DiscountBottomSheet
             ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
             onClose={() => discountSheetRef?.current?.close()}
+          />
+          <ServiceChargeOverrideSheet
+            ref={serviceChargeSheetRef as React.RefObject<BottomSheetMethods>}
+            onClose={() => serviceChargeSheetRef?.current?.close()}
           />
         </View>
       )}

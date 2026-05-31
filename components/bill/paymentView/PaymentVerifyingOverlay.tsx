@@ -53,14 +53,17 @@ export default function PaymentVerifyingOverlay() {
   // 'tcp_inflight_crash' (RPC was never called). Render the manual
   // reconciliation modal instead and skip the polling UI entirely.
   if (verification?.reason === "tcp_inflight_crash") {
+    // Render inline — PaymentTerminalReconciliationModal no longer wraps in a
+    // native <Modal> because this whole tree is already inside
+    // PaymentBottomSheet's <Modal> (nested RN Modals don't reliably present
+    // on Android — symptom was a blank colors.panel "white body").
     return (
       <View
-        // minHeight (not flex:1) — this overlay renders inside a ScrollView,
-        // and ScrollView children with flex:1 collapse to zero height because
-        // there's no constrained parent dimension to fill.
         style={{
           minHeight: 500,
+          padding: 24,
           backgroundColor: colors.panel,
+          alignItems: "center",
         }}
       >
         <PaymentTerminalReconciliationModal

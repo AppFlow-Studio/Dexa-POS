@@ -123,6 +123,10 @@ export interface BroadcastOrderPaymentData {
   refunded_amount?: number
   refunded_at?: string | null
 
+  // Service charge per-payment snapshot (process_payment_v13+)
+  service_charge?: number | null
+  service_charge_refunded?: number | null
+
   // Return/refund tracking fields
   is_returned?: boolean
   returned_at?: string | null
