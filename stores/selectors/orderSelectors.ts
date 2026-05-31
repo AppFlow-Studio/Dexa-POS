@@ -10,7 +10,7 @@
  */
 
 import { calculateOrderTotals } from "@/lib/order-calculator";
-import type { OrderProfile, OrderProfilePayment } from "@/lib/types";
+import type { CartItem, OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useOrderStore } from "../useOrderStore";
@@ -751,6 +751,20 @@ export function useOrder(
   orderId: string | null | undefined,
 ): OrderProfile | null {
   return useOrderStore((s) => (orderId ? (s.getOrder(orderId) ?? null) : null));
+}
+
+/**
+ * Subscribe to a single item in a local order.
+ * Immer keeps untouched item references stable when sibling items change.
+ */
+export function useOrderItem(
+  orderId: string | null | undefined,
+  itemId: string,
+): CartItem | null {
+  return useOrderStore((s) => {
+    if (!orderId) return null;
+    return s.ordersById[orderId]?.items.find((item) => item.id === itemId) ?? null;
+  });
 }
 
 /**

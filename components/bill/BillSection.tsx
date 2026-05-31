@@ -83,13 +83,13 @@ import OrderSyncBanner from "./OrderSyncBanner";
 import Totals from "./Totals";
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates.
-// Subscribes to ONLY the active order's items array — re-renders when the
-// items reference changes (Immer mutates items on add) but not when other
-// order fields change. Parent's re-render no longer cascades here.
+// Subscribes to only the active order's item IDs. Item mutations keep this
+// container stable while each BillSummaryRow subscribes to its own CartItem.
 const EMPTY_CART_ITEMS: CartItem[] = [];
+const EMPTY_CART_ITEM_IDS: string[] = [];
 
 const BillItemsAndTotals = React.memo(
-  ({
+  function BillItemsAndTotals({
     orderNote,
     isNetworkDegraded,
     onSaveOrderNote,
@@ -97,11 +97,14 @@ const BillItemsAndTotals = React.memo(
     orderNote?: string;
     isNetworkDegraded: boolean;
     onSaveOrderNote: (value: string) => void;
-  }) => {
-    const cart = useOrderStore<CartItem[]>((s) => {
-      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-      return (order?.items ?? EMPTY_CART_ITEMS) as CartItem[];
-    });
+  }) {
+    const activeOrderId = useOrderStore((s) => s.activeOrderId);
+    const itemIds = useOrderStore(
+      useShallow((s) => {
+        const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+        return (order?.items ?? EMPTY_CART_ITEMS).map((item) => item.id);
+      }),
+    );
     const activeOrderPaymentInfo = useOrderStore(
       useShallow((s) => {
         const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
@@ -212,7 +215,8 @@ const BillItemsAndTotals = React.memo(
             of the bill so failed ops are visible before the operator scrolls. */}
         <OrderSyncBanner />
         <BillSummary
-          cart={cart}
+          orderId={activeOrderId}
+          itemIds={itemIds.length > 0 ? itemIds : EMPTY_CART_ITEM_IDS}
           expandedItemId={expandedItemId}
           onToggleExpand={handleToggleExpand}
           orderHasPayments={activeOrderPaymentInfo.orderHasPayments}
