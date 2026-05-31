@@ -1,6 +1,7 @@
 import { ToastRenderer, useToast } from '@/contexts/ToastContext'
 import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
+import { computeItemRefundAmount } from '@/lib/refundScShare'
 import { useOrderDetailsFetch } from '@/hooks/orders/useOrderDetailsFetch'
 import { useOrderPayments } from '@/hooks/orders/useOrderPayments'
 import { OrderDetailMerchantBreakdown } from '@/components/orders/OrderDetailMerchantBreakdown'
@@ -121,6 +122,11 @@ interface PaymentRowData {
   original_tip_fee?: number | null
   dual_pricing_percentage_snapshot?: number
   tip_surcharge_percentage_snapshot?: number
+  // Wave R-SC: per-payment SC share baked into `collected`/`orderAmount` by
+  // process_payment_v14. Used by selectedItemsTotal to include the prorated
+  // SC slice in the refund preview so the displayed amount matches what the
+  // refundService actually returns to the customer.
+  serviceCharge?: number
 }
 
 type RightPaneView = 'summary' | 'refund' | 'tipAdjust'
@@ -2186,30 +2192,74 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     [refundablePayments]
   )
 
-  // Calculate selected items total (price + tax) using discounted prices
-  // Uses post-discount subtotal with correct cash/card pricing per covering payment
+  // Calculate selected items total (price + tax + prorated SC share) using
+  // discounted prices and correct cash/card pricing per covering payment.
+  //
+  // Wave R-SC: items+tax alone under-counts because process_payment_v14 baked
+  // the SC share into op.amount and refundService now refunds that
+  // SC-inclusive amount. The preview must match: group items by covering
+  // payment, sum items+tax per payment, then fold in the prorated SC slice
+  // via computeItemRefundAmount (same helper used in refundService).
   const selectedItemsTotal = useMemo(() => {
     if (!order?.items) return 0
-    return order.items.reduce((sum: number, item: CartItem) => {
+    // Step 1: aggregate items+tax per covering payment.
+    // paymentKey: dbPaymentId || 'unassigned' — unassigned items just contribute
+    // their items+tax (no SC share known until the user assigns a payment).
+    const itemsTotalByPayment = new Map<string, number>()
+    const paymentMetaByKey = new Map<
+      string,
+      { amount: number; serviceCharge: number } | null
+    >()
+    for (const item of order.items as CartItem[]) {
       const maxQty = getRefundableQty(item)
       const selectedQty = Math.min(
         selectedItems[item.db_order_item_id || ''] || 0,
         maxQty
       )
-      if (selectedQty <= 0) return sum
-      // Use discounted price based on covering payment's pricing mode
+      if (selectedQty <= 0) continue
       const coveringPayment = getPaymentForItem(item.db_order_item_id || '')
-      const isCash = coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
-      const effectiveSubtotal = isCash ? (item.cashSubtotal ?? item.subtotal ?? 0) : (item.subtotal ?? 0)
-      const effectiveTax = isCash ? (item.cashTaxAmount ?? item.taxAmount ?? 0) : (item.taxAmount ?? 0)
-      const discountedUnitPrice = item.quantity > 0
-        ? effectiveSubtotal / item.quantity
-        : (item.price || 0)
+      const isCash =
+        coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
+      const effectiveSubtotal = isCash
+        ? item.cashSubtotal ?? item.subtotal ?? 0
+        : item.subtotal ?? 0
+      const effectiveTax = isCash
+        ? item.cashTaxAmount ?? item.taxAmount ?? 0
+        : item.taxAmount ?? 0
+      const discountedUnitPrice =
+        item.quantity > 0 ? effectiveSubtotal / item.quantity : item.price || 0
       const perUnitTax = item.quantity > 0 ? effectiveTax / item.quantity : 0
       const itemSubtotal = round2(discountedUnitPrice * selectedQty)
       const itemTax = round2(perUnitTax * selectedQty)
-      return sum + round2(itemSubtotal + itemTax)
-    }, 0)
+      const itemSlice = round2(itemSubtotal + itemTax)
+      const key = coveringPayment?.dbPaymentId || 'unassigned'
+      itemsTotalByPayment.set(
+        key,
+        (itemsTotalByPayment.get(key) || 0) + itemSlice
+      )
+      if (!paymentMetaByKey.has(key)) {
+        paymentMetaByKey.set(
+          key,
+          coveringPayment
+            ? {
+                amount: coveringPayment.orderAmount,
+                serviceCharge: coveringPayment.serviceCharge ?? 0,
+              }
+            : null
+        )
+      }
+    }
+    // Step 2: fold in the SC slice per payment and sum.
+    let total = 0
+    for (const [key, itemsTotal] of itemsTotalByPayment) {
+      const meta = paymentMetaByKey.get(key)
+      if (!meta || meta.serviceCharge <= 0) {
+        total += itemsTotal
+        continue
+      }
+      total += computeItemRefundAmount(meta, itemsTotal).amount
+    }
+    return round2(total)
   }, [selectedItems, order?.items, getRefundableQty, getPaymentForItem])
 
   // Calculate per-payment refund total
@@ -4048,6 +4098,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           original_tip_fee: payment.original_tip_fee,
           dual_pricing_percentage_snapshot: payment.dual_pricing_percentage_snapshot,
           tip_surcharge_percentage_snapshot: payment.tip_surcharge_percentage_snapshot,
+          serviceCharge: payment.service_charge ?? 0,
         })
       })
     }

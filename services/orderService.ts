@@ -4,6 +4,7 @@ import {
     rpcWithIdempotency,
     withIdempotency,
 } from "@/lib/network/idempotencyKey";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { runWithDeadline as _runWithDeadline } from "@/lib/network/runWithDeadline";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";

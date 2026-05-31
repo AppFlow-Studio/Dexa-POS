@@ -1119,15 +1119,18 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       // --- THIS IS THE CORRECTED LOGIC ---
 
-      // 1. Calculate the total refund amount for this transaction
-      // and prepare the items for the refund record.
+      // 1. Prepare the items for the refund record.
+      // Note (Wave R-SC): totalRefundedInThisTx is now populated from the
+      // server response below — `item.price * quantity` was pre-discount
+      // and over-counted the fraud-velocity threshold on every discounted
+      // refund. The authoritative SC-inclusive total comes from
+      // refundService.processRefund's reversals[].amount aggregation.
       itemsToRefund.forEach(({ itemId, quantity, reason }) => {
         const item = order.items.find((i) => i.id === itemId);
         // Ensure we are refunding a valid item and a valid quantity
         const maxRefundable =
           (item?.quantity || 0) - (item?.refundedQuantity || 0);
         if (item && quantity > 0 && quantity <= maxRefundable) {
-          totalRefundedInThisTx += item.price * quantity;
           refundItemsForRecord.push({
             itemId,
             quantity,
@@ -1181,6 +1184,14 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         if (result.kind === "verifying") {
           return result;
         }
+
+        // Wave R-SC: derive the authoritative refunded total from the
+        // server response (SC-inclusive, post-discount). Used by the audit
+        // log + fraud-velocity threshold below.
+        totalRefundedInThisTx = (result.data?.reversals ?? []).reduce(
+          (sum, r) => sum + Number(r.amount || 0),
+          0,
+        );
 
         await applyRefundRecovery({
           orderId,
