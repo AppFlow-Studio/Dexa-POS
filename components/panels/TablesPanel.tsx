@@ -1,5 +1,6 @@
 import TableListItem from "@/components/tables/TableListItem";
 import { colors } from "@/lib/theme";
+import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -418,6 +419,11 @@ const TablesPanel: React.FC = () => {
   }, []);
   const navigateToTableOrder = useCallback(
     (tableId: string) => {
+      const orderId =
+        useTableSessionStore.getState().sessions[tableId]?.order_id;
+      if (orderId) {
+        ensureOrderPrefetched(orderId).catch(() => {});
+      }
       router.push(`/tables/${tableId}`);
     },
     [router],

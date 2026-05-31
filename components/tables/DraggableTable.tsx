@@ -12,6 +12,7 @@ import {
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
+import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
 import {
   findWallCornerSnap,
   WallEdgeFlags
@@ -23,7 +24,6 @@ import {
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useOrderStore } from '@/stores/useOrderStore'
 import { useFloorPlanEditorStore } from '@/stores/useFloorPlanEditorStore'
 import { useReservationStore } from '@/stores/useReservationStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
@@ -357,9 +357,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     missingOrderLastAttemptAt[id] = now
     missingOrderSyncInFlight.add(id)
 
-    useOrderStore
-      .getState()
-      .syncOrderFromDatabase(id)
+    ensureOrderPrefetched(id)
       .catch((err: unknown) => {
         console.warn(
           '[DraggableTable] Failed to sync missing order for table card:',
@@ -741,10 +739,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Bind incoming (table) => void callbacks to this row's table once, so
   // runOnJS gets a stable nullary function instead of a per-render closure.
   const handleSelect = useCallback(() => onSelect(table), [onSelect, table])
-  const handlePress = useCallback(
-    () => onPress?.(table),
-    [onPress, table],
-  )
+  const handlePress = useCallback(() => {
+    const orderId = liveSession?.order_id
+    if (orderId) {
+      ensureOrderPrefetched(orderId).catch(() => {})
+    }
+    onPress?.(table)
+  }, [liveSession?.order_id, onPress, table])
   const handleLongPress = useCallback(
     () => onLongPress?.(table),
     [onLongPress, table],
