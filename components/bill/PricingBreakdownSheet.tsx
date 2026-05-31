@@ -160,14 +160,17 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
 
   const displayDiscount = hasPayments ? 0 : activeOrderDiscount;
   const displaySubtotal = hasPayments
-    ? activeOrderOutstandingSubtotal
+    ? Math.max(0, activeOrderOutstandingSubtotal)
     : activeOrderSubtotal;
   const displayCashSubtotal = hasPayments
-    ? (cashAmountDue - cashTax - cashServiceCharge)
+    ? Math.max(0, cashAmountDue - cashTax - cashServiceCharge)
     : cashSubtotal;
-  const displayTax = hasPayments ? activeOrderOutstandingTax : activeOrderTax;
-  const displayCashTax = cashTax;
-  const cardTotal = totalDisplayAmount;
+  const displayTax = hasPayments
+    ? Math.max(0, activeOrderOutstandingTax)
+    : activeOrderTax;
+  const displayCashTax = hasPayments ? Math.max(0, cashTax) : cashTax;
+  const cardTotal = Math.max(0, totalDisplayAmount);
+  const displayCashTotal = hasPayments ? Math.max(0, cashAmountDue) : cashTotal;
 
   const hasDualPricing = Math.abs(cashSubtotal - activeOrderSubtotal) > 0.005;
   const scLabel =
@@ -412,7 +415,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
             <Row
               label={hasPayments ? "Balance Due" : "Total"}
               card={cardTotal}
-              cash={hasPayments ? cashAmountDue : cashTotal}
+              cash={displayCashTotal}
               bold
               large
               valueColor={hasPayments ? colors.warning : colors.heading}
