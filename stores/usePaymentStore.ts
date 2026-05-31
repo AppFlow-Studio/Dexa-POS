@@ -943,7 +943,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         dejavooTransaction,
         itemAllocations, // Pass item allocations with quantities for per-item payment tracking
         forceCardPricing: false,
-        forceExplicitAmount: splitSourceView === "split-custom-amount",
+        // Even and custom splits are amount-based. A valid portion can be
+        // smaller than the next whole item, especially after a discount.
+        forceExplicitAmount:
+          splitSourceView === "split-custom-amount" ||
+          splitSourceView === "split-evenly",
         // Only pass split count/index for even splits - NOT for per-item or custom-amount payments
         // Per-item payments use itemAllocations to track what was paid
         // Custom-amount payments use p_amount through the FULL/PARTIAL SQL path
