@@ -9833,7 +9833,11 @@ export const useOrderStore = create<OrderState>()(
                           return {
                             ...item,
                             discount_amount: affected.discount_amount,
-                            discount_cash_amount: affected.discount_amount, // Use same for now, backend doesn't return separate cash
+                            discount_cash_amount: round2(
+                              calculateItemEffectiveCashPrice(item) *
+                                item.quantity -
+                                affected.cash_subtotal,
+                            ),
                             subtotal: affected.subtotal,
                             cashSubtotal: affected.cash_subtotal,
                             taxAmount: affected.tax_amount,
@@ -10161,8 +10165,11 @@ export const useOrderStore = create<OrderState>()(
                                 return {
                                   ...item,
                                   discount_amount: affected.discount_amount,
-                                  discount_cash_amount:
-                                    affected.discount_amount,
+                                  discount_cash_amount: round2(
+                                    calculateItemEffectiveCashPrice(item) *
+                                      item.quantity -
+                                      affected.cash_subtotal,
+                                  ),
                                   subtotal: affected.subtotal,
                                   cashSubtotal: affected.cash_subtotal,
                                   taxAmount: affected.tax_amount,

@@ -106,6 +106,7 @@ export interface ActiveOrderTotals {
   tax: number;
   total: number;
   discount: number;
+  cashDiscount: number;
   itemCount: number;
   tip: number;
   // Outstanding amounts (what's left to pay)
@@ -250,6 +251,7 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       cashTax: totals.cash_tax_amount,
       total: totals.total_amount,
       discount: totals.discount_amount,
+      cashDiscount: totals.cash_discount_amount,
       itemCount,
       tip,
       amountDue,
@@ -371,6 +373,7 @@ export function useOrderTotals(
       cashTax: totals.cash_tax_amount,
       total: totals.total_amount,
       discount: totals.discount_amount,
+      cashDiscount: totals.cash_discount_amount,
       itemCount: activeItems.reduce((sum, item) => sum + item.quantity, 0),
       tip,
       amountDue,

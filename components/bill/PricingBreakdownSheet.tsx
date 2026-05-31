@@ -129,6 +129,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   const liveServiceChargeName = liveTotals?.serviceChargeName ?? "Service Charge";
   const liveServiceChargeRate = liveTotals?.serviceChargeRate ?? null;
   const cashSubtotal = liveTotals?.cashSubtotal ?? 0;
+  const cashDiscount = liveTotals?.cashDiscount ?? 0;
   const cashTax = liveTotals?.cashTax ?? 0;
   const cashTotal = liveTotals?.cashTotal ?? 0;
   const cashAmountDue = liveTotals?.cashAmountDue ?? 0;
@@ -336,7 +337,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               <Row
                 label="Discount"
                 card={displayDiscount}
-                cash={displayDiscount}
+                cash={cashDiscount}
                 labelColor={colors.success}
                 valueColor={colors.success}
                 negate
