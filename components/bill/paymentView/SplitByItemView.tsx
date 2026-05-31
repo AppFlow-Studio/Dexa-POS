@@ -358,17 +358,6 @@ const SplitByItemView = () => {
         masterItems, // Pass master items to look up original quantities/discounts
       )
     : { subtotal: 0, tax: 0, total: 0 };
-  const activeSplitTotals = {
-    ...activeSplitItemTotals,
-    total: round2(
-      activeSplitItemTotals.total +
-        cardRemainder *
-          (allItemsCardTotals.total > 0
-            ? activeSplitItemTotals.total / allItemsCardTotals.total
-            : 0),
-    ),
-  };
-
   // Calculate split totals with tax (CASH pricing)
   // Uses hybrid approach: DB values for full quantities, proportional for partial
   const activeSplitCashItemTotals = activeSplit
@@ -378,17 +367,6 @@ const SplitByItemView = () => {
         masterItems, // Pass master items to look up original quantities/discounts
       )
     : { subtotal: 0, tax: 0, total: 0 };
-  const activeSplitCashTotals = {
-    ...activeSplitCashItemTotals,
-    total: round2(
-      activeSplitCashItemTotals.total +
-        cashRemainder *
-          (allItemsCashTotals.total > 0
-            ? activeSplitCashItemTotals.total / allItemsCashTotals.total
-            : 0),
-    ),
-  };
-
   // Single shared items-ratio (card-side items+tax fraction) used for both
   // card and cash SC residual distribution. Keeps cash ≤ card per-guest on
   // the bottom strip; the earlier formulation used a separate cash-side

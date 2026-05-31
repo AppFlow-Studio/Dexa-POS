@@ -523,6 +523,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         bottomInset={0}
         enableDynamicSizing={false}
         enablePanDownToClose={true}
+        enableContentPanningGesture={!isTableOrdering}
         onChange={handleSheetChange}
         {...bottomSheetTheme}
         style={{ zIndex: 10000, elevation: 10000 }}
@@ -572,7 +573,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             // Charge / Rush / Priority / etc.) get clipped instead of
             // scrolling.
             style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 48 }}
+            contentContainerStyle={{
+              paddingBottom: isTableOrdering ? 144 : 48
+            }}
             showsVerticalScrollIndicator
             keyboardShouldPersistTaps='handled'
             nestedScrollEnabled
