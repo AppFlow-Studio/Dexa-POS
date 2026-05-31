@@ -22,6 +22,7 @@ import { useConflictStore } from "@/stores/useConflictStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
+import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
 import { create } from "zustand";
 import {
   calculateItemEffectiveCashPrice,
@@ -850,6 +851,17 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       });
     }
 
+    if (source === "split-custom-amount") {
+      updatedSplits = updatedSplits.map((split) => ({
+        ...split,
+        cashAmount: calculateCustomSplitCashAmount(
+          split.amount,
+          activeOrderOutstandingTotal,
+          activeOrderOutstandingCash,
+        ),
+      }));
+    }
+
     set({ splits: updatedSplits });
 
     const firstPending = updatedSplits.find((s) => s.status === "pending");
@@ -964,7 +976,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         transactionDetails: detailsWithSplitLabel,
         dejavooTransaction,
         itemAllocations, // Pass item allocations with quantities for per-item payment tracking
-        forceCardPricing: splitSourceView === "split-custom-amount", // Custom amounts always use card pricing
+        forceCardPricing: false,
+        forceExplicitAmount: splitSourceView === "split-custom-amount",
         // Only pass split count/index for even splits - NOT for per-item or custom-amount payments
         // Per-item payments use itemAllocations to track what was paid
         // Custom-amount payments use p_amount through the FULL/PARTIAL SQL path
