@@ -533,7 +533,12 @@ export function usePaymentTerminal() {
         if (!host) return { success: false, error: 'IP address is required' };
 
         const service = getCastlesService();
+        // testConnectionWithConfig is the "Test" button on the edit form's
+        // TCP path — USB has its own wizard flow (CastlesUsbSetupSheet). Be
+        // explicit about local_socket so the factory doesn't rely on its
+        // default and so future readers see the intent.
         await service.connect({
+          connectionType: 'local_socket',
           host,
           port: params.port ?? CASTLES_DEFAULT_PORT,
           timeout: CASTLES_SOCKET_TIMEOUT_MS,

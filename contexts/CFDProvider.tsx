@@ -2334,10 +2334,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       try {
         if (captured.terminalType === 'castles') {
           const service = getSharedCastlesService()
-          const host = terminal.ip_address
-          if (!host) throw new Error('Castles terminal has no IP')
-          const port = terminal.port ?? CASTLES_DEFAULT_PORT
+          const isUsb = terminal.connection_type === 'usb'
+          const host = isUsb ? undefined : terminal.ip_address
+          if (!isUsb && !host) throw new Error('Castles terminal has no IP')
+          const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT)
           await service.connect({
+            connectionType: isUsb ? 'usb' : 'local_socket',
             host,
             port,
             timeout: 120_000,

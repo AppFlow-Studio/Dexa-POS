@@ -180,8 +180,9 @@ const ManualCardEntryView = () => {
         return
       }
 
-      const host = terminal.ip_address
-      if (!host) {
+      const isUsb = terminal.connection_type === 'usb'
+      const host = isUsb ? undefined : terminal.ip_address
+      if (!isUsb && !host) {
         setErrorModal({
           visible: true,
           title: 'Terminal Error',
@@ -189,11 +190,12 @@ const ManualCardEntryView = () => {
         })
         return
       }
-      const port = terminal.port ?? CASTLES_DEFAULT_PORT
+      const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT)
       const tip = parseFloat(tipInput) || 0
 
       try {
         console.log('[ManualKeyIn] Castles sale flow:', {
+          transport: isUsb ? 'usb' : 'local_socket',
           host,
           port,
           totalToPay,
@@ -204,6 +206,7 @@ const ManualCardEntryView = () => {
         // 1. Connect + reset
         const service = getSharedCastlesService()
         await service.connect({
+          connectionType: isUsb ? 'usb' : 'local_socket',
           host,
           port,
           timeout: 120_000,

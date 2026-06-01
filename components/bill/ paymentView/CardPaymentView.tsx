@@ -285,12 +285,14 @@ const CardPaymentView = () => {
         try {
           // ============ CASTLES BRANCH ============
           if (terminal.terminal_type === 'castles') {
-            const host = terminal.ip_address
-            if (!host)
+            const isUsb = terminal.connection_type === 'usb'
+            const host = isUsb ? undefined : terminal.ip_address
+            if (!isUsb && !host)
               throw new Error('Castles terminal has no IP address configured')
-            const port = terminal.port ?? CASTLES_DEFAULT_PORT
+            const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT)
 
             console.log('[CardPayment] Castles sale flow:', {
+              transport: isUsb ? 'usb' : 'local_socket',
               host,
               port,
               totalToPay,
@@ -301,6 +303,7 @@ const CardPaymentView = () => {
             // 1. Connect + reset (shared singleton — one socket to the terminal)
             const service = getSharedCastlesService()
             await service.connect({
+              connectionType: isUsb ? 'usb' : 'local_socket',
               host,
               port,
               timeout: 120_000,
