@@ -173,8 +173,16 @@ export class CastlesService {
    * each other's transport.
    */
   async connect(config: CastlesConnectionConfig): Promise<void> {
+    // An explicit connect() call is always foreground-initiated (JS doesn't
+    // execute while the app is fully backgrounded on iOS / Android), so a
+    // lingering _suspended flag here just blocks user intent. Clear it
+    // implicitly instead of throwing — the original throw forced 14+ call
+    // sites to gate on isSuspended() / resume(), which one-off bugs slip
+    // through (e.g., the USB setup wizard on a fresh launch where the
+    // AppState foreground handler hadn't fired yet).
     if (this._suspended) {
-      throw new Error("CastlesService is suspended; call resume() first");
+      console.log("[CastlesService] connect: auto-clearing _suspended flag");
+      this._suspended = false;
     }
     await this._mutex.runExclusive(() => this._connectInner(config));
     // Start the heartbeat watchdog for TCP connections so half-open sockets

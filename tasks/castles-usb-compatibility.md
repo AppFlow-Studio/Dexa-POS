@@ -43,6 +43,7 @@ Common failure: charge-only USB cable. Symptom in diagnostics: `hasUsbHostFeatur
 | Model | VID | PID | Driver | Works? | Notes |
 |---|---|---|---|---|---|
 | Saturn1000 | 0x0CA6 | 0x0070 | CDC ACM | _pending_ | _baseline; only PID registered in CASTLES_PRODUCT_IDS today_ |
+| S1P2 Pro | 0x0CA6 | _capture from USB Diagnostics_ | _likely CDC ACM_ | partial — detect + permission OK, handshake initially failed on "suspended singleton" (fixed in CastlesService.connect auto-resume) | Found by VID-fallback. After the auto-resume fix landed, re-run the wizard to confirm full handshake; if it succeeds without a Kotlin rebuild, the default USB serial prober recognises it. If it fails with a different error, capture the PID and add it to CASTLES_PRODUCT_IDS in the Kotlin module. |
 | | | | | | |
 
 If a new Castles model shows up: capture VID/PID from the USB Diagnostics screen, add the PID to `CASTLES_PRODUCT_IDS` in `modules/castles-usb/android/src/main/java/expo/modules/castlesusb/CastlesUsbModule.kt`, rebuild the dev client.

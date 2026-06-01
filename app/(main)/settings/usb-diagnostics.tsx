@@ -22,10 +22,10 @@ import {
   type UsbDiagnosticInfo,
 } from '@/modules/castles-usb'
 import {
-  getCastlesMockScenario,
   setCastlesMockScenario,
   type CastlesMockScenario,
 } from '@/services/terminals/castles-transport-mock'
+import { useCastlesMockStore } from '@/stores/useCastlesMockStore'
 import {
   AlertCircle,
   AlertTriangle,
@@ -46,7 +46,6 @@ interface InterpretedField {
   hint?: string
 }
 
-const MOCK_ENABLED = !!process.env.EXPO_PUBLIC_CASTLES_MOCK
 const MOCK_SCENARIOS: { id: CastlesMockScenario; label: string; description: string }[] = [
   { id: 'healthy', label: 'Healthy', description: 'Connect ok, replies to every command.' },
   { id: 'connect_timeout', label: 'Connect timeout', description: 'connect() never resolves.' },
@@ -63,7 +62,6 @@ export default function UsbDiagnosticsScreen () {
   const [devices, setDevices] = useState<UsbDeviceInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [, forceRender] = useState(0)
 
   const refresh = async () => {
     setLoading(true)
@@ -196,53 +194,10 @@ export default function UsbDiagnosticsScreen () {
         </SettingsCard>
       )}
 
-      {/* Mock scenarios — dev only */}
-      {__DEV__ && (
-        <SettingsCard title='Castles mock scenario (dev)'>
-          <View style={{ padding: 12, gap: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-              <FlaskConical size={18} color={colors.muted} />
-              <Text style={{ flex: 1, color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                {MOCK_ENABLED
-                  ? 'Mock mode is ENABLED via EXPO_PUBLIC_CASTLES_MOCK. Selecting a scenario takes effect on the next connect — no reload needed.'
-                  : 'Mock mode is OFF. Set EXPO_PUBLIC_CASTLES_MOCK=1 in .env and restart Metro to use the mock transport instead of real TCP/USB.'}
-              </Text>
-            </View>
-            {MOCK_SCENARIOS.map((s) => {
-              const active = getCastlesMockScenario() === s.id
-              return (
-                <TouchableOpacity
-                  key={s.id}
-                  onPress={() => {
-                    setCastlesMockScenario(s.id)
-                    forceRender((n) => n + 1)
-                  }}
-                  style={{
-                    padding: 12,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: active ? colors.teal : colors.border,
-                    backgroundColor: active ? colors.teal + '15' : colors.panel,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontWeight: '700',
-                      color: active ? colors.teal : colors.heading,
-                      fontSize: 14,
-                    }}
-                  >
-                    {s.label}
-                  </Text>
-                  <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-                    {s.description}
-                  </Text>
-                </TouchableOpacity>
-              )
-            })}
-          </View>
-        </SettingsCard>
-      )}
+      {/* Mock scenarios — QA / on-site debug. Runtime-toggleable so a Landi
+          preview build over EAS Update can be flipped into mock mode without
+          a rebuild. Defaults OFF; explicit toggle below. */}
+      <MockScenarioSection />
     </ScrollView>
   )
 }
@@ -376,6 +331,106 @@ function DiagnosticRow ({ field }: { field: InterpretedField }) {
         </Text>
       )}
     </View>
+  )
+}
+
+function MockScenarioSection () {
+  const enabled = useCastlesMockStore((s) => s.enabled)
+  const scenario = useCastlesMockStore((s) => s.scenario)
+  const setEnabled = useCastlesMockStore((s) => s.setEnabled)
+  const setScenarioStore = useCastlesMockStore((s) => s.setScenario)
+
+  return (
+    <SettingsCard title='Castles mock scenario (QA)'>
+      <View style={{ padding: 12, gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+          <FlaskConical size={18} color={enabled ? colors.warning : colors.muted} />
+          <Text style={{ flex: 1, color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+            {enabled
+              ? 'Mock mode is ON. ALL Castles connect attempts on this device route through the mock — real terminal traffic is bypassed. Disable this before processing live sales.'
+              : 'Mock mode is OFF. Enable to reproduce wedge / detach / timeout scenarios on this build without hardware. The toggle persists across restarts.'}
+          </Text>
+        </View>
+
+        {/* Enable / disable */}
+        <TouchableOpacity
+          onPress={() => setEnabled(!enabled)}
+          style={{
+            padding: 14,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: enabled ? colors.warning : colors.border,
+            backgroundColor: enabled ? colors.warning + '20' : colors.panel,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 42,
+              height: 24,
+              borderRadius: 12,
+              backgroundColor: enabled ? colors.warning : colors.muted + '40',
+              padding: 2,
+              alignItems: enabled ? 'flex-end' : 'flex-start',
+              justifyContent: 'center',
+            }}
+          >
+            <View
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                backgroundColor: '#fff',
+              }}
+            />
+          </View>
+          <Text style={{ flex: 1, fontWeight: '700', color: enabled ? colors.warning : colors.heading, fontSize: 14 }}>
+            {enabled ? 'Mock mode ENABLED' : 'Enable mock mode'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Scenarios */}
+        {MOCK_SCENARIOS.map((s) => {
+          const active = scenario === s.id
+          return (
+            <TouchableOpacity
+              key={s.id}
+              onPress={() => {
+                setScenarioStore(s.id)
+                // Keep the mock module's internal var in sync immediately so
+                // the next connect picks up the new scenario without needing
+                // a factory call to refresh it.
+                setCastlesMockScenario(s.id)
+              }}
+              disabled={!enabled}
+              style={{
+                padding: 12,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: active && enabled ? colors.teal : colors.border,
+                backgroundColor: active && enabled ? colors.teal + '15' : colors.panel,
+                opacity: enabled ? 1 : 0.5,
+              }}
+            >
+              <Text
+                style={{
+                  fontWeight: '700',
+                  color: active && enabled ? colors.teal : colors.heading,
+                  fontSize: 14,
+                }}
+              >
+                {s.label}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+                {s.description}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+    </SettingsCard>
   )
 }
 

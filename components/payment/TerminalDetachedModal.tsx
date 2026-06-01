@@ -64,7 +64,9 @@ export function TerminalDetachedModal () {
         if (!castles) return
         setReconnecting(true)
         try {
-          await getSharedCastlesService().connect({
+          const service = getSharedCastlesService()
+          if (service.isSuspended()) service.resume()
+          await service.connect({
             connectionType: 'usb',
             timeout: 10_000,
             terminalId: paymentTerminal?.id,
@@ -96,7 +98,9 @@ export function TerminalDetachedModal () {
         // Still not seen — leave the modal visible, polling will pick it up.
         return
       }
-      await getSharedCastlesService().connect({
+      const service = getSharedCastlesService()
+      if (service.isSuspended()) service.resume()
+      await service.connect({
         connectionType: 'usb',
         timeout: 10_000,
         terminalId: paymentTerminal?.id,

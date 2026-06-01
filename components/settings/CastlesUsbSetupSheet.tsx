@@ -146,12 +146,29 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
     let firmwareVersion: string | undefined
     let terminalSerial: string | undefined
     try {
+      // The singleton may have been suspended by the AppState background
+      // handler (or never woken up if the user navigated here before
+      // PosSyncProvider's resume effect ran). resume() is a no-op if not
+      // suspended, so it's safe to call unconditionally.
+      if (service.isSuspended()) {
+        service.resume()
+      }
       await service.connect({
         connectionType: 'usb',
         timeout: 10_000,
         terminalId: `usb-setup-${castles.deviceId}`,
       } as Parameters<typeof service.connect>[0])
-      const result = await service.getTerminalData('000000')
+      // CastlesService reserves '000000' for housekeeping (internal handshake
+      // inside _connectInner, return2Idle, watchdog ping). Stricter firmwares
+      // (e.g., S1P2 Pro) reject our wizard's getData with "duplicate
+      // transaction ID" because connect() already consumed '000000' on this
+      // session. Use a time-derived ID in [1..999999] for the wizard probe —
+      // collision-resistant for one-shot setup and never overlaps with
+      // housekeeping or the live counter's monotonic progression.
+      const probeTxnId = ((Date.now() % 999_998) + 1)
+        .toString()
+        .padStart(6, '0')
+      const result = await service.getTerminalData(probeTxnId)
       if (result.success) {
         firmwareVersion = result.data?.infAppVersion as string | undefined
         terminalSerial = result.data?.infSN as string | undefined

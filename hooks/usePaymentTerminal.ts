@@ -97,6 +97,13 @@ export function usePaymentTerminal() {
         const host = terminal.ipAddress;
         if (!isUsb && !host) throw new Error('Castles terminal IP address not configured');
 
+        // Defensive resume: the singleton may be in the suspended state
+        // (set by AppState background handler). resume() is a no-op when not
+        // suspended, so always safe to call before an explicit connect.
+        if (service.isSuspended()) {
+          service.resume();
+        }
+
         // 1. Establish / reuse connection (TCP or USB)
         await service.connect({
           connectionType: isUsb ? 'usb' : 'local_socket',
