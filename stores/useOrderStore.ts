@@ -4830,6 +4830,7 @@ export const useOrderStore = create<OrderState>()(
                     const _flippedAway =
                       currentStationId != null &&
                       _priorStationId === currentStationId &&
+                      _newStationId != null &&
                       _newStationId !== currentStationId &&
                       !_orderIsTerminal;
 
@@ -5995,6 +5996,9 @@ export const useOrderStore = create<OrderState>()(
               }
               // Surgical dbOrderIdIndex maintenance
               state.dbOrderIdIndex[dbOrderId] = dbOrderId;
+              // Keep dine-in table lookup aligned with the latest server
+              // snapshot after seat, transfer, and completion updates.
+              syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
             });
 
             // Reconcile SC after hydration. Catches cross-station orders

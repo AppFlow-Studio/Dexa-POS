@@ -59,6 +59,18 @@ const lastClearedTables = new Map<string, number>();
 const clearedSessionIds = new Map<string, string>();
 const CLEAR_BLOCK_DURATION = 5000; // Block restore for 5 seconds after local clear
 
+// A lightweight status read can briefly observe a table/session junction
+// between writes. Require the same active session to be absent twice before
+// clearing it from the floor UI.
+const missingSessionPolls = new Map<string, { sessionId: string; count: number }>();
+
+function shouldClearMissingSession(tableId: string, sessionId: string): boolean {
+  const previous = missingSessionPolls.get(tableId);
+  const count = previous?.sessionId === sessionId ? previous.count + 1 : 1;
+  missingSessionPolls.set(tableId, { sessionId, count });
+  return count >= 2;
+}
+
 /**
  * Register Supabase client for use in polling
  */
@@ -163,6 +175,10 @@ async function poll() {
             if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear for table ${row.table_name || row.table_id}: session pending sync`);
             continue;
           }
+          if (!shouldClearMissingSession(row.table_id, currentSession.id)) {
+            if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear for table ${row.table_name || row.table_id}: confirming missing session on next poll`);
+            continue;
+          }
           if (__DEV__) console.log(`[TableSessionRealtimeSync] CLEAR stale session for table ${row.table_name || row.table_id}: local status="${currentSession.status}", no backend session`);
           dispatchActions.push({
             tableId: row.table_id,
@@ -171,6 +187,8 @@ async function poll() {
         }
         continue;
       }
+
+      missingSessionPolls.delete(row.table_id);
 
       // Build session object from row
       const mergedTables = tableIdsBySession[row.session_id];
@@ -237,6 +255,10 @@ async function poll() {
           // Don't clear if this session is pending sync
           if (isSessionPendingSync(tableId, currentSession.id)) {
             if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear orphaned session for table ${tableId}: session pending sync`);
+            continue;
+          }
+          if (!shouldClearMissingSession(tableId, currentSession.id)) {
+            if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear orphaned session for table ${tableId}: confirming missing session on next poll`);
             continue;
           }
           if (__DEV__) console.log(`[TableSessionRealtimeSync] CLEAR orphaned session for table ${tableId}: not in backend response`);
@@ -317,6 +339,7 @@ export function stopTableSessionRealtimeSync() {
   activeLocationId = null;
   lastSyncTimestamp = 0;
   consecutiveNoChangePolls = 0;
+  missingSessionPolls.clear();
   if (__DEV__) console.log("[TableSessionRealtimeSync] Stopped");
 }
 

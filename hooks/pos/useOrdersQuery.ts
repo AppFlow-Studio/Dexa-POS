@@ -300,7 +300,7 @@ function hydrateWorkspace(
 
       const next = newOrdersById[id];
       const flippedAway =
-        !next || (next.station_id != null && next.station_id !== _myStationId);
+        next?.station_id != null && next.station_id !== _myStationId;
       if (flippedAway) {
         _flippedAwayOrders.push({ orderId: id, prior: prev });
       }
