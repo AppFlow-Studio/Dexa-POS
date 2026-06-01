@@ -41,7 +41,13 @@ import {
   X
 } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Text, TextInput, TouchableOpacity, View } from 'react-native'
+import {
+  InteractionManager,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 const canSeatFromSidebar = (status?: string | null) => {
@@ -134,12 +140,18 @@ const TablesScreen = () => {
   useEffect(() => {
     if (!supabaseClient || !location_id) return
     setReservationSupabaseClient(supabaseClient)
-    fetchReservations(location_id)
-    const interval = setInterval(
-      () => fetchReservations(location_id, undefined, { silent: true }),
-      30000
-    )
-    return () => clearInterval(interval)
+    let interval: ReturnType<typeof setInterval> | null = null
+    const task = InteractionManager.runAfterInteractions(() => {
+      fetchReservations(location_id)
+      interval = setInterval(
+        () => fetchReservations(location_id, undefined, { silent: true }),
+        30000
+      )
+    })
+    return () => {
+      task.cancel()
+      if (interval) clearInterval(interval)
+    }
   }, [supabaseClient, location_id, fetchReservations])
 
   // Consume pending table overlay from waitlist seating flow
@@ -166,7 +178,11 @@ const TablesScreen = () => {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore()
+  const isClockedIn = useTimeclockStore(s => {
+    if (!s.activeEmployeeId) return false
+    return s.sessions[s.activeEmployeeId]?.status === 'clockedIn'
+  })
+  const showClockInWall = useTimeclockStore(s => s.showClockInWall)
   const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
 
   useEffect(() => {
@@ -178,12 +194,6 @@ const TablesScreen = () => {
 
   // activePlan logic is now handled by store loading 'tables' only for active plan.
   // tables = current active tables.
-
-  const isClockedIn = useMemo(() => {
-    if (!activeEmployeeId) return false
-    const session = getSession(activeEmployeeId)
-    return session?.status === 'clockedIn'
-  }, [activeEmployeeId, getSession])
 
   // Filter tables by search (uses debounced searchText)
   const filteredTables = useMemo(() => {

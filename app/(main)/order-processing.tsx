@@ -287,6 +287,18 @@ const OrderProcessing = () => {
     const currentActiveOrder = state.activeOrderId
       ? state.ordersById[state.activeOrderId]
       : null;
+    const shouldKeepActiveDineInOrder =
+      !!currentActiveOrder?.service_location_id &&
+      (currentActiveOrder.order_type === "dine_in" ||
+        currentActiveOrder.order_type === "Dine In") &&
+      currentActiveOrder.order_status !== "completed" &&
+      currentActiveOrder.order_status !== "void" &&
+      currentActiveOrder.order_status !== "cancelled";
+    if (currentActiveOrder && shouldKeepActiveDineInOrder) {
+      setActiveOrder(currentActiveOrder.id);
+      return;
+    }
+
     if (currentActiveOrder && isReusableEmptyDraftOrder(currentActiveOrder)) {
       if (selectedStore) {
         const refreshedNumbers = getRefreshedReusableDraftNumbers({

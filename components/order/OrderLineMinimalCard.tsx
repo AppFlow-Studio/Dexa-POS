@@ -1,6 +1,7 @@
 import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { formatOrderStatus } from '@/utils/orderStatusHelpers'
 import { CheckCircle2, ChevronRight, Eye, Printer } from 'lucide-react-native'
 import React, { useMemo } from 'react'
@@ -25,6 +26,10 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
   onViewItems,
   onPrintReceipt
 }) => {
+  const tableName = useFloorPlanStore(s => {
+    if (!order.service_location_id) return null
+    return s.tablesById[order.service_location_id]?.name ?? order.service_location_id
+  })
   const totalAmount = order.total_amount ?? 0
   const effectivePaidStatus = deriveEffectivePaidStatus(order) ?? order.paid_status
 
@@ -144,7 +149,8 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
           }}
         >
           <Text style={{ fontSize: 10, color: colors.label }} numberOfLines={1}>
-            {order.customer_name || 'Walk-In'} . {itemCount} item
+            {order.customer_name || 'Walk-In'}
+            {tableName ? ` . Table ${tableName}` : ''} . {itemCount} item
             {itemCount !== 1 ? 's' : ''}
           </Text>
           <Text style={{ fontSize: 10, color: colors.muted }}>{openedAt}</Text>

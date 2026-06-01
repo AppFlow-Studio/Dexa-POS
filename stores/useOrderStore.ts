@@ -9,6 +9,7 @@ import {
   setSyncJSON,
 } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
+import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
   CartItem,
   Discount,
@@ -8588,6 +8589,18 @@ export const useOrderStore = create<OrderState>()(
                           : item.item_status;
               }
 
+              if (
+                (status === "sent" || status === "preparing") &&
+                order.order_status === "draft"
+              ) {
+                const now = new Date().toISOString();
+                order.order_status = getOrderSentStatus();
+                order.sent_to_kitchen_at ||= now;
+                if (order.order_type === "dine_in") {
+                  order.opened_at ||= now;
+                }
+              }
+
               // Aggregate order_status for dine-in
               if (
                 order.order_type === "dine_in" &&
@@ -8835,12 +8848,12 @@ export const useOrderStore = create<OrderState>()(
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: no activeOrderId", { itemId });
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: no activeOrderId", { itemId });
               return;
             }
             if (!_checkCartEditable(get())) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: cart not editable", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: cart not editable", {
                   itemId,
                   activeOrderId,
                 });
@@ -8849,7 +8862,7 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[activeOrderId];
             if (!order) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: order not found", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: order not found", {
                   itemId,
                   activeOrderId,
                 });
@@ -8857,7 +8870,7 @@ export const useOrderStore = create<OrderState>()(
             }
             if (order.check_status === "Closed") {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: order closed", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: order closed", {
                   itemId,
                   activeOrderId,
                 });
@@ -8867,7 +8880,7 @@ export const useOrderStore = create<OrderState>()(
             const item = order.items.find((i) => i.id === itemId);
             if (!item || item.is_voided) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: item missing/voided", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: item missing/voided", {
                   itemId,
                   found: !!item,
                   voided: item?.is_voided,
@@ -8877,14 +8890,14 @@ export const useOrderStore = create<OrderState>()(
 
             if (item.quantity === newQuantity) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: quantity unchanged", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: quantity unchanged", {
                   itemId,
                   quantity: newQuantity,
                 });
               return;
             }
             if (__DEV__)
-              console.log("[QTY-DIAG] ENTRY", {
+              orderStoreDiagnosticLog("[QTY-DIAG] ENTRY", {
                 itemId,
                 activeOrderId,
                 currentQty: item.quantity,
@@ -8926,7 +8939,7 @@ export const useOrderStore = create<OrderState>()(
 
             if (!dbItemId || !supabase) {
               if (__DEV__)
-                console.log(
+                orderStoreDiagnosticLog(
                   "[QTY-DIAG] QUEUE-BRANCH (no dbItemId or no supabase)",
                   {
                     itemId,
@@ -8945,7 +8958,7 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
             if (__DEV__)
-              console.log("[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)", {
+              orderStoreDiagnosticLog("[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)", {
                 itemId,
                 dbItemId,
                 expectedQty: newQuantity,
@@ -8983,7 +8996,7 @@ export const useOrderStore = create<OrderState>()(
                     quantitySyncGenerations.get(itemId) !== quantityGeneration
                   ) {
                     if (__DEV__)
-                      console.log("[QTY-DIAG] STALE-GENERATION-SKIPPED", {
+                      orderStoreDiagnosticLog("[QTY-DIAG] STALE-GENERATION-SKIPPED", {
                         itemId,
                         quantityGeneration,
                         currentGeneration: quantitySyncGenerations.get(itemId),
@@ -9001,7 +9014,7 @@ export const useOrderStore = create<OrderState>()(
                   );
                   const latestQuantity = latestItem?.quantity ?? newQuantity;
                   if (__DEV__)
-                    console.log("[QTY-DIAG] RPC-FIRE", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] RPC-FIRE", {
                       itemId,
                       dbItemId,
                       latestQuantity,
@@ -9020,7 +9033,7 @@ export const useOrderStore = create<OrderState>()(
                     },
                   ).then((response) => {
                     if (__DEV__)
-                      console.log("[QTY-DIAG] RPC-RESPONSE", {
+                      orderStoreDiagnosticLog("[QTY-DIAG] RPC-RESPONSE", {
                         itemId,
                         latestQuantity,
                         hasError: !!response?.error,
@@ -9042,7 +9055,7 @@ export const useOrderStore = create<OrderState>()(
                 // corrupting waitForPendingSyncs.
                 if (response?.error?.code === "DEADLINE_EXCEEDED") {
                   if (__DEV__)
-                    console.log("[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE", {
                       itemId,
                       dbItemId,
                       latestQuantity,
@@ -9070,7 +9083,7 @@ export const useOrderStore = create<OrderState>()(
                 // dead-letters, Wave 3.0e onOperationFailed flips the chip.
                 if (response?.error || response?.data?.success === false) {
                   if (__DEV__)
-                    console.log("[QTY-DIAG] RESPONSE-ERROR-QUEUE", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] RESPONSE-ERROR-QUEUE", {
                       itemId,
                       dbItemId,
                       latestQuantity,
@@ -9105,7 +9118,7 @@ export const useOrderStore = create<OrderState>()(
 
                   if (isStaleResponse) {
                     if (__DEV__)
-                      console.log("[QTY-DIAG] STALE-RESPONSE-IGNORED", {
+                      orderStoreDiagnosticLog("[QTY-DIAG] STALE-RESPONSE-IGNORED", {
                         itemId,
                         latestQuantity,
                         currentQuantity,
@@ -9114,7 +9127,7 @@ export const useOrderStore = create<OrderState>()(
                   }
 
                   if (__DEV__)
-                    console.log("[QTY-DIAG] SUCCESS-APPLIED", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] SUCCESS-APPLIED", {
                       itemId,
                       latestQuantity,
                       serverQty: response.data.quantity,
@@ -9142,7 +9155,7 @@ export const useOrderStore = create<OrderState>()(
                   quantitySyncGenerations.get(itemId) !== quantityGeneration
                 ) {
                   if (__DEV__)
-                    console.log("[QTY-DIAG] STALE-CATCH-IGNORED", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] STALE-CATCH-IGNORED", {
                       itemId,
                       quantityGeneration,
                       currentGeneration: quantitySyncGenerations.get(itemId),
@@ -9151,7 +9164,7 @@ export const useOrderStore = create<OrderState>()(
                 }
                 console.error("[setItemQuantity] sync failed:", err);
                 if (__DEV__)
-                  console.log("[QTY-DIAG] CATCH-QUEUE", {
+                  orderStoreDiagnosticLog("[QTY-DIAG] CATCH-QUEUE", {
                     itemId,
                     dbItemId,
                     errName: err?.name,

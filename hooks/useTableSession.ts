@@ -1,6 +1,7 @@
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
+import { orderStoreDiagnosticLog } from '@/lib/performanceDiagnostics'
 import { OrderProfile } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { hasPendingOrderCreation, useOrderStore } from '@/stores/useOrderStore'
@@ -249,7 +250,7 @@ export function useTableSession (
       return
     }
     if (tableStatus === 'available' && hasAutoCreatedRef.current && !session) {
-      console.log('[useTableSession] Table cleared, navigating away')
+      orderStoreDiagnosticLog('[useTableSession] Table cleared, navigating away')
       updatePhase('navigating_away')
       navigateAway()
     }
@@ -337,7 +338,7 @@ export function useTableSession (
           .getTableById(tableId)?.session
         const updatedTableStatus = updatedSession?.status || 'available'
 
-        console.log('[useTableSession] Auto-session check:', {
+        orderStoreDiagnosticLog('[useTableSession] Auto-session check:', {
           tableId,
           status: updatedTableStatus,
           sessionId: updatedSession?.id,
@@ -430,7 +431,7 @@ export function useTableSession (
             }
 
             updatePhase('loading_session')
-            console.log(
+            orderStoreDiagnosticLog(
               '[useTableSession] Syncing order from database:',
               sOrderId
             )
@@ -529,7 +530,7 @@ export function useTableSession (
                 createOrder: true
               })
 
-            console.log(
+            orderStoreDiagnosticLog(
               '[useTableSession] Created session:',
               sessionId,
               'Order:',

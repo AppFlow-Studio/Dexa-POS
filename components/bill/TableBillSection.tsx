@@ -1105,6 +1105,7 @@ const TableBillSection = ({
   const currentStationId = useOrderStore(s => s.currentStationId)
   const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false)
   const [isClaiming, setClaiming] = useState(false)
 
   const activeOrder = passedActiveOrder
@@ -1128,6 +1129,18 @@ const TableBillSection = ({
       removeCheckDiscount(activeOrder.id)
     }
   }
+
+  const handleOpenDiscountSheet = useCallback(() => {
+    if (discountSheetRef.current) {
+      discountSheetRef.current.expand()
+      return
+    }
+    setDiscountOpenedOnce(true)
+  }, [])
+
+  useEffect(() => {
+    if (discountOpenedOnce) discountSheetRef.current?.expand()
+  }, [discountOpenedOnce])
 
   // Determine which view to render
   const renderOrderView = () => {
@@ -1287,7 +1300,7 @@ const TableBillSection = ({
           onPressCloseCheck={onPressCloseCheck}
           onPressClearTable={onPressClearTable}
           totalDisplayAmount={totalDisplayAmount}
-          onPressDiscount={() => discountSheetRef.current?.expand()}
+          onPressDiscount={handleOpenDiscountSheet}
           isFullyPaid={isFullyPaid}
           paymentCount={activeOrder?.payments?.length ?? 0}
         />
@@ -1299,10 +1312,12 @@ const TableBillSection = ({
           totalDisplayAmount={totalDisplayAmount}
           hasPayments={(activeOrder?.payments?.length ?? 0) > 0}
         />
-        <DiscountBottomSheet
-          ref={discountSheetRef}
-          onClose={() => discountSheetRef.current?.close()}
-        />
+        {discountOpenedOnce && (
+          <DiscountBottomSheet
+            ref={discountSheetRef}
+            onClose={() => discountSheetRef.current?.close()}
+          />
+        )}
       </View>
     </>
   )
