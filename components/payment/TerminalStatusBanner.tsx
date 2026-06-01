@@ -1,5 +1,6 @@
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import type { TerminalStatusReason } from '@/hooks/useTerminalStatus'
 import { AlertCircle, AlertTriangle, RefreshCcw } from 'lucide-react-native'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
@@ -13,7 +14,67 @@ export type TerminalStatus =
 export interface TerminalStatusBannerProps {
   status: TerminalStatus
   errorMessage?: string
+  /** Discriminated reason from useTerminalStatus — drives reason-specific copy. */
+  reason?: TerminalStatusReason | null
+  /** Consecutive manual-retry failures — at 3+ we surface the DHCP-drift hint. */
+  consecutiveFailures?: number
   onRetry?: () => void
+}
+
+/**
+ * Map a probe reason to an actionable message + optional subtitle.
+ * Falls back to the raw errorMessage when reason is missing/unknown so the
+ * banner still says something useful on unexpected errors.
+ */
+function getReasonCopy (
+  reason: TerminalStatusReason | null | undefined,
+  fallback: string | undefined
+): { message: string; subtitle?: string } {
+  switch (reason) {
+    case 'tcp_timeout':
+      return {
+        message: 'Terminal is unreachable.',
+        subtitle: 'Check that the terminal is powered on and on the same WiFi.'
+      }
+    case 'tcp_refused':
+      return {
+        message: 'Terminal is online but refusing connections.',
+        subtitle: 'Restart the terminal, then tap Retry.'
+      }
+    case 'tcp_unreachable':
+      return {
+        message: 'Terminal is not on this network.',
+        subtitle: 'Check the WiFi router and the terminal’s network settings.'
+      }
+    case 'no_ip_configured':
+      return {
+        message: 'No terminal IP configured.',
+        subtitle: 'Set one in Settings › Payment Terminals.'
+      }
+    case 'usb_disconnected':
+      return {
+        message: 'USB terminal not detected.',
+        subtitle: 'Re-plug the cable, then tap Retry.'
+      }
+    case 'terminal_unresponsive':
+      return {
+        message: 'Terminal answered the network but the payment app isn’t responding.',
+        subtitle: 'Restart the terminal, then tap Retry.'
+      }
+    case 'possible_dhcp_drift':
+      return {
+        message: fallback || 'Terminal IP isn’t responding from this network.',
+        subtitle: 'The terminal may have been reassigned a new IP. Re-check Settings › Payment Terminals.'
+      }
+    case 'dejavoo_offline':
+      return { message: 'Terminal is offline.', subtitle: 'Please check device connection.' }
+    case 'dejavoo_not_found':
+      return { message: 'Terminal not found on network.' }
+    case 'dejavoo_error':
+    case 'unknown':
+    default:
+      return { message: fallback || 'Terminal offline. Please check device connection.' }
+  }
 }
 
 /**
@@ -21,13 +82,15 @@ export interface TerminalStatusBannerProps {
  *
  * Shows different states:
  * - checking: Blue banner with loading spinner - "Checking terminal connection..."
- * - offline: Orange banner with AlertCircle icon - "Terminal offline. Please check device connection."
+ * - offline: Orange banner with AlertCircle icon - reason-specific copy
  * - not-configured: Yellow banner with AlertTriangle icon - "No payment terminal selected."
  * - online: Hidden (no banner shown for success state)
  */
 export function TerminalStatusBanner ({
   status,
   errorMessage,
+  reason,
+  consecutiveFailures = 0,
   onRetry
 }: TerminalStatusBannerProps) {
   // Don't show banner when terminal is online
@@ -47,16 +110,18 @@ export function TerminalStatusBanner ({
       //     message: 'Checking terminal connection...',
       //     showRetry: false,
       //   };
-      case 'offline':
+      case 'offline': {
+        const copy = getReasonCopy(reason, errorMessage)
         return {
           bgColor: 'bg-orange-900/20',
           borderColor: 'border-orange-500',
           textColor: 'text-orange-400',
           icon: <AlertCircle size={20} color='#FB923C' />,
-          message:
-            errorMessage || 'Terminal offline. Please check device connection.',
+          message: copy.message,
+          subtitle: copy.subtitle,
           showRetry: true
         }
+      }
       case 'not-configured':
         return {
           bgColor: 'bg-yellow-900/20',
@@ -66,6 +131,7 @@ export function TerminalStatusBanner ({
           message:
             errorMessage ||
             'No payment terminal selected. Please select a terminal in settings.',
+          subtitle: undefined as string | undefined,
           showRetry: false
         }
       default:
@@ -75,12 +141,20 @@ export function TerminalStatusBanner ({
           textColor: 'text-gray-400',
           icon: <AlertCircle size={20} color='#9CA3AF' />,
           message: errorMessage || 'Unknown terminal status',
+          subtitle: undefined as string | undefined,
           showRetry: false
         }
     }
   }
 
   const config = getStatusConfig()
+
+  // After 3+ consecutive manual retry failures, append the DHCP-drift hint so
+  // staff stop hammering Retry and check terminal config / power instead.
+  const escalatedSubtitle =
+    status === 'offline' && consecutiveFailures >= 3
+      ? 'Check that the terminal is powered on, on the same WiFi, and that its IP hasn’t changed in Settings › Payment Terminals.'
+      : config.subtitle
 
   // Map Tailwind color strings to theme colors
   const colorMapping: Record<
@@ -127,10 +201,19 @@ export function TerminalStatusBanner ({
       {/* Status Icon */}
       <View style={{ flexShrink: 0 }}>{config.icon}</View>
 
-      {/* Message */}
-      <Text style={{ flex: 1, fontWeight: '500', color: colorConfig.text }}>
-        {config.message}
-      </Text>
+      {/* Message + optional subtitle */}
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontWeight: '500', color: colorConfig.text }}>
+          {config.message}
+        </Text>
+        {escalatedSubtitle && (
+          <Text
+            style={{ fontWeight: '400', color: colorConfig.text, opacity: 0.85, fontSize: 12 }}
+          >
+            {escalatedSubtitle}
+          </Text>
+        )}
+      </View>
 
       {/* Retry Button */}
       {config.showRetry && onRetry && (

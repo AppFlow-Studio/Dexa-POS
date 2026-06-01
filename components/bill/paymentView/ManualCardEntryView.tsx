@@ -91,6 +91,8 @@ const ManualCardEntryView = () => {
     status: terminalStatus,
     isReady: terminalReady,
     errorMessage: terminalErrorMessage,
+    reason: terminalReason,
+    consecutiveFailures: terminalConsecutiveFailures,
     recheckStatus
   } = useTerminalStatus(
     selectedStation?.payment_terminal?.id,
@@ -362,6 +364,8 @@ const ManualCardEntryView = () => {
             <TerminalStatusBanner
               status={terminalStatus}
               errorMessage={terminalErrorMessage || undefined}
+              reason={terminalReason}
+              consecutiveFailures={terminalConsecutiveFailures}
               onRetry={recheckStatus}
             />
           </View>

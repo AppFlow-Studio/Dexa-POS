@@ -11,6 +11,7 @@
 // ============================================================
 
 import { updateRefundJournal } from "@/services/refundJournal";
+import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
 import type {
     CastlesAuthCompleteRequest,
     CastlesAuthCompleteResult,
@@ -65,8 +66,13 @@ export type CastlesStatusCallback = (notification: {
   txnStatusMessage?: string;
 }) => void;
 
-/** Max seconds without data before connection is considered stale */
-const STALE_CONNECTION_THRESHOLD_S = 60;
+/**
+ * Max seconds without data before connection is considered stale.
+ * Lowered from 60s → 15s so a WiFi hiccup of 5–30s triggers half-open
+ * detection on the next sale instead of letting the singleton queue a
+ * command onto a dead socket.
+ */
+const STALE_CONNECTION_THRESHOLD_S = 15;
 
 /** Errors matching these patterns are connection-level (retriable) */
 function isConnectionError(err: unknown): boolean {
@@ -79,6 +85,48 @@ function isConnectionError(err: unknown): boolean {
     msg.includes("Connection timed out") ||
     msg.includes("not open")
   );
+}
+
+/**
+ * Discriminated reason for probeCastlesTerminal outcomes. Lets the banner
+ * render specific recovery copy instead of dumping the raw error string.
+ */
+export type CastlesProbeReason =
+  | "online"
+  | "tcp_timeout"
+  | "tcp_refused"
+  | "tcp_unreachable"
+  | "no_ip_configured"
+  | "usb_disconnected"
+  | "terminal_unresponsive"
+  | "possible_dhcp_drift"
+  | "unknown";
+
+export interface CastlesProbeResult {
+  online: boolean;
+  reason: CastlesProbeReason;
+  /** Raw error message (kept for logs/Sentry) */
+  error?: string;
+}
+
+/** Classify a TCP-layer connect error from its message. */
+function classifyTcpError(err: unknown): CastlesProbeReason {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (msg.includes("connection timed out") || msg.includes("etimedout")) {
+    return "tcp_timeout";
+  }
+  if (msg.includes("econnrefused") || msg.includes("refused")) {
+    return "tcp_refused";
+  }
+  if (
+    msg.includes("ehostunreach") ||
+    msg.includes("enetunreach") ||
+    msg.includes("no route to host") ||
+    msg.includes("network is unreachable")
+  ) {
+    return "tcp_unreachable";
+  }
+  return "unknown";
 }
 
 export class CastlesService {
@@ -114,7 +162,22 @@ export class CastlesService {
     if (this._suspended) {
       throw new Error("CastlesService is suspended; call resume() first");
     }
-    return this._mutex.runExclusive(() => this._connectInner(config));
+    await this._mutex.runExclusive(() => this._connectInner(config));
+    // Start the heartbeat watchdog for TCP connections so half-open sockets
+    // are detected proactively (every 30s) instead of waiting for the next
+    // sale to time out. USB doesn't suffer from half-open sockets, so we
+    // skip the watchdog there to avoid unnecessary command queue traffic.
+    const isTcp =
+      (config.connectionType ?? "local_socket") === "local_socket";
+    if (isTcp) {
+      this.startWatchdog();
+      // We just verified the connection (return2Idle + getData handshake in
+      // _connectInner). Publish quality so the header pill clears.
+      useTerminalConnectionStore.getState().setQuality("ok");
+    } else {
+      this.stopWatchdog();
+      useTerminalConnectionStore.getState().reset();
+    }
   }
 
   private async _connectInner(config: CastlesConnectionConfig): Promise<void> {
@@ -248,6 +311,9 @@ export class CastlesService {
   disconnect(): void {
     this.stopWatchdog();
     this._disconnectInner();
+    // Reset quality so the header pill doesn't keep showing 'lost' after
+    // an intentional disconnect (station switch, app background).
+    useTerminalConnectionStore.getState().reset();
   }
 
   /**
@@ -278,6 +344,7 @@ export class CastlesService {
   async gracefulDisconnect(): Promise<void> {
     this.stopWatchdog();
     await this._gracefulDisconnectInner();
+    useTerminalConnectionStore.getState().reset();
   }
 
   isConnected(): boolean {
@@ -1161,10 +1228,11 @@ export class CastlesService {
 
     this._disconnectInner();
     // Let the native executor drain any pending Runnable from the disconnect
-    // before we reconnect. Belt-and-suspenders: with the transport-level fix
-    // in place, disconnect() schedules at most one Runnable, but 50ms of
-    // breathing room makes reconnects on this path fully deterministic.
-    await this._delay(50);
+    // before we reconnect. 250ms (bumped from 50ms) gives Android's native
+    // socket teardown enough time even under load — 50ms was racy on lower-end
+    // tablets and could cause the reconnect to land on a partially-destroyed
+    // socket.
+    await this._delay(250);
 
     try {
       this._createTransport(config);
@@ -1236,12 +1304,17 @@ export class CastlesService {
             5_000,
           );
           this._watchdogConsecutiveFailures = 0;
+          useTerminalConnectionStore.getState().setQuality("ok");
         });
       } catch {
         this._watchdogConsecutiveFailures++;
         console.warn(
           `[CastlesService] Watchdog ping failed (${this._watchdogConsecutiveFailures}/2)`,
         );
+
+        useTerminalConnectionStore
+          .getState()
+          .setQuality(this._watchdogConsecutiveFailures >= 2 ? "lost" : "degraded");
 
         if (this._watchdogConsecutiveFailures >= 2 && this.config) {
           console.log(
@@ -1252,6 +1325,7 @@ export class CastlesService {
               this._connectInner(this.config!),
             );
             this._watchdogConsecutiveFailures = 0;
+            useTerminalConnectionStore.getState().setQuality("ok");
           } catch (reconErr) {
             console.error(
               "[CastlesService] Watchdog reconnect failed:",
@@ -1363,8 +1437,22 @@ export class CastlesService {
       console.log(
         "[CastlesService] Connection error detected, retrying after reconnect...",
       );
+      // A connection error during a real sale is a strong "lost" signal
+      // even if the watchdog hasn't fired yet.
+      useTerminalConnectionStore.getState().setQuality("lost");
       try {
-        await this._mutex.runExclusive(() => this._connectInner(this.config!));
+        await this._mutex.runExclusive(async () => {
+          // Force a fresh socket before reconnect — the previous transport may
+          // be half-open (TCP CLOSE_WAIT after WiFi drop). _connectInner does
+          // call _createTransport which disconnects, but doing it explicitly
+          // here makes the cleanup deterministic and gives the native executor
+          // time to drain before we open a new socket.
+          this._disconnectInner();
+          await this._delay(250);
+          await this._connectInner(this.config!);
+        });
+        // Reconnect succeeded → quality recovers.
+        useTerminalConnectionStore.getState().setQuality("ok");
       } catch (reconErr) {
         return {
           ...first,
@@ -1618,30 +1706,129 @@ function buildSettlementErrorMessage(
 // STANDALONE TCP PROBE (health check — no CastlesService instance)
 // ============================================================
 
+/** Default handshake timeout for the probe's getData (W2.1). */
+const PROBE_HANDSHAKE_TIMEOUT_MS = 3_000;
+
 /**
- * Lightweight TCP reachability probe for health checks.
- * Creates an ephemeral transport (connect → immediate disconnect),
- * independent of the CastlesService class instance.
- * Never throws — always resolves { online, error? }.
+ * Reachability + responsiveness probe.
+ *
+ * - TCP connect (or USB open) within `timeoutMs`
+ * - Send a `getData` JSON, accept ANY response chunk within
+ *   `PROBE_HANDSHAKE_TIMEOUT_MS` as proof the payment app is responsive.
+ *   (We deliberately do NOT parse the response — getting any bytes back
+ *   already disambiguates "TCP up, app frozen" from "fully alive".)
+ *
+ * Never throws — always resolves a CastlesProbeResult with a discriminated
+ * `reason` so callers/UI can render specific recovery copy.
+ *
+ * Independent of the CastlesService class instance, so the probe never
+ * interferes with a held singleton mutex or an in-flight sale.
  */
 export async function probeCastlesTerminal(
   config: CastlesTransportConfig,
   timeoutMs = 5000,
-): Promise<{ online: boolean; error?: string }> {
+): Promise<CastlesProbeResult> {
+  if (config.connectionType === "local_socket" && !config.host) {
+    return {
+      online: false,
+      reason: "no_ip_configured",
+      error: "TCP transport requires a host address",
+    };
+  }
+
+  let transport: ICastlesTransport | null = null;
   try {
-    const transport = createCastlesTransport({
+    transport = createCastlesTransport({
       ...config,
       connectTimeoutMs: timeoutMs,
     });
     await transport.connect();
-    transport.disconnect();
-    return { online: true };
   } catch (err) {
-    return {
-      online: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
+    if (transport) {
+      try { transport.disconnect(); } catch { /* ignore */ }
+    }
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const reason =
+      config.connectionType === "usb"
+        ? "usb_disconnected"
+        : classifyTcpError(err);
+    return { online: false, reason, error: errorMessage };
   }
+
+  // Transport is up. Now verify the payment app is responsive by sending a
+  // getData and waiting for any bytes back. A frozen CastlesPay app will
+  // accept the TCP connection (kernel-level) but never emit a response.
+  const responsive = await _probeHandshake(transport, PROBE_HANDSHAKE_TIMEOUT_MS);
+  try { transport.disconnect(); } catch { /* ignore */ }
+
+  if (responsive.ok) {
+    return { online: true, reason: "online" };
+  }
+  return {
+    online: false,
+    reason: "terminal_unresponsive",
+    error: responsive.error,
+  };
+}
+
+/**
+ * Send a getData JSON and wait for any data chunk back. We don't parse —
+ * the goal is to prove the CastlesPay app is alive, not to read fields.
+ */
+function _probeHandshake(
+  transport: ICastlesTransport,
+  timeoutMs: number,
+): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const onData = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ ok: true });
+    };
+    const onError = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ ok: false, error: err.message });
+    };
+    const onClose = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ ok: false, error: "Transport closed before response" });
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ ok: false, error: `Handshake timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      try { transport.offData(onData); } catch { /* ignore */ }
+      try { transport.offError(onError); } catch { /* ignore */ }
+      try { transport.offClose(onClose); } catch { /* ignore */ }
+    };
+
+    transport.onData(onData);
+    transport.onError(onError);
+    transport.onClose(onClose);
+
+    const request = JSON.stringify({ txnPosTxnId: "000000", txnType: "getData" });
+    transport.write(request).catch((err: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  });
 }
 
 // ============================================================
