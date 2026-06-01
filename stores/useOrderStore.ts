@@ -5771,8 +5771,22 @@ export const useOrderStore = create<OrderState>()(
             // Without this, a broadcast UPDATE for a rekeyed-in-flight order creates
             // a duplicate entry with empty items at ordersById[dbOrderId].
             let existing = get().ordersById[dbOrderId];
+            const tempAliasKey = Object.keys(get().ordersById).find(
+              (key) =>
+                key !== dbOrderId &&
+                get().ordersById[key]?.db_order_id === dbOrderId,
+            );
+            if (tempAliasKey) {
+              get().rekeyOrder(tempAliasKey, dbOrderId);
+              existing = get().ordersById[dbOrderId];
+            }
             if (!existing) {
-              const indexedKey = get().dbOrderIdIndex[dbOrderId];
+              const state = get();
+              const indexedKey =
+                state.dbOrderIdIndex[dbOrderId] ??
+                Object.keys(state.ordersById).find(
+                  (key) => state.ordersById[key]?.db_order_id === dbOrderId,
+                );
               if (
                 indexedKey &&
                 indexedKey !== dbOrderId &&
@@ -6272,8 +6286,25 @@ export const useOrderStore = create<OrderState>()(
           _createLocalOrderFromServer: (serverOrder) => {
             const dbOrderId = serverOrder.id;
 
-            // Check if already exists (single index lookup)
-            if (get().ordersById[dbOrderId]) {
+            // Repair the brief local-draft -> backend-UUID race before adding
+            // a server order. Otherwise the same dine-in order appears twice
+            // locally until restart rebuilds the reverse index.
+            const state = get();
+            const tempAliasKey = Object.keys(state.ordersById).find(
+              (key) =>
+                key !== dbOrderId &&
+                state.ordersById[key]?.db_order_id === dbOrderId,
+            );
+            const existingKey =
+              tempAliasKey ??
+              state.dbOrderIdIndex[dbOrderId] ??
+              Object.keys(state.ordersById).find(
+                (key) => state.ordersById[key]?.db_order_id === dbOrderId,
+              );
+            if (existingKey) {
+              if (existingKey !== dbOrderId) {
+                get().rekeyOrder(existingKey, dbOrderId);
+              }
               console.log("[CreateFromServer] Already exists:", dbOrderId);
               return;
             }
@@ -13542,14 +13573,20 @@ export const useOrderStore = create<OrderState>()(
               // Remove temp entry, add DB UUID entry
               delete state.ordersById[tempId];
               state.ordersById[dbUuid] = updatedOrder;
-              state.orderIds = state.orderIds.map((id) =>
-                id === tempId ? dbUuid : id,
+              state.orderIds = Array.from(
+                new Set(
+                  state.orderIds.map((id) => (id === tempId ? dbUuid : id)),
+                ),
               );
               if (state.activeOrderId === tempId) {
                 state.activeOrderId = dbUuid;
               }
-              state.workingSetOrderIds = state.workingSetOrderIds.map((id) =>
-                id === tempId ? dbUuid : id,
+              state.workingSetOrderIds = Array.from(
+                new Set(
+                  state.workingSetOrderIds.map((id) =>
+                    id === tempId ? dbUuid : id,
+                  ),
+                ),
               );
               if (state._workingSetLookup[tempId]) {
                 delete state._workingSetLookup[tempId];
@@ -14984,6 +15021,30 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // Path B: No localOrderId — create minimal shell order keyed by dbOrderId
+            const stateBeforeShell = get();
+            const tempAliasKey = Object.keys(stateBeforeShell.ordersById).find(
+              (key) =>
+                key !== dbOrderId &&
+                stateBeforeShell.ordersById[key]?.db_order_id === dbOrderId,
+            );
+            const existingKey =
+              tempAliasKey ??
+              stateBeforeShell.dbOrderIdIndex[dbOrderId] ??
+              Object.keys(stateBeforeShell.ordersById).find(
+                (key) =>
+                  stateBeforeShell.ordersById[key]?.db_order_id === dbOrderId,
+              );
+            if (existingKey) {
+              set((state) => {
+                const existing = state.ordersById[existingKey];
+                if (!existing) return;
+                existing.session_id = sessionId;
+                existing.local_session_id = sessionId;
+                state.dbOrderIdIndex[dbOrderId] = existingKey;
+              });
+              return;
+            }
+
             set((state) => {
               if (state.ordersById[dbOrderId]) return; // already exists
               state.ordersById[dbOrderId] = {

@@ -720,6 +720,7 @@ export function useOrderLineFilteredOrders(): OrderProfile[] {
       const myStationId = state.currentStationId;
 
       const result: OrderProfile[] = [];
+      const seenOrderIds = new Set<string>();
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]];
         if (!o) continue;
@@ -739,6 +740,9 @@ export function useOrderLineFilteredOrders(): OrderProfile[] {
         )
           continue;
 
+        const canonicalId = o.db_order_id ?? o.id;
+        if (seenOrderIds.has(canonicalId)) continue;
+        seenOrderIds.add(canonicalId);
         result.push(o);
       }
       result.sort(
