@@ -210,10 +210,10 @@ const TableOrderView = React.forwardRef<
   // Expose prepareClose so [tableId].tsx can suppress store reactivity before router.back()
   useImperativeHandle(ref, () => ({ prepareClose }), [prepareClose])
 
-  // Heavy close cleanup is deferred to unmount so it doesn't block the tap-to-close path.
+  // Heavy close cleanup waits for navigation interactions so the floor can paint first.
   useEffect(() => {
     return () => {
-      queueMicrotask(() => {
+      InteractionManager.runAfterInteractions(() => {
         const store = useModifierSidebarStore.getState()
         if (store.isOpen) {
           store.cancelAndRemoveDraft()

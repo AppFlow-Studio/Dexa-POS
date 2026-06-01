@@ -44,6 +44,9 @@ export function useRealtimeChannel<T>({
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const subscribeRef = useRef<() => void>(() => {});
+  const subscribePromiseRef = useRef<Promise<void> | null>(null);
+  const subscriptionAttemptRef = useRef(0);
+  const shouldBeConnectedRef = useRef(false);
   const statusRef = useRef<ChannelState>('CLOSED');
   const isIntentionalCloseRef = useRef(false);
 
@@ -78,80 +81,102 @@ export function useRealtimeChannel<T>({
   }, []);
 
   // Core subscription logic
-  const subscribe = useCallback(async () => {
-    // Clean up existing channel
-    if (channelRef.current) {
-      isIntentionalCloseRef.current = true;
-      await supabaseClient.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
-    isIntentionalCloseRef.current = false;
+  const subscribe = useCallback(() => {
+    shouldBeConnectedRef.current = true;
+    if (subscribePromiseRef.current) return subscribePromiseRef.current;
 
-    // Set auth token for Realtime Authorization
-    await supabaseClient.realtime.setAuth();
+    const attempt = ++subscriptionAttemptRef.current;
+    const promise = (async () => {
+      // Clean up existing channel
+      if (channelRef.current) {
+        isIntentionalCloseRef.current = true;
+        await supabaseClient.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      isIntentionalCloseRef.current = false;
 
-    // Create new channel with private config
-    const channel = supabaseClient.channel(topic, {
-      config: { private: true },
-    });
+      // Set auth token for Realtime Authorization
+      await supabaseClient.realtime.setAuth();
+      if (
+        attempt !== subscriptionAttemptRef.current ||
+        !shouldBeConnectedRef.current
+      ) {
+        return;
+      }
 
-    // Register event handlers
-    eventsRef.current.forEach(event => {
-      if (__DEV__) console.log(`[Realtime] Registering handler for event: ${event} on ${topic}`);
-      channel.on('broadcast', { event }, (payload) => {
-        if (__DEV__) console.log(`[Realtime] Received event: ${event} on ${topic}`);
-        // Defer to next frame to avoid re-render storms when broadcasts
-        // arrive during screen transitions or reconnect hydration.
-        requestAnimationFrame(() => {
-          onMessageRef.current(event, payload.payload as T);
+      // Create new channel with private config
+      const channel = supabaseClient.channel(topic, {
+        config: { private: true },
+      });
+      // Assign before subscribing so concurrent triggers can see the channel.
+      channelRef.current = channel;
+
+      // Register event handlers
+      eventsRef.current.forEach(event => {
+        if (__DEV__) console.log(`[Realtime] Registering handler for event: ${event} on ${topic}`);
+        channel.on('broadcast', { event }, (payload) => {
+          if (__DEV__) console.log(`[Realtime] Received event: ${event} on ${topic}`);
+          // Defer to next frame to avoid re-render storms when broadcasts
+          // arrive during screen transitions or reconnect hydration.
+          requestAnimationFrame(() => {
+            onMessageRef.current(event, payload.payload as T);
+          });
         });
       });
-    });
 
-    // Handle subscription state changes
-    channel.subscribe((state, err) => {
-      if (__DEV__) console.log(`[Realtime] Channel ${topic} state: ${state}`, `${err ? err : ''}`);
+      // Handle subscription state changes
+      channel.subscribe((state, err) => {
+        if (__DEV__) console.log(`[Realtime] Channel ${topic} state: ${state}`, `${err ? err : ''}`);
 
-      switch (state) {
-        case REALTIME_SUBSCRIBE_STATES.SUBSCRIBED:
-          reconnectAttemptsRef.current = 0;
-          if (__DEV__) {
-            console.log(`[Realtime] Successfully subscribed to ${topic}`, {
-              registeredEvents: events,
-              channelState: state,
+        switch (state) {
+          case REALTIME_SUBSCRIBE_STATES.SUBSCRIBED:
+            reconnectAttemptsRef.current = 0;
+            if (__DEV__) {
+              console.log(`[Realtime] Successfully subscribed to ${topic}`, {
+                registeredEvents: events,
+                channelState: state,
+              });
+            }
+            updateStatus({
+              state: 'SUBSCRIBED',
+              lastError: null,
+              reconnectAttempts: 0,
+              subscribedAt: new Date(),
             });
-          }
-          updateStatus({
-            state: 'SUBSCRIBED',
-            lastError: null,
-            reconnectAttempts: 0,
-            subscribedAt: new Date(),
-          });
-          break;
+            break;
 
-        case REALTIME_SUBSCRIBE_STATES.TIMED_OUT:
-          updateStatus({ state: 'TIMED_OUT' });
-          handleReconnect();
-          break;
-
-        case REALTIME_SUBSCRIBE_STATES.CLOSED:
-          updateStatus({ state: 'CLOSED' });
-          if (!isIntentionalCloseRef.current) {
+          case REALTIME_SUBSCRIBE_STATES.TIMED_OUT:
+            updateStatus({ state: 'TIMED_OUT' });
             handleReconnect();
-          }
-          break;
+            break;
 
-        case REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR:
-          updateStatus({
-            state: 'CHANNEL_ERROR',
-            lastError: err || new Error('Channel error'),
-          });
-          handleReconnect();
-          break;
+          case REALTIME_SUBSCRIBE_STATES.CLOSED:
+            updateStatus({ state: 'CLOSED' });
+            if (!isIntentionalCloseRef.current) {
+              handleReconnect();
+            }
+            break;
+
+          case REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR:
+            updateStatus({
+              state: 'CHANNEL_ERROR',
+              lastError: err || new Error('Channel error'),
+            });
+            handleReconnect();
+            break;
+        }
+      });
+    })().finally(() => {
+      if (subscribePromiseRef.current === promise) {
+        subscribePromiseRef.current = null;
+      }
+      if (shouldBeConnectedRef.current && !channelRef.current) {
+        subscribeRef.current();
       }
     });
 
-    channelRef.current = channel;
+    subscribePromiseRef.current = promise;
+    return promise;
   }, [supabaseClient, topic, updateStatus]);
 
   // Keep subscribeRef in sync for AppState effect
@@ -212,9 +237,12 @@ export function useRealtimeChannel<T>({
 
   // Disconnect
   const disconnect = useCallback(async () => {
+    shouldBeConnectedRef.current = false;
+    subscriptionAttemptRef.current += 1;
     isIntentionalCloseRef.current = true;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
     if (channelRef.current) {
       await supabaseClient.removeChannel(channelRef.current);

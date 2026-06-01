@@ -2,6 +2,7 @@ import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
 import { CartItem, OrderProfile } from '@/lib/types'
+import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import {
@@ -61,6 +62,47 @@ function deriveAggregateStatus (items: CartItem[]): AggregateKitchenStatus {
 function isSentToKitchen (item: CartItem): boolean {
   return !!item.kitchen_status && item.kitchen_status !== 'new'
 }
+
+const DenseBillItemRow = React.memo(
+  function DenseBillItemRow ({
+    orderId,
+    itemId,
+    isSent,
+    indentLeft,
+    enableCoursing,
+    orderHasPayments,
+    orderPayments
+  }: {
+    orderId: string
+    itemId: string
+    isSent: boolean
+    indentLeft: number
+    enableCoursing: boolean
+    orderHasPayments: boolean
+    orderPayments: OrderProfile['payments'] | null
+  }) {
+    const item = useOrderItem(orderId, itemId)
+    if (!item) return null
+
+    return (
+      <View
+        style={{
+          paddingLeft: indentLeft,
+          paddingRight: 4,
+          paddingVertical: enableCoursing ? 2 : 3,
+          opacity: enableCoursing && isSent ? 0.55 : 1
+        }}
+      >
+        <BillItem
+          item={item}
+          isEditable={!isSent}
+          orderHasPayments={orderHasPayments}
+          payments={orderPayments}
+        />
+      </View>
+    )
+  }
+)
 
 const StatusPill = React.memo(
   ({ status }: { status: AggregateKitchenStatus }) => {
@@ -330,7 +372,7 @@ type SeatListRow =
   | {
       id: string
       type: 'item'
-      item: CartItem
+      itemId: string
       isSent: boolean
       indentLeft: number
       seatKey?: string | number
@@ -468,11 +510,13 @@ const DenseSeatView = React.memo(
 
     const orderPayments = activeOrder?.payments ?? null
     const orderHasPayments = !!orderPayments?.some(payment => !payment.isVoided)
+    const activeOrderId = activeOrder?.id ?? null
+    const activeOrderItemCount = activeOrder?.items?.length ?? 0
 
     // Memo 1: Structure — expensive grouping, only recomputes when items/seats/courses change
     const structuredRows = useMemo<SeatListRow[]>(() => {
-      if (!activeOrder) return []
-      if (!activeOrder.items?.length) {
+      if (!activeOrderId) return []
+      if (!activeOrderItemCount) {
         return [{ id: 'empty-order', type: 'empty' }]
       }
 
@@ -539,7 +583,7 @@ const DenseSeatView = React.memo(
               nextRows.push({
                 id: `item-${item.id}`,
                 type: 'item',
-                item,
+                itemId: item.id,
                 isSent: isSentToKitchen(item) && !item.is_voided,
                 indentLeft: 14,
                 seatKey,
@@ -554,7 +598,7 @@ const DenseSeatView = React.memo(
           nextRows.push({
             id: `item-${item.id}`,
             type: 'item',
-            item,
+            itemId: item.id,
             isSent: isSentToKitchen(item) && !item.is_voided,
             indentLeft: 6,
             seatKey
@@ -564,7 +608,8 @@ const DenseSeatView = React.memo(
 
       return nextRows
     }, [
-      activeOrder,
+      activeOrderId,
+      activeOrderItemCount,
       seatGroups,
       sortedSeatKeys,
       enableCoursing,
@@ -626,6 +671,7 @@ const DenseSeatView = React.memo(
       enableCoursing,
       orderHasPayments,
       orderPayments,
+      orderId: activeOrder?.id ?? null,
       toggleSeat,
       toggleCourse,
       onSelectSeat,
@@ -638,6 +684,7 @@ const DenseSeatView = React.memo(
       enableCoursing,
       orderHasPayments,
       orderPayments,
+      orderId: activeOrder?.id ?? null,
       toggleSeat,
       toggleCourse,
       onSelectSeat,
@@ -712,22 +759,18 @@ const DenseSeatView = React.memo(
           )
         }
 
+        if (!d.orderId) return null
+
         return (
-          <View
-            style={{
-              paddingLeft: row.indentLeft,
-              paddingRight: 4,
-              paddingVertical: d.enableCoursing ? 2 : 3,
-              opacity: d.enableCoursing && row.isSent ? 0.55 : 1
-            }}
-          >
-            <BillItem
-              item={row.item}
-              isEditable={!row.isSent}
-              orderHasPayments={d.orderHasPayments}
-              payments={d.orderPayments}
-            />
-          </View>
+          <DenseBillItemRow
+            orderId={d.orderId}
+            itemId={row.itemId}
+            isSent={row.isSent}
+            indentLeft={row.indentLeft}
+            enableCoursing={d.enableCoursing}
+            orderHasPayments={d.orderHasPayments}
+            orderPayments={d.orderPayments}
+          />
         )
       },
       [] // stable — reads from renderDataRef

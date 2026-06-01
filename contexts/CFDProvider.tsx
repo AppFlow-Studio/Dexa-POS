@@ -139,6 +139,7 @@ interface CFDContextType {
 }
 
 const CFDContext = createContext<CFDContextType | null>(null)
+const CFDOrderProcessingActivityContext = createContext<() => void>(() => {})
 
 function areStringArraysEqual (a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false
@@ -200,7 +201,9 @@ export function CFDProvider ({ children }: { children: React.ReactNode }) {
   // In CFD client mode, this device is a display client — don't start server
   if (isCFDMode) {
     return (
-      <CFDContext.Provider value={noopCFDValue}>{children}</CFDContext.Provider>
+      <CFDOrderProcessingActivityContext.Provider value={noopCFDValue.markOrderProcessingActivity}>
+        <CFDContext.Provider value={noopCFDValue}>{children}</CFDContext.Provider>
+      </CFDOrderProcessingActivityContext.Provider>
     )
   }
 
@@ -448,12 +451,15 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // loyalty_programs rows exist, hiding the button even with flag=0.
   const merchantHasLoyalty = !cfdLoyaltyDisabled
 
-  console.log('[CFDProvider] loyalty flags', {
-    EXPO_PUBLIC_CFD_DISABLE_LOYALTY:
-      process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY,
-    cfdLoyaltyDisabled,
-    merchantHasLoyalty
-  })
+  useEffect(() => {
+    if (!DEBUG) return
+    console.log('[CFDProvider] loyalty flags', {
+      EXPO_PUBLIC_CFD_DISABLE_LOYALTY:
+        process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY,
+      cfdLoyaltyDisabled,
+      merchantHasLoyalty
+    })
+  }, [cfdLoyaltyDisabled, merchantHasLoyalty])
 
   // Mirror merchantHasLoyalty (persisted in useLoyaltyStore via MMKV) into
   // useCFDBuiltinStore so the WebView/legacy CFD pick it up on every load,
@@ -3548,7 +3554,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeScreenState
   }
 
-  return <CFDContext.Provider value={value}>{children}</CFDContext.Provider>
+  return (
+    <CFDOrderProcessingActivityContext.Provider value={markOrderProcessingActivity}>
+      <CFDContext.Provider value={value}>{children}</CFDContext.Provider>
+    </CFDOrderProcessingActivityContext.Provider>
+  )
 }
 
 export function useCFD () {
@@ -3557,4 +3567,8 @@ export function useCFD () {
     throw new Error('useCFD must be used within a CFDProvider')
   }
   return context
+}
+
+export function useCFDOrderProcessingActivity () {
+  return useContext(CFDOrderProcessingActivityContext)
 }

@@ -87,6 +87,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
+      enableContentPanningGesture
       backgroundStyle={bottomSheetTheme.backgroundStyle}
       handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
       backdropComponent={props => (
@@ -99,7 +100,11 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
       )}
       onClose={onClose}
     >
-      <BottomSheetScrollView contentContainerStyle={{ padding: 20 }}>
+      <BottomSheetScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 20 }}
+        nestedScrollEnabled
+      >
         <View
           style={{
             flexDirection: 'row',

@@ -175,6 +175,22 @@ const Header = () => {
       router.push(globalParams.returnTo as Href)
       return
     }
+
+    // Table detail is normally pushed over the already-mounted floor screen.
+    // Pop immediately so the preserved grid can paint before unmount cleanup.
+    if (
+      pathname.startsWith('/tables/') &&
+      pathname.split('/').length === 3 &&
+      !pathname.includes('edit-layout')
+    ) {
+      if (router.canGoBack()) {
+        router.back()
+      } else {
+        router.replace('/tables' as Href)
+      }
+      return
+    }
+
     cancelAndRemoveDraft()
     closeModifierSidebar()
 
@@ -194,17 +210,6 @@ const Header = () => {
       } else {
         router.replace('/home')
       }
-      return
-    }
-
-    // Handle table detail pages (/tables/[tableId]) -> always go to /tables
-    // Uses replace to avoid navigation loop issues
-    if (
-      pathname.startsWith('/tables/') &&
-      pathname.split('/').length === 3 &&
-      !pathname.includes('edit-layout')
-    ) {
-      router.replace('/tables' as Href)
       return
     }
 
