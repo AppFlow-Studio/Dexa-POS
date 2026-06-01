@@ -1311,6 +1311,7 @@ const TableBillSection = ({
           onPressProceedToPayment={onPressProceedToPayment}
           totalDisplayAmount={totalDisplayAmount}
           hasPayments={(activeOrder?.payments?.length ?? 0) > 0}
+          orderId={activeOrder?.id}
         />
         {discountOpenedOnce && (
           <DiscountBottomSheet
