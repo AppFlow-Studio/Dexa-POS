@@ -342,18 +342,20 @@ const OrderDetailsComponent: React.FC<{
           <View style={{ flex: 1 }}>
             <TouchableOpacity
               onPress={onOpenTableSelector}
+              disabled={!onOpenTableSelector}
+              activeOpacity={onOpenTableSelector ? 0.7 : 1}
               className='w-full rounded-lg h-12 px-2.5 flex-row items-center gap-2'
               style={{
-                backgroundColor: colors.panel,
+                backgroundColor: tableLabel ? `${colors.teal}12` : colors.panel,
                 borderWidth: 1,
-                borderColor: colors.border
+                borderColor: tableLabel ? `${colors.teal}55` : colors.border,
               }}
             >
-              <DiningTableIcon color={colors.label} size={14} />
+              <DiningTableIcon color={tableLabel ? colors.teal : colors.label} size={14} />
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    color: colors.heading,
+                    color: tableLabel ? colors.teal : colors.heading,
                     fontSize: 12,
                     fontWeight: '600'
                   }}
@@ -391,13 +393,7 @@ const OrderDetailsComponent: React.FC<{
                     backgroundColor: colors.teal
                   }}
                 >
-                  <Text
-                    style={{
-                      color: colors.onSolid,
-                      fontSize: 10,
-                      fontWeight: '600'
-                    }}
-                  >
+                  <Text style={{ color: colors.onSolid, fontSize: 10, fontWeight: '600' }}>
                     View
                   </Text>
                 </TouchableOpacity>

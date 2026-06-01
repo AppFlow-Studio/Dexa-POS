@@ -183,7 +183,14 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
 
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
 
-    const partySize = seatCount ?? sessionPartySize ?? null;
+    // Fallback for order-processing dine-in orders: no seating store entry and
+    // no table session means guest_count is the only available party size signal.
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !activeOrder.session_id &&
+      typeof activeOrder.guest_count === "number" && activeOrder.guest_count > 0
+        ? activeOrder.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -319,7 +326,12 @@ export function useOrderTotals(
 
     const activeItems = order.items.filter((item) => !item.is_voided);
 
-    const partySize = seatCount ?? sessionPartySize ?? null;
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !order.session_id &&
+      typeof order.guest_count === "number" && order.guest_count > 0
+        ? order.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({

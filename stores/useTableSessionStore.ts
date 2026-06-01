@@ -1132,7 +1132,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                   reservationId: params.reservationId,
                   waitlistId: params.waitlistId,
                   createOrder: shouldCreateOrder,
-                  localOrderId: localOrderId,
+                  localOrderId: params.localOrderId ?? localOrderId,
                   optimisticSession,
                 },
                 {

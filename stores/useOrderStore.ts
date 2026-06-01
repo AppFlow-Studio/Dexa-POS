@@ -286,9 +286,10 @@ function buildServiceChargeInputForOrder(
   //    instantly by the SeatSelector stepper before any backend round-trip.
   // 2. table_sessions.party_size — backend-authoritative, propagated to other
   //    stations via realtime.
-  // order.guest_count is intentionally NOT read here — it's a write-only
-  // mirror for backend sync, and reading it caused stale party_size after
-  // broadcast hydration wiped guest_count.
+  // 3. order.guest_count — fallback for order-processing dine-in orders that
+  //    have no table session and no seating store entry. Not used when a session
+  //    exists because broadcast hydration can wipe guest_count, making it stale
+  //    relative to session.party_size.
   let partySize: number | null = null;
   const seatCount =
     useSeatingStore.getState().byOrderId[order.id]?.seatCount ?? null;
@@ -300,6 +301,9 @@ function buildServiceChargeInputForOrder(
       .getState()
       .getSessionBySessionId(order.session_id);
     partySize = found?.session?.party_size ?? null;
+  }
+  if (partySize == null && !order.session_id && typeof order.guest_count === "number" && order.guest_count > 0) {
+    partySize = order.guest_count;
   }
 
   // Wave D — when the server has marked SC as manually overridden, pass the
