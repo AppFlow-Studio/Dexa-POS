@@ -123,11 +123,6 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
   const renderClosedButtons = () => (
     <>
-      <TouchableOpacity onPress={onPressReopenCheck} activeOpacity={0.7}
-        style={{ ...mainBtn, backgroundColor: colors.warning + '15', borderColor: colors.warning + '40' }}>
-        <RotateCcw size={13} color={colors.warning} />
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.warning }}>Reopen</Text>
-      </TouchableOpacity>
       <TouchableOpacity onPress={onPressClearTable} activeOpacity={0.7}
         style={{ ...mainBtn, backgroundColor: colors.danger + '12', borderColor: colors.danger + '40' }}>
         <Trash2 size={13} color={colors.danger} />
