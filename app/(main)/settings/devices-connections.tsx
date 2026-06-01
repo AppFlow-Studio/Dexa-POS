@@ -325,7 +325,11 @@ const DevicesConnectionsScreen = ({
     environment: 'sandbox' as 'sandbox' | 'production',
     ipAddress: '',
     port: '8080',
-    connectionType: 'local_socket' as 'local_socket' | 'usb'
+    connectionType: 'local_socket' as 'local_socket' | 'usb',
+    /** Pre-discovered serial number from the USB wizard's getData handshake.
+     *  Threaded into the INSERT so the terminal card shows S/N immediately
+     *  instead of "— not yet discovered —" until the next testConnection. */
+    serialNumber: '' as string
   })
   const [isEditingTerminal, setIsEditingTerminal] = useState(false)
   const [editForm, setEditForm] = useState({
@@ -628,6 +632,8 @@ const DevicesConnectionsScreen = ({
 
         // Pre-test on network terminals to get serial number before touching the DB.
         // This lets us upsert by SN instead of blindly creating duplicates.
+        // For USB the wizard already ran getData and captured the SN —
+        // use that directly instead of re-running a connection test.
         let discoveredSN: string | undefined
         if (
           registerForm.connectionType === 'local_socket' &&
@@ -640,6 +646,11 @@ const DevicesConnectionsScreen = ({
             port: localPort ?? 8080
           })
           discoveredSN = preTest.serialNumber
+        } else if (
+          registerForm.connectionType === 'usb' &&
+          registerForm.serialNumber
+        ) {
+          discoveredSN = registerForm.serialNumber
         }
 
         // If we have a serial number, check if this physical device is already registered
@@ -665,7 +676,10 @@ const DevicesConnectionsScreen = ({
               local_port: localPort,
               connection_type: connectionType,
               station_id: selectedStation.id,
-              is_active: true
+              is_active: true,
+              // Refresh SN if we discovered one (handles the case where an
+              // old row had a stale or null serial_number).
+              ...(discoveredSN ? { serial_number: discoveredSN } : {})
             })
             .eq('id', existingId)
           newTerminalId = existingId
@@ -725,6 +739,10 @@ const DevicesConnectionsScreen = ({
                 : undefined,
             connection_type:
               registerForm.connectionType === 'usb' ? 'usb' : 'local_socket',
+            // Paint the card with the wizard-discovered SN immediately so
+            // staff aren't staring at "— not yet discovered —" until the
+            // next testConnection finishes writing the SN to the DB.
+            serial_number: discoveredSN ?? null,
             last_connection_status: null,
             last_connection_test_at: null
           }
@@ -764,7 +782,8 @@ const DevicesConnectionsScreen = ({
         environment: 'sandbox',
         ipAddress: '',
         port: '8080',
-        connectionType: 'local_socket'
+        connectionType: 'local_socket',
+        serialNumber: ''
       })
     } catch (err) {
       toastService.show({
@@ -4851,13 +4870,18 @@ const DevicesConnectionsScreen = ({
           // a name + auth credentials — name, model, and connection type come
           // straight from the verified device.
           setRegisterFormType('castles')
+          // Prefer the SN reported by the terminal app's getData (more
+          // authoritative than the USB descriptor's serial). Fall back to
+          // the USB-descriptor serial if the terminal didn't report one.
+          const sn = payload.terminalSerial || payload.serialNumber || ''
           setRegisterForm(f => ({
             ...f,
             name: payload.productName || 'Castles Saturn1000',
             model: payload.productName || 'Saturn1000',
             connectionType: 'usb',
             ipAddress: '',
-            port: '8080'
+            port: '8080',
+            serialNumber: sn
           }))
           setShowRegisterForm(true)
           toastService.show({

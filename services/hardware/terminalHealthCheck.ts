@@ -236,11 +236,12 @@ async function preWarmCastlesService(): Promise<void> {
   if (service.isSuspended()) {
     return; // Don't fight the suspend; resume() will handle it.
   }
+  const isUsb = currentPaymentTerminal.connection_type === 'usb';
   try {
     await service.connect({
-      connectionType: currentPaymentTerminal.connection_type === 'usb' ? 'usb' : 'local_socket',
-      host: currentPaymentTerminal.ip_address!,
-      port: currentPaymentTerminal.port ?? CASTLES_DEFAULT_PORT,
+      connectionType: isUsb ? 'usb' : 'local_socket',
+      host: isUsb ? undefined : (currentPaymentTerminal.ip_address ?? undefined),
+      port: isUsb ? undefined : (currentPaymentTerminal.port ?? CASTLES_DEFAULT_PORT),
       timeout: 10000,
       terminalId: currentTerminalId,
     });

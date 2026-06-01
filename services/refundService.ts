@@ -1303,15 +1303,17 @@ export class RefundService {
     terminalResponse?: Record<string, unknown>;
     error?: string;
   }> {
-    if (!terminal.ip_address) {
+    const isUsb = terminal.connection_type === 'usb';
+    if (!isUsb && !terminal.ip_address) {
       return { success: false, error: "Castles terminal missing IP address." };
     }
 
     const castles = getSharedCastlesService();
     try {
       await castles.connect({
-        host: terminal.ip_address,
-        port: terminal.port ?? CASTLES_DEFAULT_PORT,
+        connectionType: isUsb ? 'usb' : 'local_socket',
+        host: isUsb ? undefined : terminal.ip_address,
+        port: isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT),
         timeout: CASTLES_SOCKET_TIMEOUT_MS,
         terminalId: terminal.id,
       });
