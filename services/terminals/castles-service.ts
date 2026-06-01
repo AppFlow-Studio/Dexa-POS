@@ -12,6 +12,11 @@
 
 import { updateRefundJournal } from "@/services/refundJournal";
 import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
+import {
+    CastlesEmptyResponseError,
+    CastlesWedgedError,
+    getCastlesConnectionSupervisor,
+} from "./castlesConnectionSupervisor";
 import type {
     CastlesAuthCompleteRequest,
     CastlesAuthCompleteResult,
@@ -73,6 +78,15 @@ export type CastlesStatusCallback = (notification: {
  * command onto a dead socket.
  */
 const STALE_CONNECTION_THRESHOLD_S = 15;
+
+/**
+ * Connect-time getData handshake timeout. On a healthy terminal getData
+ * responds in <500ms. We use a tight 3s here so the wedge signature (no
+ * bytes ever come back) is detected within ~3s on the first attempt
+ * instead of burning the full live-transaction socket timeout (which
+ * stays at CASTLES_SOCKET_TIMEOUT_MS for actual sales).
+ */
+const CASTLES_HANDSHAKE_TIMEOUT_MS = 3_000;
 
 /** Errors matching these patterns are connection-level (retriable) */
 function isConnectionError(err: unknown): boolean {
@@ -211,6 +225,14 @@ export class CastlesService {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= CASTLES_CONNECT_MAX_RETRIES; attempt++) {
+      // Escalation: attempts 2+ assume the terminal is in a stuck app-layer
+      // state (the empty-buffer / response-timeout symptom). One return2Idle
+      // and a fresh socket weren't enough — we send return2Idle multiple
+      // times with gaps so the terminal's UI stack can unwind a stuck modal
+      // or a half-processed transaction state. This is the in-app equivalent
+      // of toggling WiFi on the terminal.
+      const isEscalated = attempt >= 2;
+
       try {
         this._createTransport(config);
         await this.transport!.connect();
@@ -224,18 +246,25 @@ export class CastlesService {
 
         // Clear any stuck state from previous session
         if (!this._skipReturn2Idle) {
-          try {
-            await this._sendAndReceive<Record<string, unknown>>(
-              { txnPosTxnId: "000000", txnType: "return2Idle" },
-              3000,
-            );
-            console.log(
-              "[CastlesService] return2Idle accepted — terminal was stuck",
-            );
-          } catch {
-            console.log(
-              "[CastlesService] return2Idle no response — terminal was idle (OK)",
-            );
+          const idleSends = isEscalated ? 3 : 1;
+          const idleTimeoutMs = isEscalated ? 4_000 : 3_000;
+          for (let i = 0; i < idleSends; i++) {
+            try {
+              await this._sendAndReceive<Record<string, unknown>>(
+                { txnPosTxnId: "000000", txnType: "return2Idle" },
+                idleTimeoutMs,
+              );
+              console.log(
+                `[CastlesService] return2Idle #${i + 1}/${idleSends} accepted${isEscalated ? " (escalated recovery)" : ""}`,
+              );
+              // Got a response — terminal is awake, no need to keep pushing.
+              break;
+            } catch {
+              console.log(
+                `[CastlesService] return2Idle #${i + 1}/${idleSends} no response (terminal may be idle, or stuck — continuing)`,
+              );
+            }
+            if (i < idleSends - 1) await this._delay(1_000);
           }
 
           await this._delay(500);
@@ -245,11 +274,14 @@ export class CastlesService {
           );
         }
 
-        // Verify CastlesPay is responsive
+        // Verify CastlesPay is responsive. Use the tight handshake timeout
+        // so the wedge signature is detected fast — on a healthy terminal
+        // getData responds in <500ms, and on a wedged one no amount of
+        // waiting helps.
         try {
           await this._sendAndReceive<Record<string, unknown>>(
             { txnPosTxnId: "000000", txnType: "getData" },
-            CASTLES_GET_DATA_TIMEOUT_MS,
+            CASTLES_HANDSHAKE_TIMEOUT_MS,
           );
         } catch (handshakeErr) {
           console.warn(
@@ -265,6 +297,10 @@ export class CastlesService {
         console.log(
           `[CastlesService] Connected + verified: ${config.host}:${config.port} (attempt ${attempt})`,
         );
+        // Defensive: clear any lingering wedge state if we ended up here
+        // through a probe-driven recovery rather than the supervisor's own
+        // probe loop. Cheap no-op when not wedged.
+        getCastlesConnectionSupervisor().notifySuccess();
         return;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -272,13 +308,38 @@ export class CastlesService {
           `[CastlesService] Attempt ${attempt}/${CASTLES_CONNECT_MAX_RETRIES} failed:`,
           lastError.message,
         );
+        // NOTE: react-native-tcp-socket does NOT expose setLinger, so this is
+        // a graceful FIN close — not an RST. The terminal-side TCP stack may
+        // hold its half-open in CLOSE_WAIT for a while. We can't avoid that
+        // without patching the native module.
         this._disconnectInner();
 
-        if (attempt < CASTLES_CONNECT_MAX_RETRIES) {
-          const delay = Math.min(
-            CASTLES_CONNECT_RETRY_DELAY_MS * Math.pow(2, attempt - 1),
-            10_000,
+        // Wedge signature detected: TCP up, write resolved, but 0 bytes ever
+        // came back. No amount of retrying will help — CastlesPay isn't
+        // reading from any socket. Notify the supervisor so it owns the
+        // recovery via background probe loop, and throw a typed error so
+        // callers (testConnection / processSale / etc.) can render the
+        // power-cycle modal instead of a cryptic timeout string.
+        if (err instanceof CastlesEmptyResponseError) {
+          getCastlesConnectionSupervisor().notifyEmptyBuffer({
+            connectionType: config.connectionType ?? "local_socket",
+            host: config.host,
+            port: config.port,
+          });
+          throw new CastlesWedgedError(
+            `Castles terminal appears wedged (no response on attempt ${attempt}). Power-cycle required.`,
           );
+        }
+
+        if (attempt < CASTLES_CONNECT_MAX_RETRIES) {
+          // Give the terminal at least 3s before reconnecting so CastlesPay
+          // has some chance to time out its own session state internally.
+          // This is best-effort — the app-layer freeze symptom (empty buffer
+          // on every command) can't be cured by a longer pause if CastlesPay
+          // has stopped reading from the socket entirely.
+          const baseDelay = CASTLES_CONNECT_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+          const minRecoveryDelay = 3_000;
+          const delay = Math.min(Math.max(baseDelay, minRecoveryDelay), 10_000);
           console.log(`[CastlesService] Retrying in ${delay}ms...`);
           await this._delay(delay);
         }
@@ -1295,6 +1356,9 @@ export class CastlesService {
       if (this._suspended) return;
       if (!this.transport?.isOpen || !this.config) return;
       if (this._mutex.isLocked()) return;
+      // While wedged the supervisor owns recovery via its own probe loop.
+      // Skip ticks here so the two don't race each other into the store.
+      if (useTerminalConnectionStore.getState().quality === 'wedged') return;
 
       try {
         await this._mutex.runExclusive(async () => {
@@ -1498,6 +1562,15 @@ export class CastlesService {
         if (!settled) {
           settled = true;
           cleanup();
+          // Distinguish the wedge signature (0 bytes received) from generic
+          // timeouts. Empty buffer at timeout = CastlesPay isn't reading from
+          // the socket at all → throw the typed subclass so the connect
+          // retry loop can short-circuit and notify the supervisor instead
+          // of burning all 3 retries on the same dead listener.
+          if (buffer.length === 0) {
+            reject(new CastlesEmptyResponseError(timeoutMs));
+            return;
+          }
           const preview =
             buffer.length > 200 ? buffer.slice(0, 200) + "..." : buffer;
           reject(

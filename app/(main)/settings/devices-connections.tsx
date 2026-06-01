@@ -1,4 +1,5 @@
 import AppUpdateModal from '@/components/AppUpdateModal'
+import { CastlesUsbSetupSheet, type CastlesUsbVerifiedPayload } from '@/components/settings/CastlesUsbSetupSheet'
 import { isValidIpv4 } from '@/components/settings/ManualIpPanel'
 import { PrinterRoutingModal } from '@/components/settings/PrinterRoutingModal'
 import { usePaymentTerminal } from '@/hooks/usePaymentTerminal'
@@ -39,6 +40,7 @@ import type {
 import type { StationPaymentTerminal } from '@/types/station'
 import { formatDistanceToNow } from 'date-fns'
 import Constants from 'expo-constants'
+import { useRouter } from 'expo-router'
 import {
   AlertTriangle,
   Check,
@@ -56,6 +58,7 @@ import {
   Search,
   Smartphone,
   Trash2,
+  Usb,
   Wifi,
   WifiOff,
   X
@@ -217,6 +220,8 @@ const DevicesConnectionsScreen = ({
   afterPrinters
 }: DevicesConnectionsScreenProps) => {
   const supabase = useSupabaseClient()
+  const router = useRouter()
+  const [showCastlesUsbSetup, setShowCastlesUsbSetup] = useState(false)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const setSelectedStation = useStoreSettingsStore(s => s.setSelectedStation)
@@ -1328,17 +1333,61 @@ const DevicesConnectionsScreen = ({
         paddingVertical: 10
       }}
     >
-      <View style={{ marginBottom: 12 }}>
-        <Text
-          style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
-        >
-          {mode === 'printers' ? 'Printer Settings' : 'Devices & Connections'}
-        </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
-          {mode === 'printers'
-            ? 'Printer connection, receipt printing, and order printing.'
-            : 'Station hardware, terminal, and printer management.'}
-        </Text>
+      <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+          >
+            {mode === 'printers' ? 'Printer Settings' : 'Devices & Connections'}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+            {mode === 'printers'
+              ? 'Printer connection, receipt printing, and order printing.'
+              : 'Station hardware, terminal, and printer management.'}
+          </Text>
+        </View>
+        {mode !== 'printers' && (
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity
+              onPress={() => setShowCastlesUsbSetup(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+                backgroundColor: colors.teal
+              }}
+            >
+              <Usb size={13} color='#fff' />
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 12 }}>
+                Set Up USB Terminal
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/settings/usb-diagnostics' as never)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+                backgroundColor: colors.teal + '15'
+              }}
+            >
+              <Usb size={13} color={colors.teal} />
+              <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 12 }}>
+                USB Diagnostics
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
       <View
         style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }}
@@ -4584,6 +4633,33 @@ const DevicesConnectionsScreen = ({
           printer={routingModalPrinter}
         />
       )}
+
+      {/* Castles USB Setup — detect + permission + handshake before register */}
+      <CastlesUsbSetupSheet
+        visible={showCastlesUsbSetup}
+        onCancel={() => setShowCastlesUsbSetup(false)}
+        onVerified={(payload: CastlesUsbVerifiedPayload) => {
+          setShowCastlesUsbSetup(false)
+          // Pre-fill the existing register form so the user only has to confirm
+          // a name + auth credentials — name, model, and connection type come
+          // straight from the verified device.
+          setRegisterFormType('castles')
+          setRegisterForm(f => ({
+            ...f,
+            name: payload.productName || 'Castles Saturn1000',
+            model: payload.productName || 'Saturn1000',
+            connectionType: 'usb',
+            ipAddress: '',
+            port: '8080'
+          }))
+          setShowRegisterForm(true)
+          toastService.show({
+            title: 'USB Terminal Verified',
+            message: `${payload.firmwareVersion ? `Firmware ${payload.firmwareVersion}. ` : ''}Complete registration below.`,
+            type: 'success'
+          })
+        }}
+      />
 
       {/* Receipt Printer Picker Modal */}
       <Modal

@@ -1,5 +1,7 @@
 import { PaymentErrorModal } from '@/components/bill/paymentView/PaymentErrorModal'
+import { TerminalDetachedModal } from '@/components/payment/TerminalDetachedModal'
 import { TerminalStatusBanner } from '@/components/payment/TerminalStatusBanner'
+import { TerminalWedgedModal } from '@/components/payment/TerminalWedgedModal'
 import { useCFD } from '@/contexts/CFDProvider'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { useTerminalStatus } from '@/hooks/useTerminalStatus'
@@ -777,6 +779,15 @@ const CardPaymentView = () => {
             />
           </View>
         )}
+
+        {/* Wedge modal: visible only when the connection supervisor has
+            detected an app-layer freeze. Self-dismisses on recovery. */}
+        <TerminalWedgedModal />
+        {/* Detached modal: visible only when the active terminal is USB and
+            quality is 'lost' (cable yanked / terminal lost power). Polls
+            listDevices every 5s and auto-reconnects when the terminal
+            reappears. Self-dismisses on recovery. */}
+        <TerminalDetachedModal />
 
         {/* Top Section */}
         <View
