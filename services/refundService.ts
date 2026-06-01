@@ -1322,7 +1322,12 @@ export class RefundService {
         terminalId: terminal.id,
         supabaseClient: this.supabase,
       });
-      const referenceId = await counter.next();
+      // Counter is MMKV-backed and must hydrate from disk/DB before next()
+      // is callable. Every other counter callsite does this check; the
+      // refund path was the only one missing it, so the first refund after
+      // any boot threw "Not initialized. Call await initialize() first."
+      if (!counter.isInitialized) await counter.initialize();
+      const referenceId = counter.next();
 
       if (useVoid) {
         const rrn = payment.rrn || undefined;

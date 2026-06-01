@@ -6,6 +6,9 @@ import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
+import { listDevices } from "@/modules/castles-usb";
+
+const CASTLES_VENDOR_ID = 0x0ca6;
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { deferStoreUpdate } from "@/lib/deferredStoreUpdate";
 import { isRecentlyNavigated } from "@/lib/rootNavigation";
@@ -61,12 +64,31 @@ async function performCastlesHealthCheck(): Promise<void> {
   const isUsb = currentPaymentTerminal?.connection_type === 'usb';
 
   if (isUsb) {
-    // USB probe: just try to connect via USB transport
-    const result = await probeCastlesTerminal({ connectionType: 'usb' });
-    if (result.online) {
-      handleSuccess();
-    } else {
-      handleFailure(result.error || "USB terminal unreachable");
+    // USB CDC ACM is single-instance per device — opening a probe transport
+    // would steal the serial port from the shared singleton (which is the
+    // one actually used for sales). That caused a flap:
+    //   probe opens → singleton kicked off → next sale reconnects → probe
+    //   opens again → "Terminal Back Online" toast on idle.
+    //
+    // The right test for "is USB Castles plugged in?" is just whether the OS
+    // sees the Castles VID in its USB tree. listDevices() is read-only — it
+    // doesn't open the port, doesn't fight the singleton.
+    //
+    // The "is the terminal app actually responsive?" question is handled
+    // separately by the CastlesService watchdog (every 30s, sends getData
+    // on the already-open singleton port).
+    try {
+      const devices = await listDevices();
+      const found = devices.some((d) => d.vendorId === CASTLES_VENDOR_ID);
+      if (found) {
+        handleSuccess();
+      } else {
+        handleFailure("USB terminal not detected (cable unplugged or terminal powered off)");
+      }
+    } catch (err) {
+      handleFailure(
+        err instanceof Error ? err.message : "USB device enumeration failed",
+      );
     }
     return;
   }
