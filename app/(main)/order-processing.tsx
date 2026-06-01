@@ -10,7 +10,7 @@ import BulkCompleteModal from "@/components/order/BulkCompleteModal";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
 import OrderLineMinimalCard from "@/components/order/OrderLineMinimalCard";
-import { useCFD } from "@/contexts/CFDProvider";
+import { useCFDOrderProcessingActivity } from "@/contexts/CFDProvider";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
@@ -129,7 +129,7 @@ const OrderProcessing = () => {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
-  const { markOrderProcessingActivity } = useCFD();
+  const markOrderProcessingActivity = useCFDOrderProcessingActivity();
   const measuredHeaderHeight = getHeaderHeight();
   const overlayHeaderHeight = measuredHeaderHeight > 0 ? measuredHeaderHeight : 56;
   const customItemModalHeight = useMemo(() => {
@@ -186,6 +186,9 @@ const OrderProcessing = () => {
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
   const serviceChargeSheetRef = useRef<BottomSheetMethods>(null);
+  const [moreOptionsOpenedOnce, setMoreOptionsOpenedOnce] = useState(false);
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false);
+  const [serviceChargeOpenedOnce, setServiceChargeOpenedOnce] = useState(false);
   const orderBadgeListRef = useRef<Animated.FlatList<OrderProfile>>(null);
   const orderBadgeScrollXRef = useRef(0);
   const orderBadgeViewportWidthRef = useRef(0);
@@ -193,6 +196,50 @@ const OrderProcessing = () => {
   const didInitializeOrderRef = useRef(false);
   const [canScrollBadgesLeft, setCanScrollBadgesLeft] = useState(false);
   const [canScrollBadgesRight, setCanScrollBadgesRight] = useState(false);
+
+  const requestMoreOptionsOpen = useCallback(() => {
+    if (moreOptionsSheetRef.current) {
+      moreOptionsSheetRef.current.expand();
+      return;
+    }
+    setMoreOptionsOpenedOnce(true);
+  }, []);
+  const requestDiscountOpen = useCallback(() => {
+    if (discountSheetRef.current) {
+      discountSheetRef.current.expand();
+      return;
+    }
+    setDiscountOpenedOnce(true);
+  }, []);
+  const requestServiceChargeOpen = useCallback(() => {
+    if (serviceChargeSheetRef.current) {
+      serviceChargeSheetRef.current.expand();
+      return;
+    }
+    setServiceChargeOpenedOnce(true);
+  }, []);
+
+  const lazyMoreOptionsSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestMoreOptionsOpen } as BottomSheetMethods,
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestMoreOptionsOpen],
+  );
+  const lazyDiscountSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestDiscountOpen } as BottomSheetMethods,
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestDiscountOpen],
+  );
+  const lazyServiceChargeSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestServiceChargeOpen } as BottomSheetMethods,
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestServiceChargeOpen],
+  );
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
@@ -240,6 +287,18 @@ const OrderProcessing = () => {
     const currentActiveOrder = state.activeOrderId
       ? state.ordersById[state.activeOrderId]
       : null;
+    const shouldKeepActiveDineInOrder =
+      !!currentActiveOrder?.service_location_id &&
+      (currentActiveOrder.order_type === "dine_in" ||
+        currentActiveOrder.order_type === "Dine In") &&
+      currentActiveOrder.order_status !== "completed" &&
+      currentActiveOrder.order_status !== "void" &&
+      currentActiveOrder.order_status !== "cancelled";
+    if (currentActiveOrder && shouldKeepActiveDineInOrder) {
+      setActiveOrder(currentActiveOrder.id);
+      return;
+    }
+
     if (currentActiveOrder && isReusableEmptyDraftOrder(currentActiveOrder)) {
       if (selectedStore) {
         const refreshedNumbers = getRefreshedReusableDraftNumbers({
@@ -627,7 +686,7 @@ const OrderProcessing = () => {
   // DEFERRED RENDERING: Progressive staged rendering via double-rAF
   // Stage 0: Skeleton placeholders (instant first paint)
   // Stage 1: BillSection (lighter — user sees their order first)
-  // Stage 2: MenuSection + MoreOptionsBottomSheet + FlatList data (heavier)
+  // Stage 2: MenuSection + FlatList data. Heavy bill sheets mount on first open.
   const [renderStage, setRenderStage] = useState(0);
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
@@ -640,6 +699,22 @@ const OrderProcessing = () => {
     });
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  useEffect(() => {
+    if (renderStage >= 2 && moreOptionsOpenedOnce) {
+      moreOptionsSheetRef.current?.expand();
+    }
+  }, [moreOptionsOpenedOnce, renderStage]);
+  useEffect(() => {
+    if (renderStage >= 2 && discountOpenedOnce) {
+      discountSheetRef.current?.expand();
+    }
+  }, [discountOpenedOnce, renderStage]);
+  useEffect(() => {
+    if (renderStage >= 2 && serviceChargeOpenedOnce) {
+      serviceChargeSheetRef.current?.expand();
+    }
+  }, [renderStage, serviceChargeOpenedOnce]);
 
   const displayOrders =
     renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS;
@@ -1151,12 +1226,8 @@ const OrderProcessing = () => {
         {renderStage >= 1 ? (
           <BillSection
             key={`bill-${colorScheme}`}
-            moreOptionsSheetRef={
-              moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            discountSheetRef={
-              discountSheetRef as React.RefObject<BottomSheetMethods>
-            }
+            moreOptionsSheetRef={lazyMoreOptionsSheetRef}
+            discountSheetRef={lazyDiscountSheetRef}
           />
         ) : (
           // BillSection skeleton: matches the 380px sidebar layout
@@ -1611,32 +1682,39 @@ const OrderProcessing = () => {
       </View>
 
       {/* Stage 2: Mount bottom sheets in a dedicated overlay layer above BillSection controls */}
-      {renderStage >= 2 && (
+      {renderStage >= 2 &&
+        (moreOptionsOpenedOnce ||
+          discountOpenedOnce ||
+          serviceChargeOpenedOnce) && (
         <View
           pointerEvents="box-none"
           style={[styles.sheetOverlayLayer, { top: -overlayHeaderHeight }]}
         >
-          <MoreOptionsBottomSheet
-            ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-            discountSheetRef={
-              discountSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            serviceChargeSheetRef={
-              serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            onCloseCheck={handleCloseCheck}
-            onCloseSession={handleCloseSession}
-            onNoSale={handleNoSale}
-            onManageDrawer={() => setCashDrawerSheetOpen(true)}
-          />
-          <DiscountBottomSheet
-            ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
-            onClose={() => discountSheetRef?.current?.close()}
-          />
-          <ServiceChargeOverrideSheet
-            ref={serviceChargeSheetRef as React.RefObject<BottomSheetMethods>}
-            onClose={() => serviceChargeSheetRef?.current?.close()}
-          />
+          {moreOptionsOpenedOnce && (
+            <MoreOptionsBottomSheet
+              ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+              discountSheetRef={lazyDiscountSheetRef}
+              serviceChargeSheetRef={lazyServiceChargeSheetRef}
+              onCloseCheck={handleCloseCheck}
+              onCloseSession={handleCloseSession}
+              onNoSale={handleNoSale}
+              onManageDrawer={() => setCashDrawerSheetOpen(true)}
+            />
+          )}
+          {discountOpenedOnce && (
+            <DiscountBottomSheet
+              ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
+              onClose={() => discountSheetRef?.current?.close()}
+            />
+          )}
+          {serviceChargeOpenedOnce && (
+            <ServiceChargeOverrideSheet
+              ref={
+                serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
+              }
+              onClose={() => serviceChargeSheetRef?.current?.close()}
+            />
+          )}
         </View>
       )}
 

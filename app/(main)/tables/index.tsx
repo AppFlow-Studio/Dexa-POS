@@ -14,6 +14,7 @@ import { getDeviceId } from '@/lib/deviceId'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { transferTableServer } from '@/services/serverAssignmentService'
+import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
@@ -40,7 +41,13 @@ import {
   X
 } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Text, TextInput, TouchableOpacity, View } from 'react-native'
+import {
+  InteractionManager,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 const canSeatFromSidebar = (status?: string | null) => {
@@ -97,7 +104,6 @@ const TablesScreen = () => {
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
   const getOrderByDbId = useOrderStore(s => s.getOrderByDbId)
   const getOrder = useOrderStore(s => s.getOrder)
-  const syncOrderFromDatabase = useOrderStore(s => s.syncOrderFromDatabase)
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
 
@@ -134,12 +140,18 @@ const TablesScreen = () => {
   useEffect(() => {
     if (!supabaseClient || !location_id) return
     setReservationSupabaseClient(supabaseClient)
-    fetchReservations(location_id)
-    const interval = setInterval(
-      () => fetchReservations(location_id, undefined, { silent: true }),
-      30000
-    )
-    return () => clearInterval(interval)
+    let interval: ReturnType<typeof setInterval> | null = null
+    const task = InteractionManager.runAfterInteractions(() => {
+      fetchReservations(location_id)
+      interval = setInterval(
+        () => fetchReservations(location_id, undefined, { silent: true }),
+        30000
+      )
+    })
+    return () => {
+      task.cancel()
+      if (interval) clearInterval(interval)
+    }
   }, [supabaseClient, location_id, fetchReservations])
 
   // Consume pending table overlay from waitlist seating flow
@@ -166,7 +178,11 @@ const TablesScreen = () => {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore()
+  const isClockedIn = useTimeclockStore(s => {
+    if (!s.activeEmployeeId) return false
+    return s.sessions[s.activeEmployeeId]?.status === 'clockedIn'
+  })
+  const showClockInWall = useTimeclockStore(s => s.showClockInWall)
   const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
 
   useEffect(() => {
@@ -178,12 +194,6 @@ const TablesScreen = () => {
 
   // activePlan logic is now handled by store loading 'tables' only for active plan.
   // tables = current active tables.
-
-  const isClockedIn = useMemo(() => {
-    if (!activeEmployeeId) return false
-    const session = getSession(activeEmployeeId)
-    return session?.status === 'clockedIn'
-  }, [activeEmployeeId, getSession])
 
   // Filter tables by search (uses debounced searchText)
   const filteredTables = useMemo(() => {
@@ -226,7 +236,7 @@ const TablesScreen = () => {
           .getState()
           .getOrder(activeSession.order_id)
         if (!existing) {
-          syncOrderFromDatabase(activeSession.order_id).catch(() => {})
+          ensureOrderPrefetched(activeSession.order_id).catch(() => {})
         }
       }
 
@@ -238,7 +248,6 @@ const TablesScreen = () => {
       showClockInWall,
       isMergeMode,
       toggleTableSelection,
-      syncOrderFromDatabase
     ]
   )
 
@@ -303,10 +312,11 @@ const TablesScreen = () => {
         if (existingOrder) {
           setActiveOrder(existingOrder.id)
         }
+        const prefetch = ensureOrderPrefetched(orderId)
         router.push(('/tables/' + tableId) as Href)
         // Background sync for fresh data if order wasn't cached
         if (!existingOrder) {
-          syncOrderFromDatabase(orderId)
+          prefetch
             .then(localOrderId => {
               if (localOrderId) setActiveOrder(localOrderId)
             })
@@ -316,7 +326,7 @@ const TablesScreen = () => {
         router.push(('/tables/' + tableId) as Href)
       }
     },
-    [tables, getOrder, setActiveOrder, syncOrderFromDatabase]
+    [tables, getOrder, router, setActiveOrder]
   )
 
   const handleTransferServer = useCallback(
@@ -400,10 +410,11 @@ const TablesScreen = () => {
           if (existing) setActiveOrder(existing.id)
 
           // Show overlay immediately — no routing latency
+          const prefetch = ensureOrderPrefetched(orderId)
           router.push(('/tables/' + table.id) as Href)
 
           // Background sync for fresh data (no-op if order already current)
-          syncOrderFromDatabase(orderId)
+          prefetch
             .then(localOrderId => {
               if (localOrderId) setActiveOrder(localOrderId)
             })
@@ -425,7 +436,7 @@ const TablesScreen = () => {
       showClockInWall,
       clearSelection,
       toggleTableSelection,
-      syncOrderFromDatabase,
+      router,
       setActiveOrder
     ]
   )

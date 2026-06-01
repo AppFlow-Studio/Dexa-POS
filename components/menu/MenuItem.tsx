@@ -1,7 +1,6 @@
 import OptimizedListImage, {
     type ImageLoadPriority,
 } from "@/components/ui/OptimizedListImage";
-import { useToast } from "@/contexts/ToastContext";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import {
     DEFAULT_MENU_ITEM_PLACEHOLDER_ICON,
@@ -10,10 +9,12 @@ import {
     type MenuItemPlaceholderIconKey,
 } from "@/lib/menuItemPlaceholderIcon";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
+import { cancelMenuModifierPreWarm } from "@/lib/menuModifierPreWarmControl";
 import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
 import {
+    isModifierPreWarmed,
     isMenuBlockedSync,
     setMenuBlockedSync,
     useModifierSidebarStore,
@@ -210,16 +211,13 @@ const MenuItem: React.FC<MenuItemProps> = ({
 }) => {
   const { colorScheme } = useColorScheme();
   const styles = useMemo(() => getStylesForScheme(colorScheme), [colorScheme]);
-  const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
-  const { show } = useToast();
+  const isClockedIn = useTimeclockStore((s) => {
+    if (!s.activeEmployeeId) return false;
+    return s.sessions[s.activeEmployeeId]?.status === "clockedIn";
+  });
+  const showClockInWall = useTimeclockStore((s) => s.showClockInWall);
   const showMenuItemPrices = useSettingsStore((s) => s.showMenuItemPrices);
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
-
-  const isClockedIn = useMemo(() => {
-    if (!activeEmployeeId) return false;
-    const session = getSession(activeEmployeeId);
-    return session?.status === "clockedIn";
-  }, [activeEmployeeId, getSession]);
 
   const priceData = useMemo(() => {
     const displayPrice = item.price;
@@ -240,6 +238,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const isDisabled = item.availability === false || isReadOnly;
 
   const handlePressIn = useCallback(() => {
+    cancelMenuModifierPreWarm();
     setMenuBlockedSync(true);
 
     if (!isClockedIn) {
@@ -253,9 +252,6 @@ const MenuItem: React.FC<MenuItemProps> = ({
       return;
     }
 
-    const { activeOrderId, ordersById } = useOrderStore.getState();
-    const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
-
     // if (!currentOrder?.order_type) {
     //   setMenuBlockedSync(false);
     //   show({
@@ -266,7 +262,9 @@ const MenuItem: React.FC<MenuItemProps> = ({
     //   return;
     // }
 
-    useModifierSidebarStore.getState().preWarm(item, categoryId, menuId);
+    if (!isModifierPreWarmed(item.id)) {
+      useModifierSidebarStore.getState().preWarm(item, categoryId, menuId);
+    }
   }, [
     item,
     categoryId,
@@ -274,7 +272,6 @@ const MenuItem: React.FC<MenuItemProps> = ({
     isClockedIn,
     onOrderClosedCheck,
     showClockInWall,
-    show,
   ]);
 
   const handlePress = useCallback(() => {

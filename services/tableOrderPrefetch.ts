@@ -15,6 +15,34 @@ const PREFETCH_CONCURRENCY = 2;
 
 let _unsubscribe: (() => void) | null = null;
 const _inFlightOrderIds = new Set<string>();
+const _inFlightPrefetches = new Map<string, Promise<string | null>>();
+
+function getCachedOrderId(orderId: string): string | null {
+  const { ordersById, dbOrderIdIndex } = useOrderStore.getState();
+  if (ordersById[orderId]) return orderId;
+
+  const localId = dbOrderIdIndex[orderId];
+  return localId && ordersById[localId] ? localId : null;
+}
+
+export function ensureOrderPrefetched(orderId: string): Promise<string | null> {
+  const cachedOrderId = getCachedOrderId(orderId);
+  if (cachedOrderId) return Promise.resolve(cachedOrderId);
+
+  const inFlightPrefetch = _inFlightPrefetches.get(orderId);
+  if (inFlightPrefetch) return inFlightPrefetch;
+
+  _inFlightOrderIds.add(orderId);
+  const prefetch = useOrderStore
+    .getState()
+    .syncOrderFromDatabase(orderId)
+    .finally(() => {
+      _inFlightOrderIds.delete(orderId);
+      _inFlightPrefetches.delete(orderId);
+    });
+  _inFlightPrefetches.set(orderId, prefetch);
+  return prefetch;
+}
 
 function getSessionOrderIds(): string[] {
   const ids: string[] = [];
@@ -27,15 +55,9 @@ function getSessionOrderIds(): string[] {
 async function prefetchUncachedOrders(orderIds: string[]) {
   if (orderIds.length === 0) return;
 
-  const orderState = useOrderStore.getState();
-  const { ordersById, dbOrderIdIndex } = orderState;
-
   const uncachedOrderIds = orderIds.filter((id) => {
     if (_inFlightOrderIds.has(id)) return false;
-    if (ordersById[id]) return false;
-    const localId = dbOrderIdIndex[id];
-    if (localId && ordersById[localId]) return false;
-    return true;
+    return !getCachedOrderId(id);
   });
 
   if (uncachedOrderIds.length === 0) return;
@@ -43,7 +65,6 @@ async function prefetchUncachedOrders(orderIds: string[]) {
   if (__DEV__) console.log(
     `[prefetch] Fetching ${uncachedOrderIds.length} uncached orders`,
   );
-  for (const id of uncachedOrderIds) _inFlightOrderIds.add(id);
   // Cap concurrency: prior Promise.allSettled fired N parallel fetches and each
   // syncOrderFromDatabase issues 4 inner queries, so a station switch with 3
   // occupied tables produced 12 concurrent Postgres queries and triggered
@@ -54,11 +75,9 @@ async function prefetchUncachedOrders(orderIds: string[]) {
       const id = queue.shift();
       if (!id) return;
       try {
-        await orderState.syncOrderFromDatabase(id);
+        await ensureOrderPrefetched(id);
       } catch (err) {
         if (__DEV__) console.warn(`[prefetch] ${id} failed:`, err);
-      } finally {
-        _inFlightOrderIds.delete(id);
       }
     }
   };

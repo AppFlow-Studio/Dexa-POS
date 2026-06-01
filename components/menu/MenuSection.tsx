@@ -6,6 +6,10 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
+import {
+    beginMenuModifierPreWarm,
+    isMenuModifierPreWarmCurrent,
+} from "@/lib/menuModifierPreWarmControl";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
@@ -87,6 +91,7 @@ const menuSectionStyles = StyleSheet.create({
     width: "23%",
   },
 });
+const EMPTY_HIDDEN_MENU_IDS: string[] = [];
 
 const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
   ...StyleSheet.absoluteFillObject,
@@ -161,19 +166,20 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   );
   const usePopupMenuNavigation = menuNavigationMode === "popup";
 
-  const { requestPinOverride, isUnlocked } = usePinOverrideStore();
+  const requestPinOverride = usePinOverrideStore((s) => s.requestPinOverride);
+  const isUnlocked = usePinOverrideStore((s) => s.isUnlocked);
   const addTemporaryMenuAccess = useMenuStore((s) => s.addTemporaryMenuAccess);
   const addTemporaryCategoryAccess = useMenuStore(
     (s) => s.addTemporaryCategoryAccess,
   );
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const hiddenMenuMap = useMenuVisibilityStore(
-    (s) => s.hiddenMenuIdsByLocation,
+  const selectedStoreId = useStoreSettingsStore(
+    (s) => s.selectedStore?.id ?? null,
   );
-  const selectedStoreId = selectedStore?.id ?? null;
-  const hiddenMenuIds = useMemo(
-    () => (selectedStoreId ? hiddenMenuMap[selectedStoreId] ?? [] : []),
-    [hiddenMenuMap, selectedStoreId],
+  const hiddenMenuIds = useMenuVisibilityStore(
+    (s) =>
+      (selectedStoreId
+        ? s.hiddenMenuIdsByLocation[selectedStoreId]
+        : null) ?? EMPTY_HIDDEN_MENU_IDS,
   );
 
   // OPTIMIZED: Use computed selector to get only order_type, avoiding re-renders on item changes
@@ -187,8 +193,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     (s) => s.updateActiveOrderDetails,
   );
 
-  const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
-    useOrderTypeDrawerStore();
+  const isOrderTypeDrawerOpen = useOrderTypeDrawerStore((s) => s.isOpen);
+  const closeDrawer = useOrderTypeDrawerStore((s) => s.closeDrawer);
 
   // Tick each minute to refresh availability indicators
   const [availabilityTick, setAvailabilityTick] = useState(0);
@@ -516,41 +522,46 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   useEffect(() => {
     if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId)
       return;
-    const visibleItems = filteredMenuItems.slice(0, 12);
+    const visibleItems = filteredMenuItems.slice(0, isTableOrder ? 6 : 12);
     let cancelled = false;
     let pendingRaf: number | null = null;
+    let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
+    const generation = beginMenuModifierPreWarm();
 
     const handle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
+      if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
       // Image prefetch is fire-and-forget — kick it off immediately, it
       // doesn't compete with the JS thread.
-      prefetchMenuItemRemoteImages(visibleItems);
+      pendingTimeout = setTimeout(() => {
+        if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
+        prefetchMenuItemRemoteImages(visibleItems);
 
-      // Chunk modifier precompute 5 items per frame so a 15-item burst
-      // spreads across ~3 frames instead of one ~30–50ms task.
-      const CHUNK_SIZE = 5;
-      const store = useModifierSidebarStore.getState();
-      let cursor = 0;
-      const step = () => {
-        if (cancelled) return;
-        const slice = visibleItems.slice(cursor, cursor + CHUNK_SIZE);
-        if (slice.length === 0) {
-          pendingRaf = null;
-          return;
-        }
-        store.preWarmMany(slice, currentCategoryId, activeMenuId);
-        cursor += CHUNK_SIZE;
+        // Dine-in favors responsiveness: warm fewer items in smaller chunks.
+        const chunkSize = isTableOrder ? 2 : 5;
+        const store = useModifierSidebarStore.getState();
+        let cursor = 0;
+        const step = () => {
+          if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
+          const slice = visibleItems.slice(cursor, cursor + chunkSize);
+          if (slice.length === 0) {
+            pendingRaf = null;
+            return;
+          }
+          store.preWarmMany(slice, currentCategoryId, activeMenuId);
+          cursor += chunkSize;
+          pendingRaf = requestAnimationFrame(step);
+        };
         pendingRaf = requestAnimationFrame(step);
-      };
-      pendingRaf = requestAnimationFrame(step);
+      }, isTableOrder ? 180 : 0);
     });
 
     return () => {
       cancelled = true;
       handle.cancel?.();
+      if (pendingTimeout !== null) clearTimeout(pendingTimeout);
       if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
     };
-  }, [filteredMenuItems, currentCategoryId, activeMenuId]);
+  }, [filteredMenuItems, currentCategoryId, activeMenuId, isTableOrder]);
 
   // OPTIMIZED: Memoized keyExtractor to prevent recreation
   // NOTE: All hooks must be called before any early returns

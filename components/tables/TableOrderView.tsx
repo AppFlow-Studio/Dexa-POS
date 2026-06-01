@@ -56,6 +56,73 @@ const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] =
   []
 const PAID_BALANCE_TOLERANCE = 0.01
 
+const TableOrderMenuPanel = React.memo(
+  function TableOrderMenuPanel ({
+    renderStage,
+    enableCoursing,
+    isCurrentCourseSent,
+    onStartNewCourse,
+    onOrderClosedCheck
+  }: {
+    renderStage: number
+    enableCoursing: boolean
+    isCurrentCourseSent: boolean
+    onStartNewCourse: () => void
+    onOrderClosedCheck: () => boolean
+  }) {
+    return (
+    <View
+      style={{
+        flex: 1,
+        padding: 16,
+        paddingHorizontal: 12,
+        paddingTop: 0
+      }}
+    >
+      {renderStage >= 2 ? (
+        enableCoursing && isCurrentCourseSent ? (
+          <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={onStartNewCourse}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal
+              }}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={{
+                  fontWeight: '600',
+                  color: colors.teal,
+                  fontSize: 16
+                }}
+              >
+                + New Course
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <MenuSection
+            onOrderClosedCheck={onOrderClosedCheck}
+            isTableOrder={true}
+          />
+        )
+      ) : (
+        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: colors.label }}>Loading menu...</Text>
+        </View>
+      )}
+    </View>
+    )
+  }
+)
+
 const nowMs = () =>
   typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
@@ -193,6 +260,61 @@ const TableOrderView = React.forwardRef<
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
   const serviceChargeSheetRef = useRef<BottomSheetMethods>(null)
+  const [moreOptionsOpenedOnce, setMoreOptionsOpenedOnce] = useState(false)
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false)
+  const [serviceChargeOpenedOnce, setServiceChargeOpenedOnce] = useState(false)
+
+  const requestMoreOptionsOpen = useCallback(() => {
+    if (moreOptionsSheetRef.current) {
+      moreOptionsSheetRef.current.snapToIndex(0)
+      return
+    }
+    setMoreOptionsOpenedOnce(true)
+  }, [])
+  const requestDiscountOpen = useCallback(() => {
+    if (discountSheetRef.current) {
+      discountSheetRef.current.expand()
+      return
+    }
+    setDiscountOpenedOnce(true)
+  }, [])
+  const requestServiceChargeOpen = useCallback(() => {
+    if (serviceChargeSheetRef.current) {
+      serviceChargeSheetRef.current.expand()
+      return
+    }
+    setServiceChargeOpenedOnce(true)
+  }, [])
+  const lazyDiscountSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestDiscountOpen } as BottomSheetMethods
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestDiscountOpen]
+  )
+  const lazyServiceChargeSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestServiceChargeOpen } as BottomSheetMethods
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestServiceChargeOpen]
+  )
+
+  useEffect(() => {
+    if (renderStage >= 2 && moreOptionsOpenedOnce) {
+      moreOptionsSheetRef.current?.snapToIndex(0)
+    }
+  }, [moreOptionsOpenedOnce, renderStage])
+  useEffect(() => {
+    if (renderStage >= 2 && discountOpenedOnce) {
+      discountSheetRef.current?.expand()
+    }
+  }, [discountOpenedOnce, renderStage])
+  useEffect(() => {
+    if (renderStage >= 2 && serviceChargeOpenedOnce) {
+      serviceChargeSheetRef.current?.expand()
+    }
+  }, [renderStage, serviceChargeOpenedOnce])
 
   const prepareClose = useCallback(() => {
     if (__DEV__) {
@@ -210,10 +332,10 @@ const TableOrderView = React.forwardRef<
   // Expose prepareClose so [tableId].tsx can suppress store reactivity before router.back()
   useImperativeHandle(ref, () => ({ prepareClose }), [prepareClose])
 
-  // Heavy close cleanup is deferred to unmount so it doesn't block the tap-to-close path.
+  // Heavy close cleanup waits for navigation interactions so the floor can paint first.
   useEffect(() => {
     return () => {
-      queueMicrotask(() => {
+      InteractionManager.runAfterInteractions(() => {
         const store = useModifierSidebarStore.getState()
         if (store.isOpen) {
           store.cancelAndRemoveDraft()
@@ -959,10 +1081,7 @@ const TableOrderView = React.forwardRef<
     [activeOrder?.id, setCurrentCourse]
   )
 
-  const handlePressMore = useCallback(
-    () => moreOptionsSheetRef.current?.snapToIndex(0),
-    []
-  )
+  const handlePressMore = requestMoreOptionsOpen
 
   const handlePressTotal = useCallback(
     () => {
@@ -1279,59 +1398,13 @@ const TableOrderView = React.forwardRef<
               isOvertime={isOvertime}
               overtimeMinutes={defaultSittingTimeMinutes}
             />
-            <View
-              style={{
-                flex: 1,
-                padding: 16,
-                paddingHorizontal: 12,
-                paddingTop: 0
-              }}
-            >
-              {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}
-              {renderStage >= 2 ? (
-                enableCoursing && isCurrentCourseSent ? (
-                  <View
-                    style={{ justifyContent: 'center', alignItems: 'center' }}
-                  >
-                    <TouchableOpacity
-                      onPress={handleStartNewCourse}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: colors.teal
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text
-                        style={{
-                          fontWeight: '600',
-                          color: colors.teal,
-                          fontSize: 16
-                        }}
-                      >
-                        + New Course
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <MenuSection
-                    onOrderClosedCheck={checkOrderClosedAndWarn}
-                    isTableOrder={true}
-                  />
-                )
-              ) : (
-                <View
-                  style={{ alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Text style={{ color: colors.label }}>Loading menu...</Text>
-                </View>
-              )}
-            </View>
+            <TableOrderMenuPanel
+              renderStage={renderStage}
+              enableCoursing={enableCoursing}
+              isCurrentCourseSent={isCurrentCourseSent}
+              onStartNewCourse={handleStartNewCourse}
+              onOrderClosedCheck={checkOrderClosedAndWarn}
+            />
           </View>
         </>
       ) : (
@@ -1339,30 +1412,35 @@ const TableOrderView = React.forwardRef<
       )}
 
       {/* Stage 2: Bottom sheets — outside Teleport so re-renders of the portal don't reset gesture state */}
-      {renderStage >= 2 && (
+      {renderStage >= 2 &&
+        (moreOptionsOpenedOnce ||
+          discountOpenedOnce ||
+          serviceChargeOpenedOnce) && (
         <>
-          <MoreOptionsBottomSheet
-            ref={moreOptionsSheetRef}
-            isTableOrdering
-            onVoidSuccess={handleVoidSuccess}
-            discountSheetRef={
-              discountSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            serviceChargeSheetRef={
-              serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            onCloseCheck={handleCloseCheck}
-          />
+          {moreOptionsOpenedOnce && (
+            <MoreOptionsBottomSheet
+              ref={moreOptionsSheetRef}
+              isTableOrdering
+              onVoidSuccess={handleVoidSuccess}
+              discountSheetRef={lazyDiscountSheetRef}
+              serviceChargeSheetRef={lazyServiceChargeSheetRef}
+              onCloseCheck={handleCloseCheck}
+            />
+          )}
 
-          <DiscountBottomSheet
-            ref={discountSheetRef}
-            onClose={handleCloseDiscountSheet}
-          />
+          {discountOpenedOnce && (
+            <DiscountBottomSheet
+              ref={discountSheetRef}
+              onClose={handleCloseDiscountSheet}
+            />
+          )}
 
-          <ServiceChargeOverrideSheet
-            ref={serviceChargeSheetRef}
-            onClose={() => serviceChargeSheetRef.current?.close()}
-          />
+          {serviceChargeOpenedOnce && (
+            <ServiceChargeOverrideSheet
+              ref={serviceChargeSheetRef}
+              onClose={() => serviceChargeSheetRef.current?.close()}
+            />
+          )}
         </>
       )}
 

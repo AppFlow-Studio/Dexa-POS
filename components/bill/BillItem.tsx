@@ -1,4 +1,4 @@
-import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useIsNetworkDegraded } from "@/hooks/useNetworkStatus";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { colors } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
@@ -171,12 +171,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   // Wave 2.8c: gate the optimistic-pending dot on actual network trouble.
   // During normal-flow optimistic latency the dot would flicker on every tap;
   // we only want it when the merchant should know syncing isn't immediate.
-  const networkStatus = useNetworkStatus();
-  const isNetworkDegraded =
-    isNetworkDegradedProp ??
-    (!networkStatus.rawIsOnline ||
-      networkStatus.quality === "slow" ||
-      networkStatus.quality === "probing");
+  const networkIsDegraded = useIsNetworkDegraded();
+  const isNetworkDegraded = isNetworkDegradedProp ?? networkIsDegraded;
   const retrySingleItemSync = useOrderStore((s) => s.retrySingleItemSync);
   const showToast = useToastStore((s) => s.show);
 

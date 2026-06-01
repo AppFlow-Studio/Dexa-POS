@@ -293,7 +293,12 @@ export default function MainLayout () {
               >
                 <Header />
               </View>
-              <Slot />
+              <View
+                className='flex-1'
+                style={disableKeyboardAvoiding ? { zIndex: 100 } : undefined}
+              >
+                <Slot />
+              </View>
             </View>
           </View>
           <NotificationBottomSheet

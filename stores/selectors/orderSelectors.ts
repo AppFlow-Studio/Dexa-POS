@@ -10,7 +10,7 @@
  */
 
 import { calculateOrderTotals } from "@/lib/order-calculator";
-import type { OrderProfile, OrderProfilePayment } from "@/lib/types";
+import type { CartItem, OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useOrderStore } from "../useOrderStore";
@@ -183,7 +183,14 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
 
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
 
-    const partySize = seatCount ?? sessionPartySize ?? null;
+    // Fallback for order-processing dine-in orders: no seating store entry and
+    // no table session means guest_count is the only available party size signal.
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !activeOrder.session_id &&
+      typeof activeOrder.guest_count === "number" && activeOrder.guest_count > 0
+        ? activeOrder.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -319,7 +326,12 @@ export function useOrderTotals(
 
     const activeItems = order.items.filter((item) => !item.is_voided);
 
-    const partySize = seatCount ?? sessionPartySize ?? null;
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !order.session_id &&
+      typeof order.guest_count === "number" && order.guest_count > 0
+        ? order.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -708,6 +720,7 @@ export function useOrderLineFilteredOrders(): OrderProfile[] {
       const myStationId = state.currentStationId;
 
       const result: OrderProfile[] = [];
+      const seenOrderIds = new Set<string>();
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]];
         if (!o) continue;
@@ -727,6 +740,9 @@ export function useOrderLineFilteredOrders(): OrderProfile[] {
         )
           continue;
 
+        const canonicalId = o.db_order_id ?? o.id;
+        if (seenOrderIds.has(canonicalId)) continue;
+        seenOrderIds.add(canonicalId);
         result.push(o);
       }
       result.sort(
@@ -751,6 +767,20 @@ export function useOrder(
   orderId: string | null | undefined,
 ): OrderProfile | null {
   return useOrderStore((s) => (orderId ? (s.getOrder(orderId) ?? null) : null));
+}
+
+/**
+ * Subscribe to a single item in a local order.
+ * Immer keeps untouched item references stable when sibling items change.
+ */
+export function useOrderItem(
+  orderId: string | null | undefined,
+  itemId: string,
+): CartItem | null {
+  return useOrderStore((s) => {
+    if (!orderId) return null;
+    return s.ordersById[orderId]?.items.find((item) => item.id === itemId) ?? null;
+  });
 }
 
 /**

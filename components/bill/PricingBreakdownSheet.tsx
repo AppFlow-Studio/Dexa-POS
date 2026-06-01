@@ -1,5 +1,8 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
-import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
+import {
+  useActiveOrderTotals,
+  useOrderTotals,
+} from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -15,6 +18,7 @@ interface PricingBreakdownSheetProps {
   onPressProceedToPayment: () => void;
   totalDisplayAmount: number;
   hasPayments?: boolean;
+  orderId?: string;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -106,13 +110,23 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PricingBreakdownSheetProps
 > = function PricingBreakdownSheetComponent(
-  { onClose, onPressProceedToPayment, totalDisplayAmount, hasPayments: hasPaymentsProp },
+  {
+    onClose,
+    onPressProceedToPayment,
+    totalDisplayAmount,
+    hasPayments: hasPaymentsProp,
+    orderId,
+  },
   ref,
 ) {
   const snapPoints = useMemo(() => ["48%"], []);
 
   const activeOrder = useOrderStore((s) =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined,
+    orderId
+      ? s.ordersById[orderId]
+      : s.activeOrderId
+        ? s.ordersById[s.activeOrderId]
+        : undefined,
   );
   const activeOrderSubtotal = useOrderStore((s) => s.activeOrderSubtotal);
   const activeOrderTax = useOrderStore((s) => s.activeOrderTax);
@@ -124,7 +138,9 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
     (s) => s.activeOrderOutstandingTax,
   );
 
-  const liveTotals = useActiveOrderTotals();
+  const activeOrderTotals = useActiveOrderTotals(!orderId);
+  const orderTotals = useOrderTotals(orderId ?? null);
+  const liveTotals = orderTotals ?? activeOrderTotals;
   const liveServiceCharge = liveTotals?.serviceCharge ?? 0;
   const liveServiceChargeName = liveTotals?.serviceChargeName ?? "Service Charge";
   const liveServiceChargeRate = liveTotals?.serviceChargeRate ?? null;
@@ -159,21 +175,27 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
         return acc + Math.max(0, p.amount - refunded);
       }, 0) ?? 0;
 
-  const displayDiscount = hasPayments ? 0 : activeOrderDiscount;
+  const displayDiscount = hasPayments
+    ? 0
+    : (liveTotals?.discount ?? activeOrderDiscount);
   const displaySubtotal = hasPayments
-    ? Math.max(0, activeOrderOutstandingSubtotal)
-    : activeOrderSubtotal;
+    ? Math.max(
+        0,
+        liveTotals?.outstandingSubtotal ?? activeOrderOutstandingSubtotal,
+      )
+    : (liveTotals?.subtotal ?? activeOrderSubtotal);
   const displayCashSubtotal = hasPayments
     ? Math.max(0, cashAmountDue - cashTax - cashServiceCharge)
     : cashSubtotal;
   const displayTax = hasPayments
-    ? Math.max(0, activeOrderOutstandingTax)
-    : activeOrderTax;
+    ? Math.max(0, liveTotals?.outstandingTax ?? activeOrderOutstandingTax)
+    : (liveTotals?.tax ?? activeOrderTax);
   const displayCashTax = hasPayments ? Math.max(0, cashTax) : cashTax;
   const cardTotal = Math.max(0, totalDisplayAmount);
   const displayCashTotal = hasPayments ? Math.max(0, cashAmountDue) : cashTotal;
 
-  const hasDualPricing = Math.abs(cashSubtotal - activeOrderSubtotal) > 0.005;
+  const hasDualPricing =
+    Math.abs(displayCashSubtotal - displaySubtotal) > 0.005;
   const scLabel =
     liveServiceChargeName +
     (liveServiceChargeRate != null

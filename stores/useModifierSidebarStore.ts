@@ -1,4 +1,5 @@
 import { CartItem, MenuItemType, ModifierCategory } from '@/lib/types'
+import { orderStoreDiagnosticLog } from '@/lib/performanceDiagnostics'
 import { Image } from 'expo-image'
 import { create } from 'zustand'
 import { useLocationConfigStore } from './useLocationConfigStore'
@@ -98,6 +99,10 @@ function getOrEvictCache (itemId: string): PreWarmEntry | undefined {
     return undefined
   }
   return entry
+}
+
+export function isModifierPreWarmed (itemId: string): boolean {
+  return !!getOrEvictCache(itemId)
 }
 
 // Pre-computed modifier selections for instant UI
@@ -729,7 +734,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
       if (__DEV__ && lastModifierOpenStartedAt > 0) {
-        console.log(
+        orderStoreDiagnosticLog(
           `[perf][modifier] close requested at ${Math.round(
             nowMs() - lastModifierOpenStartedAt
           )}ms`

@@ -190,9 +190,14 @@ const PreviousOrdersSection = () => {
         ids.add(id)
       }
       const result: OrderProfile[] = []
+      const seenOrderIds = new Set<string>()
       for (const id of ids) {
         const o = s.ordersById[id]
-        if (o) result.push(o)
+        if (!o) continue
+        const canonicalId = o.db_order_id ?? o.id
+        if (seenOrderIds.has(canonicalId)) continue
+        seenOrderIds.add(canonicalId)
+        result.push(o)
       }
       return result
     })

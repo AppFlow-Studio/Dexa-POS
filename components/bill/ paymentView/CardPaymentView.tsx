@@ -914,30 +914,6 @@ const CardPaymentView = () => {
                     </View>
                   </>
                 )}
-
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                    borderTopWidth: 1,
-                    borderTopColor: colors.border,
-                    paddingTop: 10
-                  }}
-                >
-                  <Text style={{ color: colors.muted, fontSize: 13 }}>
-                    Grand Total
-                  </Text>
-                  <Text
-                    style={{
-                      color: colors.heading,
-                      fontSize: 13,
-                      fontWeight: '700'
-                    }}
-                  >
-                    ${grandTotal.toFixed(2)}
-                  </Text>
-                </View>
               </View>
             </View>
           )}
