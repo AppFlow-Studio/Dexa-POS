@@ -1,7 +1,7 @@
--- =============================================
--- RPC Function: reopen_check
--- Description: Reopen a closed check to add more items
--- =============================================
+-- Reopening a settled check must leave the terminal paid state before totals
+-- are recalculated. calculate_order_totals_fast intentionally clamps paid
+-- orders to zero; keeping payment_status='paid' made later item additions
+-- non-payable and process_payment rejected them as already fully paid.
 
 CREATE OR REPLACE FUNCTION reopen_check(
   p_order_id UUID,
@@ -16,7 +16,6 @@ DECLARE
   v_order RECORD;
   v_totals JSONB;
 BEGIN
-  -- Lock and fetch order
   SELECT * INTO v_order
   FROM orders
   WHERE id = p_order_id
@@ -29,7 +28,6 @@ BEGIN
     );
   END IF;
 
-  -- Validate check is closed (can't reopen an open check)
   IF v_order.check_status != 'Closed' THEN
     RETURN jsonb_build_object(
       'success', false,
@@ -37,7 +35,6 @@ BEGIN
     );
   END IF;
 
-  -- Reopen the check
   UPDATE orders
   SET check_status = 'Opened',
       payment_status = CASE
@@ -49,12 +46,8 @@ BEGIN
       sync_version = sync_version + 1
   WHERE id = p_order_id;
 
-  -- Recalculate after leaving the terminal paid state. The totals function
-  -- intentionally clamps paid orders to zero, which is correct until a check
-  -- is explicitly reopened for ordering.
   SELECT calculate_order_totals_fast(p_order_id) INTO v_totals;
 
-  -- Log the action with reason (audit_logs table expected to exist)
   INSERT INTO audit_logs (
     action,
     resource_type,
@@ -79,7 +72,6 @@ BEGIN
     NOW()
   );
 
-  -- Return success
   RETURN jsonb_build_object(
     'success', true,
     'order_id', p_order_id,

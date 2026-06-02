@@ -103,6 +103,10 @@ function deriveAggregateStatus (items: CartItem[]): AggregateKitchenStatus {
   return null
 }
 
+function isKitchenItemUnsent (item: CartItem): boolean {
+  return !item.kitchen_status || item.kitchen_status === 'new'
+}
+
 const CourseBillItemRow = React.memo(
   function CourseBillItemRow ({
     orderId,
@@ -172,6 +176,10 @@ function CourseGroupInner ({
 
   const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0)
   const aggregateStatus = useMemo(() => deriveAggregateStatus(items), [items])
+  const hasUnsentItems = useMemo(
+    () => items.some(isKitchenItemUnsent),
+    [items]
+  )
 
   const longPress = Gesture.LongPress()
     .minDuration(500)
@@ -237,7 +245,7 @@ function CourseGroupInner ({
               <X size={14} color={colors.muted} />
             </TouchableOpacity>
           )}
-          {isCurrent && !isSent && !aggregateStatus && courseItemCount > 0 && (
+          {hasUnsentItems && (
             <TouchableOpacity
               onPress={() => onDoubleTap(courseId)}
               style={{
@@ -453,6 +461,7 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
       p.id !== n.id ||
       p.quantity !== n.quantity ||
       p.is_voided !== n.is_voided ||
+      p.kitchen_status !== n.kitchen_status ||
       p.price !== n.price ||
       p.customizations !== n.customizations
     )

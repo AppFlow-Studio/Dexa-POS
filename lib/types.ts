@@ -978,8 +978,14 @@ export interface OrderProfile {
    * prior local cache. Also seeded from server broadcasts / hydration
    * so the next recalc detects server drift. Transient — not persisted
    * to MMKV, not part of broadcast payload.
-   */
+  */
   _serverConfirmedServiceCharge?: number
+  /**
+   * Local-only lifecycle hint set after a paid check is explicitly reopened.
+   * While true, frontend outstanding totals may lead a stale backend amount_due
+   * snapshot so existing unpaid items are immediately payable.
+   */
+  _reopenedForOrdering?: boolean
 
   // Payment tracking - synced from backend
   amount_paid?: number // Total amount paid so far

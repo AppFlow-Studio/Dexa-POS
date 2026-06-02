@@ -373,6 +373,7 @@ function calculateOrderTotals(
     checkDiscount: checkDiscount ?? null,
     taxRatesMap,
     payments,
+    preserveItemLevelOutstanding: order?._reopenedForOrdering === true,
     ...buildServiceChargeInputForOrder(order),
   });
 }
@@ -1680,6 +1681,7 @@ const addItemToBackend = async (
                 ? {
                     ...i,
                     db_order_item_id: addResult.order_item_id,
+                    sync_status: "synced" as const,
                   }
                 : i,
             );
@@ -2234,6 +2236,7 @@ const addItemToBackend = async (
               ? {
                   ...i,
                   db_order_item_id: addResult.order_item_id,
+                  sync_status: "synced" as const,
                 }
               : i,
           );
@@ -3580,6 +3583,10 @@ interface OrderState {
     orderId: string,
     status: "Opened" | "Closed",
   ) => Promise<void>;
+  markCheckReopenedLocally: (
+    orderId: string,
+    backendTotals?: { amount_due?: number; cash_amount_due?: number },
+  ) => void;
   addPaymentToOrder: (details: {
     orderId: string;
     amount: number;
@@ -5894,6 +5901,63 @@ export const useOrderStore = create<OrderState>()(
               // Preserve items when broadcast doesn't include them
               if (isV2 && existing.items.length > 0) {
                 orderProfile.items = existing.items;
+              }
+
+              // Preserve optimistic items while the first table-order adds are
+              // still landing. A fresh seat_guests response can re-key the
+              // local order and then race a full backend snapshot whose
+              // order_items array is still empty. Without this merge, that
+              // snapshot briefly replaces the visible cart until the next
+              // table open hydrates it again.
+              //
+              // If the backend row has already landed but the local add-item
+              // acknowledgement has not, absorb the optimistic row by its
+              // unique item key so the bill does not show a duplicate.
+              if (!isV2) {
+                const localPendingItems = existing.items.filter(
+                  (item) => !item.db_order_item_id && !item.isDraft,
+                );
+                const localDraftItems = existing.items.filter(
+                  (item) => item.isDraft,
+                );
+
+                if (localPendingItems.length > 0 || localDraftItems.length > 0) {
+                  const claimedPendingIds = new Set<string>();
+                  const pendingByKey = new Map<string, CartItem[]>();
+
+                  for (const pendingItem of localPendingItems) {
+                    const key = pendingItem.menuItemId || pendingItem.name;
+                    if (!pendingByKey.has(key)) pendingByKey.set(key, []);
+                    pendingByKey.get(key)!.push(pendingItem);
+                  }
+
+                  orderProfile.items = orderProfile.items.map((serverItem) => {
+                    const key = serverItem.menuItemId || serverItem.name;
+                    const candidates = (pendingByKey.get(key) ?? []).filter(
+                      (item) => !claimedPendingIds.has(item.id),
+                    );
+                    if (candidates.length !== 1) return serverItem;
+
+                    const pendingItem = candidates[0];
+                    claimedPendingIds.add(pendingItem.id);
+                    return {
+                      ...serverItem,
+                      id: pendingItem.id,
+                      seatNumber:
+                        serverItem.seatNumber ??
+                        pendingItem.seatNumber ??
+                        null,
+                    };
+                  });
+
+                  orderProfile.items = [
+                    ...orderProfile.items,
+                    ...localPendingItems.filter(
+                      (item) => !claimedPendingIds.has(item.id),
+                    ),
+                    ...localDraftItems,
+                  ];
+                }
               }
 
               // Preserve payments when not included in this broadcast
@@ -10555,6 +10619,7 @@ export const useOrderStore = create<OrderState>()(
               order.order_status = status;
               if (status === "completed" || status === "void") {
                 order.check_status = "Closed" as const;
+                order._reopenedForOrdering = false;
               }
               syncTableOrderIdIndexForOrder(state, orderId, previousOrder);
             });
@@ -10578,6 +10643,7 @@ export const useOrderStore = create<OrderState>()(
               const order = state.ordersById[storeKey];
               if (!order) return;
               order.check_status = status;
+              if (status === "Closed") order._reopenedForOrdering = false;
             });
 
             // 2. Sync to backend
@@ -10660,6 +10726,8 @@ export const useOrderStore = create<OrderState>()(
                     const order = state.ordersById[storeKey];
                     if (order) order.check_status = "Closed"; // Rollback
                   });
+                } else {
+                  get().markCheckReopenedLocally(storeKey, result);
                 }
               }
             } catch (error) {
@@ -10672,6 +10740,26 @@ export const useOrderStore = create<OrderState>()(
                     status === "Closed" ? "Opened" : "Closed"; // Rollback
               });
             }
+          },
+
+          markCheckReopenedLocally: (orderId, backendTotals) => {
+            const storeKey = get().dbOrderIdIndex[orderId] ?? orderId;
+            set((state) => {
+              const order = state.ordersById[storeKey];
+              if (!order) return;
+              order.check_status = "Opened";
+              order._reopenedForOrdering = true;
+              if (order.paid_status === "Paid") {
+                order.paid_status = "Partial";
+              }
+              if (backendTotals?.amount_due !== undefined) {
+                order.amount_due = backendTotals.amount_due;
+              }
+              if (backendTotals?.cash_amount_due !== undefined) {
+                order.cash_amount_due = backendTotals.cash_amount_due;
+              }
+            });
+            get().recalculateOrder(storeKey);
           },
 
           addPaymentToOrder: async ({
@@ -15376,13 +15464,27 @@ export const useOrderStore = create<OrderState>()(
             // This is crucial after payments have been processed
             const hasBackendAmountDue =
               order.amount_due !== undefined && order.amount_due >= 0;
+            const hasPendingCartEdit = order.items.some(
+              (item) =>
+                !item.isDraft &&
+                (!item.db_order_item_id || item.sync_status === "pending"),
+            );
+            const shouldUseCalculatedReopenBalance =
+              order.check_status === "Opened" &&
+              (order._reopenedForOrdering || hasPendingCartEdit) &&
+              totals.outstanding_total > (order.amount_due ?? 0) + 0.01;
 
-            const finalOutstandingTotal = hasBackendAmountDue
+            const finalOutstandingTotal = shouldUseCalculatedReopenBalance
+              ? totals.outstanding_total
+              : hasBackendAmountDue
               ? order.amount_due!
               : totals.outstanding_total;
 
             const finalCashOutstandingTotal =
-              order.cash_amount_due !== undefined && order.cash_amount_due >= 0
+              shouldUseCalculatedReopenBalance
+                ? totals.cash_outstanding_total
+                : order.cash_amount_due !== undefined &&
+                    order.cash_amount_due >= 0
                 ? order.cash_amount_due
                 : totals.cash_outstanding_total;
 

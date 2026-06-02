@@ -63,7 +63,7 @@ interface MoreOptionsProps {
   serviceChargeSheetRef?: React.RefObject<BottomSheetMethods>
   onVoidSuccess?: () => void
   onCloseCheck?: () => void
-  onCloseSession?: () => void
+  onReopenCheck?: () => void
   onNoSale?: () => void
   onManageDrawer?: () => void
   onSheetChange?: (index: number) => void
@@ -79,7 +79,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     serviceChargeSheetRef,
     onVoidSuccess,
     onCloseCheck,
-    onCloseSession,
+    onReopenCheck,
     onNoSale,
     onManageDrawer,
     onSheetChange,
@@ -189,13 +189,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const isCheckClosed = isBalanceZero || activeOrder?.paid_status === 'Paid'
   const canApplyDiscount =
     !hasRefunds && !isCheckClosed && !isReadOnlyForStation
-  const isDineInOrder =
-    activeOrder?.order_type === 'dine_in' ||
-    activeOrder?.order_type === 'Dine In'
-  const canCloseSession =
-    isDineInOrder &&
-    activeOrder?.paid_status === 'Paid' &&
-    !!activeOrder?.service_location_id
   const canManageDrawer = !!drawerId && !!onManageDrawer
 
   // Wave D — Edit Service Charge entry. Server refuses when any non-voided
@@ -478,16 +471,17 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }
   }
 
-  const renderBackdrop = useMemo(
-    () => (props: any) =>
-      (
+  const renderBackdrop = useCallback(
+    function MoreOptionsBackdrop (props: any) {
+      return (
         <BottomSheetBackdrop
           {...props}
           appearsOnIndex={0}
           disappearsOnIndex={-1}
           opacity={0.7}
         />
-      ),
+      )
+    },
     []
   )
 
@@ -597,7 +591,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           </View>
 
           {/* Close Check */}
-          {isBalanceZero && activeOrder?.check_status == 'Opened' ? (
+          {isBalanceZero && activeOrder?.check_status === 'Opened' ? (
             <TouchableOpacity
               onPress={() => closeAndThen(() => onCloseCheck?.())}
               style={{
@@ -652,9 +646,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             <></>
           )}
 
-          {activeOrder?.check_status == 'Closed' ? (
+          {activeOrder?.check_status === 'Closed' ? (
             <TouchableOpacity
-              onPress={() => closeAndThen(() => onCloseCheck?.())}
+              onPress={() => closeAndThen(() => onReopenCheck?.())}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -706,61 +700,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           ) : (
             <></>
           )}
-
-          {canCloseSession ? (
-            <TouchableOpacity
-              onPress={() => closeAndThen(() => onCloseSession?.())}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginHorizontal: 12,
-                marginBottom: 4,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                borderRadius: 10,
-                backgroundColor: colors.warning + '15',
-                borderWidth: 1,
-                borderColor: colors.warning + '35'
-              }}
-            >
-              <View
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
-                  backgroundColor: colors.warning + '20',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 12
-                }}
-              >
-                <CheckCircle2 size={15} color={colors.warning} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: colors.warning
-                  }}
-                >
-                  Close Session
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: colors.warning + '99',
-                    marginTop: 1
-                  }}
-                >
-                  {activeOrder?.check_status === 'Closed'
-                    ? 'Mark table for cleaning'
-                    : 'Close check and mark table for cleaning'}
-                </Text>
-              </View>
-              <ChevronRight size={14} color={colors.warning + '80'} />
-            </TouchableOpacity>
-          ) : null}
 
           {/* Discounts row */}
           <TouchableOpacity

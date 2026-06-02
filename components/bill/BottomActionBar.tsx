@@ -3,7 +3,6 @@ import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import {
   CheckCircle,
-  CreditCard,
   MoreHorizontal,
   RotateCcw,
   ShoppingCart,
@@ -78,9 +77,6 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   };
 
   const renderDefaultButtons = () => {
-    const hasItems = (activeOrder?.items?.length ?? 0) > 0;
-    const isBalanceZero = hasItems && totalDisplayAmount <= 0 && !isSyncing;
-
     if (isSyncing) {
       return (
         <Animated.View style={{ opacity: pulseAnim, flex: 1 }}>
@@ -123,6 +119,11 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
   const renderClosedButtons = () => (
     <>
+      <TouchableOpacity onPress={onPressReopenCheck} activeOpacity={0.7}
+        style={{ ...mainBtn, backgroundColor: colors.teal + '18', borderColor: colors.teal + '50' }}>
+        <RotateCcw size={13} color={colors.teal} />
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>Reopen</Text>
+      </TouchableOpacity>
       <TouchableOpacity onPress={onPressClearTable} activeOpacity={0.7}
         style={{ ...mainBtn, backgroundColor: colors.danger + '12', borderColor: colors.danger + '40' }}>
         <Trash2 size={13} color={colors.danger} />
@@ -144,7 +145,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
     // If fully paid but check not yet closed, show Close + Clear
     // This gives user the option to close the check
-    if (isFullyPaidProp || activeOrder.paid_status === "Paid") {
+    if (isFullyPaidProp ?? (activeOrder.paid_status === "Paid")) {
       return renderPaidButtons(); // Close + Clear
     }
 

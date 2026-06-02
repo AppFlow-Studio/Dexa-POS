@@ -35,6 +35,7 @@ export type SessionAction =
       orderId: string;
       dbOrderId: string;
       reason?: string;
+      backendAlreadySynced?: boolean;
     }
   | {
       type: "VOID_ORDER";

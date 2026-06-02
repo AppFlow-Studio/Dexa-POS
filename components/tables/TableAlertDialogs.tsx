@@ -1,9 +1,14 @@
-import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { AlertDialog, AlertDialogContent } from '@/components/ui/alert-dialog'
 import { colors } from '@/lib/theme'
-import { AlertTriangle } from 'lucide-react-native'
+import { AlertTriangle, RotateCcw } from 'lucide-react-native'
 import React from 'react'
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import {
+  Modal,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 
 interface NotReadyItem {
   id: string
@@ -322,15 +327,103 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
       </AlertDialog>
 
       {/* Reopen Check Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={isReopenModalOpen}
-        onClose={onReopenModalClose}
-        onConfirm={onConfirmReopen}
-        title='Reopen Check?'
-        description='Are you sure you want to reopen this closed check? This will allow adding new items.'
-        confirmText='Reopen'
-        variant='default'
-      />
+      <Modal
+        visible={isReopenModalOpen}
+        transparent
+        animationType='fade'
+        onRequestClose={onReopenModalClose}
+        statusBarTranslucent
+      >
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            backgroundColor: 'rgba(0,0,0,0.65)'
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 440,
+              padding: 24,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.panel
+            }}
+          >
+            <View style={{ alignItems: 'center', marginBottom: 18 }}>
+              <View
+                style={{
+                  width: 58,
+                  height: 58,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 29,
+                  backgroundColor: colors.teal + '20'
+                }}
+              >
+                <RotateCcw size={28} color={colors.teal} />
+              </View>
+            </View>
+            <Text
+              style={{
+                marginBottom: 8,
+                color: colors.heading,
+                fontSize: 20,
+                fontWeight: '800',
+                textAlign: 'center'
+              }}
+            >
+              Reopen Check?
+            </Text>
+            <Text
+              style={{
+                marginBottom: 20,
+                color: colors.muted,
+                fontSize: 14,
+                lineHeight: 20,
+                textAlign: 'center'
+              }}
+            >
+              Are you sure you want to reopen this closed check? This will
+              allow adding new items.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={onReopenModalClose}
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: colors.card
+                }}
+              >
+                <Text style={{ color: colors.label, fontWeight: '700' }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onConfirmReopen}
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: colors.teal
+                }}
+              >
+                <Text style={{ color: colors.onSolid, fontWeight: '700' }}>
+                  Reopen
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   )
 }

@@ -26,6 +26,12 @@ export interface OrderCalculationInput {
   checkDiscount: Discount | null;
   taxRatesMap: TaxRatesMap;
   payments?: { amount: number; isVoided?: boolean; refundedAmount?: number; isCashPriced?: boolean; cashSavings?: number; isPreAuth?: boolean }[];
+  /**
+   * Keep item-level unpaid quantities authoritative even when historical
+   * payments exceed the current hydrated total. Used while a paid check is
+   * explicitly reopened for ordering.
+   */
+  preserveItemLevelOutstanding?: boolean;
   /** Optional cash discount rate for dual pricing (default uses store settings) */
   cashDiscountRate?: number;
 

@@ -55,6 +55,8 @@ import { Portal as Teleport } from 'react-native-teleport'
 const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] =
   []
 const PAID_BALANCE_TOLERANCE = 0.01
+const isKitchenItemUnsent = (item: { kitchen_status?: string | null }) =>
+  !item.kitchen_status || item.kitchen_status === 'new'
 
 const TableOrderMenuPanel = React.memo(
   function TableOrderMenuPanel ({
@@ -409,12 +411,10 @@ const TableOrderView = React.forwardRef<
   const isFullyPaid = useMemo(() => {
     // Only consider balance <= 0 as fully paid when we have real totals data
     // (guard against transient null totals showing $0 and blocking item additions)
-    return (
-      activeOrder?.paid_status === 'Paid' ||
-      (hasPayments &&
-        totals !== null &&
-        displayBalanceDue <= PAID_BALANCE_TOLERANCE)
-    )
+    if (hasPayments && totals !== null) {
+      return displayBalanceDue <= PAID_BALANCE_TOLERANCE
+    }
+    return activeOrder?.paid_status === 'Paid'
   }, [
     activeOrder?.paid_status,
     hasPayments,
@@ -646,29 +646,74 @@ const TableOrderView = React.forwardRef<
     setActiveDialog({ type: 'reopen_modal' })
   }, [])
 
+  const reopeningCheckRef = useRef(false)
   const handleConfirmReopen = useCallback(async () => {
+    if (reopeningCheckRef.current) return
     closeDialog()
     const { activeOrderId: oid, ordersById } = useOrderStore.getState()
     const order = oid ? ordersById[oid] : null
     if (!oid || !order?.db_order_id) return
 
-    try {
-      showLoading('Reopening check...')
-      const result = await useTableSessionStore.getState().dispatchAction({
-        type: 'REOPEN_CHECK',
-        tableId: currentTableId,
-        orderId: order.id,
-        dbOrderId: order.db_order_id,
-        reason: 'Adding more items'
+    if (order.check_status !== 'Closed') {
+      show({
+        title: 'Check Already Open',
+        message: 'This check is already open for ordering.',
+        type: 'success'
       })
+      return
+    }
+
+    const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId
+    if (!supabase || !staffId) {
+      show({
+        title: 'Cannot Reopen Check',
+        message: !supabase
+          ? 'A network connection is required to reopen this check.'
+          : 'An active employee is required to reopen this check.',
+        type: 'error'
+      })
+      return
+    }
+
+    reopeningCheckRef.current = true
+    try {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      showLoading('Reopening check...')
+      const result = await OrderService.reopenCheck(
+        supabase,
+        order.db_order_id,
+        staffId,
+        'Adding more items'
+      )
       if (!result.success)
         throw new Error(result.error || 'Failed to reopen check')
 
-      useOrderStore.getState().updateActiveOrderDetails({
-        paid_status: 'Partial',
-        check_status: 'Opened'
-      })
-      useOrderStore.getState().syncOrderStatus(oid)
+      const paymentStore = usePaymentStore.getState()
+      if (paymentStore.isOpen) {
+        paymentStore.close()
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      }
+
+      useOrderStore.getState().markCheckReopenedLocally(oid, result)
+
+      const sessionStore = useTableSessionStore.getState()
+      const session = sessionStore.getSession(currentTableId)
+      if (session?.status === 'paid') {
+        const sessionResult = await sessionStore.dispatchAction({
+          type: 'REOPEN_CHECK',
+          tableId: currentTableId,
+          orderId: order.id,
+          dbOrderId: order.db_order_id,
+          reason: 'Adding more items',
+          backendAlreadySynced: true
+        })
+        if (!sessionResult.success) {
+          console.warn(
+            'Check reopened but table session could not transition:',
+            sessionResult.error
+          )
+        }
+      }
 
       show({
         title: 'Check Reopened',
@@ -683,9 +728,10 @@ const TableOrderView = React.forwardRef<
         type: 'error'
       })
     } finally {
+      reopeningCheckRef.current = false
       hideLoading()
     }
-  }, [closeDialog, showLoading, hideLoading, currentTableId, show])
+  }, [closeDialog, showLoading, hideLoading, currentTableId, show, supabase])
 
   const startingNewCourseRef = useRef(false)
   const handleStartNewCourse = useCallback(async () => {
@@ -738,7 +784,13 @@ const TableOrderView = React.forwardRef<
       const activeOrder = oid ? ordersById[oid] : null
       if (!activeOrder) return
 
-      if (!forceResend && isCourseSent(activeOrder.id, course)) {
+      const state = getForOrder(activeOrder.id)
+      const hasUnsentItems = activeOrder.items.some(i => {
+        const itemCourse = i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1
+        return itemCourse === course && !i.is_voided && isKitchenItemUnsent(i)
+      })
+
+      if (!forceResend && !hasUnsentItems && isCourseSent(activeOrder.id, course)) {
         if (!silent)
           show({
             title: 'Already Sent',
@@ -750,7 +802,6 @@ const TableOrderView = React.forwardRef<
 
       // Wave 4.2: single pass collects everything the kitchen send needs.
       // Was five sequential filter/map passes (~5×O(n)) over `items`.
-      const state = getForOrder(activeOrder.id)
       const itemsInCourse: typeof activeOrder.items = []
       const itemIds: string[] = []
       const dbItemIds: string[] = []
@@ -761,7 +812,12 @@ const TableOrderView = React.forwardRef<
       }[] = []
       for (const i of activeOrder.items) {
         const itemCourse = i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1
-        if (itemCourse !== course) continue
+        if (
+          itemCourse !== course ||
+          i.is_voided ||
+          (!forceResend && !isKitchenItemUnsent(i))
+        )
+          continue
         itemsInCourse.push(i)
         itemIds.push(i.id)
         if (i.db_order_item_id) dbItemIds.push(i.db_order_item_id)
@@ -880,8 +936,8 @@ const TableOrderView = React.forwardRef<
     const pendingCourses = Array.from(
       new Set(
         activeOrder.items
+          .filter(i => !i.is_voided && isKitchenItemUnsent(i))
           .map(i => i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1)
-          .filter(courseNumber => !isCourseSent(activeOrder.id, courseNumber))
       )
     ).sort((a, b) => a - b)
 
@@ -917,19 +973,25 @@ const TableOrderView = React.forwardRef<
       message: `Sent ${sentCount} of ${pendingCourses.length} courses.`,
       type: sentCount > 0 ? 'warning' : 'error'
     })
-  }, [getForOrder, isCourseSent, handleSendCourseToKitchen, show])
+  }, [getForOrder, handleSendCourseToKitchen, show])
 
   const handleDoubleTapCourse = useCallback(
     (course: number) => {
       const orderId = useOrderStore.getState().activeOrderId
       if (!orderId) return
-      if (isCourseSent(orderId, course)) {
+      const order = useOrderStore.getState().ordersById[orderId]
+      const state = getForOrder(orderId)
+      const hasUnsentItems = order?.items.some(i => {
+        const itemCourse = i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1
+        return itemCourse === course && !i.is_voided && isKitchenItemUnsent(i)
+      })
+      if (isCourseSent(orderId, course) && !hasUnsentItems) {
         setActiveDialog({ type: 'course_resend', course })
       } else {
         handleSendCourseToKitchen(course, false)
       }
     },
-    [isCourseSent, handleSendCourseToKitchen]
+    [isCourseSent, getForOrder, handleSendCourseToKitchen]
   )
 
   const handleConfirmResend = useCallback(() => {
@@ -1425,6 +1487,7 @@ const TableOrderView = React.forwardRef<
               discountSheetRef={lazyDiscountSheetRef}
               serviceChargeSheetRef={lazyServiceChargeSheetRef}
               onCloseCheck={handleCloseCheck}
+              onReopenCheck={handleReopenCheck}
             />
           )}
 
@@ -1490,5 +1553,7 @@ const TableOrderView = React.forwardRef<
     </View>
   )
 })
+
+TableOrderView.displayName = 'TableOrderView'
 
 export default TableOrderView
