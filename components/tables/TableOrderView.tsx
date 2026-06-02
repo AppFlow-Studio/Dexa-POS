@@ -688,13 +688,16 @@ const TableOrderView = React.forwardRef<
       if (!result.success)
         throw new Error(result.error || 'Failed to reopen check')
 
+      // Mark locally BEFORE closing payment sheet — closing it triggers
+      // useTablePaymentSync → syncOrderFromBackendComplete which would race
+      // against the reopen and reset check_status back to 'Closed'.
+      useOrderStore.getState().markCheckReopenedLocally(oid, result)
+
       const paymentStore = usePaymentStore.getState()
       if (paymentStore.isOpen) {
         paymentStore.close()
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       }
-
-      useOrderStore.getState().markCheckReopenedLocally(oid, result)
 
       const sessionStore = useTableSessionStore.getState()
       const session = sessionStore.getSession(currentTableId)
@@ -1091,12 +1094,13 @@ const TableOrderView = React.forwardRef<
     const order = orderState.activeOrderId
       ? orderState.ordersById[orderState.activeOrderId]
       : null
-    if (order?.paid_status === 'Paid' || order?.check_status === 'Closed') {
+    if (order?.check_status === 'Closed') {
       setActiveDialog({ type: 'order_closed_warning' })
       return true
     }
     return false
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setActiveDialog])
 
   const handleAddSeat = useCallback(() => {
     const newCount = seatingHook.addSeat()
@@ -1539,6 +1543,7 @@ const TableOrderView = React.forwardRef<
               activeDialog.type === 'order_closed_warning'
             }
             onOrderClosedWarningChange={handleDialogBoolChange}
+            onReopenFromWarning={handleConfirmReopen}
             courseToResend={
               activeDialog.type === 'course_resend' ? activeDialog.course : null
             }

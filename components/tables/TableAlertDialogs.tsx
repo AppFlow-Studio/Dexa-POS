@@ -1,6 +1,6 @@
 import { AlertDialog, AlertDialogContent } from '@/components/ui/alert-dialog'
 import { colors } from '@/lib/theme'
-import { AlertTriangle, RotateCcw } from 'lucide-react-native'
+import { AlertTriangle, Lock, RotateCcw } from 'lucide-react-native'
 import React from 'react'
 import {
   Modal,
@@ -38,6 +38,7 @@ interface TableAlertDialogsProps {
   // Order closed warning
   isOrderClosedWarningOpen: boolean
   onOrderClosedWarningChange: (open: boolean) => void
+  onReopenFromWarning: () => void
 
   // Course resend
   courseToResend: number | null
@@ -63,6 +64,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
   onConfirmVoid,
   isOrderClosedWarningOpen,
   onOrderClosedWarningChange,
+  onReopenFromWarning,
   courseToResend,
   onCourseResendChange,
   onConfirmResend,
@@ -275,20 +277,54 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
         open={isOrderClosedWarningOpen}
         onOpenChange={onOrderClosedWarningChange}
       >
-        <AlertDialogContent className='w-[450px] p-4 rounded-2xl bg-surface'>
-          <Text className='text-lg font-bold text-white mb-2'>
-            Order is Closed
+        <AlertDialogContent
+          className='w-[450px] p-5 rounded-2xl border'
+          style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+        >
+          <View className='items-center mb-4'>
+            <View
+              className='w-16 h-16 rounded-full items-center justify-center'
+              style={{ backgroundColor: `${colors.muted}20` }}
+            >
+              <Lock size={32} color={colors.muted} />
+            </View>
+          </View>
+          <Text
+            className='text-xl font-bold text-center mb-2'
+            style={{ color: colors.heading }}
+          >
+            Check is Closed
           </Text>
-          <Text className='text-sm text-gray-400 mb-4'>
-            This order is currently closed. Please reopen the check to add
-            items.
+          <Text
+            className='text-sm text-center mb-5'
+            style={{ color: colors.muted }}
+          >
+            This check is closed. Reopen it to add more items.
           </Text>
-          <View className='flex-row gap-2'>
+          <View className='flex-row gap-3'>
             <TouchableOpacity
               onPress={() => onOrderClosedWarningChange(false)}
-              className='flex-1 py-2 bg-blue-500 rounded-lg items-center'
+              className='flex-1 py-3 rounded-xl items-center'
+              style={{ backgroundColor: colors.card }}
             >
-              <Text className='font-semibold text-white text-base'>OK</Text>
+              <Text
+                className='font-semibold text-base'
+                style={{ color: colors.label }}
+              >
+                Dismiss
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onReopenFromWarning}
+              className='flex-1 py-3 rounded-xl items-center'
+              style={{ backgroundColor: colors.teal }}
+            >
+              <Text
+                className='font-semibold text-base'
+                style={{ color: colors.onSolid }}
+              >
+                Reopen Check
+              </Text>
             </TouchableOpacity>
           </View>
         </AlertDialogContent>

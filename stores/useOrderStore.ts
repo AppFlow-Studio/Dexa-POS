@@ -5275,10 +5275,14 @@ export const useOrderStore = create<OrderState>()(
                             ? {
                                 // Status
                                 order_status: backendOrder.status,
-                                // Guard check_status: never revert Closed -> Opened from stale broadcast
+                                // Guard check_status: never revert Closed -> Opened from a stale
+                                // broadcast (lower or equal sync_version). Allow it when the
+                                // broadcast has a higher sync_version — that means it's a
+                                // legitimate server update such as a reopen.
                                 check_status:
                                   existingOrder.check_status === "Closed" &&
-                                  backendOrder.check_status !== "Closed"
+                                  backendOrder.check_status !== "Closed" &&
+                                  (backendOrder.sync_version ?? 0) <= (existingOrder.sync_version ?? 0)
                                     ? existingOrder.check_status
                                     : backendOrder.check_status ||
                                       existingOrder.check_status ||
@@ -5369,10 +5373,14 @@ export const useOrderStore = create<OrderState>()(
                         updates: {
                           // Order status and totals (skipped above when hasPendingChanges)
                           order_status: backendOrder.status,
-                          // Guard check_status: never revert Closed -> Opened from stale broadcast
+                          // Guard check_status: never revert Closed -> Opened from a stale
+                          // broadcast (lower or equal sync_version). Allow it when the
+                          // broadcast has a higher sync_version — that means it's a
+                          // legitimate server update such as a reopen.
                           check_status:
                             localOrder.check_status === "Closed" &&
-                            backendOrder.check_status !== "Closed"
+                            backendOrder.check_status !== "Closed" &&
+                            (backendOrder.sync_version ?? 0) <= (localOrder.sync_version ?? 0)
                               ? localOrder.check_status
                               : backendOrder.check_status ||
                                 localOrder.check_status ||
@@ -14652,7 +14660,12 @@ export const useOrderStore = create<OrderState>()(
                     total_amount: dbOrder.card_total || dbOrder.total_amount,
                     total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
                     paid_status: syncedPaidStatus,
-                    check_status: isPaid ? "Closed" : "Opened",
+                    // Prefer DB value. Guard: if the local order was already
+                    // reopened (_reopenedForOrdering=true) but the DB fetch
+                    // raced and returned stale 'Closed', keep local 'Opened'.
+                    check_status: (localOrder?._reopenedForOrdering && (dbOrder.check_status === 'Closed' || !dbOrder.check_status))
+                      ? 'Opened'
+                      : ((dbOrder.check_status as "Opened" | "Closed" | undefined) ?? (isPaid ? "Closed" : "Opened")),
                     // Session tracking - sync from database
                     session_id: dbOrder.session_id,
                     order_source: dbOrder.order_source ?? null,
