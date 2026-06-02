@@ -1734,24 +1734,33 @@ export const useKDSStore = create<KDSState>()(
             isFetching: false,
           });
 
-          // Fire new-order callback for every order whose first ticket appeared
-          // in this merge cycle. This is the single source of truth for the chime
-          // and covers all delivery paths: realtime broadcast, polling rescue
+          // Fire new-order callback for every ticket that appeared in this
+          // merge cycle. Diff is at ticket_id (not order_id) so a new ticket
+          // for an order that already has other tickets on the board (e.g.
+          // a separate prep station or a later course) still rings the kitchen.
+          // Covers all delivery paths: realtime broadcast, polling rescue
           // during a realtime gap, and reconnect-fetch after a Wi-Fi blip.
           // The sound service's 1500ms cooldown collapses rapid bursts to one chime.
           if (wasHydrated) {
             const cb = get()._onNewOrderCallback;
             if (cb) {
-              const prevOrderIds = new Set(
-                currentTickets.map((t) => t.db_order_id),
+              const prevTicketIds = new Set(
+                currentTickets.map((t) => t.ticket_id),
               );
-              const firedOrderIds = new Set<string>();
-              for (const t of merged) {
-                if (!t.db_order_id) continue;
-                if (prevOrderIds.has(t.db_order_id)) continue;
-                if (firedOrderIds.has(t.db_order_id)) continue;
-                firedOrderIds.add(t.db_order_id);
-                cb(t.order_source ?? null);
+              const newTickets = merged.filter(
+                (t) => !prevTicketIds.has(t.ticket_id),
+              );
+              if (newTickets.length > 0) {
+                console.log("[KDS Sound] merge-diff new tickets", {
+                  count: newTickets.length,
+                  ticketIds: newTickets.map((t) => t.ticket_id),
+                  orderIds: Array.from(
+                    new Set(newTickets.map((t) => t.db_order_id)),
+                  ),
+                });
+                for (const t of newTickets) {
+                  cb(t.order_source ?? null);
+                }
               }
             }
           }
@@ -2426,10 +2435,25 @@ export const useKDSStore = create<KDSState>()(
           ...bucketed,
         });
 
-        // Fire new-order callback (for sound notifications)
-        if (!hadExistingTickets && newTickets.length > 0) {
-          const cb = get()._onNewOrderCallback;
-          if (cb) cb(order.order_source ?? null);
+        // Fire new-order callback for any truly-new ticket. A new ticket on an
+        // order that already has other tickets on the board (separate prep
+        // station, later course) still rings the kitchen — diff is at
+        // ticket_id, not order_id. Cooldown collapses bursts to one chime.
+        const cb = get()._onNewOrderCallback;
+        if (cb) {
+          const trulyNew = stabilizedNewTickets.filter(
+            (t) => !orderTids?.has(t.ticket_id),
+          );
+          if (trulyNew.length > 0) {
+            console.log("[KDS Sound] broadcast new tickets", {
+              orderId: order.id,
+              count: trulyNew.length,
+              ticketIds: trulyNew.map((t) => t.ticket_id),
+            });
+            for (const t of trulyNew) {
+              cb(t.order_source ?? order.order_source ?? null);
+            }
+          }
         }
       },
 
