@@ -171,9 +171,9 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
           paddingVertical: 24,
           paddingHorizontal: 12,
           borderRadius: 14,
-          backgroundColor: colors.panel,
+          backgroundColor: colors.card,
           borderWidth: 2,
-          borderColor: 'transparent',
+          borderColor: colors.border,
           alignItems: 'center',
           gap: 6
         },
@@ -210,13 +210,13 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
           borderRadius: 12,
           borderWidth: 1.5,
           borderColor: colors.border,
-          backgroundColor: colors.panel,
+          backgroundColor: colors.card,
           alignItems: 'center',
           justifyContent: 'center'
         },
         actionBtnActive: {
           borderColor: colors.teal,
-          backgroundColor: colors.tealMuted
+          backgroundColor: `${colors.teal}1a`
         },
         actionBtnText: {
           fontSize: 14,
@@ -359,10 +359,6 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
     [themeMode]
   )
 
-  // Track if "No Tip" is the active selection (no preset, no custom, and user tapped No Tip)
-  const isNoTipSelected =
-    !showCustom && selectedPercentage === null && !hasMadeSelection
-
   return (
     <View style={styles.outer}>
       <View style={styles.body}>
@@ -431,13 +427,10 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
                 setHasMadeSelection(true)
                 setShowModal(true)
               }}
-              style={[styles.actionBtn, showCustom && styles.actionBtnActive]}
+              style={[styles.actionBtn, styles.actionBtnActive]}
             >
               <Text
-                style={[
-                  styles.actionBtnText,
-                  showCustom && styles.actionBtnTextActive
-                ]}
+                style={[styles.actionBtnText, styles.actionBtnTextActive]}
               >
                 {showCustom && customAmount
                   ? `Custom: $${customAmount}`
@@ -448,13 +441,9 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
 
           <Pressable
             onPress={handleNoTip}
-            style={[styles.actionBtn, isNoTipSelected && styles.actionBtnActive]}
+            style={styles.actionBtn}
           >
-            <Text
-              style={[
-                styles.actionBtnText,
-                isNoTipSelected && styles.actionBtnTextActive
-              ]}
+            <Text style={styles.actionBtnText}
             >
               No Tip
             </Text>
