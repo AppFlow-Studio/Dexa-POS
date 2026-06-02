@@ -31,7 +31,7 @@ import {
     View,
 } from "react-native";
 
-type MenuItemStyles = ReturnType<typeof StyleSheet.create>;
+type MenuItemStyles = ReturnType<typeof createStyles>;
 
 const menuItemStylesByScheme = new Map<string, MenuItemStyles>();
 

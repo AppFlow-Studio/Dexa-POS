@@ -23,8 +23,11 @@ export interface SettlementInput {
   terminalId: string; // payment_terminals.id (UUID)
   merchantId: string; // required by RPCs for tenant isolation
   initiatedBy: string; // Clerk userId — audit trail
-  terminalHost: string;
+  /** Required for TCP terminals; ignored for USB. */
+  terminalHost?: string;
   terminalPort?: number;
+  /** 'usb' for wired Castles, otherwise TCP. Defaults to 'local_socket'. */
+  connectionType?: 'local_socket' | 'usb';
   locationId: string;
   supabase: SupabaseClient;
   onStatus?: (message: string) => void;
@@ -200,15 +203,22 @@ export async function runSettlement(
     initiatedBy,
     terminalHost,
     terminalPort = CASTLES_DEFAULT_PORT,
+    connectionType = 'local_socket',
     supabase,
     onStatus,
   } = input;
 
+  const isUsb = connectionType === 'usb';
+  if (!isUsb && !terminalHost) {
+    throw new Error('Settlement requires either USB connection or a TCP terminal host');
+  }
+
   onStatus?.("Connecting to terminal...");
   const service = getSharedCastlesService();
   await service.connect({
-    host: terminalHost,
-    port: terminalPort,
+    connectionType: isUsb ? 'usb' : 'local_socket',
+    host: isUsb ? undefined : terminalHost,
+    port: isUsb ? undefined : terminalPort,
     timeout: 300_000,
     terminalId,
   });

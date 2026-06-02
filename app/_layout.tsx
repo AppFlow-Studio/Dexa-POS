@@ -33,10 +33,14 @@ import { POS_SCREEN_OPTIONS } from "@/lib/screenConfig";
 import { flushAllPendingWrites, secureStorage } from "@/lib/storage";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import {
+    failPaymentJournal,
     getIncompleteJournals,
     pruneOldJournals,
 } from "@/services/paymentJournal";
+import type { PaymentJournalEntry } from "@/services/paymentJournal";
 import { PrinterService } from "@/services/printing/PrinterService";
 import {
     getIncompleteRefundJournals,
@@ -44,7 +48,10 @@ import {
 } from "@/services/refundJournal";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import {
+    getOrderStoreSupabaseClient,
+    useOrderStore,
+} from "@/stores/useOrderStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
@@ -497,11 +504,94 @@ export default Sentry.wrap(function RootLayout() {
               },
             );
           } catch {}
-          usePaymentRecoveryStore.getState().hydrate(incomplete);
-          // Defer the sheet open by a microtask so providers above us have
-          // mounted before the bottom-sheet tries to render.
-          queueMicrotask(() => {
-            usePaymentStore.getState().openForVerification(incomplete[0]);
+          // Boot pre-check (Wave Cat-B follow-up):
+          //
+          // For 'terminal_approved' journals — the ones that map to reason=
+          // 'crash_recovery' in usePaymentStore.openForVerification — we can
+          // ask the server up-front whether a payment row actually landed
+          // before the app died. If the server confidently says no
+          // (`matched: false`, no error, no timeout), the customer was not
+          // charged: silently fail+drop the journal instead of forcing the
+          // operator through the 8s "Verifying Payment" overlay.
+          //
+          // Important asymmetry: 'initiated' journals map to reason=
+          // 'tcp_inflight_crash' (the RPC was never reached, so the server
+          // CAN'T have a row — check_recent_payment doesn't disambiguate
+          // "card charged but RPC never called" from "card not charged").
+          // Those still need the operator to look at the terminal display
+          // via PaymentTerminalReconciliationModal. Never silently drop them.
+          //
+          // Anything ambiguous (timeout, network error, matched=true, null
+          // result) falls through to the existing overlay — fail-safe.
+          //
+          // Hydrate moved inside the async block so the recovery queue only
+          // carries journals that survived the pre-check; auto-dropped
+          // entries shouldn't appear in the "promote next" rotation either.
+          queueMicrotask(async () => {
+            const supabase = getOrderStoreSupabaseClient();
+            const survivors: PaymentJournalEntry[] = [];
+
+            for (const j of incomplete) {
+              if (j.status !== "terminal_approved" || !supabase || !j.dbOrderId) {
+                survivors.push(j);
+                continue;
+              }
+              try {
+                const ageSeconds = Math.ceil(
+                  (Date.now() - new Date(j.createdAt).getTime()) / 1000,
+                );
+                // Mirror usePaymentVerification.checkOnce: cover the journal
+                // age plus a 5-minute slack so clock skew doesn't move the
+                // server row outside the lookback window.
+                const lookbackSeconds = Math.max(600, ageSeconds + 300);
+                const result = await runWithDeadline<{ matched: boolean }>(
+                  "check_recent_payment",
+                  DEADLINES.paymentAuthCheck,
+                  async (signal) => {
+                    const { data, error } = await supabase
+                      .rpc("check_recent_payment", {
+                        p_order_id: j.dbOrderId,
+                        p_lookback_seconds: lookbackSeconds,
+                        p_amount_cents: Math.round(j.amount * 100),
+                        p_split_portion_index: null,
+                      })
+                      .abortSignal(signal);
+                    return {
+                      data: data as { matched: boolean } | null,
+                      error,
+                    };
+                  },
+                );
+                if (
+                  result?.data &&
+                  result.data.matched === false &&
+                  !result.error
+                ) {
+                  failPaymentJournal(j.id, "boot_precheck_no_server_row");
+                  try {
+                    Sentry.addBreadcrumb({
+                      category: "payment_recovery",
+                      level: "info",
+                      message: "payment_recovery.boot_precheck_dropped",
+                      data: {
+                        journal_id: j.id,
+                        order_db_id: j.dbOrderId,
+                        amount_cents: Math.round(j.amount * 100),
+                        age_seconds: ageSeconds,
+                      },
+                    });
+                  } catch {}
+                  continue;
+                }
+              } catch {
+                // Network error / unexpected throw — fall back to overlay.
+              }
+              survivors.push(j);
+            }
+
+            if (survivors.length === 0) return;
+            usePaymentRecoveryStore.getState().hydrate(survivors);
+            usePaymentStore.getState().openForVerification(survivors[0]);
           });
         }
       } catch (err) {

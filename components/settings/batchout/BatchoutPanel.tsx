@@ -105,6 +105,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
 
   const terminal = selectedStation?.payment_terminal
   const isCastles = terminal?.terminal_type === 'castles'
+  const isUsbTerminal = terminal?.connection_type === 'usb'
   const terminalHost = terminal?.ip_address
   const terminalPort = terminal?.port ?? CASTLES_DEFAULT_PORT
 
@@ -254,7 +255,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   const handleSettle = useCallback(async () => {
     if (
       !terminal?.id ||
-      !terminalHost ||
+      (!isUsbTerminal && !terminalHost) ||
       !selectedStore?.id ||
       !selectedStore?.merchant_id
     )
@@ -268,8 +269,9 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         terminalId: terminal.id,
         merchantId: selectedStore.merchant_id,
         initiatedBy: userId ?? 'unknown',
-        terminalHost,
-        terminalPort,
+        terminalHost: isUsbTerminal ? undefined : terminalHost,
+        terminalPort: isUsbTerminal ? undefined : terminalPort,
+        connectionType: isUsbTerminal ? 'usb' : 'local_socket',
         locationId: selectedStore.id,
         supabase,
         onStatus: setStatusMessage
@@ -300,6 +302,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
     terminal,
     terminalHost,
     terminalPort,
+    isUsbTerminal,
     selectedStore,
     supabase,
     userId,
@@ -353,7 +356,9 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         </Text>
         <Text style={{ marginTop: 4, fontSize: 13, color: colors.muted }}>
           {isCastles
-            ? `Castles @ ${terminalHost}:${terminalPort}`
+            ? isUsbTerminal
+              ? 'Castles · USB'
+              : `Castles @ ${terminalHost}:${terminalPort}`
             : terminal?.terminal_type ?? 'No terminal configured'}
         </Text>
         {terminalSerial ? (
@@ -383,7 +388,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
           statsLoading={statsLoading}
           onSettle={handleConfirm}
           onPrintDay={printDay}
-          disabled={state === 'confirming' || !terminalHost}
+          disabled={state === 'confirming' || (!isUsbTerminal && !terminalHost)}
         />
       ) : state === 'settling' ? (
         <SettlingView statusMessage={statusMessage} />

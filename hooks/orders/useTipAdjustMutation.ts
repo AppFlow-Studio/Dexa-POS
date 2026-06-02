@@ -76,12 +76,19 @@ export function useTipAdjustMutation() {
 
       if (terminal.terminal_type === "castles") {
         // ──── CASTLES BRANCH ────
-        const host = terminal.ip_address;
-        if (!host) throw new Error("Castles terminal has no IP address configured");
-        const port = terminal.port ?? CASTLES_DEFAULT_PORT;
+        const isUsb = terminal.connection_type === 'usb';
+        const host = isUsb ? undefined : terminal.ip_address;
+        if (!isUsb && !host) throw new Error("Castles terminal has no IP address configured");
+        const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT);
 
         const service = getSharedCastlesService();
-        await service.connect({ host, port, timeout: 120_000, terminalId: terminal.id });
+        await service.connect({
+          connectionType: isUsb ? 'usb' : 'local_socket',
+          host,
+          port,
+          timeout: 120_000,
+          terminalId: terminal.id,
+        });
         await service.resetTerminalState();
 
         const counter = getOrCreateCounter({ terminalId: terminal.id, supabaseClient: supabase });

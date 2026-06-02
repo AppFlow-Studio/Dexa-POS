@@ -1,4 +1,5 @@
 import AppUpdateModal from '@/components/AppUpdateModal'
+import { CastlesUsbSetupSheet, type CastlesUsbVerifiedPayload } from '@/components/settings/CastlesUsbSetupSheet'
 import { isValidIpv4 } from '@/components/settings/ManualIpPanel'
 import { PrinterRoutingModal } from '@/components/settings/PrinterRoutingModal'
 import { usePaymentTerminal } from '@/hooks/usePaymentTerminal'
@@ -39,6 +40,7 @@ import type {
 import type { StationPaymentTerminal } from '@/types/station'
 import { formatDistanceToNow } from 'date-fns'
 import Constants from 'expo-constants'
+import { useRouter } from 'expo-router'
 import {
   AlertTriangle,
   Check,
@@ -56,6 +58,7 @@ import {
   Search,
   Smartphone,
   Trash2,
+  Usb,
   Wifi,
   WifiOff,
   X
@@ -217,6 +220,8 @@ const DevicesConnectionsScreen = ({
   afterPrinters
 }: DevicesConnectionsScreenProps) => {
   const supabase = useSupabaseClient()
+  const router = useRouter()
+  const [showCastlesUsbSetup, setShowCastlesUsbSetup] = useState(false)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const setSelectedStation = useStoreSettingsStore(s => s.setSelectedStation)
@@ -320,7 +325,11 @@ const DevicesConnectionsScreen = ({
     environment: 'sandbox' as 'sandbox' | 'production',
     ipAddress: '',
     port: '8080',
-    connectionType: 'local_socket' as 'local_socket' | 'usb'
+    connectionType: 'local_socket' as 'local_socket' | 'usb',
+    /** Pre-discovered serial number from the USB wizard's getData handshake.
+     *  Threaded into the INSERT so the terminal card shows S/N immediately
+     *  instead of "— not yet discovered —" until the next testConnection. */
+    serialNumber: '' as string
   })
   const [isEditingTerminal, setIsEditingTerminal] = useState(false)
   const [editForm, setEditForm] = useState({
@@ -623,6 +632,8 @@ const DevicesConnectionsScreen = ({
 
         // Pre-test on network terminals to get serial number before touching the DB.
         // This lets us upsert by SN instead of blindly creating duplicates.
+        // For USB the wizard already ran getData and captured the SN —
+        // use that directly instead of re-running a connection test.
         let discoveredSN: string | undefined
         if (
           registerForm.connectionType === 'local_socket' &&
@@ -635,6 +646,11 @@ const DevicesConnectionsScreen = ({
             port: localPort ?? 8080
           })
           discoveredSN = preTest.serialNumber
+        } else if (
+          registerForm.connectionType === 'usb' &&
+          registerForm.serialNumber
+        ) {
+          discoveredSN = registerForm.serialNumber
         }
 
         // If we have a serial number, check if this physical device is already registered
@@ -660,7 +676,10 @@ const DevicesConnectionsScreen = ({
               local_port: localPort,
               connection_type: connectionType,
               station_id: selectedStation.id,
-              is_active: true
+              is_active: true,
+              // Refresh SN if we discovered one (handles the case where an
+              // old row had a stale or null serial_number).
+              ...(discoveredSN ? { serial_number: discoveredSN } : {})
             })
             .eq('id', existingId)
           newTerminalId = existingId
@@ -720,6 +739,10 @@ const DevicesConnectionsScreen = ({
                 : undefined,
             connection_type:
               registerForm.connectionType === 'usb' ? 'usb' : 'local_socket',
+            // Paint the card with the wizard-discovered SN immediately so
+            // staff aren't staring at "— not yet discovered —" until the
+            // next testConnection finishes writing the SN to the DB.
+            serial_number: discoveredSN ?? null,
             last_connection_status: null,
             last_connection_test_at: null
           }
@@ -759,7 +782,8 @@ const DevicesConnectionsScreen = ({
         environment: 'sandbox',
         ipAddress: '',
         port: '8080',
-        connectionType: 'local_socket'
+        connectionType: 'local_socket',
+        serialNumber: ''
       })
     } catch (err) {
       toastService.show({
@@ -1328,17 +1352,61 @@ const DevicesConnectionsScreen = ({
         paddingVertical: 10
       }}
     >
-      <View style={{ marginBottom: 12 }}>
-        <Text
-          style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
-        >
-          {mode === 'printers' ? 'Printer Settings' : 'Devices & Connections'}
-        </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
-          {mode === 'printers'
-            ? 'Printer connection, receipt printing, and order printing.'
-            : 'Station hardware, terminal, and printer management.'}
-        </Text>
+      <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+          >
+            {mode === 'printers' ? 'Printer Settings' : 'Devices & Connections'}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+            {mode === 'printers'
+              ? 'Printer connection, receipt printing, and order printing.'
+              : 'Station hardware, terminal, and printer management.'}
+          </Text>
+        </View>
+        {mode !== 'printers' && (
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity
+              onPress={() => setShowCastlesUsbSetup(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+                backgroundColor: colors.teal
+              }}
+            >
+              <Usb size={13} color='#fff' />
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 12 }}>
+                Set Up USB Terminal
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/settings/usb-diagnostics' as never)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+                backgroundColor: colors.teal + '15'
+              }}
+            >
+              <Usb size={13} color={colors.teal} />
+              <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 12 }}>
+                USB Diagnostics
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
       <View
         style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }}
@@ -1618,13 +1686,79 @@ const DevicesConnectionsScreen = ({
 
                   {registerFormType === 'castles' ? (
                     <>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          gap: 8,
-                          marginBottom: 8
-                        }}
-                      >
+                      {/* Connection type selector — visibly tells the user
+                          this terminal is wired (USB) or networked (TCP).
+                          USB is pre-set by the Setup wizard but the user can
+                          still flip it back to TCP for a network terminal. */}
+                      <View style={{ marginBottom: 8 }}>
+                        <Text
+                          style={{
+                            color: colors.muted,
+                            fontSize: 11,
+                            marginBottom: 6
+                          }}
+                        >
+                          Connection
+                        </Text>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            backgroundColor: colors.screen,
+                            borderRadius: 8,
+                            overflow: 'hidden',
+                            borderWidth: 1,
+                            borderColor: colors.border
+                          }}
+                        >
+                          {([
+                            { id: 'local_socket' as const, label: 'TCP / WiFi', Icon: Wifi },
+                            { id: 'usb' as const, label: 'USB (wired)', Icon: Usb }
+                          ]).map(opt => {
+                            const active = registerForm.connectionType === opt.id
+                            const Icon = opt.Icon
+                            return (
+                              <TouchableOpacity
+                                key={opt.id}
+                                onPress={() =>
+                                  setRegisterForm(f => ({ ...f, connectionType: opt.id }))
+                                }
+                                style={{
+                                  flex: 1,
+                                  paddingVertical: 10,
+                                  alignItems: 'center',
+                                  flexDirection: 'row',
+                                  justifyContent: 'center',
+                                  gap: 6,
+                                  backgroundColor: active ? colors.teal + '20' : 'transparent'
+                                }}
+                              >
+                                <Icon size={13} color={active ? colors.teal : colors.muted} />
+                                <Text
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: '600',
+                                    color: active ? colors.teal : colors.muted
+                                  }}
+                                >
+                                  {opt.label}
+                                </Text>
+                              </TouchableOpacity>
+                            )
+                          })}
+                        </View>
+                      </View>
+
+                      {/* IP / Port — only shown for TCP. USB is point-to-point
+                          over the cable, no host needed; the wizard already
+                          verified the device by VID/PID + handshake. */}
+                      {registerForm.connectionType === 'local_socket' ? (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            gap: 8,
+                            marginBottom: 8
+                          }}
+                        >
                         <View style={{ flex: 3 }}>
                           <Text
                             style={{
@@ -1685,7 +1819,27 @@ const DevicesConnectionsScreen = ({
                             }}
                           />
                         </View>
-                      </View>
+                        </View>
+                      ) : (
+                        <View
+                          style={{
+                            padding: 10,
+                            marginBottom: 8,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: colors.teal + '40',
+                            backgroundColor: colors.teal + '10',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8
+                          }}
+                        >
+                          <Usb size={14} color={colors.teal} />
+                          <Text style={{ flex: 1, fontSize: 11, color: colors.label, lineHeight: 16 }}>
+                            USB — no IP needed. The terminal is identified by USB device serial after the wizard handshake.
+                          </Text>
+                        </View>
+                      )}
                       <View style={{ marginBottom: 12 }}>
                         <Text
                           style={{
@@ -1978,7 +2132,9 @@ const DevicesConnectionsScreen = ({
                                 style={{
                                   flexDirection: 'row',
                                   alignItems: 'center',
-                                  marginTop: 2
+                                  marginTop: 2,
+                                  flexWrap: 'wrap',
+                                  gap: 4
                                 }}
                               >
                                 <View
@@ -1986,8 +2142,7 @@ const DevicesConnectionsScreen = ({
                                     paddingHorizontal: 6,
                                     paddingVertical: 2,
                                     borderRadius: 4,
-                                    backgroundColor: colors.teal + '30',
-                                    marginRight: 6
+                                    backgroundColor: colors.teal + '30'
                                   }}
                                 >
                                   <Text
@@ -2002,6 +2157,43 @@ const DevicesConnectionsScreen = ({
                                       : 'Dejavoo'}
                                   </Text>
                                 </View>
+                                {/* Connection-type pill — USB vs TCP/WiFi. Helps staff
+                                    tell at a glance whether this terminal needs the
+                                    cable plugged or just network. */}
+                                {t.terminalType === 'castles' && (
+                                  <View
+                                    style={{
+                                      paddingHorizontal: 6,
+                                      paddingVertical: 2,
+                                      borderRadius: 4,
+                                      backgroundColor:
+                                        t.connectionType === 'usb'
+                                          ? colors.warning + '30'
+                                          : colors.muted + '30',
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      gap: 3
+                                    }}
+                                  >
+                                    {t.connectionType === 'usb' ? (
+                                      <Usb size={9} color={colors.warning} />
+                                    ) : (
+                                      <Wifi size={9} color={colors.muted} />
+                                    )}
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        fontWeight: '600',
+                                        color:
+                                          t.connectionType === 'usb'
+                                            ? colors.warning
+                                            : colors.muted
+                                      }}
+                                    >
+                                      {t.connectionType === 'usb' ? 'USB' : 'TCP'}
+                                    </Text>
+                                  </View>
+                                )}
                                 {t.model && (
                                   <Text
                                     style={{
@@ -2056,7 +2248,7 @@ const DevicesConnectionsScreen = ({
                                         width: 44
                                       }}
                                     >
-                                      Addr:
+                                      {t.connectionType === 'usb' ? 'Conn:' : 'Addr:'}
                                     </Text>
                                     <Text
                                       style={{
@@ -2066,8 +2258,9 @@ const DevicesConnectionsScreen = ({
                                       }}
                                       selectable
                                     >
-                                      {t.ipAddress ?? '—'}
-                                      {t.port ? `:${t.port}` : ''}
+                                      {t.connectionType === 'usb'
+                                        ? 'USB · CDC ACM @ 115200'
+                                        : `${t.ipAddress ?? '—'}${t.port ? `:${t.port}` : ''}`}
                                     </Text>
                                   </View>
                                   <View
@@ -2258,70 +2451,152 @@ const DevicesConnectionsScreen = ({
                   </View>
 
                   {currentTerminal.terminal_type === 'castles' && (
-                    <View
-                      style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}
-                    >
-                      <View style={{ flex: 3 }}>
+                    <>
+                      {/* Connection type — same selector pattern as register. */}
+                      <View style={{ marginBottom: 12 }}>
                         <Text
                           style={{
                             color: colors.muted,
                             fontSize: 11,
-                            marginBottom: 4
+                            marginBottom: 6
                           }}
                         >
-                          IP Address *
+                          Connection
                         </Text>
-                        <TextInput
-                          value={editForm.ipAddress}
-                          onChangeText={v =>
-                            setEditForm(f => ({ ...f, ipAddress: v }))
-                          }
-                          placeholder='192.168.1.100'
-                          placeholderTextColor={colors.muted}
-                          keyboardType='decimal-pad'
+                        <View
                           style={{
+                            flexDirection: 'row',
                             backgroundColor: colors.screen,
-                            borderWidth: 1,
-                            borderColor: colors.border,
                             borderRadius: 8,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
-                            color: colors.heading,
-                            fontSize: 13
-                          }}
-                        />
-                      </View>
-                      <View style={{ flex: 1.2 }}>
-                        <Text
-                          style={{
-                            color: colors.muted,
-                            fontSize: 11,
-                            marginBottom: 4
+                            overflow: 'hidden',
+                            borderWidth: 1,
+                            borderColor: colors.border
                           }}
                         >
-                          Port
-                        </Text>
-                        <TextInput
-                          value={editForm.port}
-                          onChangeText={v =>
-                            setEditForm(f => ({ ...f, port: v }))
-                          }
-                          placeholder='8080'
-                          placeholderTextColor={colors.muted}
-                          keyboardType='number-pad'
-                          style={{
-                            backgroundColor: colors.screen,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            borderRadius: 8,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
-                            color: colors.heading,
-                            fontSize: 13
-                          }}
-                        />
+                          {([
+                            { id: 'local_socket' as const, label: 'TCP / WiFi', Icon: Wifi },
+                            { id: 'usb' as const, label: 'USB (wired)', Icon: Usb }
+                          ]).map(opt => {
+                            const active = editForm.connectionType === opt.id
+                            const Icon = opt.Icon
+                            return (
+                              <TouchableOpacity
+                                key={opt.id}
+                                onPress={() =>
+                                  setEditForm(f => ({ ...f, connectionType: opt.id }))
+                                }
+                                style={{
+                                  flex: 1,
+                                  paddingVertical: 10,
+                                  alignItems: 'center',
+                                  flexDirection: 'row',
+                                  justifyContent: 'center',
+                                  gap: 6,
+                                  backgroundColor: active ? colors.teal + '20' : 'transparent'
+                                }}
+                              >
+                                <Icon size={13} color={active ? colors.teal : colors.muted} />
+                                <Text
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: '600',
+                                    color: active ? colors.teal : colors.muted
+                                  }}
+                                >
+                                  {opt.label}
+                                </Text>
+                              </TouchableOpacity>
+                            )
+                          })}
+                        </View>
                       </View>
-                    </View>
+
+                      {editForm.connectionType === 'local_socket' ? (
+                        <View
+                          style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}
+                        >
+                          <View style={{ flex: 3 }}>
+                            <Text
+                              style={{
+                                color: colors.muted,
+                                fontSize: 11,
+                                marginBottom: 4
+                              }}
+                            >
+                              IP Address *
+                            </Text>
+                            <TextInput
+                              value={editForm.ipAddress}
+                              onChangeText={v =>
+                                setEditForm(f => ({ ...f, ipAddress: v }))
+                              }
+                              placeholder='192.168.1.100'
+                              placeholderTextColor={colors.muted}
+                              keyboardType='decimal-pad'
+                              style={{
+                                backgroundColor: colors.screen,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                borderRadius: 8,
+                                paddingHorizontal: 12,
+                                paddingVertical: 10,
+                                color: colors.heading,
+                                fontSize: 13
+                              }}
+                            />
+                          </View>
+                          <View style={{ flex: 1.2 }}>
+                            <Text
+                              style={{
+                                color: colors.muted,
+                                fontSize: 11,
+                                marginBottom: 4
+                              }}
+                            >
+                              Port
+                            </Text>
+                            <TextInput
+                              value={editForm.port}
+                              onChangeText={v =>
+                                setEditForm(f => ({ ...f, port: v }))
+                              }
+                              placeholder='8080'
+                              placeholderTextColor={colors.muted}
+                              keyboardType='number-pad'
+                              style={{
+                                backgroundColor: colors.screen,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                borderRadius: 8,
+                                paddingHorizontal: 12,
+                                paddingVertical: 10,
+                                color: colors.heading,
+                                fontSize: 13
+                              }}
+                            />
+                          </View>
+                        </View>
+                      ) : (
+                        <View
+                          style={{
+                            padding: 10,
+                            marginBottom: 12,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: colors.teal + '40',
+                            backgroundColor: colors.teal + '10',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8
+                          }}
+                        >
+                          <Usb size={14} color={colors.teal} />
+                          <Text style={{ flex: 1, fontSize: 11, color: colors.label, lineHeight: 16 }}>
+                            USB — no IP needed. The terminal is identified by USB device serial.
+                          </Text>
+                        </View>
+                      )}
+                    </>
                   )}
                   {currentTerminal.terminal_type !== 'castles' && (
                     <>
@@ -4584,6 +4859,38 @@ const DevicesConnectionsScreen = ({
           printer={routingModalPrinter}
         />
       )}
+
+      {/* Castles USB Setup — detect + permission + handshake before register */}
+      <CastlesUsbSetupSheet
+        visible={showCastlesUsbSetup}
+        onCancel={() => setShowCastlesUsbSetup(false)}
+        onVerified={(payload: CastlesUsbVerifiedPayload) => {
+          setShowCastlesUsbSetup(false)
+          // Pre-fill the existing register form so the user only has to confirm
+          // a name + auth credentials — name, model, and connection type come
+          // straight from the verified device.
+          setRegisterFormType('castles')
+          // Prefer the SN reported by the terminal app's getData (more
+          // authoritative than the USB descriptor's serial). Fall back to
+          // the USB-descriptor serial if the terminal didn't report one.
+          const sn = payload.terminalSerial || payload.serialNumber || ''
+          setRegisterForm(f => ({
+            ...f,
+            name: payload.productName || 'Castles Saturn1000',
+            model: payload.productName || 'Saturn1000',
+            connectionType: 'usb',
+            ipAddress: '',
+            port: '8080',
+            serialNumber: sn
+          }))
+          setShowRegisterForm(true)
+          toastService.show({
+            title: 'USB Terminal Verified',
+            message: `${payload.firmwareVersion ? `Firmware ${payload.firmwareVersion}. ` : ''}Complete registration below.`,
+            type: 'success'
+          })
+        }}
+      />
 
       {/* Receipt Printer Picker Modal */}
       <Modal

@@ -18,6 +18,7 @@ import React, { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { NetworkStatusBadge } from './NetworkStatusBadge'
 import SessionDock from './SessionDock'
+import { TerminalConnectionBadge } from './TerminalConnectionBadge'
 
 const Header = () => {
   const pathname = usePathname()
@@ -263,13 +264,14 @@ const Header = () => {
         </Text>
       </View>
 
-      {/* Center Section - Network Status Badge */}
+      {/* Center Section - Network + Terminal Connection Badges */}
       <View
         className='absolute left-0 right-0 items-center justify-center'
         pointerEvents='box-none'
       >
-        <View pointerEvents='auto'>
+        <View pointerEvents='auto' className='flex-row items-center gap-2'>
           <NetworkStatusBadge />
+          <TerminalConnectionBadge />
         </View>
       </View>
 

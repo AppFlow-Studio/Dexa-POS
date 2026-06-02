@@ -1,5 +1,7 @@
 import { PaymentErrorModal } from '@/components/bill/paymentView/PaymentErrorModal'
+import { TerminalDetachedModal } from '@/components/payment/TerminalDetachedModal'
 import { TerminalStatusBanner } from '@/components/payment/TerminalStatusBanner'
+import { TerminalWedgedModal } from '@/components/payment/TerminalWedgedModal'
 import { useCFD } from '@/contexts/CFDProvider'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { useTerminalStatus } from '@/hooks/useTerminalStatus'
@@ -91,6 +93,8 @@ const ManualCardEntryView = () => {
     status: terminalStatus,
     isReady: terminalReady,
     errorMessage: terminalErrorMessage,
+    reason: terminalReason,
+    consecutiveFailures: terminalConsecutiveFailures,
     recheckStatus
   } = useTerminalStatus(
     selectedStation?.payment_terminal?.id,
@@ -176,8 +180,9 @@ const ManualCardEntryView = () => {
         return
       }
 
-      const host = terminal.ip_address
-      if (!host) {
+      const isUsb = terminal.connection_type === 'usb'
+      const host = isUsb ? undefined : terminal.ip_address
+      if (!isUsb && !host) {
         setErrorModal({
           visible: true,
           title: 'Terminal Error',
@@ -185,11 +190,12 @@ const ManualCardEntryView = () => {
         })
         return
       }
-      const port = terminal.port ?? CASTLES_DEFAULT_PORT
+      const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT)
       const tip = parseFloat(tipInput) || 0
 
       try {
         console.log('[ManualKeyIn] Castles sale flow:', {
+          transport: isUsb ? 'usb' : 'local_socket',
           host,
           port,
           totalToPay,
@@ -200,6 +206,7 @@ const ManualCardEntryView = () => {
         // 1. Connect + reset
         const service = getSharedCastlesService()
         await service.connect({
+          connectionType: isUsb ? 'usb' : 'local_socket',
           host,
           port,
           timeout: 120_000,
@@ -362,10 +369,19 @@ const ManualCardEntryView = () => {
             <TerminalStatusBanner
               status={terminalStatus}
               errorMessage={terminalErrorMessage || undefined}
+              reason={terminalReason}
+              consecutiveFailures={terminalConsecutiveFailures}
               onRetry={recheckStatus}
             />
           </View>
         )}
+
+        {/* Wedge modal: visible only when the connection supervisor has
+            detected an app-layer freeze. Self-dismisses on recovery. */}
+        <TerminalWedgedModal />
+        {/* Detached modal: visible only when the active terminal is USB and
+            quality is 'lost'. Auto-reconnects when the cable returns. */}
+        <TerminalDetachedModal />
 
         {/* Top Section */}
         <View

@@ -97,6 +97,13 @@ export function usePaymentTerminal() {
         const host = terminal.ipAddress;
         if (!isUsb && !host) throw new Error('Castles terminal IP address not configured');
 
+        // Defensive resume: the singleton may be in the suspended state
+        // (set by AppState background handler). resume() is a no-op when not
+        // suspended, so always safe to call before an explicit connect.
+        if (service.isSuspended()) {
+          service.resume();
+        }
+
         // 1. Establish / reuse connection (TCP or USB)
         await service.connect({
           connectionType: isUsb ? 'usb' : 'local_socket',
@@ -526,7 +533,12 @@ export function usePaymentTerminal() {
         if (!host) return { success: false, error: 'IP address is required' };
 
         const service = getCastlesService();
+        // testConnectionWithConfig is the "Test" button on the edit form's
+        // TCP path — USB has its own wizard flow (CastlesUsbSetupSheet). Be
+        // explicit about local_socket so the factory doesn't rely on its
+        // default and so future readers see the intent.
         await service.connect({
+          connectionType: 'local_socket',
           host,
           port: params.port ?? CASTLES_DEFAULT_PORT,
           timeout: CASTLES_SOCKET_TIMEOUT_MS,
