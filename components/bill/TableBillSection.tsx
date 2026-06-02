@@ -68,6 +68,7 @@ const DenseBillItemRow = React.memo(
     orderId,
     itemId,
     isSent,
+    hasUnsentItems,
     indentLeft,
     enableCoursing,
     orderHasPayments,
@@ -76,6 +77,7 @@ const DenseBillItemRow = React.memo(
     orderId: string
     itemId: string
     isSent: boolean
+    hasUnsentItems: boolean
     indentLeft: number
     enableCoursing: boolean
     orderHasPayments: boolean
@@ -305,7 +307,7 @@ const CourseSubHeader = React.memo(
             <X size={11} color={colors.muted} />
           </TouchableOpacity>
         )}
-        {!isSent && itemCount > 0 && onSend && (
+        {hasUnsentItems && onSend && (
           <TouchableOpacity
             onPress={e => {
               e.stopPropagation()
@@ -374,6 +376,7 @@ type SeatListRow =
       type: 'item'
       itemId: string
       isSent: boolean
+      hasUnsentItems: boolean
       indentLeft: number
       seatKey?: string | number
       courseKey?: string
@@ -565,6 +568,9 @@ const DenseSeatView = React.memo(
               0
             )
             const isSent = !!sentCourses?.[course]
+            const hasUnsentItems = courseNonVoided.some(
+              item => !isSentToKitchen(item)
+            )
             const isCurrentCourse = currentCourse === course
 
             nextRows.push({
@@ -574,6 +580,7 @@ const DenseSeatView = React.memo(
               course,
               itemCount: courseItemCount,
               isSent,
+              hasUnsentItems,
               isCurrentCourse,
               expanded: true, // set in visibility pass
               status: deriveAggregateStatus(items)
@@ -737,6 +744,7 @@ const DenseSeatView = React.memo(
               course={row.course}
               itemCount={row.itemCount}
               isSent={row.isSent}
+              hasUnsentItems={row.hasUnsentItems}
               isCurrentCourse={row.isCurrentCourse}
               expanded={row.expanded}
               status={row.status}
@@ -1039,7 +1047,6 @@ const TableBillSection = ({
   onOpenServerSheet,
   onPressMore,
   onPressTotal,
-  onPressReopenCheck,
   onPressCloseCheck,
   onPressClearTable,
   totalDisplayAmount,
@@ -1076,7 +1083,6 @@ const TableBillSection = ({
   onOpenServerSheet?: () => void
   onPressMore: () => void
   onPressTotal: () => void
-  onPressReopenCheck: () => void
   onPressCloseCheck: () => void
   onPressClearTable: () => void
   totalDisplayAmount: number
@@ -1243,11 +1249,6 @@ const TableBillSection = ({
         )}
 
         {(() => {
-          // When coursing is on, sending is handled per-course via the
-          // course-level "Send to Kitchen" button inside CourseGroup /
-          // DenseSeatView. Suppress this bulk-send button to avoid two
-          // competing entry points.
-          if (enableCoursing) return null
           const unsent =
             activeOrder?.items?.filter(
               i => !i.kitchen_status || i.kitchen_status === 'new'
@@ -1296,7 +1297,6 @@ const TableBillSection = ({
           activeOrder={activeOrder}
           onPressMore={onPressMore}
           onPressTotal={onPressTotal}
-          onPressReopenCheck={onPressReopenCheck}
           onPressCloseCheck={onPressCloseCheck}
           onPressClearTable={onPressClearTable}
           totalDisplayAmount={totalDisplayAmount}
@@ -1372,7 +1372,6 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prev.onPressTotal !== next.onPressTotal) return false
   if (prev.onPressClearTable !== next.onPressClearTable) return false
   if (prev.onPressCloseCheck !== next.onPressCloseCheck) return false
-  if (prev.onPressReopenCheck !== next.onPressReopenCheck) return false
   if (prev.onDoubleTapCourse !== next.onDoubleTapCourse) return false
   if (prev.onOpenServerSheet !== next.onOpenServerSheet) return false
   if (prev.onPressSendAllToKitchen !== next.onPressSendAllToKitchen)

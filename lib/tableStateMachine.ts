@@ -207,6 +207,7 @@ const TRANSITIONS: Partial<
     SEND_TO_KITCHEN: "ordered",
     PRESENT_CHECK: "check_presented",
     VOID_ORDER: "cleaning",
+    CLEAR_TABLE: "cleaning",
     FULL_PAYMENT: "paid",
     BEGIN_PAYING: "paying",
     BEGIN_CLOSING: "closing",

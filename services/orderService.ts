@@ -105,6 +105,16 @@ export type ApplyServiceChargeResult = {
   skipped?: "manual_override";
 };
 
+export type ReopenCheckResult = {
+  success: boolean;
+  error?: string;
+  order_id?: string;
+  check_status?: "Opened";
+  payment_status?: "partial" | "pending" | "refunded";
+  amount_due?: number;
+  cash_amount_due?: number;
+};
+
 export class OrderService {
   /**
    * Validates that the current station session is still active.
@@ -1732,7 +1742,7 @@ export class OrderService {
     orderId: string,
     staffId: string,
     reason?: string,
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<ReopenCheckResult> {
     if (__DEV__)
       console.log(`[OrderService:reopenCheck] ====== REOPENING CHECK ======`);
     if (__DEV__) console.log(`[OrderService:reopenCheck] Order ID: ${orderId}`);
@@ -1762,7 +1772,7 @@ export class OrderService {
       return { success: false, error: error.message };
     }
 
-    const result = data as { success: boolean; error?: string };
+    const result = data as ReopenCheckResult;
     if (!result.success) {
       console.error("[OrderService:reopenCheck] Failed:", result.error);
     } else {

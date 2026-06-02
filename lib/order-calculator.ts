@@ -413,6 +413,7 @@ export function calculateOrderTotals (
     checkDiscount,
     taxRatesMap,
     payments = [],
+    preserveItemLevelOutstanding = false,
     serviceChargeRule,
     partySize,
     orderType,
@@ -829,7 +830,10 @@ export function calculateOrderTotals (
 
     // Clamping: when payments exceed item-level tracking (e.g., split-evenly doesn't mark items),
     // clamp outstanding down to payment-based remaining (matches SQL §10 lines 796-803)
-    if (paymentBasedOutstanding.lt(outstandingCardTotal)) {
+    if (
+      !preserveItemLevelOutstanding &&
+      paymentBasedOutstanding.lt(outstandingCardTotal)
+    ) {
       if (outstandingCardTotal.gt(0)) {
         outstandingCashTotal = outstandingCashTotal
           .times(paymentBasedOutstanding)
@@ -1318,6 +1322,7 @@ export function hashCalculationInput (input: OrderCalculationInput): string {
         }
       : null,
     // Service charge inputs — must invalidate cache when these change.
+    preserveItemLevelOutstanding: input.preserveItemLevelOutstanding ?? false,
     sc: {
       ruleId: input.serviceChargeRule?.id ?? null,
       rate: input.serviceChargeRule?.rate_percent ?? null,
