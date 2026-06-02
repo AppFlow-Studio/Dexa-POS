@@ -15484,7 +15484,7 @@ export const useOrderStore = create<OrderState>()(
             );
             const shouldUseCalculatedReopenBalance =
               order.check_status === "Opened" &&
-              (order._reopenedForOrdering || hasPendingCartEdit) &&
+              hasPendingCartEdit &&
               totals.outstanding_total > (order.amount_due ?? 0) + 0.01;
 
             const finalOutstandingTotal = shouldUseCalculatedReopenBalance
