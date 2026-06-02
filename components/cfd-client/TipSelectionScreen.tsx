@@ -168,12 +168,14 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
         },
         presetCard: {
           width: '100%',
-          paddingVertical: 24,
+          paddingVertical: 28,
           paddingHorizontal: 12,
           borderRadius: 14,
           backgroundColor: colors.card,
-          borderWidth: 2,
+          borderWidth: 1.5,
           borderColor: colors.border,
+          borderBottomWidth: 4,
+          borderBottomColor: colors.border,
           alignItems: 'center',
           gap: 6
         },
@@ -216,7 +218,7 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
         },
         actionBtnActive: {
           borderColor: colors.teal,
-          backgroundColor: `${colors.teal}1a`
+          backgroundColor: `${colors.teal}33`
         },
         actionBtnText: {
           fontSize: 14,
