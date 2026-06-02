@@ -10,6 +10,7 @@ import { useKDSStore } from "@/stores/useKDSStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useToast } from "@/contexts/ToastContext";
 import {
   ChevronDown,
   Minus,
@@ -439,6 +440,8 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
   const enrichedRules = useKDSStore((s) => s.enrichedRules);
   const prepStations = useKDSStore((s) => s.prepStations);
 
+  const toast = useToast();
+
   // Sound state (local, synced from kdsDisplayConfig)
   const [soundOnNewOrder, setSoundOnNewOrder] = useState(false);
   const [soundConfig, setSoundConfig] = useState<KDSSoundConfig>({ ...DEFAULT_SOUND_CONFIG });
@@ -680,6 +683,66 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                     value={soundOnNewOrder}
                     onToggle={handleSoundToggle}
                   />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const cb = useKDSStore.getState()._onNewOrderCallback;
+                      if (!cb) {
+                        toast.show({
+                          title: "KDS not ready",
+                          message:
+                            "Open the KDS screen first so the sound trigger is wired up.",
+                          type: "warning",
+                          duration: 3000,
+                        });
+                        return;
+                      }
+                      if (!soundOnNewOrder) {
+                        toast.show({
+                          title: "Sound is disabled",
+                          message:
+                            "Turn on 'Sound on New Order' first, then test again.",
+                          type: "warning",
+                          duration: 3000,
+                        });
+                        return;
+                      }
+                      cb("pos");
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      marginTop: 8,
+                      marginBottom: 4,
+                      backgroundColor: colors.teal,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Play size={14} color={colors.onSolid} />
+                    <Text
+                      style={{
+                        color: colors.onSolid,
+                        fontSize: 12,
+                        fontWeight: "600",
+                      }}
+                    >
+                      Test New-Order Sound
+                    </Text>
+                  </TouchableOpacity>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      marginBottom: 4,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Simulates a real broadcast — exercises the full trigger →
+                    audio path the kitchen hears for live orders.
+                  </Text>
                   {soundOnNewOrder && (
                     <View style={{ marginLeft: 8 }}>
                       <SoundPresetRow

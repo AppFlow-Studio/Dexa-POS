@@ -406,9 +406,6 @@ function restoreAcknowledgedNoticeItems(): void {
 
 restoreAcknowledgedNoticeItems();
 
-/** Track new order IDs filtered out by routing rules — sound fires when server refetch adds them */
-const _pendingNewOrderSounds = new Set<string>();
-
 restoreKdsRetryState();
 
 function pendingActionSatisfied(
@@ -1723,6 +1720,10 @@ export const useKDSStore = create<KDSState>()(
             get().newOrderPosition,
           );
 
+          // Capture hydration state before the set() flips it — used to gate the
+          // new-order chime so the initial load doesn't ring for every existing order.
+          const wasHydrated = get()._hasHydrated;
+
           set({
             tickets: reconciled,
             _ticketsById: mergedById,
@@ -1733,20 +1734,24 @@ export const useKDSStore = create<KDSState>()(
             isFetching: false,
           });
 
-          // Fire sound for orders that were filtered out by broadcast but arrived via server refetch
-          if (_pendingNewOrderSounds.size > 0) {
-            const prevOrderIds = new Set(
-              currentTickets.map((t) => t.db_order_id),
-            );
-            for (const t of merged) {
-              if (
-                _pendingNewOrderSounds.has(t.db_order_id) &&
-                !prevOrderIds.has(t.db_order_id)
-              ) {
-                const cb = get()._onNewOrderCallback;
-                if (cb) cb(t.order_source ?? null);
-                _pendingNewOrderSounds.delete(t.db_order_id);
-                break; // one sound per cycle; cooldown handles rapid arrivals
+          // Fire new-order callback for every order whose first ticket appeared
+          // in this merge cycle. This is the single source of truth for the chime
+          // and covers all delivery paths: realtime broadcast, polling rescue
+          // during a realtime gap, and reconnect-fetch after a Wi-Fi blip.
+          // The sound service's 1500ms cooldown collapses rapid bursts to one chime.
+          if (wasHydrated) {
+            const cb = get()._onNewOrderCallback;
+            if (cb) {
+              const prevOrderIds = new Set(
+                currentTickets.map((t) => t.db_order_id),
+              );
+              const firedOrderIds = new Set<string>();
+              for (const t of merged) {
+                if (!t.db_order_id) continue;
+                if (prevOrderIds.has(t.db_order_id)) continue;
+                if (firedOrderIds.has(t.db_order_id)) continue;
+                firedOrderIds.add(t.db_order_id);
+                cb(t.order_source ?? null);
               }
             }
           }
@@ -2182,12 +2187,8 @@ export const useKDSStore = create<KDSState>()(
             return;
           }
 
-          // Track potential new order for sound notification after refetch
-          if (!orderTids?.size) {
-            _pendingNewOrderSounds.add(order.id);
-          }
-
-          // Fast refetch for authoritative ticket data
+          // Fast refetch for authoritative ticket data — the post-fetch
+          // merge-diff in _backgroundFetchTickets is what fires the chime now.
           const locationId = order.location_id;
           if (locationId) {
             const allProtected =
@@ -2278,8 +2279,8 @@ export const useKDSStore = create<KDSState>()(
             itemMatchesRules(item, cachedRules!, order.order_type),
           );
           if (filteredItems.length === 0) {
-            // Track for sound: if this is a new order, the server refetch may add it
-            if (!hadExistingTickets) _pendingNewOrderSounds.add(order.id);
+            // Server refetch may still surface tickets that survived server-side
+            // routing rules; the post-fetch merge-diff fires the chime if so.
             return;
           }
           filteredOrder = { ...order, order_items: filteredItems };
@@ -3481,7 +3482,6 @@ export const useKDSStore = create<KDSState>()(
         cancelAllRetries();
         _pendingActions.clear();
         _queuedAdvanceActions.clear();
-        _pendingNewOrderSounds.clear();
         _acknowledgedNoticeItemIds.clear();
         persistAcknowledgedNoticeItems();
         if (_refetchTimeout) {
