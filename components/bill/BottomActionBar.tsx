@@ -3,9 +3,7 @@ import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import {
   CheckCircle,
-  CreditCard,
   MoreHorizontal,
-  RotateCcw,
   ShoppingCart,
   Trash2,
 } from "lucide-react-native";
@@ -22,7 +20,6 @@ interface BottomActionBarProps {
   activeOrder: OrderProfile | undefined;
   onPressMore: () => void;
   onPressTotal: () => void;
-  onPressReopenCheck: () => void;
   onPressCloseCheck: () => void;
   onPressClearTable: () => void;
   onPressDiscount: () => void;
@@ -35,7 +32,6 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   activeOrder,
   onPressMore,
   onPressTotal,
-  onPressReopenCheck,
   onPressCloseCheck,
   onPressClearTable,
   onPressDiscount,
@@ -78,9 +74,6 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   };
 
   const renderDefaultButtons = () => {
-    const hasItems = (activeOrder?.items?.length ?? 0) > 0;
-    const isBalanceZero = hasItems && totalDisplayAmount <= 0 && !isSyncing;
-
     if (isSyncing) {
       return (
         <Animated.View style={{ opacity: pulseAnim, flex: 1 }}>
@@ -123,11 +116,6 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
   const renderClosedButtons = () => (
     <>
-      <TouchableOpacity onPress={onPressReopenCheck} activeOpacity={0.7}
-        style={{ ...mainBtn, backgroundColor: colors.warning + '15', borderColor: colors.warning + '40' }}>
-        <RotateCcw size={13} color={colors.warning} />
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.warning }}>Reopen</Text>
-      </TouchableOpacity>
       <TouchableOpacity onPress={onPressClearTable} activeOpacity={0.7}
         style={{ ...mainBtn, backgroundColor: colors.danger + '12', borderColor: colors.danger + '40' }}>
         <Trash2 size={13} color={colors.danger} />
@@ -144,12 +132,12 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     // CRITICAL: Only show Reopen button when check is ACTUALLY closed in database
     // This prevents the "Check is not closed" error from backend
     if (activeOrder.check_status === "Closed") {
-      return renderClosedButtons(); // Reopen + Clear
+      return renderClosedButtons(); // Clear only while reopen is disabled
     }
 
     // If fully paid but check not yet closed, show Close + Clear
     // This gives user the option to close the check
-    if (isFullyPaidProp || activeOrder.paid_status === "Paid") {
+    if (isFullyPaidProp ?? (activeOrder.paid_status === "Paid")) {
       return renderPaidButtons(); // Close + Clear
     }
 
@@ -181,7 +169,6 @@ export default React.memo(BottomActionBar, (prev, next) => {
     prev.paymentCount === next.paymentCount &&
     prev.onPressMore === next.onPressMore &&
     prev.onPressTotal === next.onPressTotal &&
-    prev.onPressReopenCheck === next.onPressReopenCheck &&
     prev.onPressCloseCheck === next.onPressCloseCheck &&
     prev.onPressClearTable === next.onPressClearTable &&
     prev.onPressDiscount === next.onPressDiscount &&

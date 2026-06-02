@@ -4,6 +4,7 @@ import { colors } from '@/lib/theme'
 import { toastService } from '@/lib/toastService'
 import { OrderProfile } from '@/lib/types'
 import { useWasOrderRecentlyUpdated } from '@/stores/useConflictStore'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { formatOrderStatus } from '@/utils/orderStatusHelpers'
@@ -759,6 +760,10 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   const currentStationId = useOrderStore(s => s.currentStationId)
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
+  const tableName = useFloorPlanStore(s => {
+    if (!order.service_location_id) return null
+    return s.tablesById[order.service_location_id]?.name ?? order.service_location_id
+  })
   const effectivePaidStatus = useMemo(
     () => deriveEffectivePaidStatus(order) ?? order.paid_status,
     [order]
@@ -985,6 +990,23 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
                   >
                     {displayId}
                   </Text>
+                  {tableName ? (
+                    <>
+                      <Text
+                        className='text-sm mx-1'
+                        style={{ color: colors.muted }}
+                      >
+                        ·
+                      </Text>
+                      <Text
+                        className='text-sm'
+                        numberOfLines={1}
+                        style={{ color: colors.muted }}
+                      >
+                        Table {tableName}
+                      </Text>
+                    </>
+                  ) : null}
                   <Text
                     className='text-sm mx-1'
                     style={{ color: colors.muted }}
@@ -1059,6 +1081,7 @@ const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
     prev.order.total_amount === next.order.total_amount &&
     prev.order.total_cash_amount === next.order.total_cash_amount &&
     prev.order.customer_name === next.order.customer_name &&
+    prev.order.service_location_id === next.order.service_location_id &&
     prev.order.payments?.length === next.order.payments?.length &&
     getCachedRefunded(prev.order) === getCachedRefunded(next.order) &&
     // Station-related fields for display

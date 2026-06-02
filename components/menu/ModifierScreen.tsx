@@ -15,6 +15,7 @@ import { useSeatingStore } from "@/stores/useSeatingStore";
 
 import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
+import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -717,6 +718,9 @@ const ModifierScreenContent = ({
     ? `${precomputedForItemId ?? ""}_${cartItem?.id ?? ""}_${mode}`
     : null;
   const prevSessionRef = useRef<string | null>(null);
+  const shouldShowSeatPicker =
+    showSeatPicker &&
+    (state.isSeatPickerOpen || sessionId !== prevSessionRef.current);
 
   useEffect(() => {
     if (!sessionId) {
@@ -728,7 +732,7 @@ const ModifierScreenContent = ({
     if (__DEV__) {
       const openStartedAt = getLastModifierOpenStartedAt();
       if (openStartedAt > 0) {
-        console.log(
+        orderStoreDiagnosticLog(
           `[perf][modifier] session ready in ${Math.round(
             nowMs() - openStartedAt,
           )}ms`,
@@ -1840,7 +1844,7 @@ const ModifierScreenContent = ({
         </View>
 
         {/* ── Seat Picker ──────────────────────────────────────────────────── */}
-        {showSecondarySections && state.isSeatPickerOpen && showSeatPicker && (
+        {shouldShowSeatPicker && (
           <View
             className="px-4 py-3 border-t"
             style={{ borderColor: colors.border }}

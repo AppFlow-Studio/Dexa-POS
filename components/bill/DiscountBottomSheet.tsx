@@ -279,7 +279,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       keyboardBehavior='interactive'
       keyboardBlurBehavior='restore'
       android_keyboardInputMode='adjustResize'
-      enableContentPanningGesture={false}
+      enableContentPanningGesture
       topInset={0}
     >
       <BottomSheetScrollView
@@ -287,6 +287,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
         contentContainerStyle={{ paddingBottom: 20 }}
         keyboardShouldPersistTaps='always'
         keyboardDismissMode='none'
+        nestedScrollEnabled
       >
         <View
           style={{

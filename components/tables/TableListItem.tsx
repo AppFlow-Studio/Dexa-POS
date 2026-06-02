@@ -503,11 +503,15 @@ const ExpandedView: React.FC<{
 
       if (allItemsInGroupAreReady) {
         // Use dispatch for CLEAR_TABLE — handles archive + cleaning transition
-        for (const order of tableData.orders) {
+        const [firstOrder, ...remainingOrders] = tableData.orders;
+        for (const order of remainingOrders) {
+          archiveOrder(order.id);
+        }
+        if (firstOrder) {
           await dispatchAction({
             type: "CLEAR_TABLE",
             tableId: table.id,
-            orderId: order.id,
+            orderId: firstOrder.id,
           });
         }
         show({

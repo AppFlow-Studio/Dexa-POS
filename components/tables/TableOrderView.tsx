@@ -55,6 +55,75 @@ import { Portal as Teleport } from 'react-native-teleport'
 const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] =
   []
 const PAID_BALANCE_TOLERANCE = 0.01
+const isKitchenItemUnsent = (item: { kitchen_status?: string | null }) =>
+  !item.kitchen_status || item.kitchen_status === 'new'
+
+const TableOrderMenuPanel = React.memo(
+  function TableOrderMenuPanel ({
+    renderStage,
+    enableCoursing,
+    isCurrentCourseSent,
+    onStartNewCourse,
+    onOrderClosedCheck
+  }: {
+    renderStage: number
+    enableCoursing: boolean
+    isCurrentCourseSent: boolean
+    onStartNewCourse: () => void
+    onOrderClosedCheck: () => boolean
+  }) {
+    return (
+    <View
+      style={{
+        flex: 1,
+        padding: 16,
+        paddingHorizontal: 12,
+        paddingTop: 0
+      }}
+    >
+      {renderStage >= 2 ? (
+        enableCoursing && isCurrentCourseSent ? (
+          <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={onStartNewCourse}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal
+              }}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={{
+                  fontWeight: '600',
+                  color: colors.teal,
+                  fontSize: 16
+                }}
+              >
+                + New Course
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <MenuSection
+            onOrderClosedCheck={onOrderClosedCheck}
+            isTableOrder={true}
+          />
+        )
+      ) : (
+        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: colors.label }}>Loading menu...</Text>
+        </View>
+      )}
+    </View>
+    )
+  }
+)
 
 const nowMs = () =>
   typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -193,6 +262,61 @@ const TableOrderView = React.forwardRef<
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
   const serviceChargeSheetRef = useRef<BottomSheetMethods>(null)
+  const [moreOptionsOpenedOnce, setMoreOptionsOpenedOnce] = useState(false)
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false)
+  const [serviceChargeOpenedOnce, setServiceChargeOpenedOnce] = useState(false)
+
+  const requestMoreOptionsOpen = useCallback(() => {
+    if (moreOptionsSheetRef.current) {
+      moreOptionsSheetRef.current.snapToIndex(0)
+      return
+    }
+    setMoreOptionsOpenedOnce(true)
+  }, [])
+  const requestDiscountOpen = useCallback(() => {
+    if (discountSheetRef.current) {
+      discountSheetRef.current.expand()
+      return
+    }
+    setDiscountOpenedOnce(true)
+  }, [])
+  const requestServiceChargeOpen = useCallback(() => {
+    if (serviceChargeSheetRef.current) {
+      serviceChargeSheetRef.current.expand()
+      return
+    }
+    setServiceChargeOpenedOnce(true)
+  }, [])
+  const lazyDiscountSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestDiscountOpen } as BottomSheetMethods
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestDiscountOpen]
+  )
+  const lazyServiceChargeSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestServiceChargeOpen } as BottomSheetMethods
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestServiceChargeOpen]
+  )
+
+  useEffect(() => {
+    if (renderStage >= 2 && moreOptionsOpenedOnce) {
+      moreOptionsSheetRef.current?.snapToIndex(0)
+    }
+  }, [moreOptionsOpenedOnce, renderStage])
+  useEffect(() => {
+    if (renderStage >= 2 && discountOpenedOnce) {
+      discountSheetRef.current?.expand()
+    }
+  }, [discountOpenedOnce, renderStage])
+  useEffect(() => {
+    if (renderStage >= 2 && serviceChargeOpenedOnce) {
+      serviceChargeSheetRef.current?.expand()
+    }
+  }, [renderStage, serviceChargeOpenedOnce])
 
   const prepareClose = useCallback(() => {
     if (__DEV__) {
@@ -210,10 +334,10 @@ const TableOrderView = React.forwardRef<
   // Expose prepareClose so [tableId].tsx can suppress store reactivity before router.back()
   useImperativeHandle(ref, () => ({ prepareClose }), [prepareClose])
 
-  // Heavy close cleanup is deferred to unmount so it doesn't block the tap-to-close path.
+  // Heavy close cleanup waits for navigation interactions so the floor can paint first.
   useEffect(() => {
     return () => {
-      queueMicrotask(() => {
+      InteractionManager.runAfterInteractions(() => {
         const store = useModifierSidebarStore.getState()
         if (store.isOpen) {
           store.cancelAndRemoveDraft()
@@ -287,12 +411,10 @@ const TableOrderView = React.forwardRef<
   const isFullyPaid = useMemo(() => {
     // Only consider balance <= 0 as fully paid when we have real totals data
     // (guard against transient null totals showing $0 and blocking item additions)
-    return (
-      activeOrder?.paid_status === 'Paid' ||
-      (hasPayments &&
-        totals !== null &&
-        displayBalanceDue <= PAID_BALANCE_TOLERANCE)
-    )
+    if (hasPayments && totals !== null) {
+      return displayBalanceDue <= PAID_BALANCE_TOLERANCE
+    }
+    return activeOrder?.paid_status === 'Paid'
   }, [
     activeOrder?.paid_status,
     hasPayments,
@@ -517,36 +639,77 @@ const TableOrderView = React.forwardRef<
     await doClearTable()
   }, [doClearTable])
 
-  const handleReopenCheck = useCallback(() => {
-    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
-    const order = oid ? ordersById[oid] : null
-    if (!oid || !order?.db_order_id) return
-    setActiveDialog({ type: 'reopen_modal' })
-  }, [])
-
+  const reopeningCheckRef = useRef(false)
   const handleConfirmReopen = useCallback(async () => {
+    if (reopeningCheckRef.current) return
     closeDialog()
     const { activeOrderId: oid, ordersById } = useOrderStore.getState()
     const order = oid ? ordersById[oid] : null
     if (!oid || !order?.db_order_id) return
 
-    try {
-      showLoading('Reopening check...')
-      const result = await useTableSessionStore.getState().dispatchAction({
-        type: 'REOPEN_CHECK',
-        tableId: currentTableId,
-        orderId: order.id,
-        dbOrderId: order.db_order_id,
-        reason: 'Adding more items'
+    if (order.check_status !== 'Closed') {
+      show({
+        title: 'Check Already Open',
+        message: 'This check is already open for ordering.',
+        type: 'success'
       })
+      return
+    }
+
+    const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId
+    if (!supabase || !staffId) {
+      show({
+        title: 'Cannot Reopen Check',
+        message: !supabase
+          ? 'A network connection is required to reopen this check.'
+          : 'An active employee is required to reopen this check.',
+        type: 'error'
+      })
+      return
+    }
+
+    reopeningCheckRef.current = true
+    try {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      showLoading('Reopening check...')
+      const result = await OrderService.reopenCheck(
+        supabase,
+        order.db_order_id,
+        staffId,
+        'Adding more items'
+      )
       if (!result.success)
         throw new Error(result.error || 'Failed to reopen check')
 
-      useOrderStore.getState().updateActiveOrderDetails({
-        paid_status: 'Partial',
-        check_status: 'Opened'
-      })
-      useOrderStore.getState().syncOrderStatus(oid)
+      // Mark locally BEFORE closing payment sheet — closing it triggers
+      // useTablePaymentSync → syncOrderFromBackendComplete which would race
+      // against the reopen and reset check_status back to 'Closed'.
+      useOrderStore.getState().markCheckReopenedLocally(oid, result)
+
+      const paymentStore = usePaymentStore.getState()
+      if (paymentStore.isOpen) {
+        paymentStore.close()
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      }
+
+      const sessionStore = useTableSessionStore.getState()
+      const session = sessionStore.getSession(currentTableId)
+      if (session?.status === 'paid') {
+        const sessionResult = await sessionStore.dispatchAction({
+          type: 'REOPEN_CHECK',
+          tableId: currentTableId,
+          orderId: order.id,
+          dbOrderId: order.db_order_id,
+          reason: 'Adding more items',
+          backendAlreadySynced: true
+        })
+        if (!sessionResult.success) {
+          console.warn(
+            'Check reopened but table session could not transition:',
+            sessionResult.error
+          )
+        }
+      }
 
       show({
         title: 'Check Reopened',
@@ -561,9 +724,10 @@ const TableOrderView = React.forwardRef<
         type: 'error'
       })
     } finally {
+      reopeningCheckRef.current = false
       hideLoading()
     }
-  }, [closeDialog, showLoading, hideLoading, currentTableId, show])
+  }, [closeDialog, showLoading, hideLoading, currentTableId, show, supabase])
 
   const startingNewCourseRef = useRef(false)
   const handleStartNewCourse = useCallback(async () => {
@@ -616,7 +780,13 @@ const TableOrderView = React.forwardRef<
       const activeOrder = oid ? ordersById[oid] : null
       if (!activeOrder) return
 
-      if (!forceResend && isCourseSent(activeOrder.id, course)) {
+      const state = getForOrder(activeOrder.id)
+      const hasUnsentItems = activeOrder.items.some(i => {
+        const itemCourse = i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1
+        return itemCourse === course && !i.is_voided && isKitchenItemUnsent(i)
+      })
+
+      if (!forceResend && !hasUnsentItems && isCourseSent(activeOrder.id, course)) {
         if (!silent)
           show({
             title: 'Already Sent',
@@ -628,7 +798,6 @@ const TableOrderView = React.forwardRef<
 
       // Wave 4.2: single pass collects everything the kitchen send needs.
       // Was five sequential filter/map passes (~5×O(n)) over `items`.
-      const state = getForOrder(activeOrder.id)
       const itemsInCourse: typeof activeOrder.items = []
       const itemIds: string[] = []
       const dbItemIds: string[] = []
@@ -639,7 +808,12 @@ const TableOrderView = React.forwardRef<
       }[] = []
       for (const i of activeOrder.items) {
         const itemCourse = i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1
-        if (itemCourse !== course) continue
+        if (
+          itemCourse !== course ||
+          i.is_voided ||
+          (!forceResend && !isKitchenItemUnsent(i))
+        )
+          continue
         itemsInCourse.push(i)
         itemIds.push(i.id)
         if (i.db_order_item_id) dbItemIds.push(i.db_order_item_id)
@@ -758,8 +932,8 @@ const TableOrderView = React.forwardRef<
     const pendingCourses = Array.from(
       new Set(
         activeOrder.items
+          .filter(i => !i.is_voided && isKitchenItemUnsent(i))
           .map(i => i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1)
-          .filter(courseNumber => !isCourseSent(activeOrder.id, courseNumber))
       )
     ).sort((a, b) => a - b)
 
@@ -795,19 +969,25 @@ const TableOrderView = React.forwardRef<
       message: `Sent ${sentCount} of ${pendingCourses.length} courses.`,
       type: sentCount > 0 ? 'warning' : 'error'
     })
-  }, [getForOrder, isCourseSent, handleSendCourseToKitchen, show])
+  }, [getForOrder, handleSendCourseToKitchen, show])
 
   const handleDoubleTapCourse = useCallback(
     (course: number) => {
       const orderId = useOrderStore.getState().activeOrderId
       if (!orderId) return
-      if (isCourseSent(orderId, course)) {
+      const order = useOrderStore.getState().ordersById[orderId]
+      const state = getForOrder(orderId)
+      const hasUnsentItems = order?.items.some(i => {
+        const itemCourse = i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1
+        return itemCourse === course && !i.is_voided && isKitchenItemUnsent(i)
+      })
+      if (isCourseSent(orderId, course) && !hasUnsentItems) {
         setActiveDialog({ type: 'course_resend', course })
       } else {
         handleSendCourseToKitchen(course, false)
       }
     },
-    [isCourseSent, handleSendCourseToKitchen]
+    [isCourseSent, getForOrder, handleSendCourseToKitchen]
   )
 
   const handleConfirmResend = useCallback(() => {
@@ -907,12 +1087,13 @@ const TableOrderView = React.forwardRef<
     const order = orderState.activeOrderId
       ? orderState.ordersById[orderState.activeOrderId]
       : null
-    if (order?.paid_status === 'Paid' || order?.check_status === 'Closed') {
+    if (order?.check_status === 'Closed') {
       setActiveDialog({ type: 'order_closed_warning' })
       return true
     }
     return false
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setActiveDialog])
 
   const handleAddSeat = useCallback(() => {
     const newCount = seatingHook.addSeat()
@@ -959,10 +1140,7 @@ const TableOrderView = React.forwardRef<
     [activeOrder?.id, setCurrentCourse]
   )
 
-  const handlePressMore = useCallback(
-    () => moreOptionsSheetRef.current?.snapToIndex(0),
-    []
-  )
+  const handlePressMore = requestMoreOptionsOpen
 
   const handlePressTotal = useCallback(
     () => {
@@ -1059,8 +1237,6 @@ const TableOrderView = React.forwardRef<
     closeDialog()
     await doClearTable()
   }, [doClearTable, closeDialog])
-
-  const handleCloseReopenModal = useCallback(() => closeDialog(), [closeDialog])
 
   // Stable callbacks for dialog change props (avoids new arrow fn per render)
   const handleDialogBoolChange = useCallback(
@@ -1254,7 +1430,6 @@ const TableOrderView = React.forwardRef<
               onOpenServerSheet={handleOpenServerSheet}
               onPressMore={handlePressMore}
               onPressTotal={handlePressTotal}
-              onPressReopenCheck={handleReopenCheck}
               onPressCloseCheck={handleCloseCheck}
               onPressClearTable={handleClearTable}
               totalDisplayAmount={displayBalanceDue}
@@ -1279,59 +1454,13 @@ const TableOrderView = React.forwardRef<
               isOvertime={isOvertime}
               overtimeMinutes={defaultSittingTimeMinutes}
             />
-            <View
-              style={{
-                flex: 1,
-                padding: 16,
-                paddingHorizontal: 12,
-                paddingTop: 0
-              }}
-            >
-              {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}
-              {renderStage >= 2 ? (
-                enableCoursing && isCurrentCourseSent ? (
-                  <View
-                    style={{ justifyContent: 'center', alignItems: 'center' }}
-                  >
-                    <TouchableOpacity
-                      onPress={handleStartNewCourse}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: colors.teal
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text
-                        style={{
-                          fontWeight: '600',
-                          color: colors.teal,
-                          fontSize: 16
-                        }}
-                      >
-                        + New Course
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <MenuSection
-                    onOrderClosedCheck={checkOrderClosedAndWarn}
-                    isTableOrder={true}
-                  />
-                )
-              ) : (
-                <View
-                  style={{ alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Text style={{ color: colors.label }}>Loading menu...</Text>
-                </View>
-              )}
-            </View>
+            <TableOrderMenuPanel
+              renderStage={renderStage}
+              enableCoursing={enableCoursing}
+              isCurrentCourseSent={isCurrentCourseSent}
+              onStartNewCourse={handleStartNewCourse}
+              onOrderClosedCheck={checkOrderClosedAndWarn}
+            />
           </View>
         </>
       ) : (
@@ -1339,30 +1468,35 @@ const TableOrderView = React.forwardRef<
       )}
 
       {/* Stage 2: Bottom sheets — outside Teleport so re-renders of the portal don't reset gesture state */}
-      {renderStage >= 2 && (
+      {renderStage >= 2 &&
+        (moreOptionsOpenedOnce ||
+          discountOpenedOnce ||
+          serviceChargeOpenedOnce) && (
         <>
-          <MoreOptionsBottomSheet
-            ref={moreOptionsSheetRef}
-            isTableOrdering
-            onVoidSuccess={handleVoidSuccess}
-            discountSheetRef={
-              discountSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            serviceChargeSheetRef={
-              serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            onCloseCheck={handleCloseCheck}
-          />
+          {moreOptionsOpenedOnce && (
+            <MoreOptionsBottomSheet
+              ref={moreOptionsSheetRef}
+              isTableOrdering
+              onVoidSuccess={handleVoidSuccess}
+              discountSheetRef={lazyDiscountSheetRef}
+              serviceChargeSheetRef={lazyServiceChargeSheetRef}
+              onCloseCheck={handleCloseCheck}
+            />
+          )}
 
-          <DiscountBottomSheet
-            ref={discountSheetRef}
-            onClose={handleCloseDiscountSheet}
-          />
+          {discountOpenedOnce && (
+            <DiscountBottomSheet
+              ref={discountSheetRef}
+              onClose={handleCloseDiscountSheet}
+            />
+          )}
 
-          <ServiceChargeOverrideSheet
-            ref={serviceChargeSheetRef}
-            onClose={() => serviceChargeSheetRef.current?.close()}
-          />
+          {serviceChargeOpenedOnce && (
+            <ServiceChargeOverrideSheet
+              ref={serviceChargeSheetRef}
+              onClose={() => serviceChargeSheetRef.current?.close()}
+            />
+          )}
         </>
       )}
 
@@ -1403,14 +1537,13 @@ const TableOrderView = React.forwardRef<
             }
             onCourseResendChange={handleCourseResendChange}
             onConfirmResend={handleConfirmResend}
-            isReopenModalOpen={activeDialog.type === 'reopen_modal'}
-            onReopenModalClose={handleCloseReopenModal}
-            onConfirmReopen={handleConfirmReopen}
           />
         </Teleport>
       )}
     </View>
   )
 })
+
+TableOrderView.displayName = 'TableOrderView'
 
 export default TableOrderView

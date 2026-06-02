@@ -1,4 +1,3 @@
-import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 
@@ -10,7 +9,8 @@ import { isOrderReadOnly } from '@/lib/orderAccessControl'
  * testable without pulling Zustand stores into the test runtime.
  */
 export function useIsActiveOrderReadOnly (): boolean {
-  const order = useActiveOrder()
-  const currentStationId = useOrderStore(s => s.currentStationId)
-  return isOrderReadOnly(order, currentStationId)
+  return useOrderStore(s => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    return isOrderReadOnly(order, s.currentStationId)
+  })
 }

@@ -2,6 +2,7 @@ import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
 import { CartItem, OrderProfile } from '@/lib/types'
+import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import {
@@ -61,6 +62,49 @@ function deriveAggregateStatus (items: CartItem[]): AggregateKitchenStatus {
 function isSentToKitchen (item: CartItem): boolean {
   return !!item.kitchen_status && item.kitchen_status !== 'new'
 }
+
+const DenseBillItemRow = React.memo(
+  function DenseBillItemRow ({
+    orderId,
+    itemId,
+    isSent,
+    hasUnsentItems,
+    indentLeft,
+    enableCoursing,
+    orderHasPayments,
+    orderPayments
+  }: {
+    orderId: string
+    itemId: string
+    isSent: boolean
+    hasUnsentItems: boolean
+    indentLeft: number
+    enableCoursing: boolean
+    orderHasPayments: boolean
+    orderPayments: OrderProfile['payments'] | null
+  }) {
+    const item = useOrderItem(orderId, itemId)
+    if (!item) return null
+
+    return (
+      <View
+        style={{
+          paddingLeft: indentLeft,
+          paddingRight: 4,
+          paddingVertical: enableCoursing ? 2 : 3,
+          opacity: enableCoursing && isSent ? 0.55 : 1
+        }}
+      >
+        <BillItem
+          item={item}
+          isEditable={!isSent}
+          orderHasPayments={orderHasPayments}
+          payments={orderPayments}
+        />
+      </View>
+    )
+  }
+)
 
 const StatusPill = React.memo(
   ({ status }: { status: AggregateKitchenStatus }) => {
@@ -263,7 +307,7 @@ const CourseSubHeader = React.memo(
             <X size={11} color={colors.muted} />
           </TouchableOpacity>
         )}
-        {!isSent && itemCount > 0 && onSend && (
+        {hasUnsentItems && onSend && (
           <TouchableOpacity
             onPress={e => {
               e.stopPropagation()
@@ -330,8 +374,9 @@ type SeatListRow =
   | {
       id: string
       type: 'item'
-      item: CartItem
+      itemId: string
       isSent: boolean
+      hasUnsentItems: boolean
       indentLeft: number
       seatKey?: string | number
       courseKey?: string
@@ -468,11 +513,13 @@ const DenseSeatView = React.memo(
 
     const orderPayments = activeOrder?.payments ?? null
     const orderHasPayments = !!orderPayments?.some(payment => !payment.isVoided)
+    const activeOrderId = activeOrder?.id ?? null
+    const activeOrderItemCount = activeOrder?.items?.length ?? 0
 
     // Memo 1: Structure — expensive grouping, only recomputes when items/seats/courses change
     const structuredRows = useMemo<SeatListRow[]>(() => {
-      if (!activeOrder) return []
-      if (!activeOrder.items?.length) {
+      if (!activeOrderId) return []
+      if (!activeOrderItemCount) {
         return [{ id: 'empty-order', type: 'empty' }]
       }
 
@@ -521,6 +568,9 @@ const DenseSeatView = React.memo(
               0
             )
             const isSent = !!sentCourses?.[course]
+            const hasUnsentItems = courseNonVoided.some(
+              item => !isSentToKitchen(item)
+            )
             const isCurrentCourse = currentCourse === course
 
             nextRows.push({
@@ -530,6 +580,7 @@ const DenseSeatView = React.memo(
               course,
               itemCount: courseItemCount,
               isSent,
+              hasUnsentItems,
               isCurrentCourse,
               expanded: true, // set in visibility pass
               status: deriveAggregateStatus(items)
@@ -539,7 +590,7 @@ const DenseSeatView = React.memo(
               nextRows.push({
                 id: `item-${item.id}`,
                 type: 'item',
-                item,
+                itemId: item.id,
                 isSent: isSentToKitchen(item) && !item.is_voided,
                 indentLeft: 14,
                 seatKey,
@@ -554,7 +605,7 @@ const DenseSeatView = React.memo(
           nextRows.push({
             id: `item-${item.id}`,
             type: 'item',
-            item,
+            itemId: item.id,
             isSent: isSentToKitchen(item) && !item.is_voided,
             indentLeft: 6,
             seatKey
@@ -564,7 +615,8 @@ const DenseSeatView = React.memo(
 
       return nextRows
     }, [
-      activeOrder,
+      activeOrderId,
+      activeOrderItemCount,
       seatGroups,
       sortedSeatKeys,
       enableCoursing,
@@ -626,6 +678,7 @@ const DenseSeatView = React.memo(
       enableCoursing,
       orderHasPayments,
       orderPayments,
+      orderId: activeOrder?.id ?? null,
       toggleSeat,
       toggleCourse,
       onSelectSeat,
@@ -638,6 +691,7 @@ const DenseSeatView = React.memo(
       enableCoursing,
       orderHasPayments,
       orderPayments,
+      orderId: activeOrder?.id ?? null,
       toggleSeat,
       toggleCourse,
       onSelectSeat,
@@ -690,6 +744,7 @@ const DenseSeatView = React.memo(
               course={row.course}
               itemCount={row.itemCount}
               isSent={row.isSent}
+              hasUnsentItems={row.hasUnsentItems}
               isCurrentCourse={row.isCurrentCourse}
               expanded={row.expanded}
               status={row.status}
@@ -712,22 +767,18 @@ const DenseSeatView = React.memo(
           )
         }
 
+        if (!d.orderId) return null
+
         return (
-          <View
-            style={{
-              paddingLeft: row.indentLeft,
-              paddingRight: 4,
-              paddingVertical: d.enableCoursing ? 2 : 3,
-              opacity: d.enableCoursing && row.isSent ? 0.55 : 1
-            }}
-          >
-            <BillItem
-              item={row.item}
-              isEditable={!row.isSent}
-              orderHasPayments={d.orderHasPayments}
-              payments={d.orderPayments}
-            />
-          </View>
+          <DenseBillItemRow
+            orderId={d.orderId}
+            itemId={row.itemId}
+            isSent={row.isSent}
+            indentLeft={row.indentLeft}
+            enableCoursing={d.enableCoursing}
+            orderHasPayments={d.orderHasPayments}
+            orderPayments={d.orderPayments}
+          />
         )
       },
       [] // stable — reads from renderDataRef
@@ -996,7 +1047,6 @@ const TableBillSection = ({
   onOpenServerSheet,
   onPressMore,
   onPressTotal,
-  onPressReopenCheck,
   onPressCloseCheck,
   onPressClearTable,
   totalDisplayAmount,
@@ -1033,7 +1083,6 @@ const TableBillSection = ({
   onOpenServerSheet?: () => void
   onPressMore: () => void
   onPressTotal: () => void
-  onPressReopenCheck: () => void
   onPressCloseCheck: () => void
   onPressClearTable: () => void
   totalDisplayAmount: number
@@ -1062,6 +1111,7 @@ const TableBillSection = ({
   const currentStationId = useOrderStore(s => s.currentStationId)
   const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false)
   const [isClaiming, setClaiming] = useState(false)
 
   const activeOrder = passedActiveOrder
@@ -1085,6 +1135,18 @@ const TableBillSection = ({
       removeCheckDiscount(activeOrder.id)
     }
   }
+
+  const handleOpenDiscountSheet = useCallback(() => {
+    if (discountSheetRef.current) {
+      discountSheetRef.current.expand()
+      return
+    }
+    setDiscountOpenedOnce(true)
+  }, [])
+
+  useEffect(() => {
+    if (discountOpenedOnce) discountSheetRef.current?.expand()
+  }, [discountOpenedOnce])
 
   // Determine which view to render
   const renderOrderView = () => {
@@ -1187,11 +1249,6 @@ const TableBillSection = ({
         )}
 
         {(() => {
-          // When coursing is on, sending is handled per-course via the
-          // course-level "Send to Kitchen" button inside CourseGroup /
-          // DenseSeatView. Suppress this bulk-send button to avoid two
-          // competing entry points.
-          if (enableCoursing) return null
           const unsent =
             activeOrder?.items?.filter(
               i => !i.kitchen_status || i.kitchen_status === 'new'
@@ -1240,11 +1297,10 @@ const TableBillSection = ({
           activeOrder={activeOrder}
           onPressMore={onPressMore}
           onPressTotal={onPressTotal}
-          onPressReopenCheck={onPressReopenCheck}
           onPressCloseCheck={onPressCloseCheck}
           onPressClearTable={onPressClearTable}
           totalDisplayAmount={totalDisplayAmount}
-          onPressDiscount={() => discountSheetRef.current?.expand()}
+          onPressDiscount={handleOpenDiscountSheet}
           isFullyPaid={isFullyPaid}
           paymentCount={activeOrder?.payments?.length ?? 0}
         />
@@ -1255,11 +1311,14 @@ const TableBillSection = ({
           onPressProceedToPayment={onPressProceedToPayment}
           totalDisplayAmount={totalDisplayAmount}
           hasPayments={(activeOrder?.payments?.length ?? 0) > 0}
+          orderId={activeOrder?.id}
         />
-        <DiscountBottomSheet
-          ref={discountSheetRef}
-          onClose={() => discountSheetRef.current?.close()}
-        />
+        {discountOpenedOnce && (
+          <DiscountBottomSheet
+            ref={discountSheetRef}
+            onClose={() => discountSheetRef.current?.close()}
+          />
+        )}
       </View>
     </>
   )
@@ -1313,7 +1372,6 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prev.onPressTotal !== next.onPressTotal) return false
   if (prev.onPressClearTable !== next.onPressClearTable) return false
   if (prev.onPressCloseCheck !== next.onPressCloseCheck) return false
-  if (prev.onPressReopenCheck !== next.onPressReopenCheck) return false
   if (prev.onDoubleTapCourse !== next.onDoubleTapCourse) return false
   if (prev.onOpenServerSheet !== next.onOpenServerSheet) return false
   if (prev.onPressSendAllToKitchen !== next.onPressSendAllToKitchen)

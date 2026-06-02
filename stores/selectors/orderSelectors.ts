@@ -10,7 +10,7 @@
  */
 
 import { calculateOrderTotals } from "@/lib/order-calculator";
-import type { OrderProfile, OrderProfilePayment } from "@/lib/types";
+import type { CartItem, OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useOrderStore } from "../useOrderStore";
@@ -53,6 +53,36 @@ function getOrderTime(value: string | null | undefined): number {
   if (!value) return 0;
   const time = Date.parse(value);
   return Number.isNaN(time) ? 0 : time;
+}
+
+function isOutstandingLocalEditAhead(
+  order: OrderProfile,
+  backendAmount: number | null | undefined,
+  calculatedAmount: number,
+): boolean {
+  // Reopened checks can receive new local items before the backend header
+  // catches up. Do not let the historical paid snapshot hide that new balance.
+  const hasPendingCartEdit = order.items.some(
+    (item) =>
+      !item.isDraft &&
+      (!item.db_order_item_id || item.sync_status === "pending"),
+  );
+  return (
+    order.check_status === "Opened" &&
+    (order._reopenedForOrdering || hasPendingCartEdit) &&
+    calculatedAmount > (backendAmount ?? 0) + 0.01
+  );
+}
+
+function resolveOutstandingAmount(
+  order: OrderProfile,
+  backendAmount: number | null | undefined,
+  calculatedAmount: number,
+): number {
+  if (isOutstandingLocalEditAhead(order, backendAmount, calculatedAmount)) {
+    return calculatedAmount;
+  }
+  return backendAmount ?? calculatedAmount;
 }
 
 /**
@@ -183,7 +213,14 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
 
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
 
-    const partySize = seatCount ?? sessionPartySize ?? null;
+    // Fallback for order-processing dine-in orders: no seating store entry and
+    // no table session means guest_count is the only available party size signal.
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !activeOrder.session_id &&
+      typeof activeOrder.guest_count === "number" && activeOrder.guest_count > 0
+        ? activeOrder.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -191,6 +228,7 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       checkDiscount: activeOrder.checkDiscount ?? null,
       taxRatesMap,
       payments: activeOrder.payments ?? [],
+      preserveItemLevelOutstanding: activeOrder._reopenedForOrdering === true,
       serviceChargeRule,
       partySize,
       orderType: activeOrder.order_type ?? null,
@@ -213,17 +251,30 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
     // Before payment: use frontend calculations for real-time accuracy
     // After payment: use backend values as source of truth for payment state
     const amountDue = hasPayments
-      ? (backendAmountDue ?? totals.outstanding_total)
+      ? resolveOutstandingAmount(
+          activeOrder,
+          backendAmountDue,
+          totals.outstanding_total,
+        )
       : totals.outstanding_total;
 
     const cashAmountDue = hasPayments
-      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      ? resolveOutstandingAmount(
+          activeOrder,
+          backendCashAmountDue,
+          totals.cash_outstanding_total,
+        )
       : totals.cash_outstanding_total;
 
     // Diagnostic: warn when frontend and backend values diverge
     if (
       hasPayments &&
       backendAmountDue !== undefined &&
+      !isOutstandingLocalEditAhead(
+        activeOrder,
+        backendAmountDue,
+        totals.outstanding_total,
+      ) &&
       Math.abs(backendAmountDue - totals.outstanding_total) > 0.02
     ) {
       console.warn("[useActiveOrderTotals] Frontend/backend mismatch:", {
@@ -319,7 +370,12 @@ export function useOrderTotals(
 
     const activeItems = order.items.filter((item) => !item.is_voided);
 
-    const partySize = seatCount ?? sessionPartySize ?? null;
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !order.session_id &&
+      typeof order.guest_count === "number" && order.guest_count > 0
+        ? order.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -327,6 +383,7 @@ export function useOrderTotals(
       checkDiscount: order.checkDiscount ?? null,
       taxRatesMap,
       payments: order.payments ?? [],
+      preserveItemLevelOutstanding: order._reopenedForOrdering === true,
       serviceChargeRule,
       partySize,
       orderType: order.order_type ?? null,
@@ -347,17 +404,26 @@ export function useOrderTotals(
 
     // Authority logic: frontend before first payment, backend after
     const amountDue = hasPayments
-      ? (backendAmountDue ?? totals.outstanding_total)
+      ? resolveOutstandingAmount(order, backendAmountDue, totals.outstanding_total)
       : totals.outstanding_total;
 
     const cashAmountDue = hasPayments
-      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      ? resolveOutstandingAmount(
+          order,
+          backendCashAmountDue,
+          totals.cash_outstanding_total,
+        )
       : totals.cash_outstanding_total;
 
     // Diagnostic: warn when frontend and backend values diverge
     if (
       hasPayments &&
       backendAmountDue !== undefined &&
+      !isOutstandingLocalEditAhead(
+        order,
+        backendAmountDue,
+        totals.outstanding_total,
+      ) &&
       Math.abs(backendAmountDue - totals.outstanding_total) > 0.02
     ) {
       console.warn("[useOrderTotals] Frontend/backend mismatch:", {
@@ -708,6 +774,7 @@ export function useOrderLineFilteredOrders(): OrderProfile[] {
       const myStationId = state.currentStationId;
 
       const result: OrderProfile[] = [];
+      const seenOrderIds = new Set<string>();
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]];
         if (!o) continue;
@@ -727,6 +794,9 @@ export function useOrderLineFilteredOrders(): OrderProfile[] {
         )
           continue;
 
+        const canonicalId = o.db_order_id ?? o.id;
+        if (seenOrderIds.has(canonicalId)) continue;
+        seenOrderIds.add(canonicalId);
         result.push(o);
       }
       result.sort(
@@ -751,6 +821,20 @@ export function useOrder(
   orderId: string | null | undefined,
 ): OrderProfile | null {
   return useOrderStore((s) => (orderId ? (s.getOrder(orderId) ?? null) : null));
+}
+
+/**
+ * Subscribe to a single item in a local order.
+ * Immer keeps untouched item references stable when sibling items change.
+ */
+export function useOrderItem(
+  orderId: string | null | undefined,
+  itemId: string,
+): CartItem | null {
+  return useOrderStore((s) => {
+    if (!orderId) return null;
+    return s.ordersById[orderId]?.items.find((item) => item.id === itemId) ?? null;
+  });
 }
 
 /**

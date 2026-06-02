@@ -9,6 +9,7 @@ import {
   setSyncJSON,
 } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
+import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
   CartItem,
   Discount,
@@ -285,9 +286,10 @@ function buildServiceChargeInputForOrder(
   //    instantly by the SeatSelector stepper before any backend round-trip.
   // 2. table_sessions.party_size — backend-authoritative, propagated to other
   //    stations via realtime.
-  // order.guest_count is intentionally NOT read here — it's a write-only
-  // mirror for backend sync, and reading it caused stale party_size after
-  // broadcast hydration wiped guest_count.
+  // 3. order.guest_count — fallback for order-processing dine-in orders that
+  //    have no table session and no seating store entry. Not used when a session
+  //    exists because broadcast hydration can wipe guest_count, making it stale
+  //    relative to session.party_size.
   let partySize: number | null = null;
   const seatCount =
     useSeatingStore.getState().byOrderId[order.id]?.seatCount ?? null;
@@ -299,6 +301,9 @@ function buildServiceChargeInputForOrder(
       .getState()
       .getSessionBySessionId(order.session_id);
     partySize = found?.session?.party_size ?? null;
+  }
+  if (partySize == null && !order.session_id && typeof order.guest_count === "number" && order.guest_count > 0) {
+    partySize = order.guest_count;
   }
 
   // Wave D — when the server has marked SC as manually overridden, pass the
@@ -368,6 +373,7 @@ function calculateOrderTotals(
     checkDiscount: checkDiscount ?? null,
     taxRatesMap,
     payments,
+    preserveItemLevelOutstanding: order?._reopenedForOrdering === true,
     ...buildServiceChargeInputForOrder(order),
   });
 }
@@ -1675,6 +1681,7 @@ const addItemToBackend = async (
                 ? {
                     ...i,
                     db_order_item_id: addResult.order_item_id,
+                    sync_status: "synced" as const,
                   }
                 : i,
             );
@@ -2229,6 +2236,7 @@ const addItemToBackend = async (
               ? {
                   ...i,
                   db_order_item_id: addResult.order_item_id,
+                  sync_status: "synced" as const,
                 }
               : i,
           );
@@ -3575,6 +3583,10 @@ interface OrderState {
     orderId: string,
     status: "Opened" | "Closed",
   ) => Promise<void>;
+  markCheckReopenedLocally: (
+    orderId: string,
+    backendTotals?: { amount_due?: number; cash_amount_due?: number },
+  ) => void;
   addPaymentToOrder: (details: {
     orderId: string;
     amount: number;
@@ -4825,6 +4837,7 @@ export const useOrderStore = create<OrderState>()(
                     const _flippedAway =
                       currentStationId != null &&
                       _priorStationId === currentStationId &&
+                      _newStationId != null &&
                       _newStationId !== currentStationId &&
                       !_orderIsTerminal;
 
@@ -5262,10 +5275,14 @@ export const useOrderStore = create<OrderState>()(
                             ? {
                                 // Status
                                 order_status: backendOrder.status,
-                                // Guard check_status: never revert Closed -> Opened from stale broadcast
+                                // Guard check_status: never revert Closed -> Opened from a stale
+                                // broadcast (lower or equal sync_version). Allow it when the
+                                // broadcast has a higher sync_version — that means it's a
+                                // legitimate server update such as a reopen.
                                 check_status:
                                   existingOrder.check_status === "Closed" &&
-                                  backendOrder.check_status !== "Closed"
+                                  backendOrder.check_status !== "Closed" &&
+                                  (backendOrder.sync_version ?? 0) <= (existingOrder.sync_version ?? 0)
                                     ? existingOrder.check_status
                                     : backendOrder.check_status ||
                                       existingOrder.check_status ||
@@ -5356,10 +5373,14 @@ export const useOrderStore = create<OrderState>()(
                         updates: {
                           // Order status and totals (skipped above when hasPendingChanges)
                           order_status: backendOrder.status,
-                          // Guard check_status: never revert Closed -> Opened from stale broadcast
+                          // Guard check_status: never revert Closed -> Opened from a stale
+                          // broadcast (lower or equal sync_version). Allow it when the
+                          // broadcast has a higher sync_version — that means it's a
+                          // legitimate server update such as a reopen.
                           check_status:
                             localOrder.check_status === "Closed" &&
-                            backendOrder.check_status !== "Closed"
+                            backendOrder.check_status !== "Closed" &&
+                            (backendOrder.sync_version ?? 0) <= (localOrder.sync_version ?? 0)
                               ? localOrder.check_status
                               : backendOrder.check_status ||
                                 localOrder.check_status ||
@@ -5766,8 +5787,22 @@ export const useOrderStore = create<OrderState>()(
             // Without this, a broadcast UPDATE for a rekeyed-in-flight order creates
             // a duplicate entry with empty items at ordersById[dbOrderId].
             let existing = get().ordersById[dbOrderId];
+            const tempAliasKey = Object.keys(get().ordersById).find(
+              (key) =>
+                key !== dbOrderId &&
+                get().ordersById[key]?.db_order_id === dbOrderId,
+            );
+            if (tempAliasKey) {
+              get().rekeyOrder(tempAliasKey, dbOrderId);
+              existing = get().ordersById[dbOrderId];
+            }
             if (!existing) {
-              const indexedKey = get().dbOrderIdIndex[dbOrderId];
+              const state = get();
+              const indexedKey =
+                state.dbOrderIdIndex[dbOrderId] ??
+                Object.keys(state.ordersById).find(
+                  (key) => state.ordersById[key]?.db_order_id === dbOrderId,
+                );
               if (
                 indexedKey &&
                 indexedKey !== dbOrderId &&
@@ -5876,6 +5911,63 @@ export const useOrderStore = create<OrderState>()(
                 orderProfile.items = existing.items;
               }
 
+              // Preserve optimistic items while the first table-order adds are
+              // still landing. A fresh seat_guests response can re-key the
+              // local order and then race a full backend snapshot whose
+              // order_items array is still empty. Without this merge, that
+              // snapshot briefly replaces the visible cart until the next
+              // table open hydrates it again.
+              //
+              // If the backend row has already landed but the local add-item
+              // acknowledgement has not, absorb the optimistic row by its
+              // unique item key so the bill does not show a duplicate.
+              if (!isV2) {
+                const localPendingItems = existing.items.filter(
+                  (item) => !item.db_order_item_id && !item.isDraft,
+                );
+                const localDraftItems = existing.items.filter(
+                  (item) => item.isDraft,
+                );
+
+                if (localPendingItems.length > 0 || localDraftItems.length > 0) {
+                  const claimedPendingIds = new Set<string>();
+                  const pendingByKey = new Map<string, CartItem[]>();
+
+                  for (const pendingItem of localPendingItems) {
+                    const key = pendingItem.menuItemId || pendingItem.name;
+                    if (!pendingByKey.has(key)) pendingByKey.set(key, []);
+                    pendingByKey.get(key)!.push(pendingItem);
+                  }
+
+                  orderProfile.items = orderProfile.items.map((serverItem) => {
+                    const key = serverItem.menuItemId || serverItem.name;
+                    const candidates = (pendingByKey.get(key) ?? []).filter(
+                      (item) => !claimedPendingIds.has(item.id),
+                    );
+                    if (candidates.length !== 1) return serverItem;
+
+                    const pendingItem = candidates[0];
+                    claimedPendingIds.add(pendingItem.id);
+                    return {
+                      ...serverItem,
+                      id: pendingItem.id,
+                      seatNumber:
+                        serverItem.seatNumber ??
+                        pendingItem.seatNumber ??
+                        null,
+                    };
+                  });
+
+                  orderProfile.items = [
+                    ...orderProfile.items,
+                    ...localPendingItems.filter(
+                      (item) => !claimedPendingIds.has(item.id),
+                    ),
+                    ...localDraftItems,
+                  ];
+                }
+              }
+
               // Preserve payments when not included in this broadcast
               if (
                 (!backendOrder.order_payments ||
@@ -5976,6 +6068,9 @@ export const useOrderStore = create<OrderState>()(
               }
               // Surgical dbOrderIdIndex maintenance
               state.dbOrderIdIndex[dbOrderId] = dbOrderId;
+              // Keep dine-in table lookup aligned with the latest server
+              // snapshot after seat, transfer, and completion updates.
+              syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
             });
 
             // Reconcile SC after hydration. Catches cross-station orders
@@ -6267,8 +6362,25 @@ export const useOrderStore = create<OrderState>()(
           _createLocalOrderFromServer: (serverOrder) => {
             const dbOrderId = serverOrder.id;
 
-            // Check if already exists (single index lookup)
-            if (get().ordersById[dbOrderId]) {
+            // Repair the brief local-draft -> backend-UUID race before adding
+            // a server order. Otherwise the same dine-in order appears twice
+            // locally until restart rebuilds the reverse index.
+            const state = get();
+            const tempAliasKey = Object.keys(state.ordersById).find(
+              (key) =>
+                key !== dbOrderId &&
+                state.ordersById[key]?.db_order_id === dbOrderId,
+            );
+            const existingKey =
+              tempAliasKey ??
+              state.dbOrderIdIndex[dbOrderId] ??
+              Object.keys(state.ordersById).find(
+                (key) => state.ordersById[key]?.db_order_id === dbOrderId,
+              );
+            if (existingKey) {
+              if (existingKey !== dbOrderId) {
+                get().rekeyOrder(existingKey, dbOrderId);
+              }
               console.log("[CreateFromServer] Already exists:", dbOrderId);
               return;
             }
@@ -8588,6 +8700,18 @@ export const useOrderStore = create<OrderState>()(
                           : item.item_status;
               }
 
+              if (
+                (status === "sent" || status === "preparing") &&
+                order.order_status === "draft"
+              ) {
+                const now = new Date().toISOString();
+                order.order_status = getOrderSentStatus();
+                order.sent_to_kitchen_at ||= now;
+                if (order.order_type === "dine_in") {
+                  order.opened_at ||= now;
+                }
+              }
+
               // Aggregate order_status for dine-in
               if (
                 order.order_type === "dine_in" &&
@@ -8835,12 +8959,12 @@ export const useOrderStore = create<OrderState>()(
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: no activeOrderId", { itemId });
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: no activeOrderId", { itemId });
               return;
             }
             if (!_checkCartEditable(get())) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: cart not editable", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: cart not editable", {
                   itemId,
                   activeOrderId,
                 });
@@ -8849,7 +8973,7 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[activeOrderId];
             if (!order) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: order not found", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: order not found", {
                   itemId,
                   activeOrderId,
                 });
@@ -8857,7 +8981,7 @@ export const useOrderStore = create<OrderState>()(
             }
             if (order.check_status === "Closed") {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: order closed", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: order closed", {
                   itemId,
                   activeOrderId,
                 });
@@ -8867,7 +8991,7 @@ export const useOrderStore = create<OrderState>()(
             const item = order.items.find((i) => i.id === itemId);
             if (!item || item.is_voided) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: item missing/voided", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: item missing/voided", {
                   itemId,
                   found: !!item,
                   voided: item?.is_voided,
@@ -8877,14 +9001,14 @@ export const useOrderStore = create<OrderState>()(
 
             if (item.quantity === newQuantity) {
               if (__DEV__)
-                console.log("[QTY-DIAG] EXIT: quantity unchanged", {
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: quantity unchanged", {
                   itemId,
                   quantity: newQuantity,
                 });
               return;
             }
             if (__DEV__)
-              console.log("[QTY-DIAG] ENTRY", {
+              orderStoreDiagnosticLog("[QTY-DIAG] ENTRY", {
                 itemId,
                 activeOrderId,
                 currentQty: item.quantity,
@@ -8926,7 +9050,7 @@ export const useOrderStore = create<OrderState>()(
 
             if (!dbItemId || !supabase) {
               if (__DEV__)
-                console.log(
+                orderStoreDiagnosticLog(
                   "[QTY-DIAG] QUEUE-BRANCH (no dbItemId or no supabase)",
                   {
                     itemId,
@@ -8945,7 +9069,7 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
             if (__DEV__)
-              console.log("[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)", {
+              orderStoreDiagnosticLog("[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)", {
                 itemId,
                 dbItemId,
                 expectedQty: newQuantity,
@@ -8983,7 +9107,7 @@ export const useOrderStore = create<OrderState>()(
                     quantitySyncGenerations.get(itemId) !== quantityGeneration
                   ) {
                     if (__DEV__)
-                      console.log("[QTY-DIAG] STALE-GENERATION-SKIPPED", {
+                      orderStoreDiagnosticLog("[QTY-DIAG] STALE-GENERATION-SKIPPED", {
                         itemId,
                         quantityGeneration,
                         currentGeneration: quantitySyncGenerations.get(itemId),
@@ -9001,7 +9125,7 @@ export const useOrderStore = create<OrderState>()(
                   );
                   const latestQuantity = latestItem?.quantity ?? newQuantity;
                   if (__DEV__)
-                    console.log("[QTY-DIAG] RPC-FIRE", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] RPC-FIRE", {
                       itemId,
                       dbItemId,
                       latestQuantity,
@@ -9020,7 +9144,7 @@ export const useOrderStore = create<OrderState>()(
                     },
                   ).then((response) => {
                     if (__DEV__)
-                      console.log("[QTY-DIAG] RPC-RESPONSE", {
+                      orderStoreDiagnosticLog("[QTY-DIAG] RPC-RESPONSE", {
                         itemId,
                         latestQuantity,
                         hasError: !!response?.error,
@@ -9042,7 +9166,7 @@ export const useOrderStore = create<OrderState>()(
                 // corrupting waitForPendingSyncs.
                 if (response?.error?.code === "DEADLINE_EXCEEDED") {
                   if (__DEV__)
-                    console.log("[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE", {
                       itemId,
                       dbItemId,
                       latestQuantity,
@@ -9070,7 +9194,7 @@ export const useOrderStore = create<OrderState>()(
                 // dead-letters, Wave 3.0e onOperationFailed flips the chip.
                 if (response?.error || response?.data?.success === false) {
                   if (__DEV__)
-                    console.log("[QTY-DIAG] RESPONSE-ERROR-QUEUE", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] RESPONSE-ERROR-QUEUE", {
                       itemId,
                       dbItemId,
                       latestQuantity,
@@ -9105,7 +9229,7 @@ export const useOrderStore = create<OrderState>()(
 
                   if (isStaleResponse) {
                     if (__DEV__)
-                      console.log("[QTY-DIAG] STALE-RESPONSE-IGNORED", {
+                      orderStoreDiagnosticLog("[QTY-DIAG] STALE-RESPONSE-IGNORED", {
                         itemId,
                         latestQuantity,
                         currentQuantity,
@@ -9114,7 +9238,7 @@ export const useOrderStore = create<OrderState>()(
                   }
 
                   if (__DEV__)
-                    console.log("[QTY-DIAG] SUCCESS-APPLIED", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] SUCCESS-APPLIED", {
                       itemId,
                       latestQuantity,
                       serverQty: response.data.quantity,
@@ -9142,7 +9266,7 @@ export const useOrderStore = create<OrderState>()(
                   quantitySyncGenerations.get(itemId) !== quantityGeneration
                 ) {
                   if (__DEV__)
-                    console.log("[QTY-DIAG] STALE-CATCH-IGNORED", {
+                    orderStoreDiagnosticLog("[QTY-DIAG] STALE-CATCH-IGNORED", {
                       itemId,
                       quantityGeneration,
                       currentGeneration: quantitySyncGenerations.get(itemId),
@@ -9151,7 +9275,7 @@ export const useOrderStore = create<OrderState>()(
                 }
                 console.error("[setItemQuantity] sync failed:", err);
                 if (__DEV__)
-                  console.log("[QTY-DIAG] CATCH-QUEUE", {
+                  orderStoreDiagnosticLog("[QTY-DIAG] CATCH-QUEUE", {
                     itemId,
                     dbItemId,
                     errName: err?.name,
@@ -10503,6 +10627,7 @@ export const useOrderStore = create<OrderState>()(
               order.order_status = status;
               if (status === "completed" || status === "void") {
                 order.check_status = "Closed" as const;
+                order._reopenedForOrdering = false;
               }
               syncTableOrderIdIndexForOrder(state, orderId, previousOrder);
             });
@@ -10526,6 +10651,7 @@ export const useOrderStore = create<OrderState>()(
               const order = state.ordersById[storeKey];
               if (!order) return;
               order.check_status = status;
+              if (status === "Closed") order._reopenedForOrdering = false;
             });
 
             // 2. Sync to backend
@@ -10608,6 +10734,8 @@ export const useOrderStore = create<OrderState>()(
                     const order = state.ordersById[storeKey];
                     if (order) order.check_status = "Closed"; // Rollback
                   });
+                } else {
+                  get().markCheckReopenedLocally(storeKey, result);
                 }
               }
             } catch (error) {
@@ -10620,6 +10748,26 @@ export const useOrderStore = create<OrderState>()(
                     status === "Closed" ? "Opened" : "Closed"; // Rollback
               });
             }
+          },
+
+          markCheckReopenedLocally: (orderId, backendTotals) => {
+            const storeKey = get().dbOrderIdIndex[orderId] ?? orderId;
+            set((state) => {
+              const order = state.ordersById[storeKey];
+              if (!order) return;
+              order.check_status = "Opened";
+              order._reopenedForOrdering = true;
+              if (order.paid_status === "Paid") {
+                order.paid_status = "Partial";
+              }
+              if (backendTotals?.amount_due !== undefined) {
+                order.amount_due = backendTotals.amount_due;
+              }
+              if (backendTotals?.cash_amount_due !== undefined) {
+                order.cash_amount_due = backendTotals.cash_amount_due;
+              }
+            });
+            get().recalculateOrder(storeKey);
           },
 
           addPaymentToOrder: async ({
@@ -13525,14 +13673,20 @@ export const useOrderStore = create<OrderState>()(
               // Remove temp entry, add DB UUID entry
               delete state.ordersById[tempId];
               state.ordersById[dbUuid] = updatedOrder;
-              state.orderIds = state.orderIds.map((id) =>
-                id === tempId ? dbUuid : id,
+              state.orderIds = Array.from(
+                new Set(
+                  state.orderIds.map((id) => (id === tempId ? dbUuid : id)),
+                ),
               );
               if (state.activeOrderId === tempId) {
                 state.activeOrderId = dbUuid;
               }
-              state.workingSetOrderIds = state.workingSetOrderIds.map((id) =>
-                id === tempId ? dbUuid : id,
+              state.workingSetOrderIds = Array.from(
+                new Set(
+                  state.workingSetOrderIds.map((id) =>
+                    id === tempId ? dbUuid : id,
+                  ),
+                ),
               );
               if (state._workingSetLookup[tempId]) {
                 delete state._workingSetLookup[tempId];
@@ -14506,7 +14660,12 @@ export const useOrderStore = create<OrderState>()(
                     total_amount: dbOrder.card_total || dbOrder.total_amount,
                     total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
                     paid_status: syncedPaidStatus,
-                    check_status: isPaid ? "Closed" : "Opened",
+                    // Prefer DB value. Guard: if the local order was already
+                    // reopened (_reopenedForOrdering=true) but the DB fetch
+                    // raced and returned stale 'Closed', keep local 'Opened'.
+                    check_status: (localOrder?._reopenedForOrdering && (dbOrder.check_status === 'Closed' || !dbOrder.check_status))
+                      ? 'Opened'
+                      : ((dbOrder.check_status as "Opened" | "Closed" | undefined) ?? (isPaid ? "Closed" : "Opened")),
                     // Session tracking - sync from database
                     session_id: dbOrder.session_id,
                     order_source: dbOrder.order_source ?? null,
@@ -14967,6 +15126,30 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // Path B: No localOrderId — create minimal shell order keyed by dbOrderId
+            const stateBeforeShell = get();
+            const tempAliasKey = Object.keys(stateBeforeShell.ordersById).find(
+              (key) =>
+                key !== dbOrderId &&
+                stateBeforeShell.ordersById[key]?.db_order_id === dbOrderId,
+            );
+            const existingKey =
+              tempAliasKey ??
+              stateBeforeShell.dbOrderIdIndex[dbOrderId] ??
+              Object.keys(stateBeforeShell.ordersById).find(
+                (key) =>
+                  stateBeforeShell.ordersById[key]?.db_order_id === dbOrderId,
+              );
+            if (existingKey) {
+              set((state) => {
+                const existing = state.ordersById[existingKey];
+                if (!existing) return;
+                existing.session_id = sessionId;
+                existing.local_session_id = sessionId;
+                state.dbOrderIdIndex[dbOrderId] = existingKey;
+              });
+              return;
+            }
+
             set((state) => {
               if (state.ordersById[dbOrderId]) return; // already exists
               state.ordersById[dbOrderId] = {
@@ -15294,13 +15477,27 @@ export const useOrderStore = create<OrderState>()(
             // This is crucial after payments have been processed
             const hasBackendAmountDue =
               order.amount_due !== undefined && order.amount_due >= 0;
+            const hasPendingCartEdit = order.items.some(
+              (item) =>
+                !item.isDraft &&
+                (!item.db_order_item_id || item.sync_status === "pending"),
+            );
+            const shouldUseCalculatedReopenBalance =
+              order.check_status === "Opened" &&
+              hasPendingCartEdit &&
+              totals.outstanding_total > (order.amount_due ?? 0) + 0.01;
 
-            const finalOutstandingTotal = hasBackendAmountDue
+            const finalOutstandingTotal = shouldUseCalculatedReopenBalance
+              ? totals.outstanding_total
+              : hasBackendAmountDue
               ? order.amount_due!
               : totals.outstanding_total;
 
             const finalCashOutstandingTotal =
-              order.cash_amount_due !== undefined && order.cash_amount_due >= 0
+              shouldUseCalculatedReopenBalance
+                ? totals.cash_outstanding_total
+                : order.cash_amount_due !== undefined &&
+                    order.cash_amount_due >= 0
                 ? order.cash_amount_due
                 : totals.cash_outstanding_total;
 

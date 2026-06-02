@@ -1,6 +1,7 @@
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
+import { orderStoreDiagnosticLog } from '@/lib/performanceDiagnostics'
 import { OrderProfile } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { hasPendingOrderCreation, useOrderStore } from '@/stores/useOrderStore'
@@ -154,6 +155,14 @@ export function useTableSession (
       const active = state.ordersById[state.activeOrderId]
       if (active?.service_location_id === tableId) return active
     }
+    // Priority 3: scan for any order belonging to this table (covers the window
+    // between startNewOrder and setActiveOrder, or after a rekey clears the index)
+    const entries = Object.values(state.ordersById)
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i].service_location_id === tableId && !entries[i].is_voided) {
+        return entries[i]
+      }
+    }
     return undefined
   })
 
@@ -249,7 +258,7 @@ export function useTableSession (
       return
     }
     if (tableStatus === 'available' && hasAutoCreatedRef.current && !session) {
-      console.log('[useTableSession] Table cleared, navigating away')
+      orderStoreDiagnosticLog('[useTableSession] Table cleared, navigating away')
       updatePhase('navigating_away')
       navigateAway()
     }
@@ -337,7 +346,7 @@ export function useTableSession (
           .getTableById(tableId)?.session
         const updatedTableStatus = updatedSession?.status || 'available'
 
-        console.log('[useTableSession] Auto-session check:', {
+        orderStoreDiagnosticLog('[useTableSession] Auto-session check:', {
           tableId,
           status: updatedTableStatus,
           sessionId: updatedSession?.id,
@@ -430,7 +439,7 @@ export function useTableSession (
             }
 
             updatePhase('loading_session')
-            console.log(
+            orderStoreDiagnosticLog(
               '[useTableSession] Syncing order from database:',
               sOrderId
             )
@@ -493,8 +502,17 @@ export function useTableSession (
           orderSnap = useOrderStore.getState()
 
           // Check if seatGuests is already in-flight from the caller (e.g. handleGuestCountSubmit)
+          // Also check tableOrderIdIndex in case activeOrderId was briefly cleared during mount transition
           const activeOid3 = orderSnap.activeOrderId
-          if (activeOid3 && hasPendingOrderCreation(activeOid3)) {
+          const tableIndexedOid = orderSnap.tableOrderIdIndex[tableId]
+          const pendingOid = activeOid3 || tableIndexedOid
+          if (pendingOid && hasPendingOrderCreation(pendingOid)) {
+            updatePhase('ready')
+            return
+          }
+          // If there's already an order for this table (by index or active), don't auto-create
+          if (tableIndexedOid && orderSnap.ordersById[tableIndexedOid]?.service_location_id === tableId) {
+            hasAutoCreatedRef.current = true
             updatePhase('ready')
             return
           }
@@ -529,7 +547,7 @@ export function useTableSession (
                 createOrder: true
               })
 
-            console.log(
+            orderStoreDiagnosticLog(
               '[useTableSession] Created session:',
               sessionId,
               'Order:',
@@ -574,6 +592,7 @@ export function useTableSession (
     }
 
     handleAutoCreateSession()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableId, tableStatus, session?.order_id])
 
   // Recovery: re-sync if order vanishes while phase is "ready"
