@@ -325,16 +325,17 @@ interface KDSTicketDisplaySettings {
 interface KDSTicketTimerProps {
   startTimeEpoch: number;
   textColor: string;
+  doneTimeEpoch?: number;
 }
 
 const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
-  ({ startTimeEpoch, textColor }) => {
-    // Single shared timestamp from store — 1 subscription per timer, no per-component Date.now()
-    const nowEpochMs = useKDSStore((s) => s.nowEpochMs);
+  ({ startTimeEpoch, textColor, doneTimeEpoch }) => {
+    // Skip live subscription when timer is frozen at doneTimeEpoch
+    const nowEpochMs = useKDSStore((s) => (doneTimeEpoch ? 0 : s.nowEpochMs));
     const timeElapsed = getBucketedElapsed(
       startTimeEpoch,
-      undefined,
-      nowEpochMs,
+      doneTimeEpoch,
+      doneTimeEpoch ? doneTimeEpoch : nowEpochMs,
     );
     return (
       <Text
@@ -833,6 +834,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <KDSTicketTimer
               startTimeEpoch={ticket.start_time_epoch}
               textColor={headerPrimaryTextColor}
+              doneTimeEpoch={ticket.status === "ready" ? ticket.ready_time_epoch : undefined}
             />
           </View>
 
