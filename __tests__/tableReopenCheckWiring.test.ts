@@ -16,16 +16,11 @@ const tableAlertDialogsSrc = read('components/tables/TableAlertDialogs.tsx')
 const orderStoreSrc = read('stores/useOrderStore.ts')
 const orderSelectorsSrc = read('stores/selectors/orderSelectors.ts')
 const reopenEffectSrc = read('services/sessionEffects/reopenCheckEffect.ts')
-const reopenSqlSrc = read('utils/supabase/migrations/reopen_check.sql')
-const reopenLifecycleMigrationSrc = read(
-  'supabase/migrations/20260602090000_fix_reopen_check_payment_lifecycle.sql'
-)
 
 describe('table ordering reopen-check wiring', () => {
-  it('renders a Reopen action for a closed check', () => {
-    expect(actionBarSrc).toMatch(
-      /TouchableOpacity onPress=\{onPressReopenCheck\}[\s\S]*?<RotateCcw[\s\S]*?>Reopen<\/Text>/
-    )
+  it('does not render a Reopen action while check reopening is disabled', () => {
+    expect(actionBarSrc).not.toContain('>Reopen</Text>')
+    expect(actionBarSrc).not.toContain('<RotateCcw')
   })
 
   it('awaits the reopen RPC before applying the local lifecycle update', () => {
@@ -41,18 +36,10 @@ describe('table ordering reopen-check wiring', () => {
     expect(tableOrderViewSrc).toContain('backendAlreadySynced: true')
   })
 
-  it('uses a native confirmation modal and closes stale payment UI before reopening locally', () => {
-    expect(tableAlertDialogsSrc).toMatch(
-      /<Modal[\s\S]*?visible=\{isReopenModalOpen\}[\s\S]*?onPress=\{onConfirmReopen\}/
-    )
-    expect(tableAlertDialogsSrc).not.toContain('<ConfirmationModal')
-
-    const paymentCloseIndex = tableOrderViewSrc.indexOf('paymentStore.close()')
-    const localUpdateIndex = tableOrderViewSrc.indexOf(
-      'useOrderStore.getState().markCheckReopenedLocally(oid, result)'
-    )
-    expect(paymentCloseIndex).toBeGreaterThan(-1)
-    expect(localUpdateIndex).toBeGreaterThan(paymentCloseIndex)
+  it('does not expose a reopen confirmation modal', () => {
+    expect(tableAlertDialogsSrc).not.toContain('Reopen Check?')
+    expect(tableAlertDialogsSrc).not.toContain('onConfirmReopen')
+    expect(tableAlertDialogsSrc).not.toContain('onReopenFromWarning')
   })
 
   it('lets the confirmation modal unmount before opening the global loader', () => {
@@ -75,24 +62,6 @@ describe('table ordering reopen-check wiring', () => {
     )
   })
 
-  it('moves reopened paid checks to partial before backend totals recalculate', () => {
-    for (const src of [reopenSqlSrc, reopenLifecycleMigrationSrc]) {
-      const partialIndex = src.indexOf("THEN 'partial'::payment_status")
-      const recalculateIndex = src.indexOf(
-        'SELECT calculate_order_totals_fast(p_order_id) INTO v_totals'
-      )
-      expect(partialIndex).toBeGreaterThan(-1)
-      expect(recalculateIndex).toBeGreaterThan(partialIndex)
-      expect(src).toContain("'amount_due', COALESCE((v_totals->>'amount_due')::NUMERIC, 0)")
-    }
-    expect(tableOrderViewSrc).toContain(
-      'markCheckReopenedLocally(oid, result)'
-    )
-    expect(orderStoreSrc).toContain(
-      'get().markCheckReopenedLocally(storeKey, result);'
-    )
-  })
-
   it('does not call the reopen RPC twice after the screen already synced it', () => {
     expect(reopenEffectSrc).toContain(
       'if (ctx.action.backendAlreadySynced) return;'
@@ -108,11 +77,9 @@ describe('table ordering reopen-check wiring', () => {
     )
   })
 
-  it('routes the More Options Open Check row through reopen logic', () => {
-    expect(moreOptionsSrc).toMatch(
-      /activeOrder\?\.check_status === 'Closed'[\s\S]*?closeAndThen\(\(\) => onReopenCheck\?\.\(\)\)/
-    )
-    expect(tableOrderViewSrc).toContain('onReopenCheck={handleReopenCheck}')
+  it('does not expose Open Check in More Options while reopening is disabled', () => {
+    expect(moreOptionsSrc).not.toContain('Open Check')
+    expect(moreOptionsSrc).not.toContain('onReopenCheck')
   })
 
   it('does not expose Close Session in the More Options sheet', () => {

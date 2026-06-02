@@ -1047,7 +1047,6 @@ const TableBillSection = ({
   onOpenServerSheet,
   onPressMore,
   onPressTotal,
-  onPressReopenCheck,
   onPressCloseCheck,
   onPressClearTable,
   totalDisplayAmount,
@@ -1084,7 +1083,6 @@ const TableBillSection = ({
   onOpenServerSheet?: () => void
   onPressMore: () => void
   onPressTotal: () => void
-  onPressReopenCheck: () => void
   onPressCloseCheck: () => void
   onPressClearTable: () => void
   totalDisplayAmount: number
@@ -1299,7 +1297,6 @@ const TableBillSection = ({
           activeOrder={activeOrder}
           onPressMore={onPressMore}
           onPressTotal={onPressTotal}
-          onPressReopenCheck={onPressReopenCheck}
           onPressCloseCheck={onPressCloseCheck}
           onPressClearTable={onPressClearTable}
           totalDisplayAmount={totalDisplayAmount}
@@ -1375,7 +1372,6 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prev.onPressTotal !== next.onPressTotal) return false
   if (prev.onPressClearTable !== next.onPressClearTable) return false
   if (prev.onPressCloseCheck !== next.onPressCloseCheck) return false
-  if (prev.onPressReopenCheck !== next.onPressReopenCheck) return false
   if (prev.onDoubleTapCourse !== next.onDoubleTapCourse) return false
   if (prev.onOpenServerSheet !== next.onOpenServerSheet) return false
   if (prev.onPressSendAllToKitchen !== next.onPressSendAllToKitchen)

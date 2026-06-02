@@ -4,7 +4,6 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import {
   CheckCircle,
   MoreHorizontal,
-  RotateCcw,
   ShoppingCart,
   Trash2,
 } from "lucide-react-native";
@@ -21,7 +20,6 @@ interface BottomActionBarProps {
   activeOrder: OrderProfile | undefined;
   onPressMore: () => void;
   onPressTotal: () => void;
-  onPressReopenCheck: () => void;
   onPressCloseCheck: () => void;
   onPressClearTable: () => void;
   onPressDiscount: () => void;
@@ -34,7 +32,6 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   activeOrder,
   onPressMore,
   onPressTotal,
-  onPressReopenCheck,
   onPressCloseCheck,
   onPressClearTable,
   onPressDiscount,
@@ -119,11 +116,6 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
   const renderClosedButtons = () => (
     <>
-      <TouchableOpacity onPress={onPressReopenCheck} activeOpacity={0.7}
-        style={{ ...mainBtn, backgroundColor: colors.teal + '18', borderColor: colors.teal + '50' }}>
-        <RotateCcw size={13} color={colors.teal} />
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>Reopen</Text>
-      </TouchableOpacity>
       <TouchableOpacity onPress={onPressClearTable} activeOpacity={0.7}
         style={{ ...mainBtn, backgroundColor: colors.danger + '12', borderColor: colors.danger + '40' }}>
         <Trash2 size={13} color={colors.danger} />
@@ -140,7 +132,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     // CRITICAL: Only show Reopen button when check is ACTUALLY closed in database
     // This prevents the "Check is not closed" error from backend
     if (activeOrder.check_status === "Closed") {
-      return renderClosedButtons(); // Reopen + Clear
+      return renderClosedButtons(); // Clear only while reopen is disabled
     }
 
     // If fully paid but check not yet closed, show Close + Clear
@@ -177,7 +169,6 @@ export default React.memo(BottomActionBar, (prev, next) => {
     prev.paymentCount === next.paymentCount &&
     prev.onPressMore === next.onPressMore &&
     prev.onPressTotal === next.onPressTotal &&
-    prev.onPressReopenCheck === next.onPressReopenCheck &&
     prev.onPressCloseCheck === next.onPressCloseCheck &&
     prev.onPressClearTable === next.onPressClearTable &&
     prev.onPressDiscount === next.onPressDiscount &&

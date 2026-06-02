@@ -57,7 +57,6 @@ interface MoreOptionsProps {
   serviceChargeSheetRef?: React.RefObject<BottomSheetMethods>;
   onVoidSuccess?: () => void;
   onCloseCheck?: () => void;
-  onReopenCheck?: () => void;
   onNoSale?: () => void;
   onManageDrawer?: () => void;
   onSheetChange?: (index: number) => void;
@@ -73,7 +72,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     serviceChargeSheetRef,
     onVoidSuccess,
     onCloseCheck,
-    onReopenCheck,
     onNoSale,
     onManageDrawer,
     onSheetChange,
@@ -609,61 +607,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                   }}
                 >
                   Finalize this order
-                </Text>
-              </View>
-              <ChevronRight size={14} color={colors.success + "80"} />
-            </TouchableOpacity>
-          ) : (
-            <></>
-          )}
-
-          {activeOrder?.check_status === "Closed" ? (
-            <TouchableOpacity
-              onPress={() => closeAndThen(() => onReopenCheck?.())}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginHorizontal: 12,
-                marginBottom: 4,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                borderRadius: 10,
-                backgroundColor: colors.success + "15",
-                borderWidth: 1,
-                borderColor: colors.success + "30",
-              }}
-            >
-              <View
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
-                  backgroundColor: colors.success + "20",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 12,
-                }}
-              >
-                <CheckCircle2 size={15} color={colors.success} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "600",
-                    color: colors.success,
-                  }}
-                >
-                  Open Check
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: colors.success + "99",
-                    marginTop: 1,
-                  }}
-                >
-                  Open Check to add items
                 </Text>
               </View>
               <ChevronRight size={14} color={colors.success + "80"} />

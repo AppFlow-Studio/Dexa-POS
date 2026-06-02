@@ -639,13 +639,6 @@ const TableOrderView = React.forwardRef<
     await doClearTable()
   }, [doClearTable])
 
-  const handleReopenCheck = useCallback(() => {
-    const { activeOrderId: oid, ordersById } = useOrderStore.getState()
-    const order = oid ? ordersById[oid] : null
-    if (!oid || !order?.db_order_id) return
-    setActiveDialog({ type: 'reopen_modal' })
-  }, [])
-
   const reopeningCheckRef = useRef(false)
   const handleConfirmReopen = useCallback(async () => {
     if (reopeningCheckRef.current) return
@@ -1245,8 +1238,6 @@ const TableOrderView = React.forwardRef<
     await doClearTable()
   }, [doClearTable, closeDialog])
 
-  const handleCloseReopenModal = useCallback(() => closeDialog(), [closeDialog])
-
   // Stable callbacks for dialog change props (avoids new arrow fn per render)
   const handleDialogBoolChange = useCallback(
     (open: boolean) => {
@@ -1439,7 +1430,6 @@ const TableOrderView = React.forwardRef<
               onOpenServerSheet={handleOpenServerSheet}
               onPressMore={handlePressMore}
               onPressTotal={handlePressTotal}
-              onPressReopenCheck={handleReopenCheck}
               onPressCloseCheck={handleCloseCheck}
               onPressClearTable={handleClearTable}
               totalDisplayAmount={displayBalanceDue}
@@ -1491,7 +1481,6 @@ const TableOrderView = React.forwardRef<
               discountSheetRef={lazyDiscountSheetRef}
               serviceChargeSheetRef={lazyServiceChargeSheetRef}
               onCloseCheck={handleCloseCheck}
-              onReopenCheck={handleReopenCheck}
             />
           )}
 
@@ -1543,15 +1532,11 @@ const TableOrderView = React.forwardRef<
               activeDialog.type === 'order_closed_warning'
             }
             onOrderClosedWarningChange={handleDialogBoolChange}
-            onReopenFromWarning={handleConfirmReopen}
             courseToResend={
               activeDialog.type === 'course_resend' ? activeDialog.course : null
             }
             onCourseResendChange={handleCourseResendChange}
             onConfirmResend={handleConfirmResend}
-            isReopenModalOpen={activeDialog.type === 'reopen_modal'}
-            onReopenModalClose={handleCloseReopenModal}
-            onConfirmReopen={handleConfirmReopen}
           />
         </Teleport>
       )}

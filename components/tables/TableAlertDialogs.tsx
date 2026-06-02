@@ -1,9 +1,8 @@
 import { AlertDialog, AlertDialogContent } from '@/components/ui/alert-dialog'
 import { colors } from '@/lib/theme'
-import { AlertTriangle, Lock, RotateCcw } from 'lucide-react-native'
+import { AlertTriangle, Lock } from 'lucide-react-native'
 import React from 'react'
 import {
-  Modal,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -38,17 +37,12 @@ interface TableAlertDialogsProps {
   // Order closed warning
   isOrderClosedWarningOpen: boolean
   onOrderClosedWarningChange: (open: boolean) => void
-  onReopenFromWarning: () => void
 
   // Course resend
   courseToResend: number | null
   onCourseResendChange: (course: number | null) => void
   onConfirmResend: () => void
 
-  // Reopen check
-  isReopenModalOpen: boolean
-  onReopenModalClose: () => void
-  onConfirmReopen: () => void
 }
 
 const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
@@ -64,13 +58,9 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
   onConfirmVoid,
   isOrderClosedWarningOpen,
   onOrderClosedWarningChange,
-  onReopenFromWarning,
   courseToResend,
   onCourseResendChange,
-  onConfirmResend,
-  isReopenModalOpen,
-  onReopenModalClose,
-  onConfirmReopen
+  onConfirmResend
 }) => {
   const warningRing = `${colors.warning}33`
   const warningFill = `${colors.warning}20`
@@ -299,7 +289,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
             className='text-sm text-center mb-5'
             style={{ color: colors.muted }}
           >
-            This check is closed. Reopen it to add more items.
+            This check is closed. Check reopening is temporarily disabled.
           </Text>
           <View className='flex-row gap-3'>
             <TouchableOpacity
@@ -312,18 +302,6 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
                 style={{ color: colors.label }}
               >
                 Dismiss
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onReopenFromWarning}
-              className='flex-1 py-3 rounded-xl items-center'
-              style={{ backgroundColor: colors.teal }}
-            >
-              <Text
-                className='font-semibold text-base'
-                style={{ color: colors.onSolid }}
-              >
-                Reopen Check
               </Text>
             </TouchableOpacity>
           </View>
@@ -362,104 +340,6 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Reopen Check Confirmation Modal */}
-      <Modal
-        visible={isReopenModalOpen}
-        transparent
-        animationType='fade'
-        onRequestClose={onReopenModalClose}
-        statusBarTranslucent
-      >
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            backgroundColor: 'rgba(0,0,0,0.65)'
-          }}
-        >
-          <View
-            style={{
-              width: '100%',
-              maxWidth: 440,
-              padding: 24,
-              borderRadius: 18,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.panel
-            }}
-          >
-            <View style={{ alignItems: 'center', marginBottom: 18 }}>
-              <View
-                style={{
-                  width: 58,
-                  height: 58,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 29,
-                  backgroundColor: colors.teal + '20'
-                }}
-              >
-                <RotateCcw size={28} color={colors.teal} />
-              </View>
-            </View>
-            <Text
-              style={{
-                marginBottom: 8,
-                color: colors.heading,
-                fontSize: 20,
-                fontWeight: '800',
-                textAlign: 'center'
-              }}
-            >
-              Reopen Check?
-            </Text>
-            <Text
-              style={{
-                marginBottom: 20,
-                color: colors.muted,
-                fontSize: 14,
-                lineHeight: 20,
-                textAlign: 'center'
-              }}
-            >
-              Are you sure you want to reopen this closed check? This will
-              allow adding new items.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity
-                onPress={onReopenModalClose}
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  backgroundColor: colors.card
-                }}
-              >
-                <Text style={{ color: colors.label, fontWeight: '700' }}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={onConfirmReopen}
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  backgroundColor: colors.teal
-                }}
-              >
-                <Text style={{ color: colors.onSolid, fontWeight: '700' }}>
-                  Reopen
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </>
   )
 }
