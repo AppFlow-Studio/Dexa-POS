@@ -54,7 +54,7 @@ function getReasonCopy (
     case 'usb_disconnected':
       return {
         message: 'USB terminal not detected.',
-        subtitle: 'Re-plug the cable, then tap Retry.'
+        subtitle: 'Re-plug the cable — this will reconnect automatically.'
       }
     case 'terminal_unresponsive':
       return {

@@ -1,5 +1,6 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient';
 import { DejavooSpinAPI } from '@/lib/payments/dejavoo-spin-api';
+import { listDevices } from '@/modules/castles-usb';
 import {
   getSharedCastlesService,
   probeCastlesTerminal,
@@ -44,6 +45,16 @@ const RETRY_BACKOFF_MS = [0, 1_000, 3_000, 8_000];
 
 /** Number of consecutive failures before we start checking for DHCP drift. */
 const DHCP_DRIFT_CHECK_THRESHOLD = 3;
+
+/**
+ * USB Castles auto-reconnect cadence — matches TerminalDetachedModal so QA
+ * sees a single replug-recovery cadence story regardless of which surface
+ * caught the disconnect (pre-sale banner vs mid-sale modal).
+ */
+const USB_AUTO_RECONNECT_POLL_MS = 5_000;
+
+/** Castles USB vendor ID. Mirrors the constant in TerminalDetachedModal. */
+const CASTLES_VENDOR_ID = 0x0ca6;
 
 /**
  * Return true when `terminalIp` is NOT on the same /24 subnet as `deviceIp`.
@@ -225,6 +236,82 @@ export function useTerminalStatus(
     void checkTerminalStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId]); // Only re-run if terminal ID changes
+
+  // Keep the latest probe closure addressable from the long-lived auto-reconnect
+  // effect below without re-tearing the interval on every render.
+  const checkTerminalStatusRef = useRef(checkTerminalStatus);
+  checkTerminalStatusRef.current = checkTerminalStatus;
+  const isAutoReconnectingRef = useRef(false);
+
+  /**
+   * USB-only auto-reconnect. When the terminal is configured for USB Castles
+   * and the status is currently `offline`, poll `listDevices()` every 5s and
+   * silently re-probe as soon as the Castles VID reappears. This makes the
+   * banner self-clear on cable replug without the user pressing Retry —
+   * mirroring TerminalDetachedModal's behavior for the mid-sale case.
+   *
+   * Intentionally USB-only: TCP/WiFi keeps the manual Retry path so background
+   * polling never hammers a dead WiFi address (conflicts with bad-WiFi
+   * Option C's deadline-wrap philosophy).
+   */
+  useEffect(() => {
+    if (status !== 'offline') return;
+    if (paymentTerminal?.terminal_type !== 'castles') return;
+    if (paymentTerminal.connection_type !== 'usb') return;
+
+    let cancelled = false;
+
+    const attempt = async () => {
+      if (cancelled || isAutoReconnectingRef.current) return;
+      let foundCastles = false;
+      try {
+        const devices = await listDevices();
+        if (cancelled) return;
+        foundCastles = devices.some((d) => d.vendorId === CASTLES_VENDOR_ID);
+      } catch {
+        // listDevices unavailable (module not linked / transient). Keep polling.
+        return;
+      }
+      if (!foundCastles) return;
+
+      isAutoReconnectingRef.current = true;
+      try {
+        // Mirror the manual recheck path: drop any half-open singleton socket
+        // and clear the 10s probe cache so the re-probe starts clean.
+        try {
+          getSharedCastlesService().disconnect();
+        } catch (err) {
+          console.warn(
+            '[useTerminalStatus] auto-reconnect disconnect failed:',
+            err
+          );
+        }
+        lastCheckTimeRef.current = 0;
+        const online = await checkTerminalStatusRef.current();
+        if (online && !cancelled) {
+          // Reset the manual-press backoff state so a prior streak of failed
+          // Retry presses doesn't leave the DHCP-drift subtitle visible.
+          consecutiveFailuresRef.current = 0;
+          setConsecutiveFailures(0);
+          nextAllowedRetryAtRef.current = 0;
+        }
+      } finally {
+        isAutoReconnectingRef.current = false;
+      }
+    };
+
+    void attempt();
+    const timer = setInterval(() => void attempt(), USB_AUTO_RECONNECT_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [
+    status,
+    paymentTerminal?.id,
+    paymentTerminal?.terminal_type,
+    paymentTerminal?.connection_type,
+  ]);
 
   /**
    * Manual recheck: force-disconnect any half-open Castles singleton socket,
