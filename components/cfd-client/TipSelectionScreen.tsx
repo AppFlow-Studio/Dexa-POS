@@ -14,14 +14,12 @@ import {
 } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 
+
 interface Props {
   onTipSelected: (tipAmount: number, tipPercentage: number | null) => void
 }
 
-export function TipSelectionScreen ({ onTipSelected }: Props) {
-  // Field-level subscriptions so unrelated host pushes (e.g. cart-driven
-  // payload churn during the tip-adjusting window) don't re-render this
-  // screen and steal frames from the customer's tap.
+export function TipSelectionScreen({ onTipSelected }: Props) {
   const tipConfig = useCFDDisplayField('tipConfig')
   const externalTipAmount = useCFDDisplayField('tipAmount')
   const externalTipPercentage = useCFDDisplayField('tipPercentage')
@@ -34,17 +32,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
   const [showCustom, setShowCustom] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [hasMadeSelection, setHasMadeSelection] = useState(false)
-  // Optimistic-UI handoff state machine. The host's `service.tipAdjust()`
-  // (Castles RPC) takes 1–3s before the screen flips to "processing", so
-  // without this gate the customer sees no acknowledgement of their tap.
-  //
-  //   idle       → no overlay; presets are tappable
-  //   confirming → "Confirming your tip…" overlay; presets locked
-  //   failed     → "Tip failed, skipping…" overlay shown briefly when the
-  //                host doesn't take over the screen within 4s (network
-  //                error, terminal hang, RPC timeout). Auto-clears so the
-  //                operator can see the failure on the POS toast and the
-  //                customer isn't permanently locked.
+
   type ConfirmStatus = 'idle' | 'confirming' | 'failed'
   const [confirmStatus, setConfirmStatus] = useState<ConfirmStatus>('idle')
   const isConfirming = confirmStatus !== 'idle'
@@ -140,234 +128,240 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
     })
   }
 
-  const styles = useMemo(() => StyleSheet.create({
-    outer: {
-      flex: 1,
-      backgroundColor: colors.screen
-    },
-    body: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 24,
-      paddingVertical: 24,
-      gap: 20
-    },
-    titleSection: {
-      alignItems: 'center',
-      gap: 4
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: '800',
-      color: colors.heading
-    },
-    subtitle: {
-      fontSize: 13,
-      fontWeight: '400',
-      color: colors.label
-    },
-    presetGrid: {
-      flexDirection: 'row',
-      gap: 12,
-      width: '100%',
-      maxWidth: 680
-    },
-    presetCardWrapper: {
-      flex: 1
-    },
-    presetCard: {
-      width: '100%',
-      paddingVertical: 24,
-      paddingHorizontal: 12,
-      borderRadius: 14,
-      backgroundColor: colors.panel,
-      alignItems: 'center',
-      gap: 6
-    },
-    presetCardSelected: {
-      borderWidth: 2,
-      borderColor: colors.teal,
-      backgroundColor: `${colors.teal}15`
-    },
-    presetPct: {
-      fontSize: 26,
-      fontWeight: '800',
-      color: colors.heading
-    },
-    presetPctSelected: {
-      color: colors.heading
-    },
-    presetAmt: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.teal
-    },
-    presetAmtSelected: {
-      color: colors.teal
-    },
-    actionsSection: {
-      width: '100%',
-      maxWidth: 680,
-      gap: 14,
-      alignItems: 'center'
-    },
-    customBtn: {
-      width: '100%',
-      paddingVertical: 14,
-      borderRadius: 12,
-      borderWidth: 1.5,
-      borderColor: colors.teal,
-      backgroundColor: `${colors.teal}08`,
-      alignItems: 'center'
-    },
-    customBtnActive: {
-      backgroundColor: `${colors.teal}18`
-    },
-    customBtnText: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: colors.teal
-    },
-    noTipBtn: {
-      paddingVertical: 6,
-      paddingHorizontal: 12
-    },
-    noTipText: {
-      fontSize: 13,
-      color: colors.label,
-      fontWeight: '500'
-    },
-    // Modal
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.55)',
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    modalCard: {
-      width: 340,
-      backgroundColor: colors.panel,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 20,
-      gap: 12,
-      alignItems: 'center'
-    },
-    modalTitle: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: colors.heading
-    },
-    modalAmountBox: {
-      width: '100%',
-      paddingVertical: 14,
-      backgroundColor: colors.screen,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center'
-    },
-    modalAmountText: {
-      fontSize: 28,
-      fontWeight: '700',
-      color: colors.teal
-    },
-    numpad: {
-      width: '100%',
-      gap: 10
-    },
-    numpadRow: {
-      flexDirection: 'row',
-      gap: 8
-    },
-    numKey: {
-      flex: 1,
-      height: 48,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    numKeyAction: {
-      backgroundColor: colors.screen
-    },
-    numKeyText: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: colors.heading
-    },
-    confirmBtn: {
-      width: '100%',
-      paddingVertical: 15,
-      borderRadius: 14,
-      backgroundColor: colors.teal,
-      borderWidth: 1,
-      borderColor: colors.teal,
-      alignItems: 'center'
-    },
-    confirmBtnDisabled: {
-      backgroundColor: colors.screen,
-      borderColor: colors.border,
-      opacity: 0.6
-    },
-    confirmBtnText: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: colors.onSolid
-    },
-    confirmBtnTextDisabled: {
-      color: colors.label
-    },
-    cancelBtn: {
-      paddingVertical: 8
-    },
-    cancelBtnText: {
-      fontSize: 14,
-      color: colors.label,
-      fontWeight: '500'
-    },
-    confirmingOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.45)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 24
-    },
-    confirmingCard: {
-      width: '100%',
-      maxWidth: 360,
-      backgroundColor: colors.panel,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: 16,
-      paddingVertical: 28,
-      paddingHorizontal: 24,
-      alignItems: 'center',
-      gap: 14,
-      shadowColor: '#000',
-      shadowOpacity: 0.25,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 6
-    },
-    confirmingText: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: colors.heading,
-      letterSpacing: 0.2,
-      textAlign: 'center'
-    },
-    confirmingSubtext: {
-      fontSize: 13,
-      fontWeight: '500',
-      color: colors.label,
-      textAlign: 'center'
-    }
-  }), [themeMode])
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        outer: {
+          flex: 1,
+          backgroundColor: colors.screen
+        },
+        body: {
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 24,
+          paddingVertical: 24,
+          gap: 20
+        },
+        titleSection: {
+          alignItems: 'center',
+          gap: 4
+        },
+        title: {
+          fontSize: 24,
+          fontWeight: '800',
+          color: colors.heading
+        },
+        subtitle: {
+          fontSize: 13,
+          fontWeight: '400',
+          color: colors.label
+        },
+        presetGrid: {
+          flexDirection: 'row',
+          gap: 12,
+          width: '100%',
+          maxWidth: 680
+        },
+        presetCardWrapper: {
+          flex: 1
+        },
+        presetCard: {
+          width: '100%',
+          paddingVertical: 24,
+          paddingHorizontal: 12,
+          borderRadius: 14,
+          backgroundColor: colors.panel,
+          borderWidth: 2,
+          borderColor: 'transparent',
+          alignItems: 'center',
+          gap: 6
+        },
+        presetCardSelected: {
+          borderColor: colors.teal,
+          backgroundColor: colors.tealMuted
+        },
+        presetPct: {
+          fontSize: 26,
+          fontWeight: '800',
+          color: colors.heading
+        },
+        presetPctSelected: {
+          color: colors.heading
+        },
+        presetAmt: {
+          fontSize: 14,
+          fontWeight: '600',
+          color: colors.teal
+        },
+        presetAmtSelected: {
+          color: colors.teal
+        },
+        // Actions row: Custom Amount + No Tip side by side
+        actionsRow: {
+          flexDirection: 'row',
+          width: '100%',
+          maxWidth: 680,
+          gap: 12
+        },
+        actionBtn: {
+          flex: 1,
+          paddingVertical: 16,
+          borderRadius: 12,
+          borderWidth: 1.5,
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
+          alignItems: 'center',
+          justifyContent: 'center'
+        },
+        actionBtnActive: {
+          borderColor: colors.teal,
+          backgroundColor: colors.tealMuted
+        },
+        actionBtnText: {
+          fontSize: 14,
+          fontWeight: '600',
+          color: colors.heading
+        },
+        actionBtnTextActive: {
+          color: colors.teal
+        },
+        // Modal
+        modalOverlay: {
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.55)',
+          alignItems: 'center',
+          justifyContent: 'center'
+        },
+        modalCard: {
+          width: 340,
+          backgroundColor: colors.panel,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: colors.border,
+          padding: 20,
+          gap: 12,
+          alignItems: 'center'
+        },
+        modalTitle: {
+          fontSize: 18,
+          fontWeight: '700',
+          color: colors.heading
+        },
+        modalAmountBox: {
+          width: '100%',
+          paddingVertical: 14,
+          backgroundColor: colors.screen,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: 'center'
+        },
+        modalAmountText: {
+          fontSize: 28,
+          fontWeight: '700',
+          color: colors.teal
+        },
+        numpad: {
+          width: '100%',
+          gap: 10
+        },
+        numpadRow: {
+          flexDirection: 'row',
+          gap: 8
+        },
+        numKey: {
+          flex: 1,
+          height: 48,
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 10,
+          alignItems: 'center',
+          justifyContent: 'center'
+        },
+        numKeyAction: {
+          backgroundColor: colors.screen
+        },
+        numKeyText: {
+          fontSize: 18,
+          fontWeight: '700',
+          color: colors.heading
+        },
+        confirmBtn: {
+          width: '100%',
+          paddingVertical: 15,
+          borderRadius: 14,
+          backgroundColor: colors.teal,
+          borderWidth: 1,
+          borderColor: colors.teal,
+          alignItems: 'center'
+        },
+        confirmBtnDisabled: {
+          backgroundColor: colors.screen,
+          borderColor: colors.border,
+          opacity: 0.6
+        },
+        confirmBtnText: {
+          fontSize: 15,
+          fontWeight: '700',
+          color: colors.onSolid
+        },
+        confirmBtnTextDisabled: {
+          color: colors.label
+        },
+        cancelBtn: {
+          paddingVertical: 8
+        },
+        cancelBtnText: {
+          fontSize: 14,
+          color: colors.label,
+          fontWeight: '500'
+        },
+        confirmingOverlay: {
+          ...StyleSheet.absoluteFillObject,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 24
+        },
+        confirmingCard: {
+          width: '100%',
+          maxWidth: 360,
+          backgroundColor: colors.panel,
+          borderColor: colors.border,
+          borderWidth: 1,
+          borderRadius: 16,
+          paddingVertical: 28,
+          paddingHorizontal: 24,
+          alignItems: 'center',
+          gap: 14,
+          shadowColor: '#000',
+          shadowOpacity: 0.25,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6
+        },
+        confirmingText: {
+          fontSize: 18,
+          fontWeight: '700',
+          color: colors.heading,
+          letterSpacing: 0.2,
+          textAlign: 'center'
+        },
+        confirmingSubtext: {
+          fontSize: 13,
+          fontWeight: '500',
+          color: colors.label,
+          textAlign: 'center'
+        }
+      }),
+    [themeMode]
+  )
+
+  // Track if "No Tip" is the active selection (no preset, no custom, and user tapped No Tip)
+  const isNoTipSelected =
+    !showCustom && selectedPercentage === null && !hasMadeSelection
 
   return (
     <View style={styles.outer}>
@@ -382,6 +376,7 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
           </Text>
         </Animated.View>
 
+        {/* Preset tip cards */}
         <View style={styles.presetGrid}>
           {presets.map((pct, index) => {
             const tipAmt = Math.round(subtotal * (pct / 100))
@@ -423,9 +418,10 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
           })}
         </View>
 
+        {/* Custom Amount + No Tip row */}
         <Animated.View
           entering={iosOnly(FadeInDown.duration(300).delay(300))}
-          style={styles.actionsSection}
+          style={styles.actionsRow}
         >
           {tipConfig?.allowCustom !== false && (
             <Pressable
@@ -435,34 +431,47 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
                 setHasMadeSelection(true)
                 setShowModal(true)
               }}
-              style={[styles.customBtn, showCustom && styles.customBtnActive]}
+              style={[styles.actionBtn, showCustom && styles.actionBtnActive]}
             >
-              <Text style={styles.customBtnText}>
+              <Text
+                style={[
+                  styles.actionBtnText,
+                  showCustom && styles.actionBtnTextActive
+                ]}
+              >
                 {showCustom && customAmount
-                  ? `Custom Tip: $${customAmount}`
+                  ? `Custom: $${customAmount}`
                   : 'Custom Amount'}
               </Text>
             </Pressable>
           )}
 
-          <Pressable onPress={handleNoTip} style={styles.noTipBtn}>
-            <Text style={styles.noTipText}>No Tip</Text>
+          <Pressable
+            onPress={handleNoTip}
+            style={[styles.actionBtn, isNoTipSelected && styles.actionBtnActive]}
+          >
+            <Text
+              style={[
+                styles.actionBtnText,
+                isNoTipSelected && styles.actionBtnTextActive
+              ]}
+            >
+              No Tip
+            </Text>
           </Pressable>
         </Animated.View>
       </View>
 
-      {/* Optimistic-UI handoff while host runs the Castles tip-adjust RPC.
-          On hang/error (no host takeover within 4s) the overlay flips to a
-          "Tip failed, skipping…" message before clearing. */}
+      {/* Optimistic-UI handoff overlay */}
       {isConfirming && (
-        <View pointerEvents='auto' style={styles.confirmingOverlay}>
+        <View pointerEvents="auto" style={styles.confirmingOverlay}>
           <View style={styles.confirmingCard}>
             {confirmStatus === 'confirming' ? (
               <>
-                <ActivityIndicator size='large' color={colors.teal} />
+                <ActivityIndicator size="large" color={colors.teal} />
                 <Text style={styles.confirmingText}>Confirming your tip…</Text>
                 <Text style={styles.confirmingSubtext}>
-                  Please don't tap your card.
+                  Please don&apos;t tap your card.
                 </Text>
               </>
             ) : (
@@ -478,19 +487,17 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
       )}
 
       {/* Custom Amount Modal */}
-      <Modal visible={showModal} transparent animationType='fade'>
+      <Modal visible={showModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Custom Tip</Text>
 
-            {/* Amount display */}
             <View style={styles.modalAmountBox}>
               <Text style={styles.modalAmountText}>
                 {customAmount ? `$${customAmount}` : '$0'}
               </Text>
             </View>
 
-            {/* Numpad */}
             <View style={styles.numpad}>
               {[
                 ['1', '2', '3'],
@@ -520,7 +527,6 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
               ))}
             </View>
 
-            {/* Confirm */}
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={handleConfirmTip}
@@ -542,7 +548,6 @@ export function TipSelectionScreen ({ onTipSelected }: Props) {
               </Text>
             </TouchableOpacity>
 
-            {/* Cancel */}
             <TouchableOpacity
               onPress={() => setShowModal(false)}
               style={styles.cancelBtn}
