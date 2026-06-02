@@ -517,7 +517,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         bottomInset={0}
         enableDynamicSizing={false}
         enablePanDownToClose={true}
-        enableContentPanningGesture
+        enableContentPanningGesture={false}
         onChange={handleSheetChange}
         {...bottomSheetTheme}
         style={{ zIndex: 10000, elevation: 10000 }}
