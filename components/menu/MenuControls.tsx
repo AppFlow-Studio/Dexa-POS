@@ -716,20 +716,22 @@ const MenuControls: React.FC<MenuControlsProps> = ({
           )}
 
           {/* Right fade overlay */}
-          <LinearGradient
-            colors={[colors.card + '00', colors.card]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: 40,
-              zIndex: 4,
-              pointerEvents: 'none'
-            }}
-          />
+          {canScrollRight && (
+            <LinearGradient
+              colors={[colors.card + '00', colors.card]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 40,
+                zIndex: 4,
+                pointerEvents: 'none'
+              }}
+            />
+          )}
 
           {canScrollLeft && (
             <TouchableOpacity
