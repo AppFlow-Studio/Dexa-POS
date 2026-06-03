@@ -226,16 +226,15 @@ const CustomDatePillContent: React.FC<{
 
   return (
     <Popover onOpenChange={handleOpenChange} style={POPOVER_ROOT_STYLE}>
-      <PopoverTrigger ref={triggerRef} asChild>
-        <Pressable
-          className="flex-row items-center rounded-md gap-x-1"
-          style={triggerStyle}
-        >
-          <CalendarIcon size={10} color={triggerIconColor} />
-          <Text className="text-xs font-semibold" style={triggerTextStyle}>
-            {labelText}
-          </Text>
-        </Pressable>
+      <PopoverTrigger
+        ref={triggerRef}
+        className="flex-row items-center rounded-md gap-x-1"
+        style={triggerStyle}
+      >
+        <CalendarIcon size={10} color={triggerIconColor} />
+        <Text className="text-xs font-semibold" style={triggerTextStyle}>
+          {labelText}
+        </Text>
       </PopoverTrigger>
       <PopoverContent
         align="end"
