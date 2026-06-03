@@ -61,13 +61,13 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.solidLine(w);
 
   // ── Order Info ──
-  // Combined order type + table on one line
+  // Order type and table on separate rows
   if (cfg?.showOrderType !== false) {
-    const typeLine = data.tableName
-      ? `${data.orderType} - ${data.tableName}`
-      : data.orderType;
     b.bold(true);
-    b.textLine(typeLine);
+    b.textLine(data.orderType);
+    if (data.tableName) {
+      b.textLine(`Table: ${data.tableName}`);
+    }
     b.bold(false);
   }
 

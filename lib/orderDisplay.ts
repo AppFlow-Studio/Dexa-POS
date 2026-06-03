@@ -47,3 +47,16 @@ export function resolveTableDisplayName (
 
   return null
 }
+
+// Snapshots the current human-readable table label from the floor-plan store.
+// Use at the moment a table is assigned to an order so the label survives
+// sync, reprint, and offline. Returns undefined when the floor plan isn't
+// loaded, the id is unknown, or the stored name is a raw UUID.
+export function snapshotTableName (
+  tableId: string | null | undefined
+): string | undefined {
+  if (!tableId) return undefined
+  const name = useFloorPlanStore.getState().tablesById[tableId]?.name?.trim()
+  if (!name || isUuid(name)) return undefined
+  return name
+}
