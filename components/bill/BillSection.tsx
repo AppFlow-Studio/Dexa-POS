@@ -2027,17 +2027,35 @@ const BillSectionContent = ({
                       const isLinkedToThisOrder = isSessionLinkedToOrder(tableSession);
                       const isSelected = selectedTable?.id === table.id || (!selectedTable && isCurrentlyAssigned);
                       const isAvailable = liveStatusKey === "available";
+                      const isOfflineTransferLocked =
+                        activeOrderType === "dine_in" &&
+                        !!linkedTableId &&
+                        !isOnline &&
+                        !isCurrentlyAssigned &&
+                        isAvailable;
                       const isSelectable =
-                        (activeOrderType === "dine_in" && isAvailable) ||
+                        ((activeOrderType === "dine_in" && isAvailable) ||
                         isAvailable ||
                         isCurrentlyAssigned ||
-                        isLinkedToThisOrder;
+                        isLinkedToThisOrder) &&
+                        !isOfflineTransferLocked;
                       const cap = table.capacity;
                       return (
                         <TouchableOpacity
                           key={table.id}
-                          onPress={() => handleSelectTable(table)}
-                          disabled={!isSelectable}
+                          onPress={() => {
+                            if (isOfflineTransferLocked) {
+                              show({
+                                title: "Offline",
+                                message:
+                                  "Table transfer requires a live connection to validate availability.",
+                                type: "warning",
+                              });
+                              return;
+                            }
+                            handleSelectTable(table);
+                          }}
+                          disabled={!isSelectable && !isOfflineTransferLocked}
                           activeOpacity={isSelectable ? 0.7 : 1}
                           style={{
                             width: "45%",

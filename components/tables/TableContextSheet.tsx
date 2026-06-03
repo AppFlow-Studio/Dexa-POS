@@ -1,4 +1,5 @@
 import { useSessionDuration } from '@/hooks/useSessionDuration'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getEffectiveItemStatus } from '@/lib/kitchenStatusUtils'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { bottomSheetTheme, colors, TABLE_STATUS_COLORS } from '@/lib/theme'
@@ -62,6 +63,7 @@ type ActionItem = {
   onPress: () => void
   variant?: 'primary' | 'secondary' | 'danger'
   disabled?: boolean
+  disabledMessage?: string
   dismissOnPress?: boolean
 }
 
@@ -251,6 +253,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const floorTables = useFloorPlanStore(s => s.tables)
   const sessionsByTableId = useTableSessionStore(s => s.sessions)
   const showToast = useToastStore(s => s.show)
+  const { isOnline } = useNetworkStatus()
   const [isTransferPickerOpen, setTransferPickerOpen] = useState(false)
   const [isTransferPickerLoading, setTransferPickerLoading] = useState(false)
   const [transferSourceTable, setTransferSourceTable] =
@@ -322,6 +325,15 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
 
   const handleOpenTransferPicker = useCallback(() => {
     if (!table || !liveSession?.id) return
+    if (!isOnline) {
+      showToast({
+        title: 'Offline',
+        message:
+          'Table transfer requires a live connection to validate availability.',
+        type: 'warning'
+      })
+      return
+    }
 
     setTransferSourceTable(table)
     setTransferSourceSessionId(liveSession.id)
@@ -335,7 +347,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         })
       })
       .finally(() => setTransferPickerLoading(false))
-  }, [liveSession?.id, refreshTableSessions, table])
+  }, [isOnline, liveSession?.id, refreshTableSessions, showToast, table])
 
   const handleTransferTable = useCallback(
     async (targetTable: FloorPlanObject) => {
@@ -458,7 +470,10 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
       baseActions.push({
         label: 'Transfer Table',
         icon: <ArrowLeftRight size={16} color={colors.label} />,
-        onPress: handleOpenTransferPicker
+        onPress: handleOpenTransferPicker,
+        disabled: !isOnline,
+        disabledMessage:
+          'Table transfer requires a live connection to validate availability.'
       })
     }
 
@@ -528,7 +543,8 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     upcomingReservation,
     handleMarkArrived,
     handleCancelReservation,
-    handleOpenTransferPicker
+    handleOpenTransferPicker,
+    isOnline
   ])
 
   const partySize = liveSession?.party_size ?? table?.session?.party_size
@@ -1008,7 +1024,16 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
               <TouchableOpacity
                 key={idx}
                 onPress={() => {
-                  if (action.disabled) return
+                  if (action.disabled) {
+                    if (action.disabledMessage) {
+                      showToast({
+                        title: 'Offline',
+                        message: action.disabledMessage,
+                        type: 'warning'
+                      })
+                    }
+                    return
+                  }
                   action.onPress()
                   if (action.dismissOnPress !== false) {
                     sheetRef.current?.dismiss()
