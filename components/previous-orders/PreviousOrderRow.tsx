@@ -16,6 +16,7 @@ import {
     RotateCcw,
     ShoppingBag,
     Truck,
+    User,
     Utensils,
     XCircle,
 } from "lucide-react-native";
@@ -237,6 +238,22 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             <Text style={{ fontSize: 11, color: colors.muted }}>
               {orderTime}
             </Text>
+            {order.customer_name ? (
+              <>
+                <Text style={{ fontSize: 11, color: colors.muted }}>·</Text>
+                <User size={11} color={colors.label} />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "600",
+                    color: colors.heading,
+                  }}
+                  numberOfLines={1}
+                >
+                  {order.customer_name}
+                </Text>
+              </>
+            ) : null}
             <DeliveryPlatformBadge
               deliveryPlatform={order.delivery_platform}
               orderSource={order.order_source}
@@ -271,7 +288,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                   style={{ fontSize: 11, color: colors.label }}
                   numberOfLines={1}
                 >
-                  {order.server_name}
+                  Server: {order.server_name}
                 </Text>
               </>
             ) : null}
@@ -280,26 +297,28 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
 
         {/* Status badges */}
         <View style={{ alignItems: "flex-end", gap: 4 }}>
-          <View
-            style={{
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              borderRadius: 20,
-              backgroundColor: statusConfig.color + statusConfig.bgOpacity,
-              borderWidth: 1,
-              borderColor: statusConfig.color + "40",
-            }}
-          >
-            <Text
+          {!isVoided && (
+            <View
               style={{
-                fontSize: 11,
-                fontWeight: "600",
-                color: statusConfig.color,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 20,
+                backgroundColor: statusConfig.color + statusConfig.bgOpacity,
+                borderWidth: 1,
+                borderColor: statusConfig.color + "40",
               }}
             >
-              {status}
-            </Text>
-          </View>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "600",
+                  color: statusConfig.color,
+                }}
+              >
+                {status}
+              </Text>
+            </View>
+          )}
           {refundBadge && (
             <View
               style={{
@@ -587,6 +606,8 @@ const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
     prev.order.notes === next.order.notes &&
     prev.order.check_status === next.order.check_status &&
     prev.order.payments === next.order.payments &&
+    prev.order.customer_name === next.order.customer_name &&
+    prev.order.server_name === next.order.server_name &&
     prev.isExpanded === next.isExpanded &&
     prev.onContinue === next.onContinue
   );

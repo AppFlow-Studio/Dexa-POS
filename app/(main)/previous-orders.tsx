@@ -274,7 +274,11 @@ const PreviousOrdersScreen = () => {
   const [sortBy, setSortBy] = useState<'date' | 'total' | 'status'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
-  const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync()
+  const {
+    refresh: handleRefresh,
+    isRefreshing,
+    isInitialLoading
+  } = usePreviousOrdersListSync()
 
   // Date window
   const dateWindowLabel = usePreviousOrdersStore(
@@ -336,7 +340,7 @@ const PreviousOrdersScreen = () => {
       if (!o) continue
       if (o.station_id !== currentStationId) continue // own station only
       if (finalStatuses.has(o.order_status ?? '')) continue
-      if (o.order_status === 'draft' && o.items.length === 0) continue
+      if (o.order_status === 'draft') continue
       liveIds.add(id)
     }
     // Build lookup from DB-fetched previous orders to patch stale active order statuses.
@@ -793,22 +797,30 @@ const PreviousOrdersScreen = () => {
             keyExtractor={item => item.id}
             renderItem={renderItem}
             ListEmptyComponent={
-              <View
-                style={{
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingVertical: 64
-                }}
-              >
-                <Text style={{ fontSize: 20, color: colors.muted }}>
-                  No orders found
-                </Text>
-                <Text
-                  style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}
+              isInitialLoading ? (
+                <View style={{ paddingTop: 4 }}>
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonRow key={i} />
+                  ))}
+                </View>
+              ) : (
+                <View
+                  style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingVertical: 64
+                  }}
                 >
-                  Try adjusting your filters or search
-                </Text>
-              </View>
+                  <Text style={{ fontSize: 20, color: colors.muted }}>
+                    No orders found
+                  </Text>
+                  <Text
+                    style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}
+                  >
+                    Try adjusting your filters or search
+                  </Text>
+                </View>
+              )
             }
             refreshControl={
               <RefreshControl

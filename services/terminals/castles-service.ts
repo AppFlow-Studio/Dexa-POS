@@ -646,6 +646,26 @@ export class CastlesService {
   // SALE
   // ============================================================
 
+  /**
+   * Belt-and-suspenders guard against a stale frame leaking past
+   * `_sendAndReceive`'s correlation skip (e.g. a response with no `txnType`
+   * or `txnPosTxnId` field at all). Returns an error string on mismatch,
+   * `undefined` on a clean response.
+   */
+  private _checkResponseCorrelation(
+    raw: { txnType?: string; txnPosTxnId?: string },
+    expectedTxnType: string,
+    expectedRefId: string,
+  ): string | undefined {
+    if (raw.txnType && raw.txnType !== expectedTxnType) {
+      return `Response correlation mismatch: expected txnType "${expectedTxnType}", got "${raw.txnType}"`;
+    }
+    if (raw.txnPosTxnId && raw.txnPosTxnId !== expectedRefId) {
+      return `Response correlation mismatch: expected refId "${expectedRefId}", got "${raw.txnPosTxnId}"`;
+    }
+    return undefined;
+  }
+
   async processSale(params: {
     amount: number;
     tipAmount?: number;
@@ -668,6 +688,17 @@ export class CastlesService {
             request as unknown as Record<string, unknown>,
             timeout,
           );
+
+          const correlationErr = this._checkResponseCorrelation(
+            raw,
+            "sale",
+            params.referenceId,
+          );
+          if (correlationErr) {
+            console.error("[CastlesService] processSale:", correlationErr);
+            await this._forceReturn2Idle();
+            return { success: false, error: correlationErr };
+          }
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
@@ -743,6 +774,17 @@ export class CastlesService {
             txnPosTxnId: raw.txnPosTxnId,
             txnReturnCode: raw.txnReturnCode,
           });
+
+          const correlationErr = this._checkResponseCorrelation(
+            raw,
+            "tipAdjustment",
+            params.referenceId,
+          );
+          if (correlationErr) {
+            console.error("[CastlesService] tipAdjust:", correlationErr);
+            await this._forceReturn2Idle();
+            return { success: false, error: correlationErr };
+          }
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
@@ -821,6 +863,17 @@ export class CastlesService {
             txnReturnCode: raw.txnReturnCode,
           });
 
+          const correlationErr = this._checkResponseCorrelation(
+            raw,
+            "void",
+            params.referenceId,
+          );
+          if (correlationErr) {
+            console.error("[CastlesService] processVoid:", correlationErr);
+            await this._forceReturn2Idle();
+            return { success: false, error: correlationErr };
+          }
+
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
             ? undefined
@@ -890,6 +943,17 @@ export class CastlesService {
             timeout,
           );
 
+          const correlationErr = this._checkResponseCorrelation(
+            raw,
+            "refund",
+            params.referenceId,
+          );
+          if (correlationErr) {
+            console.error("[CastlesService] processRefund:", correlationErr);
+            await this._forceReturn2Idle();
+            return { success: false, error: correlationErr };
+          }
+
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
             ? undefined
@@ -954,6 +1018,22 @@ export class CastlesService {
           request as unknown as Record<string, unknown>,
           CASTLES_SETTLEMENT_TIMEOUT_MS,
         );
+
+        const correlationErr = this._checkResponseCorrelation(
+          raw,
+          "settlement",
+          params.referenceId,
+        );
+        if (correlationErr) {
+          console.error("[CastlesService] processSettlement:", correlationErr);
+          await this._forceReturn2Idle();
+          return {
+            success: false,
+            partialSuccess: false,
+            hosts: [],
+            error: correlationErr,
+          };
+        }
 
         // Parse per-host results
         const hosts = (raw.txnSettleInfo ?? []).map(parseSettlementHostResult);
@@ -1544,6 +1624,13 @@ export class CastlesService {
    * the unframed TCP stream. Handles partial JSON, multiple objects
    * per chunk, and interleaved status notifications.
    *
+   * **Response correlation:** mismatched `txnType` or `txnPosTxnId` frames
+   * are skipped, not resolved. Without this, a stale frame left in the TCP
+   * stream from a prior `return2Idle` / `getData` (both use `txnPosTxnId:
+   * "000000"`, both return `txnReturnCode: "00000000"` on success) could
+   * be parsed as the answer to the current sale and silently mark a
+   * cancelled transaction as captured. See incident ORD-20260603-S1-0013.
+   *
    * Write is awaited — rejects immediately if write fails.
    */
   private _sendAndReceive<T>(
@@ -1557,6 +1644,13 @@ export class CastlesService {
       }
 
       const transport = this.transport;
+
+      const expectedTxnType =
+        typeof request.txnType === "string" ? request.txnType : undefined;
+      const expectedRefId =
+        typeof request.txnPosTxnId === "string"
+          ? request.txnPosTxnId
+          : undefined;
 
       // ── Stream parser state ──
       let buffer = "";
@@ -1620,6 +1714,36 @@ export class CastlesService {
           } catch (cbErr) {
             console.warn("[CastlesService] Status callback error:", cbErr);
           }
+          return;
+        }
+
+        const actualTxnType =
+          typeof parsed.txnType === "string" ? parsed.txnType : undefined;
+        const actualRefId =
+          typeof parsed.txnPosTxnId === "string"
+            ? parsed.txnPosTxnId
+            : undefined;
+
+        const txnTypeMismatch =
+          expectedTxnType !== undefined &&
+          actualTxnType !== undefined &&
+          actualTxnType !== expectedTxnType;
+        const refIdMismatch =
+          expectedRefId !== undefined &&
+          actualRefId !== undefined &&
+          actualRefId !== expectedRefId;
+
+        if (txnTypeMismatch || refIdMismatch) {
+          console.warn(
+            "[CastlesService][CORRELATION-MISMATCH] Discarding stale frame:",
+            {
+              expectedTxnType,
+              expectedRefId,
+              actualTxnType,
+              actualRefId,
+              actualReturnCode: parsed.txnReturnCode,
+            },
+          );
           return;
         }
 
