@@ -455,6 +455,7 @@ const BillSectionContent = ({
   const sections = useFloorPlanStore((s) => s.sections);
   const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
   const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
+  const refreshTableSessions = useFloorPlanStore((s) => s.refreshTableSessions);
   const liveSessions = useTableSessionStore((s) => s.sessions);
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
@@ -895,6 +896,15 @@ const BillSectionContent = ({
         return true;
       }
 
+      try {
+        await refreshTableSessions();
+      } catch (error) {
+        console.error("[BillSection] Failed to refresh table sessions:", {
+          error,
+          targetTableId: table.id,
+        });
+      }
+
       const sessionStore = useTableSessionStore.getState();
       const destinationSession = sessionStore.sessions[table.id];
       const destinationStatus =
@@ -931,15 +941,63 @@ const BillSectionContent = ({
         return false;
       }
 
-      // Table transfer is temporarily disabled.
-      // If the order already has a linked session on a different table, block the move.
       if (activeLinkedSourceEntries.length > 0) {
-        show({
-          title: "Cannot Switch Table",
-          message: "Close the current table session before moving to a different table.",
-          type: "error",
-        });
-        return false;
+        if (!isOnline) {
+          show({
+            title: "Offline",
+            message: "Table transfer requires connection.",
+            type: "warning",
+          });
+          return false;
+        }
+
+        const [, sourceSession] = activeLinkedSourceEntries[0];
+        try {
+          console.log("[BillSection][TableSelect] Transfer table session", {
+            activeOrderId,
+            activeDbOrderId: activeOrder?.db_order_id ?? null,
+            sessionId: sourceSession.id,
+            targetTableId: table.id,
+          });
+
+          if (token?.cancelled) return false;
+
+          await useTableSessionStore
+            .getState()
+            .transferSession(sourceSession.id, [table.id]);
+
+          if (token?.cancelled) return false;
+
+          assignOrderToTable(activeOrderId, table.id);
+          show({
+            title: "Table Transferred",
+            message: `Order moved to ${table.name}.`,
+            type: "success",
+          });
+          return true;
+        } catch (error) {
+          console.error("[BillSection] Failed to transfer table session:", {
+            error,
+            activeOrderId,
+            activeDbOrderId: activeOrder?.db_order_id ?? null,
+            sessionId: sourceSession.id,
+            targetTableId: table.id,
+          });
+          show({
+            title: "Transfer Failed",
+            message:
+              error instanceof Error
+                ? error.message
+                : typeof error === "object" &&
+                    error !== null &&
+                    "message" in error &&
+                    typeof error.message === "string"
+                  ? error.message
+                  : "Could not move the order to that table.",
+            type: "error",
+          });
+          return false;
+        }
       }
 
       assignOrderToTable(activeOrderId, table.id);
@@ -1042,6 +1100,7 @@ const BillSectionContent = ({
       getTableStatusLabel,
       isOnline,
       isSessionLinkedToOrder,
+      refreshTableSessions,
       selectedStation?.id,
       selectorPartySize,
       show,
@@ -1054,9 +1113,14 @@ const BillSectionContent = ({
         table.id === activeOrderServiceLocation ||
         table.name === activeOrderServiceLocation;
       const isEmpty = cart.length === 0;
+      const canTryDineInTableTransfer = activeOrderType === "dine_in";
 
       // Switching tables is blocked once items have been sent to the kitchen
-      if (!isCurrentlyAssigned && hasNonDraftItems) {
+      if (
+        !isCurrentlyAssigned &&
+        hasNonDraftItems &&
+        !canTryDineInTableTransfer
+      ) {
         show({
           title: "Cannot Switch Table",
           message: "Items have already been sent to the kitchen. Void the order to move to a different table.",
@@ -1100,6 +1164,7 @@ const BillSectionContent = ({
     [
       activeOrderId,
       activeOrderServiceLocation,
+      activeOrderType,
       cart.length,
       clearSelectedTable,
       closeTableSelector,
@@ -1749,7 +1814,9 @@ const BillSectionContent = ({
               : "Select Table"
           }
           tableStatus={liveTableStatus}
-          onOpenTableSelector={displayedTable ? undefined : handleOpenTableSelector}
+          onOpenTableSelector={
+            activeOrderType === "dine_in" ? handleOpenTableSelector : undefined
+          }
           onViewTable={
             displayedTable
               ? () => router.push(`/tables/${displayedTable.id}` as any)
@@ -1960,13 +2027,17 @@ const BillSectionContent = ({
                       const isLinkedToThisOrder = isSessionLinkedToOrder(tableSession);
                       const isSelected = selectedTable?.id === table.id || (!selectedTable && isCurrentlyAssigned);
                       const isAvailable = liveStatusKey === "available";
-                      const isSelectable = (isAvailable || isCurrentlyAssigned || isLinkedToThisOrder)
-                        && (!hasNonDraftItems || isCurrentlyAssigned);
+                      const isSelectable =
+                        (activeOrderType === "dine_in" && isAvailable) ||
+                        isAvailable ||
+                        isCurrentlyAssigned ||
+                        isLinkedToThisOrder;
                       const cap = table.capacity;
                       return (
                         <TouchableOpacity
                           key={table.id}
                           onPress={() => handleSelectTable(table)}
+                          disabled={!isSelectable}
                           activeOpacity={isSelectable ? 0.7 : 1}
                           style={{
                             width: "45%",
