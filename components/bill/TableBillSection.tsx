@@ -68,7 +68,6 @@ const DenseBillItemRow = React.memo(
     orderId,
     itemId,
     isSent,
-    hasUnsentItems,
     indentLeft,
     enableCoursing,
     orderHasPayments,
@@ -77,7 +76,6 @@ const DenseBillItemRow = React.memo(
     orderId: string
     itemId: string
     isSent: boolean
-    hasUnsentItems: boolean
     indentLeft: number
     enableCoursing: boolean
     orderHasPayments: boolean
@@ -234,6 +232,7 @@ const CourseSubHeader = React.memo(
     course,
     itemCount,
     isSent,
+    hasUnsentItems,
     isCurrentCourse,
     expanded,
     status,
@@ -246,6 +245,7 @@ const CourseSubHeader = React.memo(
     course: number
     itemCount: number
     isSent: boolean
+    hasUnsentItems: boolean
     isCurrentCourse: boolean
     expanded: boolean
     status: AggregateKitchenStatus
@@ -367,6 +367,7 @@ type SeatListRow =
       course: number
       itemCount: number
       isSent: boolean
+      hasUnsentItems: boolean
       isCurrentCourse: boolean
       expanded: boolean
       status: AggregateKitchenStatus
@@ -376,7 +377,6 @@ type SeatListRow =
       type: 'item'
       itemId: string
       isSent: boolean
-      hasUnsentItems: boolean
       indentLeft: number
       seatKey?: string | number
       courseKey?: string
@@ -1048,6 +1048,7 @@ const TableBillSection = ({
   onPressMore,
   onPressTotal,
   onPressCloseCheck,
+  onPressReopenCheck,
   onPressClearTable,
   totalDisplayAmount,
   pricingSheetRef,
@@ -1084,6 +1085,7 @@ const TableBillSection = ({
   onPressMore: () => void
   onPressTotal: () => void
   onPressCloseCheck: () => void
+  onPressReopenCheck: () => void
   onPressClearTable: () => void
   totalDisplayAmount: number
   pricingSheetRef: React.RefObject<BottomSheetMethods>
@@ -1298,6 +1300,7 @@ const TableBillSection = ({
           onPressMore={onPressMore}
           onPressTotal={onPressTotal}
           onPressCloseCheck={onPressCloseCheck}
+          onPressReopenCheck={onPressReopenCheck}
           onPressClearTable={onPressClearTable}
           totalDisplayAmount={totalDisplayAmount}
           onPressDiscount={handleOpenDiscountSheet}
@@ -1372,6 +1375,7 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prev.onPressTotal !== next.onPressTotal) return false
   if (prev.onPressClearTable !== next.onPressClearTable) return false
   if (prev.onPressCloseCheck !== next.onPressCloseCheck) return false
+  if (prev.onPressReopenCheck !== next.onPressReopenCheck) return false
   if (prev.onDoubleTapCourse !== next.onDoubleTapCourse) return false
   if (prev.onOpenServerSheet !== next.onOpenServerSheet) return false
   if (prev.onPressSendAllToKitchen !== next.onPressSendAllToKitchen)

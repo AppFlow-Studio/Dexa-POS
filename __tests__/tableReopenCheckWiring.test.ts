@@ -117,4 +117,23 @@ describe('table ordering reopen-check wiring', () => {
       '!isOutstandingLocalEditAhead('
     )
   })
+
+  it('resolves bill item rows through the order id index', () => {
+    expect(orderSelectorsSrc).toContain(
+      's.getOrder(orderId)?.items.find((item) => item.id === itemId)'
+    )
+    expect(tableBillSectionSrc).toContain(
+      '<DenseBillItemRow'
+    )
+  })
+
+  it('disables table menu taps when a closed check cannot be reopened', () => {
+    expect(tableOrderViewSrc).toContain('isClosedCheckMenuDisabled')
+    expect(tableOrderViewSrc).toContain(
+      "pointerEvents={isMenuDisabled ? 'none' : 'auto'}"
+    )
+    expect(tableOrderViewSrc).toContain(
+      'isMenuDisabled={isClosedCheckMenuDisabled}'
+    )
+  })
 })

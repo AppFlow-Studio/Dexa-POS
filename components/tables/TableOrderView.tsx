@@ -64,13 +64,15 @@ const TableOrderMenuPanel = React.memo(
     enableCoursing,
     isCurrentCourseSent,
     onStartNewCourse,
-    onOrderClosedCheck
+    onOrderClosedCheck,
+    isMenuDisabled
   }: {
     renderStage: number
     enableCoursing: boolean
     isCurrentCourseSent: boolean
     onStartNewCourse: () => void
     onOrderClosedCheck: () => boolean
+    isMenuDisabled: boolean
   }) {
     return (
     <View
@@ -110,10 +112,15 @@ const TableOrderMenuPanel = React.memo(
             </TouchableOpacity>
           </View>
         ) : (
-          <MenuSection
-            onOrderClosedCheck={onOrderClosedCheck}
-            isTableOrder={true}
-          />
+          <View
+            pointerEvents={isMenuDisabled ? 'none' : 'auto'}
+            style={{ flex: 1, opacity: isMenuDisabled ? 0.45 : 1 }}
+          >
+            <MenuSection
+              onOrderClosedCheck={onOrderClosedCheck}
+              isTableOrder={true}
+            />
+          </View>
         )
       ) : (
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -180,7 +187,6 @@ const TableOrderView = React.forwardRef<
     | { type: 'void_confirm' }
     | { type: 'order_closed_warning' }
     | { type: 'course_resend'; course: number }
-    | { type: 'reopen_modal' }
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>({
     type: 'none'
   })
@@ -247,6 +253,16 @@ const TableOrderView = React.forwardRef<
   const storeActiveOrderTotal = totals?.total ?? 0
 
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0
+  const isClosedTerminal =
+    activeOrder?.order_status === 'void' ||
+    activeOrder?.order_status === 'cancelled' ||
+    activeOrder?.order_status === 'refunded'
+  const canReopenClosedCheck =
+    activeOrder?.check_status === 'Closed' &&
+    !isClosedTerminal &&
+    (activeOrder?.reopen_count ?? 0) < 1
+  const isClosedCheckMenuDisabled =
+    activeOrder?.check_status === 'Closed' && !canReopenClosedCheck
   // Only derive displayBalanceDue when totals are available; otherwise keep previous value
   // to prevent transient null → 0 from making the UI think the bill is $0 / fully paid.
   const displayBalanceDueRaw = hasPayments
@@ -640,6 +656,10 @@ const TableOrderView = React.forwardRef<
   }, [doClearTable])
 
   const reopeningCheckRef = useRef(false)
+  const handlePressReopen = useCallback(() => {
+    setActiveDialog({ type: 'order_closed_warning' })
+  }, [])
+
   const handleConfirmReopen = useCallback(async () => {
     if (reopeningCheckRef.current) return
     closeDialog()
@@ -1088,6 +1108,11 @@ const TableOrderView = React.forwardRef<
       ? orderState.ordersById[orderState.activeOrderId]
       : null
     if (order?.check_status === 'Closed') {
+      const isTerminal =
+        order.order_status === 'void' ||
+        order.order_status === 'cancelled' ||
+        order.order_status === 'refunded'
+      if (isTerminal || (order.reopen_count ?? 0) >= 1) return true
       setActiveDialog({ type: 'order_closed_warning' })
       return true
     }
@@ -1431,6 +1456,7 @@ const TableOrderView = React.forwardRef<
               onPressMore={handlePressMore}
               onPressTotal={handlePressTotal}
               onPressCloseCheck={handleCloseCheck}
+              onPressReopenCheck={handlePressReopen}
               onPressClearTable={handleClearTable}
               totalDisplayAmount={displayBalanceDue}
               pricingSheetRef={
@@ -1460,6 +1486,7 @@ const TableOrderView = React.forwardRef<
               isCurrentCourseSent={isCurrentCourseSent}
               onStartNewCourse={handleStartNewCourse}
               onOrderClosedCheck={checkOrderClosedAndWarn}
+              isMenuDisabled={isClosedCheckMenuDisabled}
             />
           </View>
         </>
@@ -1532,6 +1559,7 @@ const TableOrderView = React.forwardRef<
               activeDialog.type === 'order_closed_warning'
             }
             onOrderClosedWarningChange={handleDialogBoolChange}
+            onConfirmReopen={handleConfirmReopen}
             courseToResend={
               activeDialog.type === 'course_resend' ? activeDialog.course : null
             }

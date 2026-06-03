@@ -2726,7 +2726,9 @@ const syncPaymentToBackend = async (
       // Fallback (flag off): v12 — defensive apply_service_charge_v1(NULL,...)
       //                            refresh + SC residual guard for item
       //                            payments.
-      // Primary  (flag on): v14 — bakes v_service_charge_share into
+      // Primary  (flag on): v15 — forks v14, bakes v_service_charge_share into
+      //                            item payments, and snaps a closing item
+      //                            payment to the canonical remaining balance.
       //                            v_payment_total for item payments so
       //                            change_given reflects items+tax+SC at the
       //                            cash drawer; populates per-payment
@@ -2738,7 +2740,7 @@ const syncPaymentToBackend = async (
       //                            pay-for-items client paths already scale
       //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      "process_payment_v14",
+      "process_payment_v15",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -3116,6 +3118,14 @@ const syncPaymentToBackend = async (
         currentOrder.check_status = isFullyPaid
           ? "Closed"
           : currentOrder.check_status || "Opened";
+        // Once fully paid the check is closed again, so the reopen hint must
+        // clear. Otherwise resolveOutstandingAmount keeps preferring the
+        // item-level calculated balance (split payments don't bump
+        // paid_quantity) over the authoritative backend amount_due=0, leaving
+        // the frontend showing a phantom "half due" after a reopened split.
+        if (isFullyPaid) {
+          currentOrder._reopenedForOrdering = false;
+        }
         currentOrder.order_status =
           data.order_status || currentOrder.order_status;
         currentOrder.sync_version =
@@ -3585,7 +3595,7 @@ interface OrderState {
   ) => Promise<void>;
   markCheckReopenedLocally: (
     orderId: string,
-    backendTotals?: { amount_due?: number; cash_amount_due?: number },
+    backendTotals?: { amount_due?: number; cash_amount_due?: number; reopen_count?: number },
   ) => void;
   addPaymentToOrder: (details: {
     orderId: string;
@@ -10757,6 +10767,7 @@ export const useOrderStore = create<OrderState>()(
               if (!order) return;
               order.check_status = "Opened";
               order._reopenedForOrdering = true;
+              order.reopen_count = backendTotals?.reopen_count ?? (order.reopen_count ?? 0) + 1;
               if (order.paid_status === "Paid") {
                 order.paid_status = "Partial";
               }
@@ -14676,6 +14687,7 @@ export const useOrderStore = create<OrderState>()(
                       ) ??
                       null,
                     sync_status: "synced",
+                    reopen_count: (dbOrder as any).reopen_count ?? localOrder?.reopen_count ?? 0,
                   };
 
                   state.ordersById[localOrderId] = updatedOrderProfile;

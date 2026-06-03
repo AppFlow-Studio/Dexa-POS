@@ -99,6 +99,13 @@ export interface OrderTotals {
   /** Flat $ added to both card and cash totals (same value, matching backend math). */
   service_charge: number;
   cash_service_charge: number;
+  /**
+   * Remaining (unpaid) SC, proportional to the unpaid subtotal portion. Equals
+   * service_charge when nothing is paid; folded into outstanding_total. Lets the
+   * breakdown UI show remaining SC so the rows reconcile to balance due.
+   */
+  outstanding_service_charge: number;
+  cash_outstanding_service_charge: number;
   /** Snapshot label for display ("" when no SC applies). */
   service_charge_name: string;
 }

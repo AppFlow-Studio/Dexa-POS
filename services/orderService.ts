@@ -113,6 +113,7 @@ export type ReopenCheckResult = {
   payment_status?: "partial" | "pending" | "refunded";
   amount_due?: number;
   cash_amount_due?: number;
+  reopen_count?: number;
 };
 
 export class OrderService {
@@ -536,7 +537,12 @@ export class OrderService {
       // Fallback (flag off): v12 — defensive apply_service_charge_v1(NULL,...)
       //                            refresh + SC residual guard for item
       //                            payments.
-      // Primary  (flag on): v14 — forks v13 with a residual-snap branch so
+      // Primary  (flag on): v15 — forks v14 and snaps a closing item
+      //                            payment to the canonical remaining balance,
+      //                            so stale client previews cannot omit SC tax
+      //                            or another order-level residual. v14's
+      //                            residual-snap branch still allocates the
+      //                            leftover SC to the closing payment.
       //                            split-by-item / custom-amount payments
       //                            allocate the leftover SC to the closing
       //                            payment (instead of leaving it as an
@@ -548,7 +554,7 @@ export class OrderService {
       //                            row (consumed by apply_refund_to_payment_v4
       //                            for proportional SC reversal).
       "process_payment_v12",
-      "process_payment_v14",
+      "process_payment_v15",
       params,
       {
         deadline: DEADLINES.paymentRpc,
@@ -677,7 +683,7 @@ export class OrderService {
       // Primary:  v4 (Wave D — also reverses the per-payment service_charge
       //               snapshot proportionally; same LEAST clamp + full-refund
       //               snap pattern v3 uses for dpf / tip_fee. Pairs with
-      //               process_payment_v14, which populates the per-payment
+      //               process_payment_v15, which populates the per-payment
       //               service_charge column v4 reads.).
       "apply_refund_to_payment_v3",
       "apply_refund_to_payment_v4",

@@ -986,6 +986,8 @@ export interface OrderProfile {
    * snapshot so existing unpaid items are immediately payable.
    */
   _reopenedForOrdering?: boolean
+  /** Tracks how many times this check has been reopened. Max 1 reopen allowed. */
+  reopen_count?: number
 
   // Payment tracking - synced from backend
   amount_paid?: number // Total amount paid so far
