@@ -73,9 +73,15 @@ import {
 } from "@/services/paymentJournal";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
+
+const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null => {
+  if (!tableIdOrName) return null;
+  return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
+};
 
 if (__DEV__) {
   (globalThis as any).__queue = () => getPendingOperations();
@@ -274,7 +280,7 @@ async function reconcileLostOrderCreations(): Promise<number> {
           p_merchant_id: selectedStore.merchant_id,
           p_location_id: selectedStore.id,
           p_order_type: order.order_type || "dine_in",
-          p_table_number: order.service_location_id || null,
+          p_table_number: resolveTableNameForOrder(order.service_location_id),
           p_customer_name: order.customer_name || null,
           p_customer_phone: order.customer_phone || null,
           p_special_instructions: null,
@@ -1705,7 +1711,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             p_merchant_id: selectedStore.merchant_id,
             p_location_id: selectedStore.id,
             p_order_type: (localOrder?.order_type || "dine_in") as any,
-            p_table_number: localOrder?.service_location_id || null,
+            p_table_number: resolveTableNameForOrder(
+              localOrder?.service_location_id,
+            ),
             p_customer_name: localOrder?.customer_name || null,
             p_customer_phone: localOrder?.customer_phone || null,
             p_special_instructions: null,

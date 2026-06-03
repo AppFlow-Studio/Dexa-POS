@@ -91,6 +91,7 @@ import {
   round2,
   scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
+
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
@@ -156,6 +157,11 @@ import {
 } from "@/types/conflict-resolution";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
+
+const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null => {
+  if (!tableIdOrName) return null;
+  return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
+};
 
 // ============================================================================
 // CART-EDIT OWNERSHIP GUARD (Lever 2)
@@ -975,7 +981,7 @@ const ensureOrderCreated = async (
       p_merchant_id: selectedStore.merchant_id,
       p_location_id: selectedStore.id,
       p_order_type: (order.order_type || "dine_in") as DbOrderType,
-      p_table_number: order.service_location_id || null,
+      p_table_number: resolveTableNameForOrder(order.service_location_id),
       p_customer_name: order.customer_name || null,
       p_customer_phone: order.customer_phone || null,
       p_special_instructions: null,
@@ -1107,7 +1113,7 @@ const ensureOrderCreated = async (
         p_merchant_id: selectedStore.merchant_id,
         p_location_id: selectedStore.id,
         p_order_type: (order.order_type || "dine_in") as DbOrderType,
-        p_table_number: order.service_location_id || null,
+        p_table_number: resolveTableNameForOrder(order.service_location_id),
         p_customer_name: order.customer_name || null,
         p_customer_phone: order.customer_phone || null,
         p_special_instructions: null,
@@ -6421,8 +6427,9 @@ export const useOrderStore = create<OrderState>()(
                 | "Closed",
               paid_status: mapPaymentStatus(serverOrder.payment_status),
               service_location_id: serverOrder.table_number ?? null,
-              // table_number IS the table name (e.g., "T1"), use it directly for display
-              service_location_name: serverOrder.table_number || undefined,
+              service_location_name:
+                resolveTableNameForOrder(serverOrder.table_number) ||
+                undefined,
               session_id: serverOrder.session_id ?? undefined,
               customer_name: "",
 
@@ -10481,7 +10488,9 @@ export const useOrderStore = create<OrderState>()(
               const order = state.ordersById[orderId];
               if (!order) return;
               const previousOrder = current(order);
+              const tableName = resolveTableNameForOrder(tableId) ?? tableId;
               order.service_location_id = tableId;
+              order.service_location_name = tableName;
               order.order_type = "dine_in"; // Ensure order_type is set to dine_in when table assigned
               syncTableOrderIdIndexForOrder(state, orderId, previousOrder);
             });
@@ -10500,6 +10509,8 @@ export const useOrderStore = create<OrderState>()(
                   {
                     db_order_id: order.db_order_id,
                     service_location_id: tableId,
+                    service_location_name:
+                      resolveTableNameForOrder(tableId) ?? tableId,
                     order_type: "dine_in",
                   },
                   orderId,
@@ -10511,7 +10522,7 @@ export const useOrderStore = create<OrderState>()(
                     .from("orders")
                     .update({
                       order_type: "dine_in",
-                      table_number: tableId,
+                      table_number: resolveTableNameForOrder(tableId),
                     })
                     .eq("id", order.db_order_id);
 
@@ -12694,7 +12705,11 @@ export const useOrderStore = create<OrderState>()(
           transferOrderToTable: (orderId, newTableId) => {
             set((state) => {
               const order = state.ordersById[orderId];
-              if (order) order.service_location_id = newTableId;
+              if (order) {
+                order.service_location_id = newTableId;
+                order.service_location_name =
+                  resolveTableNameForOrder(newTableId) ?? newTableId;
+              }
             });
           },
           sendNewItemsToKitchen: async () => {

@@ -46,6 +46,21 @@ function resolveHistoryLocationId(): string | null {
   return useFloorPlanStore.getState().locationId;
 }
 
+function resolvePreviousOrderTableName(
+  tableIdOrName?: string | null,
+  tableName?: string | null,
+): string | undefined {
+  const uuidLike =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (tableName?.trim() && !uuidLike.test(tableName.trim())) return tableName;
+  if (!tableIdOrName) return undefined;
+  return (
+    useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ??
+    (tableName ? useFloorPlanStore.getState().tablesById[tableName]?.name : null) ??
+    tableIdOrName
+  );
+}
+
 /** Resolve the BusinessDayConfig from the current location settings. */
 export function resolveBusinessDayConfig(): BusinessDayConfig | null {
   const store = useStoreSettingsStore.getState().selectedStore;
@@ -305,7 +320,10 @@ function _transformFetchedOrder(
     originalTotal: profile.total_amount || 0,
     payments: profile.payments,
     service_location_id: profile.service_location_id ?? undefined,
-    service_location_name: profile.service_location_name,
+    service_location_name: resolvePreviousOrderTableName(
+      profile.service_location_id,
+      profile.service_location_name,
+    ),
     station_id: profile.station_id,
     station_name: profile._sourceStationName || undefined,
     checkStatus: profile.check_status || "Opened",
@@ -456,7 +474,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         originalTotal: finalTotal,
         payments: order.payments,
         service_location_id: order.service_location_id ?? undefined,
-        service_location_name: order.service_location_name,
+        service_location_name: resolvePreviousOrderTableName(
+          order.service_location_id,
+          order.service_location_name,
+        ),
         // Station tracking for view_scope awareness
         station_id: order.station_id,
         station_name: order._sourceStationName || undefined,

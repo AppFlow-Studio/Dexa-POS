@@ -414,7 +414,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   // ── C. Order Type + Table (UNCHANGED — DEXA top) ─────────────────────
   if (cfg?.showOrderType !== false && validated.orderType) {
     const typeLine = validated.tableName
-      ? `${sanitizeForPrint(validated.orderType)} - ${sanitizeForPrint(validated.tableName)}`
+      ? `${sanitizeForPrint(validated.orderType)} - Table: ${sanitizeForPrint(validated.tableName)}`
       : sanitizeForPrint(validated.orderType);
     nodes.push({
       type: "text_line",

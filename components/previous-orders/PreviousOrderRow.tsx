@@ -5,6 +5,7 @@ import {
 } from "@/lib/paymentStatus";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
     AlertTriangle,
     CheckCircle,
@@ -152,6 +153,19 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   };
   const TypeIcon = typeConfig.icon;
   const displayType = displayTypeLabels[orderType] || orderType;
+  const tableName = useFloorPlanStore((s) => {
+    const explicitName = order.service_location_name?.trim();
+    const uuidLike =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (explicitName && !uuidLike.test(explicitName)) return explicitName;
+    if (order.service_location_id) {
+      return s.tablesById[order.service_location_id]?.name ?? null;
+    }
+    if (explicitName) {
+      return s.tablesById[explicitName]?.name ?? null;
+    }
+    return null;
+  });
 
   const needsAttention = status === "Pending";
 
@@ -264,9 +278,20 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             >
               {displayType}
             </Text>
+            {tableName ? (
+              <>
+                <Text style={{ fontSize: 11, color: colors.muted }}>-</Text>
+                <Text
+                  style={{ fontSize: 11, color: colors.label }}
+                  numberOfLines={1}
+                >
+                  Table {tableName}
+                </Text>
+              </>
+            ) : null}
             {order.server_name ? (
               <>
-                <Text style={{ fontSize: 11, color: colors.muted }}>·</Text>
+                <Text style={{ fontSize: 11, color: colors.muted }}>-</Text>
                 <Text
                   style={{ fontSize: 11, color: colors.label }}
                   numberOfLines={1}
