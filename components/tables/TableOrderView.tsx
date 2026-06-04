@@ -39,6 +39,7 @@ import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { useRouter } from 'expo-router'
 import { CreditCard } from 'lucide-react-native'
 import React, {
   useCallback,
@@ -171,6 +172,7 @@ const TableOrderView = React.forwardRef<
   const prevRenderStageRef = useRef(renderStage)
 
   // --- 2. Standard Hooks & Context ---
+  const router = useRouter()
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
   const supabase = useSupabaseClient()
@@ -363,6 +365,22 @@ const TableOrderView = React.forwardRef<
   }, [])
 
   // --- 7. Effects ---
+  // Auto-navigate to /tables when the session is externally cleared
+  // (e.g. auto-clear-on-payment dispatches CLEAR to the local store).
+  // The session entry goes undefined on CLEAR, so we watch for the transition
+  // from a known session id → undefined.
+  const hadSessionRef = useRef(!!session)
+  useEffect(() => {
+    if (hadSessionRef.current && !session) {
+      usePaymentStore.getState().close()
+      markNavigatingAway()
+      router.replace('/tables')
+      // Hide after navigation is committed so the overlay covers the transition
+      // but doesn't linger on the floor plan screen.
+      setTimeout(hideLoading, 300)
+    }
+    hadSessionRef.current = !!session
+  }, [session, markNavigatingAway, router, hideLoading])
   useEffect(() => {
     if (!__DEV__) return
     console.log(
@@ -437,6 +455,17 @@ const TableOrderView = React.forwardRef<
     totals,
     displayBalanceDue
   ])
+
+  // Show "Clearing table..." the moment the order is fully paid and auto-clear
+  // is on — immediate feedback before the local CLEAR dispatch arrives.
+  const autoClearEnabled = useLocationConfigStore(
+    s => s.config.dining.autoClearTableOnPayment
+  )
+  useEffect(() => {
+    if (isFullyPaid && autoClearEnabled) {
+      showLoading('Clearing table...')
+    }
+  }, [isFullyPaid, autoClearEnabled, showLoading])
 
   // --- Action handlers ---
 
