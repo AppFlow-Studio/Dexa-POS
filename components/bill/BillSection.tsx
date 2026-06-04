@@ -19,11 +19,12 @@ import {
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { getFloorPlanClient, useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useReservationStore } from "@/stores/useReservationStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -1175,6 +1176,97 @@ const BillSectionContent = ({
       show,
     ],
   );
+
+  // When the order type is switched away from dine_in, unlink the table and
+  // clear the session if one was started (but not yet paid/sent to kitchen).
+  const prevOrderTypeRef = useRef(activeOrderType);
+  useEffect(() => {
+    const prev = prevOrderTypeRef.current;
+    prevOrderTypeRef.current = activeOrderType;
+
+    if (prev !== "dine_in" || activeOrderType === "dine_in") return;
+
+    // Snapshot table/session before any state changes alter them.
+    const ordStore = useOrderStore.getState();
+    const snapOrderId = ordStore.activeOrderId;
+    const snapOrder = snapOrderId ? ordStore.ordersById[snapOrderId] : null;
+    const snapTableId =
+      useDineInStore.getState().selectedTable?.id ??
+      snapOrder?.service_location_id ??
+      null;
+
+    clearSelectedTable();
+
+    if (snapOrder) {
+      // Clear locally in ordersById.
+      useOrderStore.getState().updateActiveOrderDetails({ service_location_id: null });
+
+      // Clear in previousOrders store immediately so the order list updates
+      // without waiting for a backend round-trip.
+      const dbId = snapOrder.db_order_id;
+      if (dbId) {
+        usePreviousOrdersStore.setState((state) => {
+          const updated = state.previousOrders.map((o) =>
+            o.db_order_id === dbId
+              ? { ...o, service_location_id: undefined, service_location_name: undefined }
+              : o,
+          );
+          // Rebuild the lookup map inline (buildOrderLookupMap is not exported).
+          const lookup: Record<string, typeof updated[number]> = {};
+          for (const o of updated) {
+            if (o.db_order_id) lookup[o.db_order_id] = o;
+            if (o.orderId) lookup[o.orderId] = o;
+          }
+          return { previousOrders: updated, _orderLookup: lookup };
+        });
+      }
+
+      // Clear on backend — updateActiveOrderDetails RPC doesn't include
+      // table_number, so we need a direct update mirroring assignOrderToTable.
+      if (dbId) {
+        const supabase = getFloorPlanClient();
+        if (supabase) {
+          supabase
+            .from("orders")
+            .update({ table_number: null, order_type: activeOrderType ?? "takeout" })
+            .eq("id", dbId)
+            .then(({ error }) => {
+              if (error) {
+                console.error("[BillSection] Failed to unlink order from table:", error);
+              }
+            });
+        }
+      }
+    }
+
+    if (snapTableId) {
+      const sessionStore = useTableSessionStore.getState();
+      const session = sessionStore.getSession(snapTableId);
+      if (session && session.status !== "available") {
+        // Force-clear regardless of state machine position — bypass dispatchAction
+        // since CLEAR_TABLE is only valid from paid/served/check_presented.
+        // Directly mark backend session as available, then remove locally.
+        sessionStore.dispatch(snapTableId, { type: "CLEAR" });
+        const supabase = getFloorPlanClient();
+        if (supabase) {
+          const { FloorPlanService } = require(
+            "@/services/floorPlanService",
+          ) as typeof import("@/services/floorPlanService");
+          const staffId =
+            useEmployeeStore.getState().loggedInEmployee?.profileId;
+          FloorPlanService.updateTableSessionStatus(supabase, {
+            p_session_id: session.id,
+            p_status: "available",
+            p_staff_id: staffId,
+          }).catch(() => {});
+        }
+        useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {});
+      }
+    }
+  // Only re-run when order type actually changes — don't include linkedTableId
+  // since clearing it would re-trigger the effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrderType, clearSelectedTable]);
 
   const autoClearEnabled = useLocationConfigStore(
     (s) => s.config.dining.autoClearTableOnPayment,

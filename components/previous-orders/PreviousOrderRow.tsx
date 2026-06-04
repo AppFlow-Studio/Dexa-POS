@@ -154,6 +154,8 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const TypeIcon = typeConfig.icon;
   const displayType = displayTypeLabels[orderType] || orderType;
   const tableName = useFloorPlanStore((s) => {
+    // Only show table name for dine-in orders.
+    if (order.order_type !== "dine_in" && order.order_type !== "Dine In") return null;
     const explicitName = order.service_location_name?.trim();
     const uuidLike =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -612,6 +614,8 @@ const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
     prev.order.notes === next.order.notes &&
     prev.order.check_status === next.order.check_status &&
     prev.order.payments === next.order.payments &&
+    prev.order.service_location_id === next.order.service_location_id &&
+    prev.order.service_location_name === next.order.service_location_name &&
     prev.isExpanded === next.isExpanded &&
     prev.onContinue === next.onContinue
   );
