@@ -10591,6 +10591,7 @@ export const useOrderStore = create<OrderState>()(
               const order = state.ordersById[orderId];
               if (!order) return;
               const previousOrder = current(order);
+              const tableName = resolveTableNameForOrder(tableId) ?? tableId;
               order.service_location_id = tableId;
               order.service_location_name = snapshotTableName(tableId);
               order.order_type = "dine_in"; // Ensure order_type is set to dine_in when table assigned
