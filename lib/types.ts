@@ -480,6 +480,7 @@ export interface PreviousOrder {
   display_number: string
   paymentStatus: PaymentStatus
   customer: string
+  customer_phone?: string | null
   server: string
   opened_at: string
   closed_at: string

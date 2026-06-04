@@ -274,7 +274,11 @@ const PreviousOrdersScreen = () => {
   const [sortBy, setSortBy] = useState<'date' | 'total' | 'status'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
-  const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync()
+  const {
+    refresh: handleRefresh,
+    isRefreshing,
+    isInitialLoading
+  } = usePreviousOrdersListSync()
 
   // Date window
   const dateWindowLabel = usePreviousOrdersStore(
@@ -336,7 +340,7 @@ const PreviousOrdersScreen = () => {
       if (!o) continue
       if (o.station_id !== currentStationId) continue // own station only
       if (finalStatuses.has(o.order_status ?? '')) continue
-      if (o.order_status === 'draft' && o.items.length === 0) continue
+      if (o.order_status === 'draft') continue
       liveIds.add(id)
     }
     // Build lookup from DB-fetched previous orders to patch stale active order statuses.
@@ -380,6 +384,7 @@ const PreviousOrdersScreen = () => {
             display_number: po.display_number,
             order_number: po.display_number,
             customer_name: po.customer,
+            customer_phone: po.customer_phone ?? undefined,
             server_name: po.server,
             order_status: po.voided
               ? 'void'
@@ -452,13 +457,26 @@ const PreviousOrdersScreen = () => {
   const filteredOrders = useMemo(() => {
     let filtered = allOrders
 
-    // Search by display_number or customer_name
+    // Search by display_number, customer_name, or customer_phone.
+    // Phone match is digits-only so formatted ("(415) 555-0123") and
+    // unformatted ("4155550123") queries both hit the same orders.
     if (searchText.trim()) {
       const query = searchText.toLowerCase().trim()
+      const queryDigits = query.replace(/\D/g, '')
       filtered = filtered.filter(o => {
         const customerName = (o.customer_name || 'walk-in').toLowerCase()
         const displayNumber = String(o.display_number || '').toLowerCase()
-        return customerName.includes(query) || displayNumber.includes(query)
+        if (
+          customerName.includes(query) ||
+          displayNumber.includes(query)
+        ) {
+          return true
+        }
+        if (queryDigits && o.customer_phone) {
+          const phoneDigits = o.customer_phone.replace(/\D/g, '')
+          if (phoneDigits.includes(queryDigits)) return true
+        }
+        return false
       })
     }
 
@@ -704,7 +722,7 @@ const PreviousOrdersScreen = () => {
           >
             <Search color={colors.label} size={15} />
             <TextInput
-              placeholder='Search order or customer...'
+              placeholder='Search order, customer, or phone...'
               placeholderTextColor={colors.muted}
               value={searchText}
               onChangeText={setSearchText}
@@ -793,22 +811,30 @@ const PreviousOrdersScreen = () => {
             keyExtractor={item => item.id}
             renderItem={renderItem}
             ListEmptyComponent={
-              <View
-                style={{
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingVertical: 64
-                }}
-              >
-                <Text style={{ fontSize: 20, color: colors.muted }}>
-                  No orders found
-                </Text>
-                <Text
-                  style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}
+              isInitialLoading ? (
+                <View style={{ paddingTop: 4 }}>
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonRow key={i} />
+                  ))}
+                </View>
+              ) : (
+                <View
+                  style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingVertical: 64
+                  }}
                 >
-                  Try adjusting your filters or search
-                </Text>
-              </View>
+                  <Text style={{ fontSize: 20, color: colors.muted }}>
+                    No orders found
+                  </Text>
+                  <Text
+                    style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}
+                  >
+                    Try adjusting your filters or search
+                  </Text>
+                </View>
+              )
             }
             refreshControl={
               <RefreshControl
