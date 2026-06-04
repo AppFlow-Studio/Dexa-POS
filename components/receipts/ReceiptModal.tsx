@@ -3,6 +3,7 @@ import { CartItem, OrderProfile } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { SelectedLocation, useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { colors } from "@/lib/theme";
 import { Barcode, Mail, MessageSquare, Printer, QrCode, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -437,6 +438,22 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
   // Receipt template
   const getReceiptTemplate = useReceiptTemplateStore(s => s.getReceiptTemplate);
   const template = location ? getReceiptTemplate(location.id) : null;
+  const receiptTableName = useMemo(() => {
+    if (!order) return null;
+    const uuidLike =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const explicitName = order.service_location_name?.trim();
+    if (explicitName && !uuidLike.test(explicitName)) return explicitName;
+    return (
+      (order.service_location_id
+        ? useFloorPlanStore.getState().tablesById[order.service_location_id]?.name
+        : null) ||
+      (explicitName
+        ? useFloorPlanStore.getState().tablesById[explicitName]?.name
+        : null) ||
+      null
+    );
+  }, [order]);
 
   // Handle print action
   const handlePrint = () => {
@@ -583,7 +600,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <Text style={{ fontSize: 9, color: "#6b7280", marginTop: 1, fontFamily: "monospace" }}>{time}</Text>
                   {template?.showOrderType !== false && (
                     <Text style={{ fontSize: 9, color: "#6b7280", marginTop: 1, fontFamily: "monospace" }}>
-                      {getOrderTypeDisplay(order.order_type)}{order.service_location_name ? ` - ${order.service_location_name}` : ""}
+                      {getOrderTypeDisplay(order.order_type)}{receiptTableName ? ` - Table: ${receiptTableName}` : ""}
                     </Text>
                   )}
                   {template?.showServerName !== false && order.server_name ? (

@@ -24,6 +24,7 @@ export interface DiningConfig {
   allowTableMerging: boolean
   allowTableSplitting: boolean
   autoUpdateTableStatus: boolean
+  autoClearTableOnPayment: boolean
   defaultSittingTimeMinutes: number
   defaultPartySize: number
 }
@@ -192,6 +193,7 @@ export const DEFAULT_DINING_CONFIG: DiningConfig = {
   allowTableMerging: true,
   allowTableSplitting: false,
   autoUpdateTableStatus: true,
+  autoClearTableOnPayment: false,
   defaultSittingTimeMinutes: 60,
   defaultPartySize: 2,
 }

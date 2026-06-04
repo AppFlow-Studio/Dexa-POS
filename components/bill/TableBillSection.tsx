@@ -234,6 +234,7 @@ const CourseSubHeader = React.memo(
     course,
     itemCount,
     isSent,
+    hasUnsentItems,
     isCurrentCourse,
     expanded,
     status,
@@ -246,6 +247,7 @@ const CourseSubHeader = React.memo(
     course: number
     itemCount: number
     isSent: boolean
+    hasUnsentItems: boolean
     isCurrentCourse: boolean
     expanded: boolean
     status: AggregateKitchenStatus
@@ -367,6 +369,7 @@ type SeatListRow =
       course: number
       itemCount: number
       isSent: boolean
+      hasUnsentItems: boolean
       isCurrentCourse: boolean
       expanded: boolean
       status: AggregateKitchenStatus
@@ -1048,6 +1051,7 @@ const TableBillSection = ({
   onPressMore,
   onPressTotal,
   onPressCloseCheck,
+  onPressReopenCheck,
   onPressClearTable,
   totalDisplayAmount,
   pricingSheetRef,
@@ -1084,6 +1088,7 @@ const TableBillSection = ({
   onPressMore: () => void
   onPressTotal: () => void
   onPressCloseCheck: () => void
+  onPressReopenCheck: () => void
   onPressClearTable: () => void
   totalDisplayAmount: number
   pricingSheetRef: React.RefObject<BottomSheetMethods>
@@ -1298,6 +1303,7 @@ const TableBillSection = ({
           onPressMore={onPressMore}
           onPressTotal={onPressTotal}
           onPressCloseCheck={onPressCloseCheck}
+          onPressReopenCheck={onPressReopenCheck}
           onPressClearTable={onPressClearTable}
           totalDisplayAmount={totalDisplayAmount}
           onPressDiscount={handleOpenDiscountSheet}

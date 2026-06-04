@@ -653,7 +653,10 @@ const DevicesConnectionsScreen = ({
           discoveredSN = registerForm.serialNumber
         }
 
-        // If we have a serial number, check if this physical device is already registered
+        // If we have a serial number, check if this physical device is already registered.
+        // Ordered .limit(1) instead of .maybeSingle() so we still pick a row to update
+        // when legacy data already contains duplicates — otherwise the duplicate-row
+        // PostgREST error makes us fall through to INSERT and compound the problem.
         let existingId: string | null = null
         if (discoveredSN) {
           const { data: existing } = await supabase
@@ -661,6 +664,8 @@ const DevicesConnectionsScreen = ({
             .select('id')
             .eq('location_id', selectedStore.id)
             .eq('serial_number', discoveredSN)
+            .order('updated_at', { ascending: false })
+            .limit(1)
             .maybeSingle()
           existingId = existing?.id ?? null
         }

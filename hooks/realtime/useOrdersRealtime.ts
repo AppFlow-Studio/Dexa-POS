@@ -231,6 +231,7 @@ export interface BroadcastOrderData {
   amount_due: number // Card price remaining
   cash_amount_due: number // Cash price remaining
   check_status: 'Opened' | 'Closed' | null
+  reopen_count?: number | null
 
   // Timestamps
   created_at: string

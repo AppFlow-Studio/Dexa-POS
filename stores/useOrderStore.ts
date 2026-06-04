@@ -92,6 +92,7 @@ import {
   round2,
   scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
+
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
@@ -157,6 +158,11 @@ import {
 } from "@/types/conflict-resolution";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
+
+const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null => {
+  if (!tableIdOrName) return null;
+  return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
+};
 
 // ============================================================================
 // CART-EDIT OWNERSHIP GUARD (Lever 2)
@@ -976,7 +982,7 @@ const ensureOrderCreated = async (
       p_merchant_id: selectedStore.merchant_id,
       p_location_id: selectedStore.id,
       p_order_type: (order.order_type || "dine_in") as DbOrderType,
-      p_table_number: order.service_location_id || null,
+      p_table_number: resolveTableNameForOrder(order.service_location_id),
       p_customer_name: order.customer_name || null,
       p_customer_phone: order.customer_phone || null,
       p_special_instructions: null,
@@ -1108,7 +1114,7 @@ const ensureOrderCreated = async (
         p_merchant_id: selectedStore.merchant_id,
         p_location_id: selectedStore.id,
         p_order_type: (order.order_type || "dine_in") as DbOrderType,
-        p_table_number: order.service_location_id || null,
+        p_table_number: resolveTableNameForOrder(order.service_location_id),
         p_customer_name: order.customer_name || null,
         p_customer_phone: order.customer_phone || null,
         p_special_instructions: null,
@@ -2727,7 +2733,9 @@ const syncPaymentToBackend = async (
       // Fallback (flag off): v12 — defensive apply_service_charge_v1(NULL,...)
       //                            refresh + SC residual guard for item
       //                            payments.
-      // Primary  (flag on): v14 — bakes v_service_charge_share into
+      // Primary  (flag on): v15 — forks v14, bakes v_service_charge_share into
+      //                            item payments, and snaps a closing item
+      //                            payment to the canonical remaining balance.
       //                            v_payment_total for item payments so
       //                            change_given reflects items+tax+SC at the
       //                            cash drawer; populates per-payment
@@ -2739,7 +2747,7 @@ const syncPaymentToBackend = async (
       //                            pay-for-items client paths already scale
       //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      "process_payment_v14",
+      "process_payment_v15",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -3117,6 +3125,14 @@ const syncPaymentToBackend = async (
         currentOrder.check_status = isFullyPaid
           ? "Closed"
           : currentOrder.check_status || "Opened";
+        // Once fully paid the check is closed again, so the reopen hint must
+        // clear. Otherwise resolveOutstandingAmount keeps preferring the
+        // item-level calculated balance (split payments don't bump
+        // paid_quantity) over the authoritative backend amount_due=0, leaving
+        // the frontend showing a phantom "half due" after a reopened split.
+        if (isFullyPaid) {
+          currentOrder._reopenedForOrdering = false;
+        }
         currentOrder.order_status =
           data.order_status || currentOrder.order_status;
         currentOrder.sync_version =
@@ -3218,16 +3234,49 @@ const syncPaymentToBackend = async (
         const { loggedInEmployee } = useEmployeeStore.getState();
         const staffId = loggedInEmployee?.profileId;
 
+        // Feature 3 — Auto-clear table after payment (per-location toggle).
+        // Run synchronously before closeCheck so the table screen closes
+        // immediately without waiting for any network round-trip.
+        // Backend session update is fire-and-forget inside closeCheck's .then().
+        try {
+          const { useLocationConfigStore } = require(
+            "@/stores/useLocationConfigStore",
+          ) as typeof import("@/stores/useLocationConfigStore");
+          const autoClear =
+            useLocationConfigStore.getState().config.dining
+              .autoClearTableOnPayment === true;
+
+          const tableId = order.service_location_id;
+          const sessionId =
+            order.session_id ||
+            order.local_session_id ||
+            (tableId
+              ? useTableSessionStore.getState().getSession(tableId)?.id
+              : undefined);
+
+          // Local CLEAR is intentionally NOT dispatched here.
+          // TableOrderView detects session reaching "paid" and handles its own
+          // CLEAR + navigation. BillSection handles the order-processing path.
+          // Dispatching CLEAR here races with both and causes double-fire skips.
+        } catch (autoClearErr) {
+          console.error("[syncPayment] Auto-clear (local) failed:", autoClearErr);
+        }
+
         if (supabase && staffId && order.db_order_id) {
           const dbOrderIdForQueue = order.db_order_id;
           const localOrderIdForQueue = order.id;
+          // Capture session info before closeCheck (store may be cleared above).
+          const tableIdForClear = order.service_location_id;
+          const sessionIdForClear =
+            order.session_id ||
+            order.local_session_id ||
+            (tableIdForClear
+              ? useTableSessionStore.getState().getSession(tableIdForClear)?.id
+              : undefined);
           OrderService.closeCheck(supabase, order.db_order_id, staffId)
             .then(async (res) => {
               if (!res.success) {
                 console.error("[syncPayment] Auto-close failed:", res.error);
-                // Bad-WiFi guard: deadline-wrap surfaces as success=false with
-                // DEADLINE_EXCEEDED in the error message. Queue so the close
-                // intent isn't lost when the network recovers.
                 if (
                   typeof res.error === "string" &&
                   res.error.includes("DEADLINE_EXCEEDED")
@@ -3246,6 +3295,58 @@ const syncPaymentToBackend = async (
                   "[syncPayment] Auto-closed check successfully:",
                   order.db_order_id,
                 );
+
+                // Backend session cleanup — fire-and-forget after the local
+                // clear already ran above.
+                try {
+                  const { useLocationConfigStore } = require(
+                    "@/stores/useLocationConfigStore",
+                  ) as typeof import("@/stores/useLocationConfigStore");
+                  const autoClear =
+                    useLocationConfigStore.getState().config.dining
+                      .autoClearTableOnPayment === true;
+
+                  if (autoClear && sessionIdForClear) {
+                    const siblingsDue = Object.values(
+                      useOrderStore.getState().ordersById,
+                    ).some(
+                      (o) =>
+                        (o.session_id === sessionIdForClear ||
+                          o.local_session_id === sessionIdForClear) &&
+                        (o.amount_due ?? 0) > 0.01,
+                    );
+
+                    if (!siblingsDue) {
+                      const { FloorPlanService } = require(
+                        "@/services/floorPlanService",
+                      ) as typeof import("@/services/floorPlanService");
+                      const { error: clearError } =
+                        await FloorPlanService.updateTableSessionStatus(
+                          supabase,
+                          {
+                            p_session_id: sessionIdForClear,
+                            p_status: "available",
+                            p_staff_id: staffId,
+                          },
+                        );
+                      if (clearError) {
+                        console.warn(
+                          `[syncPayment] Auto-clear backend failed for session ${sessionIdForClear}:`,
+                          clearError,
+                        );
+                      } else {
+                        console.log(
+                          `[syncPayment] Auto-cleared backend session ${sessionIdForClear}`,
+                        );
+                      }
+                    }
+                  }
+                } catch (autoClearErr) {
+                  console.error(
+                    "[syncPayment] Auto-clear (backend) failed:",
+                    autoClearErr,
+                  );
+                }
               }
             })
             .catch((err) =>
@@ -3586,7 +3687,7 @@ interface OrderState {
   ) => Promise<void>;
   markCheckReopenedLocally: (
     orderId: string,
-    backendTotals?: { amount_due?: number; cash_amount_due?: number },
+    backendTotals?: { amount_due?: number; cash_amount_due?: number; reopen_count?: number },
   ) => void;
   addPaymentToOrder: (details: {
     orderId: string;
@@ -6071,7 +6172,23 @@ export const useOrderStore = create<OrderState>()(
               state.dbOrderIdIndex[dbOrderId] = dbOrderId;
               // Keep dine-in table lookup aligned with the latest server
               // snapshot after seat, transfer, and completion updates.
-              syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
+              // Guard: when this is a brand-new broadcast shell (no existing alias
+              // was found), skip overwriting tableOrderIdIndex if a local order
+              // already owns this table. The local order is the in-flight optimistic
+              // create whose db_order_id wasn't set yet when the alias scan ran —
+              // rekeyOrder will fix the index atomically once hydrateOrderFromSeat fires.
+              // Without this guard, tableOrderIdIndex briefly points to the empty
+              // broadcast shell, causing a one-frame flicker in the bill section.
+              if (!existing && orderProfile.service_location_id) {
+                const currentIndexedId = state.tableOrderIdIndex[orderProfile.service_location_id];
+                if (currentIndexedId && currentIndexedId !== dbOrderId && state.ordersById[currentIndexedId]) {
+                  // A local order already owns this table — don't overwrite the index yet
+                } else {
+                  syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
+                }
+              } else {
+                syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
+              }
             });
 
             // Reconcile SC after hydration. Catches cross-station orders
@@ -6412,8 +6529,9 @@ export const useOrderStore = create<OrderState>()(
                 | "Closed",
               paid_status: mapPaymentStatus(serverOrder.payment_status),
               service_location_id: serverOrder.table_number ?? null,
-              // table_number IS the table name (e.g., "T1"), use it directly for display
-              service_location_name: serverOrder.table_number || undefined,
+              service_location_name:
+                resolveTableNameForOrder(serverOrder.table_number) ||
+                undefined,
               session_id: serverOrder.session_id ?? undefined,
               customer_name: "",
 
@@ -10493,6 +10611,8 @@ export const useOrderStore = create<OrderState>()(
                   {
                     db_order_id: order.db_order_id,
                     service_location_id: tableId,
+                    service_location_name:
+                      resolveTableNameForOrder(tableId) ?? tableId,
                     order_type: "dine_in",
                   },
                   orderId,
@@ -10504,7 +10624,7 @@ export const useOrderStore = create<OrderState>()(
                     .from("orders")
                     .update({
                       order_type: "dine_in",
-                      table_number: tableId,
+                      table_number: resolveTableNameForOrder(tableId),
                     })
                     .eq("id", order.db_order_id);
 
@@ -10760,6 +10880,7 @@ export const useOrderStore = create<OrderState>()(
               if (!order) return;
               order.check_status = "Opened";
               order._reopenedForOrdering = true;
+              order.reopen_count = backendTotals?.reopen_count ?? (order.reopen_count ?? 0) + 1;
               if (order.paid_status === "Paid") {
                 order.paid_status = "Partial";
               }
@@ -12687,7 +12808,11 @@ export const useOrderStore = create<OrderState>()(
           transferOrderToTable: (orderId, newTableId) => {
             set((state) => {
               const order = state.ordersById[orderId];
-              if (order) order.service_location_id = newTableId;
+              if (order) {
+                order.service_location_id = newTableId;
+                order.service_location_name =
+                  resolveTableNameForOrder(newTableId) ?? newTableId;
+              }
             });
           },
           sendNewItemsToKitchen: async () => {
@@ -14482,7 +14607,44 @@ export const useOrderStore = create<OrderState>()(
                             : dbItem.unit_price ?? 0),
                       })) || [];
 
-                  const allItems = [...syncedItems, ...newItemsFromDb];
+                  const allItems: CartItem[] = [
+                    ...syncedItems,
+                    ...newItemsFromDb,
+                  ];
+
+                  // Merge pending items that may be stored under a parallel local key
+                  // (the temp "order_xyz" key that's about to be rekeyed, or was just
+                  // rekeyed but the shell at localOrderId had empty items when set() ran).
+                  // This catches the race where:
+                  //   1. upsertOrder created a shell at ordersById[localOrderId] with items=[]
+                  //   2. This set() sees that shell as localOrder (items=[])
+                  //   3. The actual items are in ordersById["order_xyz"] (about to be rekeyed)
+                  // Without this merge, allItems=[] wipes the pending items. rekeyOrder then
+                  // runs after and puts them back — but addItemToBackend's setState may have
+                  // already set db_order_item_id on items that no longer exist in the array.
+                  const allItemsDbIds = new Set(
+                    allItems.map((i) => i.db_order_item_id).filter(Boolean),
+                  );
+                  const allItemsLocalIds = new Set(allItems.map((i) => i.id));
+                  for (const [key, candidate] of Object.entries(state.ordersById)) {
+                    if (key === localOrderId) continue;
+                    if (
+                      candidate.service_location_id !==
+                      (localOrder?.service_location_id ??
+                        dbOrder.table_number ??
+                        dbOrder.service_location_id)
+                    )
+                      continue;
+                    for (const item of candidate.items) {
+                      if (item.isDraft) continue;
+                      if (allItemsLocalIds.has(item.id)) continue;
+                      if (item.db_order_item_id && allItemsDbIds.has(item.db_order_item_id)) continue;
+                      // Pending or locally-synced item not yet in backend fetch — preserve it
+                      allItems.push(item);
+                      allItemsLocalIds.add(item.id);
+                      if (item.db_order_item_id) allItemsDbIds.add(item.db_order_item_id);
+                    }
+                  }
 
                   // Map payments from database
                   // Build a lookup of local payments so we can preserve any
@@ -14680,6 +14842,7 @@ export const useOrderStore = create<OrderState>()(
                       ) ??
                       null,
                     sync_status: "synced",
+                    reopen_count: (dbOrder as any).reopen_count ?? localOrder?.reopen_count ?? 0,
                   };
 
                   state.ordersById[localOrderId] = updatedOrderProfile;
@@ -15443,6 +15606,8 @@ export const useOrderStore = create<OrderState>()(
                 cash_outstanding_total: 0,
                 service_charge: 0,
                 cash_service_charge: 0,
+                outstanding_service_charge: 0,
+                cash_outstanding_service_charge: 0,
                 service_charge_name: "",
               };
             }

@@ -748,23 +748,28 @@ export function calculateOrderTotals (
 
   // Outstanding SC: proportional to the unpaid portion of the net subtotal.
   // When nothing has been paid yet, outstanding ~= net, so full SC is outstanding.
+  //
+  // The SC dollar amount is a FLAT shared charge — identical for cash and card
+  // (cashServiceCharge === serviceCharge above) — so its remaining portion is
+  // also shared, NOT dual-priced. Using a separate cash-subtotal proportion
+  // produced a cash remainder that diverged from (and could exceed) the card
+  // remainder, which is nonsensical: cash must never cost more than card. Both
+  // sides therefore use the same card-subtotal proportion. This matches how the
+  // flat SC remainder (customRefundBalance) is added equally to both totals below.
   const scUnpaidProportion = netCardSubtotal.gt(0)
     ? Decimal.min(outstandingCardSubtotal.div(netCardSubtotal), new Decimal(1))
     : new Decimal(activeItems.length > 0 ? 1 : 0)
   const outstandingServiceCharge = serviceCharge
     .times(scUnpaidProportion)
     .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-
-  const cashScUnpaidProportion = netCashSubtotal.gt(0)
-    ? Decimal.min(outstandingCashSubtotal.div(netCashSubtotal), new Decimal(1))
-    : new Decimal(activeItems.length > 0 ? 1 : 0)
+  // Flat/shared: cash remainder equals the card remainder.
   const outstandingCashServiceCharge = cashServiceCharge
-    .times(cashScUnpaidProportion)
-    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-  const outstandingCashServiceChargeTax = cashServiceChargeTax
-    .times(cashScUnpaidProportion)
+    .times(scUnpaidProportion)
     .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
   const outstandingServiceChargeTax = serviceChargeTax
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  const outstandingCashServiceChargeTax = cashServiceChargeTax
     .times(scUnpaidProportion)
     .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
 
@@ -879,6 +884,12 @@ export function calculateOrderTotals (
     // Service Charge
     service_charge: serviceCharge.toNumber(),
     cash_service_charge: cashServiceCharge.toNumber(),
+    // Outstanding (remaining) SC — proportional to the unpaid subtotal portion.
+    // Folded into outstanding_total above; exposed separately so the breakdown
+    // UI can show the remaining SC on a partially-paid order (the rows must
+    // reconcile to balance due).
+    outstanding_service_charge: outstandingServiceCharge.toNumber(),
+    cash_outstanding_service_charge: outstandingCashServiceCharge.toNumber(),
     service_charge_name: serviceChargeName
   }
 
@@ -913,6 +924,8 @@ function createEmptyTotals (): OrderTotals {
     cash_outstanding_total: 0,
     service_charge: 0,
     cash_service_charge: 0,
+    outstanding_service_charge: 0,
+    cash_outstanding_service_charge: 0,
     service_charge_name: ''
   }
 }

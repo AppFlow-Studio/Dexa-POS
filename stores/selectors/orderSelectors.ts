@@ -145,6 +145,8 @@ export interface ActiveOrderTotals {
   // Full breakdown if needed
   outstandingSubtotal: number;
   outstandingTax: number;
+  cashOutstandingSubtotal: number;
+  cashOutstandingTax: number;
   cashSubtotal: number;
   cashTax: number;
   cashTotal: number;
@@ -152,6 +154,10 @@ export interface ActiveOrderTotals {
   // (so live rule edits don't shift open orders); falls back to live rule.
   serviceCharge: number;
   cashServiceCharge: number;
+  // Remaining (unpaid) SC for partially-paid orders. Equals serviceCharge when
+  // nothing is paid. Lets the breakdown UI reconcile rows to balance due.
+  outstandingServiceCharge: number;
+  cashOutstandingServiceCharge: number;
   serviceChargeName: string;
   serviceChargeRate: number | null;
 }
@@ -309,10 +315,14 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       cashAmountDue,
       outstandingSubtotal: totals.outstanding_subtotal,
       outstandingTax: totals.outstanding_tax,
+      cashOutstandingSubtotal: totals.cash_outstanding_subtotal,
+      cashOutstandingTax: totals.cash_outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
       serviceCharge: totals.service_charge,
       cashServiceCharge: totals.cash_service_charge,
+      outstandingServiceCharge: totals.outstanding_service_charge,
+      cashOutstandingServiceCharge: totals.cash_outstanding_service_charge,
       serviceChargeName: totals.service_charge_name,
       serviceChargeRate:
         activeOrder.service_charge_rate ??
@@ -446,10 +456,14 @@ export function useOrderTotals(
       cashAmountDue,
       outstandingSubtotal: totals.outstanding_subtotal,
       outstandingTax: totals.outstanding_tax,
+      cashOutstandingSubtotal: totals.cash_outstanding_subtotal,
+      cashOutstandingTax: totals.cash_outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
       serviceCharge: totals.service_charge,
       cashServiceCharge: totals.cash_service_charge,
+      outstandingServiceCharge: totals.outstanding_service_charge,
+      cashOutstandingServiceCharge: totals.cash_outstanding_service_charge,
       serviceChargeName: totals.service_charge_name,
       serviceChargeRate:
         order.service_charge_rate ?? serviceChargeRule?.rate_percent ?? null,
@@ -833,7 +847,7 @@ export function useOrderItem(
 ): CartItem | null {
   return useOrderStore((s) => {
     if (!orderId) return null;
-    return s.ordersById[orderId]?.items.find((item) => item.id === itemId) ?? null;
+    return s.getOrder(orderId)?.items.find((item) => item.id === itemId) ?? null;
   });
 }
 

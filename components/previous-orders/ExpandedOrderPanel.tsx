@@ -5,14 +5,19 @@ import {
 } from "@/lib/paymentStatus";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { formatAddress } from "@/utils/addressUtils";
 import {
     Banknote,
     Clock,
     CreditCard,
     DollarSign,
+    Mail,
+    MapPin,
+    Phone,
     Play,
     Printer,
     RotateCcw,
+    User,
 } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -105,6 +110,17 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
     [onRefund, order.payments],
   );
 
+  const customerName = order.customer_name?.trim();
+  const customerPhone = order.customer_phone?.trim();
+  const customerEmail = order.customer_email?.trim();
+  const deliveryAddress = formatAddress(order.delivery_address).trim();
+  const hasCustomerInfo = !!(
+    customerName ||
+    customerPhone ||
+    customerEmail ||
+    deliveryAddress
+  );
+
   return (
     <View
       className="border-t px-4 py-3"
@@ -115,6 +131,89 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
         borderLeftColor: colors.teal,
       }}
     >
+      {hasCustomerInfo && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
+            marginBottom: 10,
+            paddingBottom: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+          >
+            <View
+              style={{
+                width: 3,
+                height: 16,
+                backgroundColor: colors.teal,
+                borderRadius: 1.5,
+              }}
+            />
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: colors.teal,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Customer
+            </Text>
+          </View>
+          {customerName ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 8,
+                backgroundColor: colors.teal + "18",
+                borderWidth: 1,
+                borderColor: colors.teal + "40",
+              }}
+            >
+              <User color={colors.teal} size={14} />
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: colors.teal,
+                }}
+                numberOfLines={1}
+              >
+                {customerName}
+              </Text>
+            </View>
+          ) : null}
+          {customerPhone ? (
+            <CustomerChip
+              icon={<Phone color={colors.label} size={12} />}
+              text={customerPhone}
+            />
+          ) : null}
+          {customerEmail ? (
+            <CustomerChip
+              icon={<Mail color={colors.label} size={12} />}
+              text={customerEmail}
+            />
+          ) : null}
+          {deliveryAddress ? (
+            <CustomerChip
+              icon={<MapPin color={colors.label} size={12} />}
+              text={deliveryAddress}
+            />
+          ) : null}
+        </View>
+      )}
       <View className="flex-row gap-6">
         {/* Column 1: Items (~50%) */}
         <View style={{ flex: 5 }}>
@@ -330,6 +429,34 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
     </View>
   );
 };
+
+const CustomerChip = ({
+  icon,
+  text,
+}: {
+  icon: React.ReactNode;
+  text: string;
+}) => (
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: colors.muted + "12",
+    }}
+  >
+    {icon}
+    <Text
+      style={{ fontSize: 12, fontWeight: "500", color: colors.label }}
+      numberOfLines={1}
+    >
+      {text}
+    </Text>
+  </View>
+);
 
 const PaymentLine = ({
   label,

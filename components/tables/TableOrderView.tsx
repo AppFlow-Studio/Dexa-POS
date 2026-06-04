@@ -39,6 +39,7 @@ import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { useRouter } from 'expo-router'
 import { CreditCard } from 'lucide-react-native'
 import React, {
   useCallback,
@@ -64,13 +65,15 @@ const TableOrderMenuPanel = React.memo(
     enableCoursing,
     isCurrentCourseSent,
     onStartNewCourse,
-    onOrderClosedCheck
+    onOrderClosedCheck,
+    isMenuDisabled
   }: {
     renderStage: number
     enableCoursing: boolean
     isCurrentCourseSent: boolean
     onStartNewCourse: () => void
     onOrderClosedCheck: () => boolean
+    isMenuDisabled: boolean
   }) {
     return (
     <View
@@ -110,10 +113,15 @@ const TableOrderMenuPanel = React.memo(
             </TouchableOpacity>
           </View>
         ) : (
-          <MenuSection
-            onOrderClosedCheck={onOrderClosedCheck}
-            isTableOrder={true}
-          />
+          <View
+            pointerEvents={isMenuDisabled ? 'none' : 'auto'}
+            style={{ flex: 1, opacity: isMenuDisabled ? 0.45 : 1 }}
+          >
+            <MenuSection
+              onOrderClosedCheck={onOrderClosedCheck}
+              isTableOrder={true}
+            />
+          </View>
         )
       ) : (
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -164,6 +172,7 @@ const TableOrderView = React.forwardRef<
   const prevRenderStageRef = useRef(renderStage)
 
   // --- 2. Standard Hooks & Context ---
+  const router = useRouter()
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
   const supabase = useSupabaseClient()
@@ -180,7 +189,6 @@ const TableOrderView = React.forwardRef<
     | { type: 'void_confirm' }
     | { type: 'order_closed_warning' }
     | { type: 'course_resend'; course: number }
-    | { type: 'reopen_modal' }
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>({
     type: 'none'
   })
@@ -240,13 +248,29 @@ const TableOrderView = React.forwardRef<
   // BillItem seat pill render independently of the toggle.
   const seatingHook = useTableSeating(activeOrder, partySize)
 
-  const totals = useOrderTotals(activeOrder?.id ?? null)
-  const preAuth = useOrderPreAuth(activeOrder?.id)
-  const hasPreAuth = useHasActivePreAuth(activeOrder?.id)
+  // Use the store's activeOrderId directly so these selectors stay in sync
+  // during the rekey window (local temp ID → backend UUID). rekeyOrder updates
+  // activeOrderId atomically in the same Immer commit, whereas activeOrder?.id
+  // from useTableSession can briefly lag behind, causing useOrderTotals to look
+  // up a deleted key and return null → $0 display until the next render.
+  const storeActiveOrderId = useOrderStore(s => s.activeOrderId)
+  const totals = useOrderTotals(storeActiveOrderId)
+  const preAuth = useOrderPreAuth(storeActiveOrderId ?? undefined)
+  const hasPreAuth = useHasActivePreAuth(storeActiveOrderId ?? undefined)
   const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0
   const storeActiveOrderTotal = totals?.total ?? 0
 
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0
+  const isClosedTerminal =
+    activeOrder?.order_status === 'void' ||
+    activeOrder?.order_status === 'cancelled' ||
+    activeOrder?.order_status === 'refunded'
+  const canReopenClosedCheck =
+    activeOrder?.check_status === 'Closed' &&
+    !isClosedTerminal &&
+    (activeOrder?.reopen_count ?? 0) < 1
+  const isClosedCheckMenuDisabled =
+    activeOrder?.check_status === 'Closed' && !canReopenClosedCheck
   // Only derive displayBalanceDue when totals are available; otherwise keep previous value
   // to prevent transient null → 0 from making the UI think the bill is $0 / fully paid.
   const displayBalanceDueRaw = hasPayments
@@ -347,6 +371,51 @@ const TableOrderView = React.forwardRef<
   }, [])
 
   // --- 7. Effects ---
+  // Auto-navigate to /tables when auto-clear-on-payment is enabled and the
+  // session reaches `paid`. Dispatch CLEAR locally (paid → cleaning → available
+  // via the store), then navigate. Also handles the case where session goes
+  // undefined (CLEAR was dispatched externally before this effect ran).
+  const hadSessionRef = useRef(!!session)
+  const autoClearEnabled = useLocationConfigStore(
+    s => s.config.dining.autoClearTableOnPayment
+  )
+  useEffect(() => {
+    // Session externally cleared (undefined) — just navigate.
+    if (hadSessionRef.current && !session) {
+      usePaymentStore.getState().close()
+      markNavigatingAway()
+      router.replace('/tables')
+      setTimeout(hideLoading, 300)
+      return
+    }
+    hadSessionRef.current = !!session
+
+    // Session reached `paid` with auto-clear on — dispatch CLEAR then navigate.
+    if (session?.status === 'paid' && autoClearEnabled) {
+      const tableId = currentTableId
+      void (async () => {
+        const sessionStore = useTableSessionStore.getState()
+        const sessionId = sessionStore.getSession(tableId)?.id
+        if (!sessionId) return
+
+        const siblingsDue = Object.values(
+          useOrderStore.getState().ordersById
+        ).some(
+          o =>
+            (o.session_id === sessionId || o.local_session_id === sessionId) &&
+            (o.amount_due ?? 0) > 0.01
+        )
+        if (siblingsDue) return
+
+        sessionStore.dispatch(tableId, { type: 'CLEAR' })
+        useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {})
+        usePaymentStore.getState().close()
+        markNavigatingAway()
+        router.replace('/tables')
+        setTimeout(hideLoading, 300)
+      })()
+    }
+  }, [session, session?.status, autoClearEnabled, markNavigatingAway, router, hideLoading, currentTableId])
   useEffect(() => {
     if (!__DEV__) return
     console.log(
@@ -421,6 +490,13 @@ const TableOrderView = React.forwardRef<
     totals,
     displayBalanceDue
   ])
+
+  // Show "Clearing table..." as soon as session reaches paid with auto-clear on.
+  useEffect(() => {
+    if (session?.status === 'paid' && autoClearEnabled) {
+      showLoading('Clearing table...')
+    }
+  }, [session?.status, autoClearEnabled, showLoading])
 
   // --- Action handlers ---
 
@@ -640,6 +716,10 @@ const TableOrderView = React.forwardRef<
   }, [doClearTable])
 
   const reopeningCheckRef = useRef(false)
+  const handlePressReopen = useCallback(() => {
+    setActiveDialog({ type: 'order_closed_warning' })
+  }, [])
+
   const handleConfirmReopen = useCallback(async () => {
     if (reopeningCheckRef.current) return
     closeDialog()
@@ -1088,6 +1168,11 @@ const TableOrderView = React.forwardRef<
       ? orderState.ordersById[orderState.activeOrderId]
       : null
     if (order?.check_status === 'Closed') {
+      const isTerminal =
+        order.order_status === 'void' ||
+        order.order_status === 'cancelled' ||
+        order.order_status === 'refunded'
+      if (isTerminal || (order.reopen_count ?? 0) >= 1) return true
       setActiveDialog({ type: 'order_closed_warning' })
       return true
     }
@@ -1431,6 +1516,7 @@ const TableOrderView = React.forwardRef<
               onPressMore={handlePressMore}
               onPressTotal={handlePressTotal}
               onPressCloseCheck={handleCloseCheck}
+              onPressReopenCheck={handlePressReopen}
               onPressClearTable={handleClearTable}
               totalDisplayAmount={displayBalanceDue}
               pricingSheetRef={
@@ -1460,6 +1546,7 @@ const TableOrderView = React.forwardRef<
               isCurrentCourseSent={isCurrentCourseSent}
               onStartNewCourse={handleStartNewCourse}
               onOrderClosedCheck={checkOrderClosedAndWarn}
+              isMenuDisabled={isClosedCheckMenuDisabled}
             />
           </View>
         </>
@@ -1532,6 +1619,7 @@ const TableOrderView = React.forwardRef<
               activeDialog.type === 'order_closed_warning'
             }
             onOrderClosedWarningChange={handleDialogBoolChange}
+            onConfirmReopen={handleConfirmReopen}
             courseToResend={
               activeDialog.type === 'course_resend' ? activeDialog.course : null
             }

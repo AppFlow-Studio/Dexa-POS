@@ -37,6 +37,7 @@ interface TableAlertDialogsProps {
   // Order closed warning
   isOrderClosedWarningOpen: boolean
   onOrderClosedWarningChange: (open: boolean) => void
+  onConfirmReopen: () => void
 
   // Course resend
   courseToResend: number | null
@@ -58,6 +59,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
   onConfirmVoid,
   isOrderClosedWarningOpen,
   onOrderClosedWarningChange,
+  onConfirmReopen,
   courseToResend,
   onCourseResendChange,
   onConfirmResend
@@ -289,7 +291,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
             className='text-sm text-center mb-5'
             style={{ color: colors.muted }}
           >
-            This check is closed. Check reopening is temporarily disabled.
+            This check is closed. Reopen it to add more items.
           </Text>
           <View className='flex-row gap-3'>
             <TouchableOpacity
@@ -301,7 +303,22 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
                 className='font-semibold text-base'
                 style={{ color: colors.label }}
               >
-                Dismiss
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onConfirmReopen}
+              className='flex-1 py-3 rounded-xl items-center border'
+              style={{
+                backgroundColor: colors.teal,
+                borderColor: `${colors.teal}CC`
+              }}
+            >
+              <Text
+                className='font-semibold text-base'
+                style={{ color: colors.onSolid }}
+              >
+                Reopen Check
               </Text>
             </TouchableOpacity>
           </View>
