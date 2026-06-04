@@ -144,16 +144,20 @@ export function useTableSession (
       const found = state.ordersById[localKey]
       if (found) return found
     }
-    // Priority 1.5: resolve via table index (local key for this table)
+    // Priority 2: active order already set and belongs to this table.
+    // Checked before tableOrderIdIndex because activeOrderId is updated atomically
+    // by rekeyOrder in the same Immer commit, whereas tableOrderIdIndex can briefly
+    // point to a broadcast shell (empty items) before rekeyOrder overwrites it.
+    if (state.activeOrderId) {
+      const active = state.ordersById[state.activeOrderId]
+      if (active?.service_location_id === tableId) return active
+    }
+    // Priority 2.5: resolve via table index (fallback when activeOrderId was cleared
+    // during a mount transition or the index was populated before activeOrderId was set)
     const indexedOrderId = state.tableOrderIdIndex[tableId]
     if (indexedOrderId) {
       const indexedOrder = state.ordersById[indexedOrderId]
       if (indexedOrder?.service_location_id === tableId) return indexedOrder
-    }
-    // Priority 2: active order already set and belongs to this table
-    if (state.activeOrderId) {
-      const active = state.ordersById[state.activeOrderId]
-      if (active?.service_location_id === tableId) return active
     }
     // Priority 3: scan for any order belonging to this table (covers the window
     // between startNewOrder and setActiveOrder, or after a rekey clears the index)

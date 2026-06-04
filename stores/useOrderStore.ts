@@ -6188,7 +6188,23 @@ export const useOrderStore = create<OrderState>()(
               state.dbOrderIdIndex[dbOrderId] = dbOrderId;
               // Keep dine-in table lookup aligned with the latest server
               // snapshot after seat, transfer, and completion updates.
-              syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
+              // Guard: when this is a brand-new broadcast shell (no existing alias
+              // was found), skip overwriting tableOrderIdIndex if a local order
+              // already owns this table. The local order is the in-flight optimistic
+              // create whose db_order_id wasn't set yet when the alias scan ran —
+              // rekeyOrder will fix the index atomically once hydrateOrderFromSeat fires.
+              // Without this guard, tableOrderIdIndex briefly points to the empty
+              // broadcast shell, causing a one-frame flicker in the bill section.
+              if (!existing && orderProfile.service_location_id) {
+                const currentIndexedId = state.tableOrderIdIndex[orderProfile.service_location_id];
+                if (currentIndexedId && currentIndexedId !== dbOrderId && state.ordersById[currentIndexedId]) {
+                  // A local order already owns this table — don't overwrite the index yet
+                } else {
+                  syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
+                }
+              } else {
+                syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
+              }
             });
 
             // Reconcile SC after hydration. Catches cross-station orders
@@ -14606,7 +14622,39 @@ export const useOrderStore = create<OrderState>()(
                             : dbItem.unit_price ?? 0),
                       })) || [];
 
-                  const allItems = [...syncedItems, ...newItemsFromDb];
+                  // Merge pending items that may be stored under a parallel local key
+                  // (the temp "order_xyz" key that's about to be rekeyed, or was just
+                  // rekeyed but the shell at localOrderId had empty items when set() ran).
+                  // This catches the race where:
+                  //   1. upsertOrder created a shell at ordersById[localOrderId] with items=[]
+                  //   2. This set() sees that shell as localOrder (items=[])
+                  //   3. The actual items are in ordersById["order_xyz"] (about to be rekeyed)
+                  // Without this merge, allItems=[] wipes the pending items. rekeyOrder then
+                  // runs after and puts them back — but addItemToBackend's setState may have
+                  // already set db_order_item_id on items that no longer exist in the array.
+                  const allItemsDbIds = new Set(
+                    allItems.map((i) => i.db_order_item_id).filter(Boolean),
+                  );
+                  const allItemsLocalIds = new Set(allItems.map((i) => i.id));
+                  for (const [key, candidate] of Object.entries(state.ordersById)) {
+                    if (key === localOrderId) continue;
+                    if (
+                      candidate.service_location_id !==
+                      (localOrder?.service_location_id ??
+                        dbOrder.table_number ??
+                        dbOrder.service_location_id)
+                    )
+                      continue;
+                    for (const item of candidate.items) {
+                      if (item.isDraft) continue;
+                      if (allItemsLocalIds.has(item.id)) continue;
+                      if (item.db_order_item_id && allItemsDbIds.has(item.db_order_item_id)) continue;
+                      // Pending or locally-synced item not yet in backend fetch — preserve it
+                      allItems.push(item);
+                      allItemsLocalIds.add(item.id);
+                      if (item.db_order_item_id) allItemsDbIds.add(item.db_order_item_id);
+                    }
+                  }
 
                   // Map payments from database
                   // Build a lookup of local payments so we can preserve any

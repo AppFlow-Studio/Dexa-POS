@@ -248,9 +248,15 @@ const TableOrderView = React.forwardRef<
   // BillItem seat pill render independently of the toggle.
   const seatingHook = useTableSeating(activeOrder, partySize)
 
-  const totals = useOrderTotals(activeOrder?.id ?? null)
-  const preAuth = useOrderPreAuth(activeOrder?.id)
-  const hasPreAuth = useHasActivePreAuth(activeOrder?.id)
+  // Use the store's activeOrderId directly so these selectors stay in sync
+  // during the rekey window (local temp ID → backend UUID). rekeyOrder updates
+  // activeOrderId atomically in the same Immer commit, whereas activeOrder?.id
+  // from useTableSession can briefly lag behind, causing useOrderTotals to look
+  // up a deleted key and return null → $0 display until the next render.
+  const storeActiveOrderId = useOrderStore(s => s.activeOrderId)
+  const totals = useOrderTotals(storeActiveOrderId)
+  const preAuth = useOrderPreAuth(storeActiveOrderId ?? undefined)
+  const hasPreAuth = useHasActivePreAuth(storeActiveOrderId ?? undefined)
   const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0
   const storeActiveOrderTotal = totals?.total ?? 0
 
