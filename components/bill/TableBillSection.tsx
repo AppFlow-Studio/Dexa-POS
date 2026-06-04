@@ -68,6 +68,7 @@ const DenseBillItemRow = React.memo(
     orderId,
     itemId,
     isSent,
+    hasUnsentItems,
     indentLeft,
     enableCoursing,
     orderHasPayments,
@@ -76,6 +77,7 @@ const DenseBillItemRow = React.memo(
     orderId: string
     itemId: string
     isSent: boolean
+    hasUnsentItems: boolean
     indentLeft: number
     enableCoursing: boolean
     orderHasPayments: boolean
@@ -377,6 +379,7 @@ type SeatListRow =
       type: 'item'
       itemId: string
       isSent: boolean
+      hasUnsentItems: boolean
       indentLeft: number
       seatKey?: string | number
       courseKey?: string
@@ -1375,7 +1378,6 @@ export default React.memo(TableBillSection, (prev, next) => {
   if (prev.onPressTotal !== next.onPressTotal) return false
   if (prev.onPressClearTable !== next.onPressClearTable) return false
   if (prev.onPressCloseCheck !== next.onPressCloseCheck) return false
-  if (prev.onPressReopenCheck !== next.onPressReopenCheck) return false
   if (prev.onDoubleTapCourse !== next.onDoubleTapCourse) return false
   if (prev.onOpenServerSheet !== next.onOpenServerSheet) return false
   if (prev.onPressSendAllToKitchen !== next.onPressSendAllToKitchen)

@@ -1944,6 +1944,7 @@ const KitchenDisplayScreen = () => {
     service.init();
 
     setOnNewOrderCallback((orderSource) => {
+      console.log("[KDS Sound] trigger", { orderSource });
       service.playForSource(orderSource);
     });
 

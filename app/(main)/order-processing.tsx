@@ -282,14 +282,26 @@ const OrderProcessing = () => {
     const currentActiveOrder = state.activeOrderId
       ? state.ordersById[state.activeOrderId]
       : null;
+    const isInFinalState =
+      currentActiveOrder?.order_status === "completed" ||
+      currentActiveOrder?.order_status === "void" ||
+      currentActiveOrder?.order_status === "cancelled";
     const shouldKeepActiveDineInOrder =
       !!currentActiveOrder?.service_location_id &&
       (currentActiveOrder.order_type === "dine_in" ||
         currentActiveOrder.order_type === "Dine In") &&
-      currentActiveOrder.order_status !== "completed" &&
-      currentActiveOrder.order_status !== "void" &&
-      currentActiveOrder.order_status !== "cancelled";
-    if (currentActiveOrder && shouldKeepActiveDineInOrder) {
+      !isInFinalState;
+    // Also resume any non-final, unpaid active order that has items
+    // (e.g. "Continue Order" from previous-orders for takeaway/delivery/online).
+    const shouldResumeActiveOrder =
+      !!currentActiveOrder &&
+      !isInFinalState &&
+      currentActiveOrder.paid_status !== "Paid" &&
+      (currentActiveOrder.items?.length ?? 0) > 0;
+    if (
+      currentActiveOrder &&
+      (shouldKeepActiveDineInOrder || shouldResumeActiveOrder)
+    ) {
       setActiveOrder(currentActiveOrder.id);
       return;
     }

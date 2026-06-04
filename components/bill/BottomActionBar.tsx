@@ -4,7 +4,6 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import {
   CheckCircle,
   MoreHorizontal,
-  RotateCcw,
   ShoppingCart,
   Trash2,
 } from "lucide-react-native";

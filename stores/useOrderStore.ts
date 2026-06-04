@@ -14605,6 +14605,11 @@ export const useOrderStore = create<OrderState>()(
                             : dbItem.unit_price ?? 0),
                       })) || [];
 
+                  const allItems: CartItem[] = [
+                    ...syncedItems,
+                    ...newItemsFromDb,
+                  ];
+
                   // Merge pending items that may be stored under a parallel local key
                   // (the temp "order_xyz" key that's about to be rekeyed, or was just
                   // rekeyed but the shell at localOrderId had empty items when set() ran).
