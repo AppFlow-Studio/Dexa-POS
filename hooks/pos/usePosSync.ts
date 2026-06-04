@@ -1,7 +1,8 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
-import { PosSyncData } from "@/types/menu";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { PosSyncData, TaxRate } from "@/types/menu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface MenuItemRecipeRow {
@@ -35,10 +36,15 @@ export const usePosSync = (locationId: string | null) => {
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
 
-      // Fetch Menu, Ingredients, and Modifier Ingredients in parallel.
+      // Fetch Menu, Ingredients, Modifier Ingredients, and tax rates in parallel.
       // Wrapped with deadline so bad WiFi falls back to TanStack `offlineFirst` cache
       // instead of hanging the UI. See plan: lets-look-into-this-stateless-blossom.md.
-      const [syncResult, menuItemIngredientsResult, modifierIngredientsResult] =
+      const [
+        syncResult,
+        menuItemIngredientsResult,
+        modifierIngredientsResult,
+        taxRatesResult,
+      ] =
         await withDeadline(
           (signal) =>
             Promise.all([
@@ -52,6 +58,12 @@ export const usePosSync = (locationId: string | null) => {
               supabase
                 .from("modifier_group_item_recipes")
                 .select("id, modifier_group_item_id, inventory_item_id, quantity_used")
+                .abortSignal(signal),
+              supabase
+                .from("tax_rates")
+                .select("id, location_id, name, percentage, tax_category, is_active, created_at, updated_at")
+                .eq("location_id", locationId)
+                .eq("is_active", true)
                 .abortSignal(signal),
             ]),
           DEADLINES.menuSync,
@@ -78,6 +90,15 @@ export const usePosSync = (locationId: string | null) => {
           "modifier_group_item_ingredients fetch warning:",
           modifierIngredientsResult.error,
         );
+      }
+
+      if (taxRatesResult.error) {
+        console.warn("tax_rates fetch warning:", taxRatesResult.error);
+      } else {
+        console.log("DEBUG: Synced Tax Rates:", taxRatesResult.data);
+        useStoreSettingsStore
+          .getState()
+          .setTaxRates((taxRatesResult.data || []) as TaxRate[]);
       }
 
       console.log("DEBUG: Synced Menu Data:", data.menus?.[0]);
