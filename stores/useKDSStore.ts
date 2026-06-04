@@ -2862,13 +2862,15 @@ export const useKDSStore = create<KDSState>()(
           timestamp: Date.now(),
         });
 
+        const readyNow = Date.now();
         const updatedTickets = tickets.map((t) => {
           if (t.ticket_id !== ticketId) return t;
           return {
             ...t,
             status: newTicketStatus,
             items: updatedItems,
-            ...(resetEpoch ? { start_time_epoch: Date.now() } : {}),
+            ...(resetEpoch ? { start_time_epoch: readyNow } : {}),
+            ...(allReady ? { ready_time_epoch: readyNow } : {}),
           };
         });
 
@@ -2878,7 +2880,8 @@ export const useKDSStore = create<KDSState>()(
             ...ticket,
             status: newTicketStatus,
             items: updatedItems,
-            ...(resetEpoch ? { start_time_epoch: Date.now() } : {}),
+            ...(resetEpoch ? { start_time_epoch: readyNow } : {}),
+            ...(allReady ? { ready_time_epoch: readyNow } : {}),
           },
         };
 
