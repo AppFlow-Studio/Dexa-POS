@@ -3253,27 +3253,10 @@ const syncPaymentToBackend = async (
               ? useTableSessionStore.getState().getSession(tableId)?.id
               : undefined);
 
-          if (autoClear && tableId && sessionId) {
-            const siblingsDue = Object.values(
-              useOrderStore.getState().ordersById,
-            ).some(
-              (o) =>
-                (o.session_id === sessionId ||
-                  o.local_session_id === sessionId) &&
-                (o.amount_due ?? 0) > 0.01,
-            );
-
-            if (!siblingsDue) {
-              // Optimistic local clear — navigates the table screen away instantly.
-              useTableSessionStore
-                .getState()
-                .dispatch(tableId, { type: "CLEAR" });
-              useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {});
-              console.log(
-                `[syncPayment] Auto-clear local dispatch for table ${tableId}`,
-              );
-            }
-          }
+          // Local CLEAR is intentionally NOT dispatched here.
+          // TableOrderView detects session reaching "paid" and handles its own
+          // CLEAR + navigation. BillSection handles the order-processing path.
+          // Dispatching CLEAR here races with both and causes double-fire skips.
         } catch (autoClearErr) {
           console.error("[syncPayment] Auto-clear (local) failed:", autoClearErr);
         }

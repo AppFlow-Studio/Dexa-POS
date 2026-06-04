@@ -371,22 +371,51 @@ const TableOrderView = React.forwardRef<
   }, [])
 
   // --- 7. Effects ---
-  // Auto-navigate to /tables when the session is externally cleared
-  // (e.g. auto-clear-on-payment dispatches CLEAR to the local store).
-  // The session entry goes undefined on CLEAR, so we watch for the transition
-  // from a known session id → undefined.
+  // Auto-navigate to /tables when auto-clear-on-payment is enabled and the
+  // session reaches `paid`. Dispatch CLEAR locally (paid → cleaning → available
+  // via the store), then navigate. Also handles the case where session goes
+  // undefined (CLEAR was dispatched externally before this effect ran).
   const hadSessionRef = useRef(!!session)
+  const autoClearEnabled = useLocationConfigStore(
+    s => s.config.dining.autoClearTableOnPayment
+  )
   useEffect(() => {
+    // Session externally cleared (undefined) — just navigate.
     if (hadSessionRef.current && !session) {
       usePaymentStore.getState().close()
       markNavigatingAway()
       router.replace('/tables')
-      // Hide after navigation is committed so the overlay covers the transition
-      // but doesn't linger on the floor plan screen.
       setTimeout(hideLoading, 300)
+      return
     }
     hadSessionRef.current = !!session
-  }, [session, markNavigatingAway, router, hideLoading])
+
+    // Session reached `paid` with auto-clear on — dispatch CLEAR then navigate.
+    if (session?.status === 'paid' && autoClearEnabled) {
+      const tableId = currentTableId
+      void (async () => {
+        const sessionStore = useTableSessionStore.getState()
+        const sessionId = sessionStore.getSession(tableId)?.id
+        if (!sessionId) return
+
+        const siblingsDue = Object.values(
+          useOrderStore.getState().ordersById
+        ).some(
+          o =>
+            (o.session_id === sessionId || o.local_session_id === sessionId) &&
+            (o.amount_due ?? 0) > 0.01
+        )
+        if (siblingsDue) return
+
+        sessionStore.dispatch(tableId, { type: 'CLEAR' })
+        useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {})
+        usePaymentStore.getState().close()
+        markNavigatingAway()
+        router.replace('/tables')
+        setTimeout(hideLoading, 300)
+      })()
+    }
+  }, [session, session?.status, autoClearEnabled, markNavigatingAway, router, hideLoading, currentTableId])
   useEffect(() => {
     if (!__DEV__) return
     console.log(
@@ -462,16 +491,12 @@ const TableOrderView = React.forwardRef<
     displayBalanceDue
   ])
 
-  // Show "Clearing table..." the moment the order is fully paid and auto-clear
-  // is on — immediate feedback before the local CLEAR dispatch arrives.
-  const autoClearEnabled = useLocationConfigStore(
-    s => s.config.dining.autoClearTableOnPayment
-  )
+  // Show "Clearing table..." as soon as session reaches paid with auto-clear on.
   useEffect(() => {
-    if (isFullyPaid && autoClearEnabled) {
+    if (session?.status === 'paid' && autoClearEnabled) {
       showLoading('Clearing table...')
     }
-  }, [isFullyPaid, autoClearEnabled, showLoading])
+  }, [session?.status, autoClearEnabled, showLoading])
 
   // --- Action handlers ---
 

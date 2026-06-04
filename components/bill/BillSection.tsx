@@ -1176,26 +1176,107 @@ const BillSectionContent = ({
     ],
   );
 
+  const autoClearEnabled = useLocationConfigStore(
+    (s) => s.config.dining.autoClearTableOnPayment,
+  );
+
   useEffect(() => {
-    if (
-      activeOrderType !== "dine_in" ||
-      activeOrderPaidStatus !== "Paid" ||
-      !linkedTableId ||
-      !linkedTableSession ||
-      linkedTableSession.status === "paid" ||
-      linkedTableSession.status === "cleaning"
-    ) {
+    console.log("[BillSection:AutoClear] effect fired", {
+      activeOrderType,
+      activeOrderPaidStatus,
+      linkedTableId,
+      sessionStatus: linkedTableSession?.status,
+      autoClearEnabled,
+    });
+
+    if (activeOrderType !== "dine_in") {
+      console.log("[BillSection:AutoClear] skip — not dine_in");
+      return;
+    }
+    if (activeOrderPaidStatus !== "Paid") {
+      console.log("[BillSection:AutoClear] skip — not Paid, status:", activeOrderPaidStatus);
+      return;
+    }
+    if (!linkedTableId) {
+      console.log("[BillSection:AutoClear] skip — no linkedTableId");
+      return;
+    }
+    if (!linkedTableSession) {
+      console.log("[BillSection:AutoClear] skip — no linkedTableSession");
+      return;
+    }
+    if (linkedTableSession.status === "paid" || linkedTableSession.status === "cleaning") {
+      console.log("[BillSection:AutoClear] skip — session already paid/cleaning:", linkedTableSession.status);
       return;
     }
 
-    void useTableSessionStore
-      .getState()
-      .dispatchAction({ type: "FULL_PAYMENT", tableId: linkedTableId });
+    const tableId = linkedTableId;
+    const sessionId = linkedTableSession.id;
+
+    void (async () => {
+      console.log("[BillSection:AutoClear] dispatching FULL_PAYMENT for table", tableId);
+      const fpResult = await useTableSessionStore
+        .getState()
+        .dispatchAction({ type: "FULL_PAYMENT", tableId });
+      console.log("[BillSection:AutoClear] FULL_PAYMENT result:", fpResult);
+
+      if (!autoClearEnabled) {
+        console.log("[BillSection:AutoClear] autoClear disabled, stopping");
+        return;
+      }
+
+      const siblingsDue = Object.values(
+        useOrderStore.getState().ordersById,
+      ).some(
+        (o) =>
+          (o.session_id === sessionId || o.local_session_id === sessionId) &&
+          (o.amount_due ?? 0) > 0.01,
+      );
+      console.log("[BillSection:AutoClear] siblingsDue:", siblingsDue, "sessionId:", sessionId);
+
+      if (siblingsDue) return;
+
+      console.log("[BillSection:AutoClear] dispatching CLEAR for table", tableId);
+      const clearResult = useTableSessionStore.getState().dispatch(tableId, { type: "CLEAR" });
+      console.log("[BillSection:AutoClear] CLEAR result:", clearResult);
+
+      useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {});
+      usePaymentStore.getState().close();
+      useDineInStore.getState().clearSelectedTable();
+
+      const { orderIds, ordersById } = useOrderStore.getState();
+      const reusable = orderIds
+        .map((id) => ordersById[id])
+        .find(
+          (o) =>
+            o &&
+            !o.service_location_id &&
+            o.order_status === "draft" &&
+            o.items.length === 0,
+        );
+      console.log("[BillSection:AutoClear] reusable draft:", reusable?.id ?? "none, creating new");
+      if (reusable) {
+        // Reset stale dine-in fields so the bill shows as a clean new order.
+        useOrderStore.setState((s) => {
+          const o = s.ordersById[reusable.id];
+          if (!o) return;
+          o.order_type = "takeout";
+          o.service_location_id = null;
+          o.session_id = undefined;
+          o.local_session_id = undefined;
+        });
+        useOrderStore.getState().setActiveOrder(reusable.id);
+      } else {
+        const fresh = useOrderStore.getState().startNewOrder();
+        useOrderStore.getState().setActiveOrder(fresh.id);
+      }
+    })();
   }, [
     activeOrderPaidStatus,
     activeOrderType,
     linkedTableId,
     linkedTableSession,
+    autoClearEnabled,
   ]);
 
   const handleCloseSession = useCallback(async () => {
@@ -1518,6 +1599,8 @@ const BillSectionContent = ({
   // OPTIMIZED: Wrap callback with useCallback
   // Explicit New Order action should always create a fresh order number.
   const handleStartNewOrder = useCallback(() => {
+    clearSelectedTable();
+
     if (isCurrentOrderEmptyDraft && activeOrder?.id) {
       setActiveOrder(activeOrder.id);
       return;
@@ -1533,23 +1616,28 @@ const BillSectionContent = ({
     );
 
     if (reusableEmptyDraftId) {
-      if (selectedStore) {
-        const refreshedNumbers = getRefreshedReusableDraftNumbers({
-          draftId: reusableEmptyDraftId,
-          ordersById,
-          orderIds,
-          locationId: selectedStore.id,
-          stationNumber: selectedStation?.station_number ?? null,
-        });
-        if (refreshedNumbers) {
-          useOrderStore.setState((state) => {
-            const draft = state.ordersById[reusableEmptyDraftId];
-            if (!draft) return;
+      useOrderStore.setState((state) => {
+        const draft = state.ordersById[reusableEmptyDraftId];
+        if (!draft) return;
+        // Reset any stale dine-in fields from a previous session.
+        draft.order_type = "takeout";
+        draft.service_location_id = null;
+        draft.session_id = undefined;
+        draft.local_session_id = undefined;
+        if (selectedStore) {
+          const refreshedNumbers = getRefreshedReusableDraftNumbers({
+            draftId: reusableEmptyDraftId,
+            ordersById,
+            orderIds,
+            locationId: selectedStore.id,
+            stationNumber: selectedStation?.station_number ?? null,
+          });
+          if (refreshedNumbers) {
             draft.order_number = refreshedNumbers.orderNumber;
             draft.display_number = refreshedNumbers.displayNumber;
-          });
+          }
         }
-      }
+      });
       setActiveOrder(reusableEmptyDraftId);
       return;
     }
@@ -1558,6 +1646,7 @@ const BillSectionContent = ({
     setActiveOrder(newOrder.id);
   }, [
     activeOrder?.id,
+    clearSelectedTable,
     isCurrentOrderEmptyDraft,
     startNewOrder,
     setActiveOrder,
@@ -1742,33 +1831,37 @@ const BillSectionContent = ({
               </Text>
             </TouchableOpacity>
             {activeOrderType === "dine_in" && linkedTableId ? (
-              <TouchableOpacity
-                onPress={handleCloseSession}
-                disabled={activeOrderPaidStatus !== "Paid"}
-                className="h-8 px-3 rounded-lg flex-row items-center justify-center"
-                style={{
-                  backgroundColor:
-                    activeOrderPaidStatus === "Paid"
-                      ? colors.warning
-                      : colors.card,
-                  borderWidth: activeOrderPaidStatus === "Paid" ? 0 : 1,
-                  borderColor: colors.border,
-                  opacity: activeOrderPaidStatus === "Paid" ? 1 : 0.5,
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      activeOrderPaidStatus === "Paid"
-                        ? colors.onSolid
-                        : colors.label,
-                    fontSize: 12,
-                    fontWeight: "500",
-                  }}
-                >
-                  Close Session
-                </Text>
-              </TouchableOpacity>
+              (() => {
+                const sessionAlreadyClosed =
+                  !linkedTableSession ||
+                  linkedTableSession.status === "available" ||
+                  linkedTableSession.status === "cleaning";
+                const canClose =
+                  activeOrderPaidStatus === "Paid" && !sessionAlreadyClosed;
+                return (
+                  <TouchableOpacity
+                    onPress={handleCloseSession}
+                    disabled={!canClose}
+                    className="h-8 px-3 rounded-lg flex-row items-center justify-center"
+                    style={{
+                      backgroundColor: canClose ? colors.warning : colors.card,
+                      borderWidth: canClose ? 0 : 1,
+                      borderColor: colors.border,
+                      opacity: canClose ? 1 : 0.5,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: canClose ? colors.onSolid : colors.label,
+                        fontSize: 12,
+                        fontWeight: "500",
+                      }}
+                    >
+                      {sessionAlreadyClosed ? "Session Closed" : "Close Session"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()
             ) : null}
           </View>
 
@@ -1815,7 +1908,9 @@ const BillSectionContent = ({
           }
           tableStatus={liveTableStatus}
           onOpenTableSelector={
-            activeOrderType === "dine_in" ? handleOpenTableSelector : undefined
+            activeOrderType === "dine_in" && activeOrderPaidStatus !== "Paid"
+              ? handleOpenTableSelector
+              : undefined
           }
           onViewTable={
             displayedTable
