@@ -681,6 +681,7 @@ export function transformBroadcastToOrder (
     order_type: mapOrderType(backendOrder.order_type),
     order_status: backendOrder.status,
     check_status: backendOrder.check_status || 'Opened',
+    reopen_count: backendOrder.reopen_count ?? 0,
     paid_status: mapPaymentStatus(backendOrder.payment_status),
     service_location_id: backendOrder.table_number,
     // table_number IS the table name (e.g., "T1"), so use it directly for display
@@ -809,6 +810,7 @@ export interface FetchedOrderData {
   station_id?: string | null
   station_name?: string | null
   check_status?: string | null
+  reopen_count?: number | null
   session_id?: string | null
   order_source?: string | null
   delivery_platform?: string | null
@@ -1315,6 +1317,7 @@ export function normalizeFetchedOrder (
       fetchedOrder.stations?.station_name ?? fetchedOrder.station_name ?? null,
     check_status:
       (fetchedOrder.check_status as 'Opened' | 'Closed' | null) ?? 'Opened',
+    reopen_count: (fetchedOrder.reopen_count as number | null) ?? 0,
     server_name: fetchedOrder.created_by_staff
       ? `${fetchedOrder.created_by_staff.first_name || ''} ${
           fetchedOrder.created_by_staff.last_name || ''

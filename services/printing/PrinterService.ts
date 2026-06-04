@@ -1370,10 +1370,26 @@ function buildKitchenTicketData (
 }
 
 function resolvePrintableTableName (order: OrderProfile): string | undefined {
+  const uuidLike =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const explicitName = order.service_location_name?.trim()
+  if (explicitName && !uuidLike.test(explicitName)) return explicitName
+
+  const tableId = order.service_location_id?.trim()
+  if (tableId) {
+    const tableName = useFloorPlanStore.getState().tablesById[tableId]?.name
+    if (tableName) return tableName
+  }
+
+  if (explicitName) {
+    const tableName = useFloorPlanStore.getState().tablesById[explicitName]?.name
+    if (tableName) return tableName
+  }
+
   return (
     resolveTableDisplayName(
-      order.service_location_id,
-      order.service_location_name
+      order.service_location_name,
+      order.service_location_id
     ) ?? undefined
   )
 }

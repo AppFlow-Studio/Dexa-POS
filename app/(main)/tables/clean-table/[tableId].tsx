@@ -2,7 +2,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const CleanTableScreen = () => {
@@ -57,6 +57,17 @@ const CleanTableScreen = () => {
       sessionId: session?.id,
     };
   }, [tables, tableId]);
+
+  // If auto-clear freed the table while this screen is open, navigate away.
+  const sessionStatus = useTableSessionStore(
+    (s) => (typeof tableId === "string" ? s.sessions[tableId]?.status : undefined)
+  );
+  const initialStatusRef = useRef(sessionStatus);
+  useEffect(() => {
+    if (sessionStatus === "available" && initialStatusRef.current !== "available") {
+      router.replace("/tables");
+    }
+  }, [sessionStatus, router]);
 
   const handleCleanTable = async () => {
     if (tableId && typeof tableId === "string") {

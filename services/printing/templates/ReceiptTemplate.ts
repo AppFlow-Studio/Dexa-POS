@@ -64,7 +64,7 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   // Combined order type + table on one line
   if (cfg?.showOrderType !== false) {
     const typeLine = data.tableName
-      ? `${data.orderType} - ${data.tableName}`
+      ? `${data.orderType} - Table: ${data.tableName}`
       : data.orderType;
     b.bold(true);
     b.textLine(typeLine);

@@ -1906,6 +1906,7 @@ export const useKDSStore = create<KDSState>()(
                   : item,
             ),
             ...(resetEpoch ? { start_time_epoch: Date.now() } : {}),
+            ...(ticketStatus === "ready" ? { ready_time_epoch: Date.now() } : {}),
           };
           // Replace single entry without iterating the full tickets array
           const idx = tickets.findIndex((t) => t.ticket_id === ticketId);

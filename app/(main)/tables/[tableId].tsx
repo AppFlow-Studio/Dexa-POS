@@ -13,20 +13,12 @@ export default function TableScreen () {
   const tableViewRef = useRef<TableOrderViewHandle>(null)
   const resolvedTableId = typeof tableId === 'string' ? tableId : ''
 
-  const doGoBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back()
-      return
-    }
-    router.replace('/tables')
-  }, [router])
-
   const handleClose = useCallback(() => {
     if (isClosingRef.current) return
     isClosingRef.current = true
     tableViewRef.current?.prepareClose()
-    doGoBack()
-  }, [doGoBack])
+    router.replace('/tables')
+  }, [router])
 
   return (
     <View style={styles.container}>

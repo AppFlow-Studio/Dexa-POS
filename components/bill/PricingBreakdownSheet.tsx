@@ -151,6 +151,12 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   const cashAmountDue = liveTotals?.cashAmountDue ?? 0;
   // cash service charge from live totals (uses cash subtotal as base)
   const cashServiceCharge = liveTotals?.cashServiceCharge ?? liveServiceCharge;
+  // Remaining (unpaid) SC — shown instead of the full SC once a payment exists,
+  // so Remaining Subtotal + SC + Remaining Tax reconciles to Balance Due.
+  const outstandingServiceCharge =
+    liveTotals?.outstandingServiceCharge ?? liveServiceCharge;
+  const cashOutstandingServiceCharge =
+    liveTotals?.cashOutstandingServiceCharge ?? cashServiceCharge;
 
   const hasPayments =
     hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
@@ -185,12 +191,20 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
       )
     : (liveTotals?.subtotal ?? activeOrderSubtotal);
   const displayCashSubtotal = hasPayments
-    ? Math.max(0, cashAmountDue - cashTax - cashServiceCharge)
+    ? Math.max(0, liveTotals?.cashOutstandingSubtotal ?? 0)
     : cashSubtotal;
   const displayTax = hasPayments
     ? Math.max(0, liveTotals?.outstandingTax ?? activeOrderOutstandingTax)
     : (liveTotals?.tax ?? activeOrderTax);
-  const displayCashTax = hasPayments ? Math.max(0, cashTax) : cashTax;
+  const displayCashTax = hasPayments
+    ? Math.max(0, liveTotals?.cashOutstandingTax ?? 0)
+    : cashTax;
+  const displayServiceCharge = hasPayments
+    ? Math.max(0, outstandingServiceCharge)
+    : liveServiceCharge;
+  const displayCashServiceCharge = hasPayments
+    ? Math.max(0, cashOutstandingServiceCharge)
+    : cashServiceCharge;
   const cardTotal = Math.max(0, totalDisplayAmount);
   const displayCashTotal = hasPayments ? Math.max(0, cashAmountDue) : cashTotal;
 
@@ -382,12 +396,12 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
           )}
 
           {/* ── Service Charge ─────────────────────────────────── */}
-          {liveServiceCharge > 0.001 && (
+          {displayServiceCharge > 0.001 && (
             hasDualPricing ? (
               <Row
-                label={scLabel}
-                card={liveServiceCharge}
-                cash={cashServiceCharge}
+                label={hasPayments ? `Remaining ${scLabel}` : scLabel}
+                card={displayServiceCharge}
+                cash={displayCashServiceCharge}
               />
             ) : (
               <View
@@ -398,9 +412,11 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                   paddingVertical: 7,
                 }}
               >
-                <Text style={{ fontSize: 13, color: colors.label }}>{scLabel}</Text>
+                <Text style={{ fontSize: 13, color: colors.label }}>
+                  {hasPayments ? `Remaining ${scLabel}` : scLabel}
+                </Text>
                 <Text style={{ fontSize: 13, color: colors.heading }}>
-                  {fmt(liveServiceCharge)}
+                  {fmt(displayServiceCharge)}
                 </Text>
               </View>
             )

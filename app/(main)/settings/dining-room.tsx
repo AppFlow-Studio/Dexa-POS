@@ -583,6 +583,23 @@ const DiningRoomScreen = () => {
                 }
               />
             </View>
+
+            <View style={rowStyle}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={rowTitleStyle}>Auto-Clear Table on Payment</Text>
+                <Text style={rowMetaStyle}>
+                  Free the table automatically once its check is fully paid
+                </Text>
+              </View>
+              <Switch
+                checked={dining.autoClearTableOnPayment}
+                onCheckedChange={v =>
+                  updateConfig('dining', {
+                    autoClearTableOnPayment: v
+                  })
+                }
+              />
+            </View>
           </View>
         </View>
 

@@ -19,11 +19,12 @@ import {
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { getFloorPlanClient, useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useReservationStore } from "@/stores/useReservationStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -455,6 +456,7 @@ const BillSectionContent = ({
   const sections = useFloorPlanStore((s) => s.sections);
   const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
   const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
+  const refreshTableSessions = useFloorPlanStore((s) => s.refreshTableSessions);
   const liveSessions = useTableSessionStore((s) => s.sessions);
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
@@ -895,6 +897,15 @@ const BillSectionContent = ({
         return true;
       }
 
+      try {
+        await refreshTableSessions();
+      } catch (error) {
+        console.error("[BillSection] Failed to refresh table sessions:", {
+          error,
+          targetTableId: table.id,
+        });
+      }
+
       const sessionStore = useTableSessionStore.getState();
       const destinationSession = sessionStore.sessions[table.id];
       const destinationStatus =
@@ -931,15 +942,63 @@ const BillSectionContent = ({
         return false;
       }
 
-      // Table transfer is temporarily disabled.
-      // If the order already has a linked session on a different table, block the move.
       if (activeLinkedSourceEntries.length > 0) {
-        show({
-          title: "Cannot Switch Table",
-          message: "Close the current table session before moving to a different table.",
-          type: "error",
-        });
-        return false;
+        if (!isOnline) {
+          show({
+            title: "Offline",
+            message: "Table transfer requires connection.",
+            type: "warning",
+          });
+          return false;
+        }
+
+        const [, sourceSession] = activeLinkedSourceEntries[0];
+        try {
+          console.log("[BillSection][TableSelect] Transfer table session", {
+            activeOrderId,
+            activeDbOrderId: activeOrder?.db_order_id ?? null,
+            sessionId: sourceSession.id,
+            targetTableId: table.id,
+          });
+
+          if (token?.cancelled) return false;
+
+          await useTableSessionStore
+            .getState()
+            .transferSession(sourceSession.id, [table.id]);
+
+          if (token?.cancelled) return false;
+
+          assignOrderToTable(activeOrderId, table.id);
+          show({
+            title: "Table Transferred",
+            message: `Order moved to ${table.name}.`,
+            type: "success",
+          });
+          return true;
+        } catch (error) {
+          console.error("[BillSection] Failed to transfer table session:", {
+            error,
+            activeOrderId,
+            activeDbOrderId: activeOrder?.db_order_id ?? null,
+            sessionId: sourceSession.id,
+            targetTableId: table.id,
+          });
+          show({
+            title: "Transfer Failed",
+            message:
+              error instanceof Error
+                ? error.message
+                : typeof error === "object" &&
+                    error !== null &&
+                    "message" in error &&
+                    typeof error.message === "string"
+                  ? error.message
+                  : "Could not move the order to that table.",
+            type: "error",
+          });
+          return false;
+        }
       }
 
       assignOrderToTable(activeOrderId, table.id);
@@ -1042,6 +1101,7 @@ const BillSectionContent = ({
       getTableStatusLabel,
       isOnline,
       isSessionLinkedToOrder,
+      refreshTableSessions,
       selectedStation?.id,
       selectorPartySize,
       show,
@@ -1054,9 +1114,14 @@ const BillSectionContent = ({
         table.id === activeOrderServiceLocation ||
         table.name === activeOrderServiceLocation;
       const isEmpty = cart.length === 0;
+      const canTryDineInTableTransfer = activeOrderType === "dine_in";
 
       // Switching tables is blocked once items have been sent to the kitchen
-      if (!isCurrentlyAssigned && hasNonDraftItems) {
+      if (
+        !isCurrentlyAssigned &&
+        hasNonDraftItems &&
+        !canTryDineInTableTransfer
+      ) {
         show({
           title: "Cannot Switch Table",
           message: "Items have already been sent to the kitchen. Void the order to move to a different table.",
@@ -1100,6 +1165,7 @@ const BillSectionContent = ({
     [
       activeOrderId,
       activeOrderServiceLocation,
+      activeOrderType,
       cart.length,
       clearSelectedTable,
       closeTableSelector,
@@ -1111,26 +1177,198 @@ const BillSectionContent = ({
     ],
   );
 
+  // When the order type is switched away from dine_in, unlink the table and
+  // clear the session if one was started (but not yet paid/sent to kitchen).
+  const prevOrderTypeRef = useRef(activeOrderType);
   useEffect(() => {
-    if (
-      activeOrderType !== "dine_in" ||
-      activeOrderPaidStatus !== "Paid" ||
-      !linkedTableId ||
-      !linkedTableSession ||
-      linkedTableSession.status === "paid" ||
-      linkedTableSession.status === "cleaning"
-    ) {
+    const prev = prevOrderTypeRef.current;
+    prevOrderTypeRef.current = activeOrderType;
+
+    if (prev !== "dine_in" || activeOrderType === "dine_in") return;
+
+    // Snapshot table/session before any state changes alter them.
+    const ordStore = useOrderStore.getState();
+    const snapOrderId = ordStore.activeOrderId;
+    const snapOrder = snapOrderId ? ordStore.ordersById[snapOrderId] : null;
+    const snapTableId =
+      useDineInStore.getState().selectedTable?.id ??
+      snapOrder?.service_location_id ??
+      null;
+
+    clearSelectedTable();
+
+    if (snapOrder) {
+      // Clear locally in ordersById.
+      useOrderStore.getState().updateActiveOrderDetails({ service_location_id: null });
+
+      // Clear in previousOrders store immediately so the order list updates
+      // without waiting for a backend round-trip.
+      const dbId = snapOrder.db_order_id;
+      if (dbId) {
+        usePreviousOrdersStore.setState((state) => {
+          const updated = state.previousOrders.map((o) =>
+            o.db_order_id === dbId
+              ? { ...o, service_location_id: undefined, service_location_name: undefined }
+              : o,
+          );
+          // Rebuild the lookup map inline (buildOrderLookupMap is not exported).
+          const lookup: Record<string, typeof updated[number]> = {};
+          for (const o of updated) {
+            if (o.db_order_id) lookup[o.db_order_id] = o;
+            if (o.orderId) lookup[o.orderId] = o;
+          }
+          return { previousOrders: updated, _orderLookup: lookup };
+        });
+      }
+
+      // Clear on backend — updateActiveOrderDetails RPC doesn't include
+      // table_number, so we need a direct update mirroring assignOrderToTable.
+      if (dbId) {
+        const supabase = getFloorPlanClient();
+        if (supabase) {
+          supabase
+            .from("orders")
+            .update({ table_number: null, order_type: activeOrderType ?? "takeout" })
+            .eq("id", dbId)
+            .then(({ error }) => {
+              if (error) {
+                console.error("[BillSection] Failed to unlink order from table:", error);
+              }
+            });
+        }
+      }
+    }
+
+    if (snapTableId) {
+      const sessionStore = useTableSessionStore.getState();
+      const session = sessionStore.getSession(snapTableId);
+      if (session && session.status !== "available") {
+        // Force-clear regardless of state machine position — bypass dispatchAction
+        // since CLEAR_TABLE is only valid from paid/served/check_presented.
+        // Directly mark backend session as available, then remove locally.
+        sessionStore.dispatch(snapTableId, { type: "CLEAR" });
+        const supabase = getFloorPlanClient();
+        if (supabase) {
+          const { FloorPlanService } = require(
+            "@/services/floorPlanService",
+          ) as typeof import("@/services/floorPlanService");
+          const staffId =
+            useEmployeeStore.getState().loggedInEmployee?.profileId;
+          FloorPlanService.updateTableSessionStatus(supabase, {
+            p_session_id: session.id,
+            p_status: "available",
+            p_staff_id: staffId,
+          }).catch(() => {});
+        }
+        useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {});
+      }
+    }
+  // Only re-run when order type actually changes — don't include linkedTableId
+  // since clearing it would re-trigger the effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrderType, clearSelectedTable]);
+
+  const autoClearEnabled = useLocationConfigStore(
+    (s) => s.config.dining.autoClearTableOnPayment,
+  );
+
+  useEffect(() => {
+    console.log("[BillSection:AutoClear] effect fired", {
+      activeOrderType,
+      activeOrderPaidStatus,
+      linkedTableId,
+      sessionStatus: linkedTableSession?.status,
+      autoClearEnabled,
+    });
+
+    if (activeOrderType !== "dine_in") {
+      console.log("[BillSection:AutoClear] skip — not dine_in");
+      return;
+    }
+    if (activeOrderPaidStatus !== "Paid") {
+      console.log("[BillSection:AutoClear] skip — not Paid, status:", activeOrderPaidStatus);
+      return;
+    }
+    if (!linkedTableId) {
+      console.log("[BillSection:AutoClear] skip — no linkedTableId");
+      return;
+    }
+    if (!linkedTableSession) {
+      console.log("[BillSection:AutoClear] skip — no linkedTableSession");
+      return;
+    }
+    if (linkedTableSession.status === "paid" || linkedTableSession.status === "cleaning") {
+      console.log("[BillSection:AutoClear] skip — session already paid/cleaning:", linkedTableSession.status);
       return;
     }
 
-    void useTableSessionStore
-      .getState()
-      .dispatchAction({ type: "FULL_PAYMENT", tableId: linkedTableId });
+    const tableId = linkedTableId;
+    const sessionId = linkedTableSession.id;
+
+    void (async () => {
+      console.log("[BillSection:AutoClear] dispatching FULL_PAYMENT for table", tableId);
+      const fpResult = await useTableSessionStore
+        .getState()
+        .dispatchAction({ type: "FULL_PAYMENT", tableId });
+      console.log("[BillSection:AutoClear] FULL_PAYMENT result:", fpResult);
+
+      if (!autoClearEnabled) {
+        console.log("[BillSection:AutoClear] autoClear disabled, stopping");
+        return;
+      }
+
+      const siblingsDue = Object.values(
+        useOrderStore.getState().ordersById,
+      ).some(
+        (o) =>
+          (o.session_id === sessionId || o.local_session_id === sessionId) &&
+          (o.amount_due ?? 0) > 0.01,
+      );
+      console.log("[BillSection:AutoClear] siblingsDue:", siblingsDue, "sessionId:", sessionId);
+
+      if (siblingsDue) return;
+
+      console.log("[BillSection:AutoClear] dispatching CLEAR for table", tableId);
+      const clearResult = useTableSessionStore.getState().dispatch(tableId, { type: "CLEAR" });
+      console.log("[BillSection:AutoClear] CLEAR result:", clearResult);
+
+      useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {});
+      usePaymentStore.getState().close();
+      useDineInStore.getState().clearSelectedTable();
+
+      const { orderIds, ordersById } = useOrderStore.getState();
+      const reusable = orderIds
+        .map((id) => ordersById[id])
+        .find(
+          (o) =>
+            o &&
+            !o.service_location_id &&
+            o.order_status === "draft" &&
+            o.items.length === 0,
+        );
+      console.log("[BillSection:AutoClear] reusable draft:", reusable?.id ?? "none, creating new");
+      if (reusable) {
+        // Reset stale dine-in fields so the bill shows as a clean new order.
+        useOrderStore.setState((s) => {
+          const o = s.ordersById[reusable.id];
+          if (!o) return;
+          o.order_type = "takeout";
+          o.service_location_id = null;
+          o.session_id = undefined;
+          o.local_session_id = undefined;
+        });
+        useOrderStore.getState().setActiveOrder(reusable.id);
+      } else {
+        const fresh = useOrderStore.getState().startNewOrder();
+        useOrderStore.getState().setActiveOrder(fresh.id);
+      }
+    })();
   }, [
     activeOrderPaidStatus,
     activeOrderType,
     linkedTableId,
     linkedTableSession,
+    autoClearEnabled,
   ]);
 
   const handleCloseSession = useCallback(async () => {
@@ -1453,6 +1691,8 @@ const BillSectionContent = ({
   // OPTIMIZED: Wrap callback with useCallback
   // Explicit New Order action should always create a fresh order number.
   const handleStartNewOrder = useCallback(() => {
+    clearSelectedTable();
+
     if (isCurrentOrderEmptyDraft && activeOrder?.id) {
       setActiveOrder(activeOrder.id);
       return;
@@ -1468,23 +1708,28 @@ const BillSectionContent = ({
     );
 
     if (reusableEmptyDraftId) {
-      if (selectedStore) {
-        const refreshedNumbers = getRefreshedReusableDraftNumbers({
-          draftId: reusableEmptyDraftId,
-          ordersById,
-          orderIds,
-          locationId: selectedStore.id,
-          stationNumber: selectedStation?.station_number ?? null,
-        });
-        if (refreshedNumbers) {
-          useOrderStore.setState((state) => {
-            const draft = state.ordersById[reusableEmptyDraftId];
-            if (!draft) return;
+      useOrderStore.setState((state) => {
+        const draft = state.ordersById[reusableEmptyDraftId];
+        if (!draft) return;
+        // Reset any stale dine-in fields from a previous session.
+        draft.order_type = "takeout";
+        draft.service_location_id = null;
+        draft.session_id = undefined;
+        draft.local_session_id = undefined;
+        if (selectedStore) {
+          const refreshedNumbers = getRefreshedReusableDraftNumbers({
+            draftId: reusableEmptyDraftId,
+            ordersById,
+            orderIds,
+            locationId: selectedStore.id,
+            stationNumber: selectedStation?.station_number ?? null,
+          });
+          if (refreshedNumbers) {
             draft.order_number = refreshedNumbers.orderNumber;
             draft.display_number = refreshedNumbers.displayNumber;
-          });
+          }
         }
-      }
+      });
       setActiveOrder(reusableEmptyDraftId);
       return;
     }
@@ -1493,6 +1738,7 @@ const BillSectionContent = ({
     setActiveOrder(newOrder.id);
   }, [
     activeOrder?.id,
+    clearSelectedTable,
     isCurrentOrderEmptyDraft,
     startNewOrder,
     setActiveOrder,
@@ -1677,33 +1923,37 @@ const BillSectionContent = ({
               </Text>
             </TouchableOpacity>
             {activeOrderType === "dine_in" && linkedTableId ? (
-              <TouchableOpacity
-                onPress={handleCloseSession}
-                disabled={activeOrderPaidStatus !== "Paid"}
-                className="h-8 px-3 rounded-lg flex-row items-center justify-center"
-                style={{
-                  backgroundColor:
-                    activeOrderPaidStatus === "Paid"
-                      ? colors.warning
-                      : colors.card,
-                  borderWidth: activeOrderPaidStatus === "Paid" ? 0 : 1,
-                  borderColor: colors.border,
-                  opacity: activeOrderPaidStatus === "Paid" ? 1 : 0.5,
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      activeOrderPaidStatus === "Paid"
-                        ? colors.onSolid
-                        : colors.label,
-                    fontSize: 12,
-                    fontWeight: "500",
-                  }}
-                >
-                  Close Session
-                </Text>
-              </TouchableOpacity>
+              (() => {
+                const sessionAlreadyClosed =
+                  !linkedTableSession ||
+                  linkedTableSession.status === "available" ||
+                  linkedTableSession.status === "cleaning";
+                const canClose =
+                  activeOrderPaidStatus === "Paid" && !sessionAlreadyClosed;
+                return (
+                  <TouchableOpacity
+                    onPress={handleCloseSession}
+                    disabled={!canClose}
+                    className="h-8 px-3 rounded-lg flex-row items-center justify-center"
+                    style={{
+                      backgroundColor: canClose ? colors.warning : colors.card,
+                      borderWidth: canClose ? 0 : 1,
+                      borderColor: colors.border,
+                      opacity: canClose ? 1 : 0.5,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: canClose ? colors.onSolid : colors.label,
+                        fontSize: 12,
+                        fontWeight: "500",
+                      }}
+                    >
+                      {sessionAlreadyClosed ? "Session Closed" : "Close Session"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()
             ) : null}
           </View>
 
@@ -1749,7 +1999,11 @@ const BillSectionContent = ({
               : "Select Table"
           }
           tableStatus={liveTableStatus}
-          onOpenTableSelector={displayedTable ? undefined : handleOpenTableSelector}
+          onOpenTableSelector={
+            activeOrderType === "dine_in" && activeOrderPaidStatus !== "Paid"
+              ? handleOpenTableSelector
+              : undefined
+          }
           onViewTable={
             displayedTable
               ? () => router.push(`/tables/${displayedTable.id}` as any)
@@ -1960,13 +2214,35 @@ const BillSectionContent = ({
                       const isLinkedToThisOrder = isSessionLinkedToOrder(tableSession);
                       const isSelected = selectedTable?.id === table.id || (!selectedTable && isCurrentlyAssigned);
                       const isAvailable = liveStatusKey === "available";
-                      const isSelectable = (isAvailable || isCurrentlyAssigned || isLinkedToThisOrder)
-                        && (!hasNonDraftItems || isCurrentlyAssigned);
+                      const isOfflineTransferLocked =
+                        activeOrderType === "dine_in" &&
+                        !!linkedTableId &&
+                        !isOnline &&
+                        !isCurrentlyAssigned &&
+                        isAvailable;
+                      const isSelectable =
+                        ((activeOrderType === "dine_in" && isAvailable) ||
+                        isAvailable ||
+                        isCurrentlyAssigned ||
+                        isLinkedToThisOrder) &&
+                        !isOfflineTransferLocked;
                       const cap = table.capacity;
                       return (
                         <TouchableOpacity
                           key={table.id}
-                          onPress={() => handleSelectTable(table)}
+                          onPress={() => {
+                            if (isOfflineTransferLocked) {
+                              show({
+                                title: "Offline",
+                                message:
+                                  "Table transfer requires a live connection to validate availability.",
+                                type: "warning",
+                              });
+                              return;
+                            }
+                            handleSelectTable(table);
+                          }}
+                          disabled={!isSelectable && !isOfflineTransferLocked}
                           activeOpacity={isSelectable ? 0.7 : 1}
                           style={{
                             width: "45%",

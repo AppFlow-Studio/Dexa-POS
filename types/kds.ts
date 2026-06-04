@@ -44,6 +44,7 @@ export interface KDSTicket {
   start_time: string | null
   start_time_epoch: number
   done_time_epoch?: number
+  ready_time_epoch?: number
   item_count: number
   items: KDSTicketItem[]
   prioritized?: boolean
