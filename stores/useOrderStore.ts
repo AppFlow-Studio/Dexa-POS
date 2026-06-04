@@ -61,6 +61,7 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
+import { snapshotTableName } from "@/lib/orderDisplay";
 import {
   forceSetLocalSequence,
   generateLocalOrderNumbers,
@@ -7191,6 +7192,7 @@ export const useOrderStore = create<OrderState>()(
                 details?.orderId ||
                 `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
               service_location_id: details?.tableId || null,
+              service_location_name: snapshotTableName(details?.tableId),
               order_status: "draft",
               customer_name: "",
               check_status: "Opened",
@@ -10591,7 +10593,7 @@ export const useOrderStore = create<OrderState>()(
               const previousOrder = current(order);
               const tableName = resolveTableNameForOrder(tableId) ?? tableId;
               order.service_location_id = tableId;
-              order.service_location_name = tableName;
+              order.service_location_name = snapshotTableName(tableId);
               order.order_type = "dine_in"; // Ensure order_type is set to dine_in when table assigned
               syncTableOrderIdIndexForOrder(state, orderId, previousOrder);
             });
@@ -12523,6 +12525,7 @@ export const useOrderStore = create<OrderState>()(
             const newMergedOrderData = {
               id: `order_${Date.now()}`,
               service_location_id: primaryTableId,
+              service_location_name: snapshotTableName(primaryTableId),
               order_status: "preparing" as const,
               order_type: "dine_in" as const,
               check_status: "Opened" as const,

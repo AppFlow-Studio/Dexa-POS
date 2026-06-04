@@ -411,17 +411,22 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  // ── C. Order Type + Table (UNCHANGED — DEXA top) ─────────────────────
+  // ── C. Order Type + Table (separate rows) ────────────────────────────
   if (cfg?.showOrderType !== false && validated.orderType) {
-    const typeLine = validated.tableName
-      ? `${sanitizeForPrint(validated.orderType)} - Table: ${sanitizeForPrint(validated.tableName)}`
-      : sanitizeForPrint(validated.orderType);
     nodes.push({
       type: "text_line",
-      content: typeLine,
+      content: sanitizeForPrint(validated.orderType),
       align: "center",
       format: BOLD,
     });
+    if (validated.tableName) {
+      nodes.push({
+        type: "text_line",
+        content: `Table: ${sanitizeForPrint(validated.tableName)}`,
+        align: "center",
+        format: BOLD,
+      });
+    }
   }
 
   // ═══ SEAM: handoff from DEXA top to Figure body ══════════════════════
@@ -702,16 +707,20 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  const assignmentValue = validated.tableName
-    ? sanitizeForPrint(validated.tableName)
-    : validated.orderType
-      ? sanitizeForPrint(validated.orderType)
-      : null;
-  if (assignmentValue) {
+  if (validated.orderType) {
     nodes.push({
       type: "two_column",
-      left: "Assignment",
-      right: truncate(assignmentValue, META_VALUE_MAX),
+      left: "Type",
+      right: truncate(sanitizeForPrint(validated.orderType), META_VALUE_MAX),
+      lineWidth: w,
+      labelAlign : 'meta'
+    });
+  }
+  if (validated.tableName) {
+    nodes.push({
+      type: "two_column",
+      left: "Table",
+      right: truncate(sanitizeForPrint(validated.tableName), META_VALUE_MAX),
       lineWidth: w,
       labelAlign : 'meta'
     });
