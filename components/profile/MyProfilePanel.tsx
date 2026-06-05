@@ -1,17 +1,20 @@
 import NotificationBottomSheet from '@/components/notifications/NotificationBottomSheet'
 import HistoryTab from '@/components/profile/HistoryTab'
 import ProfileInfoTab from '@/components/profile/ProfileInfoTab'
+import PTOPage from '@/app/(main)/pto'
+import RequestsPage from '@/app/(main)/requests'
 import SecurityTab from '@/components/profile/SecurityTab'
 import UserProfileCard from '@/components/timeclock/UserProfileCard'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useNotificationSheetStore } from '@/stores/useNotificationSheetStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { Link } from 'expo-router'
 import { ArrowLeft, Calendar, Menu } from 'lucide-react-native'
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
+import Animated, { SlideInRight, SlideOutRight } from 'react-native-reanimated'
 
 type TabName = 'Profile Info' | 'Security' | 'History'
 const TABS: TabName[] = ['Profile Info', 'Security', 'History']
@@ -44,6 +47,10 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
   const [activeTab, setActiveTab] = useState<TabName>('Profile Info')
   const notificationSheetRef = useRef<BottomSheetMethods | null>(null)
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
+
+  // PTO / Requests render as an in-panel overlay rather than a separate route,
+  // so the profile Modal stays open and there's no jarring close→navigate jump.
+  const [overlay, setOverlay] = useState<'pto' | 'requests' | null>(null)
 
   useEffect(() => {
     setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>)
@@ -94,48 +101,46 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
           </View>
 
           <View className='flex-row items-center gap-2'>
-            <Link href='/pto' asChild>
-              <TouchableOpacity
-                className='flex-row items-center gap-2 px-3 py-1.5 rounded-xl'
+            <TouchableOpacity
+              onPress={() => setOverlay('pto')}
+              className='flex-row items-center gap-2 px-3 py-1.5 rounded-xl'
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <Calendar size={14} color={colors.teal} />
+              <Text
                 style={{
-                  backgroundColor: colors.panel,
-                  borderWidth: 1,
-                  borderColor: colors.border
+                  fontSize: 14,
+                  fontWeight: '600',
+                  color: colors.heading
                 }}
               >
-                <Calendar size={14} color={colors.teal} />
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '600',
-                    color: colors.heading
-                  }}
-                >
-                  PTO
-                </Text>
-              </TouchableOpacity>
-            </Link>
-            <Link href='/requests' asChild>
-              <TouchableOpacity
-                className='flex-row items-center gap-2 px-3 py-1.5 rounded-xl'
+                PTO
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setOverlay('requests')}
+              className='flex-row items-center gap-2 px-3 py-1.5 rounded-xl'
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <Menu size={14} color={colors.teal} />
+              <Text
                 style={{
-                  backgroundColor: colors.panel,
-                  borderWidth: 1,
-                  borderColor: colors.border
+                  fontSize: 14,
+                  fontWeight: '600',
+                  color: colors.heading
                 }}
               >
-                <Menu size={14} color={colors.teal} />
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '600',
-                    color: colors.heading
-                  }}
-                >
-                  Requests
-                </Text>
-              </TouchableOpacity>
-            </Link>
+                Requests
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -208,6 +213,42 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
           /* sheet is already closed when onClose fires */
         }}
       />
+
+      {overlay && (
+        <Animated.View
+          entering={iosOnly(SlideInRight.duration(220))}
+          exiting={iosOnly(SlideOutRight.duration(180))}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: colors.screen
+          }}
+        >
+          <View
+            className='flex-row items-center gap-3'
+            style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 }}
+          >
+            <TouchableOpacity
+              onPress={() => setOverlay(null)}
+              className='p-1.5 rounded-lg'
+              style={{ backgroundColor: `${colors.teal}18` }}
+            >
+              <ArrowLeft color={colors.teal} size={18} />
+            </TouchableOpacity>
+            <Text
+              style={{ fontSize: 18, fontWeight: 'bold', color: colors.heading }}
+            >
+              {overlay === 'pto' ? 'PTO' : 'Requests'}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            {overlay === 'pto' ? <PTOPage /> : <RequestsPage />}
+          </View>
+        </Animated.View>
+      )}
     </View>
   )
 }

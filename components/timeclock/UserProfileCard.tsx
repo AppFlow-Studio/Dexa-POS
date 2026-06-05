@@ -518,6 +518,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
             : 'Clock Out'
         }
         subtitle='Enter your PIN to confirm'
+        portalHost='profile-overlay'
         onConfirm={handlePinConfirm}
         onCancel={() => {
           setPinModalOpen(false)

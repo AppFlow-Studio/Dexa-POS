@@ -4,6 +4,7 @@ import MenuSearchSheet from '@/components/menu/MenuSearchSheet'
 import PaymentDetailBottomSheet from '@/components/menu/PaymentDetailBottomSheet'
 import NotificationBottomSheet from '@/components/notifications/NotificationBottomSheet'
 import MyProfilePanel from '@/components/profile/MyProfilePanel'
+import { PortalHost } from '@rn-primitives/portal'
 import { LocationRealtimeProvider } from '@/contexts/LocationRealtimeProvider'
 import { useOrderSyncRecovery } from '@/hooks/pos/useOrderSyncRecovery'
 import type { OrderBroadcastPayload } from '@/hooks/realtime/useOrdersRealtime'
@@ -350,6 +351,9 @@ export default function MainLayout () {
             onRequestClose={closeProfile}
           >
             <MyProfilePanel onClose={closeProfile} />
+            {/* Portal host so Dialog-based modals (PIN entry) render ABOVE this
+                fullScreen Modal rather than behind the app root PortalHost. */}
+            <PortalHost name='profile-overlay' />
           </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>
