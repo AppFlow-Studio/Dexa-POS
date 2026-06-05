@@ -28,7 +28,7 @@ export function NoPrinterModal() {
 
   const handleConfigure = useCallback(() => {
     hide();
-    router.push("/settings/printers-kitchen");
+    router.replace("/settings/printers-kitchen");
   }, [hide, router]);
 
   return (

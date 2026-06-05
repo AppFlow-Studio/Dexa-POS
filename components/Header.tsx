@@ -229,6 +229,28 @@ const Header = () => {
       return
     }
 
+    // Top-level sections have no back stack (navigated via replace) — go home
+    const TOP_LEVEL_SECTIONS = [
+      '/order-processing',
+      '/previous-orders',
+      '/kds',
+      '/online-orders',
+      '/loyalty',
+      '/scheduling',
+      '/analytics',
+      '/menu',
+      '/host-station',
+      '/customers-list',
+    ]
+    if (TOP_LEVEL_SECTIONS.includes(pathname) || TOP_LEVEL_SECTIONS.some(s => pathname.startsWith(s + '/'))) {
+      if (router.canGoBack()) {
+        router.back()
+      } else {
+        router.replace('/home')
+      }
+      return
+    }
+
     router.back()
   }, [
     activeVendorId,

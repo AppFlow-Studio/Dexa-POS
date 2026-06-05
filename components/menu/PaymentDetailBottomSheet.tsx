@@ -4368,7 +4368,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 
     // Navigate to order-processing if not already there
     if (!pathname.includes('order-processing')) {
-      router.push('/order-processing')
+      router.replace('/order-processing')
     }
   }, [orderId, close, show, pathname, router])
 
@@ -4409,7 +4409,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         useOrderStore.getState().setActiveOrder(localId)
         close()
         if (!pathname.includes('order-processing')) {
-          router.push('/order-processing')
+          router.replace('/order-processing')
         }
       }
     } finally {
@@ -4663,6 +4663,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     },
     [orderId, show, executeRefund, recordAndNotify, writeFraudAuditLog]
   )
+
+  if (!isOpen) return null
 
   return (
     <Modal
