@@ -3229,50 +3229,19 @@ const syncPaymentToBackend = async (
       // CRITICAL: Auto-close check in backend if fully paid
       // We already updated local state to "Closed" above, but we must ensure backend matches
       // otherwise "Reopen Check" RPC will fail with "Check is not closed"
+      //
+      // Auto-clear table is now triggered explicitly from
+      // PaymentSuccessView.handleDone (Finalize Payment button) via
+      // finalizeDineInPaymentClear(). Do not flip the session here — the
+      // operator should keep seeing the table in `paid` while the receipt is up.
       if (isFullyPaid) {
         const supabase = getOrderStoreSupabaseClient();
         const { loggedInEmployee } = useEmployeeStore.getState();
         const staffId = loggedInEmployee?.profileId;
 
-        // Feature 3 — Auto-clear table after payment (per-location toggle).
-        // Run synchronously before closeCheck so the table screen closes
-        // immediately without waiting for any network round-trip.
-        // Backend session update is fire-and-forget inside closeCheck's .then().
-        try {
-          const { useLocationConfigStore } = require(
-            "@/stores/useLocationConfigStore",
-          ) as typeof import("@/stores/useLocationConfigStore");
-          const autoClear =
-            useLocationConfigStore.getState().config.dining
-              .autoClearTableOnPayment === true;
-
-          const tableId = order.service_location_id;
-          const sessionId =
-            order.session_id ||
-            order.local_session_id ||
-            (tableId
-              ? useTableSessionStore.getState().getSession(tableId)?.id
-              : undefined);
-
-          // Local CLEAR is intentionally NOT dispatched here.
-          // TableOrderView detects session reaching "paid" and handles its own
-          // CLEAR + navigation. BillSection handles the order-processing path.
-          // Dispatching CLEAR here races with both and causes double-fire skips.
-        } catch (autoClearErr) {
-          console.error("[syncPayment] Auto-clear (local) failed:", autoClearErr);
-        }
-
         if (supabase && staffId && order.db_order_id) {
           const dbOrderIdForQueue = order.db_order_id;
           const localOrderIdForQueue = order.id;
-          // Capture session info before closeCheck (store may be cleared above).
-          const tableIdForClear = order.service_location_id;
-          const sessionIdForClear =
-            order.session_id ||
-            order.local_session_id ||
-            (tableIdForClear
-              ? useTableSessionStore.getState().getSession(tableIdForClear)?.id
-              : undefined);
           OrderService.closeCheck(supabase, order.db_order_id, staffId)
             .then(async (res) => {
               if (!res.success) {
@@ -3295,58 +3264,6 @@ const syncPaymentToBackend = async (
                   "[syncPayment] Auto-closed check successfully:",
                   order.db_order_id,
                 );
-
-                // Backend session cleanup — fire-and-forget after the local
-                // clear already ran above.
-                try {
-                  const { useLocationConfigStore } = require(
-                    "@/stores/useLocationConfigStore",
-                  ) as typeof import("@/stores/useLocationConfigStore");
-                  const autoClear =
-                    useLocationConfigStore.getState().config.dining
-                      .autoClearTableOnPayment === true;
-
-                  if (autoClear && sessionIdForClear) {
-                    const siblingsDue = Object.values(
-                      useOrderStore.getState().ordersById,
-                    ).some(
-                      (o) =>
-                        (o.session_id === sessionIdForClear ||
-                          o.local_session_id === sessionIdForClear) &&
-                        (o.amount_due ?? 0) > 0.01,
-                    );
-
-                    if (!siblingsDue) {
-                      const { FloorPlanService } = require(
-                        "@/services/floorPlanService",
-                      ) as typeof import("@/services/floorPlanService");
-                      const { error: clearError } =
-                        await FloorPlanService.updateTableSessionStatus(
-                          supabase,
-                          {
-                            p_session_id: sessionIdForClear,
-                            p_status: "available",
-                            p_staff_id: staffId,
-                          },
-                        );
-                      if (clearError) {
-                        console.warn(
-                          `[syncPayment] Auto-clear backend failed for session ${sessionIdForClear}:`,
-                          clearError,
-                        );
-                      } else {
-                        console.log(
-                          `[syncPayment] Auto-cleared backend session ${sessionIdForClear}`,
-                        );
-                      }
-                    }
-                  }
-                } catch (autoClearErr) {
-                  console.error(
-                    "[syncPayment] Auto-clear (backend) failed:",
-                    autoClearErr,
-                  );
-                }
               }
             })
             .catch((err) =>
