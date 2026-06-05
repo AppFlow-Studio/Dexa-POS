@@ -87,6 +87,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   );
   const isKDS = selectedStation?.station_type === "kds";
   const hasCheckedStorageSizeRef = useRef(false);
+  const lastStoreSettingsRefreshRef = useRef<number>(0);
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
@@ -667,9 +668,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       if (nextState === "active") {
         console.log("[PosSyncProvider] App became active - refreshing data");
 
-        // Refresh location settings for ALL devices (fallback for missed broadcasts)
+        // Refresh location settings for ALL devices (fallback for missed broadcasts).
+        // Gate behind a 5-minute staleness window — fires on every active event
+        // (including brief foreground→background→foreground cycles) otherwise,
+        // which adds a network round-trip on the critical first-tap path.
         const storeSettings = useStoreSettingsStore.getState();
-        storeSettings.refreshSelectedStore(supabase);
+        const settingsAge = Date.now() - lastStoreSettingsRefreshRef.current;
+        if (settingsAge > 5 * 60 * 1000) {
+          lastStoreSettingsRefreshRef.current = Date.now();
+          storeSettings.refreshSelectedStore(supabase);
+        }
 
         if (!isKDS) {
           const floorPlanStore = useFloorPlanStore.getState();
