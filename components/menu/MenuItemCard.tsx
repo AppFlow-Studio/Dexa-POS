@@ -14,10 +14,13 @@ import {
 const getImageSource = (
   image: string | undefined
 ): ImageSourcePropType | undefined => {
-  if (image && image.length > 200) {
-    return { uri: `data:image/jpeg;base64,${image}` };
-  }
-  if (image && MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP]) {
+  if (!image) return undefined;
+  // file:// or http(s):// URI — pass straight through
+  if (image.includes('://')) return { uri: image };
+  // Legacy base64 blob still in store (before filesystem write completes)
+  if (image.length > 200) return { uri: `data:image/jpeg;base64,${image}` };
+  // Short placeholder key
+  if (MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP]) {
     return MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP];
   }
   return undefined;

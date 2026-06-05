@@ -1,5 +1,9 @@
+import { useInventorySync } from '@/hooks/pos/useInventorySync'
+import { useInventoryStore } from '@/stores/useInventoryStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { colors } from '@/lib/theme'
 import { Slot, usePathname, useRouter } from 'expo-router'
+import { useEffect } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 // Define the tabs for the inventory section
@@ -13,6 +17,26 @@ const INVENTORY_TABS = [
 export default function InventoryLayout () {
   const router = useRouter()
   const pathname = usePathname()
+  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const setInventoryData = useInventoryStore(s => s.setInventoryData)
+  const fetchPurchaseOrders = useInventoryStore(s => s.fetchPurchaseOrders)
+
+  const { data: inventoryData } = useInventorySync(selectedStore?.id ?? null)
+
+  useEffect(() => {
+    if (inventoryData) {
+      setInventoryData({
+        items: inventoryData.inventoryItems,
+        vendors: inventoryData.vendors,
+      })
+    }
+  }, [inventoryData, setInventoryData])
+
+  useEffect(() => {
+    if (selectedStore?.id) {
+      fetchPurchaseOrders(selectedStore.id)
+    }
+  }, [selectedStore?.id, fetchPurchaseOrders])
 
   return (
     <View className='flex-1 p-4' style={{ backgroundColor: colors.screen }}>

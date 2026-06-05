@@ -1,5 +1,4 @@
 import { queryClient } from "@/contexts/TanstackProvider";
-import { useInventorySync } from "@/hooks/pos/useInventorySync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
@@ -452,16 +451,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     locationId: isKDS ? null : (selectedStore?.id ?? null),
   });
 
-  // --- INVENTORY SYNC --- (skip for KDS)
-  const { data: inventoryData } = useInventorySync(
-    isKDS ? null : (selectedStore?.id ?? null),
-  );
-  const setInventoryData = useInventoryStore((state) => state.setInventoryData);
+  // Inventory data is fetched lazily in inventory/_layout.tsx, not at startup.
+  // We still need to register the Supabase client so store methods work when inventory loads.
   const setInventorySupabase = useInventoryStore(
     (state) => state.setSupabaseClient,
-  );
-  const fetchPurchaseOrders = useInventoryStore(
-    (state) => state.fetchPurchaseOrders,
   );
 
   useEffect(() => {
@@ -508,32 +501,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  useEffect(() => {
-    if (inventoryData) {
-      setInventoryData({
-        items: inventoryData.inventoryItems,
-        vendors: inventoryData.vendors,
-      });
-
-      // Merge Recipe Data into MenuStore
-      applyRecipes(posSyncData);
-
-      console.log(
-        "✅ Inventory & Recipe data synced:",
-        inventoryData.inventoryItems.length,
-        "items,",
-        inventoryData.menuRecipes?.length || 0,
-        "menu recipes",
-      );
-    }
-  }, [inventoryData]);
   // --- END INVENTORY SYNC ---
 
-  useEffect(() => {
-    if (!isKDS && selectedStore?.id) {
-      fetchPurchaseOrders(selectedStore.id);
-    }
-  }, [fetchPurchaseOrders, isKDS, selectedStore?.id]);
 
   // Update menu store when sync data changes
   useEffect(() => {
