@@ -223,6 +223,13 @@ export async function runSettlement(
     terminalId,
   });
 
+  // Settlement is non-idempotent at the terminal layer — we only get
+  // one clean shot per tap. Run the escalated return2Idle sequence so
+  // a lingering result-screen / partial-payment UI state from prior
+  // use can't sink the first attempt (the "had to tap twice" symptom).
+  onStatus?.("Preparing terminal...");
+  await service.escalatedReset();
+
   await verifyOrProvisionTerminal({ supabase, terminalId, onStatus });
 
   onStatus?.("Preparing settlement batch...");

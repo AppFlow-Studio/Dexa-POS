@@ -1,4 +1,4 @@
-import { getBusinessDayBounds, getCurrentBusinessDay } from '@/lib/businessDay'
+import { getCurrentBusinessDay } from '@/lib/businessDay'
 import { colors } from '@/lib/theme'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { PrinterService } from '@/services/printing/PrinterService'
@@ -59,6 +59,11 @@ interface SettlementBatchRow {
   batchId: string | null
   status: string
   closedAt: string | null
+  openedAt: string | null
+  businessDate: string | null
+  paymentTerminalId: string | null
+  terminalName: string | null
+  terminalSerial: string | null
   transactionCount: number
   grossAmount: number
   tipAmount: number
@@ -131,7 +136,6 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
     rolloverHour: selectedStore?.business_day_start_hour ?? 0
   }
   const businessDay = getCurrentBusinessDay(bdConfig)
-  const bounds = getBusinessDayBounds(businessDay, bdConfig)
   const locationId = selectedStore?.id || ''
 
   const {
@@ -139,13 +143,13 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
     isLoading: batchesLoading,
     refetch: refetchBatches
   } = useQuery({
-    queryKey: ['batchout-batches', locationId, businessDay],
+    queryKey: ['batchout-open-batches', locationId],
     enabled: Boolean(locationId) && Boolean(showBatchLog),
     staleTime: 30_000,
     queryFn: async (): Promise<SettlementBatchRow[]> => {
       const { data, error } = await supabase.rpc(
-        'get_batches_with_live_totals_v1',
-        { p_location_id: locationId, p_business_day: businessDay }
+        'get_open_batches_v1' as any,
+        { p_location_id: locationId } as any
       )
       if (error) throw error
       const rows = Array.isArray(data) ? data : []
@@ -154,6 +158,11 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         batchId: b.batch_id,
         status: b.status,
         closedAt: b.closed_at,
+        openedAt: b.opened_at,
+        businessDate: b.business_date,
+        paymentTerminalId: b.payment_terminal_id ?? null,
+        terminalName: b.terminal_name ?? null,
+        terminalSerial: b.terminal_serial ?? null,
         transactionCount: Number(b.transaction_count) || 0,
         grossAmount: Number(b.gross_amount) || 0,
         tipAmount: Number(b.tip_amount) || 0,
@@ -414,7 +423,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         <BatchLog
           batches={batches}
           loading={batchesLoading}
-          businessDay={businessDay}
+          currentTerminalId={terminal?.id ?? null}
           onPrintBatch={printBatch}
         />
       ) : null}
@@ -1051,15 +1060,26 @@ function PendingFinalizeSection ({
 function BatchLog ({
   batches,
   loading,
-  businessDay,
+  currentTerminalId,
   onPrintBatch
 }: {
   batches: SettlementBatchRow[] | undefined
   loading: boolean
-  businessDay: string
+  currentTerminalId: string | null
   onPrintBatch: (settlementBatchId: string) => void
 }) {
   const list = batches || []
+  // Batches with no payment_terminal_id (legacy/cash-only edge case) bucket
+  // with "other" so they aren't surfaced as actionable for this station.
+  const mine = currentTerminalId
+    ? list.filter(b => b.paymentTerminalId === currentTerminalId)
+    : []
+  const others = currentTerminalId
+    ? list.filter(b => b.paymentTerminalId !== currentTerminalId)
+    : list
+
+  const mineCount =
+    mine.length === 0 ? '' : mine.length === 1 ? '1 batch' : `${mine.length} batches`
 
   return (
     <View style={{ gap: 10, marginTop: 8 }}>
@@ -1073,25 +1093,25 @@ function BatchLog ({
         <Text
           style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
         >
-          Today's Batches
+          Open Batches
         </Text>
-        <Text style={{ fontSize: 11, color: colors.muted }}>
-          Business day {businessDay}
-        </Text>
+        {mineCount ? (
+          <Text style={{ fontSize: 11, color: colors.muted }}>{mineCount}</Text>
+        ) : null}
       </View>
 
       {loading ? (
         <Card>
           <ActivityIndicator color={colors.teal} />
         </Card>
-      ) : list.length === 0 ? (
+      ) : mine.length === 0 ? (
         <Card>
           <Text style={{ fontSize: 13, color: colors.muted }}>
-            No batches recorded for this business day yet.
+            No open batches on this terminal.
           </Text>
         </Card>
       ) : (
-        list.map(b => (
+        mine.map(b => (
           <BatchRow
             key={b.id}
             batch={b}
@@ -1099,15 +1119,80 @@ function BatchLog ({
           />
         ))
       )}
+
+      {!loading && others.length > 0 ? (
+        <OtherTerminalsCollapsible
+          batches={others}
+          onPrintBatch={onPrintBatch}
+        />
+      ) : null}
+    </View>
+  )
+}
+
+function OtherTerminalsCollapsible ({
+  batches,
+  onPrintBatch
+}: {
+  batches: SettlementBatchRow[]
+  onPrintBatch: (settlementBatchId: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const label =
+    batches.length === 1
+      ? '1 open batch on another terminal'
+      : `${batches.length} open batches on other terminals`
+
+  return (
+    <View style={{ gap: 10, marginTop: 4 }}>
+      <TouchableOpacity
+        onPress={() => setExpanded(v => !v)}
+        activeOpacity={0.7}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.card
+        }}
+      >
+        <Text
+          style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
+        >
+          {label}
+        </Text>
+        {expanded ? (
+          <ChevronUp size={16} color={colors.muted} />
+        ) : (
+          <ChevronDown size={16} color={colors.muted} />
+        )}
+      </TouchableOpacity>
+
+      {expanded
+        ? batches.map(b => (
+            <BatchRow
+              key={b.id}
+              batch={b}
+              showTerminalLabel
+              onPrint={() => onPrintBatch(b.id)}
+            />
+          ))
+        : null}
     </View>
   )
 }
 
 function BatchRow ({
   batch,
+  showTerminalLabel = false,
   onPrint
 }: {
   batch: SettlementBatchRow
+  showTerminalLabel?: boolean
   onPrint: () => void
 }) {
   const supabase = useSupabaseClient()
@@ -1147,22 +1232,30 @@ function BatchRow ({
     }
   }, [expanded, payments, paymentsLoading, supabase, batch.id])
   const isSettled = batch.status === 'settled'
+  const isOpen = batch.status === 'open'
   const isFailed =
     batch.status === 'failed' ||
     batch.status === 'error' ||
-    batch.status === 'reversed'
+    batch.status === 'reversed' ||
+    batch.status === 'partial_failure'
   const tone = isSettled
     ? colors.success
     : isFailed
     ? colors.danger
+    : isOpen
+    ? colors.teal
     : colors.warning
 
-  const closedDisplay = batch.closedAt
-    ? new Date(batch.closedAt).toLocaleTimeString([], {
+  // Open batches haven't closed yet — show when they opened instead.
+  const timeIso = batch.closedAt ?? batch.openedAt
+  const timeLabel = batch.closedAt ? 'Closed' : isOpen ? 'Opened' : 'Started'
+  const timeDisplay = timeIso
+    ? new Date(timeIso).toLocaleTimeString([], {
         hour: 'numeric',
         minute: '2-digit'
       })
     : '—'
+  const businessDateDisplay = batch.businessDate ? ` · ${batch.businessDate}` : ''
 
   return (
     <View
@@ -1215,8 +1308,14 @@ function BatchRow ({
                 : `Batch ${batch.batchId || batch.id.slice(0, 8)}`}
             </Text>
             <Text style={{ fontSize: 11, color: colors.muted }}>
-              Closed {closedDisplay}
+              {timeLabel} {timeDisplay}{businessDateDisplay}
             </Text>
+            {showTerminalLabel && (batch.terminalName || batch.terminalSerial) ? (
+              <Text style={{ fontSize: 11, color: colors.muted }}>
+                {batch.terminalName ?? 'Terminal'}
+                {batch.terminalSerial ? ` · S/N ${batch.terminalSerial}` : ''}
+              </Text>
+            ) : null}
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

@@ -530,15 +530,29 @@ const TableOrderView = React.forwardRef<
     const currentActiveOrder = currentActiveOrderId
       ? orderState.ordersById[currentActiveOrderId]
       : null
-    if (!currentActiveOrderId || !currentActiveOrder) return
+
+    // Resolve the order id we'll pass to CLEAR_TABLE. Prefer the active order,
+    // but fall back to whatever the session is bound to — covers the orphaned
+    // "stuck Paid" case where the order was evicted from ordersById, leaving
+    // the session alive but unresolvable from useTableSession. Previously this
+    // path silently returned and the Close Table tap appeared to do nothing.
+    const sess = useTableSessionStore.getState().getSession(currentTableId)
+    const resolvedOrderId =
+      currentActiveOrder?.id ?? sess?.order_id ?? undefined
+    if (!sess) {
+      // No session and no order — nothing to clear. Just dismiss.
+      onClose()
+      return
+    }
+
     showLoading('Clearing table...')
     markNavigatingAway()
 
     // Recovery: if session isn't at "paid" yet but order IS paid,
-    // fire-and-forget FULL_PAYMENT (fixes stuck check_presented race)
-    const sess = useTableSessionStore.getState().getSession(currentTableId)
+    // fire-and-forget FULL_PAYMENT (fixes stuck check_presented race).
+    // Only attempt when we actually have the order locally to check paid_status.
     if (
-      sess &&
+      currentActiveOrder &&
       sess.status !== 'paid' &&
       sess.status !== 'closing' &&
       sess.status !== 'cleaning' &&
@@ -552,7 +566,7 @@ const TableOrderView = React.forwardRef<
     const result = await useTableSessionStore.getState().dispatchAction({
       type: 'CLEAR_TABLE',
       tableId: currentTableId,
-      orderId: currentActiveOrder.id
+      orderId: resolvedOrderId
     })
 
     hideLoading()

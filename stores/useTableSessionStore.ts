@@ -209,6 +209,15 @@ function _applyAction(
   if (!current) return { session: undefined, changed: false };
   try {
     const nextStatus = transitionTableStatus(current.status, action.type);
+    // CLEAR_TABLE: drop the order_id reference so the cleaning-state session
+    // can't surface stale order data via UI selectors (TableContextSheet,
+    // useTableSession). Side effects receive orderId via the action payload.
+    if (action.type === "CLEAR_TABLE") {
+      return {
+        session: { ...current, status: nextStatus, order_id: undefined },
+        changed: true,
+      };
+    }
     return { session: { ...current, status: nextStatus }, changed: true };
   } catch {
     return { session: current, changed: false };
@@ -814,6 +823,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             const sessionId = data.session.id;
             // O(1) lookup via sessionTableIndex instead of scanning all sessions
             const tableIds = get().sessionTableIndex[sessionId] || [];
+            console.log("[_handleSessionChange] is_active=false", {
+              sessionId,
+              tableIds,
+            });
             const actions: Array<{ tableId: string; action: SessionAction }> =
               [];
             for (const tId of tableIds) {
@@ -821,6 +834,22 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             }
             if (actions.length > 0) get().batchDispatch(actions);
             return;
+          }
+
+          // Diagnostic: surface incoming session payload status/order_id so we
+          // can spot late SYNCs that resurrect a just-cleared session.
+          if (data.tables?.length) {
+            const firstTableId = data.tables[0].table_id;
+            const currentLocal = get().sessions[firstTableId];
+            console.log("[_handleSessionChange] SYNC incoming", {
+              sessionId: data.session.id,
+              incomingStatus: data.session.status,
+              incomingOrderId: data.session.order_id ?? null,
+              localStatus: currentLocal?.status ?? null,
+              localOrderId: currentLocal?.order_id ?? null,
+              localSessionId: currentLocal?.id ?? null,
+              tableIds: data.tables.map((t) => t.table_id),
+            });
           }
 
           const sessionId = data.session.id;
@@ -1667,76 +1696,36 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // ------------------------------------------------------------------
 
         clearTableSession: async (tableId: string) => {
-          const isOnline = getIsOnline();
-          const supabase = getClient();
+          // Route through dispatchAction so the registered CLEAR_TABLE side
+          // effect (archiveOrder + setActiveOrder(null) + backend sync +
+          // reservation completion) actually fires. Bare `dispatch` only mutates
+          // session state and skips _fireEffects.
           const session = get().sessions[tableId];
-          const sessionId = session?.id;
-
-          if (sessionId) {
-            const reservationStore = (
-              require("./useReservationStore") as typeof import("./useReservationStore")
-            ).useReservationStore;
-            reservationStore
-              .getState()
-              .completeReservationForSession(sessionId)
-              .catch((err: unknown) => {
-                console.error(
-                  "[clearTableSession] Failed to complete reservation:",
-                  err,
-                );
-              });
-          }
-
-          // 1. Optimistic local transition to cleaning
-          const transitioned = get().dispatch(tableId, { type: "CLEAR_TABLE" });
-          if (!transitioned) {
+          const orderId = session?.order_id ?? undefined;
+          console.log("[clearTableSession] invoked", {
+            tableId,
+            sessionId: session?.id ?? null,
+            currentStatus: session?.status ?? null,
+            orderId: orderId ?? null,
+          });
+          const result = await get().dispatchAction({
+            type: "CLEAR_TABLE",
+            tableId,
+            orderId,
+          });
+          console.log("[clearTableSession] dispatchAction result", {
+            tableId,
+            success: result.success,
+            nextStatus: result.nextStatus ?? null,
+            error: result.error ?? null,
+            postStatus: get().sessions[tableId]?.status ?? null,
+            postOrderId: get().sessions[tableId]?.order_id ?? null,
+          });
+          if (!result.success) {
             console.warn(
-              "[clearTableSession] Could not transition to cleaning state",
+              "[clearTableSession] dispatchAction failed:",
+              result.error,
             );
-            return;
-          }
-
-          // 2. Try backend if online and session exists
-          if (isOnline && supabase && sessionId) {
-            try {
-              const p_staff_id =
-                useEmployeeStore.getState().loggedInEmployee?.profileId;
-              const { error } = await FloorPlanService.updateTableSessionStatus(
-                supabase,
-                {
-                  p_session_id: sessionId,
-                  p_status: "cleaning",
-                  p_staff_id,
-                },
-              );
-
-              if (error) {
-                console.error(
-                  "[clearTableSession] Backend error, queuing:",
-                  error,
-                );
-                await queueOperation({
-                  type: "update_session_status",
-                  params: { sessionId, status: "cleaning" },
-                  localOrderId: sessionId,
-                });
-              }
-            } catch (err) {
-              console.error("[clearTableSession] Exception, queuing:", err);
-              await queueOperation({
-                type: "update_session_status",
-                params: { sessionId, status: "cleaning" },
-                localOrderId: sessionId,
-              });
-            }
-          } else if (sessionId) {
-            // 3. Offline — queue for later
-            console.log("[clearTableSession] Offline, queuing");
-            await queueOperation({
-              type: "update_session_status",
-              params: { sessionId, status: "cleaning" },
-              localOrderId: sessionId,
-            });
           }
         },
 

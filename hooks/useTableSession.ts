@@ -17,6 +17,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 // only clears activeOrderId if no newer generation has claimed it.
 let _mountGeneration = 0
 
+// Orders in these statuses are archived/finished and must not be returned by
+// fallback table-scan selectors. Without this guard a previously-closed order
+// (still in ordersById for history) would be picked up by the service_location_id
+// scan when a new session is seated on the same table.
+const TERMINAL_ORDER_STATUSES = new Set(['completed', 'void', 'cancelled'])
+
 export type SessionPhase =
   | 'initializing' // Waiting for data
   | 'loading_session' // Syncing order from DB
@@ -85,10 +91,18 @@ export function useTableSession (
       return 'ready'
     }
 
-    // Session has an order — check if we already have it locally
+    // Session has an order — check if we already have it locally.
+    // Treat a terminal-status hit as "not found" so a late SYNC that resurrects
+    // a freshly-archived session locally can't drag the screen into the closed
+    // order's data.
     if (session.order_id) {
       const orderState = useOrderStore.getState()
-      const found = orderState.getOrder(session.order_id)
+      const candidate = orderState.getOrder(session.order_id)
+      const found =
+        candidate &&
+        !TERMINAL_ORDER_STATUSES.has(candidate.order_status ?? '')
+          ? candidate
+          : null
       if (found) {
         // Synchronously claim activeOrderId before any effects run.
         // This prevents a re-key from briefly having a null activeOrderId
@@ -138,11 +152,29 @@ export function useTableSession (
 
   // Reactive order subscription — raw selector (inlined O(1) lookup for narrow subscription)
   const rawActiveOrder = useOrderStore(state => {
-    // Priority 1: resolve via session's order_id (DB UUID → local key via index)
+    // Priority 1: resolve via session's order_id (DB UUID → local key via index).
+    // Skip if the resolved order is in a terminal status — a late realtime SYNC
+    // can resurrect a just-cleared session locally with the previous order_id,
+    // which would otherwise flash the closed order's items onto a freshly-seated
+    // table before the new SESSION_CREATED/SET arrives.
     if (sessionOrderId) {
       const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId
       const found = state.ordersById[localKey]
-      if (found) return found
+      if (found && !TERMINAL_ORDER_STATUSES.has(found.order_status ?? '')) {
+        if (__DEV__ && (found.items?.length ?? 0) > 0) {
+          console.log('[useTableSession][rawActiveOrder] P1 hit', {
+            tableId,
+            sessionOrderId,
+            resolvedId: found.id,
+            db_order_id: found.db_order_id,
+            order_status: found.order_status,
+            paid_status: found.paid_status,
+            items: found.items.length,
+            service_location_id: found.service_location_id,
+          })
+        }
+        return found
+      }
     }
     // Priority 2: active order already set and belongs to this table.
     // Checked before tableOrderIdIndex because activeOrderId is updated atomically
@@ -150,21 +182,62 @@ export function useTableSession (
     // point to a broadcast shell (empty items) before rekeyOrder overwrites it.
     if (state.activeOrderId) {
       const active = state.ordersById[state.activeOrderId]
-      if (active?.service_location_id === tableId) return active
+      if (
+        active?.service_location_id === tableId &&
+        !TERMINAL_ORDER_STATUSES.has(active.order_status ?? '')
+      ) {
+        if (__DEV__ && (active.items?.length ?? 0) > 0) {
+          console.log('[useTableSession][rawActiveOrder] P2 hit', {
+            tableId,
+            activeOrderId: state.activeOrderId,
+            resolvedId: active.id,
+            order_status: active.order_status,
+            items: active.items.length,
+          })
+        }
+        return active
+      }
     }
     // Priority 2.5: resolve via table index (fallback when activeOrderId was cleared
     // during a mount transition or the index was populated before activeOrderId was set)
     const indexedOrderId = state.tableOrderIdIndex[tableId]
     if (indexedOrderId) {
       const indexedOrder = state.ordersById[indexedOrderId]
-      if (indexedOrder?.service_location_id === tableId) return indexedOrder
+      if (indexedOrder?.service_location_id === tableId) {
+        if (__DEV__ && (indexedOrder.items?.length ?? 0) > 0) {
+          console.log('[useTableSession][rawActiveOrder] P2.5 hit', {
+            tableId,
+            indexedOrderId,
+            order_status: indexedOrder.order_status,
+            items: indexedOrder.items.length,
+          })
+        }
+        return indexedOrder
+      }
     }
     // Priority 3: scan for any order belonging to this table (covers the window
-    // between startNewOrder and setActiveOrder, or after a rekey clears the index)
+    // between startNewOrder and setActiveOrder, or after a rekey clears the index).
+    // Skip terminal-status orders so a previously-closed order lingering in
+    // ordersById can't be returned for a freshly-seated session on the same table.
     const entries = Object.values(state.ordersById)
     for (let i = 0; i < entries.length; i++) {
-      if (entries[i].service_location_id === tableId && !entries[i].is_voided) {
-        return entries[i]
+      const o = entries[i]
+      if (
+        o.service_location_id === tableId &&
+        !TERMINAL_ORDER_STATUSES.has(o.order_status ?? '')
+      ) {
+        if (__DEV__ && (o.items?.length ?? 0) > 0) {
+          console.log('[useTableSession][rawActiveOrder] P3 scan hit', {
+            tableId,
+            resolvedId: o.id,
+            db_order_id: o.db_order_id,
+            order_status: o.order_status,
+            paid_status: o.paid_status,
+            items: o.items.length,
+            service_location_id: o.service_location_id,
+          })
+        }
+        return o
       }
     }
     return undefined
@@ -176,15 +249,14 @@ export function useTableSession (
       cachedOrderRef.current = rawActiveOrder
       return rawActiveOrder
     }
-    // Session expects an order but selector can't resolve it — return cached
-    if (cachedOrderRef.current) {
-      if (cachedOrderRef.current.service_location_id === tableId)
-        return cachedOrderRef.current
-      if (
-        sessionOrderId &&
-        cachedOrderRef.current.db_order_id === sessionOrderId
-      )
-        return cachedOrderRef.current
+    // Session expects an order but selector can't resolve it — return cached.
+    // Skip the cached fallback if the cached order is now in a terminal state
+    // (it was archived after a previous Close Table), so reseating the same
+    // table doesn't surface the closed-out order's items.
+    const cached = cachedOrderRef.current
+    if (cached && !TERMINAL_ORDER_STATUSES.has(cached.order_status ?? '')) {
+      if (cached.service_location_id === tableId) return cached
+      if (sessionOrderId && cached.db_order_id === sessionOrderId) return cached
     }
     return undefined
   }, [rawActiveOrder, sessionOrderId, tableId])
@@ -209,7 +281,11 @@ export function useTableSession (
     if (session?.order_id) {
       const orderState = useOrderStore.getState()
       const found = orderState.getOrder(session.order_id)
-      if (found && orderState.activeOrderId !== found.id) {
+      if (
+        found &&
+        !TERMINAL_ORDER_STATUSES.has(found.order_status ?? '') &&
+        orderState.activeOrderId !== found.id
+      ) {
         setActiveOrder(found.id)
       }
     }
@@ -610,8 +686,15 @@ export function useTableSession (
       const timer = setTimeout(async () => {
         if (getPhase(phaseRef) !== 'ready' || !sessionOrderId) return
 
-        // Double-check the order is truly missing (not just a render lag)
-        const found = useOrderStore.getState().getOrder(sessionOrderId)
+        // Double-check the order is truly missing (not just a render lag).
+        // A terminal-status hit is treated as missing so we don't claim a just-archived
+        // order on a session that's about to be replaced by a new seat.
+        const candidate = useOrderStore.getState().getOrder(sessionOrderId)
+        const found =
+          candidate &&
+          !TERMINAL_ORDER_STATUSES.has(candidate.order_status ?? '')
+            ? candidate
+            : null
         if (found) {
           setActiveOrder(found.id)
           return

@@ -14352,6 +14352,42 @@ export const useOrderStore = create<OrderState>()(
                     return key;
                   }
                 }
+                // Fresh-seat race guard (caller-agnostic): if a session bound to
+                // this dbOrderId was just seated and seat_guests_v3's hydrate is
+                // still in flight, do NOT create a parallel shell. The seat flow
+                // is the authoritative writer; otherwise we materialize a temp
+                // ID with backend's pre-existing items (stale row from a reused
+                // backend order) and break the new session's bill.
+                try {
+                  const tableSessions = (
+                    require("./useTableSessionStore") as typeof import("./useTableSessionStore")
+                  ).useTableSessionStore.getState().sessions;
+                  const FRESH_WINDOW_MS = 10000;
+                  const now = Date.now();
+                  for (const sess of Object.values(tableSessions)) {
+                    if (sess.order_id !== dbOrderIdOrLocalId) continue;
+                    if (
+                      sess.status !== "seating" &&
+                      sess.status !== "seated" &&
+                      sess.status !== "ordering"
+                    )
+                      continue;
+                    const seatedAt = sess.seated_at
+                      ? new Date(sess.seated_at).getTime()
+                      : 0;
+                    if (
+                      Number.isFinite(seatedAt) &&
+                      now - seatedAt < FRESH_WINDOW_MS
+                    ) {
+                      console.log(
+                        `[syncOrderFromDatabase] Skipping freshly-seated order ${dbOrderIdOrLocalId} — seat flow authoritative`,
+                      );
+                      return null;
+                    }
+                  }
+                } catch {
+                  /* non-fatal */
+                }
                 // No existing order — create new
                 localOrderId = `order_${Date.now()}_${Math.random()
                   .toString(36)
@@ -15230,6 +15266,18 @@ export const useOrderStore = create<OrderState>()(
             orderNumber,
             displayNumber,
           }) => {
+            // Mark this dbOrderId as recently hydrated so the prefetch
+            // subscriber (services/tableOrderPrefetch.ts) doesn't race-create
+            // a parallel shell with stale backend items while the rekey/index
+            // repair below is still settling. Relative path avoids any @/ alias
+            // resolution differences between metro and node-test contexts.
+            try {
+              const prefetchMod = require("../services/tableOrderPrefetch") as typeof import("../services/tableOrderPrefetch");
+              prefetchMod.markOrderRecentlyHydrated(dbOrderId);
+              console.log(`[hydrateOrderFromSeat] markOrderRecentlyHydrated(${dbOrderId})`);
+            } catch (err) {
+              console.warn("[hydrateOrderFromSeat] markOrderRecentlyHydrated failed:", err);
+            }
             if (localOrderId) {
               // Path A: Update existing local order with backend data
               const order = get().ordersById[localOrderId];
