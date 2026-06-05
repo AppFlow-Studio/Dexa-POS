@@ -3,6 +3,7 @@ import Header from '@/components/Header'
 import MenuSearchSheet from '@/components/menu/MenuSearchSheet'
 import PaymentDetailBottomSheet from '@/components/menu/PaymentDetailBottomSheet'
 import NotificationBottomSheet from '@/components/notifications/NotificationBottomSheet'
+import MyProfilePanel from '@/components/profile/MyProfilePanel'
 import { LocationRealtimeProvider } from '@/contexts/LocationRealtimeProvider'
 import { useOrderSyncRecovery } from '@/hooks/pos/useOrderSyncRecovery'
 import type { OrderBroadcastPayload } from '@/hooks/realtime/useOrdersRealtime'
@@ -22,6 +23,7 @@ import {
 } from '@/stores/useOrderStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
+import { useProfileOverlayStore } from '@/stores/useProfileOverlayStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import type { OrderPayload, PaymentPayload } from '@/types/real-time'
 import { useAuth } from '@clerk/clerk-expo'
@@ -32,6 +34,7 @@ import React, { useCallback, useEffect, useRef } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   unstable_batchedUpdates,
   View
@@ -47,6 +50,8 @@ export default function MainLayout () {
   const { colorScheme } = useColorScheme()
   const pathname = usePathname()
   const { isSignedIn, isLoaded } = useAuth()
+  const isProfileOpen = useProfileOverlayStore(state => state.isOpen)
+  const closeProfile = useProfileOverlayStore(state => state.closeProfile)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const isKDS = selectedStation?.station_type === 'kds'
@@ -56,7 +61,7 @@ export default function MainLayout () {
   const notificationSheetRef = useRef<BottomSheetMethods>(null)
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null)
   const menuSearchSheetRef = useRef<BottomSheetMethods>(null)
-  const { setSheetRef } = useNotificationSheetStore()
+  const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
   const { setSearchSheetRef } = useMenuManagementSearchStore()
 
   useEffect(() => {
@@ -336,8 +341,16 @@ export default function MainLayout () {
             }}
             pointerEvents='box-none'
           >
-            <MenuSearchSheet ref={menuSearchSheetRef} />
+          <MenuSearchSheet ref={menuSearchSheetRef} />
           </View>
+          <Modal
+            visible={isProfileOpen}
+            animationType='none'
+            presentationStyle='fullScreen'
+            onRequestClose={closeProfile}
+          >
+            <MyProfilePanel onClose={closeProfile} />
+          </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>
     </LocationRealtimeProvider>
