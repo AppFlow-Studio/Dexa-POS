@@ -132,22 +132,12 @@ async function prefetchUncachedOrders(orderIds: string[]) {
     // Skip ids that were just hydrated via seat_guests — the local order is
     // authoritative; the backend may still be flushing the previous session's
     // order_status='completed' so a fetch here would inject stale items.
-    if (isRecentlyHydrated(id)) {
-      if (__DEV__) {
-        console.log(`[prefetch] Skipping recently-hydrated order ${id}`);
-      }
-      return false;
-    }
+    if (isRecentlyHydrated(id)) return false;
     // Race-cover for the broadcast-before-RPC-response case: the session is
     // freshly seated (within the last few seconds) and the seat_guests_v3 RPC
     // is still in flight on this client. Hydrate hasn't had a chance to mark
     // yet, but the seat flow is the authoritative writer here. Skip the fetch.
-    if (isFreshlySeatedOrder(id)) {
-      if (__DEV__) {
-        console.log(`[prefetch] Skipping freshly-seated order ${id}`);
-      }
-      return false;
-    }
+    if (isFreshlySeatedOrder(id)) return false;
     return !getCachedOrderId(id);
   });
 

@@ -540,21 +540,8 @@ const TableOrderView = React.forwardRef<
     const resolvedOrderId =
       currentActiveOrder?.id ?? sess?.order_id ?? undefined
 
-    console.warn('[doClearTable] entry', {
-      currentTableId,
-      activeOrderId: currentActiveOrderId,
-      activeOrderPaidStatus: currentActiveOrder?.paid_status ?? null,
-      activeOrderCheckStatus: currentActiveOrder?.check_status ?? null,
-      activeOrderItemsCount: currentActiveOrder?.items?.length ?? null,
-      resolvedOrderId,
-      sessionId: sess?.id ?? null,
-      sessionStatus: sess?.status ?? null,
-      sessionOrderId: sess?.order_id ?? null,
-    })
-
     if (!sess) {
       // No session and no order — nothing to clear. Just dismiss.
-      console.warn('[doClearTable] bail — no session', { currentTableId })
       onClose()
       return
     }
@@ -581,23 +568,6 @@ const TableOrderView = React.forwardRef<
       type: 'CLEAR_TABLE',
       tableId: currentTableId,
       orderId: resolvedOrderId
-    })
-
-    // Read state immediately after dispatch to confirm the local transition
-    // actually landed (status should be 'cleaning', order_id should be cleared).
-    const sessAfter = useTableSessionStore.getState().getSession(currentTableId)
-    console.warn('[doClearTable] dispatch result', {
-      currentTableId,
-      success: result.success,
-      error: result.error ?? null,
-      nextStatus: result.nextStatus ?? null,
-      sessionAfter: sessAfter
-        ? {
-            id: sessAfter.id,
-            status: sessAfter.status,
-            order_id: sessAfter.order_id ?? null,
-          }
-        : null,
     })
 
     hideLoading()

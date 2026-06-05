@@ -128,28 +128,14 @@ function fireSideEffects(
 }
 
 // ---------------------------------------------------------------------------
-// SYNC-suspicion diagnostics (temporary)
-// Detects status downgrades and resurrection of recently-CLEAR'd sessions
-// arriving via SYNC actions (realtime broadcast, polling, full refresh).
-// Strip once the upstream race is confirmed and guarded.
+// Recently-CLEAR'd session tracker
+//
+// Records session ids that were CLEAR'd locally (status → "cleaning" via
+// CLEAR_TABLE, or full removal via CLEAR). useFloorPlanStore queries this via
+// wasSessionRecentlyCleared() to reject stale session restores from backend
+// snapshots or delayed realtime broadcasts that would otherwise re-stamp a
+// paid session onto tables[].session after the session store has wiped it.
 // ---------------------------------------------------------------------------
-
-const STATUS_RANK: Record<TableStatus, number> = {
-  available: 0,
-  reserved: 0,
-  blocked: 0,
-  not_in_service: 0,
-  seating: 1,
-  seated: 2,
-  ordering: 3,
-  ordered: 4,
-  served: 5,
-  check_presented: 6,
-  paying: 7,
-  paid: 8,
-  closing: 8,
-  cleaning: 9,
-};
 
 const RECENTLY_CLEARED_TTL_MS = 30_000;
 const recentlyClearedSessions = new Map<string, number>();
@@ -158,7 +144,7 @@ function _recordCleared(sessionId: string) {
   recentlyClearedSessions.set(sessionId, Date.now());
 }
 
-function _wasRecentlyCleared(sessionId: string): boolean {
+export function wasSessionRecentlyCleared(sessionId: string): boolean {
   const t = recentlyClearedSessions.get(sessionId);
   if (!t) return false;
   if (Date.now() - t > RECENTLY_CLEARED_TTL_MS) {
@@ -168,53 +154,11 @@ function _wasRecentlyCleared(sessionId: string): boolean {
   return true;
 }
 
-type SyncSuspicion = "DOWNGRADE" | "RESURRECT_AFTER_CLEAR" | null;
-
-function _classifySync(
-  prev: TableSession | undefined,
-  action: SessionAction,
-): SyncSuspicion {
-  if (action.type !== "SYNC") return null;
-  const incoming = action.session;
-  if (
-    (!prev || prev.id !== incoming.id) &&
-    _wasRecentlyCleared(incoming.id)
-  ) {
-    return "RESURRECT_AFTER_CLEAR";
-  }
-  if (prev && prev.id === incoming.id) {
-    const prevRank = STATUS_RANK[prev.status] ?? -1;
-    const incRank = STATUS_RANK[incoming.status] ?? -1;
-    if (incRank < prevRank) return "DOWNGRADE";
-  }
-  return null;
-}
-
-function _logSyncSuspicion(
-  tableId: string,
-  prev: TableSession | undefined,
-  action: SessionAction,
-) {
-  const classification = _classifySync(prev, action);
-  if (!classification) return;
-  const incoming = (action as { type: "SYNC"; session: TableSession }).session;
-  console.warn(`[SYNC ${classification}]`, {
-    tableId,
-    prevSessionId: prev?.id ?? null,
-    incomingSessionId: incoming.id,
-    prevStatus: prev?.status ?? null,
-    incomingStatus: incoming.status,
-    prevOrderId: prev?.order_id ?? null,
-    incomingOrderId: incoming.order_id ?? null,
-  });
-}
-
 function _maybeRecordCleared(
   prev: TableSession | undefined,
   next: TableSession | undefined,
 ) {
-  const enteredCleanup =
-    (!next && !!prev) || next?.status === "cleaning";
+  const enteredCleanup = (!next && !!prev) || next?.status === "cleaning";
   if (!enteredCleanup) return;
   const sid = next?.id ?? prev?.id;
   if (sid) _recordCleared(sid);
@@ -485,8 +429,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           const result = _applyAction(prev, action);
           if (!result.changed) return false;
 
-          _logSyncSuspicion(tableId, prev, action);
-
           set((state) => {
             if (result.session) {
               state.sessions[tableId] = result.session;
@@ -526,10 +468,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           const results = allResults.filter((r) => r.result.changed);
 
           if (results.length === 0) return 0;
-
-          for (const { tableId, prev, action } of results) {
-            _logSyncSuspicion(tableId, prev, action);
-          }
 
           set((state) => {
             for (const { tableId, prev, result } of results) {
@@ -939,22 +877,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             }
             if (actions.length > 0) get().batchDispatch(actions);
             return;
-          }
-
-          // Diagnostic: surface incoming session payload status/order_id so we
-          // can spot late SYNCs that resurrect a just-cleared session.
-          if (data.tables?.length) {
-            const firstTableId = data.tables[0].table_id;
-            const currentLocal = get().sessions[firstTableId];
-            console.log("[_handleSessionChange] SYNC incoming", {
-              sessionId: data.session.id,
-              incomingStatus: data.session.status,
-              incomingOrderId: data.session.order_id ?? null,
-              localStatus: currentLocal?.status ?? null,
-              localOrderId: currentLocal?.order_id ?? null,
-              localSessionId: currentLocal?.id ?? null,
-              tableIds: data.tables.map((t) => t.table_id),
-            });
           }
 
           const sessionId = data.session.id;
@@ -1807,24 +1729,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // session state and skips _fireEffects.
           const session = get().sessions[tableId];
           const orderId = session?.order_id ?? undefined;
-          console.log("[clearTableSession] invoked", {
-            tableId,
-            sessionId: session?.id ?? null,
-            currentStatus: session?.status ?? null,
-            orderId: orderId ?? null,
-          });
           const result = await get().dispatchAction({
             type: "CLEAR_TABLE",
             tableId,
             orderId,
-          });
-          console.log("[clearTableSession] dispatchAction result", {
-            tableId,
-            success: result.success,
-            nextStatus: result.nextStatus ?? null,
-            error: result.error ?? null,
-            postStatus: get().sessions[tableId]?.status ?? null,
-            postOrderId: get().sessions[tableId]?.order_id ?? null,
           });
           if (!result.success) {
             console.warn(

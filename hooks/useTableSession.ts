@@ -104,19 +104,11 @@ export function useTableSession (
           ? candidate
           : null
       if (found) {
-        // Synchronously claim activeOrderId before any effects run.
-        // This prevents a re-key from briefly having a null activeOrderId
-        // between the old mount's cleanup and the new mount's first effect.
         _mountGeneration++
         mountGenRef.current = _mountGeneration
-        // NOTE: Do NOT call setActiveOrder here — it violates React's render invariant
-        // and causes "Cannot update X while rendering Y" warnings when components
-        // share store subscriptions. Defer this to useEffect below.
-        return 'ready' // order in store, render immediately
+        return 'ready'
       }
     }
-
-    // Session exists but order not yet loaded
     return 'initializing'
   })
   const phaseRef = useRef<SessionPhase>(phase)
@@ -161,18 +153,6 @@ export function useTableSession (
       const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId
       const found = state.ordersById[localKey]
       if (found && !TERMINAL_ORDER_STATUSES.has(found.order_status ?? '')) {
-        if (__DEV__ && (found.items?.length ?? 0) > 0) {
-          console.log('[useTableSession][rawActiveOrder] P1 hit', {
-            tableId,
-            sessionOrderId,
-            resolvedId: found.id,
-            db_order_id: found.db_order_id,
-            order_status: found.order_status,
-            paid_status: found.paid_status,
-            items: found.items.length,
-            service_location_id: found.service_location_id,
-          })
-        }
         return found
       }
     }
@@ -186,32 +166,21 @@ export function useTableSession (
         active?.service_location_id === tableId &&
         !TERMINAL_ORDER_STATUSES.has(active.order_status ?? '')
       ) {
-        if (__DEV__ && (active.items?.length ?? 0) > 0) {
-          console.log('[useTableSession][rawActiveOrder] P2 hit', {
-            tableId,
-            activeOrderId: state.activeOrderId,
-            resolvedId: active.id,
-            order_status: active.order_status,
-            items: active.items.length,
-          })
-        }
         return active
       }
     }
     // Priority 2.5: resolve via table index (fallback when activeOrderId was cleared
-    // during a mount transition or the index was populated before activeOrderId was set)
+    // during a mount transition or the index was populated before activeOrderId was set).
+    // Skip terminal-status orders — after a Close Table, the tableOrderIdIndex can
+    // still point at the archived order, which would surface the closed-out items
+    // when the user reopens the table.
     const indexedOrderId = state.tableOrderIdIndex[tableId]
     if (indexedOrderId) {
       const indexedOrder = state.ordersById[indexedOrderId]
-      if (indexedOrder?.service_location_id === tableId) {
-        if (__DEV__ && (indexedOrder.items?.length ?? 0) > 0) {
-          console.log('[useTableSession][rawActiveOrder] P2.5 hit', {
-            tableId,
-            indexedOrderId,
-            order_status: indexedOrder.order_status,
-            items: indexedOrder.items.length,
-          })
-        }
+      if (
+        indexedOrder?.service_location_id === tableId &&
+        !TERMINAL_ORDER_STATUSES.has(indexedOrder.order_status ?? '')
+      ) {
         return indexedOrder
       }
     }
@@ -226,17 +195,6 @@ export function useTableSession (
         o.service_location_id === tableId &&
         !TERMINAL_ORDER_STATUSES.has(o.order_status ?? '')
       ) {
-        if (__DEV__ && (o.items?.length ?? 0) > 0) {
-          console.log('[useTableSession][rawActiveOrder] P3 scan hit', {
-            tableId,
-            resolvedId: o.id,
-            db_order_id: o.db_order_id,
-            order_status: o.order_status,
-            paid_status: o.paid_status,
-            items: o.items.length,
-            service_location_id: o.service_location_id,
-          })
-        }
         return o
       }
     }

@@ -14379,9 +14379,6 @@ export const useOrderStore = create<OrderState>()(
                       Number.isFinite(seatedAt) &&
                       now - seatedAt < FRESH_WINDOW_MS
                     ) {
-                      console.log(
-                        `[syncOrderFromDatabase] Skipping freshly-seated order ${dbOrderIdOrLocalId} — seat flow authoritative`,
-                      );
                       return null;
                     }
                   }
@@ -15274,7 +15271,6 @@ export const useOrderStore = create<OrderState>()(
             try {
               const prefetchMod = require("../services/tableOrderPrefetch") as typeof import("../services/tableOrderPrefetch");
               prefetchMod.markOrderRecentlyHydrated(dbOrderId);
-              console.log(`[hydrateOrderFromSeat] markOrderRecentlyHydrated(${dbOrderId})`);
             } catch (err) {
               console.warn("[hydrateOrderFromSeat] markOrderRecentlyHydrated failed:", err);
             }
