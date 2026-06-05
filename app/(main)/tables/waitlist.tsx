@@ -671,7 +671,7 @@ export default function WaitlistScreen () {
       }
 
       usePendingTableOverlay.getState().setPendingTableId(tableId)
-      router.replace('/tables')
+      router.back()
     },
     [
       selectedEntry,

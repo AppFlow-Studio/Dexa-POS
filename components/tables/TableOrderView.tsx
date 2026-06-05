@@ -384,7 +384,7 @@ const TableOrderView = React.forwardRef<
     if (hadSessionRef.current && !session) {
       usePaymentStore.getState().close()
       markNavigatingAway()
-      router.replace('/tables')
+      router.back()
       setTimeout(hideLoading, 300)
       return
     }
@@ -411,7 +411,7 @@ const TableOrderView = React.forwardRef<
         useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {})
         usePaymentStore.getState().close()
         markNavigatingAway()
-        router.replace('/tables')
+        router.back()
         setTimeout(hideLoading, 300)
       })()
     }
