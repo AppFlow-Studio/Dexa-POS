@@ -498,7 +498,7 @@ const CustomerSheet: React.FC = () => {
                 </View>
               ) : (
                 <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-                  <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
+                  <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
                     <Text style={{ color: colors.muted, fontSize: 11 }}>
                       {viewMode === "edit" ? "Update customer name or address. Phone number cannot be changed." : "Address fields are optional."}
                     </Text>
