@@ -275,7 +275,15 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const liveSession = useTableSessionStore(s =>
     table ? s.sessions[table.id] : undefined
   )
-  const status = (liveSession?.status ?? table?.session?.status) || 'available'
+  const sessionStoreInitialized = useTableSessionStore(s => s.isInitialized)
+  // Once isInitialized, useTableSessionStore is authoritative — don't fall
+  // back to the stale table.session prop (the floor plan store can retain
+  // a paid session locally after a Clear that wiped useTableSessionStore,
+  // which surfaces as a stuck-Paid sheet). Matches DraggableTable's pattern.
+  const status =
+    (sessionStoreInitialized
+      ? liveSession?.status
+      : (liveSession?.status ?? table?.session?.status)) || 'available'
   const tableColor = TABLE_STATUS_COLORS[status] || colors.teal
 
   const resolvedOrderId = useOrderStore(s => {
@@ -299,6 +307,81 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const isForeignStationSession = isOrderReadOnly(order, currentStationId)
   const foreignStationLabel = order?.station_name?.trim() || 'another station'
   const { minutes: minutesSeated } = useSessionDuration(table?.id ?? '')
+
+  // Diagnostic: capture state at the moment a paid sheet renders, so we can see
+  // whether the unresolvable-order bug is "session.order_id points to nothing"
+  // vs "order exists but is archived/empty" vs bridge divergence between
+  // useTableSessionStore.sessions and useFloorPlanStore.tables[].session.
+  useEffect(() => {
+    if (status !== 'paid' || !table) return
+    const orderStoreState = useOrderStore.getState()
+    const sessionOrderId = liveSession?.order_id ?? null
+    const fromDbIndex = sessionOrderId
+      ? orderStoreState.dbOrderIdIndex[sessionOrderId]
+      : null
+    const directLookup = sessionOrderId
+      ? orderStoreState.ordersById[sessionOrderId]
+      : null
+    const resolvedOrder = resolvedOrderId
+      ? orderStoreState.ordersById[resolvedOrderId]
+      : null
+    const nonVoidedItems =
+      resolvedOrder?.items?.filter(i => !i.is_voided)?.length ?? null
+
+    // Bridge-divergence diagnostics: compare what useTableSessionStore says
+    // vs what useFloorPlanStore.tables[i].session says for this same tableId.
+    // If they disagree (one has data, the other doesn't), the stuck-Paid
+    // sheet is being driven by the floor plan side, not the session store.
+    const tableSession = table?.session
+    const isDivergent =
+      (!!tableSession && !liveSession) ||
+      (!!liveSession && !tableSession) ||
+      (!!tableSession &&
+        !!liveSession &&
+        (tableSession.id !== liveSession.id ||
+          tableSession.status !== liveSession.status ||
+          (tableSession.order_id ?? null) !== (liveSession.order_id ?? null)))
+
+    console.warn('[TableContextSheet PAID render]', {
+      tableId: table.id,
+      // Session-store half
+      liveSessionId: liveSession?.id ?? null,
+      liveSessionStatus: liveSession?.status ?? null,
+      liveSessionOrderId: liveSession?.order_id ?? null,
+      // Floor-plan half
+      tableSessionId: tableSession?.id ?? null,
+      tableSessionStatus: tableSession?.status ?? null,
+      tableSessionOrderId: tableSession?.order_id ?? null,
+      // Derived status used for rendering
+      renderedStatus: status,
+      isDivergent,
+      // Order resolution
+      sessionOrderIdRaw: sessionOrderId,
+      resolvedOrderId,
+      resolvedViaDbIndex: fromDbIndex ?? null,
+      orderPresentByDirectKey: !!directLookup,
+      orderPresentByResolved: !!resolvedOrder,
+      orderStatus: resolvedOrder?.order_status ?? null,
+      orderCheckStatus: resolvedOrder?.check_status ?? null,
+      orderPaidStatus: resolvedOrder?.paid_status ?? null,
+      orderDbId: resolvedOrder?.db_order_id ?? null,
+      itemsCount: resolvedOrder?.items?.length ?? null,
+      nonVoidedItemsCount: nonVoidedItems,
+      isArchivedLike:
+        resolvedOrder?.order_status === 'completed' ||
+        resolvedOrder?.order_status === 'void',
+    })
+  }, [
+    table?.id,
+    table?.session?.id,
+    table?.session?.status,
+    table?.session?.order_id,
+    status,
+    liveSession?.id,
+    liveSession?.status,
+    liveSession?.order_id,
+    resolvedOrderId,
+  ])
 
   const handleMarkArrived = useCallback(async (reservationId: string) => {
     await useReservationStore.getState().updateStatus(reservationId, 'arrived')

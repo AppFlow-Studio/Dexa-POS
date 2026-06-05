@@ -128,6 +128,99 @@ function fireSideEffects(
 }
 
 // ---------------------------------------------------------------------------
+// SYNC-suspicion diagnostics (temporary)
+// Detects status downgrades and resurrection of recently-CLEAR'd sessions
+// arriving via SYNC actions (realtime broadcast, polling, full refresh).
+// Strip once the upstream race is confirmed and guarded.
+// ---------------------------------------------------------------------------
+
+const STATUS_RANK: Record<TableStatus, number> = {
+  available: 0,
+  reserved: 0,
+  blocked: 0,
+  not_in_service: 0,
+  seating: 1,
+  seated: 2,
+  ordering: 3,
+  ordered: 4,
+  served: 5,
+  check_presented: 6,
+  paying: 7,
+  paid: 8,
+  closing: 8,
+  cleaning: 9,
+};
+
+const RECENTLY_CLEARED_TTL_MS = 30_000;
+const recentlyClearedSessions = new Map<string, number>();
+
+function _recordCleared(sessionId: string) {
+  recentlyClearedSessions.set(sessionId, Date.now());
+}
+
+function _wasRecentlyCleared(sessionId: string): boolean {
+  const t = recentlyClearedSessions.get(sessionId);
+  if (!t) return false;
+  if (Date.now() - t > RECENTLY_CLEARED_TTL_MS) {
+    recentlyClearedSessions.delete(sessionId);
+    return false;
+  }
+  return true;
+}
+
+type SyncSuspicion = "DOWNGRADE" | "RESURRECT_AFTER_CLEAR" | null;
+
+function _classifySync(
+  prev: TableSession | undefined,
+  action: SessionAction,
+): SyncSuspicion {
+  if (action.type !== "SYNC") return null;
+  const incoming = action.session;
+  if (
+    (!prev || prev.id !== incoming.id) &&
+    _wasRecentlyCleared(incoming.id)
+  ) {
+    return "RESURRECT_AFTER_CLEAR";
+  }
+  if (prev && prev.id === incoming.id) {
+    const prevRank = STATUS_RANK[prev.status] ?? -1;
+    const incRank = STATUS_RANK[incoming.status] ?? -1;
+    if (incRank < prevRank) return "DOWNGRADE";
+  }
+  return null;
+}
+
+function _logSyncSuspicion(
+  tableId: string,
+  prev: TableSession | undefined,
+  action: SessionAction,
+) {
+  const classification = _classifySync(prev, action);
+  if (!classification) return;
+  const incoming = (action as { type: "SYNC"; session: TableSession }).session;
+  console.warn(`[SYNC ${classification}]`, {
+    tableId,
+    prevSessionId: prev?.id ?? null,
+    incomingSessionId: incoming.id,
+    prevStatus: prev?.status ?? null,
+    incomingStatus: incoming.status,
+    prevOrderId: prev?.order_id ?? null,
+    incomingOrderId: incoming.order_id ?? null,
+  });
+}
+
+function _maybeRecordCleared(
+  prev: TableSession | undefined,
+  next: TableSession | undefined,
+) {
+  const enteredCleanup =
+    (!next && !!prev) || next?.status === "cleaning";
+  if (!enteredCleanup) return;
+  const sid = next?.id ?? prev?.id;
+  if (sid) _recordCleared(sid);
+}
+
+// ---------------------------------------------------------------------------
 // Pure _applyAction — computes new session state without side effects
 // ---------------------------------------------------------------------------
 
@@ -392,6 +485,8 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           const result = _applyAction(prev, action);
           if (!result.changed) return false;
 
+          _logSyncSuspicion(tableId, prev, action);
+
           set((state) => {
             if (result.session) {
               state.sessions[tableId] = result.session;
@@ -405,6 +500,8 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               result.session,
             );
           });
+
+          _maybeRecordCleared(prev, result.session);
 
           _scheduleSyncToFloorPlan(tableId);
           fireSideEffects(tableId, prev, result.session, action);
@@ -430,6 +527,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           if (results.length === 0) return 0;
 
+          for (const { tableId, prev, action } of results) {
+            _logSyncSuspicion(tableId, prev, action);
+          }
+
           set((state) => {
             for (const { tableId, prev, result } of results) {
               if (result.session) {
@@ -445,6 +546,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               );
             }
           });
+
+          for (const { prev, result } of results) {
+            _maybeRecordCleared(prev, result.session);
+          }
 
           // Selective sync — coalesced via microtask to avoid cascading re-renders
           const changedTableIds = results.map((r) => r.tableId);
