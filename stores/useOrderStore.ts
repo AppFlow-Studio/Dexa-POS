@@ -3058,7 +3058,14 @@ const syncPaymentToBackend = async (
               item.db_order_item_id || "",
             );
             if (typeof backendPaidQty === "number") {
-              return { ...item, paidQuantity: backendPaidQty };
+              // Patch 3: backend confirmed → drop the optimistic-payment
+              // fingerprint; the FIFO absorb no longer needs to protect
+              // this item from a race.
+              return {
+                ...item,
+                paidQuantity: backendPaidQty,
+                pendingPaymentSeq: undefined,
+              };
             }
             return item;
           });
@@ -3826,6 +3833,16 @@ const pendingItemsBlockStart: Record<string, number> = {};
 const PENDING_ITEMS_BLOCK_MIN_MS = 3000;
 const PENDING_ITEMS_BLOCK_MAX_MS = 10000;
 
+// Monotonic counter for the `pendingPaymentSeq` fingerprint stamped on items
+// optimistically updated by addPaymentToOrder. The FIFO absorb in
+// _handleOrderBroadcast / upsertOrder / syncOrderFromBackendComplete prefers
+// stamped candidates over non-stamped same-composite-key items so a late
+// broadcast clone can't displace the in-flight optimistic copy. Cleared by
+// the data.success reconciliation path once the backend confirms via
+// `data.updated_items`.
+let _pendingPaymentSeqCounter = 0;
+const nextPendingPaymentSeq = () => ++_pendingPaymentSeqCounter;
+
 // Own-station mutation window: suppress _debouncedOrderRefresh from stale
 // own-station broadcasts that arrive shortly after a local mutation.
 // Set by addItemToActiveOrder, removeItemFromActiveOrder, etc.
@@ -4577,8 +4594,43 @@ export const useOrderStore = create<OrderState>()(
             const state = get();
             const { currentStationId } = state;
             // O(1) order lookup via direct key or dbOrderIdIndex
-            const localOrderKey = state.dbOrderIdIndex[dbOrderId] ?? dbOrderId;
-            const localOrder = state.ordersById[localOrderKey] ?? null;
+            let localOrderKey: string =
+              state.dbOrderIdIndex[dbOrderId] ?? dbOrderId;
+            let localOrder: OrderProfile | null =
+              state.ordersById[localOrderKey] ?? null;
+
+            // [FIFO-ORDER-BLEED] guard: if the routed-to local entry is bound
+            // to a different db_order_id than the broadcast's, the
+            // dbOrderIdIndex is stale and merging would leak items from this
+            // broadcast into the wrong cart (the S2-0013 Blueberry Muffin
+            // scenario). Treat the local entry as missing so the broadcast
+            // routes through a fresh upsert under dbOrderId instead of
+            // mutating the wrong order. The mismatch is logged so the next
+            // recurrence captures the bleed source.
+            if (
+              localOrder &&
+              localOrder.db_order_id &&
+              localOrder.db_order_id !== dbOrderId
+            ) {
+              console.warn(
+                "[FIFO-ORDER-BLEED] _handleOrderBroadcast routed broadcast to mismatched local entry — skipping merge",
+                {
+                  broadcastDbOrderId: dbOrderId,
+                  localOrderKey,
+                  localOrderDbId: localOrder.db_order_id,
+                  incomingItemIds: (backendOrder.order_items ?? [])
+                    .map((it: any) => it?.id)
+                    .filter(Boolean),
+                  incomingItemNames: (backendOrder.order_items ?? [])
+                    .map((it: any) => it?.menu_item_name ?? it?.name)
+                    .filter(Boolean),
+                  indexHas: dbOrderId in state.dbOrderIdIndex,
+                },
+              );
+              localOrder = null;
+              localOrderKey = dbOrderId;
+            }
+
             const currentLocationId =
               useStoreSettingsStore.getState().selectedStore?.id;
 
@@ -5044,14 +5096,26 @@ export const useOrderStore = create<OrderState>()(
                         // here left duplicates for items ordered ≥2× while syncing.)
                         const broadcastClaimedPendingIds = new Set<string>();
                         {
+                          // Composite key (menuItemId + size + addons + modifiers
+                          // + notes) — previously this was `menuItemId || name`
+                          // which collapsed items differing only in modifiers
+                          // into the same FIFO bucket. With the composite key
+                          // a Black Coffee (plain) and a Black Coffee (oat
+                          // milk) live in distinct buckets and never absorb
+                          // each other's pending twin. Patch 3 also stamps
+                          // `pendingPaymentSeq` on optimistically-paid items
+                          // so the FIFO prefers those over a non-stamped
+                          // late-arriving broadcast clone.
                           const localPendingByKey = new Map<
                             string,
                             CartItem[]
                           >();
                           for (const pendingItem of localPendingItems) {
                             if (pendingItem.isDraft) continue;
-                            const key =
-                              pendingItem.menuItemId || pendingItem.name;
+                            const key = generateItemCompositeKey(
+                              pendingItem.menuItemId,
+                              pendingItem.customizations,
+                            );
                             if (!localPendingByKey.has(key))
                               localPendingByKey.set(key, []);
                             localPendingByKey.get(key)!.push(pendingItem);
@@ -5068,12 +5132,22 @@ export const useOrderStore = create<OrderState>()(
                             );
                             if (alreadyMatched) continue;
 
-                            const key = si.menuItemId || si.name;
-                            const candidates = (
-                              localPendingByKey.get(key) ?? []
-                            ).filter(
-                              (c) => !broadcastClaimedPendingIds.has(c.id),
+                            const key = generateItemCompositeKey(
+                              si.menuItemId,
+                              si.customizations,
                             );
+                            const bucket = localPendingByKey.get(key) ?? [];
+                            const stamped = bucket.find(
+                              (c) =>
+                                !broadcastClaimedPendingIds.has(c.id) &&
+                                c.pendingPaymentSeq !== undefined,
+                            );
+                            const candidates = stamped
+                              ? [stamped]
+                              : bucket.filter(
+                                  (c) =>
+                                    !broadcastClaimedPendingIds.has(c.id),
+                                );
                             if (candidates.length === 0) continue;
 
                             const pendingItem = candidates[0];
@@ -5819,7 +5893,8 @@ export const useOrderStore = create<OrderState>()(
             // to find orders stored under a mapped temp key (e.g. "local_order_xxx").
             // Without this, a broadcast UPDATE for a rekeyed-in-flight order creates
             // a duplicate entry with empty items at ordersById[dbOrderId].
-            let existing = get().ordersById[dbOrderId];
+            let existing: OrderProfile | undefined =
+              get().ordersById[dbOrderId];
             const tempAliasKey = Object.keys(get().ordersById).find(
               (key) =>
                 key !== dbOrderId &&
@@ -5845,6 +5920,36 @@ export const useOrderStore = create<OrderState>()(
                 get().rekeyOrder(indexedKey, dbOrderId);
                 existing = get().ordersById[dbOrderId];
               }
+            }
+
+            // [FIFO-ORDER-BLEED] guard: refuse to merge the incoming broadcast
+            // into the resolved `existing` if its db_order_id doesn't match the
+            // broadcast's. This catches a stale dbOrderIdIndex / wrong-rekey
+            // routing the wrong order's items into another local cart (the
+            // S2-0013 Blueberry Muffin scenario). On mismatch, drop `existing`
+            // so the rest of upsertOrder creates a fresh entry under dbOrderId
+            // rather than mutating the wrong order's items array.
+            if (
+              existing &&
+              existing.db_order_id &&
+              existing.db_order_id !== dbOrderId
+            ) {
+              console.warn(
+                "[FIFO-ORDER-BLEED] upsertOrder resolved to mismatched local entry — dropping `existing` to force clean upsert",
+                {
+                  broadcastDbOrderId: dbOrderId,
+                  existingDbId: existing.db_order_id,
+                  existingSessionId: existing.session_id,
+                  incomingSessionId: backendOrder.session_id ?? null,
+                  incomingItemIds: (backendOrder.order_items ?? [])
+                    .map((it: any) => it?.id)
+                    .filter(Boolean),
+                  incomingItemNames: (backendOrder.order_items ?? [])
+                    .map((it: any) => it?.menu_item_name ?? it?.name)
+                    .filter(Boolean),
+                },
+              );
+              existing = undefined;
             }
 
             if (existing) {
@@ -5966,21 +6071,40 @@ export const useOrderStore = create<OrderState>()(
                   const claimedPendingIds = new Set<string>();
                   const pendingByKey = new Map<string, CartItem[]>();
 
+                  // Composite key — same upgrade as _handleOrderBroadcast.
+                  // Items differing only in customizations (size / addons /
+                  // modifiers / notes) get distinct buckets, so a plain
+                  // Black Coffee can't claim an oat-milk Black Coffee.
                   for (const pendingItem of localPendingItems) {
-                    const key = pendingItem.menuItemId || pendingItem.name;
+                    const key = generateItemCompositeKey(
+                      pendingItem.menuItemId,
+                      pendingItem.customizations,
+                    );
                     if (!pendingByKey.has(key)) pendingByKey.set(key, []);
                     pendingByKey.get(key)!.push(pendingItem);
                   }
 
                   // FIFO absorb: each server twin claims the oldest unclaimed
-                  // pending candidate by menuItemId. Skipping on ambiguity
-                  // here caused the duplicate-item bug after partial payment
-                  // when the user added the same item ≥2× while syncing.
+                  // pending candidate by composite key. A `pendingPaymentSeq`-
+                  // stamped candidate is preferred (Patch 3) so an
+                  // optimistically-paid item is never lost to a late broadcast
+                  // clone arriving in the same race window.
                   orderProfile.items = orderProfile.items.map((serverItem) => {
-                    const key = serverItem.menuItemId || serverItem.name;
-                    const candidates = (pendingByKey.get(key) ?? []).filter(
-                      (item) => !claimedPendingIds.has(item.id),
+                    const key = generateItemCompositeKey(
+                      serverItem.menuItemId,
+                      serverItem.customizations,
                     );
+                    const bucket = pendingByKey.get(key) ?? [];
+                    const stamped = bucket.find(
+                      (item) =>
+                        !claimedPendingIds.has(item.id) &&
+                        item.pendingPaymentSeq !== undefined,
+                    );
+                    const candidates = stamped
+                      ? [stamped]
+                      : bucket.filter(
+                          (item) => !claimedPendingIds.has(item.id),
+                        );
                     if (candidates.length === 0) return serverItem;
 
                     const pendingItem = candidates[0];
@@ -10996,6 +11120,10 @@ export const useOrderStore = create<OrderState>()(
                 "[allocationMap | addPaymentToOrder] allocationMap",
                 allocationMap,
               );
+              // Patch 3: one sequence per call so all items updated in this
+              // payment share the same fingerprint — lets the FIFO absorb
+              // group them together if more than one was claimed at once.
+              const paymentSeq = nextPendingPaymentSeq();
               // Per-item payment: Increment paidQuantity by the specified quantity (not full quantity)
               updatedItems = order.items.map((item) => {
                 // Match by db_order_item_id first, fall back to local item.id for offline items
@@ -11014,6 +11142,13 @@ export const useOrderStore = create<OrderState>()(
                   return {
                     ...item,
                     paidQuantity: newPaidQty,
+                    // Stamp the optimistic-payment fingerprint so the FIFO
+                    // absorb in _handleOrderBroadcast / upsertOrder /
+                    // syncOrderFromBackendComplete prefers this copy over a
+                    // late broadcast clone of the same composite key.
+                    // Cleared by the data.success reconciliation path once
+                    // the backend confirms via `data.updated_items`.
+                    pendingPaymentSeq: paymentSeq,
                     // Update kitchen and item status for items that haven't been sent yet
                     ...(shouldUpdateThisItem && {
                       kitchen_status: "sent" as const,
@@ -11026,6 +11161,10 @@ export const useOrderStore = create<OrderState>()(
             } else {
               // Default FIFO: Mark items as paid in order until amount is exhausted
               let remaining = amount;
+              // Patch 3: stamp the same fingerprint across all items covered
+              // by this default-FIFO payment (same protection logic as the
+              // itemAllocations branch above).
+              const paymentSeq = nextPendingPaymentSeq();
               updatedItems = order.items.map((item) => {
                 const unitPrice =
                   method === "Cash"
@@ -11046,6 +11185,7 @@ export const useOrderStore = create<OrderState>()(
                 return {
                   ...item,
                   paidQuantity: (item.paidQuantity || 0) + maxCoverQty,
+                  pendingPaymentSeq: paymentSeq,
                   // Update kitchen and item status for items that haven't been sent yet
                   ...(shouldUpdateThisItem && {
                     kitchen_status: "sent" as const,
@@ -16419,13 +16559,17 @@ export const useOrderStore = create<OrderState>()(
                   // Table-6 duplicate Black Coffee / Cold Brew bug.
                   const claimedPendingIds = new Set<string>();
                   {
-                    // Build menuItemId → pending items map for O(n) lookup.
-                    // Insertion order preserved → FIFO claim order.
+                    // Composite key — items differing only in size/addons/
+                    // modifiers/notes live in distinct FIFO buckets, so a
+                    // plain coffee can't claim a modified coffee's twin.
                     const localPendingByKey = new Map<string, CartItem[]>();
                     for (const pendingItem of currentOrder.items) {
                       if (pendingItem.db_order_item_id || pendingItem.isDraft)
                         continue;
-                      const key = pendingItem.menuItemId || pendingItem.name;
+                      const key = generateItemCompositeKey(
+                        pendingItem.menuItemId,
+                        pendingItem.customizations,
+                      );
                       if (!localPendingByKey.has(key))
                         localPendingByKey.set(key, []);
                       localPendingByKey.get(key)!.push(pendingItem);
@@ -16437,10 +16581,22 @@ export const useOrderStore = create<OrderState>()(
                       // Skip items already matched by db_order_item_id (handled above)
                       if (localItemsByDbId.has(ti.db_order_item_id)) continue;
 
-                      const key = ti.menuItemId || ti.name;
-                      const candidates = (
-                        localPendingByKey.get(key) ?? []
-                      ).filter((c) => !claimedPendingIds.has(c.id));
+                      const key = generateItemCompositeKey(
+                        ti.menuItemId,
+                        ti.customizations,
+                      );
+                      const bucket = localPendingByKey.get(key) ?? [];
+                      // Prefer optimistically-paid candidates (Patch 3) over
+                      // unstamped ones so an in-flight optimistic claim isn't
+                      // displaced by a late broadcast clone of the same item.
+                      const stamped = bucket.find(
+                        (c) =>
+                          !claimedPendingIds.has(c.id) &&
+                          c.pendingPaymentSeq !== undefined,
+                      );
+                      const candidates = stamped
+                        ? [stamped]
+                        : bucket.filter((c) => !claimedPendingIds.has(c.id));
                       if (candidates.length === 0) continue;
 
                       const pendingItem = candidates[0];

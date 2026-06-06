@@ -70,6 +70,7 @@ interface SettlementBatchRow {
   netDeposit: number
   acquirer: string | null
   batchNumber: string | null
+  isClosedToday: boolean
 }
 
 interface BatchPaymentRow {
@@ -143,13 +144,16 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
     isLoading: batchesLoading,
     refetch: refetchBatches
   } = useQuery({
-    queryKey: ['batchout-open-batches', locationId],
+    queryKey: ['batchout-batches-v2', locationId, businessDay],
     enabled: Boolean(locationId) && Boolean(showBatchLog),
     staleTime: 30_000,
     queryFn: async (): Promise<SettlementBatchRow[]> => {
       const { data, error } = await supabase.rpc(
-        'get_open_batches_v1' as any,
-        { p_location_id: locationId } as any
+        'get_open_batches_v2' as any,
+        {
+          p_location_id: locationId,
+          p_today_business_date: businessDay
+        } as any
       )
       if (error) throw error
       const rows = Array.isArray(data) ? data : []
@@ -168,7 +172,8 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         tipAmount: Number(b.tip_amount) || 0,
         netDeposit: Number(b.net_deposit) || 0,
         acquirer: b.acquirer ?? null,
-        batchNumber: b.batch_number ?? null
+        batchNumber: b.batch_number ?? null,
+        isClosedToday: Boolean(b.is_closed_today)
       }))
     }
   })
@@ -1078,11 +1083,25 @@ function BatchLog ({
     ? list.filter(b => b.paymentTerminalId !== currentTerminalId)
     : list
 
-  const mineCount =
-    mine.length === 0 ? '' : mine.length === 1 ? '1 batch' : `${mine.length} batches`
+  const mineOpen = mine.filter(b => !b.isClosedToday)
+  const mineClosedToday = mine.filter(b => b.isClosedToday)
+
+  const openCount =
+    mineOpen.length === 0
+      ? ''
+      : mineOpen.length === 1
+      ? '1 open'
+      : `${mineOpen.length} open`
 
   return (
     <View style={{ gap: 10, marginTop: 8 }}>
+      {!loading && mineClosedToday.length > 0 ? (
+        <ClosedTodayCollapsible
+          batches={mineClosedToday}
+          onPrintBatch={onPrintBatch}
+        />
+      ) : null}
+
       <View
         style={{
           flexDirection: 'row',
@@ -1095,8 +1114,8 @@ function BatchLog ({
         >
           Open Batches
         </Text>
-        {mineCount ? (
-          <Text style={{ fontSize: 11, color: colors.muted }}>{mineCount}</Text>
+        {openCount ? (
+          <Text style={{ fontSize: 11, color: colors.muted }}>{openCount}</Text>
         ) : null}
       </View>
 
@@ -1104,14 +1123,14 @@ function BatchLog ({
         <Card>
           <ActivityIndicator color={colors.teal} />
         </Card>
-      ) : mine.length === 0 ? (
+      ) : mineOpen.length === 0 ? (
         <Card>
           <Text style={{ fontSize: 13, color: colors.muted }}>
             No open batches on this terminal.
           </Text>
         </Card>
       ) : (
-        mine.map(b => (
+        mineOpen.map(b => (
           <BatchRow
             key={b.id}
             batch={b}
@@ -1126,6 +1145,61 @@ function BatchLog ({
           onPrintBatch={onPrintBatch}
         />
       ) : null}
+    </View>
+  )
+}
+
+function ClosedTodayCollapsible ({
+  batches,
+  onPrintBatch
+}: {
+  batches: SettlementBatchRow[]
+  onPrintBatch: (settlementBatchId: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const label =
+    batches.length === 1
+      ? '1 batch closed today'
+      : `${batches.length} batches closed today`
+
+  return (
+    <View style={{ gap: 10 }}>
+      <TouchableOpacity
+        onPress={() => setExpanded(v => !v)}
+        activeOpacity={0.7}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.card
+        }}
+      >
+        <Text
+          style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
+        >
+          {label}
+        </Text>
+        {expanded ? (
+          <ChevronUp size={16} color={colors.muted} />
+        ) : (
+          <ChevronDown size={16} color={colors.muted} />
+        )}
+      </TouchableOpacity>
+
+      {expanded
+        ? batches.map(b => (
+            <BatchRow
+              key={b.id}
+              batch={b}
+              onPrint={() => onPrintBatch(b.id)}
+            />
+          ))
+        : null}
     </View>
   )
 }

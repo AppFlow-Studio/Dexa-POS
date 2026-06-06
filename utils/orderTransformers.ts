@@ -686,6 +686,12 @@ export function transformBroadcastToOrder (
     service_location_id: backendOrder.table_number,
     // table_number IS the table name (e.g., "T1"), so use it directly for display
     service_location_name: backendOrder.table_number || undefined,
+    // Session binding — preserved so downstream merges (upsertOrder,
+    // _handleOrderBroadcast) can enforce session-boundary checks and so the
+    // [FIFO-ORDER-BLEED] diagnostics can correlate cross-order item leaks
+    // back to the originating session. Broadcasts already carry this on
+    // BroadcastOrderData; we just need to surface it on OrderProfile.
+    session_id: backendOrder.session_id ?? undefined,
     server_name:
       backendOrder.server_name || backendOrder.assigned_server_id || undefined,
     created_by_staff_profile_id:
