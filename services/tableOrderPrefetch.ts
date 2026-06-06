@@ -12,17 +12,89 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 
 const PREFETCH_CONCURRENCY = 2;
+// How long to suppress prefetch for a dbOrderId after it was emitted by
+// hydrateOrderFromSeat. Within this window the seat flow's local order is
+// authoritative — fetching from the backend can race the not-yet-landed
+// archiveOrder/order_status='completed' write from the *previous* session
+// and inject stale items from a reused/dirty backend row.
+const HYDRATE_SUPPRESS_MS = 5000;
+// How recently a session must have been seated to be considered "fresh" —
+// realtime broadcasts often arrive before the seat_guests_v3 RPC response, so
+// the prefetch can fire before hydrateOrderFromSeat marks the dbOrderId.
+// Reading `seated_at` from the session lets us short-circuit independently
+// of whether hydrate has had a chance to mark yet.
+const FRESH_SEAT_WINDOW_MS = 10000;
 
 let _unsubscribe: (() => void) | null = null;
 const _inFlightOrderIds = new Set<string>();
 const _inFlightPrefetches = new Map<string, Promise<string | null>>();
+const _recentlyHydrated = new Map<string, number>();
+
+/**
+ * Called by hydrateOrderFromSeat after a seat_guests_v3 response binds a
+ * dbOrderId to a local order. Tells the prefetch subscriber to skip this id
+ * for HYDRATE_SUPPRESS_MS so it doesn't race-create a stale shell from the
+ * backend before the rekey/index repair settles.
+ */
+export function markOrderRecentlyHydrated(dbOrderId: string): void {
+  _recentlyHydrated.set(dbOrderId, Date.now());
+}
+
+function isRecentlyHydrated(dbOrderId: string): boolean {
+  const stamped = _recentlyHydrated.get(dbOrderId);
+  if (stamped == null) return false;
+  if (Date.now() - stamped > HYDRATE_SUPPRESS_MS) {
+    _recentlyHydrated.delete(dbOrderId);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Returns true if any session in useTableSessionStore is bound to this
+ * order_id AND was seated recently. This covers the race where a realtime
+ * broadcast lands the new dbOrderId on the session *before* the seat_guests_v3
+ * RPC response gets a chance to call hydrateOrderFromSeat — at which point
+ * the local order is still pending and a backend fetch would inject stale
+ * items from a reused/dirty backend row.
+ */
+function isFreshlySeatedOrder(orderId: string): boolean {
+  const sessions = useTableSessionStore.getState().sessions;
+  const now = Date.now();
+  for (const session of Object.values(sessions)) {
+    if (session.order_id !== orderId) continue;
+    if (
+      session.status !== "seating" &&
+      session.status !== "seated" &&
+      session.status !== "ordering"
+    ) {
+      continue;
+    }
+    const seatedAt = session.seated_at
+      ? new Date(session.seated_at).getTime()
+      : 0;
+    if (Number.isFinite(seatedAt) && now - seatedAt < FRESH_SEAT_WINDOW_MS) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function getCachedOrderId(orderId: string): string | null {
   const { ordersById, dbOrderIdIndex } = useOrderStore.getState();
   if (ordersById[orderId]) return orderId;
 
   const localId = dbOrderIdIndex[orderId];
-  return localId && ordersById[localId] ? localId : null;
+  if (localId && ordersById[localId]) return localId;
+
+  // Defensive scan: if hydrateOrderFromSeat set db_order_id on a local order
+  // but the dbOrderIdIndex repair hasn't committed yet (rare reorder during
+  // a SESSION_CREATED → subscriber → microtask chain), still treat the order
+  // as cached so we don't race-fetch a duplicate shell.
+  for (const [key, o] of Object.entries(ordersById)) {
+    if (o.db_order_id === orderId) return key;
+  }
+  return null;
 }
 
 export function ensureOrderPrefetched(orderId: string): Promise<string | null> {
@@ -57,6 +129,15 @@ async function prefetchUncachedOrders(orderIds: string[]) {
 
   const uncachedOrderIds = orderIds.filter((id) => {
     if (_inFlightOrderIds.has(id)) return false;
+    // Skip ids that were just hydrated via seat_guests — the local order is
+    // authoritative; the backend may still be flushing the previous session's
+    // order_status='completed' so a fetch here would inject stale items.
+    if (isRecentlyHydrated(id)) return false;
+    // Race-cover for the broadcast-before-RPC-response case: the session is
+    // freshly seated (within the last few seconds) and the seat_guests_v3 RPC
+    // is still in flight on this client. Hydrate hasn't had a chance to mark
+    // yet, but the seat flow is the authoritative writer here. Skip the fetch.
+    if (isFreshlySeatedOrder(id)) return false;
     return !getCachedOrderId(id);
   });
 

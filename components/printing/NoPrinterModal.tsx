@@ -28,7 +28,7 @@ export function NoPrinterModal() {
 
   const handleConfigure = useCallback(() => {
     hide();
-    router.replace("/settings/printers-kitchen");
+    router.push("/settings/printers?tab=order");
   }, [hide, router]);
 
   return (

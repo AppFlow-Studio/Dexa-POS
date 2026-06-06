@@ -1423,6 +1423,37 @@ export class CastlesService {
     return this._mutex.runExclusive(() => this._tryReturn2Idle(true));
   }
 
+  /**
+   * Escalated pre-flight reset: 3× return2Idle with 1s gaps inside the
+   * mutex. Mirrors the attempt-2+ recovery in `_connectInner` but runs
+   * unconditionally — used before non-idempotent commands (settlement)
+   * where we can't afford a "first tap quirky, second tap works" flow.
+   * Individual return2Idle failures are fine (terminal may already be
+   * idle); the goal is just to nudge the UI off any lingering result
+   * screen.
+   */
+  async escalatedReset(): Promise<void> {
+    await this._mutex.runExclusive(async () => {
+      await this._ensureConnected();
+      for (let i = 0; i < 3; i++) {
+        try {
+          await this._sendAndReceive<Record<string, unknown>>(
+            { txnPosTxnId: "000000", txnType: "return2Idle" },
+            4_000,
+          );
+          console.log(
+            `[CastlesService] escalatedReset return2Idle #${i + 1}/3 accepted`,
+          );
+        } catch {
+          console.log(
+            `[CastlesService] escalatedReset return2Idle #${i + 1}/3 no response (continuing)`,
+          );
+        }
+        if (i < 2) await this._delay(1_000);
+      }
+    });
+  }
+
   isLocked(): boolean {
     return this._mutex.isLocked();
   }

@@ -22,6 +22,19 @@ const getTableSessionStore = () =>
   (require("./useTableSessionStore") as typeof import("./useTableSessionStore"))
     .useTableSessionStore;
 
+/**
+ * Reject session restores for sessions the session store CLEAR'd locally
+ * within the TTL window. Prevents a stale backend snapshot or delayed broadcast
+ * from re-stamping a paid session onto tables[].session after a Clear has
+ * already wiped useTableSessionStore.sessions[tableId].
+ */
+const wasRecentlyCleared = (sessionId: string | undefined | null): boolean => {
+  if (!sessionId) return false;
+  return (
+    require("./useTableSessionStore") as typeof import("./useTableSessionStore")
+  ).wasSessionRecentlyCleared(sessionId);
+};
+
 // Lazy accessor — breaks circular dependency with useReservationStore
 const getReservationStore = () =>
   (require("./useReservationStore") as typeof import("./useReservationStore"))
@@ -154,6 +167,16 @@ const fetchFloorPlanSnapshot = async (
       }
 
       if (!currentTable?.session && freshSessionIsInactive) {
+        return { ...freshTable, session: undefined };
+      }
+
+      // Drop a fresh session that the session store CLEAR'd locally within
+      // the TTL — backend lag can return a still-paid row after our Clear
+      // has wiped the local session, and we don't want to resurrect it.
+      if (
+        freshTable.session &&
+        wasRecentlyCleared(freshTable.session.id)
+      ) {
         return { ...freshTable, session: undefined };
       }
 
@@ -574,6 +597,29 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           // For INSERT/UPDATE, try to patch local state
           const sessionId = data.session.id;
           const tableIds = data.tables?.map((t) => t.table_id) || [];
+
+          // Drop the broadcast if this session was CLEAR'd locally within TTL —
+          // a delayed UPDATE carrying the pre-clear status would otherwise
+          // resurrect tables[].session. The CLEAR-fallback branch below still
+          // fires to wipe any lingering tables[].session for this sessionId.
+          if (wasRecentlyCleared(sessionId)) {
+            set((state) => {
+              let changed = false;
+              const newTables = state.tables.map((t) => {
+                if (t.session?.id === sessionId) {
+                  changed = true;
+                  return { ...t, session: undefined };
+                }
+                return t;
+              });
+              if (!changed) return {};
+              return {
+                tables: newTables,
+                tablesById: buildTablesById(newTables),
+              };
+            });
+            return;
+          }
 
           // Base session data from broadcast (server_staff_id is NOT in the payload;
           // it's preserved per-table inside the set() callback below)
@@ -1216,6 +1262,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               currentSession.id === incomingSession.id
             ) {
               return { ...table, session: currentSession };
+            }
+
+            // Drop an incoming session that was CLEAR'd locally within TTL —
+            // see wasRecentlyCleared() comment for context. Treat as "no session".
+            if (incomingSession && wasRecentlyCleared(incomingSession.id)) {
+              return { ...table, session: undefined };
             }
 
             return {

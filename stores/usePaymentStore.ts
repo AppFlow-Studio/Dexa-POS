@@ -18,6 +18,7 @@ import {
 } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { trackCashPaymentInDrawer } from "@/services/paymentService";
+import { finalizeDineInPaymentClear } from "@/services/tables/finalizeDineInPaymentClear";
 import { useConflictStore } from "@/stores/useConflictStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -451,7 +452,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     });
   },
 
-  // Called when success view is dismissed by dragging down
+  // Called when success view is dismissed (X button, drag-down, etc.).
+  // Mirrors PaymentSuccessView.handleDone for dine-in so that closing the
+  // sheet — by any means — runs the same auto-clear flow as the explicit
+  // Finalize Payment button. If the clear is ineligible (setting off, sibling
+  // checks still due, no session), the helper is a no-op and the active
+  // (paid) order is preserved so the operator can interact with it.
   handleSuccessClose: () => {
     const {
       activeOrderId,
@@ -464,17 +470,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
-    // Use order's service_location_id instead of cleared activeTableId
-    // This prevents race condition where close() clears activeTableId before sheet animation completes
-    const tableId = activeOrder?.service_location_id;
+    // Prefer payment store's activeTableId — it's captured at sheet open and
+    // stays set until close() runs, so it survives `auto_on_payment` archiving
+    // (which queueMicrotasks `archiveOrder` and nulls out activeOrderId before
+    // the operator can tap dismiss, especially on multi-check where the last
+    // check is archived). Fall back to the active order's service_location_id.
+    const tableId = get().activeTableId || activeOrder?.service_location_id;
 
-    // For dine-in orders on a table, just close (table keeps the paid order)
-    if (activeOrder?.order_type === "dine_in" && tableId) {
+    // If a table is associated, this was a dine-in payment. Try the auto-clear
+    // (per Auto-Clear Table on Payment setting). If ineligible (setting off,
+    // siblings due, no session), preserve the legacy "just close, keep the
+    // paid order" behavior. If it ran, fall through to the fresh-draft path so
+    // BillSection / order-processing isn't left pointing at the archived order;
+    // TableOrderView's session-disappeared effect handles the /tables nav.
+    const dineInCleared = tableId
+      ? finalizeDineInPaymentClear({ tableId }).cleared
+      : false;
+    if (tableId && !dineInCleared) {
       get().close();
       return;
     }
 
-    // For quick service / takeout, start a new order immediately
+    // For quick service / takeout (or a dine-in clear that just ran),
+    // start a new order immediately.
     setTimeout(() => {
       const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
         ordersById,
@@ -489,24 +507,31 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           useStoreSettingsStore.getState().selectedStation?.station_number ??
           null;
 
-        if (selectedStore) {
-          const refreshedNumbers = getRefreshedReusableDraftNumbers({
-            draftId: reusableEmptyDraftId,
-            ordersById,
-            orderIds,
-            locationId: selectedStore.id,
-            stationNumber,
-          });
-
-          if (refreshedNumbers) {
-            useOrderStore.setState((state) => {
-              const draft = state.ordersById[reusableEmptyDraftId];
-              if (!draft) return;
+        useOrderStore.setState((state) => {
+          const draft = state.ordersById[reusableEmptyDraftId];
+          if (!draft) return;
+          // After a dine-in auto-clear, reset stale dine-in fields so the
+          // bill shows as a clean new order on the order-processing screen.
+          if (dineInCleared) {
+            draft.order_type = "takeout";
+            draft.service_location_id = null;
+            draft.session_id = undefined;
+            draft.local_session_id = undefined;
+          }
+          if (selectedStore) {
+            const refreshedNumbers = getRefreshedReusableDraftNumbers({
+              draftId: reusableEmptyDraftId,
+              ordersById,
+              orderIds,
+              locationId: selectedStore.id,
+              stationNumber,
+            });
+            if (refreshedNumbers) {
               draft.order_number = refreshedNumbers.orderNumber;
               draft.display_number = refreshedNumbers.displayNumber;
-            });
+            }
           }
-        }
+        });
 
         setActiveOrder(reusableEmptyDraftId);
         return;

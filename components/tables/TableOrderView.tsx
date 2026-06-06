@@ -371,16 +371,12 @@ const TableOrderView = React.forwardRef<
   }, [])
 
   // --- 7. Effects ---
-  // Auto-navigate to /tables when auto-clear-on-payment is enabled and the
-  // session reaches `paid`. Dispatch CLEAR locally (paid → cleaning → available
-  // via the store), then navigate. Also handles the case where session goes
-  // undefined (CLEAR was dispatched externally before this effect ran).
+  // Navigate away when the session is cleared externally (e.g., another
+  // station finalized + cleared it). The auto-clear-on-payment trigger lives
+  // in PaymentSuccessView.handleDone now, not here, so the operator stays on
+  // the table while the success view is open.
   const hadSessionRef = useRef(!!session)
-  const autoClearEnabled = useLocationConfigStore(
-    s => s.config.dining.autoClearTableOnPayment
-  )
   useEffect(() => {
-    // Session externally cleared (undefined) — just navigate.
     if (hadSessionRef.current && !session) {
       usePaymentStore.getState().close()
       markNavigatingAway()
@@ -389,33 +385,7 @@ const TableOrderView = React.forwardRef<
       return
     }
     hadSessionRef.current = !!session
-
-    // Session reached `paid` with auto-clear on — dispatch CLEAR then navigate.
-    if (session?.status === 'paid' && autoClearEnabled) {
-      const tableId = currentTableId
-      void (async () => {
-        const sessionStore = useTableSessionStore.getState()
-        const sessionId = sessionStore.getSession(tableId)?.id
-        if (!sessionId) return
-
-        const siblingsDue = Object.values(
-          useOrderStore.getState().ordersById
-        ).some(
-          o =>
-            (o.session_id === sessionId || o.local_session_id === sessionId) &&
-            (o.amount_due ?? 0) > 0.01
-        )
-        if (siblingsDue) return
-
-        sessionStore.dispatch(tableId, { type: 'CLEAR' })
-        useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {})
-        usePaymentStore.getState().close()
-        markNavigatingAway()
-        router.back()
-        setTimeout(hideLoading, 300)
-      })()
-    }
-  }, [session, session?.status, autoClearEnabled, markNavigatingAway, router, hideLoading, currentTableId])
+  }, [session, markNavigatingAway, router, hideLoading])
   useEffect(() => {
     if (!__DEV__) return
     console.log(
@@ -491,13 +461,6 @@ const TableOrderView = React.forwardRef<
     displayBalanceDue
   ])
 
-  // Show "Clearing table..." as soon as session reaches paid with auto-clear on.
-  useEffect(() => {
-    if (session?.status === 'paid' && autoClearEnabled) {
-      showLoading('Clearing table...')
-    }
-  }, [session?.status, autoClearEnabled, showLoading])
-
   // --- Action handlers ---
 
   const handlePay = useCallback(() => {
@@ -530,15 +493,30 @@ const TableOrderView = React.forwardRef<
     const currentActiveOrder = currentActiveOrderId
       ? orderState.ordersById[currentActiveOrderId]
       : null
-    if (!currentActiveOrderId || !currentActiveOrder) return
+
+    // Resolve the order id we'll pass to CLEAR_TABLE. Prefer the active order,
+    // but fall back to whatever the session is bound to — covers the orphaned
+    // "stuck Paid" case where the order was evicted from ordersById, leaving
+    // the session alive but unresolvable from useTableSession. Previously this
+    // path silently returned and the Close Table tap appeared to do nothing.
+    const sess = useTableSessionStore.getState().getSession(currentTableId)
+    const resolvedOrderId =
+      currentActiveOrder?.id ?? sess?.order_id ?? undefined
+
+    if (!sess) {
+      // No session and no order — nothing to clear. Just dismiss.
+      onClose()
+      return
+    }
+
     showLoading('Clearing table...')
     markNavigatingAway()
 
     // Recovery: if session isn't at "paid" yet but order IS paid,
-    // fire-and-forget FULL_PAYMENT (fixes stuck check_presented race)
-    const sess = useTableSessionStore.getState().getSession(currentTableId)
+    // fire-and-forget FULL_PAYMENT (fixes stuck check_presented race).
+    // Only attempt when we actually have the order locally to check paid_status.
     if (
-      sess &&
+      currentActiveOrder &&
       sess.status !== 'paid' &&
       sess.status !== 'closing' &&
       sess.status !== 'cleaning' &&
@@ -552,7 +530,7 @@ const TableOrderView = React.forwardRef<
     const result = await useTableSessionStore.getState().dispatchAction({
       type: 'CLEAR_TABLE',
       tableId: currentTableId,
-      orderId: currentActiveOrder.id
+      orderId: resolvedOrderId
     })
 
     hideLoading()

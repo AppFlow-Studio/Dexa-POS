@@ -1,6 +1,7 @@
 import { CartItem } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
+import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { PrinterConfig, PrinterRoutingConfig } from "@/types/printer";
 
@@ -36,11 +37,18 @@ export function getReceiptPrinter(
   );
 
   const isBuiltin = (p: PrinterConfig) => p.connectionType === "builtin";
+  // "Connectable" excludes in_use peers — picking an in_use printer for
+  // automatic fallback would queue against a peer device's lock and likely
+  // delay the print. The user's explicitly chosen printer (above) bypasses
+  // this filter.
+  const isConnectable = (p: PrinterConfig) =>
+    getPrinterReachability(p) === "connectable";
 
-  // Prefer connected non-builtin (Star) over builtin (Landi)
+  // Prefer connectable non-builtin (Star) over connectable builtin (Landi),
+  // then fall back to any active printer (including in_use) as a last resort.
   return (
-    activePrinters.find((p) => p.isConnected && !isBuiltin(p)) ??
-    activePrinters.find((p) => p.isConnected) ??
+    activePrinters.find((p) => isConnectable(p) && !isBuiltin(p)) ??
+    activePrinters.find((p) => isConnectable(p)) ??
     activePrinters.find((p) => !isBuiltin(p)) ??
     activePrinters[0] ??
     null

@@ -275,12 +275,23 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const liveSession = useTableSessionStore(s =>
     table ? s.sessions[table.id] : undefined
   )
-  const status = (liveSession?.status ?? table?.session?.status) || 'available'
+  const sessionStoreInitialized = useTableSessionStore(s => s.isInitialized)
+  // Once isInitialized, useTableSessionStore is authoritative — don't fall
+  // back to the stale table.session prop (the floor plan store can retain
+  // a paid session locally after a Clear that wiped useTableSessionStore,
+  // which surfaces as a stuck-Paid sheet). Matches DraggableTable's pattern.
+  const status =
+    (sessionStoreInitialized
+      ? liveSession?.status
+      : (liveSession?.status ?? table?.session?.status)) || 'available'
   const tableColor = TABLE_STATUS_COLORS[status] || colors.teal
 
   const resolvedOrderId = useOrderStore(s => {
     const oid = liveSession?.order_id
-    if (!oid) return null
+    // Treat cleaning as "no live order context" so kitchen summary, items
+    // preview, totals, and server line don't render stale data if a realtime
+    // SYNC briefly restores the old order_id on a cleaning session.
+    if (!oid || status === 'cleaning') return null
     return s.dbOrderIdIndex[oid] ?? (s.ordersById[oid] ? oid : null)
   })
   const order = useOrderStore(s =>
@@ -296,6 +307,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const isForeignStationSession = isOrderReadOnly(order, currentStationId)
   const foreignStationLabel = order?.station_name?.trim() || 'another station'
   const { minutes: minutesSeated } = useSessionDuration(table?.id ?? '')
+
 
   const handleMarkArrived = useCallback(async (reservationId: string) => {
     await useReservationStore.getState().updateStatus(reservationId, 'arrived')

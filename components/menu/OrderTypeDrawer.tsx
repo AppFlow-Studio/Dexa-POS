@@ -224,6 +224,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
       <ScrollView
         bounces={false}
+        keyboardShouldPersistTaps="handled"
         style={{
           position: 'absolute',
           left: 0,
