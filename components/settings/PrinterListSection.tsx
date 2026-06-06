@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Text,
@@ -6,8 +6,9 @@ import {
   View,
 } from "react-native";
 import {
-  AlertTriangle,
   CheckCircle2,
+  HelpCircle,
+  Lock,
   Printer,
   RefreshCw,
   Route,
@@ -22,6 +23,8 @@ import type {
   PrinterRole,
 } from "@/types/printer";
 import { colors } from "@/lib/theme";
+import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
+import { triggerHealthCheckNow } from "@/services/hardware/starPrinterHealthCheck";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -48,32 +51,30 @@ export interface PrinterListSectionProps {
 // ---------------------------------------------------------------------------
 
 function getPrinterStatusColor(printer: PrinterConfig): string {
-  if (printer.lastStatus === "verified") return colors.success;
-  if (printer.isConnected) return colors.success;
-  if (printer.lastStatus?.startsWith("verification_failed")) return colors.danger;
-  if (printer.errorCount > 0) return colors.muted;
-  return colors.muted;
+  switch (getPrinterReachability(printer)) {
+    case "connectable": return colors.success;
+    case "in_use": return colors.warning;
+    case "offline": return colors.danger;
+    case "unknown": return colors.muted;
+  }
 }
 
 function getPrinterStatusLabel(printer: PrinterConfig): string {
-  if (printer.lastStatus === "verified") return "Verified";
-  if (printer.isConnected) return "Online";
-  if (printer.lastStatus?.startsWith("verification_failed")) return "Verify Failed";
-  if (printer.errorCount > 0) return "Error";
-  return "Offline";
+  switch (getPrinterReachability(printer)) {
+    case "connectable": return "Connectable";
+    case "in_use": return "In use";
+    case "offline": return "Offline";
+    case "unknown": return "Unknown";
+  }
 }
 
 function getPrinterStatusIcon(printer: PrinterConfig): React.ReactNode {
-  if (printer.lastStatus === "verified" || printer.isConnected) {
-    return <CheckCircle2 size={13} color={colors.success} />;
+  switch (getPrinterReachability(printer)) {
+    case "connectable": return <CheckCircle2 size={13} color={colors.success} />;
+    case "in_use": return <Lock size={13} color={colors.warning} />;
+    case "offline": return <XCircle size={13} color={colors.danger} />;
+    case "unknown": return <HelpCircle size={13} color={colors.muted} />;
   }
-  if (printer.lastStatus?.startsWith("verification_failed")) {
-    return <XCircle size={13} color={colors.danger} />;
-  }
-  if (printer.errorCount > 0) {
-    return <AlertTriangle size={13} color={colors.muted} />;
-  }
-  return <XCircle size={13} color={colors.muted} />;
 }
 
 function getRoleBadge(role: PrinterRole): { label: string; bg: string; text: string } {
@@ -110,7 +111,9 @@ function getRelativeTime(iso: string | null): string {
 // ---------------------------------------------------------------------------
 
 function isOnline(p: PrinterConfig): boolean {
-  return p.isActive && p.isConnected;
+  if (!p.isActive) return false;
+  const r = getPrinterReachability(p);
+  return r === "connectable" || r === "in_use";
 }
 
 function isError(p: PrinterConfig): boolean {
@@ -150,6 +153,14 @@ export function PrinterListSection({
   const [retryingPrinterId, setRetryingPrinterId] = useState<string | null>(null);
   const [testPrintingId, setTestPrintingId] = useState<string | null>(null);
   const [editingPrinterId, setEditingPrinterId] = useState<string | null>(null);
+
+  // Kick a single probe round on mount so badges reflect current reachability
+  // immediately instead of waiting up to 2 minutes for the next background
+  // tick. The health-check is guarded by isChecking, so this is safe to call
+  // concurrently with the periodic interval.
+  useEffect(() => {
+    triggerHealthCheckNow();
+  }, []);
 
   // ── Scope filtering ──────────────────────────────────────────
   const scopedPrinters = useMemo(() => {
@@ -463,7 +474,7 @@ export function PrinterListSection({
 
                 {/* Col 4 -- Action buttons */}
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 10 }}>
-                  {!printer.isConnected && (
+                  {getPrinterReachability(printer) !== "connectable" && (
                     <TouchableOpacity
                       onPress={() => handleRetryConnection(printer)}
                       disabled={retryingPrinterId === printer.id}

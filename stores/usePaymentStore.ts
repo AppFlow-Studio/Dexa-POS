@@ -470,20 +470,23 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
-    // Use order's service_location_id instead of cleared activeTableId
-    // This prevents race condition where close() clears activeTableId before sheet animation completes
-    const tableId = activeOrder?.service_location_id;
+    // Prefer payment store's activeTableId — it's captured at sheet open and
+    // stays set until close() runs, so it survives `auto_on_payment` archiving
+    // (which queueMicrotasks `archiveOrder` and nulls out activeOrderId before
+    // the operator can tap dismiss, especially on multi-check where the last
+    // check is archived). Fall back to the active order's service_location_id.
+    const tableId = get().activeTableId || activeOrder?.service_location_id;
 
-    // Dine-in: try the auto-clear (per Auto-Clear Table on Payment setting).
-    // If it didn't run, preserve the previous behavior of leaving the paid
-    // order in place. If it did run, fall through to the fresh-draft path so
+    // If a table is associated, this was a dine-in payment. Try the auto-clear
+    // (per Auto-Clear Table on Payment setting). If ineligible (setting off,
+    // siblings due, no session), preserve the legacy "just close, keep the
+    // paid order" behavior. If it ran, fall through to the fresh-draft path so
     // BillSection / order-processing isn't left pointing at the archived order;
     // TableOrderView's session-disappeared effect handles the /tables nav.
-    const dineInCleared =
-      activeOrder?.order_type === "dine_in" && tableId
-        ? finalizeDineInPaymentClear({ tableId }).cleared
-        : false;
-    if (activeOrder?.order_type === "dine_in" && tableId && !dineInCleared) {
+    const dineInCleared = tableId
+      ? finalizeDineInPaymentClear({ tableId }).cleared
+      : false;
+    if (tableId && !dineInCleared) {
       get().close();
       return;
     }

@@ -98,13 +98,18 @@ const PaymentSuccessView = () => {
     //   } catch {}
     // }, 150);
 
-    // Dine-in: run the auto-clear (per Auto-Clear Table on Payment setting).
-    // If the helper short-circuits (setting off, sibling checks still due, no
-    // session), preserve the legacy "just close, keep the paid order" behavior.
-    // When it does clear, hand the operator a fresh draft so the
-    // order-processing screen doesn't end up pointing at the archived order;
-    // TableOrderView's session-disappeared effect handles /tables navigation.
-    if (activeOrder?.order_type === "dine_in" && activeTableId) {
+    // Dine-in: detect via activeTableId (set when sheet opened, stable until
+    // close()) rather than activeOrder.order_type, because `auto_on_payment`
+    // archiving nulls out activeOrderId via queueMicrotask before the operator
+    // can tap Finalize Payment — especially visible on multi-check where the
+    // last paid check is archived. Run the auto-clear (per Auto-Clear Table on
+    // Payment setting). If the helper short-circuits (setting off, sibling
+    // checks still due, no session), preserve the legacy "just close, keep the
+    // paid order" behavior. When it does clear, hand the operator a fresh
+    // draft so the order-processing screen doesn't end up pointing at the
+    // archived order; TableOrderView's session-disappeared effect handles
+    // /tables navigation.
+    if (activeTableId) {
       const { cleared } = finalizeDineInPaymentClear({ tableId: activeTableId });
       if (!cleared) {
         close();

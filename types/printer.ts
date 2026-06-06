@@ -26,6 +26,19 @@ export type PrintJobStatus = "queued" | "processing" | "completed" | "failed";
 
 export type PrintJobPriority = "high" | "normal" | "low";
 
+// Derived reachability badge state. Computed by getPrinterReachability().
+// - connectable: probe last reported the printer claimable by us
+// - in_use: probe got StarIO10InUseError — listening but held by a peer device
+// - offline: probe failed or printer is powered off
+// - unknown: last_status_at is stale (>5 min) or we have no probe data yet
+export type PrinterReachability = "connectable" | "in_use" | "offline" | "unknown";
+
+// Sentinel value written to printers.last_status when a probe observes the
+// printer is reachable but held by another device. Free-form diagnostic strings
+// (e.g. "Paper empty", "Cover open") continue to flow through last_status for
+// other branches; only this exact value triggers the yellow badge.
+export const PRINTER_STATUS_IN_USE = "in_use";
+
 // ============================================================================
 // PRINTER CONFIG (mapped from DB row)
 // ============================================================================
@@ -43,6 +56,7 @@ export interface PrinterConfig {
   networkPort: number | null;
   bluetoothAddress: string | null;
   usbDevicePath: string | null;
+  serialNumber: string | null;
 
   // Capabilities
   supportsAutoCut: boolean;
@@ -331,6 +345,7 @@ export function printerRowToConfig(row: PrinterRow): PrinterConfig {
     networkPort: row.network_port,
     bluetoothAddress: row.bluetooth_address,
     usbDevicePath: row.usb_device_path,
+    serialNumber: row.serial_number,
     supportsAutoCut: row.supports_auto_cut ?? true,
     supportsBarcode: row.supports_barcode ?? false,
     supportsQrCode: row.supports_qr_code ?? false,

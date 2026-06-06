@@ -69,16 +69,10 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         route: '/settings/devices-connections'
       },
       {
-        id: 'printer-settings',
-        label: 'Printer Settings',
+        id: 'printers',
+        label: 'Printers',
         icon: Printer,
-        route: '/settings/printer-settings'
-      },
-      {
-        id: 'printers-kitchen',
-        label: 'Kitchen Display Settings',
-        icon: Monitor,
-        route: '/settings/printers-kitchen'
+        route: '/settings/printers'
       },
       {
         id: 'receipt-templates',
