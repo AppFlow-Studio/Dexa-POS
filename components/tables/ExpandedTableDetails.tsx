@@ -8,6 +8,7 @@ import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
@@ -280,7 +281,8 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     foreignOwnedOrder?.station_name?.trim() || "Another Station";
 
   const handleNavigate = () => {
-    router.push(`/tables/${tableData.primaryTableId}`);
+    usePendingTableOverlay.getState().openTable(tableData.primaryTableId);
+    router.push(`/tables`);
   };
 
   const closeConfirmCopy = useMemo(() => {

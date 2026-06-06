@@ -149,5 +149,8 @@ export const useInventorySync = (locationId: string | null) => {
       };
     },
     enabled: !!locationId,
+    networkMode: "offlineFirst",
+    staleTime: Infinity, // Broadcast/manual-invalidation controls updates
+    gcTime: 1000 * 60 * 60 * 2, // 2 hours — matches usePosSync, prevents cold-cache on idle
   });
 };

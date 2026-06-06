@@ -1233,7 +1233,7 @@ const OrderProcessing = () => {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    onPress={() => router.push("/tables")}
+                    onPress={() => router.replace("/tables")}
                     className="flex-row items-center rounded-lg p-3 justify-start"
                     style={{
                       borderWidth: 1,

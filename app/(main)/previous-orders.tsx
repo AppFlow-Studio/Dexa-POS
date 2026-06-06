@@ -631,7 +631,7 @@ const PreviousOrdersScreen = () => {
         }))
       }
       setActiveOrder(order.id)
-      router.push('/order-processing')
+      router.replace('/order-processing')
     },
     [setActiveOrder, router]
   )

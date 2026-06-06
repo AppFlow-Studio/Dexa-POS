@@ -23,6 +23,7 @@ import { getFloorPlanClient, useFloorPlanStore } from "@/stores/useFloorPlanStor
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -1903,7 +1904,10 @@ const BillSectionContent = ({
           }
           onViewTable={
             displayedTable
-              ? () => router.push(`/tables/${displayedTable.id}` as any)
+              ? () => {
+                  usePendingTableOverlay.getState().openTable(displayedTable.id)
+                  router.push(`/tables` as any)
+                }
               : undefined
           }
         />
