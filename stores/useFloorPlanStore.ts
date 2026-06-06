@@ -35,6 +35,15 @@ const wasRecentlyCleared = (sessionId: string | undefined | null): boolean => {
   ).wasSessionRecentlyCleared(sessionId);
 };
 
+const wasRecentlyTransferred = (
+  sessionId: string | undefined | null,
+): boolean => {
+  if (!sessionId) return false;
+  return (
+    require("./useTableSessionStore") as typeof import("./useTableSessionStore")
+  ).wasSessionRecentlyTransferred(sessionId);
+};
+
 // Lazy accessor — breaks circular dependency with useReservationStore
 const getReservationStore = () =>
   (require("./useReservationStore") as typeof import("./useReservationStore"))
@@ -597,6 +606,26 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           // For INSERT/UPDATE, try to patch local state
           const sessionId = data.session.id;
           const tableIds = data.tables?.map((t) => t.table_id) || [];
+
+          // A live session always has ≥1 active junction row. An empty
+          // tableIds list with is_active=true only occurs mid-transfer between
+          // the UPDATE-old and INSERT-new statements in transfer_table_session.
+          // Skip to prevent the CLEAR-fallback below from wiping post-transfer
+          // tables[].session that loadFloorPlanStatus already restored.
+          if (tableIds.length === 0) {
+            console.warn(
+              "[useFloorPlanStore][_handleSessionChange] Skipping intermediate-state broadcast (active session, empty tables)",
+              { sessionId },
+            );
+            return;
+          }
+
+          // Skip stale broadcasts for sessions transferred locally within TTL.
+          // transferSession's loadFloorPlanStatus has already set the correct
+          // table membership; a delayed broadcast would otherwise revert it.
+          if (wasRecentlyTransferred(sessionId)) {
+            return;
+          }
 
           // Drop the broadcast if this session was CLEAR'd locally within TTL —
           // a delayed UPDATE carrying the pre-clear status would otherwise
