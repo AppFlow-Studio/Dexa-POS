@@ -131,21 +131,20 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.bold(false);
 
   b.solidLine(w);
+  // Card Total = headline (bold + doubleHeight). Cash Total = secondary
+  // breakdown in normal weight (no bold, no doubleHeight).
   b.bold(true);
   b.doubleHeight(true);
   b.twoColumnRow("Card Total", formatCurrency(data.total), w);
   b.doubleHeight(false);
+  b.bold(false);
 
-  // Cash total (only if different from card total)
   if (
     data.cashTotal !== undefined &&
     data.cashTotal !== data.total
   ) {
-    b.doubleHeight(true);
     b.twoColumnRow("Cash Total", formatCurrency(data.cashTotal), w);
-    b.doubleHeight(false);
   }
-  b.bold(false);
 
   // ── Tip line (blank for customer to fill in — skip if tip already collected) ──
   if (cfg?.showTipLine !== false && data.tip <= 0) {
@@ -237,6 +236,9 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   }
   if (data.customerName) {
     b.twoColumnRow("Customer", data.customerName, w);
+  }
+  if (cfg?.showCustomerPhone !== false && data.customerPhone) {
+    b.twoColumnRow("Phone", data.customerPhone, w);
   }
   b.bold(false);
 

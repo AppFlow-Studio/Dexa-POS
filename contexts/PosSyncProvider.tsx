@@ -159,6 +159,56 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           // Fetch printers into local store so PrinterService can route jobs
           await usePrinterStore.getState().fetchPrinters(selectedStore.id);
 
+          // Reconcile DB ↔ MMKV per-station receipt printer claim. The DB
+          // (stations.current_receipt_printer_id) is now the source of
+          // truth; useSettingsStore.defaultReceiptPrinterId is kept as a
+          // boot-window cache + safety net while devices roll over.
+          try {
+            const stationId = selectedStation.id;
+            const { data: stationRow } = await supabase
+              .from("stations")
+              .select("current_receipt_printer_id")
+              .eq("id", stationId)
+              .maybeSingle();
+
+            const dbClaim = stationRow?.current_receipt_printer_id ?? null;
+            const mmkvClaim =
+              useSettingsStore.getState().defaultReceiptPrinterId;
+            const setMmkv =
+              useSettingsStore.getState().setDefaultReceiptPrinterId;
+            const printers = usePrinterStore.getState().printers;
+
+            if (dbClaim) {
+              // Mirror DB onto selectedStation + MMKV so PrintRouter's fast
+              // path can read from the cache without an extra fetch.
+              if (selectedStation.current_receipt_printer_id !== dbClaim) {
+                useStoreSettingsStore.getState().setSelectedStation({
+                  ...selectedStation,
+                  current_receipt_printer_id: dbClaim,
+                });
+              }
+              if (mmkvClaim !== dbClaim) setMmkv(dbClaim);
+            } else if (mmkvClaim) {
+              // Legacy MMKV-only claim — promote to DB if the printer still
+              // exists at this location; otherwise clear the stale local id.
+              const stillExists = printers.some(
+                (p) => p.id === mmkvClaim && p.isActive,
+              );
+              if (stillExists) {
+                await usePrinterStore
+                  .getState()
+                  .setStationReceiptPrinter(stationId, mmkvClaim);
+              } else {
+                setMmkv(null);
+              }
+            }
+          } catch (e) {
+            console.warn(
+              "[PosSyncProvider] Receipt printer claim reconciliation failed:",
+              e,
+            );
+          }
+
           // Pre-warm Landi printer + cashBox so the first cash payment
           // doesn't pay cold-init cost on the AIDL bus (10-15s delay).
           // Route through the driver instance so its `connected=true` flag is

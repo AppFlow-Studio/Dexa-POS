@@ -155,7 +155,7 @@ export async function handleDeactivateStation(
 
   const { error } = await supabase
     .from("stations")
-    .update({ is_active: false })
+    .update({ is_active: false, current_receipt_printer_id: null })
     .eq("id", stationId);
 
   if (error) {

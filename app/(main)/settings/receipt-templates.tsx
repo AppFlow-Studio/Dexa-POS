@@ -1020,7 +1020,9 @@ function DoubleLine () {
 function renderReceiptSection (
   sectionId: ReceiptSectionId,
   config: ReceiptTemplateConfig,
-  storeName: string
+  storeName: string,
+  storeAddress: string,
+  storePhone: string
 ): React.ReactNode {
   switch (sectionId) {
     case 'logo':
@@ -1053,21 +1055,25 @@ function renderReceiptSection (
               fontSize: 12
             }}
           >
-            {storeName || 'Sample Restaurant'}
+            {storeName || '—'}
           </Text>
-          <Text
-            style={{
-              color: '#6b7280',
-              textAlign: 'center',
-              fontSize: 9,
-              marginTop: 1
-            }}
-          >
-            123 Main St, City, ST 12345
-          </Text>
-          <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 9 }}>
-            (555) 123-4567
-          </Text>
+          {storeAddress ? (
+            <Text
+              style={{
+                color: '#6b7280',
+                textAlign: 'center',
+                fontSize: 9,
+                marginTop: 1
+              }}
+            >
+              {storeAddress}
+            </Text>
+          ) : null}
+          {storePhone ? (
+            <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 9 }}>
+              {storePhone}
+            </Text>
+          ) : null}
           {config.headerText ? (
             <Text
               style={{
@@ -1378,11 +1384,15 @@ function renderReceiptSection (
 function ReceiptPreview ({
   config,
   storeName,
+  storeAddress,
+  storePhone,
   sectionOrder,
   onReorder
 }: {
   config: ReceiptTemplateConfig
   storeName: string
+  storeAddress: string
+  storePhone: string
   sectionOrder: ReceiptSectionId[]
   onReorder: (newOrder: ReceiptSectionId[]) => void
 }) {
@@ -1393,7 +1403,7 @@ function ReceiptPreview ({
 
   const renderItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<ReceiptSection>) => {
-      const content = renderReceiptSection(item.id, config, storeName)
+      const content = renderReceiptSection(item.id, config, storeName, storeAddress, storePhone)
       return (
         <ScaleDecorator activeScale={1.02}>
           <TouchableOpacity
@@ -1458,7 +1468,7 @@ function ReceiptPreview ({
         </ScaleDecorator>
       )
     },
-    [config, storeName]
+    [config, storeName, storeAddress, storePhone]
   )
 
   return (
@@ -1852,7 +1862,9 @@ function KitchenPreview ({
 function renderNoSaleSection (
   sectionId: NoSaleSectionId,
   config: ReceiptTemplateConfig,
-  storeName: string
+  storeName: string,
+  storeAddress: string,
+  storePhone: string
 ): React.ReactNode {
   switch (sectionId) {
     case 'header':
@@ -1895,18 +1907,32 @@ function renderNoSaleSection (
               fontSize: 11
             }}
           >
-            {storeName || 'Sample Restaurant'}
+            {storeName || '—'}
           </Text>
-          <Text
-            style={{
-              color: '#6b7280',
-              textAlign: 'center',
-              fontSize: 9,
-              marginTop: 1
-            }}
-          >
-            123 Main St, City, ST 12345
-          </Text>
+          {storeAddress ? (
+            <Text
+              style={{
+                color: '#6b7280',
+                textAlign: 'center',
+                fontSize: 9,
+                marginTop: 1
+              }}
+            >
+              {storeAddress}
+            </Text>
+          ) : null}
+          {storePhone ? (
+            <Text
+              style={{
+                color: '#6b7280',
+                textAlign: 'center',
+                fontSize: 9,
+                marginTop: 1
+              }}
+            >
+              {storePhone}
+            </Text>
+          ) : null}
           <DottedLine />
         </View>
       )
@@ -2012,11 +2038,15 @@ function renderNoSaleSection (
 function NoSalePreview ({
   config,
   storeName,
+  storeAddress,
+  storePhone,
   sectionOrder,
   onReorder
 }: {
   config: ReceiptTemplateConfig
   storeName: string
+  storeAddress: string
+  storePhone: string
   sectionOrder: NoSaleSectionId[]
   onReorder: (newOrder: NoSaleSectionId[]) => void
 }) {
@@ -2027,7 +2057,7 @@ function NoSalePreview ({
 
   const renderItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<NoSaleSection>) => {
-      const content = renderNoSaleSection(item.id, config, storeName)
+      const content = renderNoSaleSection(item.id, config, storeName, storeAddress, storePhone)
       return (
         <ScaleDecorator activeScale={1.02}>
           <TouchableOpacity
@@ -2089,7 +2119,7 @@ function NoSalePreview ({
         </ScaleDecorator>
       )
     },
-    [config, storeName]
+    [config, storeName, storeAddress, storePhone]
   )
 
   return (
@@ -2113,7 +2143,9 @@ function NoSalePreview ({
 function renderVoidOrderSection (
   sectionId: VoidOrderSectionId,
   config: ReceiptTemplateConfig,
-  storeName: string
+  storeName: string,
+  storeAddress: string,
+  storePhone: string
 ): React.ReactNode {
   switch (sectionId) {
     case 'header':
@@ -2156,21 +2188,25 @@ function renderVoidOrderSection (
               fontSize: 11
             }}
           >
-            {storeName || 'Sample Restaurant'}
+            {storeName || '—'}
           </Text>
-          <Text
-            style={{
-              color: '#6b7280',
-              textAlign: 'center',
-              fontSize: 9,
-              marginTop: 1
-            }}
-          >
-            123 Main St, City, ST 12345
-          </Text>
-          <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 9 }}>
-            (555) 123-4567
-          </Text>
+          {storeAddress ? (
+            <Text
+              style={{
+                color: '#6b7280',
+                textAlign: 'center',
+                fontSize: 9,
+                marginTop: 1
+              }}
+            >
+              {storeAddress}
+            </Text>
+          ) : null}
+          {storePhone ? (
+            <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 9 }}>
+              {storePhone}
+            </Text>
+          ) : null}
           <DottedLine />
         </View>
       )
@@ -2318,11 +2354,15 @@ function renderVoidOrderSection (
 function VoidOrderPreview ({
   config,
   storeName,
+  storeAddress,
+  storePhone,
   sectionOrder,
   onReorder
 }: {
   config: ReceiptTemplateConfig
   storeName: string
+  storeAddress: string
+  storePhone: string
   sectionOrder: VoidOrderSectionId[]
   onReorder: (newOrder: VoidOrderSectionId[]) => void
 }) {
@@ -2333,7 +2373,7 @@ function VoidOrderPreview ({
 
   const renderItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<VoidOrderSection>) => {
-      const content = renderVoidOrderSection(item.id, config, storeName)
+      const content = renderVoidOrderSection(item.id, config, storeName, storeAddress, storePhone)
       return (
         <ScaleDecorator activeScale={1.02}>
           <TouchableOpacity
@@ -2395,7 +2435,7 @@ function VoidOrderPreview ({
         </ScaleDecorator>
       )
     },
-    [config, storeName]
+    [config, storeName, storeAddress, storePhone]
   )
 
   return (
@@ -2489,7 +2529,7 @@ function renderTimeSheetSection (
               fontSize: 11
             }}
           >
-            {storeName || 'Sample Restaurant'}
+            {storeName || '—'}
           </Text>
           <DottedLine />
           <View
@@ -2725,6 +2765,19 @@ const ReceiptTemplatesScreen = () => {
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const organizationLogoUrl = useStoreSettingsStore(s => s.organizationLogoUrl)
   const storeName = selectedStore?.name ?? 'My Store'
+  const storeAddress = selectedStore
+    ? [
+        selectedStore.address_line1,
+        selectedStore.address_line2,
+        [selectedStore.city, selectedStore.state, selectedStore.postal_code]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+      ]
+        .filter(p => p && p.trim().length > 0)
+        .join(', ')
+    : ''
+  const storePhone = selectedStore?.phone ?? ''
   const locationId = selectedStore?.id ?? ''
   const merchantId = selectedStore?.merchant_id ?? ''
 
@@ -2969,6 +3022,8 @@ const ReceiptTemplatesScreen = () => {
               <ReceiptPreview
                 config={localConfig}
                 storeName={storeName}
+                storeAddress={storeAddress}
+                storePhone={storePhone}
                 sectionOrder={sectionOrder}
                 onReorder={setSectionOrder}
               />
@@ -2983,6 +3038,8 @@ const ReceiptTemplatesScreen = () => {
               <NoSalePreview
                 config={localConfig}
                 storeName={storeName}
+                storeAddress={storeAddress}
+                storePhone={storePhone}
                 sectionOrder={noSaleSectionOrder}
                 onReorder={setNoSaleSectionOrder}
               />
@@ -2990,6 +3047,8 @@ const ReceiptTemplatesScreen = () => {
               <VoidOrderPreview
                 config={localConfig}
                 storeName={storeName}
+                storeAddress={storeAddress}
+                storePhone={storePhone}
                 sectionOrder={voidOrderSectionOrder}
                 onReorder={setVoidOrderSectionOrder}
               />
@@ -3239,12 +3298,12 @@ function ReceiptSettings ({
         subtitle='Logo, header, and footer text'
         defaultOpen
       >
-        {/* <ToggleRow
-          label="Show Logo"
-          subtitle="Display your business logo at the top"
+        <ToggleRow
+          label='Show Logo'
+          subtitle='Print your business logo at the top (network thermal printers only — built-in Landi printer cannot render images)'
           value={config.showLogo}
-          onToggle={(v) => updateField("showLogo", v)}
-        /> */}
+          onToggle={v => updateField('showLogo', v)}
+        />
         <TextRow
           label='Header Text'
           value={config.headerText ?? ''}
@@ -3293,6 +3352,12 @@ function ReceiptSettings ({
           subtitle='Print Dine In / Takeaway / Delivery'
           value={config.showOrderType}
           onToggle={v => updateField('showOrderType', v)}
+        />
+        <ToggleRow
+          label='Show Customer Phone'
+          subtitle='Print the customer phone number when one is on the order'
+          value={config.showCustomerPhone}
+          onToggle={v => updateField('showCustomerPhone', v)}
         />
       </CollapsibleSection>
       {/* 

@@ -506,7 +506,30 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         baseActions.push({
           label: 'Print Receipt',
           icon: <Printer size={16} color={colors.label} />,
-          onPress: () => PrinterService.printReceipt(order, selectedStore)
+          onPress: () => {
+            // Pre-payment receipts need the projected service charge folded
+            // in. buildReceiptTemplateData recomputes SC from the rule + a
+            // (seatCount → session.party_size) lookup, which misses the
+            // guest_count fallback that useOrderTotals already covers — so
+            // a table seated without per-seat or session.party_size data
+            // would print without SC even though the UI shows it. Override
+            // via the manual-SC field so the print snapshot matches what the
+            // user is looking at on screen.
+            const sc = totals?.serviceCharge ?? 0
+            const printOrder =
+              sc > 0
+                ? {
+                    ...order,
+                    service_charge: sc,
+                    service_charge_name:
+                      totals?.serviceChargeName ?? order.service_charge_name,
+                    service_charge_rate:
+                      totals?.serviceChargeRate ?? order.service_charge_rate,
+                    service_charge_is_manual: true
+                  }
+                : order
+            PrinterService.printReceipt(printOrder, selectedStore)
+          }
         })
       }
       if (['seated', 'ordering', 'ordered'].includes(status)) {
@@ -556,7 +579,8 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     handleMarkArrived,
     handleCancelReservation,
     handleOpenTransferPicker,
-    isOnline
+    isOnline,
+    totals
   ])
 
   const partySize = liveSession?.party_size ?? table?.session?.party_size
