@@ -109,11 +109,7 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.twoColumnRow("Subtotal", formatCurrency(data.subtotal), w);
 
   if (data.tax > 0) {
-    const taxLabel =
-      cfg?.showTaxBreakdown !== false && data.taxRate
-        ? `Tax (${(data.taxRate * 100).toFixed(2)}%)`
-        : "Tax";
-    b.twoColumnRow(taxLabel, formatCurrency(data.tax), w);
+    b.twoColumnRow("Tax", formatCurrency(data.tax), w);
   }
   if (data.discount > 0) {
     b.twoColumnRow("Discount", `-${formatCurrency(data.discount)}`, w);
@@ -131,13 +127,8 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.bold(false);
 
   b.solidLine(w);
-  // Card Total = headline (bold + doubleHeight). Cash Total = secondary
-  // breakdown in normal weight (no bold, no doubleHeight).
-  b.bold(true);
-  b.doubleHeight(true);
+  // Card Total / Cash Total in normal weight — no bold, no doubleHeight.
   b.twoColumnRow("Card Total", formatCurrency(data.total), w);
-  b.doubleHeight(false);
-  b.bold(false);
 
   if (
     data.cashTotal !== undefined &&

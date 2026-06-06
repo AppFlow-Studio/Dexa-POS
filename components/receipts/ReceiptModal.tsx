@@ -654,13 +654,9 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     <TotalsRow label="Discount" value={`-${formatCurrency(totals.discount)}`} isDiscount />
                   )}
                   <DoubleLine />
-                  {totals.cashTotal !== totals.total ? (
-                    <>
-                      <TotalsRow label="Card Total" value={formatCurrency(totals.total)} large />
-                      <TotalsRow label="Cash Total" value={formatCurrency(totals.cashTotal)} />
-                    </>
-                  ) : (
-                    <TotalsRow label="TOTAL" value={formatCurrency(totals.total)} bold />
+                  <TotalsRow label="TOTAL" value={formatCurrency(totals.total)} bold />
+                  {totals.cashTotal !== totals.total && (
+                    <TotalsRow label="TOTAL (Cash)" value={formatCurrency(totals.cashTotal)} />
                   )}
                 </View>
 

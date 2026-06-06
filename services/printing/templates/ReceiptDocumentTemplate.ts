@@ -462,13 +462,9 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   });
 
   if ((validated.tax ?? 0) > 0) {
-    const taxLabel =
-      cfg?.showTaxBreakdown !== false && validated.taxRate
-        ? `Tax (${(validated.taxRate * 100).toFixed(2)}%)`
-        : "Tax";
     nodes.push({
       type: "two_column",
-      left: taxLabel,
+      left: "Tax",
       right: safeCurrency(validated.tax),
       lineWidth: w,
       labelAlign: "mid",
@@ -519,17 +515,21 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   if (hasDualPricing) {
     const totalPrice = safeCurrency(validated.total);
     const cashPrice = safeCurrency(validated.cashTotal);
-    // Card Total is the headline (bold + double-width). Cash Total renders
-    // in normal weight below as the secondary breakdown. The redundant
-    // "Total" row above is intentionally omitted — Card Total IS the total.
-    // BOLD_DW makes Kotlin halve CPL (scaleX=2.0): " Card Total" + price
-    // still fits comfortably in the 24-char effective width on Landi.
+    // Total is the headline. Card Total / Cash Total are the breakdown
+    // rows below in normal weight (no bold) — the headline is doing all
+    // the visual work.
+    nodes.push({
+      type: "two_column",
+      left: "Total",
+      right: totalPrice,
+      lineWidth: w,
+      format: BOLD,
+    });
     nodes.push({
       type: "two_column",
       left: " Card Total",
       right: totalPrice,
       lineWidth: w,
-      format: BOLD_DW,
       labelAlign: "mid",
     });
     nodes.push({
@@ -773,8 +773,10 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     format: BOLD,
   });
 
-  // ── K. Feed + Cut ────────────────────────────────────────────────────
-  nodes.push({ type: "feed", lines: 3 });
+  // ── K. Cut ───────────────────────────────────────────────────────────
+  // No renderer feed before cut: Star's actionCut handles cutter clearance
+  // internally; Landi's driver appends a 10-line cutter-clearance feed
+  // (LandiDriver.ts:119). An extra feed here is pure whitespace trailer.
   nodes.push({ type: "cut" });
 
   return { nodes, maxCharsPerLine: w };
