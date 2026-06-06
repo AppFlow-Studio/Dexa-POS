@@ -5039,7 +5039,9 @@ export const useOrderStore = create<OrderState>()(
                         // but hasn't called setState() to stamp db_order_item_id locally yet.
                         // In that window the broadcast item appears in updatedSyncedItems AND
                         // the local copy appears in localPendingItems — creating a duplicate.
-                        // Absorbing by unique menuItemId prevents the duplicate being written.
+                        // FIFO by menuItemId: each unmatched broadcast twin claims the
+                        // oldest unclaimed local pending candidate. (Skipping on ambiguity
+                        // here left duplicates for items ordered ≥2× while syncing.)
                         const broadcastClaimedPendingIds = new Set<string>();
                         {
                           const localPendingByKey = new Map<
@@ -5072,8 +5074,7 @@ export const useOrderStore = create<OrderState>()(
                             ).filter(
                               (c) => !broadcastClaimedPendingIds.has(c.id),
                             );
-                            // Only absorb when unambiguous (exactly one pending candidate)
-                            if (candidates.length !== 1) continue;
+                            if (candidates.length === 0) continue;
 
                             const pendingItem = candidates[0];
                             broadcastClaimedPendingIds.add(pendingItem.id);
@@ -5126,13 +5127,26 @@ export const useOrderStore = create<OrderState>()(
                         );
 
                         // Combine: filtered synced items + local pending (excluding absorbed) + locally-synced-but-not-yet-in-broadcast
-                        mergedItems = [
+                        const concatMergedItems = [
                           ...filteredSyncedItems,
                           ...localPendingItems.filter(
                             (item) => !broadcastClaimedPendingIds.has(item.id),
                           ),
                           ...localSyncedNotInBroadcast,
                         ];
+
+                        // Defensive dedupe by db_order_item_id (first wins).
+                        // Items without a db_order_item_id pass through unchanged.
+                        const seenBroadcastDbIds = new Set<string>();
+                        mergedItems = [];
+                        for (const it of concatMergedItems) {
+                          if (it.db_order_item_id) {
+                            if (seenBroadcastDbIds.has(it.db_order_item_id))
+                              continue;
+                            seenBroadcastDbIds.add(it.db_order_item_id);
+                          }
+                          mergedItems.push(it);
+                        }
 
                         // Preserve local item ordering — broadcasts may return
                         // items in a different order than the user added them.
@@ -5958,12 +5972,16 @@ export const useOrderStore = create<OrderState>()(
                     pendingByKey.get(key)!.push(pendingItem);
                   }
 
+                  // FIFO absorb: each server twin claims the oldest unclaimed
+                  // pending candidate by menuItemId. Skipping on ambiguity
+                  // here caused the duplicate-item bug after partial payment
+                  // when the user added the same item ≥2× while syncing.
                   orderProfile.items = orderProfile.items.map((serverItem) => {
                     const key = serverItem.menuItemId || serverItem.name;
                     const candidates = (pendingByKey.get(key) ?? []).filter(
                       (item) => !claimedPendingIds.has(item.id),
                     );
-                    if (candidates.length !== 1) return serverItem;
+                    if (candidates.length === 0) return serverItem;
 
                     const pendingItem = candidates[0];
                     claimedPendingIds.add(pendingItem.id);
@@ -5977,13 +5995,25 @@ export const useOrderStore = create<OrderState>()(
                     };
                   });
 
-                  orderProfile.items = [
+                  const concatItems = [
                     ...orderProfile.items,
                     ...localPendingItems.filter(
                       (item) => !claimedPendingIds.has(item.id),
                     ),
                     ...localDraftItems,
                   ];
+                  // Defensive dedupe by db_order_item_id (first wins). Items
+                  // without a db_order_item_id pass through unchanged.
+                  const seenDbIds = new Set<string>();
+                  const deduped: CartItem[] = [];
+                  for (const it of concatItems) {
+                    if (it.db_order_item_id) {
+                      if (seenDbIds.has(it.db_order_item_id)) continue;
+                      seenDbIds.add(it.db_order_item_id);
+                    }
+                    deduped.push(it);
+                  }
+                  orderProfile.items = deduped;
                 }
               }
 
@@ -16381,12 +16411,16 @@ export const useOrderStore = create<OrderState>()(
                   // but not yet called useOrderStore.setState() to set db_order_item_id
                   // locally. In that window, the backend item appears in transformedItems
                   // but the local item appears in localPendingItems — creating a duplicate.
-                  // Absorbing them here (by unique menuItemId match) prevents the duplicate
-                  // from ever being written to state. Fix A in addItemToBackend handles any
-                  // remaining cases where this absorption couldn't run in time.
+                  // FIFO by menuItemId: each unmatched backend twin claims the oldest
+                  // unclaimed pending candidate (insertion order = user add order). The
+                  // previous "exactly one candidate" guard skipped both copies when the
+                  // user added the same item ≥2× before partial payment, leaving every
+                  // backend twin AND every local pending item in the final concat — the
+                  // Table-6 duplicate Black Coffee / Cold Brew bug.
                   const claimedPendingIds = new Set<string>();
                   {
-                    // Build menuItemId → pending items map for O(n) lookup
+                    // Build menuItemId → pending items map for O(n) lookup.
+                    // Insertion order preserved → FIFO claim order.
                     const localPendingByKey = new Map<string, CartItem[]>();
                     for (const pendingItem of currentOrder.items) {
                       if (pendingItem.db_order_item_id || pendingItem.isDraft)
@@ -16407,9 +16441,7 @@ export const useOrderStore = create<OrderState>()(
                       const candidates = (
                         localPendingByKey.get(key) ?? []
                       ).filter((c) => !claimedPendingIds.has(c.id));
-                      // Only absorb when there is exactly one candidate — ambiguous
-                      // cases (same item ordered twice while syncing) are left for Fix A.
-                      if (candidates.length !== 1) continue;
+                      if (candidates.length === 0) continue;
 
                       const pendingItem = candidates[0];
                       claimedPendingIds.add(pendingItem.id);
@@ -16560,20 +16592,33 @@ export const useOrderStore = create<OrderState>()(
                         // Preserve draft items (user still configuring on ModifierScreen)
                         ...localDraftItems,
                       ];
+                      // Defensive dedupe by db_order_item_id: backend twin
+                      // (first) wins, any later copy is dropped. Items without
+                      // a db_order_item_id (true local pendings + drafts) pass
+                      // through unchanged.
+                      const seenDbIds = new Set<string>();
+                      const deduped: CartItem[] = [];
+                      for (const it of merged) {
+                        if (it.db_order_item_id) {
+                          if (seenDbIds.has(it.db_order_item_id)) continue;
+                          seenDbIds.add(it.db_order_item_id);
+                        }
+                        deduped.push(it);
+                      }
                       // Preserve local item ordering — backend may return items
                       // in a different order than the user added them.
                       // Items not in local state (new from backend) sort to end.
                       const localIdOrder = new Map(
                         currentOrder.items.map((item, idx) => [item.id, idx]),
                       );
-                      merged.sort((a, b) => {
+                      deduped.sort((a, b) => {
                         const aIdx =
                           localIdOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER;
                         const bIdx =
                           localIdOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER;
                         return aIdx - bIdx;
                       });
-                      return merged;
+                      return deduped;
                     })(),
                     payments: [...mergedPayments, ...localPendingPayments],
                     // Reversals and refund items from backend
