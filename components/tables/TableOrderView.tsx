@@ -380,12 +380,18 @@ const TableOrderView = React.forwardRef<
     if (hadSessionRef.current && !session) {
       usePaymentStore.getState().close()
       markNavigatingAway()
-      router.back()
+      // Prefer onClose (overlay host dismisses the overlay) and fall back to
+      // router.back() for the standalone [tableId] route.
+      if (onClose) {
+        onClose()
+      } else {
+        router.back()
+      }
       setTimeout(hideLoading, 300)
       return
     }
     hadSessionRef.current = !!session
-  }, [session, markNavigatingAway, router, hideLoading])
+  }, [session, markNavigatingAway, router, hideLoading, onClose])
   useEffect(() => {
     if (!__DEV__) return
     console.log(

@@ -5,6 +5,7 @@ import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistSheetStore } from '@/stores/useWaitlistSheetStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
@@ -585,7 +586,8 @@ const WaitlistBottomSheet: React.FC = () => {
         setActiveOrder(newOrder.id)
       }
 
-      router.push(`/tables/${table.id}`)
+      usePendingTableOverlay.getState().openTable(table.id)
+      router.push(`/tables`)
       setTablePickerOpen(false)
       setSelectedEntry(null)
       handleClose()

@@ -6,6 +6,7 @@ import Sidebar from '@/components/tables/Sidebar'
 import TableContextSheet from '@/components/tables/TableContextSheet'
 import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
+import TableOrderOverlay from '@/components/tables/TableOrderOverlay'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
@@ -104,6 +105,7 @@ const TablesScreen = () => {
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
   const getOrderByDbId = useOrderStore(s => s.getOrderByDbId)
   const getOrder = useOrderStore(s => s.getOrder)
+  const openTable = usePendingTableOverlay(s => s.openTable)
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
 
@@ -159,9 +161,9 @@ const TablesScreen = () => {
     useCallback(() => {
       const pendingId = usePendingTableOverlay.getState().consume()
       if (pendingId) {
-        router.push(('/tables/' + pendingId) as Href)
+        openTable(pendingId)
       }
-    }, [router])
+    }, [openTable])
   )
 
   // Pause background timer ticks when screen loses focus
@@ -313,7 +315,7 @@ const TablesScreen = () => {
           setActiveOrder(existingOrder.id)
         }
         const prefetch = ensureOrderPrefetched(orderId)
-        router.push(('/tables/' + tableId) as Href)
+        openTable(tableId)
         // Background sync for fresh data if order wasn't cached
         if (!existingOrder) {
           prefetch
@@ -323,10 +325,10 @@ const TablesScreen = () => {
             .catch(() => {})
         }
       } else {
-        router.push(('/tables/' + tableId) as Href)
+        openTable(tableId)
       }
     },
-    [tables, getOrder, router, setActiveOrder]
+    [tables, getOrder, openTable, setActiveOrder]
   )
 
   const handleTransferServer = useCallback(
@@ -411,7 +413,7 @@ const TablesScreen = () => {
 
           // Show overlay immediately — no routing latency
           const prefetch = ensureOrderPrefetched(orderId)
-          router.push(('/tables/' + table.id) as Href)
+          openTable(table.id)
 
           // Background sync for fresh data (no-op if order already current)
           prefetch
@@ -420,7 +422,7 @@ const TablesScreen = () => {
             })
             .catch(() => {})
         } else {
-          router.push(('/tables/' + table.id) as Href)
+          openTable(table.id)
         }
         return
       }
@@ -436,7 +438,7 @@ const TablesScreen = () => {
       showClockInWall,
       clearSelection,
       toggleTableSelection,
-      router,
+      openTable,
       setActiveOrder
     ]
   )
@@ -646,7 +648,7 @@ const TablesScreen = () => {
     setGuestModalOpen(false)
     clearSelection()
     setMergeMode(false)
-    router.push(('/tables/' + primaryTableId) as Href)
+    openTable(primaryTableId)
 
     // 4. Seat guests in background
     try {
@@ -1109,6 +1111,10 @@ const TablesScreen = () => {
         onSelect={handleServerSelectedForTransfer}
         currentServer={currentTransferServerName}
       />
+
+      {/* Table order overlay — mounts TableOrderView on top of the floor plan
+          instead of routing, so the floor never unmounts (instant close). */}
+      <TableOrderOverlay />
     </View>
   )
 }

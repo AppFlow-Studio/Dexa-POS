@@ -7,6 +7,7 @@ import {
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import {
   Href,
   useGlobalSearchParams,
@@ -24,6 +25,8 @@ const Header = () => {
   const pathname = usePathname()
   const router = useRouter()
   const tablesById = useFloorPlanStore(s => s.tablesById)
+  const overlayTableId = usePendingTableOverlay(s => s.openTableId)
+  const closeTableOverlay = usePendingTableOverlay(s => s.closeTable)
   const vendors = useInventoryStore(s => s.vendors)
   const globalParams = useGlobalSearchParams()
   const instantVendorId = useSyncExternalStore(
@@ -77,6 +80,11 @@ const Header = () => {
   )
   const closeModifierSidebar = useModifierSidebarStore(state => state.close)
   const title = useMemo(() => {
+    // Table order overlay (rendered on top of the /tables floor plan)
+    if (overlayTableId) {
+      const table = tablesById[overlayTableId]
+      return table ? `Tables / ${table.name}` : 'Table Details'
+    }
     if (pathname === '/loyalty') return 'Loyalty'
     if (pathname === '/loyalty/program-form') return 'Loyalty Program'
     if (pathname === '/loyalty/enroll-customer') return 'Enroll Customer'
@@ -155,9 +163,15 @@ const Header = () => {
       .replace(/\b\w/g, char => char.toUpperCase())
 
     return title
-  }, [pathname, activeVendorId, tablesById, vendors])
+  }, [pathname, activeVendorId, tablesById, vendors, overlayTableId])
 
   const handleBackPress = useCallback(() => {
+    // Close the table order overlay instead of navigating away from /tables.
+    if (overlayTableId) {
+      closeTableOverlay()
+      return
+    }
+
     if (pathname === '/inventory/vendors' && activeVendorId) {
       requestVendorSidebarClose()
       return
@@ -258,7 +272,9 @@ const Header = () => {
     cancelAndRemoveDraft,
     closeModifierSidebar,
     pathname,
-    router
+    router,
+    overlayTableId,
+    closeTableOverlay
   ])
 
   return (

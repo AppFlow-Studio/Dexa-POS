@@ -1,6 +1,7 @@
 import TableListItem from "@/components/tables/TableListItem";
 import { colors } from "@/lib/theme";
 import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -424,7 +425,10 @@ const TablesPanel: React.FC = () => {
       if (orderId) {
         ensureOrderPrefetched(orderId).catch(() => {});
       }
-      router.push(`/tables/${tableId}`);
+      // Arm the overlay, then navigate to the tables floor; the overlay host
+      // there mounts TableOrderView on top (no per-table screen → no leak).
+      usePendingTableOverlay.getState().openTable(tableId);
+      router.push(`/tables`);
     },
     [router],
   );
