@@ -1,5 +1,4 @@
 import { queryClient } from "@/contexts/TanstackProvider";
-import { useInventorySync } from "@/hooks/pos/useInventorySync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
@@ -87,6 +86,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   );
   const isKDS = selectedStation?.station_type === "kds";
   const hasCheckedStorageSizeRef = useRef(false);
+  const lastStoreSettingsRefreshRef = useRef<number>(0);
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
@@ -501,16 +501,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     locationId: isKDS ? null : (selectedStore?.id ?? null),
   });
 
-  // --- INVENTORY SYNC --- (skip for KDS)
-  const { data: inventoryData } = useInventorySync(
-    isKDS ? null : (selectedStore?.id ?? null),
-  );
-  const setInventoryData = useInventoryStore((state) => state.setInventoryData);
+  // Inventory data is fetched lazily in inventory/_layout.tsx, not at startup.
+  // We still need to register the Supabase client so store methods work when inventory loads.
   const setInventorySupabase = useInventoryStore(
     (state) => state.setSupabaseClient,
-  );
-  const fetchPurchaseOrders = useInventoryStore(
-    (state) => state.fetchPurchaseOrders,
   );
 
   useEffect(() => {
@@ -557,32 +551,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  useEffect(() => {
-    if (inventoryData) {
-      setInventoryData({
-        items: inventoryData.inventoryItems,
-        vendors: inventoryData.vendors,
-      });
-
-      // Merge Recipe Data into MenuStore
-      applyRecipes(posSyncData);
-
-      console.log(
-        "✅ Inventory & Recipe data synced:",
-        inventoryData.inventoryItems.length,
-        "items,",
-        inventoryData.menuRecipes?.length || 0,
-        "menu recipes",
-      );
-    }
-  }, [inventoryData]);
   // --- END INVENTORY SYNC ---
 
-  useEffect(() => {
-    if (!isKDS && selectedStore?.id) {
-      fetchPurchaseOrders(selectedStore.id);
-    }
-  }, [fetchPurchaseOrders, isKDS, selectedStore?.id]);
 
   // Update menu store when sync data changes
   useEffect(() => {
@@ -717,9 +687,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       if (nextState === "active") {
         console.log("[PosSyncProvider] App became active - refreshing data");
 
-        // Refresh location settings for ALL devices (fallback for missed broadcasts)
+        // Refresh location settings for ALL devices (fallback for missed broadcasts).
+        // Gate behind a 5-minute staleness window — fires on every active event
+        // (including brief foreground→background→foreground cycles) otherwise,
+        // which adds a network round-trip on the critical first-tap path.
         const storeSettings = useStoreSettingsStore.getState();
-        storeSettings.refreshSelectedStore(supabase);
+        const settingsAge = Date.now() - lastStoreSettingsRefreshRef.current;
+        if (settingsAge > 5 * 60 * 1000) {
+          lastStoreSettingsRefreshRef.current = Date.now();
+          storeSettings.refreshSelectedStore(supabase);
+        }
 
         if (!isKDS) {
           const floorPlanStore = useFloorPlanStore.getState();

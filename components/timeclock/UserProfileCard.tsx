@@ -6,7 +6,7 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import * as Application from 'expo-application'
 import { Circle, Clock, Pause, Timer } from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Image, Platform, Text, TouchableOpacity, View } from 'react-native'
 import CashTipDeclarationModal from './CashTipDeclarationModal'
 import PinInputModal from './PinInputModal'
@@ -41,13 +41,15 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
   // Use NEW backend hook for actions
   const timeClock = useTimeClock()
   // Use OLD store for session/status display (to match Header/SessionDock)
-  const {
-    getSession,
-    startBreak: oldStartBreak,
-    endBreak: oldEndBreak,
-    clockOut: oldClockOut
-  } = useTimeclockStore()
-  const { employees } = useEmployeeStore()
+  const session = useTimeclockStore(state =>
+    employeeId ? state.sessions[employeeId] : null
+  )
+  const oldStartBreak = useTimeclockStore(state => state.startBreak)
+  const oldEndBreak = useTimeclockStore(state => state.endBreak)
+  const oldClockOut = useTimeclockStore(state => state.clockOut)
+  const user = useEmployeeStore(state =>
+    state.employees.find(e => e.id === employeeId) || null
+  )
   const selectedStore = useStoreSettingsStore(state => state.selectedStore)
 
   // --- LOCAL UI STATE ---
@@ -65,16 +67,6 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
   useEffect(() => {
     getDeviceId().then(setDeviceId)
   }, [])
-
-  const user = useMemo(() => {
-    return employees.find(e => e.id === employeeId) || null
-  }, [employeeId, employees])
-
-  // Get session from OLD store (matches Header/SessionDock)
-  const session = useMemo(() => {
-    if (!employeeId) return null
-    return getSession(employeeId)
-  }, [employeeId, getSession])
 
   // Effect to manage all live timers
   useEffect(() => {
@@ -206,7 +198,15 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
         console.warn('[UserProfileCard] clockOut RPC failed:', e)
       }
     },
-    [selectedStore?.id, timeClock, deviceId, employeeId, oldClockOut]
+    [
+      selectedStore?.id,
+      timeClock,
+      deviceId,
+      employeeId,
+      oldClockOut,
+      oldStartBreak,
+      user?.profileId
+    ]
   )
 
   const handleDeclarationCancel = useCallback(() => {
@@ -518,6 +518,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
             : 'Clock Out'
         }
         subtitle='Enter your PIN to confirm'
+        portalHost='profile-overlay'
         onConfirm={handlePinConfirm}
         onCancel={() => {
           setPinModalOpen(false)

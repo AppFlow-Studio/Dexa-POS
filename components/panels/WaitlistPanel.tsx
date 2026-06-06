@@ -91,7 +91,7 @@ const WaitlistPanel: React.FC = () => {
       }
 
       usePendingTableOverlay.getState().setPendingTableId(tableId)
-      router.push('/tables')
+      router.replace('/tables')
     },
     [
       selectedEntry,

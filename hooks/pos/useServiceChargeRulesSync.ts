@@ -46,10 +46,11 @@ export const useServiceChargeRulesSync = ({
       return (data ?? []) as unknown as ServiceChargeRule[];
     },
     enabled,
-    staleTime: 5 * 60_000,
+    networkMode: "offlineFirst",
+    staleTime: Infinity, // Broadcast/manual-invalidation controls updates
     gcTime: 30 * 60_000,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   useEffect(() => {
