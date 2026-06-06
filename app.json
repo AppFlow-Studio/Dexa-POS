@@ -4,7 +4,7 @@
     "slug": "dexa-pos",
     "version": "2.0.5",
     "orientation": "landscape",
-    "icon": "./assets/images/dexalogo.png",
+    "icon": "./assets/images/dexalogowhite.png",
     "scheme": "dexapos",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -16,7 +16,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/dexalogo.png",
+        "foregroundImage": "./assets/images/dexalogowhite.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -50,12 +50,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/dexalogo.png",
+          "image": "./assets/images/dexalogowhite.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#F8FAFC",
           "dark": {
-            "image": "./assets/images/dexalogo.png",
+            "image": "./assets/images/dexalogowhite.png",
             "backgroundColor": "#0C0F1A"
           }
         }

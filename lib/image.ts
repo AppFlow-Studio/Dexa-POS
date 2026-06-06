@@ -3,5 +3,5 @@ export const images = {
   logo: require("../assets/images/logo.png"),
   loginBurger: require("../assets/images/login-burger.png"),
   topBar: require("../assets/images/top-bar.png"),
-  dexalogo: require("../assets/images/dexalogo.png"),
+  dexalogo: require("../assets/images/dexalogowhite.png"),
 };
