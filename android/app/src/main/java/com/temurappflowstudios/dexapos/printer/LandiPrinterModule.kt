@@ -422,6 +422,12 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 "image" -> {
+                    // TODO(landi-logo): VectorPrinter currently has no bitmap API exposed
+                    // in com.sdksuite.omnidriver. To enable logo printing on the C20Pro,
+                    // check the SDK AAR for a printBitmap/addImage call on either
+                    // VectorPrinter or the simple Printer, and wire it up here. Until
+                    // then, the JS side filters image nodes in LandiDriver.ts; the
+                    // showLogo toggle in receipt-templates settings notes this gap.
                     Log.d(TAG, "Skipping image node — not supported on built-in thermal printer")
                 }
 

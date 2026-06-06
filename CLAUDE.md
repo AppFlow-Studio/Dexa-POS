@@ -107,9 +107,10 @@ EAS Build profiles: `development`, `preview`, `production` (configured in `eas.j
 ### Printing
 
 - `services/printing/PrinterService.ts` — Queue-based print management
-- Drivers in `services/printing/drivers/` (ESC/POS, Star Micronics)
-- Renderers in `services/printing/renderers/` (receipts, kitchen tickets)
-- **Star Micronics (Landi C20Pro)**: Never use `addTextColumns` or `addDividingLine` — use manual char-padding instead (known breakage on C20Pro).
+- Drivers in `services/printing/drivers/` (`StarMicronicsDriver`, `LandiDriver`, `NetworkDriver`/ESC-POS, `DejavooDriver`) — selected by `DriverFactory` from `printer_type`.
+- Renderers in `services/printing/templates/` (`ReceiptDocumentTemplate.ts` is the IR-based renderer for Star + Landi; `ReceiptTemplate.ts` is the raw ESC/POS path).
+- **Star Micronics network printers** (TSP143, etc.) use `react-native-star-io10` via `StarMicronicsDriver`. The `addTextColumns` / `addDividingLine` `convertLineStyle` path was broken at the SDK layer and is intentionally skipped — use manual char-padding via `padTwoColumn()` instead.
+- **Landi C20Pro built-in printer** is a **separate** native Kotlin driver — `LandiDriver` → `@/native/LandiPrinter` → `LandiPrinterModule.kt`, using the Landi `com.sdksuite.omnidriver` SDK (NOT Star). It has a VectorPrinter path (primary) plus a simple-Printer fallback. The driver filters `image` and `barcode` nodes — the C20Pro hardware/SDK has no bitmap API exposed today (see `TODO(landi-logo)` in `LandiPrinterModule.kt`).
 
 ### Database Types
 

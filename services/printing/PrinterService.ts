@@ -1241,6 +1241,7 @@ function buildReceiptTemplateData (
     orderType: getOrderTypeDisplay(order.order_type),
     tableName: resolvePrintableTableName(order),
     customerName: order.customer_name,
+    customerPhone: order.customer_phone ?? undefined,
     serverName: order.server_name,
     backendOrderNumber: order.order_number ?? undefined,
     items,
