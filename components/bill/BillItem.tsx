@@ -567,12 +567,17 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const effectiveIsActive =
     isActive || isModifierActive || item.isDraft === true;
 
-  // Normalize status from both status fields to keep visual state accurate
-  // across legacy values and backend/kds variants.
+  // Keep draft/new items visually unsent even if a stale item_status lingers.
   const normalizedKitchenStatus = (item.kitchen_status ?? "").toLowerCase();
   const normalizedItemStatus = (item.item_status ?? "").toLowerCase();
+  const isUnsentItem =
+    item.isDraft === true ||
+    normalizedKitchenStatus === "" ||
+    normalizedKitchenStatus === "new";
   const effectivePrepStatus =
-    normalizedKitchenStatus && normalizedKitchenStatus !== "new"
+    isUnsentItem
+      ? "new"
+      : normalizedKitchenStatus
       ? normalizedKitchenStatus
       : normalizedItemStatus;
 
