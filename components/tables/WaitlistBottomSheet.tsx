@@ -36,6 +36,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   Text,
   TouchableOpacity,

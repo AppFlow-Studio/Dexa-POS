@@ -27,9 +27,10 @@ import {
     Users,
     X,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Keyboard,
     Modal,
     Pressable,
     ScrollView,
@@ -371,7 +372,32 @@ const AddReservationModal: React.FC<{
   const [linkedCustomer, setLinkedCustomer] = useState<CustomerWithMeta | null>(
     null,
   );
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const allCustomers = useMemo(() => getCachedCustomers(), [visible]);
+
+  useEffect(
+    () => () => {
+      if (suggestionsBlurTimer.current)
+        clearTimeout(suggestionsBlurTimer.current);
+    },
+    [],
+  );
+
+  const handleSuggestionsBlur = useCallback(() => {
+    if (suggestionsBlurTimer.current)
+      clearTimeout(suggestionsBlurTimer.current);
+    suggestionsBlurTimer.current = setTimeout(
+      () => setShowSuggestions(false),
+      150,
+    );
+  }, []);
+
+  const dismissSuggestions = useCallback(() => {
+    if (suggestionsBlurTimer.current)
+      clearTimeout(suggestionsBlurTimer.current);
+    setShowSuggestions(false);
+  }, []);
   const timeOptions = useMemo(
     () => HOURS.flatMap((h) => MINUTES.map((m) => `${h.value}:${m.value}`)),
     [],
@@ -437,6 +463,7 @@ const AddReservationModal: React.FC<{
     setName(c.name ?? "");
     setPhone(c.phone ?? c.phoneNumber ?? "");
     setCustomerQuery("");
+    dismissSuggestions();
   };
 
   const clearCustomer = () => {
@@ -474,6 +501,7 @@ const AddReservationModal: React.FC<{
     setIsVip(false);
     setLinkedCustomer(null);
     setCustomerQuery("");
+    dismissSuggestions();
   };
 
   const handleClose = () => {
@@ -717,7 +745,20 @@ const AddReservationModal: React.FC<{
                         <Search size={14} color={colors.muted} />
                         <TextInput
                           value={customerQuery}
-                          onChangeText={setCustomerQuery}
+                          onChangeText={(value) => {
+                            setCustomerQuery(value);
+                            setShowSuggestions(true);
+                          }}
+                          onFocus={() => {
+                            if (customerQuery.trim().length > 0)
+                              setShowSuggestions(true);
+                          }}
+                          onBlur={handleSuggestionsBlur}
+                          onSubmitEditing={() => {
+                            dismissSuggestions();
+                            Keyboard.dismiss();
+                          }}
+                          returnKeyType="done"
                           placeholder="Search by name or phone..."
                           placeholderTextColor={colors.muted}
                           style={{
@@ -734,7 +775,8 @@ const AddReservationModal: React.FC<{
                           </TouchableOpacity>
                         )}
                       </View>
-                      {customerQuery.trim().length >= 2 &&
+                      {showSuggestions &&
+                        customerQuery.trim().length >= 2 &&
                         customerResults.length > 0 && (
                           <View
                             style={{
@@ -823,7 +865,8 @@ const AddReservationModal: React.FC<{
                             ))}
                           </View>
                         )}
-                      {customerQuery.trim().length >= 2 &&
+                      {showSuggestions &&
+                        customerQuery.trim().length >= 2 &&
                         customerResults.length === 0 && (
                           <Text
                             style={{
