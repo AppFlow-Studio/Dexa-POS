@@ -24,6 +24,8 @@ import {
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { BlurView } from "expo-blur";
 import { Link } from "expo-router";
 import {
     CheckCircle2,
@@ -46,6 +48,7 @@ import React, {
 } from "react";
 import {
     FlatList,
+    ActivityIndicator,
     InteractionManager,
     ListRenderItemInfo,
     Platform,
@@ -138,6 +141,78 @@ const MenuBlockingOverlay = React.memo(() => {
 });
 MenuBlockingOverlay.displayName = "MenuBlockingOverlay";
 
+const SeatingBlockingOverlay = React.memo(
+  ({
+    isVisible,
+    title,
+    message,
+  }: {
+    isVisible: boolean;
+    title: string;
+    message: string;
+  }) => {
+    if (!isVisible) return null;
+    return (
+      <Pressable style={getBlockingOverlayStyle("transparent")}>
+        <BlurView
+          intensity={22}
+          tint="dark"
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={{
+            ...StyleSheet.absoluteFillObject,
+            backgroundColor: colors.background + "66",
+          }}
+        />
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 24,
+          }}
+        >
+          <View
+            style={{
+              alignItems: "center",
+              gap: 8,
+              paddingHorizontal: 18,
+              paddingVertical: 14,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.panel + "E6",
+            }}
+          >
+            <ActivityIndicator size="small" color={colors.teal} />
+            <Text
+              style={{
+                color: colors.heading,
+                fontSize: 15,
+                fontWeight: "700",
+                textAlign: "center",
+              }}
+            >
+              {title}
+            </Text>
+            <Text
+              style={{
+                color: colors.muted,
+                fontSize: 12,
+                textAlign: "center",
+              }}
+            >
+              {message}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  },
+);
+SeatingBlockingOverlay.displayName = "SeatingBlockingOverlay";
+
 const MenuSectionContent: React.FC<MenuSectionProps> = ({
   onOrderClosedCheck,
   isTableOrder = false,
@@ -189,6 +264,52 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
     return order?.order_type || "takeout";
   });
+  const currentOrderDbId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.db_order_id ?? null;
+  });
+  const currentOrderSessionId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.session_id ?? null;
+  });
+  const currentOrderLocalSessionId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.local_session_id ?? null;
+  });
+  const currentOrderTableId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.service_location_id ?? null;
+  });
+  const isTableSeating = useTableSessionStore((s) => {
+    if (currentOrderType !== "dine_in") return false;
+    const sessionIds = [
+      currentOrderSessionId,
+      currentOrderLocalSessionId,
+    ].filter(Boolean);
+    const orderIds = [activeOrderId].filter(Boolean);
+    if (
+      Object.values(s.sessions).some(
+        (session) =>
+          session.status === "seating" &&
+          (sessionIds.includes(session.id) ||
+            (!!session.order_id && orderIds.includes(session.order_id))),
+      )
+    ) {
+      return true;
+    }
+    return currentOrderTableId
+      ? s.sessions[currentOrderTableId]?.status === "seating"
+      : false;
+  });
+  const isCreatingDineInOrder =
+    currentOrderType === "dine_in" && !!activeOrderId && !currentOrderDbId;
+  const isMenuAddDisabled = isTableSeating || isCreatingDineInOrder;
+  const menuDisabledTitle = isCreatingDineInOrder
+    ? "Creating order"
+    : "Seating in progress";
+  const menuDisabledMessage = isCreatingDineInOrder
+    ? "Items can be added once the order is ready."
+    : "Items can be added once the table is seated.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );
@@ -585,10 +706,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           onOrderClosedCheck={onOrderClosedCheck}
           categoryId={currentCategoryId}
           menuId={activeMenuId}
+          disabled={isMenuAddDisabled}
         />
       );
     },
-    [onOrderClosedCheck, currentCategoryId, activeMenuId, numColumns],
+    [
+      onOrderClosedCheck,
+      currentCategoryId,
+      activeMenuId,
+      numColumns,
+      isMenuAddDisabled,
+    ],
   );
 
   const formatTime = (d?: Date | null) =>
@@ -1069,6 +1197,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         </View>
 
         {/* Blocking overlay isolated — only re-renders when modifier opens */}
+        <SeatingBlockingOverlay
+          isVisible={isMenuAddDisabled}
+          title={menuDisabledTitle}
+          message={menuDisabledMessage}
+        />
         <MenuBlockingOverlay />
 
         {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}

@@ -471,7 +471,6 @@ const AddReservationModal: React.FC<{
     setName("");
     setPhone("");
     setCustomerQuery("");
-    dismissSuggestions();
   };
 
   const setSelectedTime = (time: string) => {

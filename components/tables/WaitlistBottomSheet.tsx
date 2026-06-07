@@ -252,25 +252,6 @@ const AddEntryForm: React.FC<{
   const [linkedCustomer, setLinkedCustomer] = useState<CustomerWithMeta | null>(
     null
   )
-  const [showSuggestions, setShowSuggestions] = useState(false)
-  const suggestionsBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(
-    () => () => {
-      if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
-    },
-    []
-  )
-
-  const handleSuggestionsBlur = useCallback(() => {
-    if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
-    suggestionsBlurTimer.current = setTimeout(() => setShowSuggestions(false), 150)
-  }, [])
-
-  const dismissSuggestions = useCallback(() => {
-    if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
-    setShowSuggestions(false)
-  }, [])
 
   useEffect(() => {
     setAllCustomers(getCachedCustomers())
@@ -295,30 +276,44 @@ const AddEntryForm: React.FC<{
       .slice(0, 4)
   }, [allCustomers, customerQuery])
 
-  const applyCustomer = useCallback(
-    (customer: CustomerWithMeta) => {
-      setLinkedCustomer(customer)
-      setName(customer.name ?? '')
-      setPhone(customer.phone ?? customer.phoneNumber ?? '')
-      setCustomerQuery('')
-      dismissSuggestions()
-    },
-    [dismissSuggestions]
-  )
+  const applyCustomer = useCallback((customer: CustomerWithMeta) => {
+    setLinkedCustomer(customer)
+    setName(customer.name ?? '')
+    setPhone(customer.phone ?? customer.phoneNumber ?? '')
+    setCustomerQuery('')
+  }, [])
 
   const updateName = useCallback((value: string) => {
     setName(value)
     setLinkedCustomer(null)
     setCustomerQuery(value)
-    setShowSuggestions(true)
   }, [])
 
   const updatePhone = useCallback((value: string) => {
     setPhone(value)
     setLinkedCustomer(null)
     setCustomerQuery(value)
-    setShowSuggestions(true)
   }, [])
+
+  useEffect(() => {
+    if (linkedCustomer) return
+    const typedName = name.toLowerCase().trim()
+    const typedPhone = normalizePhone(phone)
+    if (typedName.length < 3 && typedPhone.length < 7) return
+
+    const match = allCustomers.find(customer => {
+      const customerName = (customer.name ?? '').toLowerCase().trim()
+      const customerPhone = normalizePhone(
+        customer.phone ?? customer.phoneNumber
+      )
+      return (
+        (typedName.length >= 3 && customerName === typedName) ||
+        (typedPhone.length >= 7 && customerPhone.endsWith(typedPhone))
+      )
+    })
+
+    if (match) applyCustomer(match)
+  }, [allCustomers, applyCustomer, linkedCustomer, name, phone])
 
   const handleSubmit = () => {
     onSubmit({
@@ -335,7 +330,6 @@ const AddEntryForm: React.FC<{
     setPhone('')
     setCustomerQuery('')
     setLinkedCustomer(null)
-    dismissSuggestions()
   }
 
   return (
@@ -348,15 +342,6 @@ const AddEntryForm: React.FC<{
         <BottomSheetTextInput
           value={name}
           onChangeText={updateName}
-          onFocus={() => {
-            if (customerQuery.trim().length > 0) setShowSuggestions(true)
-          }}
-          onBlur={handleSuggestionsBlur}
-          onSubmitEditing={() => {
-            dismissSuggestions()
-            Keyboard.dismiss()
-          }}
-          returnKeyType='done'
           placeholder='Enter name'
           placeholderTextColor={colors.muted}
           style={{
@@ -416,7 +401,7 @@ const AddEntryForm: React.FC<{
             </TouchableOpacity>
           </View>
         )}
-        {!linkedCustomer && showSuggestions && customerResults.length > 0 && (
+        {!linkedCustomer && customerResults.length > 0 && (
           <View
             style={{
               marginTop: 6,
@@ -515,15 +500,6 @@ const AddEntryForm: React.FC<{
         <BottomSheetTextInput
           value={phone}
           onChangeText={updatePhone}
-          onFocus={() => {
-            if (customerQuery.trim().length > 0) setShowSuggestions(true)
-          }}
-          onBlur={handleSuggestionsBlur}
-          onSubmitEditing={() => {
-            dismissSuggestions()
-            Keyboard.dismiss()
-          }}
-          returnKeyType='done'
           keyboardType='phone-pad'
           placeholder='Phone number'
           placeholderTextColor={colors.muted}
