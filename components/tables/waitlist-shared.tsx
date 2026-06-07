@@ -364,7 +364,6 @@ export const AddEntryForm: React.FC<{
   const defaultSittingMinutes = useLocationConfigStore(
     s => s.config.dining.defaultSittingTimeMinutes || 60
   )
-
   const [name, setName] = useState('')
   const [partySize, setPartySize] = useState('')
   const [quotedTime, setQuotedTime] = useState('')
