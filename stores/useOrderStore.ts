@@ -164,6 +164,23 @@ const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null 
   return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
 };
 
+function isOrderTableStillSeating(order?: OrderProfile | null): boolean {
+  if (!order || order.order_type !== "dine_in") return false;
+
+  const sessionStore = useTableSessionStore.getState();
+  if (order.session_id) {
+    const linked = sessionStore.getSessionBySessionId(order.session_id);
+    if (linked?.session.status === "seating") return true;
+  }
+  if (order.local_session_id) {
+    const linked = sessionStore.getSessionBySessionId(order.local_session_id);
+    if (linked?.session.status === "seating") return true;
+  }
+  const tableId = order.service_location_id;
+  if (!tableId) return false;
+  return sessionStore.getSession(tableId)?.status === "seating";
+}
+
 // ============================================================================
 // CART-EDIT OWNERSHIP GUARD (Lever 2)
 // ============================================================================
@@ -7317,6 +7334,27 @@ export const useOrderStore = create<OrderState>()(
 
             const activeOrder = ordersById[activeOrderId]; // O(1) lookup
             if (!activeOrder) return;
+
+            if (isOrderTableStillSeating(activeOrder)) {
+              toastService.show({
+                title: "Seating in progress",
+                message: "Please wait until the table is seated before adding items.",
+                type: "warning",
+              });
+              return;
+            }
+
+            if (
+              activeOrder.order_type === "dine_in" &&
+              !activeOrder.db_order_id
+            ) {
+              toastService.show({
+                title: "Creating order",
+                message: "Please wait until the order is ready before adding items.",
+                type: "warning",
+              });
+              return;
+            }
 
             // Block adding items to closed checks
             if (activeOrder.check_status === "Closed") {
