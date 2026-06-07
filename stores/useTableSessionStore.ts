@@ -1427,6 +1427,20 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               });
             }
             if (optimistic.length > 0) get().batchDispatch(optimistic);
+
+            // Re-link the session's order to the new primary table. Without this
+            // the order keeps its old service_location_id, so BillSection and the
+            // order line (both keyed on service_location_id) still point at the
+            // old table and never reflect the transfer.
+            const newPrimaryTableId = newTableIds[0];
+            if (moving.order_id && newPrimaryTableId) {
+              const { useOrderStore } =
+                require("@/stores/useOrderStore") as typeof import("@/stores/useOrderStore");
+              const orderStore = useOrderStore.getState();
+              const localOrderId =
+                orderStore.dbOrderIdIndex[moving.order_id] ?? moving.order_id;
+              orderStore.transferOrderToTable?.(localOrderId, newPrimaryTableId);
+            }
           }
 
           // Authoritative reconcile — single source of truth. force=true so we
