@@ -233,6 +233,8 @@ const TRANSITIONS: Partial<
     BEGIN_CLOSING: "closing",
   },
   closing: {
+    FULL_PAYMENT: "paid",
+    RECEIVE_PAYMENT: "paid",
     CLEAR_TABLE: "cleaning",
     CANCEL_INTERMEDIATE: "seated",
   },
