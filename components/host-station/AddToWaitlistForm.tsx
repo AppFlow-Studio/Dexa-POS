@@ -22,9 +22,10 @@ import {
   UserCircle,
   Users
 } from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Keyboard,
   Modal,
   Text,
   TextInput,
@@ -263,8 +264,25 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   const [linkedCustomer, setLinkedCustomer] = useState<CustomerWithMeta | null>(
     null
   )
-  const [isCustomerAutoFillPaused, setIsCustomerAutoFillPaused] =
-    useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const suggestionsBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
+    },
+    []
+  )
+
+  const handleSuggestionsBlur = useCallback(() => {
+    if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
+    suggestionsBlurTimer.current = setTimeout(() => setShowSuggestions(false), 150)
+  }, [])
+
+  const dismissSuggestions = useCallback(() => {
+    if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
+    setShowSuggestions(false)
+  }, [])
 
   useEffect(() => {
     setAllCustomers(getCachedCustomers())
@@ -289,27 +307,30 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
       .slice(0, 4)
   }, [allCustomers, customerQuery])
 
-  const applyCustomer = useCallback((customer: CustomerWithMeta) => {
-    setLinkedCustomer(customer)
-    setPartyName(customer.name ?? '')
-    setPhone(customer.phone ?? customer.phoneNumber ?? '')
-    setEmail(customer.email ?? '')
-    setCustomerQuery('')
-    setIsCustomerAutoFillPaused(false)
-  }, [])
+  const applyCustomer = useCallback(
+    (customer: CustomerWithMeta) => {
+      setLinkedCustomer(customer)
+      setPartyName(customer.name ?? '')
+      setPhone(customer.phone ?? customer.phoneNumber ?? '')
+      setEmail(customer.email ?? '')
+      setCustomerQuery('')
+      dismissSuggestions()
+    },
+    [dismissSuggestions]
+  )
 
   const updatePartyName = useCallback((value: string) => {
     setPartyName(value)
     setLinkedCustomer(null)
     setCustomerQuery(value)
-    setIsCustomerAutoFillPaused(false)
+    setShowSuggestions(true)
   }, [])
 
   const updatePhone = useCallback((value: string) => {
     setPhone(value)
     setLinkedCustomer(null)
     setCustomerQuery(value)
-    setIsCustomerAutoFillPaused(false)
+    setShowSuggestions(true)
   }, [])
 
   const handleChangeCustomer = useCallback(() => {
@@ -318,37 +339,8 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
     setPhone('')
     setEmail('')
     setCustomerQuery('')
-    setIsCustomerAutoFillPaused(false)
+    setShowSuggestions(false)
   }, [])
-
-  useEffect(() => {
-    if (mode === 'edit' || linkedCustomer || isCustomerAutoFillPaused) return
-
-    const typedName = partyName.toLowerCase().trim()
-    const typedPhone = normalizePhone(phone)
-    if (typedName.length < 3 && typedPhone.length < 7) return
-
-    const match = allCustomers.find(customer => {
-      const customerName = (customer.name ?? '').toLowerCase().trim()
-      const customerPhone = normalizePhone(
-        customer.phone ?? customer.phoneNumber
-      )
-      return (
-        (typedName.length >= 3 && customerName === typedName) ||
-        (typedPhone.length >= 7 && customerPhone.endsWith(typedPhone))
-      )
-    })
-
-    if (match) applyCustomer(match)
-  }, [
-    allCustomers,
-    applyCustomer,
-    isCustomerAutoFillPaused,
-    linkedCustomer,
-    mode,
-    partyName,
-    phone
-  ])
 
   useEffect(() => {
     if (tables.length === 0) return
@@ -462,6 +454,15 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             autoFocus
             value={partyName}
             onChangeText={updatePartyName}
+            onFocus={() => {
+              if (customerQuery.trim().length > 0) setShowSuggestions(true)
+            }}
+            onBlur={handleSuggestionsBlur}
+            onSubmitEditing={() => {
+              dismissSuggestions()
+              Keyboard.dismiss()
+            }}
+            returnKeyType='done'
             placeholder='Guest name or party'
             placeholderTextColor={colors.muted}
             maxLength={100}
@@ -519,7 +520,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             </TouchableOpacity>
           </View>
         )}
-        {!linkedCustomer && customerResults.length > 0 && (
+        {!linkedCustomer && showSuggestions && customerResults.length > 0 && (
           <View
             style={{
               position: 'absolute',
@@ -788,6 +789,15 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             <TextInput
               value={phone}
               onChangeText={updatePhone}
+              onFocus={() => {
+                if (customerQuery.trim().length > 0) setShowSuggestions(true)
+              }}
+              onBlur={handleSuggestionsBlur}
+              onSubmitEditing={() => {
+                dismissSuggestions()
+                Keyboard.dismiss()
+              }}
+              returnKeyType='done'
               placeholder='(555) 123-4567'
               placeholderTextColor={colors.muted}
               keyboardType='phone-pad'
